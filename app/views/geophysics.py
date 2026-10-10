@@ -6,6 +6,7 @@ import html as _html
 
 import streamlit as st
 
+from groundwater.decisions import recommended_points
 from groundwater.geo import infer_zone_for_sierra_leone
 from groundwater.ingestion import check_all
 from groundwater.mapping import suitability_map
@@ -279,9 +280,10 @@ def render() -> None:
                 )
 
         # the gate reads the decision numbers from what the report prints
-        # them from (PLAN.md step 3.6)
+        # them from, at the points it recommends (PLAN.md step 3.6)
         _geo_gate = report_gate("geophysical", decided={
-            "interpretations": interps, "model_ranges": ranges, "odds": odds})
+            "interpretations": interps, "model_ranges": ranges, "odds": odds,
+            "points": recommended_points(interps, app_config())})
         if st.button("Build geophysical survey report", key="build_geo_report"):
           with _working("Building the geophysical survey report - drawing the "
                         "context maps and writing the document..."):

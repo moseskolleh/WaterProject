@@ -6612,6 +6612,10 @@
       state.interpretations = derived.interpretations;
       state.model_ranges = (derived.inversions || []).map(rangeFor);
       state.odds = surveyOdds();
+      /* at both points where the report offers two it cannot separate; an
+       * order the analyst set names one, as the report does */
+      state.points = (store.get('ves.preferredOrder') || []).length ? null
+        : C.recommendedPoints(derived.interpretations, config());
     }
     if (kind === 'costing') {
       var costed = costSpreads();

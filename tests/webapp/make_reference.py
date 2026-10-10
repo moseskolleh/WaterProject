@@ -1226,6 +1226,12 @@ def decisions_reference(odds: dict, cost_range: dict) -> dict:
                   "drilling_depth_quantiles_m": COST_DEPTH["quantiles_m"]},
         "capped": {"sounding_id": "P2", "n_samples": 1200, "investigation_depth_m": 40.0,
                    "drilling_depth_quantiles_m": [40.0] * 21},
+        # spread so that the twentieths beside the P10 and the P90 round to
+        # other drilling steps: the band is read at the right ones
+        "spread": {"sounding_id": "P3", "n_samples": 2000, "investigation_depth_m": 60.0,
+                   "drilling_depth_quantiles_m": [10.0, 12.0, 16.0, 21.0, 23.0, 24.0, 25.0,
+                                                  26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0,
+                                                  33.0, 34.0, 36.0, 39.0, 44.0, 48.0, 52.0]},
         "none": None,
     }
     interps = {
@@ -1270,6 +1276,13 @@ def decisions_reference(odds: dict, cost_range: dict) -> dict:
         "geophysical, no odds": ("geophysical", {
             "interpretations": list(interps.values()),
             "model_ranges": [ranges["capped"], ranges["capped"]]}),
+        # two points the ranking cannot separate: the report offers both, so
+        # it prints and the gate reads the numbers at both, the first-ranked
+        # first; the second's range unsampled
+        "geophysical, tied": ("geophysical", {
+            "interpretations": list(interps.values()),
+            "model_ranges": [None, ranges["capped"]],
+            "odds": [odds_cases[0], odds_cases[1]], "points": [1, 0]}),
         "geophysical, nothing": ("geophysical", {}),
         "pumping, banded": ("pumping", {"pump_analysis": DECISION_PUMPING["banded"]}),
         "completion, withheld": ("completion", {"pump_analysis": DECISION_PUMPING["withheld"]}),

@@ -16534,7 +16534,7 @@
    * band a dry-season decline moves it over, or null where it sets none.
    * depth is the intake the report prints where that is not the
    * recommendation's, and moved what set it there ('design' or 'seasonal');
-   * the band stays the recommendation's.
+   * the band stays the recommendation's, and says so.
    * @param {PumpingAnalysis} analysis
    * @param {number|null} [depth]
    * @param {string|null} [moved]
@@ -16543,11 +16543,14 @@
     var rec = analysis ? analysis.yield_recommendation : null;
     var advised = rec ? rec.pump_installation_depth_m : null;
     if (advised === null || advised === undefined) return null;
-    var at = advised, basis;
+    var at = advised, basis, bandKey = 'decision.pump_band';
     if (depth === null || depth === undefined || !moved || depth === advised) {
       basis = phrase('decision.pump_basis');
     } else {
+      /* the band is the recommendation's, which the printed intake can lie
+       * outside, so the band says whose it is */
       at = depth;
+      bandKey = 'decision.pump_band_moved';
       basis = phrase('decision.pump_basis_moved', { rec: advised,
         where: String(phraseTable('decision.pump_moved')[moved]) });
     }
@@ -16557,7 +16560,7 @@
     if (!spread || spread.pump_depth_low_m === null || spread.pump_depth_low_m === undefined) {
       return decisionNumber('pump', name, value, null, phrase('decision.pump_no_spread'), basis);
     }
-    return decisionNumber('pump', name, value, phrase('decision.pump_band', {
+    return decisionNumber('pump', name, value, phrase(bandKey, {
       decline_low: ENVELOPE_SEASONAL_M[0], decline_high: ENVELOPE_SEASONAL_M[1],
       low: spread.pump_depth_low_m, high: spread.pump_depth_high_m }), '', basis);
   }
@@ -16625,9 +16628,29 @@
     return best;
   }
 
+  /** recommended_points: the positions of the points a geophysical report
+   * recommends drilling, the first-ranked and, where the ranking cannot
+   * separate them (tiedLeaders), the second with it: the summary then offers
+   * either, so the depth and the odds at both are decision numbers. An order
+   * the analyst set is not second-guessed; the caller leaves this out there.
+   * @param {Interpretation[]} interpretations
+   * @param {Config} [config]
+   * @returns {number[]} */
+  function recommendedPoints(interpretations, config) {
+    var i = preferredIndex(interpretations);
+    if (i === null || interpretations.length < 2) return i === null ? [] : [i];
+    var ves = (config || defaultConfig()).ves;
+    if (!tiedLeaders(assessSiting(interpretations, ves), ves.ranking_tie_points)) return [i];
+    return interpretations.map(function (_interp, k) { return k; }).sort(function (a, b) {
+      return ((interpretations[a].rank || 99) - (interpretations[b].rank || 99)) || a - b;
+    }).slice(0, 2);
+  }
+
   /** decision_numbers: one report's decision numbers, from a project keyed
    * as the readiness gate reads it. A number with nothing to work it out
-   * from is left out.
+   * from is left out. The survey's numbers are at state.points, the
+   * positions recommendedPoints gives, where the caller has them; the
+   * first-ranked point alone otherwise.
    * @param {Rec|null} state
    * @param {string} report
    * @param {Config} [config]
@@ -16638,12 +16661,18 @@
     var wanted = own(REPORT_DECISIONS, report) ? REPORT_DECISIONS[report] : [];
     var out = [];
     var interps = s.interpretations || [];
-    var i = preferredIndex(interps);
-    if (i !== null && wanted.indexOf('depth') >= 0) {
-      out.push(depthDecision(interps[i], (s.model_ranges || [])[i] || null, cfg));
+    var points = s.points;
+    if (points === null || points === undefined) {
+      var first = preferredIndex(interps);
+      points = first === null ? [] : [first];
     }
-    var odds = s.odds || [];
-    if (i !== null && wanted.indexOf('odds') >= 0 && odds[i]) out.push(oddsDecision(odds[i]));
+    var ranges = s.model_ranges || [], odds = s.odds || [];
+    points.forEach(function (i) {
+      if (wanted.indexOf('depth') >= 0) {
+        out.push(depthDecision(interps[i], ranges[i] || null, cfg));
+      }
+      if (wanted.indexOf('odds') >= 0 && odds[i]) out.push(oddsDecision(odds[i]));
+    });
     var analysis = s.pump_analysis;
     if (analysis && wanted.indexOf('yield') >= 0) out.push(yieldDecision(analysis, cfg.pumping));
     if (analysis && wanted.indexOf('pump') >= 0) out.push(pumpDecision(analysis));
@@ -16657,7 +16686,7 @@
     decisionText: decisionText, depthDecision: depthDecision, yieldDecision: yieldDecision,
     pumpDecision: pumpDecision, oddsDecision: oddsDecision, costDecision: costDecision,
     REPORT_DECISIONS: REPORT_DECISIONS, preferredIndex: preferredIndex,
-    decisionNumbers: decisionNumbers,
+    recommendedPoints: recommendedPoints, decisionNumbers: decisionNumbers,
   });
 
   /* ================================================================ portfolio

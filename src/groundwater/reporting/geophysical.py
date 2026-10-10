@@ -40,7 +40,7 @@ from ..mapping import (
     unplaced_text,
 )
 from ..models import DataFlag, LayeredModel, VESSounding
-from ..decisions import decision_numbers
+from ..decisions import decision_numbers, recommended_points
 from ..siting.measurement import measurement_values
 from ..siting import (
     assess_siting,
@@ -249,14 +249,16 @@ def build_geophysical_report(
     # contradicts itself. Both go through tied_leaders on the same margin.
     tied = _tied_pair(inputs.interpretations, config.ves)
     # The chance of a working borehole at each point (PLAN.md step 3.3),
-    # printed under the score it stands beside; at the first-ranked point it
-    # is one of the summary's decision numbers, with the drilling depth
-    # (step 3.6), as the readiness gate reads them.
+    # printed under the score it stands beside; at the point the summary
+    # recommends (both, where two are tied) it is one of the summary's
+    # decision numbers, with the drilling depth (step 3.6), as the readiness
+    # gate reads them.
     odds = survey_odds(inputs.interpretations, inputs.model_ranges, site.utm_zone,
                        site.latlon, config)
     decisions = decision_numbers(
         {"interpretations": inputs.interpretations, "model_ranges": inputs.model_ranges,
-         "odds": odds}, "geophysical", config)
+         "odds": odds, "points": recommended_points(inputs.interpretations, config)},
+        "geophysical", config)
 
     # ---- cover -------------------------------------------------------------
     rb.cover(
@@ -1502,12 +1504,11 @@ def _executive_summary(
             f"{drilling_depth_text(first)} at {first.sounding_id} and "
             f"{drilling_depth_text(second)} at {second.sounding_id}. "
         )
+        # the drilling depth at each of them is a decision number under these
+        # findings, with its band (PLAN.md step 3.6)
         key = [
             (f"Drilling points the survey cannot separate: {first.sounding_id} "
              f"and {second.sounding_id}."),
-            (f"Recommended drilling depth: {drilling_depth_text(first)} at "
-             f"{first.sounding_id}; {drilling_depth_text(second)} at "
-             f"{second.sounding_id}."),
         ]
     else:
         choice = (

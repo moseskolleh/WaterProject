@@ -33,14 +33,16 @@ gate_none: >-
 # cost figures say theirs in cost_range.yaml.
 figure_depth_band: >-
   The shaded band on the model is the P10 to P90 of the depth the models
-  that fit would be drilled to.
+  that fit would be drilled to, before it is rounded up to the drilling
+  step.
 
-# The drilling depth at the survey's first-ranked point (step 3.1).
+# The drilling depth at the point the survey recommends, at both of two it
+# cannot separate (step 3.1).
 depth_name: Drilling depth at {sid}
 depth_band: "P10 to P90 of the models that fit, {low:g} to {high:g} m"
 # Rounded up and cut back to the depth of investigation, the two ends can be
 # the same depth, which "40 to 40 m" would put oddly.
-depth_band_flat: "P10 and P90 of the models that fit both {low:g} m"
+depth_band_flat: "P10 and P90 of the models that fit, both {low:g} m"
 depth_basis: >-
   the best fit's interpretation, with the band from the drilling depth of
   each of {samples:g} models sampled around it, rounded up to {step:g} m and
@@ -74,16 +76,22 @@ pump_basis: >-
   the transmissivity band does not move
 pump_no_spread: the spread of this test has not been worked out
 # Where the report's intake is not the recommendation's: the design has set
-# it in plain casing, or the seasonal projection deeper.
+# it in plain casing, or the seasonal projection deeper. The band is still
+# the recommendation's, and says so where it is printed: the intake can lie
+# outside it, and a bare "54 m (... 51 to 52 m)" read as the value outside
+# its own band.
+pump_band_moved: >-
+  the recommendation's setting over a {decline_low:g} to {decline_high:g} m
+  dry-season decline, {low:num} to {high:num} m
 pump_basis_moved: >-
   the yield recommendation's setting at the adopted transmissivity,
   {rec:num} m, which the transmissivity band does not move, set instead
-  {where}; the band is the recommendation's
+  {where}
 pump_moved:
   design: in plain casing clear of the screens by the design
   seasonal: deeper, for the drought-year low the seasonal projection gives
 
-# The chance of a working borehole at the survey's first-ranked point
+# The chance of a working borehole at the same point, or points
 # (step 3.3).
 odds_name: Chance of a working borehole at {sid}
 odds_value: "{p} percent"

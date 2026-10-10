@@ -90,10 +90,23 @@ def test_the_drilling_depth_is_banded_by_the_models_rounded_as_the_range_rounds(
     assert d.text.startswith("Drilling depth at P1: about 33 m (P10 to P90")
 
 
+def test_the_depth_band_is_read_at_the_p10_and_the_p90_and_no_other_twentieth():
+    # the twentieths beside the P10 (12 and 21 m) and the P90 (39 and 48 m)
+    # round to other 5 m steps than the P10's 16 m and the P90's 44 m
+    spread = [10.0, 12.0, 16.0, 21.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0,
+              31.0, 32.0, 33.0, 34.0, 36.0, 39.0, 44.0, 48.0, 52.0]
+    d = depth_decision(interp(), model_range(quantiles=spread, doi=60.0), Config())
+    assert d.band == "P10 to P90 of the models that fit, 20 to 45 m"
+    config = Config()
+    config.ves.round_drilling_depth_to_m = 1.0
+    d = depth_decision(interp(), model_range(quantiles=spread, doi=40.0), config)
+    assert d.band == "P10 to P90 of the models that fit, 16 to 40 m"
+
+
 def test_a_drilling_depth_cut_back_everywhere_is_one_depth_not_a_range():
     d = depth_decision(interp(depth=40.0, open_ended=True),
                        model_range(quantiles=[40.0] * 21, doi=40.0), Config())
-    assert d.band == "P10 and P90 of the models that fit both 40 m"
+    assert d.band == "P10 and P90 of the models that fit, both 40 m"
     assert d.value == "at least 40 m"
 
 
@@ -127,7 +140,10 @@ def test_the_pump_intake_keeps_the_recommendations_band_where_the_report_moves_i
     assert plain.value == "38.4 m"
     assert plain.band == "over a 1 to 4 m dry-season decline, 37.2 to 40.1 m"
     moved = pump_decision(analysis(), 44.0, "design")
-    assert moved.value == "44 m" and moved.band == plain.band
+    # an intake outside the band it is printed with: the band says whose it is
+    assert moved.value == "44 m"
+    assert moved.band == ("the recommendation's setting over a 1 to 4 m dry-season decline, "
+                          "37.2 to 40.1 m")
     assert "38.4 m" in moved.basis and "by the design" in moved.basis
     assert pump_decision(analysis(), 38.4, "design").basis == plain.basis
     assert pump_decision(analysis(pump=None)).band is None
@@ -174,6 +190,51 @@ def test_a_report_prints_the_numbers_it_asks_a_decision_on():
         "yield", "pump"]
     assert decision_numbers({"pump_analysis": analysis()}, "quality") == []
     assert set(REPORT_DECISIONS) <= set(REPORTS)
+
+
+def test_where_two_points_are_tied_the_numbers_at_both_are_printed_and_gated():
+    survey = {"interpretations": [interp("P1", rank=2), interp("P2", rank=1)],
+              "model_ranges": [None, model_range("P2")], "odds": [odds("P1"), odds("P2")],
+              "points": [1, 0]}
+    names = [d.name for d in decision_numbers(survey, "geophysical")]
+    assert names == ["Drilling depth at P2", "Chance of a working borehole at P2",
+                     "Drilling depth at P1", "Chance of a working borehole at P1"]
+    # the second point's range is not sampled, and the report offers it
+    req = _bands(survey, "geophysical")
+    assert req.state == "unmet" and req.detail == (
+        "Drilling depth at P1 has no band: the range of models has not been sampled at P1.")
+    assert _bands(dict(survey, points=[1]), "geophysical").state == "met"
+
+
+def test_the_points_recommended_are_the_first_ranked_and_a_tied_second():
+    import numpy as np
+
+    from groundwater.decisions import recommended_points
+    from groundwater.models import LayeredModel, SiteMetadata, VESSounding
+    from groundwater.siting import assess_siting, tied_leaders
+    from groundwater.ves import interpret_model
+    from groundwater.ves.forward import forward_schlumberger
+    from groundwater.ves.interpret import rank_interpretations
+
+    # two points 2.8 weighted points apart, as test_report_text's tie, and
+    # two a clear margin apart
+    ab2 = np.array([1, 1.5, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 60, 70, 80.0])
+
+    def point(sid, thickness):
+        truth = LayeredModel([800, 60, 4000], [4, thickness])
+        s = VESSounding(SiteMetadata(community="Testville"), sid, ab2,
+                        np.full(len(ab2), 1.0), forward_schlumberger(truth, ab2))
+        return interpret_model(s, truth)
+
+    tied = [point("VES 1", 18.0), point("VES 2", 20.0)]
+    rank_interpretations(tied)
+    assert tied_leaders(assess_siting(tied)) is not None
+    assert recommended_points(tied) == [1, 0]
+    apart = [point("VES 1", 4.0), point("VES 2", 20.0)]
+    rank_interpretations(apart)
+    assert tied_leaders(assess_siting(apart)) is None
+    assert recommended_points(apart) == [1]
+    assert recommended_points(apart[:1]) == [0] and recommended_points([]) == []
 
 
 def test_the_preferred_point_is_the_first_ranked_then_the_first_listed():
@@ -287,12 +348,68 @@ def test_the_worked_examples_print_their_numbers_in_the_one_form():
 
     projects = Path(__file__).resolve().parents[1] / "examples" / "projects"
     rokel = _text(projects / "rokel" / "reports" / "Rokel_Geophysical_Survey_Report.docx")
-    assert ("Drilling depth at A (1): at least 40 m (P10 and P90 of the models that fit "
+    assert ("Drilling depth at A (1): at least 40 m (P10 and P90 of the models that fit, "
             "both 40 m); basis:") in rokel
     assert "Chance of a working borehole at A (1): 96 percent (P10 to P90" in rokel
     for name in ("Dr_Timbo_Borehole_Completion_Report.docx", "Dr_Timbo_Handover_Report.docx"):
         timbo = _text(projects / "dr_timbo" / "reports" / name)
         assert ("Safe yield: 0.391 m3/h (P10 to P90 of the transmissivity, 0.354 to "
                 "0.443 m3/h); basis:") in timbo
-        assert ("Pump intake below the top of the casing: 54 m (over a 1 to 4 m "
-                "dry-season decline, 51 to 52 m); basis:") in timbo
+        assert ("Pump intake below the top of the casing: 54 m (the recommendation's "
+                "setting over a 1 to 4 m dry-season decline, 51 to 52 m); basis: the yield "
+                "recommendation's setting at the adopted transmissivity, 52 m,") in timbo
+
+
+# -------------------------------------------------------------- the figures
+
+def test_the_model_panel_shades_the_p10_to_p90_of_the_drilling_depth():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from groundwater.models import LayeredModel, SiteMetadata, VESSounding
+    from groundwater.ves.forward import forward_schlumberger
+    from groundwater.ves.model_range import drilling_depth_band
+    from groundwater.ves.plots import plot_sounding_curve
+
+    ab2 = np.array([1, 2, 5, 10, 20, 40, 80, 120.0])
+    model = LayeredModel([800, 60, 4000], [4, 30])
+    sounding = VESSounding(SiteMetadata(community="Testville"), "P1", ab2,
+                           np.full(len(ab2), 1.0), forward_schlumberger(model, ab2))
+
+    def shaded(quantiles):
+        r = SimpleNamespace(fan=[([800, 60, 4000], [4, 30])],
+                            fan_curves=[forward_schlumberger(model, ab2)], ab2=ab2,
+                            drilling_depth_quantiles_m=quantiles)
+        fig = plot_sounding_curve(sounding, model, depth_max=41.0, model_range=r)
+        panel = fig.axes[1]
+        spans = [p.get_patch_transform().transform(p.get_path().vertices)[:, 1]
+                 for p in panel.patches]
+        flat = [ln.get_ydata()[0] for ln in panel.lines
+                if len(set(ln.get_ydata())) == 1 and ln.get_linewidth() == 2.0]
+        plt.close(fig)
+        return [(float(min(v)), float(max(v))) for v in spans], flat
+
+    # unrounded, at the third and nineteenth of the twenty-one quantiles
+    assert drilling_depth_band(SimpleNamespace(drilling_depth_quantiles_m=QUANTILES)) == (
+        26.1, 38.2)
+    spans, _ = shaded(QUANTILES)
+    assert spans == [pytest.approx((26.1, 38.2))]
+    # every model cut back to the same depth: a line, not a band of no height
+    spans, flat = shaded([40.0] * 21)
+    assert spans == [] and flat == [40.0]
+
+
+def test_the_cost_curve_shades_the_p10_to_p90_the_cost_line_quotes(monkeypatch, tmp_path):
+    import matplotlib.pyplot as plt
+
+    from groundwater.costing import plots
+
+    kept = []
+    monkeypatch.setattr(plots, "save_figure", lambda fig, path, style=None: kept.append(fig))
+    curve = [1000.0 + 10.0 * k + 0.5 * k * k for k in range(101)]
+    plots.plot_cost_distribution(curve, [("Bill of quantities", 1500.0)], tmp_path / "c.png")
+    (fig,) = kept
+    (span,) = fig.axes[0].patches
+    xs = span.get_patch_transform().transform(span.get_path().vertices)[:, 0]
+    plt.close(fig)
+    assert (min(xs), max(xs)) == pytest.approx((curve[10], curve[90]))

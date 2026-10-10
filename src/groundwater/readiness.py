@@ -530,12 +530,13 @@ def _decision_bands(state: dict, report: str) -> tuple[str, str]:
 
     The numbers are the ones :func:`groundwater.decisions.decision_numbers`
     gives this kind of report, from the results the project holds: the
-    drilling depth and the odds at the first-ranked point, the yield and the
-    pump setting, the cost. A number with no band is not wrong, but the
-    reader cannot tell how far to trust it, which is the same as not knowing
-    it to the standard a decision needs. One with nothing to work it out
-    from is not counted here; the requirements beside this one already say
-    the test, the survey or the estimate is missing.
+    drilling depth and the odds at the point recommended (at both of a
+    tie), the yield and the pump setting, the cost. A number with no band
+    is not wrong, but the reader cannot tell how far to trust it, which is
+    the same as not knowing it to the standard a decision needs. One with
+    nothing to work it out from is not counted here; the requirements
+    beside this one already say the test, the survey or the estimate is
+    missing.
     """
     from .decisions import decision_numbers
     from .text import phrase

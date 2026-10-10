@@ -871,11 +871,13 @@
     var tied = (!analystOrder && suit.length >= 2 &&
       C.tiedLeaders(suit, vesCfg.ranking_tie_points)) ? ranked.slice(0, 2) : [];
     var at = tied.length ? ' at ' + best.sounding_id : '';
-    /* the drilling depth and the odds at the first-ranked point, each with
-     * its band (PLAN.md step 3.6), as reporting/geophysical.py prints them
-     * and the readiness gate reads them */
+    /* the drilling depth and the odds at the point the summary recommends,
+     * at both where two are tied, each with its band (PLAN.md step 3.6), as
+     * reporting/geophysical.py prints them and the readiness gate reads them */
     var decisions = C.decisionNumbers({ interpretations: interpretations,
-      model_ranges: context.ranges || [], odds: context.odds || [] }, 'geophysical',
+      model_ranges: context.ranges || [], odds: context.odds || [],
+      points: tied.length ? [interpretations.indexOf(tied[0]),
+        interpretations.indexOf(tied[1])] : null }, 'geophysical',
     Object.assign({}, C.defaultConfig(), context.config || {}, { ves: vesCfg }));
     b.executiveSummary([
       'A vertical electrical sounding survey was carried out at ' +
@@ -922,11 +924,8 @@
         (best.basement_not_resolved ? 'at least ' : '') +
         C.fmtNum(best.aquifer_thickness_m) + ' m',
       'Aquifer protective capacity' + at + ': ' + best.protective_capacity,
-      /* untied, the depth is the first decision number below, with its band */
-      tied.length
-        ? 'Recommended drilling depth: ' + tied.map(function (i) {
-            return C.drillingDepthText(i) + ' at ' + i.sounding_id; }).join('; ')
-        : null,
+      /* the depth, at both points where two are tied, is a decision number
+       * below, with its band */
       'Ranking confidence' + at + ': ' +
         C.pyFixed(best.confidence === undefined ? 1 : best.confidence, 2),
     ] : [], decisions);
@@ -1720,7 +1719,11 @@
           S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' +
           (analysis.transmissivity_source
             ? ' (' + C.METHOD_LABELS[analysis.transmissivity_source] + ')' : '') +
-          '. The recommended safe yield is ' + C.yieldRangeText(rec) +
+          /* the value alone, as reporting/pumping.py gives it: its band is
+           * the decision number below (PLAN.md step 3.6), and the assumption
+           * envelope beside it here read as a second, unlabelled band */
+          '. The recommended safe yield is ' + (rec.safe_yield_m3_per_h === null
+            ? 'pending' : C.fmtNum(rec.safe_yield_m3_per_h) + ' m3/h') +
           (rec.is_indicative ? ' (indicative)' : '') + ', with the pump intake set at ' +
           (pumpDepth !== null
             ? C.fmtNum(pumpDepth) + ' m ' + DATUM_TEXT +
@@ -2670,8 +2673,9 @@
       'A borehole has been completed and equipped at ' + (site.community || 'the site') +
         ' and is handed over to the community for operation and maintenance.',
       rec && rec.safe_yield_m3_per_h
-        ? 'The source is rated at a safe yield of ' + C.yieldRangeText(rec) +
-          (rec.is_indicative ? ' (indicative)' : '') +
+        /* the value alone, its band the decision number below (step 3.6) */
+        ? 'The source is rated at a safe yield of ' + C.fmtNum(rec.safe_yield_m3_per_h) +
+          ' m3/h' + (rec.is_indicative ? ' (indicative)' : '') +
           ', which is sufficient for about ' +
           Math.round(rec.safe_yield_m3_per_h * 1000 * 8 / 20) +
           ' people at 20 litres per person per day over an eight hour pumping day.' +

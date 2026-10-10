@@ -18,6 +18,7 @@ import csv
 from pathlib import Path
 
 from groundwater import Project
+from groundwater.decisions import recommended_points
 from groundwater.ingestion import check_all, read_ves_workbook
 from groundwater.models import SiteMetadata
 from groundwater.readiness import assess_readiness
@@ -159,14 +160,15 @@ def main(out_root: Path | None = None) -> None:
 
     # ---- report ---------------------------------------------------------------
     # The gate reads the decision numbers - the drilling depth and the odds at
-    # the first-ranked point - from what the report prints them from: the
-    # ranking it assigns, the ranges and the odds (PLAN.md step 3.6).
+    # the point the report recommends - from what the report prints them from:
+    # the ranking it assigns, the ranges and the odds (PLAN.md step 3.6).
     site = soundings[0].site
     rank_interpretations(interpretations, config=project.config.ves)
     odds = survey_odds(interpretations, ranges, site.utm_zone, site.latlon, project.config)
     readiness = assess_readiness(
         {"site": site, "interpretations": interpretations, "model_ranges": ranges,
-         "odds": odds}, "geophysical")
+         "odds": odds, "points": recommended_points(interpretations, project.config)},
+        "geophysical")
     print("readiness:", readiness.summary)
     report_path = build_geophysical_report(
         GeophysicalReportInputs(

@@ -994,8 +994,39 @@ await withPage(async (page, base, consoleErrors) => {
     tieDoc.includes('VES 2 is ahead by 2.8 points, within the 3-point margin') &&
     (tieDoc.match(/^=1st$/gm) || []).length === 2 && !tieDoc.includes('by name only') &&
     tieDoc.includes('Of these the 3-layer model is the simplest that reaches the 10 ' +
-      'percent target.'),
+      'percent target.') &&
+    /* either point may be drilled, so the depth at both is a decision
+     * number with its band (or why it has none), not a bare key finding */
+    tieDoc.includes('Drilling depth at VES 2: ') && tieDoc.includes('Drilling depth at VES 1: ') &&
+    tieDoc.indexOf('Drilling depth at VES 2: ') < tieDoc.indexOf('Drilling depth at VES 1: ') &&
+    tieDoc.indexOf('Recommended drilling depth: ') >
+      tieDoc.indexOf('1. Introduction', tieDoc.indexOf('Executive Summary')),
     tieDoc.slice(tieDoc.indexOf('5. Conclusions'), tieDoc.indexOf('5. Conclusions') + 400));
+  /* The browser's model figure draws the fan of models and shades the
+   * drilling depth's band (PLAN.md step 3.6), as ves/plots.py does: the model
+   * here has its interfaces at the band's two ends, so the shading's edges
+   * can be read against the dashed lines the figure draws at them. */
+  const modelFigure = await page.evaluate(() => {
+    const C = window.GWT.core, charts = window.GWT.charts;
+    const svg = charts.layeredModel(C.layeredModel([800, 60, 4000], [26.1, 12.1]), {
+      maxDepth: 50, fan: [[[700, 50, 3000], [25, 12]], [[900, 70, 5000], [27, 13]]],
+      drillBand: [26.1, 38.2] });
+    const rects = Array.from(svg.querySelectorAll('rect'))
+      .filter((r) => r.getAttribute('fill-opacity') === '0.14');
+    const dashed = Array.from(svg.querySelectorAll('line'))
+      .filter((l) => l.getAttribute('stroke-dasharray') === '4 3')
+      .map((l) => Number(l.getAttribute('y1')));
+    const fan = Array.from(svg.querySelectorAll('path'))
+      .filter((p) => p.getAttribute('stroke-opacity') === '0.35').length;
+    const band = rects.map((r) => [Number(r.getAttribute('y')),
+      Number(r.getAttribute('y')) + Number(r.getAttribute('height'))]);
+    return { band, dashed, fan };
+  });
+  check('ves: the model figure draws the fan and shades the drilling depth\'s band',
+    modelFigure.fan === 2 && modelFigure.band.length === 1 && modelFigure.dashed.length === 2 &&
+    Math.abs(modelFigure.band[0][0] - modelFigure.dashed[0]) < 0.01 &&
+    Math.abs(modelFigure.band[0][1] - modelFigure.dashed[1]) < 0.01,
+    JSON.stringify(modelFigure));
   check('ves: a Wenner survey is described as one',
     wennerDoc.includes('recorded with the Wenner electrode configuration') &&
     wennerDoc.includes('with a expanded to 80 m (AB/2 of 120 m)') &&

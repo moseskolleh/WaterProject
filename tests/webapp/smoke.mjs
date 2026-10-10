@@ -1206,6 +1206,13 @@ await withPage(async (page, base, consoleErrors) => {
           // with their bands (PLAN.md step 3.6)
           ['the decision numbers', [C.yieldDecision(d.analysis), C.pumpDecision(d.analysis)]
             .every((n) => n && n.band !== null && has(C.decisionText(n)))],
+          // and the summary gives the yield's value alone, as the Python
+          // report does, not the assumption envelope as a second band
+          ['the yield in the summary without the envelope',
+            has('The recommended safe yield is ' + C.fmtNum(
+              d.analysis.yield_recommendation.safe_yield_m3_per_h) + ' m3/h') &&
+            !text.includes('The recommended safe yield is ' +
+              C.yieldRangeText(d.analysis.yield_recommendation))],
         ];
         wants.quality = [
           ['the verdict', has(d.assessment.verdict)],
@@ -1234,6 +1241,11 @@ await withPage(async (page, base, consoleErrors) => {
             has(C.decisionText(C.yieldDecision(d.analysis))) &&
             has(C.decisionText(C.pumpDecision(d.analysis, d.design.pump_intake_m || null,
               'design')))],
+          ['the yield in the summary without the envelope',
+            has('rated at a safe yield of ' + C.fmtNum(
+              d.analysis.yield_recommendation.safe_yield_m3_per_h) + ' m3/h') &&
+            !text.includes('rated at a safe yield of ' +
+              C.yieldRangeText(d.analysis.yield_recommendation))],
         ];
         return { len: text.length, wants: wants[k] };
       }, kind);

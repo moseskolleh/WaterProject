@@ -41,6 +41,7 @@ __all__ = [
     "odds_decision",
     "preferred_index",
     "pump_decision",
+    "recommended_points",
     "yield_decision",
 ]
 
@@ -150,7 +151,8 @@ def pump_decision(analysis, depth: float | None = None,
     ``depth`` is the intake the report prints where that is not the
     recommendation's, and ``moved`` what set it there: "design" (the design
     put it in plain casing) or "seasonal" (the seasonal projection's
-    drought-year low wants it deeper). The band stays the recommendation's.
+    drought-year low wants it deeper). The band stays the recommendation's,
+    and says so.
     """
     from .hydraulics.spread import _seasonal_range
 
@@ -159,9 +161,12 @@ def pump_decision(analysis, depth: float | None = None,
     if advised is None:
         return None
     if depth is None or moved is None or depth == advised:
-        depth = advised
+        depth, band_key = advised, "decision.pump_band"
         basis = phrase("decision.pump_basis")
     else:
+        # the band is the recommendation's, which the printed intake can lie
+        # outside, so the band says whose it is
+        band_key = "decision.pump_band_moved"
         basis = phrase("decision.pump_basis_moved", rec=advised,
                        where=phrase_table("decision.pump_moved")[moved])
     name, value = phrase("decision.pump_name"), phrase("decision.pump_value", x=depth)
@@ -171,7 +176,7 @@ def pump_decision(analysis, depth: float | None = None,
                               phrase("decision.pump_no_spread"), basis)
     decline_low, decline_high = _seasonal_range()
     return DecisionNumber("pump", name, value, phrase(
-        "decision.pump_band", decline_low=decline_low, decline_high=decline_high,
+        band_key, decline_low=decline_low, decline_high=decline_high,
         low=spread.pump_depth_low_m, high=spread.pump_depth_high_m), "", basis)
 
 
@@ -244,24 +249,51 @@ def preferred_index(interpretations) -> int | None:
                key=lambda i: (getattr(interpretations[i], "rank", None) or 99, i))
 
 
+def recommended_points(interpretations, config: Config | None = None) -> list[int]:
+    """The positions of the points a geophysical report recommends drilling:
+    the first-ranked, and with it the second where the ranking cannot
+    separate them, by the test the report's tie sentence and summary use
+    (:func:`groundwater.siting.tied_leaders`). The summary then offers
+    either point, so the depth and the odds at both are decision numbers."""
+    i = preferred_index(interpretations)
+    if i is None or len(interpretations) < 2:
+        return [] if i is None else [i]
+    from .siting import assess_siting, tied_leaders
+
+    ves = (config or Config()).ves
+    if tied_leaders(assess_siting(interpretations, ves), ves.ranking_tie_points) is None:
+        return [i]
+    return sorted(range(len(interpretations)),
+                  key=lambda k: (getattr(interpretations[k], "rank", None) or 99, k))[:2]
+
+
 def decision_numbers(state: dict, report: str, config: Config | None = None
                      ) -> list[DecisionNumber]:
     """The decision numbers of one report, from a project keyed as the
     readiness gate reads it: ``interpretations`` with ``model_ranges`` and
     ``odds`` in lockstep, ``pump_analysis``, ``cost_distribution`` and
     ``cost_estimate``. A number with nothing to work it out from is left
-    out; the gate's other requirements say what is missing."""
+    out; the gate's other requirements say what is missing.
+
+    The survey's numbers are at ``points``, the positions
+    :func:`recommended_points` gives, where the caller has them; the
+    first-ranked point alone otherwise."""
     config = config or Config()
     out: list[DecisionNumber | None] = []
     wanted = REPORT_DECISIONS.get(report, ())
     interps = state.get("interpretations") or []
-    i = preferred_index(interps)
-    if i is not None and "depth" in wanted:
-        ranges = list(state.get("model_ranges") or [])
-        out.append(depth_decision(interps[i], ranges[i] if i < len(ranges) else None, config))
+    points = state.get("points")
+    if points is None:
+        i = preferred_index(interps)
+        points = [] if i is None else [i]
+    ranges = list(state.get("model_ranges") or [])
     odds = list(state.get("odds") or [])
-    if i is not None and "odds" in wanted and i < len(odds) and odds[i] is not None:
-        out.append(odds_decision(odds[i]))
+    for i in points:
+        if "depth" in wanted:
+            out.append(depth_decision(interps[i], ranges[i] if i < len(ranges) else None,
+                                      config))
+        if "odds" in wanted and i < len(odds) and odds[i] is not None:
+            out.append(odds_decision(odds[i]))
     analysis = state.get("pump_analysis")
     if analysis is not None and "yield" in wanted:
         out.append(yield_decision(analysis, config.pumping))

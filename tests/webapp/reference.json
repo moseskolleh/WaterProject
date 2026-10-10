@@ -58414,11 +58414,59 @@
      "key": "depth",
      "name": "Drilling depth at P1",
      "value": "about 33 m",
-     "band": "P10 and P90 of the models that fit both 40 m",
+     "band": "P10 and P90 of the models that fit, both 40 m",
      "reason": "",
      "basis": "the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves",
      "status": "provisional",
-     "text": "Drilling depth at P1: about 33 m (P10 and P90 of the models that fit both 40 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves; provisional."
+     "text": "Drilling depth at P1: about 33 m (P10 and P90 of the models that fit, both 40 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves; provisional."
+    }
+   },
+   {
+    "interp": {
+     "sounding_id": "P1",
+     "max_drilling_depth_m": 33.0,
+     "basement_not_resolved": false,
+     "drilling_depth_capped": false,
+     "rank": 2
+    },
+    "range": {
+     "sounding_id": "P3",
+     "n_samples": 2000,
+     "investigation_depth_m": 60.0,
+     "drilling_depth_quantiles_m": [
+      10.0,
+      12.0,
+      16.0,
+      21.0,
+      23.0,
+      24.0,
+      25.0,
+      26.0,
+      27.0,
+      28.0,
+      29.0,
+      30.0,
+      31.0,
+      32.0,
+      33.0,
+      34.0,
+      36.0,
+      39.0,
+      44.0,
+      48.0,
+      52.0
+     ]
+    },
+    "case": "spread",
+    "d": {
+     "key": "depth",
+     "name": "Drilling depth at P1",
+     "value": "about 33 m",
+     "band": "P10 to P90 of the models that fit, 20 to 45 m",
+     "reason": "",
+     "basis": "the best fit's interpretation, with the band from the drilling depth of each of 2000 models sampled around it, rounded up to 5 m and cut back to the 60 m the sounding resolves",
+     "status": "provisional",
+     "text": "Drilling depth at P1: about 33 m (P10 to P90 of the models that fit, 20 to 45 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 2000 models sampled around it, rounded up to 5 m and cut back to the 60 m the sounding resolves; provisional."
     }
    },
    {
@@ -58531,11 +58579,59 @@
      "key": "depth",
      "name": "Drilling depth at P2",
      "value": "at least 40 m",
-     "band": "P10 and P90 of the models that fit both 40 m",
+     "band": "P10 and P90 of the models that fit, both 40 m",
      "reason": "",
      "basis": "the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves",
      "status": "provisional",
-     "text": "Drilling depth at P2: at least 40 m (P10 and P90 of the models that fit both 40 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves; provisional."
+     "text": "Drilling depth at P2: at least 40 m (P10 and P90 of the models that fit, both 40 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves; provisional."
+    }
+   },
+   {
+    "interp": {
+     "sounding_id": "P2",
+     "max_drilling_depth_m": 40.0,
+     "basement_not_resolved": true,
+     "drilling_depth_capped": true,
+     "rank": 1
+    },
+    "range": {
+     "sounding_id": "P3",
+     "n_samples": 2000,
+     "investigation_depth_m": 60.0,
+     "drilling_depth_quantiles_m": [
+      10.0,
+      12.0,
+      16.0,
+      21.0,
+      23.0,
+      24.0,
+      25.0,
+      26.0,
+      27.0,
+      28.0,
+      29.0,
+      30.0,
+      31.0,
+      32.0,
+      33.0,
+      34.0,
+      36.0,
+      39.0,
+      44.0,
+      48.0,
+      52.0
+     ]
+    },
+    "case": "spread",
+    "d": {
+     "key": "depth",
+     "name": "Drilling depth at P2",
+     "value": "at least 40 m",
+     "band": "P10 to P90 of the models that fit, 20 to 45 m",
+     "reason": "",
+     "basis": "the best fit's interpretation, with the band from the drilling depth of each of 2000 models sampled around it, rounded up to 5 m and cut back to the 60 m the sounding resolves",
+     "status": "provisional",
+     "text": "Drilling depth at P2: at least 40 m (P10 to P90 of the models that fit, 20 to 45 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 2000 models sampled around it, rounded up to 5 m and cut back to the 60 m the sounding resolves; provisional."
     }
    },
    {
@@ -58640,11 +58736,11 @@
      "key": "pump",
      "name": "Pump intake below the top of the casing",
      "value": "44 m",
-     "band": "over a 1 to 4 m dry-season decline, 37.2 to 40.1 m",
+     "band": "the recommendation's setting over a 1 to 4 m dry-season decline, 37.2 to 40.1 m",
      "reason": "",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 38.4 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 38.4 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 44 m (over a 1 to 4 m dry-season decline, 37.2 to 40.1 m); basis: the yield recommendation's setting at the adopted transmissivity, 38.4 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 44 m (the recommendation's setting over a 1 to 4 m dry-season decline, 37.2 to 40.1 m); basis: the yield recommendation's setting at the adopted transmissivity, 38.4 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -58683,11 +58779,11 @@
      "key": "pump",
      "name": "Pump intake below the top of the casing",
      "value": "55 m",
-     "band": "over a 1 to 4 m dry-season decline, 37.2 to 40.1 m",
+     "band": "the recommendation's setting over a 1 to 4 m dry-season decline, 37.2 to 40.1 m",
      "reason": "",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 38.4 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 38.4 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 55 m (over a 1 to 4 m dry-season decline, 37.2 to 40.1 m); basis: the yield recommendation's setting at the adopted transmissivity, 38.4 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 55 m (the recommendation's setting over a 1 to 4 m dry-season decline, 37.2 to 40.1 m); basis: the yield recommendation's setting at the adopted transmissivity, 38.4 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; provisional."
     }
    },
    {
@@ -58812,11 +58908,11 @@
      "key": "pump",
      "name": "Pump intake below the top of the casing",
      "value": "44 m",
-     "band": "over a 1 to 4 m dry-season decline, 51 to 52 m",
+     "band": "the recommendation's setting over a 1 to 4 m dry-season decline, 51 to 52 m",
      "reason": "",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 44 m (over a 1 to 4 m dry-season decline, 51 to 52 m); basis: the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 44 m (the recommendation's setting over a 1 to 4 m dry-season decline, 51 to 52 m); basis: the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -58855,11 +58951,11 @@
      "key": "pump",
      "name": "Pump intake below the top of the casing",
      "value": "55 m",
-     "band": "over a 1 to 4 m dry-season decline, 51 to 52 m",
+     "band": "the recommendation's setting over a 1 to 4 m dry-season decline, 51 to 52 m",
      "reason": "",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 55 m (over a 1 to 4 m dry-season decline, 51 to 52 m); basis: the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 55 m (the recommendation's setting over a 1 to 4 m dry-season decline, 51 to 52 m); basis: the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; provisional."
     }
    },
    {
@@ -58898,11 +58994,11 @@
      "key": "pump",
      "name": "Pump intake below the top of the casing",
      "value": "38.4 m",
-     "band": "over a 1 to 4 m dry-season decline, 51 to 52 m",
+     "band": "the recommendation's setting over a 1 to 4 m dry-season decline, 51 to 52 m",
      "reason": "",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 38.4 m (over a 1 to 4 m dry-season decline, 51 to 52 m); basis: the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 38.4 m (the recommendation's setting over a 1 to 4 m dry-season decline, 51 to 52 m); basis: the yield recommendation's setting at the adopted transmissivity, 52 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -58986,9 +59082,9 @@
      "value": "44 m",
      "band": null,
      "reason": "the spread of this test has not been worked out",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 44 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 44 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -59029,9 +59125,9 @@
      "value": "55 m",
      "band": null,
      "reason": "the spread of this test has not been worked out",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 55 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 55 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; provisional."
     }
    },
    {
@@ -59072,9 +59168,9 @@
      "value": "38.4 m",
      "band": null,
      "reason": "the spread of this test has not been worked out",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 38.4 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 38.4 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 25 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -59156,11 +59252,11 @@
      "key": "pump",
      "name": "Pump intake below the top of the casing",
      "value": "44 m",
-     "band": "over a 1 to 4 m dry-season decline, 60 to 63 m",
+     "band": "the recommendation's setting over a 1 to 4 m dry-season decline, 60 to 63 m",
      "reason": "",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 44 m (over a 1 to 4 m dry-season decline, 60 to 63 m); basis: the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 44 m (the recommendation's setting over a 1 to 4 m dry-season decline, 60 to 63 m); basis: the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -59199,11 +59295,11 @@
      "key": "pump",
      "name": "Pump intake below the top of the casing",
      "value": "55 m",
-     "band": "over a 1 to 4 m dry-season decline, 60 to 63 m",
+     "band": "the recommendation's setting over a 1 to 4 m dry-season decline, 60 to 63 m",
      "reason": "",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 55 m (over a 1 to 4 m dry-season decline, 60 to 63 m); basis: the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 55 m (the recommendation's setting over a 1 to 4 m dry-season decline, 60 to 63 m); basis: the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; provisional."
     }
    },
    {
@@ -59242,11 +59338,11 @@
      "key": "pump",
      "name": "Pump intake below the top of the casing",
      "value": "38.4 m",
-     "band": "over a 1 to 4 m dry-season decline, 60 to 63 m",
+     "band": "the recommendation's setting over a 1 to 4 m dry-season decline, 60 to 63 m",
      "reason": "",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 38.4 m (over a 1 to 4 m dry-season decline, 60 to 63 m); basis: the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 38.4 m (the recommendation's setting over a 1 to 4 m dry-season decline, 60 to 63 m); basis: the yield recommendation's setting at the adopted transmissivity, 61.5 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -59310,9 +59406,9 @@
      "value": "44 m",
      "band": null,
      "reason": "the spread of this test has not been worked out",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 44 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 44 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -59343,9 +59439,9 @@
      "value": "55 m",
      "band": null,
      "reason": "the spread of this test has not been worked out",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 55 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 55 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead deeper, for the drought-year low the seasonal projection gives; provisional."
     }
    },
    {
@@ -59376,9 +59472,9 @@
      "value": "38.4 m",
      "band": null,
      "reason": "the spread of this test has not been worked out",
-     "basis": "the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's",
+     "basis": "the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design",
      "status": "provisional",
-     "text": "Pump intake below the top of the casing: 38.4 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; the band is the recommendation's; provisional."
+     "text": "Pump intake below the top of the casing: 38.4 m (no band: the spread of this test has not been worked out); basis: the yield recommendation's setting at the adopted transmissivity, 30 m, which the transmissivity band does not move, set instead in plain casing clear of the screens by the design; provisional."
     }
    },
    {
@@ -62148,11 +62244,326 @@
       "key": "depth",
       "name": "Drilling depth at P2",
       "value": "at least 40 m",
-      "band": "P10 and P90 of the models that fit both 40 m",
+      "band": "P10 and P90 of the models that fit, both 40 m",
       "reason": "",
       "basis": "the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves",
       "status": "provisional",
-      "text": "Drilling depth at P2: at least 40 m (P10 and P90 of the models that fit both 40 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves; provisional."
+      "text": "Drilling depth at P2: at least 40 m (P10 and P90 of the models that fit, both 40 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves; provisional."
+     }
+    ]
+   },
+   {
+    "case": "geophysical, tied",
+    "report": "geophysical",
+    "state": {
+     "interpretations": [
+      {
+       "sounding_id": "P1",
+       "max_drilling_depth_m": 33.0,
+       "basement_not_resolved": false,
+       "drilling_depth_capped": false,
+       "rank": 2
+      },
+      {
+       "sounding_id": "P2",
+       "max_drilling_depth_m": 40.0,
+       "basement_not_resolved": true,
+       "drilling_depth_capped": true,
+       "rank": 1
+      }
+     ],
+     "model_ranges": [
+      null,
+      {
+       "sounding_id": "P2",
+       "n_samples": 1200,
+       "investigation_depth_m": 40.0,
+       "drilling_depth_quantiles_m": [
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0
+       ]
+      }
+     ],
+     "odds": [
+      {
+       "sounding_id": "productive",
+       "success_yield_m3_per_h": 1.0,
+       "bgs_code": "B-L",
+       "glg": "pCm",
+       "matched": "combination",
+       "status": "provisional",
+       "basis": "BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply",
+       "yield_q1_l_per_s": 0.1,
+       "yield_q3_l_per_s": 0.5,
+       "effective_n": 10.0,
+       "prior": 0.42785975841764523,
+       "prior_low": 0.23470986033749508,
+       "prior_high": 0.6280940647563285,
+       "prior_odds": 0.7478232211639643,
+       "evidence": [
+        {
+         "key": "regolith",
+         "band": "not_sampled",
+         "value": null,
+         "factor": 1.0,
+         "after": 0.42785975841764523,
+         "weight": null
+        },
+        {
+         "key": "basement",
+         "band": "not_sampled",
+         "value": null,
+         "factor": 1.0,
+         "after": 0.42785975841764523,
+         "weight": null
+        },
+        {
+         "key": "resistivity",
+         "band": "productive",
+         "value": 80.0,
+         "factor": 1.4,
+         "after": 0.5114688810337976,
+         "weight": null
+        },
+        {
+         "key": "fit",
+         "band": "excellent",
+         "value": 4.0,
+         "factor": 1.0,
+         "after": 0.5114688810337976,
+         "weight": 1.0
+        }
+       ],
+       "posterior_odds": 1.04695250962955,
+       "probability": 0.5114688810337976,
+       "low": 0.30039183428396754,
+       "high": 0.7027695398982174,
+       "range_sampled": false,
+       "calibration": "the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes",
+       "text": [
+        "About 51 percent (between 30 and 70) that a borehole here yields enough for a handpump through the dry season. Provisional prior.",
+        "Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.",
+        "The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.",
+        "The range of models has not been sampled at productive, so the depth to basement and whether it was resolved are left out (a factor of 1 each); sample the range to use them.",
+        "Basis: the prior from success_prior.csv and the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried through the same factors; the factors themselves are provisional choices. The suitability score is kept beside these odds for comparison."
+       ],
+       "point_text": [
+        "About 51 percent (between 30 and 70) that a borehole here yields enough for a handpump through the dry season. Provisional prior.",
+        "The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.",
+        "The range of models has not been sampled at productive, so the depth to basement and whether it was resolved are left out (a factor of 1 each); sample the range to use them."
+       ],
+       "basis_text": [
+        "Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.",
+        "Basis: the prior from success_prior.csv and the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried through the same factors; the factors themselves are provisional choices. The suitability score is kept beside these odds for comparison."
+       ],
+       "rows": [
+        [
+         "Prior",
+         "the BGS class B-L on the USGS unit pCm",
+         "",
+         "43"
+        ],
+        [
+         "Depth to basement (P50)",
+         "range not sampled",
+         "1.00",
+         "43"
+        ],
+        [
+         "Basement resolved",
+         "range not sampled",
+         "1.00",
+         "43"
+        ],
+        [
+         "Water-zone resistivity",
+         "80 ohm-m: productive weathered zone",
+         "1.40",
+         "51"
+        ],
+        [
+         "Confidence of the fit",
+         "4.0 percent: excellent, the survey evidence weighted 1",
+         "1.00",
+         "51"
+        ]
+       ],
+       "short": "51 percent (30 to 70)",
+       "caption": "How the survey moved the chance of a working borehole at point productive. Each factor multiplies the odds; together they multiply the prior odds to the odds the headline gives.",
+       "programme_rate": 51.0,
+       "programme_offer": "The survey puts the chance of a working borehole at productive, the first-ranked point, at about 51 percent (between 30 and 70). That is one point on one survey's ground; a programme across other ground has other odds. The estimate uses the rate typed here until you choose to use this one."
+      },
+      {
+       "sounding_id": "productive",
+       "success_yield_m3_per_h": 1.0,
+       "bgs_code": "B-L",
+       "glg": "pCm",
+       "matched": "combination",
+       "status": "provisional",
+       "basis": "BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply",
+       "yield_q1_l_per_s": 0.1,
+       "yield_q3_l_per_s": 0.5,
+       "effective_n": 10.0,
+       "prior": 0.42785975841764523,
+       "prior_low": 0.23470986033749508,
+       "prior_high": 0.6280940647563285,
+       "prior_odds": 0.7478232211639643,
+       "evidence": [
+        {
+         "key": "regolith",
+         "band": "thin",
+         "value": 4.0,
+         "factor": 0.4,
+         "after": 0.23025367153325457,
+         "weight": null
+        },
+        {
+         "key": "basement",
+         "band": "resolved",
+         "value": 0.0,
+         "factor": 1.0,
+         "after": 0.23025367153325457,
+         "weight": null
+        },
+        {
+         "key": "resistivity",
+         "band": "productive",
+         "value": 80.0,
+         "factor": 1.4,
+         "after": 0.2951695876353573,
+         "weight": null
+        },
+        {
+         "key": "fit",
+         "band": "excellent",
+         "value": 4.0,
+         "factor": 1.0,
+         "after": 0.2951695876353573,
+         "weight": 1.0
+        }
+       ],
+       "posterior_odds": 0.41878100385182,
+       "probability": 0.2951695876353573,
+       "low": 0.14657462620952705,
+       "high": 0.4860612337019233,
+       "range_sampled": true,
+       "calibration": "the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes",
+       "text": [
+        "About 30 percent (between 15 and 49) that a borehole here yields enough for a handpump through the dry season. Provisional prior.",
+        "Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.",
+        "The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.",
+        "Basis: the prior from success_prior.csv and the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried through the same factors; the factors themselves are provisional choices. The suitability score is kept beside these odds for comparison."
+       ],
+       "point_text": [
+        "About 30 percent (between 15 and 49) that a borehole here yields enough for a handpump through the dry season. Provisional prior.",
+        "The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here."
+       ],
+       "basis_text": [
+        "Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.",
+        "Basis: the prior from success_prior.csv and the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried through the same factors; the factors themselves are provisional choices. The suitability score is kept beside these odds for comparison."
+       ],
+       "rows": [
+        [
+         "Prior",
+         "the BGS class B-L on the USGS unit pCm",
+         "",
+         "43"
+        ],
+        [
+         "Depth to basement (P50)",
+         "4 m: thin",
+         "0.40",
+         "23"
+        ],
+        [
+         "Basement resolved",
+         "no basement in 0 percent of the models: resolved",
+         "1.00",
+         "23"
+        ],
+        [
+         "Water-zone resistivity",
+         "80 ohm-m: productive weathered zone",
+         "1.40",
+         "30"
+        ],
+        [
+         "Confidence of the fit",
+         "4.0 percent: excellent, the survey evidence weighted 1",
+         "1.00",
+         "30"
+        ]
+       ],
+       "short": "30 percent (15 to 49)",
+       "caption": "How the survey moved the chance of a working borehole at point productive. Each factor multiplies the odds; together they multiply the prior odds to the odds the headline gives.",
+       "programme_rate": 30.0,
+       "programme_offer": "The survey puts the chance of a working borehole at productive, the first-ranked point, at about 30 percent (between 15 and 49). That is one point on one survey's ground; a programme across other ground has other odds. The estimate uses the rate typed here until you choose to use this one."
+      }
+     ],
+     "points": [
+      1,
+      0
+     ]
+    },
+    "d": [
+     {
+      "key": "depth",
+      "name": "Drilling depth at P2",
+      "value": "at least 40 m",
+      "band": "P10 and P90 of the models that fit, both 40 m",
+      "reason": "",
+      "basis": "the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves",
+      "status": "provisional",
+      "text": "Drilling depth at P2: at least 40 m (P10 and P90 of the models that fit, both 40 m); basis: the best fit's interpretation, with the band from the drilling depth of each of 1200 models sampled around it, rounded up to 5 m and cut back to the 40 m the sounding resolves; provisional."
+     },
+     {
+      "key": "odds",
+      "name": "Chance of a working borehole at productive",
+      "value": "30 percent",
+      "band": "P10 to P90 of the prior carried through the survey's factors, 15 to 49 percent",
+      "reason": "",
+      "basis": "the prior from success_prior.csv, held as firmly as 10 boreholes, and the likelihood ratios from success_evidence.yaml",
+      "status": "provisional",
+      "text": "Chance of a working borehole at productive: 30 percent (P10 to P90 of the prior carried through the survey's factors, 15 to 49 percent); basis: the prior from success_prior.csv, held as firmly as 10 boreholes, and the likelihood ratios from success_evidence.yaml; provisional."
+     },
+     {
+      "key": "depth",
+      "name": "Drilling depth at P1",
+      "value": "about 33 m",
+      "band": null,
+      "reason": "the range of models has not been sampled at P1",
+      "basis": "the best fit's interpretation",
+      "status": "provisional",
+      "text": "Drilling depth at P1: about 33 m (no band: the range of models has not been sampled at P1); basis: the best fit's interpretation; provisional."
+     },
+     {
+      "key": "odds",
+      "name": "Chance of a working borehole at productive",
+      "value": "51 percent",
+      "band": "P10 to P90 of the prior carried through the survey's factors, 30 to 70 percent",
+      "reason": "",
+      "basis": "the prior from success_prior.csv, held as firmly as 10 boreholes, and the likelihood ratios from success_evidence.yaml",
+      "status": "provisional",
+      "text": "Chance of a working borehole at productive: 51 percent (P10 to P90 of the prior carried through the survey's factors, 30 to 70 percent); basis: the prior from success_prior.csv, held as firmly as 10 boreholes, and the likelihood ratios from success_evidence.yaml; provisional."
      }
     ]
    },
@@ -63134,6 +63545,285 @@
      [
       "met",
       "Each decision number carries a band: Drilling depth at P2."
+     ]
+    ]
+   },
+   {
+    "case": "geophysical, tied",
+    "report": "geophysical",
+    "state": {
+     "interpretations": [
+      {
+       "sounding_id": "P1",
+       "max_drilling_depth_m": 33.0,
+       "basement_not_resolved": false,
+       "drilling_depth_capped": false,
+       "rank": 2
+      },
+      {
+       "sounding_id": "P2",
+       "max_drilling_depth_m": 40.0,
+       "basement_not_resolved": true,
+       "drilling_depth_capped": true,
+       "rank": 1
+      }
+     ],
+     "model_ranges": [
+      null,
+      {
+       "sounding_id": "P2",
+       "n_samples": 1200,
+       "investigation_depth_m": 40.0,
+       "drilling_depth_quantiles_m": [
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0
+       ]
+      }
+     ],
+     "odds": [
+      {
+       "sounding_id": "productive",
+       "success_yield_m3_per_h": 1.0,
+       "bgs_code": "B-L",
+       "glg": "pCm",
+       "matched": "combination",
+       "status": "provisional",
+       "basis": "BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply",
+       "yield_q1_l_per_s": 0.1,
+       "yield_q3_l_per_s": 0.5,
+       "effective_n": 10.0,
+       "prior": 0.42785975841764523,
+       "prior_low": 0.23470986033749508,
+       "prior_high": 0.6280940647563285,
+       "prior_odds": 0.7478232211639643,
+       "evidence": [
+        {
+         "key": "regolith",
+         "band": "not_sampled",
+         "value": null,
+         "factor": 1.0,
+         "after": 0.42785975841764523,
+         "weight": null
+        },
+        {
+         "key": "basement",
+         "band": "not_sampled",
+         "value": null,
+         "factor": 1.0,
+         "after": 0.42785975841764523,
+         "weight": null
+        },
+        {
+         "key": "resistivity",
+         "band": "productive",
+         "value": 80.0,
+         "factor": 1.4,
+         "after": 0.5114688810337976,
+         "weight": null
+        },
+        {
+         "key": "fit",
+         "band": "excellent",
+         "value": 4.0,
+         "factor": 1.0,
+         "after": 0.5114688810337976,
+         "weight": 1.0
+        }
+       ],
+       "posterior_odds": 1.04695250962955,
+       "probability": 0.5114688810337976,
+       "low": 0.30039183428396754,
+       "high": 0.7027695398982174,
+       "range_sampled": false,
+       "calibration": "the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes",
+       "text": [
+        "About 51 percent (between 30 and 70) that a borehole here yields enough for a handpump through the dry season. Provisional prior.",
+        "Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.",
+        "The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.",
+        "The range of models has not been sampled at productive, so the depth to basement and whether it was resolved are left out (a factor of 1 each); sample the range to use them.",
+        "Basis: the prior from success_prior.csv and the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried through the same factors; the factors themselves are provisional choices. The suitability score is kept beside these odds for comparison."
+       ],
+       "point_text": [
+        "About 51 percent (between 30 and 70) that a borehole here yields enough for a handpump through the dry season. Provisional prior.",
+        "The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.",
+        "The range of models has not been sampled at productive, so the depth to basement and whether it was resolved are left out (a factor of 1 each); sample the range to use them."
+       ],
+       "basis_text": [
+        "Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.",
+        "Basis: the prior from success_prior.csv and the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried through the same factors; the factors themselves are provisional choices. The suitability score is kept beside these odds for comparison."
+       ],
+       "rows": [
+        [
+         "Prior",
+         "the BGS class B-L on the USGS unit pCm",
+         "",
+         "43"
+        ],
+        [
+         "Depth to basement (P50)",
+         "range not sampled",
+         "1.00",
+         "43"
+        ],
+        [
+         "Basement resolved",
+         "range not sampled",
+         "1.00",
+         "43"
+        ],
+        [
+         "Water-zone resistivity",
+         "80 ohm-m: productive weathered zone",
+         "1.40",
+         "51"
+        ],
+        [
+         "Confidence of the fit",
+         "4.0 percent: excellent, the survey evidence weighted 1",
+         "1.00",
+         "51"
+        ]
+       ],
+       "short": "51 percent (30 to 70)",
+       "caption": "How the survey moved the chance of a working borehole at point productive. Each factor multiplies the odds; together they multiply the prior odds to the odds the headline gives.",
+       "programme_rate": 51.0,
+       "programme_offer": "The survey puts the chance of a working borehole at productive, the first-ranked point, at about 51 percent (between 30 and 70). That is one point on one survey's ground; a programme across other ground has other odds. The estimate uses the rate typed here until you choose to use this one."
+      },
+      {
+       "sounding_id": "productive",
+       "success_yield_m3_per_h": 1.0,
+       "bgs_code": "B-L",
+       "glg": "pCm",
+       "matched": "combination",
+       "status": "provisional",
+       "basis": "BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply",
+       "yield_q1_l_per_s": 0.1,
+       "yield_q3_l_per_s": 0.5,
+       "effective_n": 10.0,
+       "prior": 0.42785975841764523,
+       "prior_low": 0.23470986033749508,
+       "prior_high": 0.6280940647563285,
+       "prior_odds": 0.7478232211639643,
+       "evidence": [
+        {
+         "key": "regolith",
+         "band": "thin",
+         "value": 4.0,
+         "factor": 0.4,
+         "after": 0.23025367153325457,
+         "weight": null
+        },
+        {
+         "key": "basement",
+         "band": "resolved",
+         "value": 0.0,
+         "factor": 1.0,
+         "after": 0.23025367153325457,
+         "weight": null
+        },
+        {
+         "key": "resistivity",
+         "band": "productive",
+         "value": 80.0,
+         "factor": 1.4,
+         "after": 0.2951695876353573,
+         "weight": null
+        },
+        {
+         "key": "fit",
+         "band": "excellent",
+         "value": 4.0,
+         "factor": 1.0,
+         "after": 0.2951695876353573,
+         "weight": 1.0
+        }
+       ],
+       "posterior_odds": 0.41878100385182,
+       "probability": 0.2951695876353573,
+       "low": 0.14657462620952705,
+       "high": 0.4860612337019233,
+       "range_sampled": true,
+       "calibration": "the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes",
+       "text": [
+        "About 30 percent (between 15 and 49) that a borehole here yields enough for a handpump through the dry season. Provisional prior.",
+        "Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.",
+        "The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.",
+        "Basis: the prior from success_prior.csv and the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried through the same factors; the factors themselves are provisional choices. The suitability score is kept beside these odds for comparison."
+       ],
+       "point_text": [
+        "About 30 percent (between 15 and 49) that a borehole here yields enough for a handpump through the dry season. Provisional prior.",
+        "The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here."
+       ],
+       "basis_text": [
+        "Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.",
+        "Basis: the prior from success_prior.csv and the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried through the same factors; the factors themselves are provisional choices. The suitability score is kept beside these odds for comparison."
+       ],
+       "rows": [
+        [
+         "Prior",
+         "the BGS class B-L on the USGS unit pCm",
+         "",
+         "43"
+        ],
+        [
+         "Depth to basement (P50)",
+         "4 m: thin",
+         "0.40",
+         "23"
+        ],
+        [
+         "Basement resolved",
+         "no basement in 0 percent of the models: resolved",
+         "1.00",
+         "23"
+        ],
+        [
+         "Water-zone resistivity",
+         "80 ohm-m: productive weathered zone",
+         "1.40",
+         "30"
+        ],
+        [
+         "Confidence of the fit",
+         "4.0 percent: excellent, the survey evidence weighted 1",
+         "1.00",
+         "30"
+        ]
+       ],
+       "short": "30 percent (15 to 49)",
+       "caption": "How the survey moved the chance of a working borehole at point productive. Each factor multiplies the odds; together they multiply the prior odds to the odds the headline gives.",
+       "programme_rate": 30.0,
+       "programme_offer": "The survey puts the chance of a working borehole at productive, the first-ranked point, at about 30 percent (between 15 and 49). That is one point on one survey's ground; a programme across other ground has other odds. The estimate uses the rate typed here until you choose to use this one."
+      }
+     ],
+     "points": [
+      1,
+      0
+     ]
+    },
+    "req": [
+     [
+      "unmet",
+      "Drilling depth at P1 has no band: the range of models has not been sampled at P1."
      ]
     ]
    },
