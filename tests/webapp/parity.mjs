@@ -2741,6 +2741,57 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(valueJs.costs) === JSON.stringify(VM.surveys[0].values.map((v) => v.cost_usd)),
     JSON.stringify(valueJs.costs));
 
+  // One way of reporting uncertainty (PLAN.md step 3.6). Both engines are
+  // handed the same results - the drilling depth's quantiles, hand-built
+  // pumping bands, the odds and cost sections' own dicts - and every decision
+  // number is compared field by field and its line word for word, then the
+  // numbers each report asks a decision on and the gate's requirement over
+  // them.
+  const DN = R.decisions;
+  const decisionJs = await page.evaluate((DN) => {
+    const C = GWT.core;
+    const asDict = (d) => (d ? Object.assign({}, d, { text: C.decisionText(d) }) : null);
+    return {
+      format: DN.format.map((f) => C.decisionText(f.d)),
+      depth: DN.depth.map((c) => asDict(C.depthDecision(c.interp, c.range, C.defaultConfig()))),
+      pumping: DN.pumping.map((c) => [asDict(C.yieldDecision(c.analysis)),
+        asDict(C.pumpDecision(c.analysis, c.depth, c.moved))]),
+      odds: DN.odds.map((c) => asDict(C.oddsDecision(c.odds))),
+      cost: DN.cost.map((c) => asDict(C.costDecision(c.dist, c.estimate))),
+      numbers: DN.numbers.map((c) => C.decisionNumbers(c.state, c.report).map(asDict)),
+      gate: DN.gate.map((c) => C.assessReadiness(c.state, c.report).requirements
+        .filter((r) => r.key === 'decision_bands').map((r) => [r.state, r.detail])),
+    };
+  }, DN);
+  const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  check(`decisions: the one line, with a band and with none (${DN.format.length})`,
+    sameJson(decisionJs.format, DN.format.map((f) => f.text)), JSON.stringify(decisionJs.format));
+  DN.depth.forEach((c, i) => {
+    check(`decisions: drilling depth at ${c.interp.sounding_id}, range ${c.case}`,
+      sameJson(decisionJs.depth[i], c.d), JSON.stringify(decisionJs.depth[i]));
+  });
+  DN.pumping.forEach((c, i) => {
+    check(`decisions: yield and pump intake, ${c.case}` +
+      (c.moved ? `, intake at ${c.depth} m by the ${c.moved}` : ''),
+    sameJson(decisionJs.pumping[i], [c.yield, c.pump]), JSON.stringify(decisionJs.pumping[i]));
+  });
+  DN.odds.forEach((c, i) => {
+    check(`decisions: odds at ${c.odds.sounding_id} (${c.odds.status})`,
+      sameJson(decisionJs.odds[i], c.d), JSON.stringify(decisionJs.odds[i]));
+  });
+  DN.cost.forEach((c, i) => {
+    check(`decisions: cost ${i}, ${c.dist ? 'sampled' : (c.estimate ? 'the bill alone' : 'none')}`,
+      sameJson(decisionJs.cost[i], c.d), JSON.stringify(decisionJs.cost[i]));
+  });
+  DN.numbers.forEach((c, i) => {
+    check(`decisions: the numbers of the ${c.case} report`,
+      sameJson(decisionJs.numbers[i], c.d), JSON.stringify(decisionJs.numbers[i]));
+  });
+  DN.gate.forEach((c, i) => {
+    check(`decisions: the gate's decision bands, ${c.case}`,
+      sameJson(decisionJs.gate[i], c.req), JSON.stringify(decisionJs.gate[i]));
+  });
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 

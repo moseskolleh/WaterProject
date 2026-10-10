@@ -278,7 +278,10 @@ def render() -> None:
                     "details) to draw the drill-target map."
                 )
 
-        _geo_gate = report_gate("geophysical")
+        # the gate reads the decision numbers from what the report prints
+        # them from (PLAN.md step 3.6)
+        _geo_gate = report_gate("geophysical", decided={
+            "interpretations": interps, "model_ranges": ranges, "odds": odds})
         if st.button("Build geophysical survey report", key="build_geo_report"):
           with _working("Building the geophysical survey report - drawing the "
                         "context maps and writing the document..."):

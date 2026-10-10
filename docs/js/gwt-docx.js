@@ -223,7 +223,7 @@
     return this;
   };
 
-  ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings) {
+  ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings, decisions) {
     var self = this;
     this.heading('Executive Summary', 1, false);
     /* The summary is qualified the way the cover is. A provisional stamp on
@@ -250,7 +250,18 @@
       this.paragraph('Key findings:', { bold: true });
       this.bullets(keyFindings);
     }
+    this.decisionNumbers(decisions);
     this.pageBreak();
+    return this;
+  };
+
+  /* The decision numbers (PLAN.md step 3.6), each with its band and its
+   * basis in the one form C.decisionText writes, under a bold label:
+   * docx_utils.ReportBuilder.decision_numbers. Nothing where there are none. */
+  ReportBuilder.prototype.decisionNumbers = function (decisions) {
+    if (!decisions || !decisions.length) return this;
+    this.paragraph(C.phrase('decision.heading'), { bold: true });
+    this.bullets(decisions.map(C.decisionText));
     return this;
   };
 
@@ -860,6 +871,12 @@
     var tied = (!analystOrder && suit.length >= 2 &&
       C.tiedLeaders(suit, vesCfg.ranking_tie_points)) ? ranked.slice(0, 2) : [];
     var at = tied.length ? ' at ' + best.sounding_id : '';
+    /* the drilling depth and the odds at the first-ranked point, each with
+     * its band (PLAN.md step 3.6), as reporting/geophysical.py prints them
+     * and the readiness gate reads them */
+    var decisions = C.decisionNumbers({ interpretations: interpretations,
+      model_ranges: context.ranges || [], odds: context.odds || [] }, 'geophysical',
+    Object.assign({}, C.defaultConfig(), context.config || {}, { ves: vesCfg }));
     b.executiveSummary([
       'A vertical electrical sounding survey was carried out at ' +
         (site.community || 'the site') + ' to select a drilling target. ' +
@@ -905,13 +922,14 @@
         (best.basement_not_resolved ? 'at least ' : '') +
         C.fmtNum(best.aquifer_thickness_m) + ' m',
       'Aquifer protective capacity' + at + ': ' + best.protective_capacity,
-      'Recommended drilling depth: ' + (tied.length
-        ? tied.map(function (i) {
+      /* untied, the depth is the first decision number below, with its band */
+      tied.length
+        ? 'Recommended drilling depth: ' + tied.map(function (i) {
             return C.drillingDepthText(i) + ' at ' + i.sounding_id; }).join('; ')
-        : C.drillingDepthText(best)),
+        : null,
       'Ranking confidence' + at + ': ' +
         C.pyFixed(best.confidence === undefined ? 1 : best.confidence, 2),
-    ] : []);
+    ] : [], decisions);
 
     b.heading('1. Introduction', 1);
     b.paragraph('This report presents the results of a geophysical survey ' +
@@ -1300,6 +1318,17 @@
     return byCaption.length ? byCaption[0] : null;
   }
 
+  /* The safe yield and the pump intake a report prints, each with its band
+   * (PLAN.md step 3.6): the _decisions of reporting/completion.py and
+   * handover.py, and the pumping report's. depth is the intake the report
+   * prints and moved what set it there, where that is not the
+   * recommendation's. */
+  function pumpingDecisions(analysis, pumpingConfig, depth, moved) {
+    if (!analysis) return [];
+    return [C.yieldDecision(analysis, pumpingConfig),
+      C.pumpDecision(analysis, depth, moved)].filter(Boolean);
+  }
+
   /* The one intake depth the completion report prints (completion._pump_intake).
    * The design may have moved the yield recommendation's intake out of a
    * screen into plain casing; where a design exists its depth is the depth,
@@ -1370,10 +1399,10 @@
           // the design's own summary rows; a key finding that said
           // "25.0-35.0 m" made one document give two readings of one screen
           return C.formatG(s.top_m) + '-' + C.formatG(s.bottom_m) + ' m'; }).join('; ') : null,
-      summaryRec && summaryRec.safe_yield_m3_per_h
-        ? 'Safe yield: ' + C.fmtNum(summaryRec.safe_yield_m3_per_h) + ' m3/h' +
-          (summaryRec.is_indicative ? ' (indicative)' : '') + '.' : null,
-    ]);
+      /* the safe yield and the pump intake are the decision numbers below,
+       * each with its band (PLAN.md step 3.6) */
+    ], pumpingDecisions(context.analysis, completionPumpingConfig(context),
+      pumpIntake(context), 'design'));
 
     b.heading('1. Introduction', 1);
     b.paragraph('This report records the drilling and construction of borehole ' +
@@ -1717,14 +1746,13 @@
       rec.specific_capacity_m3hr_per_m
         ? 'Specific capacity: ' + C.formatG(C.roundSig(rec.specific_capacity_m3hr_per_m, 2), 2) +
           ' m³/h per m (' + rec.specific_capacity_basis + ')' : null,
-      rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) +
-        (rec.is_indicative ? ' (indicative)' : '') : null,
-      pumpDepth !== null ? 'Pump installation depth: ' + C.fmtNum(pumpDepth) + ' m' : null,
+      /* the safe yield and the pump intake are the decision numbers below,
+       * each with its band (PLAN.md step 3.6) */
       rec.safe_yield_m3_per_h
         ? (rec.is_indicative
           ? 'Confidence: indicative - ' + rec.confidence_reasons[0] + '.'
           : 'Confidence: established.') : null,
-    ]);
+    ], pumpingDecisions(analysis, pumpingConfig, pumpDepth, 'seasonal'));
 
     b.heading('1. Test Details', 1);
     b.keyValueTable([
@@ -2266,7 +2294,10 @@
       'Contract price: ' + S.money(estimate.price_usd, 0),
       'Planning budget with ' + estimate.contingency_percent + '% contingency: ' +
         S.money(estimate.budget_usd, 0),
-    ]);
+    /* the cost as a decision number, with its band where the distribution
+     * was sampled and the reason where it was not (PLAN.md step 3.6); the
+     * Python report, which has no summary, heads its cost summary with it */
+    ], [C.costDecision(context.distribution || null, estimate)].filter(Boolean));
 
     b.heading('1. Method', 1);
     b.paragraph('The estimate follows the RWSN Borehole Costing Model. Every ' +
@@ -2651,13 +2682,12 @@
       assessment ? assessment.verdict : '',
     ], [
       log.total_depth_m ? 'Depth: ' + C.fmtNum(log.total_depth_m) + ' m' : null,
-      rec && rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) +
-        (rec.is_indicative ? ' (indicative)' : '') : null,
-      intake ? 'Pump intake: ' + C.fmtNum(intake) + ' m below the top of the casing' : null,
+      /* the safe yield and the pump intake are the decision numbers below,
+       * each with its band (PLAN.md step 3.6) */
       assessment
         ? 'Water quality: ' + C.VERDICT_LONG[assessment.verdict_state].toLowerCase()
         : null,
-    ]);
+    ], pumpingDecisions(analysis, completionPumpingConfig(context), intake, 'design'));
 
     b.heading('1. Project Summary', 1);
     b.keyValueTable(siteDetails(site));

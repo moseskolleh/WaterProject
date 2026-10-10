@@ -40,6 +40,7 @@ from ..mapping import (
     unplaced_text,
 )
 from ..models import DataFlag, LayeredModel, VESSounding
+from ..decisions import decision_numbers
 from ..siting.measurement import measurement_values
 from ..siting import (
     assess_siting,
@@ -68,6 +69,8 @@ from ..ves.interpret import (
 )
 from ..ves.inversion import InversionResult
 from ..ves.model_range import (
+    drilling_band_caption,
+    drilling_depth_band,
     model_range_caption,
     model_range_rows,
     model_range_table_caption,
@@ -245,6 +248,15 @@ def build_geophysical_report(
     # one section and names a single preferred point in the others
     # contradicts itself. Both go through tied_leaders on the same margin.
     tied = _tied_pair(inputs.interpretations, config.ves)
+    # The chance of a working borehole at each point (PLAN.md step 3.3),
+    # printed under the score it stands beside; at the first-ranked point it
+    # is one of the summary's decision numbers, with the drilling depth
+    # (step 3.6), as the readiness gate reads them.
+    odds = survey_odds(inputs.interpretations, inputs.model_ranges, site.utm_zone,
+                       site.latlon, config)
+    decisions = decision_numbers(
+        {"interpretations": inputs.interpretations, "model_ranges": inputs.model_ranges,
+         "odds": odds}, "geophysical", config)
 
     # ---- cover -------------------------------------------------------------
     rb.cover(
@@ -270,7 +282,7 @@ def build_geophysical_report(
     # ---- executive summary ---------------------------------------------------
     exec_paras, exec_key = _executive_summary(soundings, inputs.interpretations,
                                               community, district, tied)
-    rb.executive_summary(exec_paras, exec_key)
+    rb.executive_summary(exec_paras, exec_key, decisions)
 
     # ---- 1 introduction --------------------------------------------------------
     rb.heading("1. Introduction", 1)
@@ -502,10 +514,6 @@ def build_geophysical_report(
     )
 
     # ---- drill-target suitability --------------------------------------------
-    # the chance of a working borehole at each point (PLAN.md step 3.3),
-    # printed under the score it stands beside
-    odds = survey_odds(inputs.interpretations, inputs.model_ranges, site.utm_zone,
-                       site.latlon, config)
     _suitability_block(rb, inputs, site, config.ves, suit=suit, tie=tie,
                        profile_refusal=profile_refusal, odds=odds)
 
@@ -905,7 +913,9 @@ def _sounding_block(
         f"{array_name} array VES curve and model at point {sid}."
         + (f" The dashed line is the {reference_label}." if reference_model is not None else "")
         + f" The model panel is drawn {_drawn_depth_text(inversion.model, interp)}."
-        + (f" {model_range_caption(model_range)}" if model_range is not None else ""),
+        + (f" {model_range_caption(model_range)}" if model_range is not None else "")
+        + (f" {drilling_band_caption()}" if model_range is not None
+           and drilling_depth_band(model_range) is not None else ""),
     )
 
     # model table (IPI2Win layout) with linearised uncertainty factors
@@ -1504,10 +1514,9 @@ def _executive_summary(
             f". Point {best.sounding_id} is recommended as the preferred "
             f"drilling location, to a depth of {drilling_depth_text(best)}. "
         )
-        key = [
-            f"Preferred drilling point: {best.sounding_id}.",
-            f"Recommended drilling depth: {drilling_depth_text(best)}.",
-        ]
+        # the drilling depth at the preferred point is the first decision
+        # number under these findings, with its band (PLAN.md step 3.6)
+        key = [f"Preferred drilling point: {best.sounding_id}."]
     para = (
         f"A geophysical siting survey using {n} vertical electrical sounding "
         f"{'point' if n == 1 else 'points'} was carried out at {community}"

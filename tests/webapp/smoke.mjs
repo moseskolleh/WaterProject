@@ -1202,6 +1202,10 @@ await withPage(async (page, base, consoleErrors) => {
           // the report prints the test type in words ("constant discharge
           // test with recovery"), never the sheet's token
           ['test type', has(C.testTypeText(d.test.test_type))],
+          // the yield and the intake as decision numbers, in the one form
+          // with their bands (PLAN.md step 3.6)
+          ['the decision numbers', [C.yieldDecision(d.analysis), C.pumpDecision(d.analysis)]
+            .every((n) => n && n.band !== null && has(C.decisionText(n)))],
         ];
         wants.quality = [
           ['the verdict', has(d.assessment.verdict)],
@@ -1213,6 +1217,10 @@ await withPage(async (page, base, consoleErrors) => {
           ['a bill line', has(d.estimate.items[0].item)],
           ['the total cost', has(window.GWT.support.money(
             d.estimate.total_cost_usd, 0).replace(/^\$/, ''))],
+          // built with no distribution, the cost says why it has no band
+          ['the cost as a decision number with no band',
+            has(C.decisionText(C.costDecision(null, d.estimate))) &&
+            text.includes('no band: ' + C.phrase('decision.cost_not_sampled'))],
         ];
         wants.supervision = [
           ['a checklist item', has(C.loadChecklists()[0].text)],
@@ -1222,6 +1230,10 @@ await withPage(async (page, base, consoleErrors) => {
           ['community', has(site.community)],
           ['total depth', has(C.fmtNum(d.design.total_depth_m))],
           ['the water quality verdict', has(d.assessment.verdict)],
+          ['the decision numbers, the intake where the design sets it',
+            has(C.decisionText(C.yieldDecision(d.analysis))) &&
+            has(C.decisionText(C.pumpDecision(d.analysis, d.design.pump_intake_m || null,
+              'design')))],
         ];
         return { len: text.length, wants: wants[k] };
       }, kind);
@@ -1271,6 +1283,8 @@ await withPage(async (page, base, consoleErrors) => {
         again: app.costSpreads() === spreads,
         boq: spreads.single.boq_usd === app.derived.estimate.price_with_vat_usd,
         report: C.costRangeText(spreads.single).every((t) => text.includes(t)) &&
+          text.includes(C.decisionText(C.costDecision(spreads.single,
+            app.derived.estimate))) &&
           C.programmeRangeText(spreads.programme).every((t) => text.includes(t)) &&
           text.includes('4.1 ' + C.phrase('cost_range.heading')),
       };

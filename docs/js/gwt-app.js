@@ -2570,6 +2570,8 @@
       var model = charts.layeredModel(result.model, {
         maxDepth: C.modelDepthM(result.model, interp.investigation_depth_m),
         investigationDepth: interp.investigation_depth_m,
+        /* the fan and the drilling depth's band, as the report draws them */
+        fan: range ? range.fan : null, drillBand: C.drillingDepthBand(range),
       });
       nodes.push(card(soundingId + ' — ' +
         C.describeCurveType(interp.curve_type).split(';')[0], [
@@ -6601,7 +6603,21 @@
   }
 
   function reportReadiness(kind) {
-    return C.assessReadiness(projectState(), kind,
+    var state = projectState();
+    /* What the report's decision numbers are read from (PLAN.md step 3.6),
+     * worked out only for the report that prints them: the odds read the
+     * map layers, and the cost distribution is sampled. The pumping numbers
+     * come with the analysis already in the state. */
+    if (kind === 'geophysical' && (derived.interpretations || []).length) {
+      state.interpretations = derived.interpretations;
+      state.model_ranges = (derived.inversions || []).map(rangeFor);
+      state.odds = surveyOdds();
+    }
+    if (kind === 'costing') {
+      var costed = costSpreads();
+      state.cost_distribution = costed ? costed.single : null;
+    }
+    return C.assessReadiness(state, kind,
       (store.get('overrides') || {})[kind] || {});
   }
 
@@ -6976,14 +6992,19 @@
              * a rule no other figure used, under a caption saying it was
              * drawn to the depth of investigation. */
             var doi = derived.interpretations[i].investigation_depth_m;
+            /* the fan and the drilling depth's band on the model, as
+             * ves/plots.py draws them on its model panel (PLAN.md step 3.6) */
+            var drillBand = C.drillingDepthBand(sampled);
             figures.push({
               soundingId: id,
               image: await charts.toPng(charts.layeredModel(result.model, {
                 maxDepth: C.modelDepthM(result.model, doi),
                 investigationDepth: doi,
+                fan: sampled ? sampled.fan : null, drillBand: drillBand,
               })),
               caption: 'Layered earth model for ' + id + ', drawn ' +
-                C.drawnDepthText(result.model, doi) + '.', widthCm: 9,
+                C.drawnDepthText(result.model, doi) + '.' +
+                (drillBand ? ' ' + C.drillingBandCaption() : ''), widthCm: 9,
             });
             /* The interpreted layer column, which _sounding_block draws with
              * ves/plots.py plot_model_pseudosection. The staircase above
@@ -7246,6 +7267,8 @@
           /* the works list names a siting survey only if one was interpreted */
           context.interpretations = derived.interpretations;
           context.figures = figures;
+          /* the yield's band is worded with the reserve the analysis took */
+          context.config = cfg;
           builder = await docx.handoverReport(context);
         }
 
