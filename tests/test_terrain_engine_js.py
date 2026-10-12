@@ -4692,3 +4692,661 @@ def test_both_engines_take_empty_and_thin_grids_alike_and_refuse_the_same_argume
     assert gave["hillshade, z-factor None"] == gave["hillshade, z-factor left out"]
     none, left_out, five = (gave[f"classes, straight edge {length}"] for length in ("None", "left out", "5"))
     assert none == left_out != five
+
+
+# ---------------------- terrain analysis: Python against the browser
+#
+# The whole analysis, as each engine assembles it: C.analyseTerrain against
+# analyse_terrain on the same window, and what the apps take from it - the
+# drainage lines (C.drainageLinks), their GeoJSON (C.drainageGeoJson), the
+# summary and the captions (C.terrainCaptions) - compared to the bit or to
+# the character; the wetness index alone, a library's log in each engine,
+# at a relative 1e-12. Then the page's own work, which has no Python twin
+# to run beside it: re-tracing the lines from a core that has crossed from
+# the worker by structured clone, and the display copies the worker
+# decimates for the figures.
+
+_ASSEMBLY = r"""
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createInterface } from 'node:readline';
+import vm from 'node:vm';
+const sandbox = vm.createContext({ console, structuredClone });
+for (const f of ['gwt-data.js', 'gwt-core.js']) {
+  vm.runInContext(readFileSync(process.argv[2] + '/' + f, 'utf8'), sandbox, { filename: f });
+}
+const C = sandbox.GWT.core;
+const F64 = vm.runInContext('Float64Array', sandbox), U8 = vm.runInContext('Uint8Array', sandbox);
+function f64(text) {
+  const raw = Buffer.from(text, 'base64'), out = new F64(raw.length / 8);
+  new Uint8Array(out.buffer).set(raw);
+  return out;
+}
+function u8(text) {
+  const raw = Buffer.from(text, 'base64'), out = new U8(raw.length);
+  out.set(raw);
+  return out;
+}
+// a layer widened to float64, every NaN the one NaN and the sign of a zero
+// kept: its SHA-256, or its bytes in base64
+function widened(values) {
+  const out = Float64Array.from(values), bits = new BigUint64Array(out.buffer);
+  for (let i = 0; i < out.length; i++) if (out[i] !== out[i]) bits[i] = 0x7FF8000000000000n;
+  return out;
+}
+const digest = (values) => createHash('sha256').update(new Uint8Array(widened(values).buffer)).digest('hex');
+const b64 = (values) => Buffer.from(widened(values).buffer).toString('base64');
+// a number's bits, big-endian hex, NaN as the one NaN
+function hex(v) {
+  if (v !== v) return '7ff8000000000000';
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, v);
+  return Buffer.from(view.buffer).toString('hex');
+}
+const num = (text) => Buffer.from(text, 'hex').readDoubleBE(0);
+// arguments as the test tags them: numbers as {num} bits, anything else as it is
+function decoded(a) {
+  if (a === null || typeof a !== 'object') return a;
+  if (Array.isArray(a)) return a.map(decoded);
+  if ('num' in a) return num(a.num);
+  return Object.fromEntries(Object.entries(a).map(([key, v]) => [key, decoded(v)]));
+}
+// links and parts as the test compares them: every field in its order,
+// each length by its bits
+const lines = (list) => JSON.stringify(list.map((line) => ({ ...line, length_m: hex(line.length_m) })));
+const summarised = (summary) => Object.entries(summary).map(([key, v]) =>
+  [key, Array.isArray(v) ? v.map(hex) : hex(v)]);
+function windowOf(r) {
+  const grid = {
+    lons: f64(r.lons), lats: f64(r.lats), z: f64(r.z), rows: r.rows, cols: r.cols,
+    assumedSea: r.assumedSea === null ? null : u8(r.assumedSea), sourceId: r.sourceId, seaClean: r.seaClean,
+    label: r.label,
+  };
+  if (r.gridShown) grid.shown = r.gridShown;
+  return grid;
+}
+const LAYERS = ['filled', 'fillDepth', 'stream', 'p', 'q', 'tanb', 'hillshadeMulti', 'twiArg', 'profile',
+                'tangential'];
+const CORE = ['cls', 'code', 'flag', 'raised', 'flatRouted', 'count', 'areaUnits', 'lons', 'lats', 'dx', 'dy', 'dg'];
+function layersOf(a) {
+  const out = {};
+  for (const name of LAYERS) out[name] = a[name];
+  a.hillshades.forEach((layer, j) => { out['hillshade' + j] = layer; });
+  for (const name of CORE) out[name] = a.core[name];
+  return out;
+}
+// one window analysed, and all the apps take from it
+function analysed(r) {
+  const heard = [], started = performance.now();
+  const a = C.analyseTerrain(windowOf(r), decoded(r.config), (fraction, label) => heard.push([hex(fraction), label]),
+    r.precision, r.shown);
+  const ms = performance.now() - started;
+  const layers = layersOf(a);
+  return {
+    layers: Object.fromEntries(Object.entries(layers).map(([name, v]) => [name, r.full ? b64(v) : digest(v)])),
+    kinds: Object.fromEntries(Object.entries(layers).map(([name, v]) => [name, v.constructor.name])),
+    twi: b64(a.twi), links: lines(a.links), parts: lines(a.parts),
+    geojson: C.drainageGeoJson(C.terrainCore(a), a.parts, decoded(r.meta)),
+    summary: summarised(a.summary), captions: Object.entries(C.terrainCaptions(a, r.read, r.where)),
+    heard, scalars: [a.unresolved, a.kCells, a.floored, a.zeroFill], shown: a.core.shown, ms,
+  };
+}
+// The page's re-threshold: the core crosses from the worker by structured
+// clone, and the lines are traced again from the clone alone.
+function rethreshold(r) {
+  const a = C.analyseTerrain(windowOf(r), decoded(r.config), null, 'float64', r.shown);
+  const core = C.terrainCore(a), clone = structuredClone(core);
+  const shared = Object.keys(core).filter((key) => ArrayBuffer.isView(core[key]) && core[key] === clone[key]);
+  let corner = 0;
+  for (const v of clone.areaUnits) if (v > corner) corner = v;
+  return {
+    core: Object.fromEntries(CORE.map((name) => [name, digest(clone[name])])),
+    keys: Object.keys(core), shared, corner: hex(corner),
+    at: r.areas.map((tagged) => {
+      const area = decoded(tagged), page = C.drainageLinks(clone, area), direct = C.drainageLinks(core, area);
+      return {
+        links: lines(page.links), parts: lines(page.parts), direct: lines(direct.links) + lines(direct.parts),
+        geojson: C.drainageGeoJson(clone, page.parts, decoded({ ...r.meta, area })),
+      };
+    }),
+  };
+}
+// the display copies, and the analysis's own layers to hold them to
+function display(r) {
+  const grid = windowOf(r), a = C.analyseTerrain(grid, decoded(r.config), null, r.precision, r.shown);
+  const full = { z: grid.z, hillshadeMulti: a.hillshadeMulti, twi: a.twi, profile: a.profile,
+                 tangential: a.tangential, cls: a.core.cls, assumedSea: grid.assumedSea || new U8(grid.z.length),
+                 raised: a.core.raised, stream: a.stream, flag: a.core.flag };
+  a.hillshades.forEach((layer, j) => { full['hillshade' + j] = layer; });
+  const shown = (d) => {
+    const out = { rows: d.rows, cols: d.cols, stride: d.stride, shown: d.shown, lons: b64(d.lons), lats: b64(d.lats),
+                  kinds: {}, layers: {} };
+    for (const [name, v] of Object.entries(d)) {
+      if (!ArrayBuffer.isView(v) || name === 'lons' || name === 'lats') continue;
+      out.kinds[name] = v.constructor.name;
+      out.layers[name] = b64(v);
+    }
+    d.hillshades.forEach((layer, j) => {
+      out.kinds['hillshade' + j] = layer.constructor.name;
+      out.layers['hillshade' + j] = b64(layer);
+    });
+    return out;
+  };
+  return {
+    full: Object.fromEntries(Object.entries(full).map(([name, v]) => [name, b64(v)])),
+    lons: b64(a.core.lons), lats: b64(a.core.lats), shown: a.core.shown,
+    displays: r.edges.map((edge) => shown(C.terrainDisplayLayers(a, grid, edge))),
+    own: shown(C.terrainDisplayLayers(a, null, r.edges[0])),
+  };
+}
+// a call that one engine may refuse: the sentence of a plain Error, or
+// what it gave
+function refusal(r) {
+  try {
+    if (r.call === 'analyse') {
+      C.analyseTerrain(windowOf(r), decoded(r.config), null, r.precision, r.shown);
+    } else if (r.call === 'links') {
+      const a = C.analyseTerrain(windowOf(r), null, null, 'float64', null);
+      C.drainageLinks(C.terrainCore(a), decoded(r.area));
+    } else {
+      const a = C.analyseTerrain(windowOf(r), decoded(r.config), null, 'float64', null);
+      C.terrainCaptions(a, null, 'here');
+    }
+    return { gave: true };
+  } catch (e) {
+    if (e && e.constructor && e.constructor.name === 'Error') return { refused: e.message };
+    throw e;
+  }
+}
+const ops = {
+  analyse: ({ cases }) => cases.map(analysed), rethreshold, display,
+  refusals: ({ cases }) => cases.map(refusal),
+};
+for await (const line of createInterface({ input: process.stdin })) {
+  const request = JSON.parse(line);
+  let answer;
+  try {
+    answer = { ok: ops[request.op](request) };
+  } catch (e) {
+    answer = { threw: String(e && e.stack || e) };
+  }
+  process.stdout.write(JSON.stringify(answer) + '\n');
+}
+"""
+
+
+@pytest.fixture
+def assembly(tmp_path):
+    """The browser's whole analysis in a Node vm, a batch of windows at a time."""
+    browser = _Reader(tmp_path, _ASSEMBLY, "assembly.mjs")
+    yield browser
+    browser.close()
+
+
+#: A name with everything JSON must escape: quotes, a backslash, control
+#: characters, DEL, letters outside ASCII, a character beyond the BMP (a
+#: surrogate pair in the browser) and a lone surrogate.
+_AX_AWKWARD = 'Bo "east" \\ tile\n\t\x01\x1f Mɔyamba – Sɛwa \U0001f30a \x7f \udc80 © ²'
+
+
+def _ax_options(rng: random.Random, case: dict) -> dict:
+    """The settings, square shown, read and GeoJSON details one window is
+    analysed with, on top of the grid ``_kx_case`` made: drainage
+    thresholds from every cell a stream cell to none, fill notes, slope
+    floors, spacings, suns and margins, the square shown as an argument,
+    on the grid or not at all, and names that need escaping."""
+    rows, cols = case["rows"], case["cols"]
+    settings: dict = {
+        "drainage_area_km2": rng.choice([0.0, 0.0005, 0.001, 0.003, 0.01, 0.05, 0.5, 1e-9]),
+        "sea_level_m": case["sea_level"],
+        "fill_note_m": rng.choice([1.0, 1.0, 0.0, 0.05, 0.25]),
+        "flat_tan_slope": rng.choice([0.001, 0.001, 0.02, case["floors"][1]]),
+        "curvature_spacing_m": rng.choice([90.0, 30.0, case["curvatures"][3][0]]),
+        "analysis_radius_km": rng.choice([10.0, 0.4, 2.5]),
+        "analysis_buffer_km": rng.choice([5.0, 0.0, 0.25]),
+    }
+    if case["edge"] is not None:
+        settings["sea_straight_edge_cells"] = case["edge"]
+    if rng.random() < 0.3:
+        settings["hillshade_altitude_deg"] = case["suns"][4][1]
+        settings["hillshade_z_factor"] = case["suns"][4][2]
+        settings["hillshade_azimuths_deg"] = case["composites"][2][0]
+        settings["hillshade_panel_azimuths_deg"] = [case["suns"][k][0] for k in range(4, 4 + rng.randint(1, 3))]
+    # the square shown: anywhere inside, a band a few cells wide that the
+    # lines cross and cross again, the window less its edge, or none
+    shown = None
+    kind = rng.random()
+    r0, c0 = rng.randrange(rows), rng.randrange(cols)
+    if kind < 0.5:
+        shown = [r0, rng.randint(r0 + 1, rows), c0, rng.randint(c0 + 1, cols)]
+    elif kind < 0.6:
+        shown = [r0, min(rows, r0 + rng.randint(1, 3)), 0, cols]
+    elif kind < 0.7:
+        shown = [0, rows, c0, min(cols, c0 + rng.randint(1, 3))]
+    elif kind < 0.8:
+        shown = [1, rows - 1, 1, cols - 1]
+    name = rng.choice(["n08w012.tif", _AX_AWKWARD, "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif"])
+    where = rng.choice(["Kakua", _AX_AWKWARD, "the middle of the elevation model"])
+    read = None
+    if rng.random() < 0.5:
+        plan = None if rng.random() < 0.3 else {"radiusKm": rng.choice([0.4, 3.0]), "marginKm": rng.choice([0.0, 0.2])}
+        read = {"surface": rng.choice(["", "Heights of the ground, as surveyed."]), "plan": plan}
+    meta = {"label": name, "credit": rng.choice(["", "NASA/USGS, public domain", _AX_AWKWARD]),
+            "notice": rng.choice([None, "", "No liability \"at all\"."]),
+            "surface": rng.choice(["Heights include the canopy.", _AX_AWKWARD]),
+            "area": settings["drainage_area_km2"], "radius": rng.choice([10.0, 0.4, 1e-7, 125000.0]),
+            "margin": rng.choice([5.0, 0.0, 0.25]),
+            "centre": {"lon": rng.choice([-12.000000499, -4e-7, case["lons"][cols // 2]]),
+                       "lat": rng.choice([8.4999995, case["lats"][rows // 2]]), "label": where}}
+    return {"settings": settings, "shown": shown, "shown_as": rng.choice(["argument", "grid"]),
+            "precision": "float32" if rng.random() < 0.2 else "float64", "label": name, "where": where,
+            "source_id": rng.choice(["copernicus_glo30", "srtm", "hgt", "unidentified"]), "read": read, "meta": meta}
+
+
+def _ax_meander(rng: random.Random) -> tuple[dict, dict]:
+    """A valley falling east that winds back and forth across the edge of
+    the square shown, so that one drainage line leaves the square and comes
+    back several times and is cut into numbered parts: heights in whole
+    centimetres, the valley floor two metres a row below its sides, and a
+    threshold above what any side slope gathers."""
+    rows, cols = rng.randint(24, 36), rng.randint(40, 60)
+    mid, amplitude, period = rows // 2, rng.randint(2, 4), rng.uniform(20.0, 30.0)
+    floor = [mid + round(amplitude * math.sin(2.0 * math.pi * c / period)) for c in range(cols)]
+    z = [(5000 + 50 * (cols - 1 - c) + 200 * abs(r - floor[c])) / 100.0 for r in range(rows) for c in range(cols)]
+    step = 1 / 3600
+    case = {"rows": rows, "cols": cols, "z": z, "lons": [-12.0 + j * step for j in range(cols)],
+            "lats": [8.5 + j * step for j in range(rows)], "assumed": None, "sea_clean": rng.random() < 0.5}
+    shown = rng.choice([[0, mid + 1, 0, cols], [mid, rows, 0, cols], [mid, rows, 3, cols - 2]])
+    area = rng.choice([0.1, 0.2])
+    meta = {"label": "valley.tif", "credit": "", "notice": None, "surface": "Heights.", "area": area,
+            "radius": 1.0, "margin": 0.5, "centre": {"lon": case["lons"][cols // 2], "lat": case["lats"][mid],
+                                                     "label": _AX_AWKWARD}}
+    options = {"settings": {"drainage_area_km2": area}, "shown": shown, "shown_as": rng.choice(["argument", "grid"]),
+               "precision": "float64", "label": "valley.tif", "where": _AX_AWKWARD, "source_id": "unidentified",
+               "read": None, "meta": meta}
+    return case, options
+
+
+def _ax_request(case: dict, options: dict, full: bool = False) -> dict:
+    """One window as the driver takes it: the grid, with the square shown
+    passed as the argument or held on the grid as a read's grid holds it."""
+    settings = {key: (_kx_tagged(v) if isinstance(v, float) else v) for key, v in options["settings"].items()}
+    meta = dict(options["meta"])
+    meta["centre"] = {**meta["centre"], "lon": _kx_tagged(meta["centre"]["lon"]),
+                      "lat": _kx_tagged(meta["centre"]["lat"])}
+    for key in ("area", "radius", "margin"):
+        meta[key] = _kx_tagged(float(meta[key]))
+    on_grid = options["shown_as"] == "grid"
+    return {
+        "rows": case["rows"], "cols": case["cols"], "z": _sk_b64(case["z"]), "lons": _sk_b64(case["lons"]),
+        "lats": _sk_b64(case["lats"]),
+        "assumedSea": None if case["assumed"] is None else _sk_b64(case["assumed"], "u1"),
+        "sourceId": options["source_id"], "seaClean": case["sea_clean"], "label": options["label"],
+        "config": {"terrain": settings}, "precision": options["precision"],
+        "shown": None if on_grid else options["shown"], "gridShown": options["shown"] if on_grid else None,
+        "read": options["read"], "where": options["where"], "meta": meta, "full": full,
+    }
+
+
+def _ax_grid(case: dict, options: dict):
+    """One window as Python's grid, labelled and with the sea rule its options give."""
+    import numpy as np
+
+    from groundwater.mapping.elevation import ElevationGrid
+
+    rows, cols = case["rows"], case["cols"]
+    return ElevationGrid(np.asarray(case["lons"]), np.asarray(case["lats"]),
+                         np.asarray(case["z"], dtype=np.float64).reshape(rows, cols), source=options["label"],
+                         source_id=options["source_id"], sea_clean=case["sea_clean"])
+
+
+def _ax_config(settings: dict):
+    """The settings as Python's TerrainConfig, lists as the tuples it holds."""
+    from groundwater.config import TerrainConfig
+
+    return TerrainConfig(**{key: tuple(v) if isinstance(v, list) else v for key, v in settings.items()})
+
+
+def _ax_meta(meta: dict) -> dict:
+    """What drainage_geojson is told, its centre with attributes as WindowCentre has them."""
+    from types import SimpleNamespace
+
+    return {**meta, "centre": SimpleNamespace(**meta["centre"])}
+
+
+def _ax_lines(lines) -> str:
+    """Links or parts as the driver writes them: every field in its order,
+    each length by its bits."""
+    import dataclasses
+
+    return json.dumps([{**dataclasses.asdict(line), "length_m": _kx_hex(line.length_m)} for line in lines],
+                      separators=(",", ":"), ensure_ascii=False)
+
+
+def _ax_layers(a) -> dict:
+    """An analysis's layers under the browser's names."""
+    core = a.core
+    layers = {"filled": a.filled, "fillDepth": a.fill_depth, "stream": a.stream, "p": a.p, "q": a.q,
+              "tanb": a.tanb, "hillshadeMulti": a.hillshade_multi, "twiArg": a.twi_arg, "profile": a.profile,
+              "tangential": a.tangential}
+    layers.update({f"hillshade{j}": layer for j, layer in enumerate(a.hillshades)})
+    layers.update({"cls": core.cls, "code": core.code, "flag": core.flag, "raised": core.raised,
+                   "flatRouted": core.flat_routed, "count": core.count, "areaUnits": core.area_units,
+                   "lons": core.lons, "lats": core.lats, "dx": core.dx, "dy": core.dy, "dg": core.dg})
+    return layers
+
+
+def _ax_python(case: dict, options: dict, full: bool = False) -> dict:
+    """What analyse_terrain and the functions after it give for one window,
+    in the shape the driver's ``analyse`` gives the browser's answer."""
+    import time
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from groundwater.mapping import terrain_analysis as ta
+
+    rows, cols = case["rows"], case["cols"]
+    assumed = None if case["assumed"] is None else np.asarray(case["assumed"], dtype=bool).reshape(rows, cols)
+    heard = []
+    started = time.perf_counter()
+    a = ta.analyse_terrain(_ax_grid(case, options), _ax_config(options["settings"]), assumed_sea=assumed,
+                           shown=options["shown"], progress=lambda f, label: heard.append([_kx_hex(f), label]),
+                           precision=options["precision"])
+    ms = 1000.0 * (time.perf_counter() - started)
+    read = options["read"]
+    if read is not None:
+        plan = read["plan"]
+        read = SimpleNamespace(surface=read["surface"], plan=None if plan is None else SimpleNamespace(
+            radius_km=plan["radiusKm"], margin_km=plan["marginKm"]))
+    layers = _ax_layers(a)
+    return {
+        "layers": {name: (_sk_b64(np.asarray(v, dtype=np.float64).ravel()) if full else _digest(v))
+                   for name, v in layers.items()},
+        "kinds": {name: str(np.asarray(v).dtype) for name, v in layers.items()},
+        "twi": np.asarray(a.twi, dtype=np.float64).ravel(), "links": _ax_lines(a.links), "parts": _ax_lines(a.parts),
+        "geojson": ta.drainage_geojson(a.core, a.parts, _ax_meta(options["meta"])),
+        "summary": [[key, [_kx_hex(x) for x in v] if isinstance(v, tuple) else _kx_hex(v)]
+                    for key, v in a.summary.items()],
+        "captions": [list(item) for item in ta.terrain_captions(a, read, options["where"]).items()],
+        "heard": heard, "scalars": [a.unresolved, a.k_cells, a.floored, a.zero_fill], "shown": list(a.core.shown),
+        "ms": ms, "analysis": a,
+    }
+
+
+#: What each of the browser's layers is held in, by the dtype of Python's
+_AX_KINDS = {"float64": "Float64Array", "float32": "Float32Array", "bool": "Uint8Array", "uint8": "Uint8Array",
+             "int64": "Float64Array"}
+
+
+def _ax_differences(assembly, case: dict, options: dict, js: dict, py: dict) -> list[str]:
+    """Where the browser's answer for one window differs from Python's: for
+    a layer, the first cell whose bits differ, from both engines' layers in
+    full; for text, the first character."""
+    out = []
+    layers = [name for name, digest in py["layers"].items() if js["layers"].get(name) != digest]
+    if layers:
+        whole_js = assembly.ask("analyse", cases=[_ax_request(case, options, full=True)])["ok"][0]["layers"]
+        whole_py = _ax_python(case, options, full=True)["layers"]
+        for name in layers:
+            a, b = _sk_f64(whole_js[name]), _sk_f64(whole_py[name])
+            first = _sk_differ(a, b)[0] if a.size == b.size else None
+            out.append(f"{name}: lengths {a.size} and {b.size}" if first is None else
+                       f"{name} at row {first // case['cols']}, column {first % case['cols']}: "
+                       f"browser {a[first]!r}, python {b[first]!r}")
+    kinds = {name: _AX_KINDS[kind] for name, kind in py["kinds"].items()}
+    if js["kinds"] != kinds:
+        out.append(f"kinds: browser {js['kinds']}, python {kinds}")
+    for key in ("links", "parts", "geojson", "captions", "heard", "scalars", "shown"):
+        if js[key] != py[key]:
+            a, b = json.dumps(js[key], ensure_ascii=False), json.dumps(py[key], ensure_ascii=False)
+            at = next((k for k, (x, y) in enumerate(zip(a, b, strict=False)) if x != y), min(len(a), len(b)))
+            out.append(f"{key} from character {at}: browser {a[max(0, at - 60):at + 60]!r}, "
+                       f"python {b[max(0, at - 60):at + 60]!r}")
+    # the summary to the bit, in Python's key order, but for the wetness
+    # range: the log of two exactly chosen values, at 1e-12
+    exact = [item for item in js["summary"] if item[0] != "twi_range"]
+    if exact != [item for item in py["summary"] if item[0] != "twi_range"] or \
+            [key for key, _ in js["summary"]] != [key for key, _ in py["summary"]]:
+        out.append(f"summary: browser {js['summary']}, python {py['summary']}")
+    ranges = (dict(js["summary"])["twi_range"], dict(py["summary"])["twi_range"])
+    if _sk_far([_kx_float(v) for v in ranges[0]], [_kx_float(v) for v in ranges[1]]):
+        out.append(f"twi_range: browser {ranges[0]}, python {ranges[1]}")
+    # a float32 index rounds from a log that may differ in its last bit
+    far = _sk_far(_sk_f64(js["twi"]), py["twi"], 1e-12 if options["precision"] == "float64" else 2.0**-23)
+    if far:
+        out.append(f"twi: {len(far)} cells beyond the tolerance, first {far[0]}")
+    return out
+
+
+def test_browser_analysis_matches_python_end_to_end(assembly):
+    """C.analyseTerrain against analyse_terrain on 300 seeded windows: 288
+    of 3 to 60 cells a side, with the ties, voids, infinities, -0, sea,
+    assumed sea and zero-filled strips of the kernel test above (a dozen
+    on a lattice kilometres wide far from the equator), and 12 valleys
+    winding back and forth across the edge of the square shown. Each has a
+    square shown (anywhere inside, a band a few cells wide, the window less
+    its edge, or none; given as the argument or held on the grid), a clean
+    or an unstated sea rule, a threshold from every land cell to none, and
+    other fill notes, floors, spacings and suns; about a fifth run in
+    float32.
+    Compared: every layer, the core's included, to the bit by a digest that
+    keeps the sign of a zero, and in the same kind of array; the links and
+    parts as JSON, every field in Python's order; the GeoJSON text to the
+    character, with file and place names holding quotes, a backslash,
+    control characters, DEL, letters outside ASCII, a surrogate pair and a
+    lone surrogate; the summary to the bit in Python's key order, its
+    wetness range at 1e-12; the captions to the character in Python's key
+    order; the progress heard, stage by stage; and the wetness index at
+    1e-12 (2^-23 in float32). Then both engines refuse the same bad
+    arguments. Prevents the browser's figures, captions, summary or
+    download differing from the Python app's for the same window, which
+    the kernels agreeing one by one cannot rule out: an assembly step taken
+    in another order, a sum added another way, a caption chosen by another
+    test, a key in another place, or a name escaped another way."""
+    from collections import Counter
+
+    rng = random.Random(41_151)
+    cases = []
+    for trial in range(300):
+        if trial % 25 == 24:
+            cases.append(_ax_meander(rng))
+            continue
+        case = _kx_case(rng)
+        if trial % 25 == 12:
+            # cells kilometres across far from the equator, where the middle
+            # row is metres wider or narrower than the south one, so that the
+            # curvature caption's spacing tells the two apart
+            step, lat0 = rng.choice([0.05, 0.1]), rng.choice([55.0, -60.0, 40.0])
+            case = {**case, "lons": [-12.0 + j * step for j in range(case["cols"])],
+                    "lats": [lat0 + j * step for j in range(case["rows"])]}
+        cases.append((case, _ax_options(rng, case)))
+    answers = assembly.ask("analyse", cases=[_ax_request(case, options) for case, options in cases])["ok"]
+    differ, seen = [], Counter()
+    for trial, ((case, options), js) in enumerate(zip(cases, answers, strict=True)):
+        py = _ax_python(case, options)
+        bad = _ax_differences(assembly, case, options, js, py)
+        if bad:
+            differ.append(f"trial {trial} ({case['rows']} x {case['cols']}): " + "; ".join(bad))
+        a, s = py["analysis"], py["analysis"].summary
+        seen["links"] += len(a.links)
+        seen["parts"] += len(a.parts)
+        seen["cut"] += sum(part.outlet == "beyond_view" for part in a.parts)
+        seen["confluences"] += sum(link.outlet == "confluence" for link in a.links)
+        seen["sea outlets"] += sum(link.outlet == "sea" for link in a.links)
+        seen["void outlets"] += sum(link.outlet == "void" for link in a.links)
+        seen["orders above 1"] += sum(link.strahler > 1 for link in a.links)
+        seen["second parts"] += sum(part.part > 0 for part in a.parts)
+        seen["flat stretches"] += sum(any(part.stretch_flat) for part in a.parts)
+        seen["notices"] += '"notice":' in py["geojson"]
+        seen["sea captions"] += s["sea_pct"] > 0
+        seen["unstated sea captions"] += any("may be a fill value" in text for _, text in py["captions"])
+        seen["zero-fill captions"] += s["zero_fill"] > 0
+        seen["no land shown"] += s["land"] == 0
+        seen["float32"] += options["precision"] == "float32"
+    assert not differ, f"{len(differ)} of {len(cases)} windows differ:\n" + "\n".join(differ[:20])
+    # the windows reach every rule, not just the easy middle
+    assert seen["links"] > 20000 and seen["confluences"] > 10000 and seen["orders above 1"] > 5000, seen
+    assert seen["cut"] > 200 and seen["second parts"] > 8 and seen["flat stretches"] > 2000, seen
+    assert seen["sea outlets"] > 3000 and seen["void outlets"] > 500, seen
+    assert seen["notices"] > 50 and seen["sea captions"] > 80 and seen["unstated sea captions"] > 30, seen
+    assert seen["zero-fill captions"] > 10 and seen["no land shown"] > 0 and seen["float32"] > 30, seen
+
+    # both refuse a precision that is neither, a square shown outside the
+    # grid or empty, a drainage threshold that is not a finite area of 0 or
+    # more, and hillshade panels with no azimuth to name
+    case, options = cases[0]
+    base = _ax_request(case, options)
+    rows, cols = case["rows"], case["cols"]
+    refusals = [
+        ("precision float16", {"call": "analyse", "precision": "float16"}),
+        ("shown beyond the grid", {"call": "analyse", "shown": [0, rows + 1, 0, cols]}),
+        ("shown empty", {"call": "analyse", "shown": [1, 1, 0, cols]}),
+        ("shown backwards", {"call": "analyse", "shown": [0, rows, cols, 0]}),
+        ("threshold NaN", {"call": "links", "area": {"num": _kx_hex(math.nan)}}),
+        ("threshold below 0", {"call": "links", "area": {"num": _kx_hex(-0.5)}}),
+        ("threshold infinite", {"call": "links", "area": {"num": _kx_hex(math.inf)}}),
+        ("settings threshold NaN", {"call": "analyse",
+                                    "config": {"terrain": {"drainage_area_km2": {"num": _kx_hex(math.nan)}}}}),
+        ("no panel azimuth", {"call": "captions", "config": {"terrain": {"hillshade_panel_azimuths_deg": []}}}),
+    ]
+    js_refused = assembly.ask("refusals", cases=[{**base, **change} for _, change in refusals])["ok"]
+    from groundwater.mapping import terrain_analysis as ta
+
+    for (label, change), js in zip(refusals, js_refused, strict=True):
+        settings = {key: _kx_float(v["num"]) if isinstance(v, dict) else v
+                    for key, v in change.get("config", {}).get("terrain", {}).items()}
+        grid = _ax_grid(case, options)
+        with pytest.raises((ValueError, IndexError)):
+            if change["call"] == "analyse":
+                ta.analyse_terrain(grid, _ax_config({**options["settings"], **settings}),
+                                   shown=change.get("shown", options["shown"]),
+                                   precision=change.get("precision", "float64"))
+            elif change["call"] == "links":
+                a = ta.analyse_terrain(grid, precision="float64")
+                ta.drainage_links(a.core, _kx_float(change["area"]["num"]))
+            else:
+                ta.terrain_captions(ta.analyse_terrain(grid, _ax_config(settings), precision="float64"), None, "here")
+        assert "refused" in js, f"{label}: the browser answered where Python refuses"
+
+
+def _ax_plane(side: int = 256) -> tuple[dict, dict]:
+    """A plane tilted to its south-west corner: every cell drains there,
+    along the diagonals to the edges and along the edges to the corner, so
+    one catchment holds every cell, more than 2^32 units of area."""
+    step = 1 / 3600
+    z = [10.0 + 0.5 * (r + c) for r in range(side) for c in range(side)]   # all land, the corner included
+    case = {"rows": side, "cols": side, "z": z, "lons": [-12.0 + j * step for j in range(side)],
+            "lats": [8.5 + j * step for j in range(side)], "assumed": None, "sea_clean": True}
+    options = {"settings": {"drainage_area_km2": 0.5}, "shown": [10, side - 10, 6, side - 6], "shown_as": "grid",
+               "precision": "float64", "label": "plane.tif", "where": "Kakua", "source_id": "unidentified",
+               "read": None,
+               "meta": {"label": "plane.tif", "credit": "", "notice": None, "surface": "Heights.", "area": 0.5,
+                        "radius": 10.0, "margin": 5.0, "centre": {"lon": -11.96, "lat": 8.53, "label": "Kakua"}}}
+    return case, options
+
+
+def test_the_page_rethreshold_from_a_cloned_core_matches_the_analysis(assembly):
+    """The page's re-threshold (spec 7.2): a 256 by 256 plane tilted to one
+    corner, one catchment of 65,536 cells whose area at the corner passes
+    2^32 units, analysed in the browser; its core taken with
+    C.terrainCore, put through structuredClone as a worker's reply is, and
+    traced again with C.drainageLinks alone at thresholds from every cell a
+    stream cell to none. The lines from the clone equal those from the
+    core itself and Python's drainage_links on Python's core, field for
+    field, and so does their GeoJSON; the clone's layers equal Python's
+    core to the bit. Prevents the page drawing other lines than a full
+    analysis at the same threshold: a core that loses a layer or its
+    precision crossing from the worker (an area wrapped by a 32-bit array,
+    a field the page's copy lacks), or a trace that leans on something
+    besides the core."""
+    from groundwater.mapping import terrain_analysis as ta
+
+    case, options = _ax_plane()
+    areas = [0.0005, 0.05, 0.5, 5.0, 30.0, 61.0, 1000.0]
+    request = _ax_request(case, options)
+    js = assembly.ask("rethreshold", **request, areas=[_kx_tagged(area) for area in areas])["ok"]
+    py = _ax_python(case, options)
+    a = py["analysis"]
+    core = a.core
+    assert js["keys"] == ["rows", "cols", "shown", "lons", "lats", "dx", "dy", "dg", "count", "areaUnits", "cls",
+                          "code", "flag", "raised", "flatRouted"]
+    assert js["shared"] == []                    # the clone holds arrays of its own
+    assert js["core"] == {name: py["layers"][name] for name in js["core"]}
+    corner = int(core.area_units.max())
+    assert corner == int(core.area_units[0, 0]) > 2**32 and int(core.count[0, 0]) == 65_536
+    assert _kx_float(js["corner"]) == corner
+    shown = {"links": 0, "parts": 0}
+    for area, at in zip(areas, js["at"], strict=True):
+        links, parts = ta.drainage_links(core, area)
+        assert at["links"] == _ax_lines(links), f"links at {area} km²"
+        assert at["parts"] == _ax_lines(parts), f"parts at {area} km²"
+        assert at["direct"] == at["links"] + at["parts"], f"the clone and the core differ at {area} km²"
+        meta = _ax_meta({**options["meta"], "area": area})
+        assert at["geojson"] == ta.drainage_geojson(core, parts, meta), f"GeoJSON at {area} km²"
+        shown["links"] += len(links)
+        shown["parts"] += len(parts)
+    # the thresholds span every cell a stream cell to none, and the plane's
+    # lines meet: confluences all along the two edges
+    every = ta.drainage_links(core, areas[0])[0]
+    assert len(every) > 500 and max(link.strahler for link in every) >= 2
+    assert ta.drainage_links(core, areas[-1]) == ((), ())
+    assert shown["links"] > shown["parts"] > 500
+
+
+def test_the_browser_display_layers_are_the_shown_square_one_cell_in_every_stride(assembly):
+    """C.terrainDisplayLayers, which has no Python twin: on a 41 by 57
+    window with a 33 by 47 square shown, at several largest edges from 1
+    cell to more than the square, every layer the figures draw is the
+    analysis's own layer at rows r0, r0 + s, ... and columns c0, c0 + s,
+    ... of the square shown, s being the least whole stride that keeps
+    both sides within the edge; the continuous layers are Float32Array and
+    the classes and masks Uint8Array; lons and lats are the kept cells'
+    centres; the grid left out means the analysis's own. Prevents figures
+    drawn from cells outside the square shown, a stride that leaves a side
+    longer than the edge or decimates more than it must, a picture shifted
+    by a cell, a class blended with its neighbour, or a layer the worker
+    hands over at full size."""
+    import numpy as np
+
+    rng = random.Random(41_152)
+    rows, cols = 41, 57
+    z = [round(100.0 + 0.4 * r - 0.3 * c + rng.uniform(-2.0, 2.0), 1) for r in range(rows) for c in range(cols)]
+    z[:cols * 3] = [0.0] * (cols * 3)                     # sea along the south edge
+    assumed = [1 if r > 36 and c > 50 else 0 for r in range(rows) for c in range(cols)]
+    step = 1 / 3600
+    case = {"rows": rows, "cols": cols, "z": z, "lons": [-12.0 + j * step for j in range(cols)],
+            "lats": [8.5 + j * step for j in range(rows)], "assumed": assumed, "sea_clean": True}
+    options = {"settings": {"drainage_area_km2": 0.003}, "shown": [4, 37, 5, 52], "shown_as": "grid",
+               "precision": "float32", "label": "x.tif", "where": "here", "source_id": "srtm", "read": None,
+               "meta": _ax_plane()[1]["meta"]}
+    request = _ax_request(case, options)
+    edges = [1024, 47, 46, 24, 23, 16, 10, 7, 3, 2, 1]
+    js = assembly.ask("display", **request, edges=edges)["ok"]
+    r0, r1, c0, c1 = js["shown"]
+    assert [r0, r1, c0, c1] == options["shown"]
+    full = {name: _sk_f64(v).reshape(rows, cols) for name, v in js["full"].items()}
+    lons, lats = _sk_f64(js["lons"]), _sk_f64(js["lats"])
+    floats = {"z", "hillshadeMulti", "twi", "profile", "tangential", "hillshade0", "hillshade1", "hillshade2",
+              "hillshade3"}
+    masks = {"cls", "assumedSea", "raised", "stream", "flag"}
+    assert (full["stream"] > 0).any() and (full["raised"] > 0).any() and (full["assumedSea"] > 0).any()
+    assert set(np.unique(full["cls"])) == {1.0, 2.0}
+    for edge, shown in zip(edges, js["displays"], strict=True):
+        stride = shown["stride"]
+        longest = max(r1 - r0, c1 - c0)
+        assert stride == -(-longest // edge), edge
+        assert (shown["rows"], shown["cols"]) == (len(range(r0, r1, stride)), len(range(c0, c1, stride)))
+        assert max(shown["rows"], shown["cols"]) <= edge and shown["shown"] == [r0, r1, c0, c1]
+        assert set(shown["kinds"]) == floats | masks
+        for name, kind in shown["kinds"].items():
+            assert kind == ("Float32Array" if name in floats else "Uint8Array"), (edge, name, kind)
+            got = _sk_f64(shown["layers"][name]).reshape(shown["rows"], shown["cols"])
+            want = full[name][r0:r1:stride, c0:c1:stride]
+            if name in floats:
+                want = want.astype(np.float32).astype(np.float64)
+            assert not _sk_differ(got.ravel(), want.ravel()), (edge, name)
+        assert not _sk_differ(_sk_f64(shown["lons"]), lons[c0:c1:stride])
+        assert not _sk_differ(_sk_f64(shown["lats"]), lats[r0:r1:stride])
+    assert js["own"] == js["displays"][0]
+    assert js["displays"][0]["stride"] == 1 and js["displays"][-1]["rows"] == js["displays"][-1]["cols"] == 1
