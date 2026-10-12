@@ -5873,32 +5873,51 @@
     return out + '"';
   }
 
+  /* The GeoJSON's description, which terrainCaptions gives again as
+   * geojson_description: terrain_analysis._geojson_description. What the
+   * lines are and are not, and, when the source does not say it writes the
+   * sea as 0 m and the analysed window holds sea, why the lines ending
+   * there are flagged. */
+  function geojsonDescription(label, area, radius, where, margin, depth, surface, seaUnstated, level) {
+    var text = phrase('terrain.geojson_description', { label: label, area: area, radius: radius, where: where,
+      margin: margin, depth: depth, surface: surface });
+    if (seaUnstated) text += ' ' + phrase('terrain.geojson_sea_unstated', { level: level });
+    return text;
+  }
+
   /**
    * The drainage lines shown, as GeoJSON text written by hand, without
    * whitespace and in a fixed key order, so that both engines write the
    * same bytes: terrain_analysis.drainage_geojson. The description says
-   * what the lines are and are not, in the catalogue's words; the notice
-   * is written only for a set holding a Copernicus file, as its licence
-   * asks. Coordinates have six decimals (about 0.1 m) and areas six in
-   * km^2, lengths one in metres, all rounded as Python rounds (pyFixed);
-   * the threshold, radius and margin are written as Python's "%g"
-   * (formatG). Parts are written in the order given, which drainageLinks
-   * makes (id, part).
+   * what the lines are and are not, in the catalogue's words, and why
+   * lines ending in sea are flagged when the source may write a fill
+   * value as sea; the notice is written only for a set holding a
+   * Copernicus file, as its licence asks. Each feature's link number is
+   * the property "link", never "id": a line cut into parts repeats it,
+   * and GDAL takes an integer "id" property for the feature id, which it
+   * then renumbers on conversion. Coordinates have six decimals (about 0.1
+   * m) and areas six in km^2, lengths one in metres, all rounded as Python
+   * rounds (pyFixed); the threshold, radius and margin are written as
+   * Python's "%g" (formatG). Parts are written in the order given, which
+   * drainageLinks makes (id, part).
    * @param {TerrainCore} core the core the parts were traced from (for its cell centres)
    * @param {DrainagePart[]} parts what drainageLinks gives
-   * @param {{label: string, credit: string, notice?: string|null, surface: string, area: number,
-   *   radius: number, margin: number, centre: {lon: number, lat: number, label: string}}} meta what the
-   *   files are (label), the credit their licence asks for ('' for none), the Copernicus notice or null,
-   *   what the heights are heights of, the drainage threshold (km^2), the radius and margin (km) and the
-   *   window's centre
+   * @param {{label: string, figure_credit: string, notice?: string|null, surface: string, area: number,
+   *   radius: number, margin: number, centre: {lon: number, lat: number, label: string},
+   *   fill_note_m: number, sea_clean: boolean, sea_cells: number, sea_level_m: number}} meta Python's
+   *   meta keys: what the files are (label); the credit line a figure of the set carries, as the read's
+   *   figureCredit gives it; the Copernicus notice or null; what the heights are heights of; the
+   *   drainage threshold (km^2); the radius and margin (km); the window's centre; the fill depth
+   *   filled_cells counts from (m); and the source's sea rule, the sea cells of the analysed window
+   *   (assumed sea included) and the sea level (m)
    * @returns {string}
    */
   function drainageGeoJson(core, parts, meta) {
     var centre = meta.centre;
-    var description = phrase('terrain.geojson_description', { label: meta.label, area: meta.area,
-      radius: meta.radius, where: centre.label, margin: meta.margin, surface: meta.surface });
+    var description = geojsonDescription(meta.label, meta.area, meta.radius, centre.label, meta.margin,
+      meta.fill_note_m, meta.surface, !meta.sea_clean && Number(meta.sea_cells) > 0, meta.sea_level_m);
     var out = ['{"type":"FeatureCollection","description":', jsonAscii(description),
-      ',"attribution":', jsonAscii(String(meta.credit))];
+      ',"attribution":', jsonAscii(String(meta.figure_credit))];
     if (meta.notice) out.push(',"notice":', jsonAscii(String(meta.notice)));
     out.push(',"drainage_area_km2":' + formatG(Number(meta.area)), ',"radius_km":' + formatG(Number(meta.radius)),
       ',"margin_km":' + formatG(Number(meta.margin)),
@@ -5909,7 +5928,7 @@
         return '[' + pyFixed(lons[v[1]], 6) + ',' + pyFixed(lats[v[0]], 6) + ']';
       }).join(',');
       out.push((t ? ',' : '') +
-        '{"type":"Feature","properties":{"id":' + String(part.id) + ',"part":' + String(part.part) +
+        '{"type":"Feature","properties":{"link":' + String(part.id) + ',"part":' + String(part.part) +
         ',"strahler":' + String(part.strahler) + ',"outlet":' + jsonAscii(part.outlet) +
         ',"area_km2":' + pyFixed(part.area_units / 1e8, 6) + ',"length_m":' + pyFixed(part.length_m, 1) +
         ',"edge_contaminated":' + (part.edge_contaminated ? 'true' : 'false') +
@@ -6177,14 +6196,50 @@
     return phrase('terrain.surface_unknown');
   }
 
+  /* The radius and the margin of an analysed window, in km, measured
+   * from the window itself for an analysis that came without a read's
+   * plan: terrain_analysis._measured_window. With [r0, r1, c0, c1] =
+   * core.shown and mid = floor((r0 + r1) / 2), the middle row shown, in
+   * float64 and in this order (Python works out the same expressions, so
+   * the two print the same figures):
+   *   marginM = min(r0 * dy[r0], (rows - r1) * dy[r1 - 1], c0 * dx[mid], (cols - c1) * dx[mid])
+   *   radiusM = min((r1 - r0) * dy[mid], (c1 - c0) * dx[mid]) / 2.0
+   *   km = floor(m / 100.0) / 10.0
+   * The margin is the narrowest of the four sides analysed beyond the
+   * square shown, rows measured by the cell height of the shown row beside
+   * them and columns by the cell width of the middle shown row; the radius
+   * is half the shown square's shorter side. Both are floored to 0.1 km,
+   * so that they never overstate what was analysed, and a margin under
+   * 100 m is stated as none. */
+  function measuredWindow(core) {
+    var shown = core.shown, r0 = shown[0], r1 = shown[1], c0 = shown[2], c1 = shown[3];
+    var mid = Math.floor((r0 + r1) / 2), width = core.dx[mid], height = core.dy[mid];
+    var marginM = Math.min(r0 * core.dy[r0], (core.rows - r1) * core.dy[r1 - 1], c0 * width,
+      (core.cols - c1) * width);
+    var radiusM = Math.min((r1 - r0) * height, (c1 - c0) * width) / 2.0;
+    return { radius: Math.floor(radiusM / 100.0) / 10.0, margin: Math.floor(marginM / 100.0) / 10.0 };
+  }
+
+  /* A caption giving `count` cells as a share of the `cells` of the square
+   * shown, by the read report's rule in whole numbers alone: under half a
+   * per cent, the `little` sentence with the count instead of "0%"; else
+   * the `share` sentence, at most 99% while any cell is not counted, never
+   * "100%". terrain_analysis._share_sentence. */
+  function shareSentence(share, little, count, cells, level) {
+    if (200 * count < cells) return phrase(little, { count: count, level: level });
+    return phrase(share, { pct: elevationPercent(count, cells), level: level });
+  }
+
   /**
    * Every sentence the terrain figures and the drainage lines carry, in
    * the catalogue's words, so that both apps print the same:
    * terrain_analysis.terrain_captions. `read` is the read the window came
    * from, or null: its surface note says what the heights are heights of
    * (else the grid's source decides), and its plan the radius and margin
-   * of the window (else the settings give them). `where` names the place,
-   * as the read report does.
+   * of the window; without a plan both are measured from the analysed
+   * window and the square shown (measuredWindow), so that a grid analysed
+   * whole says it had no margin. `where` names the place, as the read
+   * report does.
    *
    * The keys, in Python's order: title_relief, title_wetness,
    * title_curvature and title_directions; panel_0 onwards, the title of
@@ -6192,7 +6247,9 @@
    * directions, each figure's captions as one paragraph in the order they
    * are printed under it (the sea, a zero-filled gap, sea in a file of
    * unstated source and an unresolved flat are mentioned only where the
-   * square shows one); figure_caveat, the line drawn inside every figure;
+   * square shows one, but sea of unstated source for the wetness index
+   * and the description wherever the analysed window holds some);
+   * figure_caveat, the line drawn inside every figure;
    * geojson_description; and the analysis's stage labels, stage_classes to
    * stage_curvature.
    * @param {TerrainAnalysis} analysis what analyseTerrain gives
@@ -6204,26 +6261,29 @@
   function terrainCaptions(analysis, read, where) {
     var cfg = analysis.settings, summary = analysis.summary, grid = analysis.grid;
     var surface = read && read.surface ? read.surface : assemblySurfaceNote(grid.sourceId);
-    var radius = cfg.analysis_radius_km, margin = cfg.analysis_buffer_km;
-    if (read && read.plan) {
-      radius = read.plan.radiusKm;
-      margin = read.plan.marginKm;
-    }
+    var measured = read && read.plan ? { radius: read.plan.radiusKm, margin: read.plan.marginKm }
+      : measuredWindow(analysis.core);
+    var radius = measured.radius, margin = measured.margin;
     var level = cfg.sea_level_m;
     var candidates = phrase('terrain.caption_candidates');
+    var cells = summary.cells, sea = summary.sea + summary.assumed_sea;
+    /* the lines and the lightened cells may drain sea anywhere in the
+     * analysed window, the margin included, not only in the square shown */
+    var unstated = !grid.seaClean, cls = analysis.core.cls, windowSea = false;
+    for (var i = 0; i < cls.length && !windowSea; i++) windowSea = cls[i] === ROUTE_SEA;
+    var seaUnstated = unstated && windowSea;
 
     var relief = [
       phrase('terrain.caption_relief', { interval: summary.contour_interval, area: cfg.drainage_area_km2 }),
       phrase('terrain.caption_fill', { lines_pct: summary.flat_routed_lines_pct, pct: summary.raised_pct,
         depth: cfg.fill_note_m }),
-      phrase('terrain.caption_edge', { margin: margin }),
+      margin > 0 ? phrase('terrain.caption_edge', { margin: margin }) : phrase('terrain.caption_edge_none'),
     ];
-    if (summary.sea_pct > 0) relief.push(phrase('terrain.caption_sea', { pct: summary.sea_pct, level: level }));
-    if (!grid.seaClean && summary.sea + summary.assumed_sea > 0) {
-      relief.push(phrase('terrain.caption_sea_unstated', { level: level }));
-    }
+    if (sea > 0) relief.push(shareSentence('terrain.caption_sea', 'terrain.caption_sea_little', sea, cells, level));
+    if (unstated && sea > 0) relief.push(phrase('terrain.caption_sea_unstated', { level: level }));
     if (summary.zero_fill > 0) {
-      relief.push(phrase('terrain.caption_zero_fill', { pct: summary.zero_fill_pct, level: level }));
+      relief.push(shareSentence('terrain.caption_zero_fill', 'terrain.caption_zero_fill_little', summary.zero_fill,
+        cells, level));
     }
     if (summary.unresolved > 0) relief.push(phrase('terrain.caption_unresolved', { n: summary.unresolved }));
     relief.push(candidates);
@@ -6245,16 +6305,17 @@
     };
     azimuths.forEach(function (azimuth, t) { out['panel_' + t] = phrase('terrain.panel_azimuth', { az: azimuth }); });
     out.relief = relief.join(' ');
-    out.wetness = [phrase('terrain.caption_twi', { floor: cfg.flat_tan_slope, n: summary.floored }),
-      candidates, surface].join(' ');
+    var wetness = [phrase('terrain.caption_twi', { floor: cfg.flat_tan_slope, n: summary.floored })];
+    if (seaUnstated) wetness.push(phrase('terrain.caption_sea_unstated', { level: level }));
+    out.wetness = wetness.concat([candidates, surface]).join(' ');
     out.curvature = [phrase('terrain.caption_curvature', { spacing: spacing, floor: cfg.flat_tan_slope }),
       candidates, surface].join(' ');
     out.directions = phrase('terrain.caption_directions', {
       azimuths: andJoin(azimuths.map(function (azimuth) { return formatG(Number(azimuth)) + '°'; })),
       altitude: cfg.hillshade_altitude_deg });
     out.figure_caveat = phrase('terrain.figure_caveat', { surface: surface });
-    out.geojson_description = phrase('terrain.geojson_description', { label: grid.label,
-      area: cfg.drainage_area_km2, radius: radius, where: where, margin: margin, surface: surface });
+    out.geojson_description = geojsonDescription(grid.label, cfg.drainage_area_km2, radius, where, margin,
+      cfg.fill_note_m, surface, seaUnstated, level);
     out.stage_classes = phrase('terrain.stage_classes');
     out.stage_fill = phrase('terrain.stage_fill');
     out.stage_flow = phrase('terrain.stage_flow');

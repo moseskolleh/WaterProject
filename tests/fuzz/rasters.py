@@ -341,18 +341,25 @@ def terrain_case(draw) -> dict:
         read = {"surface": coin.choice(["", "Heights of the ground."]),
                 "plan": None if coin.random() < 0.3 else {"radiusKm": coin.choice([0.4, 3.0]),
                                                           "marginKm": coin.choice([0.0, 0.25])}}
-    meta = {"label": label, "credit": coin.choice(["", "© DLR e.V. 2014-2018"]),
+    meta = {"label": label,
+            "figure_credit": coin.choice(["Elevation: n08w012.tif, source not stated. Cells about 31 by 31 m.",
+                                          "Elevation: Copernicus GLO-30, © DLR e.V. 2014-2018."]),
             "notice": coin.choice([None, "", 'No liability "at all".']), "surface": "Heights of the ground.",
             "area": settings["drainage_area_km2"], "radius": coin.choice([10.0, 0.4]),
             "margin": coin.choice([5.0, 0.0, 0.25]),
             "centre": {"lon": lon0 + (cols // 2) * step, "lat": lat0 + (rows // 2) * step, "label": where}}
+    sea_clean = coin.random() < 0.5
+    source_id = coin.choice(["copernicus_glo30", "srtm", "hgt", "unidentified"])
+    # what the GeoJSON's description reads besides the window: the fill
+    # note and sea level it was analysed with, the sea rule, and a count of
+    # sea cells that says whether the window holds any
+    meta.update(fill_note_m=settings["fill_note_m"], sea_clean=sea_clean, sea_cells=coin.choice([0, 1, 250]),
+                sea_level_m=settings["sea_level_m"])
     return {"kind": "terrain",
             "grid": {"rows": rows, "cols": cols, "lon0": lon0, "lat0": lat0, "step": step, "assumed": assumed,
                      "cm": cm},
-            "options": {"rows": rows, "cols": cols, "settings": settings, "shown": shown,
-                        "sea_clean": coin.random() < 0.5,
-                        "source_id": coin.choice(["copernicus_glo30", "srtm", "hgt", "unidentified"]),
-                        "label": label, "where": where, "read": read, "meta": meta}}
+            "options": {"rows": rows, "cols": cols, "settings": settings, "shown": shown, "sea_clean": sea_clean,
+                        "source_id": source_id, "label": label, "where": where, "read": read, "meta": meta}}
 
 
 def _terrain_file(case: dict) -> tuple[bytes, str]:

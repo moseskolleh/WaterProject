@@ -3234,8 +3234,14 @@ await withPage(async (page, base, consoleErrors) => {
   // counts, and T1's captions and progress word for word. The degenerate
   // windows of T5 (a single row, which both refuse, 3 x 3, all flat, all
   // void, all sea, the infinities and the four signed-zero cases) are held
-  // by short digests of the same answers. T4, generated here from
-  // C.rangeStream(41, 0) as Python generates it from Stream(41, 0), is held
+  // by short digests of the same answers, and so are T7's, which reach the
+  // captions' rules: a share of sea under 1% and one short of 100%, a
+  // zero-filled gap of one cell in the square shown, a margin measured
+  // from the window, and sea of unstated source in the margin alone. Each
+  // GeoJSON is told the figure credit line, the fill note, the sea rule
+  // and the sea cells of its window, as an app tells it. T4, generated
+  // here from C.rangeStream(41, 0) as Python generates it from Stream(41,
+  // 0), is held
   // by digests, the first 20 links and parts, and the GeoJSON's SHA-256,
   // length and first 4,000 characters; T6, a plane whose one catchment
   // passes 2^32 units of area, by the area at its outlet and by its lines
@@ -3318,13 +3324,17 @@ await withPage(async (page, base, consoleErrors) => {
     };
     /* the GeoJSON, told what make_reference.py's _ta_geojson tells it */
     const geojsonOf = (kase, run) => {
-      const plan = kase.read ? kase.read.plan : null;
-      return C.drainageGeoJson(C.terrainCore(run.a), run.a.parts, {
-        label: kase.label, credit: kase.credit, notice: kase.notice, surface: TA.surface,
+      const plan = kase.read ? kase.read.plan : null, a = run.a;
+      let seaCells = 0;
+      for (const v of a.core.cls) seaCells += v === 2 ? 1 : 0;
+      return C.drainageGeoJson(C.terrainCore(a), a.parts, {
+        label: kase.label, figure_credit: kase.figureCredit, notice: kase.notice, surface: TA.surface,
         area: kase.settings.drainage_area_km2, radius: plan ? plan.radiusKm : 0.3,
         margin: plan ? plan.marginKm : 0.05,
         centre: { lon: run.lons[Math.floor(kase.cols / 2)], lat: run.lats[Math.floor(kase.rows / 2)],
           label: kase.where },
+        fill_note_m: a.settings.fill_note_m, sea_clean: kase.seaClean, sea_cells: seaCells,
+        sea_level_m: a.settings.sea_level_m,
       });
     };
     const captionsOf = (kase, a) => Object.entries(C.terrainCaptions(a, kase.read, kase.where));

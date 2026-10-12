@@ -1095,9 +1095,11 @@ def _meta(core: TerrainCore, **overrides) -> dict:
     """What drainage_geojson is told about a window, with some made-up
     values a test can override."""
     centre = WindowCentre(float(core.lons[core.cols // 2]), float(core.lats[core.rows // 2]), "Kakua", True)
-    meta = {"label": "elevation model test.tif, source not stated", "credit": "", "notice": None,
-            "surface": phrase("terrain.surface_unknown"), "area": SMALL_KM2, "radius": 1.0, "margin": 0.5,
-            "centre": centre}
+    meta = {"label": "elevation model test.tif, source not stated",
+            "figure_credit": "Elevation: elevation model test.tif, source not stated. Cells about 31 by 31 m.",
+            "notice": None, "surface": phrase("terrain.surface_unknown"), "area": SMALL_KM2, "radius": 1.0,
+            "margin": 0.5, "centre": centre, "fill_note_m": 1.0, "sea_clean": True,
+            "sea_cells": int(np.count_nonzero(core.cls == SEA)), "sea_level_m": 0.0}
     meta.update(overrides)
     return meta
 
@@ -1217,6 +1219,55 @@ def test_sea_in_a_file_of_unstated_source_marks_lines_as_uncertain():
     sentence = phrase("terrain.caption_sea_unstated", level=0.0)
     assert sentence in terrain_captions(unstated, None, "Bonthe")["relief"]
     assert sentence not in terrain_captions(clean, None, "Bonthe")["relief"]
+
+
+def test_the_wetness_index_and_the_geojson_say_why_sea_of_unstated_source_flags_lines():
+    """Prevents a download, or the wetness figure, that flags every line
+    ending in the sea of a file of unstated source without saying why: the
+    export's description and the wetness caption say that the sea may be a
+    fill value, as the relief caption does, and a source that writes the
+    sea as 0 m says nothing of the kind. Sea in the margin alone is enough,
+    since the flag runs down from it into the square shown; the relief
+    caption, which speaks of the sea the map shows, does not mention it
+    then."""
+    rows, cols = 20, 25
+    z = 2.0 + np.arange(rows)[:, None] * 0.5 + np.abs((np.arange(cols)[None, :] % 6) - 3) * 0.3
+    z = z + np.zeros((rows, cols))
+    z[:2, :] = -1.0                                       # the sea along the south edge
+    cfg = TerrainConfig(drainage_area_km2=SMALL_KM2)
+    level = cfg.sea_level_m
+    unstated_wetness = phrase("terrain.caption_sea_unstated", level=level)
+    unstated_export = phrase("terrain.geojson_sea_unstated", level=level)
+    # the sea in the square shown, then in the margin alone; the radius and
+    # margin the captions state, which the download is told, are half the
+    # square's 614 or 553 m height and the margin its south side alone has
+    for shown, radius in ((None, 0.3), ((2, rows, 0, cols), 0.2)):
+        clean = analyse_terrain(_elevation(z, sea_clean=True), cfg, shown=shown)
+        unstated = analyse_terrain(_elevation(z, sea_clean=False), cfg, shown=shown)
+        caps = terrain_captions(unstated, None, "Bonthe")
+        assert caps["wetness"] == " ".join([
+            phrase("terrain.caption_twi", floor=cfg.flat_tan_slope, n=unstated.summary["floored"]),
+            unstated_wetness, phrase("terrain.caption_candidates"), phrase("terrain.surface_unknown")])
+        assert caps["geojson_description"].endswith(f"{phrase('terrain.surface_unknown')} {unstated_export}")
+        assert (unstated_wetness in caps["relief"]) == (shown is None)
+        plain = terrain_captions(clean, None, "Bonthe")
+        assert unstated_wetness not in plain["wetness"] and unstated_export not in plain["geojson_description"]
+        # the download says the same as the captions, told the sea cells
+        # of the analysed window
+        for a, sea_clean in ((unstated, False), (clean, True)):
+            meta = _meta(a.core, label=a.grid.source, radius=radius, margin=0.0, sea_clean=sea_clean,
+                         centre=WindowCentre(-12.0, 8.5, "Bonthe", True))
+            assert meta["sea_cells"] == int(np.count_nonzero(a.core.cls == SEA)) > 0
+            doc = json.loads(drainage_geojson(a.core, a.parts, meta))
+            assert doc["description"] == terrain_captions(a, None, "Bonthe")["geojson_description"]
+            assert (unstated_export in doc["description"]) == (not sea_clean)
+    # no sea in the window at all: nothing to explain, whatever the source
+    dry = analyse_terrain(_elevation(z + 5.0, sea_clean=False), cfg)
+    caps = terrain_captions(dry, None, "Bonthe")
+    assert unstated_wetness not in caps["wetness"] and unstated_export not in caps["geojson_description"]
+    meta = _meta(dry.core, sea_clean=False)
+    assert meta["sea_cells"] == 0 and unstated_export not in json.loads(
+        drainage_geojson(dry.core, dry.parts, meta))["description"]
 
 
 def _hand_network() -> TerrainCore:
@@ -1349,8 +1400,10 @@ def test_link_vertices_are_kept_where_the_line_turns_or_changes_how_it_was_route
 def test_links_are_cut_where_they_leave_the_shown_square():
     """Prevents lines drawn into the margin, which is analysed only so that
     the edge does not bend the lines, a piece of one cell drawn as a dot, a
-    line that leaves and re-enters drawn as one piece across the gap, and a
-    piece ending at the edge of the map claiming the line's own outlet."""
+    line that leaves and re-enters drawn as one piece across the gap, a
+    piece ending at the edge of the map claiming the line's own outlet, and
+    a downloaded piece whose line number a GIS conversion replaces because
+    another piece of the line repeats it."""
     shown = (2, 9, 2, 9)
     path = [(5, 0), (5, 1), (5, 2), (5, 3), (5, 4), (6, 4), (7, 4), (8, 4), (9, 4), (9, 5), (8, 5), (7, 5),
             (7, 6), (7, 7), (7, 8), (7, 9), (7, 10)]
@@ -1372,6 +1425,14 @@ def test_links_are_cut_where_they_leave_the_shown_square():
     assert crossing.outlet == "edge" and crossing.vertices[-1] == (7, 10)
     # A square holding the line's end gives the piece the line's outlet;
     # over the whole grid each line is one piece, the same as the line.
+    # In the download both pieces carry the line's number as "link", and
+    # nothing is called "id": GDAL takes an integer "id" property for the
+    # feature id, renumbers the second piece on conversion to keep the ids
+    # unique, and a GeoPackage made from it then gives that piece the
+    # number of no line at all.
+    features = json.loads(drainage_geojson(core, parts, _meta(core)))["features"]
+    assert [feature["properties"]["link"] for feature in features] == [crossing.id, crossing.id]
+    assert all("id" not in feature and "id" not in feature["properties"] for feature in features)
     wider = dataclasses.replace(core, shown=(2, 9, 2, 11))
     assert drainage_links(wider, ONE_CELL_KM2)[1][-1].outlet == "edge"
     everything = dataclasses.replace(core, shown=(0, 12, 0, 11))
@@ -1632,14 +1693,14 @@ def test_the_drainage_geojson_escapes_names_and_rounds_as_python_does():
     grid = ElevationGrid(-4e-7 + np.arange(cols) / 3600, 8.4999995 + np.arange(rows) / 3600, z, sea_clean=True)
     a = analyse_terrain(grid, TerrainConfig(drainage_area_km2=SMALL_KM2), shown=(5, 36, 4, 33))
     name = 'Bo "east" \\ tile\n\t\x01 Mɔyamba – Sɛwa \U0001f30a \x7f'
-    meta = _meta(a.core, label=name, credit="© \"x\"", centre=WindowCentre(-4e-7, 8.4999995, name, False))
+    meta = _meta(a.core, label=name, figure_credit="© \"x\"", centre=WindowCentre(-4e-7, 8.4999995, name, False))
     text = drainage_geojson(a.core, a.parts, meta)
     assert text.isascii() and not re.search(r"\s", re.sub(r'"(?:[^"\\]|\\.)*"', "", text))
     for escaped in ('\\"east\\"', "\\\\ tile", "\\n", "\\t", "\\u0001", "M\\u0254yamba", "\\u2013",
                     "\\ud83c\\udf0a", "\\u007f", "\\u00a9", "km\\u00b2"):
         assert escaped in text, escaped
     description = phrase("terrain.geojson_description", label=name, area=SMALL_KM2, radius=1.0, where=name,
-                         margin=0.5, surface=meta["surface"])
+                         margin=0.5, depth=1.0, surface=meta["surface"])
     assert json.dumps(description) in text
     doc = _parsed(text)
     assert doc["description"] == description and doc["attribution"] == "© \"x\""
@@ -1650,7 +1711,7 @@ def test_the_drainage_geojson_escapes_names_and_rounds_as_python_does():
         props = feature["properties"]
         assert props["area_km2"] == f"{part.area_units / 1e8:.6f}"
         assert props["length_m"] == f"{part.length_m:.1f}"
-        assert (props["id"], props["part"], props["strahler"], props["downstream"]) == (
+        assert (props["link"], props["part"], props["strahler"], props["downstream"]) == (
             str(part.id), str(part.part), str(part.strahler), str(part.downstream))
         assert feature["geometry"]["coordinates"] == [
             [f"{grid.lons[c]:.6f}", f"{grid.lats[r]:.6f}"] for r, c in part.vertices]
@@ -1660,23 +1721,27 @@ def test_the_drainage_geojson_escapes_names_and_rounds_as_python_does():
 def test_the_drainage_geojson_carries_its_description_threshold_and_window():
     """Prevents a download of drainage lines that, once separated from the
     app, no longer says what they are: candidates worked out from which
-    model at which threshold, over which window and margin, credited as the
-    licence asks, with the Copernicus liability sentence when (and only
+    model at which threshold, over which window and margin, credited with
+    the figure credit line (the model, the credit its licence asks for and
+    the cell size), with the Copernicus liability sentence when (and only
     when) the set holds a Copernicus file."""
     read = read_elevation([(name, DEM / name) for name in COPERNICUS_PAIR], None, 0.4, margin_km=0.2)
     cfg = TerrainConfig(drainage_area_km2=0.01)
     a = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown)
-    meta = {"label": read.grid.source, "credit": read.grid.credit, "notice": read.notice, "surface": read.surface,
-            "area": 0.01, "radius": 0.4, "margin": 0.2, "centre": read.centre}
+    meta = _read_meta(read, a, 0.01)
     doc = json.loads(drainage_geojson(a.core, a.parts, meta))
     assert list(doc) == ["type", "description", "attribution", "notice", "drainage_area_km2", "radius_km",
                          "margin_km", "centre", "features"]
     assert doc["type"] == "FeatureCollection"
     assert doc["description"] == phrase("terrain.geojson_description", label=read.grid.source, area=0.01,
-                                        radius=0.4, where=read.centre.label, margin=0.2, surface=read.surface)
+                                        radius=0.4, where=read.centre.label, margin=0.2, depth=1.0,
+                                        surface=read.surface)
     assert doc["description"] == terrain_captions(a, read, read.centre.label)["geojson_description"]
     assert "Copernicus GLO-30 tiles N08 W012 and N08 W011" in doc["description"]
-    assert doc["attribution"] == phrase("terrain.credit_copernicus_modified")
+    assert doc["attribution"] == read.figure_credit == phrase(
+        "terrain.figure_credit", label=read.grid.source, credit=phrase("terrain.credit_copernicus_modified"),
+        dx=read.plan.dx, dy=read.plan.dy)
+    assert phrase("terrain.credit_copernicus_modified") in doc["attribution"]
     assert doc["notice"] == phrase("terrain.copernicus_liability")
     assert (doc["drainage_area_km2"], doc["radius_km"], doc["margin_km"]) == (0.01, 0.4, 0.2)
     assert doc["centre"] == [float(f"{read.centre.lon:.6f}"), float(f"{read.centre.lat:.6f}")]
@@ -1684,17 +1749,69 @@ def test_the_drainage_geojson_carries_its_description_threshold_and_window():
     for feature, part in zip(doc["features"], a.parts, strict=True):
         assert list(feature) == ["type", "properties", "geometry"]
         assert feature["type"] == "Feature" and feature["geometry"]["type"] == "LineString"
-        assert list(feature["properties"]) == ["id", "part", "strahler", "outlet", "area_km2", "length_m",
+        assert list(feature["properties"]) == ["link", "part", "strahler", "outlet", "area_km2", "length_m",
                                                "edge_contaminated", "filled_cells", "flat_routed_cells",
                                                "downstream"]
         props = feature["properties"]
-        assert (props["id"], props["part"], props["outlet"], props["edge_contaminated"], props["filled_cells"],
+        assert (props["link"], props["part"], props["outlet"], props["edge_contaminated"], props["filled_cells"],
                 props["flat_routed_cells"]) == (part.id, part.part, part.outlet, part.edge_contaminated,
                                                 part.filled_cells, part.flat_routed_cells)
+        # filled_cells counts some of the cells flat_routed_cells counts,
+        # as the description says, never cells of their own
+        assert props["filled_cells"] <= props["flat_routed_cells"]
     # Without a Copernicus file there is no notice member at all.
-    plain = json.loads(drainage_geojson(a.core, a.parts, dict(meta, notice=None, credit="")))
-    assert "notice" not in plain and plain["attribution"] == ""
+    plain = json.loads(drainage_geojson(a.core, a.parts, dict(meta, notice=None)))
+    assert "notice" not in plain and plain["attribution"] == read.figure_credit
     assert json.loads(drainage_geojson(a.core, (), meta))["features"] == []
+
+
+def _read_meta(read, a, area: float) -> dict:
+    """What drainage_geojson is told about a window read with
+    read_elevation, as an app tells it: the read's label, figure credit,
+    notice, surface note, plan and centre, and the analysis's fill note,
+    sea rule, sea level and sea cells."""
+    return {"label": read.grid.source, "figure_credit": read.figure_credit, "notice": read.notice,
+            "surface": read.surface, "area": area, "radius": read.plan.radius_km, "margin": read.plan.margin_km,
+            "centre": read.centre, "fill_note_m": a.settings.fill_note_m, "sea_clean": read.grid.sea_clean,
+            "sea_cells": int(np.count_nonzero(a.core.cls == SEA)), "sea_level_m": a.settings.sea_level_m}
+
+
+def test_the_geojson_of_an_unidentified_file_is_credited_with_its_figure_credit_line():
+    """Prevents the most common download, a tile whose name does not say
+    what it is, from going out with an empty attribution: no licence
+    credit is known for it, but the figure credit line still names the
+    model as the read report does and gives its cell size, and the
+    download carries that line, with no Copernicus notice."""
+    name = COPERNICUS_PAIR[0]
+    read = read_elevation([("tile.tif", (DEM / name).read_bytes())], None, 0.4, margin_km=0.2)
+    assert read.grid.credit == "" and read.notice is None
+    a = analyse_terrain(read.grid, TerrainConfig(drainage_area_km2=0.01), assumed_sea=read.assumed_sea,
+                        shown=read.shown)
+    doc = json.loads(drainage_geojson(a.core, a.parts, _read_meta(read, a, 0.01)))
+    bare = phrase("terrain.figure_credit_bare", label=read.grid.source, dx=read.plan.dx, dy=read.plan.dy)
+    assert doc["attribution"] == read.figure_credit == bare
+    assert bare.startswith("Elevation: elevation model tile.tif, source not stated. Cells about ")
+    assert "notice" not in doc and doc["description"].startswith(
+        "Drainage lines worked out from elevation model tile.tif, source not stated ")
+
+
+def test_the_geojson_description_gives_the_radius_as_a_distance_each_way():
+    """Prevents the one sentence a download carries from understating the
+    window: the radius is the half-side of the square shown, so a 20 km
+    square read at radius 10 km is "10 km each way" of its centre, never
+    "the 10 km square", in the download and in the captions alike."""
+    read = read_elevation([(name, DEM / name) for name in COPERNICUS_PAIR], None, 0.6, margin_km=0.2)
+    a = analyse_terrain(read.grid, TerrainConfig(drainage_area_km2=0.01), assumed_sea=read.assumed_sea,
+                        shown=read.shown)
+    r0, r1, c0, c1 = read.shown
+    # the square shown is twice the radius a side
+    assert abs((r1 - r0) * read.plan.dy - 1200.0) < 2 * read.plan.dy
+    assert abs((c1 - c0) * read.plan.dx - 1200.0) < 2 * read.plan.dx
+    doc = json.loads(drainage_geojson(a.core, a.parts, _read_meta(read, a, 0.01)))
+    description = terrain_captions(a, read, read.centre.label)["geojson_description"]
+    assert doc["description"] == description
+    assert f"within 0.6 km each way of {read.centre.label}," in description
+    assert "km square" not in description and "1.2 km" not in description
 
 
 def test_thresholds_are_taken_in_float64_before_storage_narrows():
@@ -1799,7 +1916,8 @@ def test_every_caption_names_its_figure_and_the_caveat_is_the_catalogued_one():
                                         altitude=45.0)
     assert caps["figure_caveat"] == phrase("terrain.figure_caveat", surface=read.surface)
     assert caps["geojson_description"] == phrase("terrain.geojson_description", label=read.grid.source, area=0.01,
-                                                 radius=0.4, where="Kakua", margin=0.2, surface=read.surface)
+                                                 radius=0.4, where="Kakua", margin=0.2, depth=1.0,
+                                                 surface=read.surface)
     stages = ("classes", "fill", "flow", "flats", "accumulate", "drainage", "shading", "curvature")
     assert [caps[f"stage_{name}"] for name in stages] == [phrase(f"terrain.stage_{name}") for name in stages]
     heard = []
@@ -1809,7 +1927,8 @@ def test_every_caption_names_its_figure_and_the_caveat_is_the_catalogued_one():
     assert [fraction for fraction, _ in heard] == sorted(fraction for fraction, _ in heard)
     assert heard[0][0] == 0.0 and heard[-1][0] == 1.0
 
-    # Sea, a zero-filled gap and a file of unstated source, read whole.
+    # Sea, a zero-filled gap and a file of unstated source, read whole, so
+    # analysed with no margin at all.
     rows, cols = 24, 30
     z = 3.0 + np.arange(rows)[:, None] * 0.4 + np.abs((np.arange(cols)[None, :] % 6) - 3) * 0.2
     z = z + np.zeros((rows, cols))
@@ -1820,19 +1939,28 @@ def test_every_caption_names_its_figure_and_the_caveat_is_the_catalogued_one():
     b = analyse_terrain(_elevation(z, sea_clean=False), gappy)
     caps = terrain_captions(b, None, "Kakua")
     s = b.summary
-    assert s["sea"] > 0 and s["zero_fill"] == rows * 6 and s["unresolved"] == 0
+    assert s["sea"] == 19 and s["zero_fill"] == rows * 6 and s["unresolved"] == 0
     assert s["land"] + s["sea"] + s["assumed_sea"] + s["uncovered"] + s["zero_fill"] == s["cells"] == z.size
     assert s["zero_fill_pct"] == (100.0 * rows * 6) / z.size and s["sea_pct"] == (100.0 * s["sea"]) / z.size
     surface = phrase("terrain.surface_unknown")
+    # 19 of 720 cells is 2.6%, said as 3%; 144 of them 20%
     relief = [phrase("terrain.caption_relief", interval=s["contour_interval"], area=SMALL_KM2),
               phrase("terrain.caption_fill", lines_pct=s["flat_routed_lines_pct"], pct=s["raised_pct"], depth=1.0),
-              phrase("terrain.caption_edge", margin=gappy.analysis_buffer_km),
-              phrase("terrain.caption_sea", pct=s["sea_pct"], level=0.0),
+              phrase("terrain.caption_edge_none"),
+              phrase("terrain.caption_sea", pct=3, level=0.0),
               phrase("terrain.caption_sea_unstated", level=0.0),
-              phrase("terrain.caption_zero_fill", pct=s["zero_fill_pct"], level=0.0)]
+              phrase("terrain.caption_zero_fill", pct=20, level=0.0)]
     assert caps["relief"] == " ".join([*relief, candidates])
+    assert "3% of the square shown is taken as sea" in caps["relief"]
+    assert "20% of the square shown is at or below 0 m" in caps["relief"]
     assert caps["figure_caveat"] == phrase("terrain.figure_caveat", surface=surface)
-    assert caps["wetness"].endswith(surface) and caps["curvature"].endswith(surface)
+    assert caps["wetness"] == " ".join([phrase("terrain.caption_twi", floor=0.001, n=s["floored"]),
+                                        phrase("terrain.caption_sea_unstated", level=0.0), candidates, surface])
+    assert caps["curvature"].endswith(surface)
+    assert caps["geojson_description"] == " ".join([
+        phrase("terrain.geojson_description", label=b.grid.source, area=SMALL_KM2, radius=0.3, where="Kakua",
+               margin=0.0, depth=1.0, surface=surface),
+        phrase("terrain.geojson_sea_unstated", level=0.0)])
     unresolved = dataclasses.replace(b, summary={**s, "unresolved": 3})
     assert terrain_captions(unresolved, None, "Kakua")["relief"] == " ".join(
         [*relief, phrase("terrain.caption_unresolved", n=3), candidates])
@@ -1840,6 +1968,104 @@ def test_every_caption_names_its_figure_and_the_caveat_is_the_catalogued_one():
     caps = terrain_captions(clean, None, "Kakua")
     assert phrase("terrain.caption_sea_unstated", level=0.0) not in caps["relief"]
     assert caps["figure_caveat"] == phrase("terrain.figure_caveat", surface=phrase("terrain.surface_srtm"))
+
+
+def _stated(caps: dict) -> tuple[str, str]:
+    """The radius and margin a description states, as written."""
+    found = re.search(r"within (\S+) km each way of .*, analysed with a (\S+) km margin\.",
+                      caps["geojson_description"])
+    assert found, caps["geojson_description"]
+    return found.group(1), found.group(2)
+
+
+def test_a_grid_analysed_without_a_read_states_the_margin_it_had():
+    """Prevents the captions of a grid that came without a read's plan (an
+    .asc or .xyz file, or any grid analysed whole) claiming the margin and
+    radius of the settings, 5 km and 10 km, which were never analysed, and
+    telling the reader that the edge did not bend the lines when nothing
+    lay beyond the square shown. Both are measured from the window: the
+    narrowest side analysed beyond the square shown, and half the square's
+    shorter side, each floored to 0.1 km so as never to overstate; with no
+    margin the edge caption says the square was analysed alone. A read's
+    plan still states its own figures, and a plan with no margin is said
+    to have none too."""
+    n = 200                                     # about 6.1 km a side at 1 arc-second and 8.5 N
+    z = 5.0 + 0.05 * np.arange(n)[None, :] + 0.02 * np.arange(n)[:, None] + np.zeros((n, n))
+    cfg = TerrainConfig()
+    assert (cfg.analysis_radius_km, cfg.analysis_buffer_km) == (10.0, 5.0)
+    alone = phrase("terrain.caption_edge_none")
+    whole = terrain_captions(analyse_terrain(_elevation(z), cfg), None, "here")
+    assert alone in whole["relief"] and phrase("terrain.caption_edge", margin=5.0) not in whole["relief"]
+    assert _stated(whole) == ("3", "0")         # 6,116 m by 6,144 m, half the shorter side 3,058 m
+    assert not re.search(r"(?<![\d.])(5|10) km", whole["relief"] + whole["geojson_description"])
+    # Cells about 30.58 m wide and 30.72 m high: ten of them on every side
+    # are 305.8 m, said as 0.3 km, and the 180-cell square's shorter side
+    # 5,504.8 m, half of it 2.7 km. A margin of four columns, 122.3 m, is
+    # 0.1 km, and a radius of 1,996.9 m is 1.9 km, never rounded up to 2.
+    for shown, radius, margin in (((10, 190, 10, 190), "2.7", "0.3"), ((30, 160, 4, 170), "1.9", "0.1")):
+        caps = terrain_captions(analyse_terrain(_elevation(z), cfg, shown=shown), None, "here")
+        assert _stated(caps) == (radius, margin), shown
+        assert phrase("terrain.caption_edge", margin=float(margin)) in caps["relief"] and alone not in caps["relief"]
+    # A margin under 100 m is said to be none.
+    caps = terrain_captions(analyse_terrain(_elevation(z), cfg, shown=(3, 197, 3, 197)), None, "here")
+    assert _stated(caps)[1] == "0" and alone in caps["relief"]
+    # A read without a plan is measured the same way; a plan states its own
+    # figures, and a plan with no margin says so.
+    a = analyse_terrain(_elevation(z), cfg, shown=(10, 190, 10, 190))
+    surface = phrase("terrain.surface_srtm")
+    assert _stated(terrain_captions(a, SimpleNamespace(surface=surface, plan=None), "here")) == ("2.7", "0.3")
+    planned = SimpleNamespace(surface=surface, plan=SimpleNamespace(radius_km=4.0, margin_km=1.5))
+    caps = terrain_captions(a, planned, "here")
+    assert _stated(caps) == ("4", "1.5") and phrase("terrain.caption_edge", margin=1.5) in caps["relief"]
+    read = read_elevation([(name, DEM / name) for name in COPERNICUS_PAIR], None, 0.4, margin_km=0.0)
+    assert read.plan.margin_km == 0.0 and read.shown == (0, read.grid.z.shape[0], 0, read.grid.z.shape[1])
+    b = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown)
+    caps = terrain_captions(b, read, "Kakua")
+    assert _stated(caps) == ("0.4", "0") and alone in caps["relief"]
+    assert phrase("terrain.caption_edge", margin=0.0) not in caps["relief"]
+
+
+def test_shares_of_sea_and_zero_fill_are_whole_per_cents_never_0_or_a_false_100():
+    """Prevents a caption printed only because sea or a zero-filled gap was
+    found from saying "0%" of the square is sea or gap, and an island
+    shown with its drainage from saying "100%" of the square is sea: the
+    share is worked out in whole numbers by the read report's rule, a
+    share under half a per cent is said as "less than 1%" with the number
+    of cells, and one short of the whole is at most 99%. The whole square
+    is still 100%."""
+    rng = np.random.default_rng(41)
+    n = 200
+    c, r = np.arange(n)[None, :], np.arange(n)[:, None]
+    bay = 5.0 + 0.05 * c + np.round(rng.uniform(0.0, 0.4, (n, n)), 2)
+    bay[c**2 + (r - 100) ** 2 <= 36] = 0.0     # a bay of 63 cells on the west edge: 0.16%
+    a = analyse_terrain(_elevation(bay), precision="float64")
+    assert (a.summary["sea"], a.summary["cells"]) == (63, 40000)
+    relief = terrain_captions(a, None, "here")["relief"]
+    assert phrase("terrain.caption_sea_little", count=63, level=0.0) in relief
+    assert "Less than 1% of the square shown (63 cells) is taken as sea" in relief
+    assert "0% of the square shown" not in relief
+
+    island = np.zeros((40, 40))
+    island[18:20, 18:22] = 3.0                  # 8 cells of land in 1,600: 99.5% sea
+    a = analyse_terrain(_elevation(island), precision="float64")
+    assert (a.summary["sea"], a.summary["land"]) == (1592, 8)
+    relief = terrain_captions(a, None, "here")["relief"]
+    assert phrase("terrain.caption_sea", pct=99, level=0.0) in relief and "100% of the square shown" not in relief
+    everything = analyse_terrain(_elevation(np.zeros((40, 40))), precision="float64")
+    assert everything.summary["sea"] == everything.summary["cells"]
+    assert phrase("terrain.caption_sea", pct=100, level=0.0) in terrain_captions(everything, None, "here")["relief"]
+
+    # A zero-filled block in the margin that reaches one row into the
+    # square shown: 30 cells of 12,000.
+    k = 120
+    corner = 5.0 + 0.05 * np.arange(k)[None, :] + 0.03 * np.arange(k)[:, None] + np.zeros((k, k))
+    corner[:21, :30] = 0.0
+    a = analyse_terrain(_elevation(corner), TerrainConfig(sea_straight_edge_cells=12), shown=(20, k, 0, k),
+                        precision="float64")
+    assert (a.summary["zero_fill"], a.summary["sea"], a.summary["cells"]) == (30, 0, 12000)
+    relief = terrain_captions(a, None, "here")["relief"]
+    assert phrase("terrain.caption_zero_fill_little", count=30, level=0.0) in relief
+    assert "0% of the square shown" not in relief
 
 
 def test_the_analysis_is_a_function_of_the_window_alone():

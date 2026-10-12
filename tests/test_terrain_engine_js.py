@@ -5003,6 +5003,10 @@ def assembly(tmp_path):
 #: surrogate pair in the browser) and a lone surrogate.
 _AX_AWKWARD = 'Bo "east" \\ tile\n\t\x01\x1f Mɔyamba – Sɛwa \U0001f30a \x7f \udc80 © ²'
 
+#: The figure credit line of a file of unidentified source, as a read
+#: words it: what the GeoJSON's attribution carries.
+_AX_CREDIT = "Elevation: elevation model valley.tif, source not stated. Cells about 31 by 31 m."
+
 
 def _ax_options(rng: random.Random, case: dict) -> dict:
     """The settings, square shown, read and GeoJSON details one window is
@@ -5046,13 +5050,17 @@ def _ax_options(rng: random.Random, case: dict) -> dict:
     if rng.random() < 0.5:
         plan = None if rng.random() < 0.3 else {"radiusKm": rng.choice([0.4, 3.0]), "marginKm": rng.choice([0.0, 0.2])}
         read = {"surface": rng.choice(["", "Heights of the ground, as surveyed."]), "plan": plan}
-    meta = {"label": name, "credit": rng.choice(["", "NASA/USGS, public domain", _AX_AWKWARD]),
+    meta = {"label": name,
+            "figure_credit": rng.choice(["", "Elevation: SRTM, NASA/USGS, public domain. Cells about 31 by 31 m.",
+                                         _AX_AWKWARD]),
             "notice": rng.choice([None, "", "No liability \"at all\"."]),
             "surface": rng.choice(["Heights include the canopy.", _AX_AWKWARD]),
             "area": settings["drainage_area_km2"], "radius": rng.choice([10.0, 0.4, 1e-7, 125000.0]),
             "margin": rng.choice([5.0, 0.0, 0.25]),
             "centre": {"lon": rng.choice([-12.000000499, -4e-7, case["lons"][cols // 2]]),
-                       "lat": rng.choice([8.4999995, case["lats"][rows // 2]]), "label": where}}
+                       "lat": rng.choice([8.4999995, case["lats"][rows // 2]]), "label": where},
+            "fill_note_m": settings["fill_note_m"], "sea_clean": case["sea_clean"],
+            "sea_cells": rng.choice([0, 1, 250]), "sea_level_m": case["sea_level"]}
     return {"settings": settings, "shown": shown, "shown_as": rng.choice(["argument", "grid"]),
             "precision": "float32" if rng.random() < 0.2 else "float64", "label": name, "where": where,
             "source_id": rng.choice(["copernicus_glo30", "srtm", "hgt", "unidentified"]), "read": read, "meta": meta}
@@ -5073,9 +5081,10 @@ def _ax_meander(rng: random.Random) -> tuple[dict, dict]:
             "lats": [8.5 + j * step for j in range(rows)], "assumed": None, "sea_clean": rng.random() < 0.5}
     shown = rng.choice([[0, mid + 1, 0, cols], [mid, rows, 0, cols], [mid, rows, 3, cols - 2]])
     area = rng.choice([0.1, 0.2])
-    meta = {"label": "valley.tif", "credit": "", "notice": None, "surface": "Heights.", "area": area,
-            "radius": 1.0, "margin": 0.5, "centre": {"lon": case["lons"][cols // 2], "lat": case["lats"][mid],
-                                                     "label": _AX_AWKWARD}}
+    meta = {"label": "valley.tif", "figure_credit": _AX_CREDIT, "notice": None, "surface": "Heights.",
+            "area": area, "radius": 1.0, "margin": 0.5,
+            "centre": {"lon": case["lons"][cols // 2], "lat": case["lats"][mid], "label": _AX_AWKWARD},
+            "fill_note_m": 1.0, "sea_clean": case["sea_clean"], "sea_cells": 0, "sea_level_m": 0.0}
     options = {"settings": {"drainage_area_km2": area}, "shown": shown, "shown_as": rng.choice(["argument", "grid"]),
                "precision": "float64", "label": "valley.tif", "where": _AX_AWKWARD, "source_id": "unidentified",
                "read": None, "meta": meta}
@@ -5089,7 +5098,7 @@ def _ax_request(case: dict, options: dict, full: bool = False) -> dict:
     meta = dict(options["meta"])
     meta["centre"] = {**meta["centre"], "lon": _kx_tagged(meta["centre"]["lon"]),
                       "lat": _kx_tagged(meta["centre"]["lat"])}
-    for key in ("area", "radius", "margin"):
+    for key in ("area", "radius", "margin", "fill_note_m", "sea_level_m"):
         meta[key] = _kx_tagged(float(meta[key]))
     on_grid = options["shown_as"] == "grid"
     return {
@@ -5297,6 +5306,9 @@ def test_browser_analysis_matches_python_end_to_end(assembly):
         seen["sea captions"] += s["sea_pct"] > 0
         seen["unstated sea captions"] += any("may be a fill value" in text for _, text in py["captions"])
         seen["zero-fill captions"] += s["zero_fill"] > 0
+        seen["no margin"] += "over the square shown alone" in dict(py["captions"])["relief"]
+        seen["download sea notes"] += "may end in a fill value" in py["geojson"]
+        seen["wetness sea notes"] += "may be a fill value" in dict(py["captions"])["wetness"]
         seen["no land shown"] += s["land"] == 0
         seen["float32"] += options["precision"] == "float32"
     assert not differ, f"{len(differ)} of {len(cases)} windows differ:\n" + "\n".join(differ[:20])
@@ -5306,6 +5318,7 @@ def test_browser_analysis_matches_python_end_to_end(assembly):
     assert seen["sea outlets"] > 3000 and seen["void outlets"] > 500, seen
     assert seen["notices"] > 50 and seen["sea captions"] > 80 and seen["unstated sea captions"] > 30, seen
     assert seen["zero-fill captions"] > 10 and seen["no land shown"] > 0 and seen["float32"] > 30, seen
+    assert seen["no margin"] > 150 and seen["download sea notes"] > 50 and seen["wetness sea notes"] > 50, seen
 
     # both refuse a precision that is neither, a square shown outside the
     # grid or empty, a drainage threshold that is not a finite area of 0 or
@@ -5390,9 +5403,10 @@ def _ax_serpentine(rows: int = 121, cols: int = 120) -> tuple[dict, dict]:
     step = 1 / 3600
     case = {"rows": rows, "cols": cols, "z": z, "lons": [-12.0 + j * step for j in range(cols)],
             "lats": [8.5 + j * step for j in range(rows)], "assumed": None, "sea_clean": True}
-    meta = {"label": "serpentine.tif", "credit": "", "notice": None, "surface": "Heights.", "area": 0.0025,
-            "radius": 1.0, "margin": 0.6, "centre": {"lon": case["lons"][cols // 2], "lat": case["lats"][rows // 2],
-                                                     "label": "Kakua"}}
+    meta = {"label": "serpentine.tif", "figure_credit": _AX_CREDIT, "notice": None, "surface": "Heights.",
+            "area": 0.0025, "radius": 1.0, "margin": 0.6,
+            "centre": {"lon": case["lons"][cols // 2], "lat": case["lats"][rows // 2], "label": "Kakua"},
+            "fill_note_m": 1.0, "sea_clean": True, "sea_cells": 0, "sea_level_m": 0.0}
     options = {"settings": {"drainage_area_km2": 0.0025}, "shown": [20, rows - 20, 20, cols - 20],
                "shown_as": "argument", "precision": "float64", "label": "serpentine.tif", "where": "Kakua",
                "source_id": "unidentified", "read": None, "meta": meta}
@@ -5421,6 +5435,109 @@ def test_both_engines_cut_a_line_that_turns_at_every_cell_into_the_same_pieces(a
                    for (r0, c0), (r1, c1) in zip(part.vertices, part.vertices[1:], strict=False))
 
 
+def _ax_worded(name: str, z, *, sea_clean: bool = True, settings: dict | None = None, shown=None, read=None,
+               sea_cells: int = 0) -> tuple[dict, dict]:
+    """One window of the wording test below: heights given south row first
+    on the 1 arc-second lattice at 8.5 N, the square shown as the argument,
+    and the GeoJSON told the window's sea cells and sea rule."""
+    import numpy as np
+
+    z = np.asarray(z, dtype=np.float64)
+    rows, cols = z.shape
+    step = 1 / 3600
+    case = {"rows": rows, "cols": cols, "z": z.ravel().tolist(), "lons": [-12.0 + j * step for j in range(cols)],
+            "lats": [8.5 + j * step for j in range(rows)], "assumed": None, "sea_clean": sea_clean}
+    settings = {"drainage_area_km2": 0.01, **(settings or {})}
+    meta = {"label": name, "figure_credit": _AX_CREDIT, "notice": None, "surface": "Heights.",
+            "area": settings["drainage_area_km2"], "radius": 2.7, "margin": 0.3,
+            "centre": {"lon": case["lons"][cols // 2], "lat": case["lats"][rows // 2], "label": "Kakua"},
+            "fill_note_m": settings.get("fill_note_m", 1.0), "sea_clean": sea_clean, "sea_cells": sea_cells,
+            "sea_level_m": settings.get("sea_level_m", 0.0)}
+    options = {"settings": settings, "shown": shown, "shown_as": "argument", "precision": "float64", "label": name,
+               "where": "Kakua", "source_id": "unidentified", "read": read, "meta": meta}
+    return case, options
+
+
+def test_both_engines_word_shares_margins_and_unstated_sea_alike(assembly):
+    """The twin of Python's wording tests, on the windows that reach each
+    rule: a bay of 63 cells in 40,000 ("less than 1%"), an island of 8
+    cells in 1,600 (99%, never 100%) and a sea covering everything (100%),
+    a zero-filled block reaching 30 cells into a square of 12,000, a grid
+    analysed whole (no margin), squares shown inside it with a margin of
+    0.3 or 0.1 km and a radius floored to 2.7 or 1.9 km, with no read, a
+    read without a plan, and plans with a margin and without, and sea of a
+    source that may write a fill value as sea, in the square shown and in
+    the margin alone. Every layer, the captions and the GeoJSON are the
+    same in both engines, and Python's captions say what each window is
+    there to make them say. Prevents the browser stating another share, a
+    margin or radius measured another way or rounded rather than floored,
+    the edge caption of a margin it did not have, or leaving out the sea
+    sentence where Python adds it, which windows of 3 to 60 cells a side
+    reach too rarely to hold."""
+    import numpy as np
+
+    from groundwater.text import phrase
+
+    rng = np.random.default_rng(41)
+    n = 200
+    c, r = np.arange(n)[None, :], np.arange(n)[:, None]
+    bay = 5.0 + 0.05 * c + np.round(rng.uniform(0.0, 0.4, (n, n)), 2)
+    bay[c**2 + (r - 100) ** 2 <= 36] = 0.0
+    island = np.zeros((40, 40))
+    island[18:20, 18:22] = 3.0
+    corner = 5.0 + 0.05 * c[:, :120] + 0.03 * r[:120] + np.zeros((120, 120))
+    corner[:21, :30] = 0.0
+    slope = 5.0 + 0.05 * c + 0.02 * r + np.zeros((n, n))
+    coast = 2.0 + 0.5 * r[:20] + np.abs((c[:, :25] % 6) - 3) * 0.3 + np.zeros((20, 25))
+    coast[:2, :] = -1.0
+    plain = {"surface": "", "plan": None}
+    windows = [  # (window, a sentence Python's captions must hold)
+        (_ax_worded("bay.tif", bay, sea_cells=63), ("relief", "Less than 1% of the square shown (63 cells)")),
+        (_ax_worded("island.tif", island, sea_cells=1592), ("relief", "99% of the square shown is taken as sea")),
+        (_ax_worded("sea.tif", np.zeros((40, 40)), sea_cells=1600),
+         ("relief", "100% of the square shown is taken as sea")),
+        (_ax_worded("corner.tif", corner, settings={"sea_straight_edge_cells": 12}, shown=[20, 120, 0, 120]),
+         ("relief", "Less than 1% of the square shown (30 cells) is at or below 0 m")),
+        (_ax_worded("whole.tif", slope), ("relief", phrase("terrain.caption_edge_none"))),
+        (_ax_worded("whole.tif", slope, shown=[10, 190, 10, 190]),
+         ("geojson_description", "within 2.7 km each way of Kakua, analysed with a 0.3 km margin.")),
+        (_ax_worded("whole.tif", slope, shown=[30, 160, 4, 170], read=plain),
+         ("geojson_description", "within 1.9 km each way of Kakua, analysed with a 0.1 km margin.")),
+        (_ax_worded("whole.tif", slope, shown=[3, 197, 3, 197]), ("relief", phrase("terrain.caption_edge_none"))),
+        (_ax_worded("whole.tif", slope, shown=[10, 190, 10, 190],
+                    read={"surface": "Heights.", "plan": {"radiusKm": 4.0, "marginKm": 0.0}}),
+         ("relief", phrase("terrain.caption_edge_none"))),
+        (_ax_worded("whole.tif", slope, shown=[10, 190, 10, 190],
+                    read={"surface": "Heights.", "plan": {"radiusKm": 4.0, "marginKm": 1.5}}),
+         ("relief", phrase("terrain.caption_edge", margin=1.5))),
+        (_ax_worded("coast.tif", coast, sea_clean=False, sea_cells=50),
+         ("relief", phrase("terrain.caption_sea_unstated", level=0.0))),
+        (_ax_worded("coast.tif", coast, sea_clean=False, shown=[2, 20, 0, 25], sea_cells=50),
+         ("wetness", phrase("terrain.caption_sea_unstated", level=0.0))),
+        (_ax_worded("coast.tif", coast, sea_clean=False, shown=[2, 20, 0, 25], sea_cells=50),
+         ("geojson_description", phrase("terrain.geojson_sea_unstated", level=0.0))),
+    ]
+    answers = assembly.ask("analyse", cases=[_ax_request(case, options) for (case, options), _ in windows])["ok"]
+    differ = []
+    for ((case, options), (key, sentence)), js in zip(windows, answers, strict=True):
+        py = _ax_python(case, options)
+        differ += [f"{options['label']} {options['shown']}: {bad}"
+                   for bad in _ax_differences(assembly, case, options, js, py)]
+        captions = dict(py["captions"])
+        assert sentence in captions[key], f"{options['label']} {options['shown']}: {captions[key]}"
+        a = py["analysis"]
+        assert options["meta"]["sea_cells"] == int(np.count_nonzero(a.core.cls == 2)), options["label"]
+        # the download says what the captions say, told what an app tells it
+        if options["read"] is None:
+            description = json.loads(py["geojson"])["description"]
+            assert (phrase("terrain.geojson_sea_unstated", level=0.0) in description) == (
+                phrase("terrain.geojson_sea_unstated", level=0.0) in captions["geojson_description"])
+    assert not differ, "\n".join(differ)
+    # sea in the margin alone: the relief speaks only of the square shown
+    relief = dict(_ax_python(*windows[-1][0])["captions"])["relief"]
+    assert phrase("terrain.caption_sea_unstated", level=0.0) not in relief
+
+
 def _ax_plane(side: int = 256) -> tuple[dict, dict]:
     """A plane tilted to its south-west corner: every cell drains there,
     along the diagonals to the edges and along the edges to the corner, so
@@ -5432,8 +5549,10 @@ def _ax_plane(side: int = 256) -> tuple[dict, dict]:
     options = {"settings": {"drainage_area_km2": 0.5}, "shown": [10, side - 10, 6, side - 6], "shown_as": "grid",
                "precision": "float64", "label": "plane.tif", "where": "Kakua", "source_id": "unidentified",
                "read": None,
-               "meta": {"label": "plane.tif", "credit": "", "notice": None, "surface": "Heights.", "area": 0.5,
-                        "radius": 10.0, "margin": 5.0, "centre": {"lon": -11.96, "lat": 8.53, "label": "Kakua"}}}
+               "meta": {"label": "plane.tif", "figure_credit": _AX_CREDIT, "notice": None, "surface": "Heights.",
+                        "area": 0.5, "radius": 10.0, "margin": 5.0,
+                        "centre": {"lon": -11.96, "lat": 8.53, "label": "Kakua"}, "fill_note_m": 1.0,
+                        "sea_clean": True, "sea_cells": 0, "sea_level_m": 0.0}}
     return case, options
 
 

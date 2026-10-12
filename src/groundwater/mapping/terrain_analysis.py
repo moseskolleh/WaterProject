@@ -66,7 +66,7 @@ import numpy as np
 from ..config import TerrainConfig
 from ..text import phrase
 from ..utils import and_join
-from .elevation import ElevationGrid, ElevationRead, RowMetric, row_metric, sin_cos_deg
+from .elevation import ElevationGrid, ElevationRead, RowMetric, _percent, row_metric, sin_cos_deg
 
 # --- routing (spec 3.5-3.9)
 #
@@ -1068,29 +1068,52 @@ def _json_text(text: str) -> str:
     return json.dumps(str(text), ensure_ascii=True)
 
 
+def _geojson_description(label: str, area: float, radius: float, where: str, margin: float, depth: float,
+                         surface: str, sea_unstated: bool, level: float) -> str:
+    """The GeoJSON's description, which :func:`terrain_captions` gives
+    again under ``geojson_description``: what the lines are and are not,
+    and, when the source does not say it writes the sea as 0 m and the
+    analysed window holds sea, why the lines ending there are flagged."""
+    text = phrase("terrain.geojson_description", label=label, area=area, radius=radius, where=where,
+                  margin=margin, depth=depth, surface=surface)
+    if sea_unstated:
+        text += " " + phrase("terrain.geojson_sea_unstated", level=level)
+    return text
+
+
 def drainage_geojson(core: TerrainCore, parts: Sequence[DrainagePart], meta: Mapping) -> str:
     """The drainage lines shown, as GeoJSON text written by hand, without
     whitespace, in a fixed key order, so that both engines write the same
     bytes.
 
-    ``meta`` holds ``label`` (what the files are), ``credit`` (what their
-    licence asks a product to carry, "" where none), ``notice`` (the
+    ``meta`` holds ``label`` (what the files are), ``figure_credit`` (the
+    credit line a figure of the set carries, as the read's
+    ``figure_credit`` gives it, cell size included), ``notice`` (the
     Copernicus liability sentence, or None), ``surface`` (what the heights
     are heights of), ``area`` (the drainage threshold in km²), ``radius``
-    and ``margin`` (km) and ``centre``, the window's centre with its
-    ``lon``, ``lat`` and ``label``. The description says what the lines
-    are and are not, in the catalogue's words; the notice is written only
-    for a set holding a Copernicus file, as its licence asks. Coordinates
-    have six decimals (about 0.1 m) and areas six in km², lengths one in
-    metres, all rounded as Python rounds; parts are written in the order
-    given, which :func:`drainage_links` makes ``(id, part)``.
+    and ``margin`` (km), ``centre``, the window's centre with its ``lon``,
+    ``lat`` and ``label``, ``fill_note_m`` (the fill depth ``filled_cells``
+    counts from), and ``sea_clean``, ``sea_cells`` and ``sea_level_m``:
+    the source's sea rule, the sea cells of the analysed window (assumed
+    sea included) and the sea level, so that a source that may write a
+    fill value as sea says why the lines ending there are flagged.
+
+    The description says what the lines are and are not, in the
+    catalogue's words; the notice is written only for a set holding a
+    Copernicus file, as its licence asks. Each feature's link number is
+    the property ``link``, never ``id``: a line cut into parts repeats it,
+    and GDAL takes an integer ``id`` property for the feature id, which it
+    then renumbers on conversion. Coordinates have six decimals (about 0.1
+    m) and areas six in km², lengths one in metres, all rounded as Python
+    rounds; parts are written in the order given, which
+    :func:`drainage_links` makes ``(id, part)``.
     """
     centre = meta["centre"]
-    description = phrase("terrain.geojson_description", label=meta["label"], area=meta["area"],
-                         radius=meta["radius"], where=centre.label, margin=meta["margin"],
-                         surface=meta["surface"])
+    description = _geojson_description(
+        meta["label"], meta["area"], meta["radius"], centre.label, meta["margin"], meta["fill_note_m"],
+        meta["surface"], not meta["sea_clean"] and int(meta["sea_cells"]) > 0, meta["sea_level_m"])
     out = ['{"type":"FeatureCollection","description":', _json_text(description),
-           ',"attribution":', _json_text(meta["credit"])]
+           ',"attribution":', _json_text(meta["figure_credit"])]
     if meta.get("notice"):
         out += [',"notice":', _json_text(meta["notice"])]
     out += [f',"drainage_area_km2":{float(meta["area"]):g}', f',"radius_km":{float(meta["radius"]):g}',
@@ -1102,7 +1125,7 @@ def drainage_geojson(core: TerrainCore, parts: Sequence[DrainagePart], meta: Map
         line = ",".join(f"[{float(lons[c]):.6f},{float(lats[r]):.6f}]" for r, c in part.vertices)
         out.append(
             ("," if n else "")
-            + f'{{"type":"Feature","properties":{{"id":{part.id},"part":{part.part},'
+            + f'{{"type":"Feature","properties":{{"link":{part.id},"part":{part.part},'
             + f'"strahler":{part.strahler},"outlet":{_json_text(part.outlet)},'
             + f'"area_km2":{part.area_units / 1e8:.6f},"length_m":{part.length_m:.1f},'
             + f'"edge_contaminated":{"true" if part.edge_contaminated else "false"},'
@@ -1320,14 +1343,56 @@ def _surface_note(source_id: str) -> str:
     return phrase("terrain.surface_unknown")
 
 
+def _measured_window(core: TerrainCore) -> tuple[float, float]:
+    """The radius and the margin of an analysed window, in km, measured
+    from the window itself, for an analysis that came without a read's plan
+    to state them: a grid read whole, or a window cut some other way, whose
+    margin the edge of the file may have clipped.
+
+    With ``r0, r1, c0, c1 = core.shown`` and ``mid = (r0 + r1) // 2``, the
+    middle row shown, in float64 and in this order (C.terrainCaptions works
+    out the same expressions, so the two print the same figures)::
+
+        margin_m = min(r0 * dy[r0], (rows - r1) * dy[r1 - 1], c0 * dx[mid], (cols - c1) * dx[mid])
+        radius_m = min((r1 - r0) * dy[mid], (c1 - c0) * dx[mid]) / 2.0
+        km = floor(m / 100.0) / 10.0
+
+    The margin is the narrowest of the four sides analysed beyond the square
+    shown, rows measured by the cell height of the shown row beside them
+    and columns by the cell width of the middle shown row; the radius is
+    half the shown square's shorter side. Both are floored to 0.1 km, so
+    that they never overstate what was analysed, and a margin under 100 m
+    is stated as none."""
+    r0, r1, c0, c1 = core.shown
+    mid = (r0 + r1) // 2
+    width, height = float(core.dx[mid]), float(core.dy[mid])
+    margin_m = min(r0 * float(core.dy[r0]), (core.rows - r1) * float(core.dy[r1 - 1]), c0 * width,
+                   (core.cols - c1) * width)
+    radius_m = min((r1 - r0) * height, (c1 - c0) * width) / 2.0
+    return math.floor(radius_m / 100.0) / 10.0, math.floor(margin_m / 100.0) / 10.0
+
+
+def _share_sentence(share: str, little: str, count: int, cells: int, level: float) -> str:
+    """A caption giving ``count`` cells as a share of the ``cells`` of the
+    square shown, by the read report's rule in whole numbers alone: under
+    half a per cent, the ``little`` sentence with the count instead of
+    "0%"; else the ``share`` sentence, at most 99% while any cell is not
+    counted, never "100%"."""
+    if 200 * count < cells:
+        return phrase(little, count=count, level=level)
+    return phrase(share, pct=_percent(count, cells), level=level)
+
+
 def terrain_captions(analysis: TerrainAnalysis, read: ElevationRead | None, where: str) -> dict[str, str]:
     """Every sentence the terrain figures and the drainage lines carry, in
     the catalogue's words, so that both apps print the same.
 
     ``read`` is the read the window came from, or None for a grid read
     whole (an ``.asc`` or ``.xyz`` file): it says what the heights are
-    heights of, and the radius and margin of the window. ``where`` names
-    the place, as the read report does.
+    heights of, and its plan the radius and margin of the window. Without
+    a plan, both are measured from the analysed window and the square shown
+    (:func:`_measured_window`), so that a grid analysed whole says it had
+    no margin. ``where`` names the place, as the read report does.
 
     The keys are ``title_relief``, ``title_wetness``, ``title_curvature``
     and ``title_directions``; ``panel_0`` onwards, the title of each panel
@@ -1335,32 +1400,42 @@ def terrain_captions(analysis: TerrainAnalysis, read: ElevationRead | None, wher
     ``wetness``, ``curvature`` and ``directions``, each figure's captions
     as one paragraph in the order they are printed under it, which says
     what the figure can be trusted for (the sea, a zero-filled gap and an
-    unresolved flat are mentioned only where the square shows one);
-    ``figure_caveat``, the line drawn inside every figure under its credit;
-    ``geojson_description``; and the analysis's stage labels, under their
-    own ids (``stage_classes`` to ``stage_curvature``).
+    unresolved flat are mentioned only where the square shows one; sea of
+    a source that may write a fill value as sea where the relief's square,
+    or for the wetness index and the description the analysed window,
+    holds some); ``figure_caveat``, the line drawn inside every figure
+    under its credit; ``geojson_description``; and the analysis's stage
+    labels, under their own ids (``stage_classes`` to ``stage_curvature``).
     """
     cfg = analysis.settings
     summary = analysis.summary
     surface = read.surface if read is not None and read.surface else _surface_note(analysis.grid.source_id)
-    radius, margin = cfg.analysis_radius_km, cfg.analysis_buffer_km
     if read is not None and read.plan is not None:
         radius, margin = read.plan.radius_km, read.plan.margin_km
+    else:
+        radius, margin = _measured_window(analysis.core)
     level = cfg.sea_level_m
     candidates = phrase("terrain.caption_candidates")
+    cells = summary["cells"]
+    sea = summary["sea"] + summary["assumed_sea"]
+    # the lines and the lightened cells may drain sea anywhere in the
+    # analysed window, the margin included, not only in the square shown
+    unstated = not analysis.grid.sea_clean
+    sea_unstated = unstated and bool(np.count_nonzero(analysis.core.cls == SEA))
 
     relief = [
         phrase("terrain.caption_relief", interval=summary["contour_interval"], area=cfg.drainage_area_km2),
         phrase("terrain.caption_fill", lines_pct=summary["flat_routed_lines_pct"], pct=summary["raised_pct"],
                depth=cfg.fill_note_m),
-        phrase("terrain.caption_edge", margin=margin),
+        phrase("terrain.caption_edge", margin=margin) if margin > 0 else phrase("terrain.caption_edge_none"),
     ]
-    if summary["sea_pct"] > 0:
-        relief.append(phrase("terrain.caption_sea", pct=summary["sea_pct"], level=level))
-    if not analysis.grid.sea_clean and summary["sea"] + summary["assumed_sea"] > 0:
+    if sea > 0:
+        relief.append(_share_sentence("terrain.caption_sea", "terrain.caption_sea_little", sea, cells, level))
+    if unstated and sea > 0:
         relief.append(phrase("terrain.caption_sea_unstated", level=level))
     if summary["zero_fill"] > 0:
-        relief.append(phrase("terrain.caption_zero_fill", pct=summary["zero_fill_pct"], level=level))
+        relief.append(_share_sentence("terrain.caption_zero_fill", "terrain.caption_zero_fill_little",
+                                     summary["zero_fill"], cells, level))
     if summary["unresolved"] > 0:
         relief.append(phrase("terrain.caption_unresolved", n=summary["unresolved"]))
     relief.append(candidates)
@@ -1381,19 +1456,20 @@ def terrain_captions(analysis: TerrainAnalysis, read: ElevationRead | None, wher
     }
     for n, azimuth in enumerate(azimuths):
         out[f"panel_{n}"] = phrase("terrain.panel_azimuth", az=azimuth)
+    wetness = [phrase("terrain.caption_twi", floor=cfg.flat_tan_slope, n=summary["floored"])]
+    if sea_unstated:
+        wetness.append(phrase("terrain.caption_sea_unstated", level=level))
     out.update(
         relief=" ".join(relief),
-        wetness=" ".join([phrase("terrain.caption_twi", floor=cfg.flat_tan_slope, n=summary["floored"]),
-                          candidates, surface]),
+        wetness=" ".join([*wetness, candidates, surface]),
         curvature=" ".join([phrase("terrain.caption_curvature", spacing=spacing, floor=cfg.flat_tan_slope),
                             candidates, surface]),
         directions=phrase("terrain.caption_directions",
                           azimuths=and_join([f"{float(azimuth):g}°" for azimuth in azimuths]),
                           altitude=cfg.hillshade_altitude_deg),
         figure_caveat=phrase("terrain.figure_caveat", surface=surface),
-        geojson_description=phrase("terrain.geojson_description", label=analysis.grid.source,
-                                   area=cfg.drainage_area_km2, radius=radius, where=where, margin=margin,
-                                   surface=surface),
+        geojson_description=_geojson_description(analysis.grid.source, cfg.drainage_area_km2, radius, where,
+                                                 margin, cfg.fill_note_m, surface, sea_unstated, level),
         stage_classes=phrase("terrain.stage_classes"),
         stage_fill=phrase("terrain.stage_fill"),
         stage_flow=phrase("terrain.stage_flow"),

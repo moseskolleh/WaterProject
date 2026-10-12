@@ -2820,19 +2820,33 @@ def _ta_window(case: str, z, *, assumed=None, step: float = _ARCSEC, lat0: float
     (rows, then columns, half-open); the drainage threshold and other
     settings; and what ``told`` adds: the square shown, the source and its
     sea rule, the file's name, the place, the read the captions are given,
-    and the credit and notice the GeoJSON carries. parity.mjs builds the
-    page's window from exactly these, so both engines analyse the same
+    and the figure credit line and notice the GeoJSON carries (a file of
+    unidentified source's line unless told). parity.mjs builds the page's
+    window from exactly these, so both engines analyse the same
     numbers."""
     z = np.asarray(z, dtype=np.float64)
     rows, cols = z.shape
+    label = told.get("label", "test.tif")
     return {
         "case": case, "rows": rows, "cols": cols, "lon0": -12.0, "lat0": lat0, "step": step,
         "z": _gt_compact(z.ravel()), "assumed": assumed,
         "settings": {"drainage_area_km2": area, **(settings or {})}, "shown": told.get("shown"),
         "seaClean": told.get("sea_clean", False), "sourceId": told.get("source_id", "unidentified"),
-        "label": told.get("label", "test.tif"), "where": told.get("where", "the test point"),
-        "read": told.get("read"), "credit": told.get("credit", ""), "notice": told.get("notice"),
+        "label": label, "where": told.get("where", "the test point"), "read": told.get("read"),
+            "figureCredit": told.get("figure_credit", _ta_credit(f"elevation model {label}, source not stated")),
+        "notice": told.get("notice"),
     }
+
+
+def _ta_credit(label: str, credit: str = "") -> str:
+    """The figure credit line a read words for a set of files with this
+    label and licence credit ("" for none), at the 1 arc-second cell size
+    of 8.5 N: what the GeoJSON's attribution carries."""
+    from groundwater.text import phrase
+
+    if credit:
+        return phrase("terrain.figure_credit", label=label, credit=credit, dx=30.6, dy=30.7)
+    return phrase("terrain.figure_credit_bare", label=label, dx=30.6, dy=30.7)
 
 
 def _ta_coast() -> dict:
@@ -2884,7 +2898,8 @@ def _ta_plateau() -> dict:
     return _ta_window("T2: a plateau inside a rim, drained through two notches", cm / 100.0, area=0.01,
                       sea_clean=True, source_id="copernicus_glo30",
                       label="Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif", where="Kakua",
-                      credit="© DLR e.V. 2014-2018", notice='Produced from Copernicus data; no liability "at all".')
+                      figure_credit=_ta_credit("Copernicus GLO-30 tile N08 W012", "© DLR e.V. 2014-2018"),
+                      notice='Produced from Copernicus data; no liability "at all".')
 
 
 def _ta_ties() -> dict:
@@ -2927,6 +2942,35 @@ def _ta_degenerate() -> list:
     return out
 
 
+def _ta_worded() -> list:
+    """T7: windows that reach the captions' rules for shares, margins and
+    sea of unstated source, held by digests as T5 is: two cells of sea in
+    480 ("less than 1%", with the count), an island of four cells in 900
+    (99% sea, never 100%), a zero-filled block reaching one cell into a
+    square shown with a margin of four or five cells on every side (0.1 km,
+    and "1 cell"), and sea of a file of unstated source in the margin
+    alone, which the wetness caption and the description mention and the
+    relief does not."""
+    r, c = np.arange(30)[:, None], np.arange(24)[None, :]
+    corner = (2.0 + 0.3 * r[:20] + 0.2 * c) + np.zeros((20, 24))
+    corner[0, 0:2] = -1.0
+    island = np.full((30, 30), -1.0)
+    island[14:16, 14:16] = 3.0
+    block = (3.0 + 0.2 * r + 0.1 * c) + np.zeros((30, 24))
+    block[0:5, 0:8] = 0.0
+    block[5, 4] = 0.0
+    coast = (1.0 + 0.4 * r[:16] + 0.1 * np.abs(c[:, :14] - 7)) + np.zeros((16, 14))
+    coast[0:2, :] = -1.0
+    return [
+        _ta_window("T7: two cells of sea in a square of 480", np.round(corner, 2), sea_clean=True),
+        _ta_window("T7: an island of four cells in 900, 99% sea", island, sea_clean=True),
+        _ta_window("T7: a zero-filled block reaching one cell into the square shown", np.round(block, 2),
+                   settings={"sea_straight_edge_cells": 5}, shown=[5, 26, 4, 20], sea_clean=True),
+        _ta_window("T7: sea of unstated source in the margin alone", np.round(coast, 2), area=0.003,
+                   shown=[3, 16, 0, 14]),
+    ]
+
+
 #: T4: a window generated in both engines (spec 7.5). Heights drawn from
 #: one stream of the range-of-models generator (Stream / C.rangeStream),
 #: row by row from the south, west to east: v = 0.5*left + 0.5*below +
@@ -2941,7 +2985,8 @@ TERRAIN_GENERATED = {
     "void": [70, 80, 90, 104], "settings": {"drainage_area_km2": 0.1}, "shown": [16, 176, 16, 144],
     "seaClean": True, "sourceId": "copernicus_glo30", "label": "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
     "where": "Kakua", "read": {"surface": _TA_SURFACE, "plan": {"radiusKm": 2.0, "marginKm": 0.5}},
-    "credit": "© DLR e.V. 2014-2018", "notice": "Produced from Copernicus data.",
+    "figureCredit": _ta_credit("Copernicus GLO-30 tile N08 W012", "© DLR e.V. 2014-2018"),
+    "notice": "Produced from Copernicus data.",
 }
 
 #: T6: a plane tilted to its south-west corner, 256 cells square. Every
@@ -3069,19 +3114,22 @@ def _ta_text_digest(captions: list) -> str:
 
 def _ta_geojson(a, case: dict) -> str:
     """The drainage lines shown as GeoJSON. What it is told follows from
-    the window, as parity.mjs makes it: the file's name, credit and notice;
-    the threshold; the radius and margin of the read's plan (0.3 and 0.05
-    km without one); and the middle cell as the centre, named for the
-    place."""
+    the window, as parity.mjs makes it: the file's name, figure credit
+    line and notice; the threshold; the radius and margin of the read's
+    plan (0.3 and 0.05 km without one); the middle cell as the centre,
+    named for the place; and the fill note, sea level, sea rule and sea
+    cells of the analysed window that the analysis was run with."""
     from groundwater.mapping.elevation import WindowCentre
-    from groundwater.mapping.terrain_analysis import drainage_geojson
+    from groundwater.mapping.terrain_analysis import SEA, drainage_geojson
 
     lons, lats = _ta_axes(case)
     plan = case["read"]["plan"] if case["read"] else None
-    meta = {"label": case["label"], "credit": case["credit"], "notice": case["notice"], "surface": _TA_SURFACE,
-            "area": case["settings"]["drainage_area_km2"], "radius": plan["radiusKm"] if plan else 0.3,
-            "margin": plan["marginKm"] if plan else 0.05,
-            "centre": WindowCentre(lons[case["cols"] // 2], lats[case["rows"] // 2], case["where"], True)}
+    meta = {"label": case["label"], "figure_credit": case["figureCredit"], "notice": case["notice"],
+            "surface": _TA_SURFACE, "area": case["settings"]["drainage_area_km2"],
+            "radius": plan["radiusKm"] if plan else 0.3, "margin": plan["marginKm"] if plan else 0.05,
+            "centre": WindowCentre(lons[case["cols"] // 2], lats[case["rows"] // 2], case["where"], True),
+            "fill_note_m": a.settings.fill_note_m, "sea_clean": case["seaClean"],
+            "sea_cells": int(np.count_nonzero(a.core.cls == SEA)), "sea_level_m": a.settings.sea_level_m}
     return drainage_geojson(a.core, a.parts, meta)
 
 
@@ -3120,8 +3168,8 @@ def _ta_short(data) -> str:
 
 
 def _ta_held(case: dict, full: bool, words: bool = False) -> dict:
-    """One window of T1-T3 (``full``) or T5 and what Python makes of it,
-    or its refusal word for word; "held" tells parity.mjs which.
+    """One window of T1-T3 (``full``) or of T5 and T7 and what Python makes
+    of it, or its refusal word for word; "held" tells parity.mjs which.
 
     With ``full``: every layer of whole numbers as text; each float layer
     by a digest that keeps signs of zero, and three cells of it; the links
@@ -3236,7 +3284,8 @@ def _ta_plane(spec: dict) -> dict:
 
 def terrain_reference() -> dict:
     """The terrain analysis (spec 7.5): T1-T3 held cell by cell and line by
-    line, the degenerate windows of T5 by digests, the generated T4 by
+    line, the degenerate windows of T5 and the caption windows of T7 by
+    digests, the generated T4 by
     digests with its first lines and GeoJSON in full, and the plane T6
     re-traced from a cloned core; with what every window shares carried
     once: the surface note, the names of the links' and parts' fields, and
@@ -3245,7 +3294,7 @@ def terrain_reference() -> dict:
 
     small = [_ta_held(_ta_coast(), full=True, words=True)]
     small += [_ta_held(w, full=True) for w in (_ta_plateau(), _ta_ties())]
-    small += [_ta_held(w, full=False) for w in _ta_degenerate()]
+    small += [_ta_held(w, full=False) for w in (*_ta_degenerate(), *_ta_worded())]
     # the summary's keys in the order analyse_terrain gives them, which is
     # the same for every window: here a small one's
     some = _ta_degenerate()[1]
