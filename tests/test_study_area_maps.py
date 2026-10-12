@@ -184,6 +184,30 @@ def test_srtm_hgt_is_read_the_right_way_up_and_in_the_right_degree_square(tmp_pa
     assert grid.z[0, -1] > grid.z[0, 0]
 
 
+def test_load_elevation_credits_an_undeclared_hgt_as_source_not_stated(tmp_path):
+    """An .hgt tile read whole is labelled as the windowed read labels it:
+    an SRTM-format tile of unstated source, with no product credit, since
+    NASA's SRTM, NASADEM and void-filled compilations all come in this
+    format and the file says nothing of whose it is. Prevents the whole-file
+    reader crediting NASA/USGS for heights that may be someone else's."""
+    from groundwater.mapping.elevation import read_elevation
+    from groundwater.text import phrase
+
+    path = tmp_path / "N08W013.hgt"
+    _write_hgt(path)
+    grid = load_elevation(path)
+    assert grid.source == phrase("terrain.label_hgt", n=1, files="N08W013.hgt")
+    assert "NASA" not in grid.source
+    assert (grid.credit, grid.source_id, grid.sea_clean, grid.files) == ("", "hgt", True, ("N08W013.hgt",))
+    windowed = read_elevation([("N08W013.hgt", path)], None, 1.0, margin_km=0.0)
+    assert (windowed.grid.source, windowed.grid.credit) == (grid.source, grid.credit)
+    # a tile within a degree of a pole is still read whole, as it always was;
+    # only the windowed read, which divides by a cell's width, refuses it
+    polar = tmp_path / "N89W013.hgt"
+    _write_hgt(polar)
+    assert load_elevation(polar).source == phrase("terrain.label_hgt", n=1, files="N89W013.hgt")
+
+
 def test_an_srtm_tile_that_does_not_name_its_corner_is_refused(tmp_path):
     path = tmp_path / "elevation.hgt"
     _write_hgt(path)

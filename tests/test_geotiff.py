@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 
 from conftest import lzw_encode, lzw_pack
+from groundwater.config import TerrainConfig
 from groundwater.geotiff import (
     GeoTiffError,
     GeoTiffLayout,
@@ -727,6 +728,7 @@ def test_every_committed_fixture_is_read_or_refused_as_its_manifest_says(name):
     assert layout.ifd_index == entry.get("ifd_index", 0)
     assert layout.predictor_applied is (layout.predictor != 1 and layout.compression in (5, 8, 32946))
     assert layout.has_nodata_tag is ("nodata" in entry)
+    assert layout.has_mask is entry.get("has_mask", False)
     want = entry.get("nodata_value")
     if want in (None, "no cell"):
         assert layout.nodata is None
@@ -1145,19 +1147,27 @@ def test_negative_zero_samples_read_as_positive_zero():
     assert not np.signbit(read_geotiff(data).z).any()
 
 
-def test_nodata_strings_nan_inf_and_the_arcgis_float_form_match_gdal():
+def test_nodata_strings_are_parsed_and_cast_to_the_sample_type_by_the_readers_rules():
     """GDAL_NODATA is text, written several ways: 'nan', '-inf', ArcGIS's
-    '-3.40282346639e+038' (a hair beyond float32, which GDAL clamps), with a
-    trailing space or NUL, or empty. Each is read as GDAL reads it (the
-    committed files' values are GDAL's, checked in test_dem_fixtures), and
-    one that is not a number is refused with the text quoted."""
+    '-3.40282346639e+038' (within half a float32 step of the largest
+    float32, so it rounds to it), with a trailing space or NUL, or empty.
+    A float32 value is rounded to the nearest float32 as GDAL casts it, so
+    one further beyond is an infinity (test_dem_fixtures holds these
+    against GDAL itself). For an integer file a value that is not a whole
+    number in range matches no cell: that is the project's rule, not GDAL's,
+    whose mask band truncates 1.5 to 1 while its own statistics keep the 1.
+    Text that is not a number is refused with the text quoted. Prevents a
+    no-data value voiding a cell other than the one the file means, or
+    leaving the one it means as a height."""
     flt_max = 3.4028234663852886e38
     nan = _parse_number(" NaN\x00")[0]
     assert nan is not None and math.isnan(nan)
     for text, sample_format, bits, value in [
         ("-9999", 3, 32, -9999.0), ("-32767", 2, 16, -32767), ("65535 ", 1, 16, 65535),
         ("\x00 +Inf\n", 3, 64, math.inf), ("-infinity", 3, 32, -math.inf),
-        ("-3.40282346639e+038", 3, 32, -flt_max), ("3.5e38", 3, 32, flt_max), ("1e400", 3, 64, math.inf),
+        ("-3.40282346639e+038", 3, 32, -flt_max), ("3.5e38", 3, 32, math.inf), ("1e400", 3, 64, math.inf),
+        ("-1e39", 3, 32, -math.inf), ("3.4028235677973362e38", 3, 32, flt_max),
+        ("3.4028235677973366e38", 3, 32, math.inf),
         ("0.1", 3, 32, float(np.float32(0.1))), ("0.1", 3, 64, 0.1), ("-0", 2, 16, 0), (".5e1", 2, 8, 5),
         ("1.5", 2, 16, None), ("70000", 1, 16, None), ("-1", 1, 8, None), ("nan", 2, 32, None),
         ("-inf", 1, 32, None), ("4294967295", 1, 32, 4294967295),
@@ -1373,6 +1383,87 @@ def test_a_block_table_or_block_the_reader_cannot_use_is_refused_by_its_tag():
     assert refusal.ident == "terrain.block_too_large" and "in blocks of 95 MB," in str(refusal)
     data, _ = _file(tags={MAKE.IMAGE_WIDTH: (MAKE.DOUBLE, [9.0])})
     assert _refused(data).values["tag"] == "ImageWidth"
+
+
+def test_a_block_table_longer_than_the_cap_is_refused_before_its_values_are_read():
+    """A file cut into tiny tiles costs a decode a block, and its block table
+    alone can run to tens of millions of entries in a 200 MB upload. A table
+    longer than terrain.max_blocks is refused by its length, before its
+    values are asked for, so opening such a file reads and builds nothing;
+    one at the cap goes on to be read, and here runs past the end of the
+    file. Prevents an upload of a few megabytes tying up the shared app."""
+    cap = TerrainConfig().max_blocks
+    data, _ = _file(rows_per_strip=1)  # seven strips
+    over = _recount(data, MAKE.STRIP_OFFSETS, cap + 1 - 7)
+    reads: list[tuple[int, int]] = []
+
+    def read_at(offset: int, length: int) -> bytes:
+        reads.append((offset, length))
+        return over[offset:offset + length]
+
+    with pytest.raises(GeoTiffError) as refused:
+        open_geotiff("made.tif", len(over), read_at)
+    assert refused.value.ident == "terrain.too_many_blocks"
+    assert refused.value.values == {"file": "made.tif", "n": cap + 1, "cap": cap}
+    assert str(refused.value) == phrase("terrain.too_many_blocks", file="made.tif", n=cap + 1, cap=cap)
+    assert reads == [(0, len(over))], "nothing is read but the first bytes"
+    at_cap = _recount(data, MAKE.STRIP_BYTE_COUNTS, cap - 7)
+    assert _refused(at_cap).values["part"] == "values of StripByteCounts"
+    tiled, _ = _file(MAKE.metres(MAKE.patch(40, 20, 66)), tile=(16, 16))
+    assert _refused(_recount(tiled, MAKE.TILE_BYTE_COUNTS, cap)).ident == "terrain.too_many_blocks"
+
+
+def _with_mask(mask, *, after: bool = True, georef=None) -> bytes:
+    """A float32 image with ``mask`` (a directory) after it, or before it."""
+    rows = MAKE.metres(MAKE.patch(10, 6, 62))
+    full = MAKE.image(rows, "f32", "<", compression=8)
+    full.tags.update((georef or MAKE.Georef(-11.9, 8.4, SX, SX, raster=1)).tags())
+    return MAKE.assemble("<", [full, mask] if after else [mask, full])
+
+
+def test_a_gdal_mask_after_the_image_is_noted_and_any_other_directory_is_not():
+    """GDAL writes a mask of the image's cells as the directory after it
+    (NewSubfileType 4, 1-bit); the cells it hides usually hold 0, ground at
+    sea level to a reader that ignores it. The raw layer reads the file and
+    notes the mask, so that the elevation layer can refuse it. A mask before
+    the image, one of another size, a reduced mask, an overview, or a next
+    pointer back to the image itself is no mask of it; a mask directory past
+    the end of the file is an incomplete file, as any other directory is."""
+    valid = [[c >= 3 for c in range(10)] for _ in range(6)]
+    for name in ("internal_mask.tif", "gdal_internal_mask_f32.tif"):
+        raster = read_geotiff(DEM / name)
+        assert raster.layout.has_mask and raster.layout.ifd_index == 0, name
+        assert not np.isnan(raster.z).any() and (raster.z == 0.0).any(), "the raw layer reads every sample"
+    assert read_geotiff(_with_mask(MAKE.mask_image(valid))).layout.has_mask
+    assert not read_geotiff(DEM / "overview_mask_first.tif").layout.has_mask
+    assert not read_geotiff(_with_mask(MAKE.mask_image(valid), after=False)).layout.has_mask
+    assert not read_geotiff(_with_mask(MAKE.mask_image(valid[:5]))).layout.has_mask
+    assert not read_geotiff(_with_mask(MAKE.mask_image([row[:9] for row in valid]))).layout.has_mask
+    assert not read_geotiff(_with_mask(MAKE.mask_image(valid, subfile=5))).layout.has_mask
+    assert not read_geotiff(_with_mask(MAKE.mask_image(valid, subfile=1))).layout.has_mask
+    assert read_geotiff(_with_mask(MAKE.mask_image(valid, subfile=6))).layout.has_mask
+    assert not read_geotiff(_file()[0]).layout.has_mask
+    image = MAKE.image([[1.0, 2.0]], "f32", "<")
+    image.tags.update(MAKE.Georef(-11.9, 8.4, SX, SX, raster=1).tags())
+    assert not read_geotiff(MAKE.assemble("<", [image], loop_to=0)).layout.has_mask, "its own next pointer"
+    data = _with_mask(MAKE.mask_image(valid))
+    (ifd,) = struct.unpack_from("<I", data, 4)
+    (count,) = struct.unpack_from("<H", data, ifd)
+    beyond = data[:ifd + 2 + 12 * count] + struct.pack("<I", len(data) + 8) + data[ifd + 6 + 12 * count:]
+    refusal = _refused(beyond)
+    assert (refusal.ident, refusal.values["part"]) == ("terrain.ends_early", "image directory")
+    mask = MAKE.mask_image(valid)
+    mask.tags[MAKE.NEW_SUBFILE_TYPE] = (MAKE.SSHORT, [4])
+    refusal = _refused(_with_mask(mask))
+    assert (refusal.ident, refusal.values["tag"]) == ("terrain.bad_tag", "NewSubfileType")
+    # asked for through the need protocol, as any directory is
+    chunks = [(0, data[:16])]
+    for _ in range(10):
+        found = geotiff_layout("made.tif", len(data), chunks)
+        if isinstance(found, GeoTiffLayout):
+            break
+        chunks += [(offset, data[offset:offset + length]) for offset, length in found]
+    assert isinstance(found, GeoTiffLayout) and found.has_mask
 
 
 def test_a_truncated_file_says_what_is_missing():

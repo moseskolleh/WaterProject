@@ -2661,9 +2661,9 @@
   var TIFF_COMPRESSIONS = [1, 5, 8, 32946, 32773];
   /* the largest block decoded whole: a block is held in memory at once */
   var TIFF_BLOCK_LIMIT = 64 * 1048576;
-  /* the largest finite float32; GDAL clamps a no-data value just beyond it
-   * (ArcGIS writes -3.40282346639e+038) before rounding it to float32 */
-  var FLT_MAX = 3.4028234663852886e38;
+  /* the block tables, each held to terrain.max_blocks before its values
+   * are read */
+  var TIFF_BLOCK_TABLES = [273, 279, 324, 325];
 
   /* An unsigned 64-bit field, as two 32-bit halves. At or past 2^53 it is
    * no offset or count a number holds exactly, and the file is refused
@@ -2726,14 +2726,13 @@
   }
 
   /* A no-data value as a sample of the file's type holds it: float32
-   * clamped to the largest finite float32 and rounded, as GDAL compares
-   * it; float64 as read; for an integer type only a whole number in range,
-   * else null, since then no cell can hold it. */
+   * rounded to the nearest float32, as GDAL casts it, so one beyond the
+   * largest float32 by more than half a step is an infinity (ArcGIS's
+   * -3.40282346639e+038 lies within half a step and rounds to the largest
+   * on its own); float64 as read; for an integer type only a whole number
+   * in range, else null, since then no cell can hold it. */
   function tiffNodataCast(value, format, bits) {
-    if (format === 3 && bits === 32) {
-      if (isFinite(value) && Math.abs(value) > FLT_MAX) value = value > 0 ? FLT_MAX : -FLT_MAX;
-      return Math.fround(value);
-    }
+    if (format === 3 && bits === 32) return Math.fround(value);
     if (format === 3) return value;
     var low = format === 1 ? 0 : -Math.pow(2, bits - 1);
     var high = format === 1 ? Math.pow(2, bits) - 1 : Math.pow(2, bits - 1) - 1;
@@ -2753,8 +2752,11 @@
    * its directory is read. The image is checked - dimensions, samples to a
    * cell, sample type, compression, predictor, fill order, block table,
    * block size, in that order - before its georeferencing, no-data value
-   * and GDAL scale and offset are read. A range past the end of the file
-   * is refused as an incomplete file, never asked for.
+   * and GDAL scale and offset are read; last, the directory after it is
+   * read to see whether it is a GDAL mask of the image (hasMask), which the
+   * reader notes but does not apply. A block table longer than
+   * terrain.max_blocks is refused before its values are read. A range past
+   * the end of the file is refused as an incomplete file, never asked for.
    * @param {string} name the file's name, as the sentences give it
    * @param {number} size the file's length in bytes
    * @param {Array<[number, Uint8Array]>} chunks the bytes read so far, as [offset, bytes]
@@ -2804,7 +2806,27 @@
      * type, and the directory's bytes. Only the entries of the tags the
      * reader reads are examined; any other is passed over, whatever its
      * type or count, as libtiff passes over a tag it does not use. */
-    var entries = {}, body = head, index = -1, seen = [], n, e;
+    var entries = {}, body = head, index = -1, seen = [], n = 0, e;
+
+    /* Make the directory at `where` the one in hand: its entry count `n`,
+     * its bytes (the entries and the next pointer) and each tag's first
+     * entry, a repeated tag's first counting, as libtiff has it. False
+     * while its bytes are still needed. */
+    function enter(where) {
+      var counted = at(where, countSize, 'image directory');
+      if (!counted) return false;
+      n = big ? tiffU64(counted, 0, little, name) : counted.getUint16(0, little);
+      var read = at(where + countSize, n * entrySize + word, 'image directory');
+      if (!read) return false;
+      body = read;
+      entries = {};
+      for (e = 0; e < n; e++) {
+        var p = e * entrySize, tag = body.getUint16(p, little);
+        if (own(entries, tag)) continue;
+        entries[tag] = { type: body.getUint16(p + 2, little), at: p };
+      }
+      return true;
+    }
 
     /* A tag's entry in the directory in hand, judged in this order in both
      * engines: its type, then (BigTIFF) a count of 2^53 or more, then its
@@ -2844,38 +2866,35 @@
       if (seen.length === 64) throw tiffError('terrain.no_full_image', { file: name });
       seen.push(ifd);
       index++;
-      var counted = at(ifd, countSize, 'image directory');
-      if (!counted) return needed();
-      n = big ? tiffU64(counted, 0, little, name) : counted.getUint16(0, little);
-      var read = at(ifd + countSize, n * entrySize + word, 'image directory');
-      if (!read) return needed();
-      body = read;
-      entries = {};
-      for (e = 0; e < n; e++) {
-        var p = e * entrySize, tag = body.getUint16(p, little);
-        if (own(entries, tag)) continue;   // a repeated tag: the first counts, as libtiff has it
-        entries[tag] = { type: body.getUint16(p + 2, little), at: p };
-      }
+      if (!enter(ifd)) return needed();
       var newer = subfile(254), older = subfile(255);
       /* full resolution: neither a reduced image (bit 0) nor a mask (bit 2)
        * by NewSubfileType, nor a reduced image (2) by the old SubfileType;
-       * its own next pointer is never looked at */
+       * its next pointer is looked at only for its mask, once the image is
+       * described */
       if (!((newer || 0) & 5) && older !== 2 && own(entries, 256) && own(entries, 257)) break;
       ifd = big ? tiffU64(body, n * entrySize, little, name) : body.getUint32(n * entrySize, little);
     }
 
     /* The chosen directory's entries, in ascending tag order, each judged
      * in this order in both engines: its type, then (BigTIFF) a count of
-     * 2^53 or more, then its count, then an out-of-line offset of 2^53 or
-     * more, then values running past the end of the file. Values not yet
-     * read are asked for together once every entry has passed, since none
-     * depends on another, so the refusal a file earns does not depend on
-     * how it was read. */
+     * 2^53 or more, then its count, then a block table longer than
+     * terrain.max_blocks (the default: the reader takes no configuration),
+     * then an out-of-line offset of 2^53 or more, then values running past
+     * the end of the file. Values not yet read are asked for together once
+     * every entry has passed, since none depends on another, so the refusal
+     * a file earns does not depend on how it was read. A block table is
+     * held to the cap before its values are asked for, so that opening a
+     * file never reads or builds millions of offsets. */
     /** @type {Array<[number, DataView, number, {type: number, count: number}]>} */
     var held = [];
+    var maxBlocks = withConfig(null).terrain.max_blocks;
     TIFF_READ.forEach(function (tag) {
       if (!own(entries, tag)) return;
       var entry = checked(tag), view = /** @type {DataView|null} */ (body), pos = entry.field;
+      if (TIFF_BLOCK_TABLES.indexOf(tag) >= 0 && entry.count > maxBlocks) {
+        throw tiffError('terrain.too_many_blocks', { file: name, n: entry.count, cap: maxBlocks });
+      }
       if (entry.length > word) {
         view = at(big ? tiffU64(body, pos, little, name) : body.getUint32(pos, little),
           entry.length, 'values of ' + TIFF_TAGS[tag][0]);
@@ -3061,6 +3080,23 @@
       }
     }
 
+    /* Last, once the image has passed every check, the directory after it:
+     * GDAL writes a mask of the image's cells there (masks before the image
+     * belong to other images, and are passed by as the chain is walked).
+     * Its next pointer is judged as the chain judges one, in the same order
+     * in both engines: 0 is no mask, then 2^53 or more is too large
+     * (refused by tiffU64 as it is read), then a directory already walked is
+     * no mask. The mask's NewSubfileType, then its width and its height,
+     * are each read as the chain reads NewSubfileType, held in the entry. */
+    var geoAscii = v[34737] === null ? null : tiffTrim(v[34737], '\0', true);
+    var hasMask = false;
+    var following = big ? tiffU64(body, n * entrySize, little, name) : body.getUint32(n * entrySize, little);
+    if (following !== 0 && seen.indexOf(following) < 0) {
+      if (!enter(following)) return needed();
+      var mask = subfile(254);
+      hasMask = mask !== null && (mask & 5) === 4 && subfile(256) === width && subfile(257) === height;
+    }
+
     return {
       name: name, size: size, byteOrder: little ? '<' : '>', bigtiff: big,
       width: width, height: height, bits: bits, sampleFormat: format,
@@ -3070,8 +3106,7 @@
       modelType: modelType, rasterType: rasterType, epsg: epsg,
       datum: geokey(2050), angularUnit: geokey(2054),
       x0: x0, y0: y0, sx: sx, sy: sy, nodata: nodata, ifdIndex: index,
-      geoAscii: v[34737] === null ? null : tiffTrim(v[34737], '\0', true),
-      hasNodataTag: nodataText !== null,
+      geoAscii: geoAscii, hasNodataTag: nodataText !== null, hasMask: hasMask,
     };
   }
 
@@ -3484,7 +3519,7 @@
       blockWidth: side, blockHeight: 1, rowsPerStrip: 1, offsets: offsets, byteCounts: counts,
       modelType: 2, rasterType: 2, epsg: 4326, datum: null, angularUnit: null,
       x0: lon0, y0: lat0 + 1, sx: step, sy: step, nodata: SRTM_VOID, ifdIndex: 0,
-      geoAscii: null, hasNodataTag: false,
+      geoAscii: null, hasNodataTag: false, hasMask: false,
     };
   }
 
@@ -3519,11 +3554,17 @@
   }
 
   /* Refuse a file that is not in WGS 84 longitude and latitude, in
-   * degrees, with every cell centre more than a degree from a pole. At a
-   * pole a cell has no width east to west, and the window arithmetic
-   * divides by it. A projected file is named by its CRS, so the operator
-   * can tell which copy of the tile they sent. */
+   * degrees, with every cell centre more than a degree from a pole:
+   * elevation._accept. A file carrying a GDAL mask is refused first, since
+   * the cells it hides usually hold 0, which would read as ground at sea
+   * level. A projected file is named by its CRS, so the operator can tell
+   * which copy of the tile they sent. Georeferencing no elevation model has
+   * - an origin that is infinite or not a number, longitudes beyond any
+   * map, cells under 1e-7 or over 1 degree - is refused before the poles
+   * are looked at, the test written so that NaN fails it. At a pole a cell
+   * has no width east to west, and the window arithmetic divides by it. */
   function acceptElevation(layout, name) {
+    if (layout.hasMask) throw tiffError('terrain.internal_mask', { file: name });
     var model = layout.modelType;
     if (model === 1) throw tiffError('terrain.projected', { file: name, crs: projectedName(layout.epsg) });
     if (model === null || model === undefined) throw tiffError('terrain.no_crs', { file: name });
@@ -3533,7 +3574,12 @@
     if (!wgs84 || !(layout.angularUnit === null || layout.angularUnit === 9102)) {
       throw tiffError('terrain.not_wgs84', { file: name, crs: geographicName(layout) });
     }
+    var east = layout.x0 + (layout.width - 1) * layout.sx;
     var south = layout.y0 - (layout.height - 1) * layout.sy;
+    if (!(layout.x0 >= -540.0 && east <= 540.0 && south >= -90.0 && layout.y0 <= 90.0 &&
+        layout.sx >= 1e-7 && layout.sx <= 1.0 && layout.sy >= 1e-7 && layout.sy <= 1.0)) {
+      throw tiffError('terrain.bad_georeference', { file: name });
+    }
     if (!(south > -89.0 && layout.y0 < 89.0)) throw tiffError('terrain.polar', { file: name });
   }
 
@@ -3565,8 +3611,10 @@
     return Math.abs(value - step) <= 1e-12;
   }
 
+  /* finite first, as Python must have it: its math.floor of an infinity or
+   * NaN raises */
   function onDegree(value) {
-    return Math.abs(value - Math.floor(value + 0.5)) <= DEGREE_TOL;
+    return isFinite(value) && Math.abs(value - Math.floor(value + 0.5)) <= DEGREE_TOL;
   }
 
   /* Every cell centre lies in the 1-degree square whose south-west corner
@@ -3881,8 +3929,9 @@
       pyFixed(Math.abs(lonMin), 3) + ' ' + (lonMin >= 0 ? 'E' : 'W');
   }
 
-  /* [west, south, east, north] of the union of the files' cell centres,
-   * the first of equal values kept, as Python's min and max keep it */
+  /* [west, south, east, north]: the bounding box of the files' cell
+   * centres, which holds any gap between them too; the first of equal
+   * values kept, as Python's min and max keep it */
   function elevationExtent(files) {
     var west = 0, south = 0, east = 0, north = 0;
     files.forEach(function (found, k) {
@@ -3954,7 +4003,10 @@
    *
    * `radiusKm` is the half-side of the square shown; the analysis also
    * reads `marginKm` beyond it on every side (by default the configuration's
-   * terrain.analysis_buffer_km), and terrain.max_cells caps the whole. The
+   * terrain.analysis_buffer_km), and terrain.max_cells caps the whole, once
+   * the centre is known to lie on a file (else it lies in a gap between
+   * them or outside them); terrain.max_blocks caps the blocks the plan
+   * names, counted before they are listed. The
    * files are put in plan order (the greatest y0 first, then the smallest
    * x0, then the name in UTF-16 code units) and the first one's lattice is
    * the reference; each other file must lie on it, at the same spacing and
@@ -4004,7 +4056,8 @@
         throw tiffError('terrain.join_spacing', { a: ordered[0].name, b: ordered[k].name });
       }
       var ex = (lay.x0 - x0) / sx, ey = (y0 - lay.y0) / sy;
-      if (Math.abs(ex - Math.floor(ex + 0.5)) > 1e-6 || Math.abs(ey - Math.floor(ey + 0.5)) > 1e-6) {
+      /* written so that an infinite or NaN offset fails */
+      if (!(Math.abs(ex - Math.floor(ex + 0.5)) <= 1e-6) || !(Math.abs(ey - Math.floor(ey + 0.5)) <= 1e-6)) {
         throw tiffError('terrain.join_phase', { a: ordered[0].name, b: ordered[k].name });
       }
       offsets.push([Math.floor(ex + 0.5), Math.floor(ey + 0.5)]);
@@ -4022,10 +4075,36 @@
       }
     }
 
-    /* the centre cell, and the half sizes from its cell size; + 0 keeps a
-     * ceiling of a small negative from being -0, as no Python integer is */
+    /* the centre cell (NaN or an infinity for a centre no cell reaches,
+     * which every test below then fails, as Python refuses it) */
     var ci = Math.floor((centre.lon - x0) / sx + 0.5);
     var cj = Math.floor((y0 - centre.lat) / sy + 0.5);
+
+    /* before the cap, the centre must lie on a file, so that a centre off
+     * the files is told so rather than given a radius that would not help;
+     * it lies in a gap between them when the files' bounding box holds it,
+     * judged on whole cells so the engines cannot disagree */
+    var inside = ordered.some(function (found, f) {
+      var oi = offsets[f][0], oj = offsets[f][1];
+      return oi <= ci && ci < oi + found.layout.width && oj <= cj && cj < oj + found.layout.height;
+    });
+    if (!inside) {
+      var iLow = Infinity, iHigh = -Infinity, jLow = Infinity, jHigh = -Infinity;
+      ordered.forEach(function (found, f) {
+        iLow = Math.min(iLow, offsets[f][0]);
+        iHigh = Math.max(iHigh, offsets[f][0] + found.layout.width);
+        jLow = Math.min(jLow, offsets[f][1]);
+        jHigh = Math.max(jHigh, offsets[f][1] + found.layout.height);
+      });
+      var extent = elevationBoundsText(elevationExtent(ordered));
+      if (iLow <= ci && ci < iHigh && jLow <= cj && cj < jHigh) {
+        throw tiffError('terrain.site_gap', { where: centre.label, extent: extent });
+      }
+      throw tiffError('terrain.site_outside', { where: centre.label, extent: extent });
+    }
+
+    /* the half sizes from the centre cell's size; + 0 keeps a ceiling of a
+     * small negative from being -0, as no Python integer is */
     var size = wgs84CellSize(y0 - cj * sy, sx, sy), dxC = size[0], dyC = size[1];
     var hx = Math.ceil((radius + margin) * 1000 / dxC) + 0;
     var hy = Math.ceil((radius + margin) * 1000 / dyC) + 0;
@@ -4033,24 +4112,20 @@
     var hys = Math.ceil(radius * 1000 / dyC) + 0;
     var width = 2 * hx + 1, height = 2 * hy + 1;
 
-    /* the cap, on everything analysed, and the least window analysed */
+    /* the cap, on everything analysed, and the least window analysed. When
+     * the margin alone is over the cap no radius fits, and the sentence
+     * says to lower the margin rather than offer a radius of 0 km. */
     if (width * height > terrain.max_cells) {
+      var hx0 = Math.ceil(1000 * margin / dxC) + 0, hy0 = Math.ceil(1000 * margin / dyC) + 0;
+      if ((2 * hx0 + 1) * (2 * hy0 + 1) > terrain.max_cells) {
+        throw tiffError('terrain.margin_too_many_cells', { margin: margin, cap: terrain.max_cells });
+      }
       var h = Math.floor((Math.sqrt(terrain.max_cells) - 1) / 2);
       var fit = Math.floor((h * (dyC < dxC ? dyC : dxC) - 1000 * margin) / 100) / 10;
       throw tiffError('terrain.too_many_cells', { radius: radius, margin: margin, cap: terrain.max_cells,
         fit: fit > 0.0 ? fit : 0.0 });
     }
     if (width < 3 || height < 3) throw tiffError('terrain.too_small', { w: width, h: height });
-
-    /* the centre must lie on a file */
-    var inside = ordered.some(function (found, f) {
-      var oi = offsets[f][0], oj = offsets[f][1];
-      return oi <= ci && ci < oi + found.layout.width && oj <= cj && cj < oj + found.layout.height;
-    });
-    if (!inside) {
-      throw tiffError('terrain.site_outside', { where: centre.label,
-        extent: elevationBoundsText(elevationExtent(ordered)) });
-    }
 
     /* the axes, origin plus index times step, south row first */
     var lons = new Float64Array(width), lats = new Float64Array(height);
@@ -4060,6 +4135,20 @@
     /* missing 1-degree tiles of a product that publishes no sea tiles */
     var iFirst = ci - hx, jFirst = cj - hy;
     var tiles = elevationMissingTiles(ordered, sources, offsets, sx, iFirst, jFirst, width, height);
+
+    /* the blocks, counted before any is listed: each costs a decode of its
+     * own, so a file cut into tiny blocks is refused here however few cells
+     * the window holds; a block holding both window cells and an edge is
+     * counted once for each, so the count bounds the decodes from above */
+    var counts = elevationCountBlocks(ordered, offsets, iFirst, jFirst, width, height, tiles.edges);
+    var total = 0, most = 0;
+    counts.forEach(function (count, f) {
+      total += count;
+      if (count > counts[most]) most = f;
+    });
+    if (total > terrain.max_blocks) {
+      throw tiffError('terrain.too_many_blocks', { file: ordered[most].name, n: total, cap: terrain.max_blocks });
+    }
     var blocks = elevationPlanBlocks(ordered, offsets, iFirst, jFirst, width, height, tiles.edges);
     return {
       files: ordered, sources: sources, declared: elevationDeclaration(declared), offsets: offsets,
@@ -4128,6 +4217,33 @@
       });
     });
     return { tile: p, missing: missing, edges: edges };
+  }
+
+  /* How many blocks of `size` cells along an axis of `extent` cells hold one
+   * of the window's `n` cells from `first` on, in the file's own cell
+   * numbering: elevation._blocks_met at stride 1, where every block the
+   * window spans holds one, so the count is worked out, never listed. */
+  function elevationBlocksMet(extent, size, first, n) {
+    var low = first > 0 ? first : 0, high = first + n < extent ? first + n : extent;
+    return low < high ? Math.floor((high - 1) / size) - Math.floor(low / size) + 1 : 0;
+  }
+
+  /* The blocks each file gives up, counted without listing them:
+   * elevation._count_blocks. The block rows holding a window row times the
+   * block columns holding a window column (a strip spans every column, so
+   * it is one block column), and the blocks holding each full edge, a row
+   * of tiles or a column of them (or of strips). */
+  function elevationCountBlocks(files, offsets, iFirst, jFirst, width, height, edges) {
+    return files.map(function (found, k) {
+      var lay = found.layout;
+      var count = elevationBlocksMet(lay.height, lay.blockHeight, jFirst - offsets[k][1], height) *
+        elevationBlocksMet(lay.width, lay.blockWidth, iFirst - offsets[k][0], width);
+      edges.forEach(function (edge) {
+        if (edge.file !== k) return;
+        count += edge.row !== null ? Math.ceil(lay.width / lay.blockWidth) : Math.ceil(lay.height / lay.blockHeight);
+      });
+      return count;
+    });
   }
 
   /* The blocks to read, file by file in plan order and each file's blocks
@@ -4221,6 +4337,15 @@
       });
     });
     return reads;
+  }
+
+  /* `count` as a whole percentage of `cells`, half up, as
+   * elevation._percent gives it: integers alone (all under 2^53, so the
+   * division is exact enough to floor), and a share short of the whole at
+   * most 99, since "100%" while some cell was read contradicts itself */
+  function elevationPercent(count, cells) {
+    var pct = Math.floor((200 * count + cells) / (2 * cells));
+    return count < cells && pct === 100 ? 99 : pct;
   }
 
   /* a tile of the plan's reference lattice named by its south-west corner,
@@ -4362,13 +4487,20 @@
       for (var y = 0; y < height; y++) tileY.push(floorDiv(jFirst + y, plan.tile));
       plan.missing.forEach(function (tile, m) {
         if (!(edgeCount[m] && !edgeLand[m])) return;
+        /* a tile is named only when some window cell of it is taken as sea:
+         * a window reaching just the row or column an .hgt tile shares with
+         * the next meets that tile without a cell of it going uncovered */
+        var found = false;
         for (var r = 0; r < height; r++) {
           if (tileY[r] !== tile[1]) continue;
           for (var col = 0; col < width; col++) {
-            if (tileX[col] === tile[0] && why[r * width + col] === 3) sea[r * width + col] = 1;
+            if (tileX[col] === tile[0] && why[r * width + col] === 3) {
+              sea[r * width + col] = 1;
+              found = true;
+            }
           }
         }
-        seaTiles.push(planTileCode(plan, tile));
+        if (found) seaTiles.push(planTileCode(plan, tile));
       });
     }
     var voids = 0, implausible = 0, open = 0, assumed = 0, held = 0, i;
@@ -4385,7 +4517,11 @@
     var uncovered = open - assumed;
     var credited = terrainCredit(plan.files, plan.declared);
     var dx = plan.dx, dy = plan.dy;
-    var names = plan.files.map(function (f) { return f.name; });
+    /* the files read are those with a block in the plan, an edge block
+     * included, in plan order; the label and credit stay the whole set's */
+    var used = plan.files.map(function () { return false; });
+    plan.blocks.forEach(function (block) { used[block.file] = true; });
+    var names = plan.files.filter(function (f, k) { return used[k]; }).map(function (f) { return f.name; });
 
     /* the grid, the mask and the reasons south row first */
     var z = new Float64Array(cells), seaSouth = new Uint8Array(cells), whySouth = new Uint8Array(cells);
@@ -4396,13 +4532,24 @@
       whySouth.set(why.subarray(from, from + width), row * width);
     }
     var cellNote = elevationCellNote(dx, dy);
-    var notes = [phrase('terrain.read_summary', { n: names.length, names: andJoin(names), cells: cells,
-      dx: dx, dy: dy, where: plan.centre.label, radius: plan.radiusKm })];
+    /* the summary counts the square shown, which is what its radius
+     * describes; the margin read beyond it has a sentence of its own */
+    var shown = plan.shown;
+    var notes = [phrase('terrain.read_summary', { n: names.length, names: andJoin(names),
+      cells: (shown[1] - shown[0]) * (shown[3] - shown[2]), dx: dx, dy: dy, where: plan.centre.label,
+      radius: plan.radiusKm })];
     if (plan.centre.note) notes.push(plan.centre.note);
     if (plan.marginKm > 0) notes.push(phrase('terrain.read_margin', { margin: plan.marginKm }));
-    if (uncovered) notes.push(phrase('terrain.read_uncovered', { pct: 100.0 * uncovered / cells }));
-    if (assumed) {
-      notes.push(phrase('terrain.read_assumed_sea', { pct: 100.0 * assumed / cells, n: seaTiles.length,
+    if (uncovered && 200 * uncovered < cells) {
+      notes.push(phrase('terrain.read_uncovered_little', { count: uncovered }));
+    } else if (uncovered) {
+      notes.push(phrase('terrain.read_uncovered', { pct: elevationPercent(uncovered, cells) }));
+    }
+    if (assumed && 200 * assumed < cells) {
+      notes.push(phrase('terrain.read_assumed_sea_little', { count: assumed, n: seaTiles.length,
+        tiles: andJoin(seaTiles), level: seaLevel, product: PRODUCT_NAMES[setSource(plan.sources)] }));
+    } else if (assumed) {
+      notes.push(phrase('terrain.read_assumed_sea', { pct: elevationPercent(assumed, cells), n: seaTiles.length,
         tiles: andJoin(seaTiles), level: seaLevel, product: PRODUCT_NAMES[setSource(plan.sources)] }));
     }
     if (voids) notes.push(phrase('terrain.read_voids', { n: voids }));

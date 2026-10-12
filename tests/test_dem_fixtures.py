@@ -518,7 +518,7 @@ def test_gdal_finds_the_coordinate_system_raster_type_and_nodata_the_builder_wro
 
     So the manifest's nodata_value, which the readers are held to, is GDAL's
     too: an empty GDAL_NODATA is no no-data value in both, and ArcGIS's
-    '-3.40282346639e+038' clamps to -FLT_MAX in both.
+    '-3.40282346639e+038' rounds to -FLT_MAX in both.
     """
     entry = FILES[name]
     with _open(rasterio, name) as dataset:
@@ -545,3 +545,53 @@ def test_the_pre_1992_lzw_file_is_genuine_because_gdal_reads_it_as_written(raste
     with rasterio.open(DEM / "refuse_old_lzw.tif") as dataset:
         band = dataset.read(1, masked=False)
     assert band.astype(np.dtype("<i2")).tobytes() == _intended("refuse_old_lzw.tif")
+
+
+def test_the_mask_fixtures_hold_masks_gdal_applies_over_cells_of_0(rasterio):
+    """internal_mask.tif (the builder's) and gdal_internal_mask_f32.tif
+    (GDAL's own) each carry a per-dataset mask GDAL applies, hiding the
+    western columns, which hold 0.0: so the reader's has_mask, which both
+    must set, is held to a mask GDAL would honour, not to a directory only
+    the reader takes for one. Prevents the elevation layer's mask refusal
+    being tested on a file no GIS would read as masked."""
+    for name, hidden in (("internal_mask.tif", 4), ("gdal_internal_mask_f32.tif", 5)):
+        assert FILES[name]["has_mask"] and FILES[name]["elevation"] == "terrain.internal_mask"
+        with _open(rasterio, name) as dataset:
+            assert [flag.name for flag in dataset.mask_flag_enums[0]] == ["per_dataset"], name
+            valid = dataset.read_masks(1)
+            band = dataset.read(1, masked=False)
+        assert (valid[:, :hidden] == 0).all() and (valid[:, hidden:] == 255).all(), name
+        assert (band[:, :hidden] == 0.0).all(), name
+
+
+@pytest.mark.parametrize("text", ["-3.40282346639e+038", "3.4028235e38", "3.40283e38", "3.5e38", "1e39", "-1e39",
+                                  "nan", "-inf"])
+def test_a_float32_no_data_value_is_cast_and_matched_as_gdal_casts_and_masks_it(text, rasterio, tmp_path):
+    """A float32 file's GDAL_NODATA is rounded to the nearest float32, as
+    GDAL casts it: ArcGIS's '-3.40282346639e+038' and '3.4028235e38' to the
+    largest float32, '3.40283e38' and beyond to an infinity. The reader's
+    value is GDAL's after that cast, and the cells it voids are those GDAL's
+    mask hides (and NaN, which the reader voids whatever the file says).
+    Prevents a no-data value beyond float32 being clamped to the largest
+    float32, voiding a cell GDAL keeps and keeping one GDAL hides."""
+    np = pytest.importorskip("numpy")
+    from groundwater.geotiff import read_geotiff
+
+    flt_max = float(np.finfo(np.float32).max)
+    rows = MAKE.metres(MAKE.patch(10, 6, 62))
+    rows[0][0], rows[0][1], rows[1][0], rows[1][1], rows[2][2] = flt_max, math.inf, -math.inf, -flt_max, math.nan
+    data = MAKE.single("nodata.tif", "", rows, "f32", MAKE.Georef(-11.9, 8.4, 1 / 1200, 1 / 1200), nodata=text).data
+    path = tmp_path / "nodata.tif"
+    path.write_bytes(data)
+    with rasterio.open(path) as dataset:
+        nodata = dataset.nodata
+        hidden = dataset.read_masks(1) == 0
+        band = dataset.read(1, masked=False)
+    with np.errstate(over="ignore"):
+        gdal = float(np.float32(nodata))
+    raster = read_geotiff(data, "nodata.tif")
+    ours = raster.layout.nodata
+    assert ours == gdal or (math.isnan(ours) and math.isnan(gdal)), (ours, gdal)
+    assert ours == MAKE.nodata_value(text, "f32") or math.isnan(ours)
+    assert np.array_equal(np.isnan(raster.z[::-1]), hidden | np.isnan(band))
+    assert hidden.any() or text == "nan", "each text matches a cell of the file"

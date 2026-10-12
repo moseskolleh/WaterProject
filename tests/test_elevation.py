@@ -33,7 +33,9 @@ from groundwater.config import TerrainConfig
 from groundwater.geo import geodesic_distance_m
 from groundwater.geotiff import GeoTiffError, read_geotiff
 from groundwater.mapping.elevation import (
+    ElevationFile,
     WindowCentre,
+    _percent,
     elevation_label_and_credit,
     hgt_layout,
     load_elevation,
@@ -292,6 +294,124 @@ def test_a_grid_reaching_a_pole_is_refused():
     assert _refused(_files, {"south.tif": south}).ident == "terrain.polar"
 
 
+def test_a_file_with_a_gdal_mask_is_refused_as_an_elevation_model_but_read_raw():
+    """GDAL keeps a mask of invalid cells as a directory after the image, and
+    the cells it hides usually hold 0. Read as heights they would be ground
+    at sea level, which the sea rule could then take for sea, and nothing in
+    the report would say a mask was dropped; so the elevation layer refuses
+    the file, asking for a no-data value instead, whether it is opened for a
+    window or read whole. The raw layer still reads every sample."""
+    for name in ("internal_mask.tif", "gdal_internal_mask_f32.tif"):
+        data = (DEM / name).read_bytes()
+        assert read_geotiff(data, name).layout.has_mask
+        refusal = _refused(_files, {name: data})
+        assert (refusal.ident, refusal.values) == ("terrain.internal_mask", {"file": name})
+        assert str(refusal) == (f"{name} marks some of its cells as invalid with a GDAL mask, which this "
+                                "reader does not apply; save it again with a no-data value instead.")
+        assert _refused(load_elevation, DEM / name).ident == "terrain.internal_mask"
+
+
+def test_masks_gdal_writes_with_its_gtiff_and_cog_drivers_are_refused(tmp_path):
+    """The two ways GDAL puts a mask beside an elevation model - the GTiff
+    driver with GDAL_TIFF_INTERNAL_MASK, and the COG driver copying a masked
+    source, which puts the mask after the image and overviews after both -
+    each refused by the elevation layer, so a masked file from either never
+    reads its hidden cells as heights."""
+    rasterio = pytest.importorskip("rasterio")
+    from rasterio.shutil import copy as gdal_copy
+    from rasterio.transform import from_origin
+
+    heights = np.full((64, 64), 25.0, dtype="float32")
+    heights[:, :20] = 0.0
+    valid = np.full((64, 64), 255, dtype="uint8")
+    valid[:, :20] = 0
+    profile = {"driver": "GTiff", "width": 64, "height": 64, "count": 1, "dtype": "float32",
+               "crs": "EPSG:4326", "transform": from_origin(-12.0, 9.0, ARCSEC, ARCSEC), "compress": "deflate"}
+    gtiff = tmp_path / "masked.tif"
+    with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True), rasterio.open(gtiff, "w", **profile) as sink:
+        sink.write(heights, 1)
+        sink.write_mask(valid)
+    cog = tmp_path / "masked_cog.tif"
+    with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True), rasterio.open(gtiff) as source:
+        assert source.mask_flag_enums[0][0].name == "per_dataset"
+        gdal_copy(source, str(cog), driver="COG", BLOCKSIZE="16", OVERVIEWS="AUTO")
+    for path in (gtiff, cog):
+        data = path.read_bytes()
+        assert read_geotiff(data).layout.has_mask, path.name
+        assert _refused(_files, {path.name: data}).ident == "terrain.internal_mask", path.name
+
+
+@pytest.mark.parametrize(("label", "georef"), [
+    ("a NaN tiepoint", MAKE.Georef(math.nan, 8.0, ARCSEC, ARCSEC, raster=2, copernicus_keys=True)),
+    ("an infinite tiepoint", MAKE.Georef(math.inf, 8.0, ARCSEC, ARCSEC, raster=2, copernicus_keys=True)),
+    ("a tiepoint at minus infinity", MAKE.Georef(-math.inf, 8.0, 0.001, 0.001)),
+    ("a tiepoint at 1.7e308", MAKE.Georef(1.7e308, 8.0, 0.001, 0.001, raster=1)),
+    ("a NaN translation", MAKE.Georef(math.nan, 8.0, ARCSEC, ARCSEC, transform=True)),
+    ("a subnormal cell width", MAKE.Georef(-12.0, 8.0, 1e-320, 0.001)),
+    ("an infinite cell height", MAKE.Georef(-12.0, 8.0, 0.001, math.inf)),
+    ("a cell just under 1e-7 degree", MAKE.Georef(-12.0, 8.0, 0.001, 9.9e-8)),
+    ("a cell of two degrees", MAKE.Georef(-12.0, 8.0, 2.0, 0.5)),
+    ("longitudes past 540 degrees", MAKE.Georef(535.0, 8.0, 1.0, 0.5)),
+    ("a first row north of the pole", MAKE.Georef(-12.0, 90.5, 0.01, 0.01)),
+])
+def test_damaged_georeferencing_is_refused_as_the_file_is_opened(label, georef):
+    """An origin that is not a number or infinite, longitudes beyond any map
+    or a cell size no elevation model has (under 1e-7 or over 1 degree)
+    comes from a damaged header. Each is refused, with its own sentence, as
+    the file is opened, so that none reaches the source recognition or the
+    window arithmetic, where Python's integer conversions raised a bare
+    ValueError or an OverflowError the apps did not catch, the browser
+    carried a NaN on into another refusal, and a cell 1e-156 degree tall
+    hung the Python app's stride search. The refusal is a ValueError, as
+    the Streamlit page catches."""
+    data = _made(MAKE.metres(MAKE.patch(12, 12, 7)), georef)
+    refusal = _refused(_files, {"damaged.tif": data})
+    assert (refusal.ident, refusal.values) == ("terrain.bad_georeference", {"file": "damaged.tif"}), label
+    assert isinstance(refusal, ValueError)
+    with pytest.raises(ValueError, match="georeferencing is damaged"):
+        read_elevation([("damaged.tif", data)], None, 5.0, stride=0, margin_km=0.0)
+
+
+def test_a_corrupted_pixel_scale_is_refused_at_once_rather_than_hanging_the_stride_search():
+    """One flipped bit in ModelPixelScale made a cell 1.9e-156 degree tall;
+    the app's stride search then stepped up a stride at a time for longer
+    than the process would live. Refused as the file is opened now, and the
+    search itself is a binary one that ends whatever it is given."""
+    data = bytearray((DEM / "holes_sea_N07W012.tif").read_bytes())
+    data[293] = 0x1F
+    refusal = _refused(read_elevation, [("holes_sea_N07W012.tif", bytes(data))], None, 5.0, stride=0,
+                       margin_km=0.0)
+    assert refusal.ident == "terrain.bad_georeference"
+    accepted = _made(MAKE.metres(MAKE.patch(6, 5, 4)), MAKE.Georef(-12.0, 8.0, 1e-7, 1.0))
+    assert _files({"edge.tif": accepted})[0][0].layout.sx == 1e-7, "the least cell size is taken"
+
+
+def test_the_least_stride_is_found_by_a_search_that_ends_on_any_window():
+    """_least_stride gives the least stride at which the window fits the cap,
+    as stepping up from the estimate did, but in a logarithmic number of
+    steps: a window of 10**154 cells a side is answered at once, a window
+    already under the cap takes stride 1, and a cap under 9 cells, which no
+    window fits, gives the stride at which the window is 3 by 3. Prevents a
+    damaged cell size hanging the Python app's topographic map."""
+    from groundwater.mapping.elevation import _least_stride
+
+    def fits(hx, hy, stride, cap):
+        return (2 * -(-hx // stride) + 1) * (2 * -(-hy // stride) + 1) <= cap
+
+    assert _least_stride(2, 2, 25) == 1 and _least_stride(0, 0, 1) == 1
+    huge = _least_stride(2, 10**154, 2_000_000)
+    assert fits(2, 10**154, huge, 2_000_000) and not fits(2, 10**154, huge - 1, 2_000_000)
+    assert _least_stride(300, 400, 8) == 400
+    rng = random.Random(4103)
+    for _ in range(2000):
+        # the old search: up from the estimate a stride at a time
+        hx, hy, cap = rng.randint(0, 5000), rng.randint(0, 5000), rng.randint(9, 3_000_000)
+        stride = max(1, math.ceil(math.sqrt((2 * hx + 1) * (2 * hy + 1) / cap)))
+        while not fits(hx, hy, stride, cap):
+            stride += 1
+        assert _least_stride(hx, hy, cap) == stride, (hx, hy, cap)
+
+
 # ---------------------------------------------------------------------------
 # Source and credit
 # ---------------------------------------------------------------------------
@@ -468,6 +588,11 @@ def test_the_window_is_read_with_its_margin_and_the_shown_square_inside_it():
     assert flat.shown == (0, flat.grid.z.shape[0], 0, flat.grid.z.shape[1])
     assert not any("beyond the square shown" in note for note in flat.notes)
     assert np.array_equal(read.grid.z[r0:r1, c0:c1], flat.grid.z)
+    # the summary counts the square shown, as its radius says, so the margin
+    # does not change it
+    assert read.notes[0] == flat.notes[0]
+    assert read.notes[0].startswith(f"Read 2 files ({COPERNICUS_W012} and {COPERNICUS_W011}): 441 cells about")
+    assert read.cells == 1225 and (r1 - r0) * (c1 - c0) == 441
 
 
 def test_the_read_says_how_much_of_the_window_the_files_cover():
@@ -480,6 +605,81 @@ def test_the_read_says_how_much_of_the_window_the_files_cover():
     assert int(np.isnan(read.grid.z).sum()) == read.uncovered
     assert phrase("terrain.read_uncovered", pct=100 * 320 / 441) in read.notes
     assert "73% of the window read lies outside the files supplied" in read.notes[1]
+
+
+def test_the_read_report_names_only_the_files_a_window_reads():
+    """A window inside one tile of a pair reads that tile alone, and the
+    report says "Read 1 file", naming it, as the grid's files do; the label
+    and credit stay the whole set's. A tile whose edge alone is read, to
+    decide whether a missing tile is sea, is read, and named. Prevents the
+    report claiming files it never opened a block of."""
+    sources = _fixtures(COPERNICUS_W012, COPERNICUS_W011)
+    files, _ = _files(sources)
+    west = files[0].layout if files[0].name == COPERNICUS_W012 else files[1].layout
+    inside = _read(sources, west.x0 + 34 * ARCSEC, 8.995, 0.1)
+    assert {b.file for b in inside.plan.blocks} == {0} and inside.plan.files[0].name == COPERNICUS_W012
+    assert inside.notes[0].startswith(f"Read 1 file ({COPERNICUS_W012}): 81 cells about 31 by 31 m")
+    assert inside.grid.files == (COPERNICUS_W012,)
+    assert inside.grid.source == phrase("terrain.label_copernicus", n=2, tiles="N08 W012 and N08 W011")
+    across = _read(sources, -11.0, 8.995, 0.2)
+    assert across.notes[0].startswith(f"Read 2 files ({COPERNICUS_W012} and {COPERNICUS_W011})")
+    # a window in N07 W012 reaching west into the missing N07 W013 but not
+    # north to 8 N: N08 W013 gives up its last row alone, and N08 W012 nothing
+    sea = _holes("holes_sea", lon=-11.99, lat=7.5, radius=5.0)
+    assert {sea.plan.files[b.file].name for b in sea.plan.blocks if b.window} == {"holes_sea_N07W012.tif"}
+    assert sea.grid.files == ("holes_sea_N08W013.tif", "holes_sea_N07W012.tif") and sea.assumed
+    assert sea.notes[0].startswith("Read 2 files (holes_sea_N08W013.tif and holes_sea_N07W012.tif)")
+
+
+def test_a_gap_or_a_sea_under_half_a_percent_is_said_to_be_under_1_percent_never_0():
+    """A gap or an assumed sea is reported only because it is there, so a
+    share that would round to 0% is written as less than 1% with its count
+    of cells, and one short of the whole never as 100%; every other share is
+    a whole percentage rounded half up in integers, so both engines print
+    the same figure. Prevents "0% of the window read lies outside the
+    files", a sentence that contradicts itself."""
+    tile = {"N08W012.hgt": _hgt(_hgt_heights(1201, -12, 8))}
+    under = _read(tile, -11.5, 9 - 162 / 1200, 15.0)
+    assert (under.uncovered, under.cells) == (329, 107_583)
+    assert phrase("terrain.read_uncovered_little", count=329) in under.notes
+    assert "Less than 1% of the window read (329 cells) lies outside the files supplied" in under.notes[1]
+    assert not any(note.startswith("0%") for note in under.notes)
+    over = _read(tile, -11.5, 9 - 161 / 1200, 15.0)
+    assert over.uncovered == 658 and phrase("terrain.read_uncovered", pct=1) in over.notes
+    # a sea tile the window just reaches at a corner
+    corner_i, corner_j = (180 - 12) * 1200, (90 - 8) * 1200
+
+    def sea(gi, gj):
+        return (gi <= corner_i + 30) & (gj >= corner_j - 30)
+
+    tiles = {name: _hgt(_hgt_heights(1201, lon0, lat0, sea))
+             for name, lon0, lat0 in (("N08W013.hgt", -13, 8), ("N08W012.hgt", -12, 8), ("N07W012.hgt", -12, 7))}
+    read = _read(tiles, -12 + 50 / 1200, 8 + 50 / 1200, 5.0)
+    assert read.assumed == 25 and 200 * read.assumed < read.cells
+    assert phrase("terrain.read_assumed_sea_little", count=25, n=1, tiles="N07 W013", level=0.0,
+                  product="SRTM") in read.notes
+    for count, cells, pct in ((1, 200, 1), (3, 600, 1), (5, 1000, 1), (995, 1000, 99), (999, 1000, 99),
+                              (1000, 1000, 100), (989, 1000, 99), (985, 1000, 99), (984, 1000, 98),
+                              (320, 441, 73), (7, 8, 88), (1, 8, 13)):
+        assert _percent(count, cells) == pct, (count, cells)
+
+
+def test_a_missing_tile_is_named_as_sea_only_where_some_window_cell_of_it_is_sea():
+    """An .hgt tile's last row and column are the next tiles' first, so a
+    window whose edge lies on that shared column meets the tile to the east
+    without a cell of it going uncovered. The report names, as taken for
+    sea, only the missing tiles that hold a window cell taken as sea.
+    Prevents a sentence placing sea east of a line the window never
+    crosses."""
+    z = _hgt_heights(1201, -12, 8)
+    z[-1, :] = 0
+    z[:, -1] = 0
+    read = _read({"N08W012.hgt": _hgt(z)}, -12 + 1189 / 1200, 9 - 1195 / 1200, 1.0)
+    assert read.plan.missing == ((1, 0), (0, 1), (1, 1))
+    sea_note = next(note for note in read.notes if "taken as open sea" in note)
+    assert sea_note == phrase("terrain.read_assumed_sea", pct=_percent(read.assumed, read.cells), n=1,
+                              tiles="N07 W012", level=0.0, product="SRTM")
+    assert "N08 W011" not in sea_note
 
 
 def _holes(set_name: str, lon=-12.0, lat=8.0, radius=30.0, declared=None):
@@ -599,6 +799,209 @@ def test_a_window_over_the_cap_is_refused_with_a_radius_that_fits():
     assert "a radius of 0.9 km fits" in str(refusal) and "than the 10,000 the analysis takes" in str(refusal)
     read = _read(sources, -11.0, 8.995, fit, 0.5, cfg)
     assert read.cells <= 10_000
+
+
+def test_every_radius_the_cap_offers_fits_and_a_margin_alone_over_the_cap_offers_none():
+    """A sweep over caps, margins, radii, latitudes and the spacings tiles
+    come in: whenever too_many_cells offers a radius, a window of that
+    radius plans; when the margin alone needs more cells than the cap,
+    margin_too_many_cells says so and offers no radius, rather than the
+    "a radius of 0 km fits" that the plan then refused again. Prevents the
+    refusal giving advice that does not work."""
+    rng = random.Random(4104)
+    offered = margins = 0
+    for _ in range(400):
+        step = rng.choice([ARCSEC, 1 / 1200, 1 / 40, 0.01])
+        lat = rng.uniform(-60.0, 60.0)
+        layout = dataclasses.replace(hgt_layout("N00E000.hgt", 2 * 1201 * 1201), x0=0.0, y0=lat, sx=step,
+                                     sy=step, width=100_000, height=100_000, tiled=True, block_width=1024,
+                                     block_height=1024, rows_per_strip=None, offsets=[0] * 98 * 98,
+                                     byte_counts=[0] * 98 * 98)
+        files = [ElevationFile("model.tif", 0, layout, "geotiff", "unidentified")]
+        cfg = dataclasses.replace(TerrainConfig(), max_cells=rng.choice([10_000, 50_000, 300_000, 2_000_000]))
+        margin = rng.choice([0.0, 0.5, 2.0, 5.0])
+        centre = WindowCentre(step * 500, lat - step * 500, "here", True)
+        radius = rng.uniform(0.5, 150.0)
+        try:
+            plan_window(files, centre, radius, cfg, margin_km=margin)
+            continue
+        except GeoTiffError as refusal:
+            if refusal.ident == "terrain.margin_too_many_cells":
+                margins += 1
+                assert refusal.values == {"margin": margin, "cap": cfg.max_cells}
+                with pytest.raises(GeoTiffError) as again:
+                    plan_window(files, centre, 0.0, cfg, margin_km=margin)
+                assert again.value.ident == "terrain.margin_too_many_cells"
+                continue
+            assert refusal.ident == "terrain.too_many_cells", refusal
+            offered += 1
+            fit = refusal.values["fit"]
+        plan = plan_window(files, centre, fit, cfg, margin_km=margin)
+        assert plan.cells <= cfg.max_cells
+    assert offered >= 100 and margins >= 10, (offered, margins)
+
+
+def test_a_centre_off_the_files_is_told_so_before_the_cap_and_a_gap_between_tiles_is_named():
+    """Where the centre is checked before the cap, a mistyped position far
+    from the tiles is told it lies outside them rather than offered a
+    radius that would not help; and a centre inside the tiles' bounding box
+    but on none of them lies in a gap, which the sentence says, rather than
+    calling the box what the tiles cover. Prevents a refusal that states a
+    coverage holding the very centre it refuses."""
+    sources = {"N08W012.hgt": _hgt(_hgt_heights(1201, -12, 8)), "N08W011.hgt": _hgt(_hgt_heights(1201, -11, 8)),
+               "N07W012.hgt": _hgt(_hgt_heights(1201, -12, 7))}
+    files, _ = _files(sources)
+    refusal = _refused(plan_window, files, WindowCentre(-10.95, 7.97, "the test point", True), 5.0, stride=5)
+    assert refusal.ident == "terrain.site_gap"
+    assert refusal.values == {"where": "the test point", "extent": "7.000-9.000 N, 10.000-12.000 W"}
+    assert str(refusal) == ("The window centre at the test point lies in a gap between the files supplied, "
+                            "which span 7.000-9.000 N, 10.000-12.000 W; supply the tile that holds it.")
+    refusal = _refused(plan_window, files, WindowCentre(-9.5, 8.5, "Bo", True), 5.0)
+    assert (refusal.ident, refusal.values["extent"]) == ("terrain.site_outside", "7.000-9.000 N, 10.000-12.000 W")
+    one, _ = _files({"N08W012.hgt": sources["N08W012.hgt"]})
+    for lat in (79.7, 70.0, 89.99):
+        refusal = _refused(plan_window, one, WindowCentre(-11.5, lat, "the site", True), 10.0)
+        assert refusal.ident == "terrain.site_outside", lat
+    refusal = _refused(plan_window, one, WindowCentre(math.nan, 8.5, "nowhere", True), 1.0)
+    assert refusal.ident == "terrain.site_outside"
+
+
+def test_a_window_needing_more_blocks_than_the_cap_is_refused_before_any_is_read():
+    """A file cut into tiny tiles costs a decode a block however few cells
+    the window holds, so the plan counts its blocks, without listing them,
+    and refuses more than terrain.max_blocks before a byte of them is read,
+    naming the file with the most. The count is the blocks the plan then
+    lists, edge blocks included, at stride 1 and strided. Prevents a file of
+    tiny tiles costing a decode a cell."""
+    tiny = _made(MAKE.metres(MAKE.patch(40, 40, 8)), MAKE.Georef(-11.5, 8.5, ARCSEC, ARCSEC, raster=2),
+                 tile=(2, 2))
+    files, _ = _files({"tiny.tif": tiny})
+    centre = WindowCentre(-11.5 + 20 * ARCSEC, 8.5 - 20 * ARCSEC, "here", True)
+    plan = plan_window(files, centre, 0.3, margin_km=0.0)
+    assert len(plan.blocks) == 121
+    cfg = dataclasses.replace(TerrainConfig(), max_blocks=120)
+    refusal = _refused(plan_window, files, centre, 0.3, cfg, margin_km=0.0)
+    assert refusal.values == {"file": "tiny.tif", "n": 121, "cap": 120}
+    assert str(refusal) == ("tiny.tif keeps the samples asked for in 121 blocks, more than the 120 the reader "
+                            "takes; save it again with larger tiles or strips.")
+    for stride in (2, 3, 5):
+        strided = plan_window(files, centre, 0.6, stride=stride, margin_km=0.0)
+        cap = dataclasses.replace(TerrainConfig(), max_blocks=len(strided.blocks) - 1)
+        assert _refused(plan_window, files, centre, 0.6, cap, stride=stride, margin_km=0.0).values["n"] == len(
+            strided.blocks)
+    pair, _ = _files(_fixtures(COPERNICUS_W012, COPERNICUS_W011))
+    plan = plan_window(pair, WindowCentre(-11.0, 9.0 - 20 * ARCSEC, "here", True), 0.5, margin_km=0.0)
+    most = max(plan.files, key=lambda f: sum(b.file == plan.files.index(f) for b in plan.blocks))
+    refusal = _refused(plan_window, pair, plan.centre, 0.5, dataclasses.replace(TerrainConfig(), max_blocks=3),
+                       margin_km=0.0)
+    assert refusal.values == {"file": most.name, "n": len(plan.blocks), "cap": 3}
+    holes, _ = _files(_fixtures(*SETS["holes_sea"]["files"]))
+    plan = plan_window(holes, WindowCentre(-12.0, 8.0, "here", True), 30.0, margin_km=0.0,
+                       declared=("copernicus_glo30", ""))
+    listed = len(plan.blocks) + sum(1 for b in plan.blocks if b.window and b.edges)
+    refusal = _refused(plan_window, holes, plan.centre, 30.0, dataclasses.replace(TerrainConfig(), max_blocks=3),
+                       margin_km=0.0, declared=("copernicus_glo30", ""))
+    assert refusal.values["n"] == listed, "a block holding window cells and an edge is counted for each"
+
+
+def test_a_strided_read_over_the_cap_on_blocks_is_refused_having_read_only_the_layout(tmp_path, monkeypatch):
+    """The Python app's topographic map picks its own stride, and a strided
+    window takes a cell or two from each block it meets, so a file cut into
+    small tiles once cost a decode for every cell read. The plan counts the
+    blocks before any is read, so a read over terrain.max_blocks is refused
+    at once having read the file's header and directories and nothing
+    more. Prevents one upload tying up the shared app decoding block after
+    block."""
+    import time
+
+    from groundwater.mapping import elevation
+
+    path = tmp_path / "small_tiles.tif"
+    path.write_bytes(_made(MAKE.metres(MAKE.patch(96, 96, 9)), MAKE.Georef(-11.5, 8.5, ARCSEC, ARCSEC, raster=2),
+                           tile=(16, 16)))
+    reads: list[tuple[int, int]] = []
+    opened = elevation._reader
+
+    def counted(source, stack):
+        size, read_at = opened(source, stack)
+
+        def tracked(offset: int, length: int) -> bytes:
+            reads.append((offset, length))
+            return read_at(offset, length)
+
+        return size, tracked
+
+    monkeypatch.setattr(elevation, "_reader", counted)
+    data = path.read_bytes()
+    opening: list[tuple[int, int]] = []
+
+    def read_at(offset: int, length: int) -> bytes:
+        opening.append((offset, length))
+        return data[offset:offset + length]
+
+    found = open_elevation_file("small_tiles.tif", len(data), read_at)
+    cfg = dataclasses.replace(TerrainConfig(), max_cells=2_500, max_blocks=20)
+    centre = WindowCentre(-11.5 + 48 * ARCSEC, 8.5 - 48 * ARCSEC, "here", True)
+    plan = plan_window([found], centre, 5.0, dataclasses.replace(cfg, max_blocks=10**6), stride=0, margin_km=0.0)
+    assert plan.stride > 1 and len(plan.blocks) == 36, "the stride meets every tile"
+    started = time.perf_counter()
+    refusal = _refused(read_elevation, [("small_tiles.tif", path)], None, 5.0, cfg, stride=0, margin_km=0.0)
+    assert time.perf_counter() - started < 1.0
+    assert refusal.values == {"file": "small_tiles.tif", "n": 36, "cap": 20}
+    assert reads == opening, "nothing is read but what opening the file reads"
+
+
+def test_every_committed_fixture_and_every_app_window_stays_well_under_the_cap_on_blocks():
+    """The cap on blocks is for files cut into tiny blocks, not for what an
+    operator supplies: every committed fixture read whole, a Copernicus
+    1024-tiled tile set with a missing sea tile beside it and a 1
+    arc-second .hgt set with missing tiles on two sides (each edge column a
+    strip a row), each at the default radius and at the widest the cap on
+    cells takes, and the Python app's 40 km topographic map at the stride it
+    picks, all plan under a tenth of terrain.max_blocks. Prevents the cap
+    refusing a window an operator's ordinary tiles ask for."""
+    cfg = TerrainConfig()
+    tenth = dataclasses.replace(cfg, max_blocks=cfg.max_blocks // 10)
+    for name, entry in sorted(json.loads((DEM / "MANIFEST.json").read_text(encoding="ascii"))["files"].items()):
+        if entry["elevation"] != "read":
+            continue
+        files, _ = _files(_fixtures(name))
+        layout = files[0].layout
+        centre = WindowCentre(layout.x0 + (layout.width // 2) * layout.sx,
+                              layout.y0 - (layout.height // 2) * layout.sy, "here", True)
+        dx, dy = wgs84_cell_size(centre.lat, layout.sx, layout.sy)
+        radius = max(layout.width * dx, layout.height * dy) / 1000
+        plan_window(files, centre, radius, dataclasses.replace(tenth, max_cells=10**9), margin_km=0.0)
+
+    def tile(lon0: int, lat0: int, side: int) -> ElevationFile:
+        name = f"Copernicus_DSM_COG_10_N{lat0:02d}_00_W{-lon0:03d}_00_DEM.tif"
+        across = -(-side // 1024)
+        layout = dataclasses.replace(
+            hgt_layout("N00E000.hgt", 2 * 1201 * 1201), name=name, width=side, height=side, x0=float(lon0),
+            y0=lat0 + 1.0, sx=ARCSEC, sy=ARCSEC, tiled=True, block_width=1024, block_height=1024,
+            rows_per_strip=None, offsets=[0] * across * across, byte_counts=[0] * across * across,
+            sample_format=3, bits=32)
+        return ElevationFile(name, 0, layout, "geotiff", "copernicus_glo30")
+
+    def widest(files, centre):
+        # the widest window the cap on cells takes: the radius it offers
+        refusal = _refused(plan_window, files, centre, 150.0, tenth)
+        assert refusal.ident == "terrain.too_many_cells"
+        plan = plan_window(files, centre, refusal.values["fit"], tenth)
+        assert plan.cells > cfg.max_cells * 0.99
+        return plan
+
+    corner = WindowCentre(-12.0 + 0.02, 8.0 + 0.02, "the coast", True)
+    cop = [tile(-13, 8, 3600), tile(-12, 8, 3600), tile(-12, 7, 3600)]
+    for plan in (plan_window(cop, corner, cfg.analysis_radius_km, tenth), widest(cop, corner)):
+        assert plan.missing and plan.edges and len(plan.blocks) < 50
+    hgt = [ElevationFile(n, 2 * 3601 * 3601, hgt_layout(n, 2 * 3601 * 3601), "hgt", "hgt")
+           for n in ("N08W013.hgt", "N07W012.hgt")]
+    west = WindowCentre(-12.0 - 0.02, 8.0 + 0.02, "the coast", True)
+    for plan in (plan_window(hgt, west, cfg.analysis_radius_km, tenth), widest(hgt, west)):
+        assert len(plan.missing) == 2 and len(plan.edges) == 4 and len(plan.blocks) < cfg.max_blocks // 10
+    wide = plan_window(hgt, west, 40.0, tenth, stride=0, margin_km=0.0)
+    assert wide.stride > 1 and len(wide.blocks) < cfg.max_blocks // 10
 
 
 def test_implausible_and_infinite_heights_become_counted_voids():
