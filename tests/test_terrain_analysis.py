@@ -888,7 +888,7 @@ def _drawn(rows: int, cols: int, paths, sea=(), flat=(), raised=(), shown=None) 
 def _links_as_written(core: TerrainCore, area_km2: float):
     """The drainage lines and their parts as the design writes them out,
     one cell at a time on plain lists: an oracle for drainage_links, which
-    walks the stream cells alone on arrays of its own."""
+    puts the stream cells in order along their lines in arrays, all at once."""
     rows, cols = core.rows, core.cols
     size = rows * cols
     threshold = math.floor(area_km2 * 1e8 + 0.5)
@@ -1337,6 +1337,36 @@ def test_drainage_links_from_the_core_equal_those_of_the_full_analysis():
             drainage_geojson(b.core, b.parts, meta)
     with pytest.raises(ValueError):
         drainage_links(a.core, math.nan)
+
+
+def test_a_tilted_plane_of_stream_cells_is_traced_without_an_object_per_cell_and_as_before():
+    """Prevents drainage_links from making Python objects for every stream
+    cell, which on an evenly tilted plane, where every cell a few rows below
+    the top is on a line, took over 400 bytes a cell and put a tilted
+    GeoTIFF at the cap past the app's memory: the trace keeps under 150
+    bytes a stream cell, and its lines and parts are those the walk over
+    cells it replaced gave, to the last bit of every length (the digest of
+    their JSON)."""
+    n = 300
+    z = 100.0 + 0.01 * np.arange(n)[:, None] + np.zeros((n, n))    # rising to the north
+    a = analyse_terrain(_elevation(z), TerrainConfig(drainage_area_km2=SMALL_KM2), shown=(30, n - 30, 30, n - 30),
+                        precision="float64")
+    stream = int(np.count_nonzero(a.stream))
+    assert stream > 0.98 * n * n
+    tracemalloc.start()
+    try:
+        links, parts = drainage_links(a.core, SMALL_KM2)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert peak < 150 * stream, f"{peak / stream:.0f} bytes a stream cell"
+    # One line down each column to the south edge, cut to the square shown.
+    assert len(links) == n and {link.outlet for link in links} == {"edge"}
+    assert all(link.vertices == ((n - 4, c), (0, c)) for c, link in enumerate(links))
+    assert len(parts) == n - 60 and all(p.vertices == ((n - 31, p.id), (30, p.id)) for p in parts)
+    text = json.dumps([[dataclasses.asdict(x) for x in links], [dataclasses.asdict(x) for x in parts]])
+    assert hashlib.sha256(text.encode()).hexdigest() == \
+        "6d2aa348a4727b7cefac801085d42334acbfe94f6a9a145664b280270565c2a9"
 
 
 def test_the_drainage_geojson_escapes_names_and_rounds_as_python_does():
