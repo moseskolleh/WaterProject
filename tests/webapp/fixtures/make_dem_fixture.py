@@ -1297,6 +1297,180 @@ def loop_or_overviews(name: str, *, loop: bool) -> Fixture:
     return Fixture(name, data, entry)
 
 
+# --- files made to a description -------------------------------------------------------------
+#
+# The fuzz suite (tests/fuzz/rasters.py, kind "geotiff") and the engine tests
+# (tests/test_terrain_engine_js.py) hand both readers files by the hundred,
+# each made here from a plain JSON description, so a file that sets the two
+# readers apart can be saved and made again from its description alone. None
+# is committed; what matters is that both readers do the same with each,
+# whether that is reading it or refusing it.
+
+#: Samples a description can name rather than give, besides a number: a
+#: stored -0, the infinities and NaN (floating point only), and the lowest
+#: and highest values of the sample type.
+NAMED_SAMPLES = ("-0", "inf", "-inf", "nan", "low", "high")
+
+
+def kind_range(kind: str) -> tuple[float, float]:
+    """The lowest and highest finite value a sample of ``kind`` holds."""
+    fmt, bits, _ = KINDS[kind]
+    if fmt == 3:
+        top = FLT_MAX if bits == 32 else 1.7976931348623157e308
+        return -top, top
+    return (0, (1 << bits) - 1) if fmt == 1 else (-(1 << (bits - 1)), (1 << (bits - 1)) - 1)
+
+
+def described_rows(kind: str, width: int, height: int, seed: int, specials=()) -> list[list]:
+    """The samples a described file holds, north row first.
+
+    Heights in decimetres by :func:`terrain_dm`, as metres for floating point
+    and shifted into each integer type's range, with one cell in seven drawn
+    across the type's whole range instead, so that a predictor's carry runs
+    through every byte of a word. ``specials`` are ``[row, column, value]``,
+    the value a number or one of NAMED_SAMPLES; a float-only name is skipped
+    in an integer file.
+    """
+    fmt, bits, _ = KINDS[kind]
+    low, high = kind_range(kind)
+    rows = []
+    for r in range(height):
+        row = []
+        for c in range(width):
+            dm, spread = terrain_dm(c, r, seed), mix(c, r, seed, 7)
+            if fmt == 3:
+                row.append(dm / 10 if spread % 7 else (spread % 2000001 - 1000000) / 8)
+            elif spread % 7 == 0:
+                row.append(int(low + spread * (high - low) // 0xFFFFFFFF))
+            else:
+                row.append(int(low + (dm - 1500) % (high - low + 1)) if bits == 8 else
+                           max(int(low), min(int(high), dm - 2000 if fmt == 2 else dm)))
+        rows.append(row)
+    for r, c, value in specials:
+        if not (0 <= r < height and 0 <= c < width):
+            continue
+        if value in ("-0", "inf", "-inf", "nan") and fmt != 3:
+            continue
+        named = {"-0": -0.0, "inf": float("inf"), "-inf": float("-inf"), "nan": float("nan"),
+                 "low": low, "high": high}
+        if isinstance(value, str):
+            rows[r][c] = named[value]
+        elif fmt == 3:  # a number past the type's largest is held at it, as a writer clamps it
+            rows[r][c] = value if value != value or abs(value) == float("inf") else max(low, min(high, value))
+        else:
+            rows[r][c] = max(int(low), min(int(high), int(value)))
+    return rows
+
+
+def _retyped(order: str, kind: int, values, new: int):
+    """A tag's values written as field type ``new``: text's own bytes under
+    the new type code, numbers cast to it where it holds them, and a damaged
+    rendering where it does not (text for ASCII, the bytes of a LONG for a
+    type TIFF does not define)."""
+    if isinstance(values, (bytes, bytearray)):
+        return new, bytes(values)
+    if new == ASCII:
+        return ASCII, (" ".join(str(v) for v in values)).encode("ascii") + b"\x00"
+    if new in (RATIONAL, SRATIONAL):
+        return new, [(int(v) & 0x7FFFFFFF, 1) for v in values]
+    if new not in TYPE_FORMAT:
+        return new, b"".join(struct.pack(order + "I", int(v) & 0xFFFFFFFF) for v in values)
+    if new in (FLOAT, DOUBLE):
+        return new, [float(v) for v in values]
+    size = TYPE_SIZE[new] * 8
+    signed = new in (SBYTE, SSHORT, SLONG, 17)
+    wrapped = [int(v) & ((1 << size) - 1) for v in values]
+    if signed:
+        wrapped = [v - (1 << size) if v >= 1 << (size - 1) else v for v in wrapped]
+    return new, wrapped
+
+
+def _recounted(data: bytes, order: str, bigtiff: bool, index: int, tag: int, count: int) -> bytes:
+    """``data`` with the count of ``tag`` in its ``index``-th directory set to ``count``."""
+    word, entry = ("Q", 20) if bigtiff else ("I", 12)
+    ifd = struct.unpack_from(order + word, data, 8 if bigtiff else 4)[0]
+    for _ in range(index):
+        n = struct.unpack_from(order + ("Q" if bigtiff else "H"), data, ifd)[0]
+        ifd = struct.unpack_from(order + word, data, ifd + (8 if bigtiff else 2) + entry * n)[0]
+    n = struct.unpack_from(order + ("Q" if bigtiff else "H"), data, ifd)[0]
+    for k in range(n):
+        at = ifd + (8 if bigtiff else 2) + entry * k
+        if struct.unpack_from(order + "H", data, at)[0] == tag:
+            return data[:at + 4] + struct.pack(order + word, count) + data[at + 4 + struct.calcsize(word):]
+    return data
+
+
+def described_file(spec: dict) -> bytes:
+    """A TIFF made to ``spec``, a JSON object of these keys (all but ``kind``,
+    ``width`` and ``height`` may be left out):
+
+    - ``kind`` ("u8" ... "f64"), ``width``, ``height``, ``seed`` and
+      ``specials``: the samples, by :func:`described_rows`;
+    - ``order`` ("<" or ">"), ``bigtiff``, ``tile`` ([width, height]) or
+      ``rows_per_strip``, ``compression``, ``predictor``, ``sparse`` (tile
+      or strip indexes written as sparse blocks), ``encoder`` (more of
+      :func:`image`'s options: ``old_lzw``, ``lzw_deferred``,
+      ``packbits_noop``, ``full_last_strip``), ``ifds_first``,
+      ``count_type`` (the byte counts' field type) and ``loop_to`` (the
+      directory the last one points back to): the encoding, as
+      :func:`image` and :func:`assemble` write it;
+    - ``georef``: :class:`Georef`'s fields, or null for no georeferencing;
+    - ``nodata``: GDAL_NODATA's text; ``metadata``: ``[role, text]`` items
+      for GDAL_METADATA;
+    - ``overviews``: how many reduced images come before the full one;
+    - ``tags``: ``[tag, type, values]`` written over the image's own,
+      ``values`` a list, text, or bytes as hex; then ``retype``: ``[tag,
+      type]``, each tag's values written as another field type; ``drop``:
+      tags left out;
+      ``recount``: ``[tag, count]``, the full image's entry for each tag
+      given that count, its values left as they are;
+    - ``damage``: ``["cut", permille]`` ends the file that far through it,
+      ``["byte", permille, value]`` sets the byte there and
+      ``["flip", permille, bit]`` flips one of its bits.
+    """
+    kind, order = spec["kind"], spec.get("order", "<")
+    rows = described_rows(kind, spec["width"], spec["height"], spec.get("seed", 0), spec.get("specials", ()))
+    tile = tuple(spec["tile"]) if spec.get("tile") else None
+    full = image(rows, kind, order, compression=spec.get("compression", 1), predictor=spec.get("predictor", 1),
+                 tile=tile, rows_per_strip=None if tile else spec.get("rows_per_strip"),
+                 sparse=tuple(spec.get("sparse", ())), **spec.get("encoder", {}))
+    if spec.get("georef") is not None:
+        full.tags.update(Georef(**spec["georef"]).tags())
+    if spec.get("nodata") is not None:
+        full.tags[GDAL_NODATA] = (ASCII, spec["nodata"].encode("latin-1") + b"\x00")
+    if spec.get("metadata") is not None:
+        full.tags[GDAL_METADATA] = ascii_tag(metadata_xml(*((role.upper(), role, text)
+                                                            for role, text in spec["metadata"])))
+    for tag, kind_of, values in spec.get("tags", ()):
+        if isinstance(values, str):
+            values = values.encode("latin-1") if kind_of == ASCII else bytes.fromhex(values)
+        full.tags[tag] = (kind_of, values)
+    for tag, new in spec.get("retype", ()):
+        if tag in full.tags:
+            full.tags[tag] = _retyped(order, *full.tags[tag], new)
+    for tag in spec.get("drop", ()):
+        full.tags.pop(tag, None)
+    ifds = []
+    for _ in range(spec.get("overviews", 0)):
+        reduced = image([[1.0, 2.0], [3.0, 4.0]], "f32", order)
+        reduced.tags[NEW_SUBFILE_TYPE] = (LONG, [1])
+        ifds.append(reduced)
+    bigtiff = spec.get("bigtiff", False)
+    data = assemble(order, [*ifds, full], bigtiff=bigtiff, ifds_first=spec.get("ifds_first", True),
+                    count_type=spec.get("count_type"), loop_to=spec.get("loop_to"))
+    for tag, count in spec.get("recount", ()):
+        data = _recounted(data, order, bigtiff, len(ifds), tag, count)
+    for damage in spec.get("damage", ()):
+        at = min(len(data) - 1, len(data) * damage[1] // 1000)
+        if damage[0] == "cut":
+            data = data[:at]
+        elif damage[0] == "byte":
+            data = data[:at] + bytes([damage[2]]) + data[at + 1:]
+        else:
+            data = data[:at] + bytes([data[at] ^ (1 << damage[2])]) + data[at + 1:]
+    return data
+
+
 # --- the GDAL-written set ------------------------------------------------------------------
 
 @dataclass

@@ -2,7 +2,7 @@
  * toolkit. Regenerate the references with tests/webapp/make_reference.py.
  */
 import { withPage } from './harness.mjs';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const REF = fileURLToPath(new URL('reference.json', import.meta.url));
@@ -29,6 +29,14 @@ const FIXTURES = {
     type: 'application/json',
   },
 };
+/* every committed GeoTIFF fixture, at /__fixtures/dem/<name> */
+const DEM_NAMES = (await readdir(new URL('fixtures/dem/', import.meta.url)))
+  .filter((name) => name.endsWith('.tif')).sort();
+for (const name of DEM_NAMES) {
+  FIXTURES['/__fixtures/dem/' + name] = {
+    body: await readFile(new URL('fixtures/dem/' + name, import.meta.url)), type: 'image/tiff',
+  };
+}
 
 await withPage(async (page, base, consoleErrors) => {
   await page.goto(base + '/__engine.html', { waitUntil: 'load' });
@@ -2857,6 +2865,132 @@ await withPage(async (page, base, consoleErrors) => {
       read.length > 0 && unlike.length === 0,
       unlike.map((r) => `${r.name}: ${r.platform}`).join('; '));
   }
+
+  // --- GeoTIFF reader (PLAN.md step 4.1) ---
+  // The browser reads an elevation model with its own GeoTIFF reader, the
+  // twin of groundwater/geotiff.py, rule for rule. Every committed fixture
+  // (tests/webapp/fixtures/dem, served through the harness's overlay rather
+  // than copied into reference.json) is read here as the page reads one:
+  // the ranges the layout asks for given the first 16 bytes; the layout,
+  // field for field; a refusal's id and sentence, word for word; and the
+  // read, held exactly - every value of a file of up to 8 x 8 cells and
+  // otherwise a digest of them (float64 little-endian, NaN as one NaN, signs
+  // of zero kept) and ten cells by Object.is, the reasons of the per-sample
+  // rule under the elevation layer's bounds, and the axes by digest with
+  // their ends and step. Nothing here has a tolerance: the readers' rules
+  // are integer and IEEE operations both engines make alike.
+  const GT = R.geotiff;
+  const geotiffJs = await page.evaluate(async ({ names, bounds }) => {
+    const C = GWT.core;
+    /* a number as reference.json carries it: NaN as null, and the
+     * infinities and -0 as strings, which JSON cannot hold */
+    const number = (v) => (v !== v ? null : v === Infinity ? 'Infinity' : v === -Infinity ? '-Infinity'
+      : Object.is(v, -0) ? '-0' : v);
+    const compact = (values) => JSON.stringify(Array.prototype.map.call(values, number));
+    const sha = (bytes) => C.sha256Hex(bytes);
+    const digest = (values) => {
+      const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] !== values[i]) {
+          view.setUint32(8 * i, 0, true);
+          view.setUint32(8 * i + 4, 0x7FF80000, true);
+        } else {
+          view.setFloat64(8 * i, values[i], true);
+        }
+      }
+      return sha(bytes);
+    };
+    const FLOATS = ['x0', 'y0', 'sx', 'sy', 'nodata'];
+    const out = [];
+    for (const name of names) {
+      const bytes = new Uint8Array(await (await fetch('/__fixtures/dem/' + name)).arrayBuffer());
+      const entry = { name };
+      try {
+        const need = C.geotiffLayout(name, bytes.length, [[0, bytes.subarray(0, 16)]]);
+        entry.need = Array.isArray(need) ? JSON.stringify(need) : 'layout';
+      } catch (e) {
+        entry.need = e && e.ident ? e.ident : 'threw ' + String(e);
+      }
+      let layout, read;
+      try {
+        layout = C.geotiffLayout(name, bytes.length, [[0, bytes]]);
+        entry.layout = {};
+        for (const [key, value] of Object.entries(layout)) {
+          entry.layout[key] = FLOATS.includes(key) && value !== null ? number(value) : value;
+        }
+        read = C.readGeoTiff(bytes, name);
+      } catch (e) {
+        entry.refused = e && e.ident ? [e.ident, e.message] : ['threw', String(e)];
+        out.push(entry);
+        continue;
+      }
+      const reasons = new Uint8Array(layout.width * layout.height);
+      const across = layout.tiled ? Math.ceil(layout.width / layout.blockWidth) : 1;
+      for (const [index, offset, length, rows] of C.blockRanges(layout, 0, layout.height, 0, layout.width)) {
+        const block = C.decodeTiffBlock(layout, index, bytes.subarray(offset, offset + length), rows, bounds);
+        const top = Math.floor(index / across) * layout.blockHeight, left = (index % across) * layout.blockWidth;
+        for (let r = 0; r < block.rows; r++) {
+          for (let c = 0; c < block.cols; c++) {
+            reasons[(top + r) * layout.width + left + c] = 48 + block.reasons[r * block.cols + c];
+          }
+        }
+      }
+      const z = read.z, n = z.length;
+      if (n <= 64) {
+        entry.values = compact(z);
+        entry.reasons = String.fromCharCode.apply(null, Array.from(reasons));
+      } else {
+        const spots = [];
+        for (let k = 0; k < 10; k++) spots.push(z[Math.floor(k * (n - 1) / 9)]);
+        entry.values = { digest: digest(z), spots: compact(spots) };
+        entry.reasons = sha(reasons);
+      }
+      entry.axes = { x: digest(read.x), y: digest(read.y), ends: compact([read.x[0], read.x[read.x.length - 1],
+        layout.sx, read.y[0], read.y[read.y.length - 1], layout.sy]) };
+      out.push(entry);
+    }
+    return out;
+  }, { names: GT.files.map((f) => f.name), bounds: GT.bounds });
+  check(`geotiff: every committed fixture (${DEM_NAMES.length}) is in the reference and was read by the page`,
+    sameJson(DEM_NAMES, GT.files.map((f) => f.name)) && geotiffJs.length === GT.files.length,
+    `on disk ${JSON.stringify(DEM_NAMES)}\n     reference ${JSON.stringify(GT.files.map((f) => f.name))}`);
+  GT.files.forEach((ref, i) => {
+    const got = geotiffJs[i] || {};
+    check(`geotiff: ${ref.name} - the bytes asked for given its first 16`, got.need === ref.need,
+      `js ${got.need}\n     py ${ref.need}`);
+    if (ref.layout !== undefined) {
+      const want = JSON.parse(ref.layout), keys = Object.keys(want).sort();
+      const unlike = keys.filter((k) => !sameJson(got.layout && got.layout[k], want[k]));
+      check(`geotiff: ${ref.name} - the layout`,
+        got.layout !== undefined && sameJson(Object.keys(got.layout).sort(), keys) && unlike.length === 0,
+        got.layout === undefined ? 'no layout' : unlike.map((k) =>
+          `${k}: js ${JSON.stringify(got.layout[k])}, py ${JSON.stringify(want[k])}`).join('; ') ||
+          `keys: js ${JSON.stringify(Object.keys(got.layout).sort())}`);
+    }
+    if (ref.refused !== undefined) {
+      check(`geotiff: ${ref.name} - refused (${ref.refused[0]})`, sameJson(got.refused, ref.refused),
+        `js ${JSON.stringify(got.refused)}\n     py ${JSON.stringify(ref.refused)}`);
+      return;
+    }
+    // lists of numbers travel as compact JSON, compared number by number with
+    // Object.is once parsed (NaN is null on both sides, the infinities and -0
+    // strings), since Python writes 171.0 where JavaScript writes 171
+    const sameNumbers = (a, b) => {
+      if (typeof a !== 'string' || typeof b !== 'string') return false;
+      const x = JSON.parse(a), y = JSON.parse(b);
+      return x.length === y.length && x.every((v, k) => Object.is(v, y[k]));
+    };
+    const same = {
+      values: (a, b) => (typeof b === 'string' ? sameNumbers(a, b)
+        : !!a && a.digest === b.digest && sameNumbers(a.spots, b.spots)),
+      reasons: (a, b) => a === b,
+      axes: (a, b) => !!a && a.x === b.x && a.y === b.y && sameNumbers(a.ends, b.ends),
+    };
+    const parts = ['values', 'reasons', 'axes'].filter((k) => !same[k](got[k], ref[k]));
+    check(`geotiff: ${ref.name} - its values, reasons and axes`, !got.refused && parts.length === 0,
+      got.refused ? `js refused: ${JSON.stringify(got.refused)}` : parts.map((k) =>
+        `${k}: js ${JSON.stringify(got[k])}, py ${JSON.stringify(ref[k])}`).join('\n     '));
+  });
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });

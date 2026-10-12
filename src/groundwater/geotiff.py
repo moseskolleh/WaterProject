@@ -616,13 +616,19 @@ _TAG_NAMES = {
 }
 
 #: Bytes per value of each TIFF field type. A type not listed is unknown:
-#: an entry of that type is skipped, unless the reader needs the tag.
+#: an entry of that type is skipped (TIFF 6.0 tells readers to skip a field
+#: of a type they do not know), unless the reader needs the tag.
 _TYPE_SIZE = {1: 1, 2: 1, 6: 1, 7: 1, 3: 2, 8: 2, 4: 4, 9: 4, 11: 4,
               5: 8, 10: 8, 12: 8, 16: 8, 17: 8, 18: 8}
 _TYPE_FORMAT = {1: "B", 3: "H", 4: "I", 16: "Q", 12: "d"}
 
 # The field types each tag the reader uses may have; any other is a damaged
-# entry. Integers come as BYTE, SHORT, LONG or LONG8.
+# entry, in both engines. These are the types TIFF and GeoTIFF give each
+# tag: an unsigned integer as BYTE, SHORT or LONG (TIFF 6.0 tells readers to
+# take any of the three) or BigTIFF's LONG8, never a signed or IFD type;
+# the GeoTIFF reals as DOUBLE; the GeoKey directory as SHORT; text as
+# ASCII. libtiff converts more, but a file written otherwise is not one
+# GDAL or any GeoTIFF writer makes, and refusing it is the simpler rule.
 _INTEGER = (1, _SHORT, _LONG, 16)
 _ALLOWED_TYPES = {
     **{tag: _INTEGER for tag in (
@@ -635,7 +641,8 @@ _ALLOWED_TYPES = {
     _GEO_KEY_DIRECTORY: (_SHORT,),
     **{tag: (_ASCII,) for tag in (_GEO_ASCII_PARAMS, _GDAL_METADATA, _GDAL_NODATA)},
 }
-#: Tags that hold exactly one value
+#: Tags that hold exactly one value (count 1, as libtiff reads them); every
+#: other tag may hold any number, none included, which reads as no values
 _SINGLE = {_NEW_SUBFILE_TYPE, _SUBFILE_TYPE, _IMAGE_WIDTH, _IMAGE_LENGTH, _COMPRESSION, _FILL_ORDER,
            _SAMPLES_PER_PIXEL, _ROWS_PER_STRIP, _PLANAR_CONFIG, _PREDICTOR, _TILE_WIDTH, _TILE_LENGTH}
 #: Tags given once per sample; the first value is the one read
@@ -839,7 +846,9 @@ def _layout(src: _Chunks) -> GeoTiffLayout:
 
     # The directory chain, to the first full-resolution image: COGs and
     # pyramids keep overviews and masks beside it, before it as often as
-    # after it.
+    # after it. Of each directory only the entries of the tags the reader
+    # reads are examined; any other is passed over, whatever its type or
+    # count, as libtiff passes over a tag it does not use.
     seen: set[int] = set()
     index = 0
     while True:
@@ -858,7 +867,10 @@ def _layout(src: _Chunks) -> GeoTiffLayout:
             (count,) = struct.unpack_from(order + word, body, k * entry_size + 4)
             entries[tag] = (kind, count, body[k * entry_size + 4 + inline:(k + 1) * entry_size])
         if _full_image(entries, order, inline, big, name):
-            break
+            break  # its own next pointer is never looked at
+        # The next pointer is judged in this order in both engines: 0 ends
+        # the chain, then 2**53 or more is too large, then a directory
+        # already walked is a loop, then a 65th directory is not walked.
         (following,) = struct.unpack_from(order + word, body, n * entry_size)
         if following == 0:
             raise GeoTiffError("terrain.no_full_image", file=name)
@@ -870,9 +882,13 @@ def _layout(src: _Chunks) -> GeoTiffLayout:
             raise GeoTiffError("terrain.no_full_image", file=name)
         ifd = following
 
-    # The chosen directory's values, out of line where they do not fit in
-    # their entry. None depends on another, so every missing one is asked
-    # for in the same round.
+    # The chosen directory's entries, in ascending tag order, each judged in
+    # this order in both engines: its type, then (BigTIFF) a count of 2**53
+    # or more, then its count, then an out-of-line offset of 2**53 or more,
+    # then values running past the end of the file. Values not yet read are
+    # asked for together once every entry has passed, since none depends on
+    # another, so the refusal a file earns does not depend on how it was
+    # read.
     raw: dict[int, tuple[int, int, bytes]] = {}
     missing: list[tuple[int, int]] = []
     for tag in _VALUE_TAGS:
@@ -892,7 +908,11 @@ def _layout(src: _Chunks) -> GeoTiffLayout:
             raw[tag] = (kind, count, found)
     if missing:
         raise _Missing(missing)
-    return _describe(src, order, big, index, raw)
+    # Then every value is decoded, tag by tag in ascending order, before any
+    # check reads one: a LONG8 value of 2**53 or more is refused here, ahead
+    # of every check on what the values mean.
+    values = {tag: _decoded(order, kind, count, data, name) for tag, (kind, count, data) in raw.items()}
+    return _describe(src, order, big, index, values)
 
 
 def _checked_entry(entries: dict, tag: int, big: bool, name: str) -> int:
@@ -908,17 +928,36 @@ def _checked_entry(entries: dict, tag: int, big: bool, name: str) -> int:
     return count * _TYPE_SIZE[kind]
 
 
+def _decoded(order: str, kind: int, count: int, data: bytes, name: str) -> list | str:
+    """A tag's values: numbers, or for ASCII the bytes as text, a character a
+    byte (Latin-1, as the browser reads them)."""
+    if kind == _ASCII:
+        return data.decode("latin-1")
+    found = list(struct.unpack(f"{order}{count}{_TYPE_FORMAT[kind]}", data))
+    if kind == 16:
+        for value in found:
+            _addressable(value, name)
+    return found
+
+
 def _full_image(entries: dict, order: str, inline: int, big: bool, name: str) -> bool:
     """Whether a directory is the full-resolution image: neither an overview
     (NewSubfileType bit 0, or the old SubfileType 2) nor a mask
-    (NewSubfileType bit 2), and with a width and a height."""
+    (NewSubfileType bit 2), and with a width and a height.
+
+    NewSubfileType is judged before SubfileType. One of a field type TIFF
+    does not define is skipped, as TIFF 6.0 tells a reader to skip it, and
+    counts as absent; one of a known type must be an unsigned integer type,
+    one value, held in the entry itself (a LONG8 is not, in a classic TIFF),
+    or the entry is damaged.
+    """
     kinds: list[int | None] = []
     for tag in (_NEW_SUBFILE_TYPE, _SUBFILE_TYPE):
-        if tag not in entries:
+        if tag not in entries or entries[tag][0] not in _TYPE_SIZE:
             kinds.append(None)
             continue
         length = _checked_entry(entries, tag, big, name)
-        if length > inline:  # one value too long for its entry: no writer does this
+        if length > inline:
             raise _bad_tag(name, tag)
         kind, _, field = entries[tag]
         (value,) = struct.unpack(order + _TYPE_FORMAT[kind], field[:length])
@@ -927,7 +966,7 @@ def _full_image(entries: dict, order: str, inline: int, big: bool, name: str) ->
     return ((new or 0) & 0b101) == 0 and old != 2 and _IMAGE_WIDTH in entries and _IMAGE_LENGTH in entries
 
 
-def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> GeoTiffLayout:
+def _describe(src: _Chunks, order: str, big: bool, index: int, values: dict) -> GeoTiffLayout:
     """The layout's checks, in the order both engines make them - the
     dimensions before anything divides by them, then samples, sample type,
     compression, predictor, fill order, the block table and the block size
@@ -935,18 +974,8 @@ def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> Geo
     refused with its own sentence."""
     name = src.name
 
-    def values(tag: int) -> list:
-        kind, count, data = raw[tag]
-        if kind == _ASCII:
-            return [data]
-        found = list(struct.unpack(f"{order}{count}{_TYPE_FORMAT[kind]}", data))
-        if kind == 16:
-            for value in found:
-                _addressable(value, name)
-        return found
-
     def first(tag: int, default):
-        return values(tag)[0] if tag in raw else default
+        return values[tag][0] if tag in values else default
 
     # Dimensions, before anything divides by them
     width, height = first(_IMAGE_WIDTH, 0), first(_IMAGE_LENGTH, 0)
@@ -954,7 +983,7 @@ def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> Geo
         raise _bad_tag(name, _IMAGE_WIDTH)
     if height < 1:
         raise _bad_tag(name, _IMAGE_LENGTH)
-    tiled = _TILE_WIDTH in raw or _TILE_LENGTH in raw
+    tiled = _TILE_WIDTH in values or _TILE_LENGTH in values
     rows_per_strip = None
     if tiled:
         block_width, block_height = first(_TILE_WIDTH, 0), first(_TILE_LENGTH, 0)
@@ -963,8 +992,10 @@ def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> Geo
         if block_height < 1:
             raise _bad_tag(name, _TILE_LENGTH)
     else:
+        # absent, 2**32 - 1 (libtiff's "the whole image") or past the image:
+        # one strip; the explicit 2**32 - 1 matters for a LONG8 height beyond it
         rows_per_strip = first(_ROWS_PER_STRIP, height)
-        if rows_per_strip == 0xFFFFFFFF:  # libtiff's "the whole image"
+        if rows_per_strip == 0xFFFFFFFF:
             rows_per_strip = height
         rows_per_strip = min(rows_per_strip, height)
         if rows_per_strip < 1:
@@ -975,7 +1006,8 @@ def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> Geo
     if samples != 1:
         raise GeoTiffError("terrain.bands", file=name, n=samples)
 
-    # an absent SampleFormat is unsigned, as the TIFF rule and GDAL have it
+    # an absent SampleFormat is unsigned, as the TIFF rule and GDAL have it;
+    # the pair is matched as a pair, never folded into one number
     sample_format, bits = first(_SAMPLE_FORMAT, 1), first(_BITS_PER_SAMPLE, 1)
     if (sample_format, bits) not in _SAMPLE_TYPES:
         kind = _SAMPLE_KINDS.get(sample_format, f"SampleFormat {sample_format}")
@@ -989,13 +1021,17 @@ def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> Geo
         raise GeoTiffError("terrain.compression", file=name, method=method)
 
     # libtiff sets a predictor up only inside its LZW and Deflate codecs, so
-    # with no compression or PackBits the tag is ignored and GDAL reads the
-    # values as they are stored
+    # with no compression or PackBits the tag is ignored, its value
+    # unexamined, and GDAL reads the values as they are stored; with LZW or
+    # DEFLATE it must be 1, 2 or 3, and 3 needs floating-point samples
     predictor = first(_PREDICTOR, 1)
-    applied = predictor != 1 and compression in (5, 8, 32946)
-    if predictor not in (1, 2, 3) or (applied and predictor == 3 and sample_format != 3):
+    coded = compression in (5, 8, 32946)
+    applied = coded and predictor != 1
+    if coded and (predictor not in (1, 2, 3) or (predictor == 3 and sample_format != 3)):
         raise GeoTiffError("terrain.predictor", file=name, code=predictor)
 
+    # FillOrder 2 is refused by name; any value but 1 or 2 is one libtiff
+    # rejects as a bad value, so a damaged entry
     fill_order = first(_FILL_ORDER, 1)
     if fill_order == 2:
         raise GeoTiffError("terrain.fill_order", file=name)
@@ -1008,8 +1044,8 @@ def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> Geo
     else:
         blocks = -(-height // block_height)
         offsets_tag, counts_tag = _STRIP_OFFSETS, _STRIP_BYTE_COUNTS
-    offsets = values(offsets_tag) if offsets_tag in raw else []
-    counts = values(counts_tag) if counts_tag in raw else []
+    offsets = values.get(offsets_tag, [])
+    counts = values.get(counts_tag, [])
     if len(offsets) != blocks:
         raise _bad_tag(name, offsets_tag)
     if len(counts) != blocks:
@@ -1019,27 +1055,32 @@ def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> Geo
     if block_bytes > _BLOCK_LIMIT:
         raise GeoTiffError("terrain.block_too_large", file=name, mb=block_bytes / 1048576)
 
-    keys = _geo_keys(values(_GEO_KEY_DIRECTORY) if _GEO_KEY_DIRECTORY in raw else None, name)
+    keys = _geo_keys(values.get(_GEO_KEY_DIRECTORY), name)
     model_type = keys.get(_GT_MODEL_TYPE)
-    x0, y0, sx, sy = _transform(raw, values, keys.get(_GT_RASTER_TYPE) == 2, name)
+    # PixelIsPoint only when the key says 2; absent, 0 or anything else is area, as GDAL reads it
+    x0, y0, sx, sy = _transform(values, keys.get(_GT_RASTER_TYPE) == 2, name)
 
+    # Float no-data keeps the sign of a zero (-0 still matches every zero);
+    # an integer one that no sample can equal is None
     nodata = None
-    if _GDAL_NODATA in raw:
-        text = values(_GDAL_NODATA)[0].decode("latin-1")
+    if _GDAL_NODATA in values:
+        text = values[_GDAL_NODATA]
         parsed, readable = _parse_number(text)
         if not readable:
             raise GeoTiffError("terrain.nodata_unreadable", file=name, text=text.strip("\x00 \t\n\r"))
         nodata = None if parsed is None else _cast_nodata(parsed, sample_format, bits)
 
-    if _GDAL_METADATA in raw:
-        for role, text in _SCALE_ITEM.findall(values(_GDAL_METADATA)[0].decode("latin-1")):
+    # a scale or offset that is empty, not a number or NaN is refused too:
+    # only an exact 1 and 0 (-0 included) are no scaling
+    if _GDAL_METADATA in values:
+        for role, text in _SCALE_ITEM.findall(values[_GDAL_METADATA]):
             parsed, _ = _parse_number(text)
             if parsed is None or parsed != (1.0 if role == "scale" else 0.0):
                 raise GeoTiffError("terrain.scaled", file=name)
 
     geo_ascii = None
-    if _GEO_ASCII_PARAMS in raw:
-        geo_ascii = values(_GEO_ASCII_PARAMS)[0].decode("latin-1").rstrip("\x00")
+    if _GEO_ASCII_PARAMS in values:
+        geo_ascii = values[_GEO_ASCII_PARAMS].rstrip("\x00")
     return GeoTiffLayout(
         name=name, size=src.size, byte_order=order, bigtiff=big, width=width, height=height, bits=bits,
         sample_format=sample_format, compression=compression, predictor=predictor, predictor_applied=applied,
@@ -1049,7 +1090,7 @@ def _describe(src: _Chunks, order: str, big: bool, index: int, raw: dict) -> Geo
         epsg=keys.get(_PROJECTED_CS_TYPE) if model_type == 1 else keys.get(_GEOGRAPHIC_TYPE),
         datum=keys.get(_GEOG_GEODETIC_DATUM), angular_unit=keys.get(_GEOG_ANGULAR_UNITS),
         x0=x0, y0=y0, sx=sx, sy=sy, nodata=nodata, ifd_index=index, geo_ascii=geo_ascii,
-        has_nodata_tag=_GDAL_NODATA in raw,
+        has_nodata_tag=_GDAL_NODATA in values,
     )
 
 
@@ -1057,11 +1098,13 @@ def _geo_keys(directory: list | None, name: str) -> dict[int, int]:
     """The GeoKeys held in the directory itself (location 0), the first of each.
 
     Every key the reader uses is a SHORT; one stored elsewhere is taken as
-    absent, as libgeotiff's typed lookup takes it.
+    absent, as libgeotiff's typed lookup takes it. A directory of fewer than
+    four values, of a version other than 1 (the only one GeoTIFF defines;
+    libgeotiff refuses later ones) or shorter than its keys is damaged.
     """
     if directory is None:
         return {}
-    if len(directory) < 4 or len(directory) < 4 + 4 * directory[3]:
+    if len(directory) < 4 or directory[0] != 1 or len(directory) < 4 + 4 * directory[3]:
         raise _bad_tag(name, _GEO_KEY_DIRECTORY)
     keys: dict[int, int] = {}
     for k in range(directory[3]):
@@ -1071,38 +1114,41 @@ def _geo_keys(directory: list | None, name: str) -> dict[int, int]:
     return keys
 
 
-def _transform(raw: dict, values: Callable[[int], list], point: bool,
-               name: str) -> tuple[float, float, float, float]:
+def _transform(values: dict, point: bool, name: str) -> tuple[float, float, float, float]:
     """The centres of the first column and row, and the cell sizes.
 
     Scale and tiepoint first, then a transformation matrix only when there
     is no scale, then several tiepoints alone (control points), which is
-    the order GDAL looks for them in. PixelIsArea puts the tiepoint at a
-    cell's corner and PixelIsPoint at its centre, so an area file's centres
-    are half a cell in. The expressions are the browser's, operation for
-    operation, so the two engines agree to the bit.
+    the order GDAL looks for them in. A scale, when there is one, is judged
+    in this order in both engines: fewer than two values is a damaged entry,
+    then no tiepoint places nothing, then a tiepoint of fewer than six
+    values is damaged, then a scale that is not positive is a flipped grid.
+    PixelIsArea puts the tiepoint at a cell's corner and PixelIsPoint at its
+    centre, so an area file's centres are half a cell in. The expressions
+    are the browser's, operation for operation, so the two engines agree to
+    the bit.
     """
-    if _MODEL_PIXEL_SCALE in raw:
-        scale = values(_MODEL_PIXEL_SCALE)
+    if _MODEL_PIXEL_SCALE in values:
+        scale = values[_MODEL_PIXEL_SCALE]
         if len(scale) < 2:
             raise _bad_tag(name, _MODEL_PIXEL_SCALE)
-        if _MODEL_TIEPOINT not in raw:
+        if _MODEL_TIEPOINT not in values:
             raise GeoTiffError("terrain.no_georeference", file=name)
-        tie = values(_MODEL_TIEPOINT)
+        tie = values[_MODEL_TIEPOINT]
         if len(tie) < 6:
             raise _bad_tag(name, _MODEL_TIEPOINT)
         sx, sy = scale[0], scale[1]
         i, j, x, y = tie[0], tie[1], tie[3], tie[4]
         if not (sx > 0 and sy > 0):
             raise GeoTiffError("terrain.rotated", file=name)
-    elif _MODEL_TRANSFORMATION in raw:
-        m = values(_MODEL_TRANSFORMATION)
+    elif _MODEL_TRANSFORMATION in values:
+        m = values[_MODEL_TRANSFORMATION]
         if len(m) != 16:
             raise _bad_tag(name, _MODEL_TRANSFORMATION)
         if not (m[1] == 0 and m[4] == 0 and m[0] > 0 and m[5] < 0):
             raise GeoTiffError("terrain.rotated", file=name)
         sx, sy, i, j, x, y = m[0], -m[5], 0.0, 0.0, m[3], m[7]
-    elif _MODEL_TIEPOINT in raw and len(values(_MODEL_TIEPOINT)) >= 12:
+    elif _MODEL_TIEPOINT in values and len(values[_MODEL_TIEPOINT]) >= 12:
         raise GeoTiffError("terrain.control_points", file=name)
     else:
         raise GeoTiffError("terrain.no_georeference", file=name)
@@ -1229,6 +1275,8 @@ def block_ranges(layout: GeoTiffLayout, j0: int, j1: int, i0: int,
         if offset == 0 and length == 0:
             found.append((index, 0, 0, rows))
             continue
+        # the block as stored must lie in the file even when only some of its
+        # rows are read, so a part is refused where the whole would be
         if offset + length > layout.size:
             raise GeoTiffError("terrain.ends_early", file=layout.name, part=f"data block {index + 1}")
         if rows is not None:
@@ -1255,6 +1303,7 @@ def decode_block(layout: GeoTiffLayout, index: int, data: bytes, rows: tuple[int
     import numpy as np
 
     _, _, block_rows, cols, expected, full = _block_geometry(layout, index)
+    # rows only of an uncompressed strip, and within it, as block_ranges gives them
     if rows is not None and (layout.tiled or layout.compression != 1 or not 0 <= rows[0] < rows[1] <= block_rows):
         raise ValueError(f"rows {rows} are not rows of uncompressed strip {index}")
     out_rows = block_rows if rows is None else rows[1] - rows[0]
@@ -1262,6 +1311,9 @@ def decode_block(layout: GeoTiffLayout, index: int, data: bytes, rows: tuple[int
         return np.full((out_rows, cols), np.nan), np.ones((out_rows, cols), dtype=np.uint8)
     try:
         if layout.compression == 1:
+            # the stored count is held to the whole block even when part of
+            # it is read; the data given must hold the whole block (a tile's
+            # padding included) or the rows asked for
             wanted = expected if rows is None else out_rows * layout.width * (layout.bits // 8)
             if layout.byte_counts[index] < expected or len(data) < wanted:
                 raise _CodecError("damaged")
@@ -1297,7 +1349,8 @@ def decode_block(layout: GeoTiffLayout, index: int, data: bytes, rows: tuple[int
             f">f{size}").reshape(count, across)
     else:
         native = np.frombuffer(raw, dtype=f"{layout.byte_order}{kind}{size}").reshape(count, across)
-    values = native[:out_rows, :cols].astype(np.float64)
+    with np.errstate(invalid="ignore"):  # a signalling NaN widens to a quiet one, as in the browser, unremarked
+        values = native[:out_rows, :cols].astype(np.float64)
 
     reasons = np.zeros(values.shape, dtype=np.uint8)
     void = np.isnan(values)

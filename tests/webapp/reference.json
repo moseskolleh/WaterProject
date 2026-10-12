@@ -96429,5 +96429,810 @@
    "sha256": null,
    "length": null
   }
- ]
+ ],
+ "geotiff": {
+  "bounds": [
+   -1000.0,
+   9000.0
+  ],
+  "files": [
+   {
+    "name": "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",\"size\":5400,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1939,2451,2957,3308,3800,4292,4637,4918,5187],\"byteCounts\":[504,498,343,484,484,337,273,261,209],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-11.0,\"y0\":9.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false}",
+    "values": {
+     "digest": "79ae46fce6d683d6b17e4d79b981c1816439bd2d8377a5d01a6076eee62250c4",
+     "spots": "[154.5,163.10000610351562,169.89999389648438,165.5,167.1999969482422,162.5,171.0,173.89999389648438,168.3000030517578,179.60000610351562]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "0bedf5ba1588a65978faaaf0e7f30590858c133663fc6783ee82a47eb96f6dc3",
+     "y": "d146967494691964c9b529518057430993b480db0be22db6d37ac03dccb174d4",
+     "ends": "[-11.0,-10.989166666666666,0.0002777777777777778,8.989166666666666,9.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"size\":5527,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1971,2480,2996,3385,3912,4430,4765,5057,5329],\"byteCounts\":[501,508,381,519,510,327,284,264,194],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-11.011111111111111,\"y0\":9.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false}",
+    "values": {
+     "digest": "9e279977f8cc7a79628b3c1d8122f88254ff41d6f8d5b68a8e3f603fb30ee014",
+     "spots": "[149.6999969482422,152.8000030517578,157.3000030517578,167.3000030517578,155.0,184.39999389648438,188.60000610351562,152.89999389648438,177.5,202.5]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "44b0287c958b7758ec1c860bce2a02ebc72d008f009f0e9d39dfc903da10b39a",
+     "y": "d146967494691964c9b529518057430993b480db0be22db6d37ac03dccb174d4",
+     "ends": "[-11.011111111111111,-11.000277777777777,0.0002777777777777778,8.989166666666666,9.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "be_deflate_p3_f32.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"be_deflate_p3_f32.tif\",\"size\":1179,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":17,\"height\":13,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":17,\"blockHeight\":1,\"rowsPerStrip\":1,\"offsets\":[402,456,514,572,630,691,751,812,872,934,998,1057,1122],\"byteCounts\":[54,58,58,58,61,60,61,60,62,64,59,65,57],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.6,\"y0\":8.1,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "8274ef403c3e45fdcc316486c3892a03b3cb03446613ed061a694e6be9829199",
+     "spots": "[152.60000610351562,160.3000030517578,170.39999389648438,152.3000030517578,161.3000030517578,151.0,155.5,153.60000610351562,155.39999389648438,159.5]"
+    },
+    "reasons": "6010945c47b0d30293abfba46fc65c5cd721948467cab7f01d2dd219705ec40b",
+    "axes": {
+     "x": "56fc563c5467acb5252ed119b2aec2a99dc92b57dc3bc519d7178ab6f68722b7",
+     "y": "50764b99b24b113e44ff4d087e9c939561fa5af1360a199276ec6975167cc2a8",
+     "ends": "[-11.6,-11.586666666666666,0.0008333333333333334,8.09,8.1,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "be_lzw_p2_int16.tif",
+    "need": "[[282,2]]",
+    "layout": "{\"name\":\"be_lzw_p2_int16.tif\",\"size\":615,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":19,\"height\":17,\"bits\":16,\"sampleFormat\":2,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":19,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[8,121,227],\"byteCounts\":[113,106,54],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.8,\"y0\":7.98,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":-32767.0,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true}",
+    "values": {
+     "digest": "9ae519a2debd59c07a8819c6cee9c52f9c3f491432013cf466a0652e4a0e3afe",
+     "spots": "[163.0,194.0,183.0,174.0,165.0,156.0,156.0,154.0,154.0,158.0]"
+    },
+    "reasons": "e05df3a5cf00ac2bb3e52ed80c948044651303c27c01f4f8fb8dda7a84491169",
+    "axes": {
+     "x": "48738461bd0d7194acfa3c94980261e3866c429f439e88ccb885619ee2dfcfef",
+     "y": "06498e10e6f9b3a8549e410a1037af4e3ee3dacc083ab7624cf35ee715ee0052",
+     "ends": "[-11.8,-11.785,0.0008333333333333334,7.966666666666667,7.98,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "bigtiff_be_lzw_p2_i32.tif",
+    "need": "[[16,8]]",
+    "layout": "{\"name\":\"bigtiff_be_lzw_p2_i32.tif\",\"size\":656,\"byteOrder\":\">\",\"bigtiff\":true,\"width\":15,\"height\":12,\"bits\":32,\"sampleFormat\":2,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":15,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[452,554],\"byteCounts\":[102,102],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.3,\"y0\":8.4,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "b062ba2fde2436ae6e51d46008d11d7248cb90e8d1a8da49ce3cb17859d1bb1c",
+     "spots": "[150.0,151.0,159.0,162.0,153.0,152.0,155.0,155.0,155.0,157.0]"
+    },
+    "reasons": "83f087ec4c2bcff1d7eb0d9da429c9f966242055061ebf7f6f9b22775b20a833",
+    "axes": {
+     "x": "e6949d66e74198f0ecf626610061076f52e7d38f033c43af79fdd43e8cc7e0c6",
+     "y": "97aa09a1a1a3a781c1f8a7de47379626f0c7375c2e5ff98dae6cfc785f4d8a34",
+     "ends": "[-11.3,-11.288333333333334,0.0008333333333333334,8.390833333333333,8.4,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "bigtiff_deflate_p2_f32.tif",
+    "need": "[[16,8]]",
+    "layout": "{\"name\":\"bigtiff_deflate_p2_f32.tif\",\"size\":1331,\"byteOrder\":\"<\",\"bigtiff\":true,\"width\":18,\"height\":20,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":2,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[540,945,1117,1265],\"byteCounts\":[405,172,148,66],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.399583333333334,\"y0\":8.299583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":-9999.0,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true}",
+    "values": {
+     "digest": "923c4844ae001e626431d23a9325c1be70b63efe3bf9a81322f6b18614357f09",
+     "spots": "[161.89999389648438,163.0,168.89999389648438,171.6999969482422,173.3000030517578,152.10000610351562,153.1999969482422,154.89999389648438,156.0,156.5]"
+    },
+    "reasons": "a67af50450d7e855b5cd54de275395fb950187fce0e53b8ad9d41dc184b6790c",
+    "axes": {
+     "x": "c0c4f3dd8d5b5e1f1309c9f1b85f1f3d2783e80f4da67fc72189d114454c783a",
+     "y": "afd01dda0fac061d7e56be9c4299967087f8de967c5de4257a8b40b9af3282fa",
+     "ends": "[-11.399583333333334,-11.385416666666668,0.0008333333333333334,8.283750000000001,8.299583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "gdal_cog_deflate_p3_f32.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"gdal_cog_deflate_p3_f32.tif\",\"size\":6693,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[3234,3710,4218,4594,5111,5617,5955,6240,6503],\"byteCounts\":[468,500,368,509,498,330,277,255,186],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.8,\"y0\":8.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false}",
+    "values": {
+     "digest": "2b5b8bc57952ba04bfecc7e7932b781fa40f0a5ae5b25933765a0d4700d625dc",
+     "spots": "[150.89999389648438,152.6999969482422,159.10000610351562,169.39999389648438,157.8000030517578,179.6999969482422,189.60000610351562,151.0,174.39999389648438,204.0]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "f00b8c2a8a396d394a89d9520770e9fcf0e3932ea5294f44bcb09755cc5b7513",
+     "y": "6a9ee35a42fb2c93268af4063ca2c98f2ec8a3063b124c5363396b4bc57a145e",
+     "ends": "[-9.8,-9.789166666666667,0.0002777777777777778,7.989166666666667,8.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "gdal_lzw_p2_f32.tif",
+    "need": "[[10,208]]",
+    "layout": "{\"name\":\"gdal_lzw_p2_f32.tif\",\"size\":2364,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":37,\"height\":29,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":37,\"blockHeight\":8,\"rowsPerStrip\":8,\"offsets\":[402,918,1460,2004],\"byteCounts\":[516,542,544,360],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.699583333333333,\"y0\":8.099583333333333,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false}",
+    "values": {
+     "digest": "4261a70be9e2435413ce672ba9eef38f19e81fe2760edc4e143f37c8c709fe4c",
+     "spots": "[184.10000610351562,185.3000030517578,177.5,173.89999389648438,174.5,157.89999389648438,163.60000610351562,175.6999969482422,183.89999389648438,192.5]"
+    },
+    "reasons": "5fa67304d1c7d3d8ee8ba3456c39eaa2d562c38c36115be2bde2bdebeeaad13e",
+    "axes": {
+     "x": "632618b7ee71a6d67ec3a77c0059fa5163fe1c2607428c27f336a8f7dca02576",
+     "y": "ef8bc35531e73505ef4bdd93aa6acd62e926602e86914b52a2042207a3cad418",
+     "ends": "[-9.699583333333333,-9.669583333333334,0.0008333333333333334,8.07625,8.099583333333333,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "gdal_mm_lzw_p3_tiled_f64.tif",
+    "need": "[[10,220]]",
+    "layout": "{\"name\":\"gdal_mm_lzw_p3_tiled_f64.tif\",\"size\":4167,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":35,\"height\":22,\"bits\":64,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[426,1455,2524,2986,3458,3933],\"byteCounts\":[1029,1069,462,472,475,234],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.499583333333334,\"y0\":8.299583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false}",
+    "values": {
+     "digest": "79ea73df4309a89133cf0ab62ce46e2d4bd5422ef8593649d2db3c4c12eeffa1",
+     "spots": "[171.7,193.0,175.6,173.3,195.2,155.2,183.3,156.1,157.5,191.9]"
+    },
+    "reasons": "b25fe9aefbb1fa22802dec7537a662830973607280103c01925a6426f30b65a2",
+    "axes": {
+     "x": "9584b09307c1ec1f9c414603f8045ca880e11efe0bcafddb0168e7a3ea84689f",
+     "y": "422cc7f27c21d050f8984138884b1e4066752552c35c93088ac5f8ac90979520",
+     "ends": "[-9.499583333333334,-9.47125,0.0008333333333333334,8.282083333333334,8.299583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "gdal_mm_packbits_i16.tif",
+    "need": "[[10,208]]",
+    "layout": "{\"name\":\"gdal_mm_packbits_i16.tif\",\"size\":2242,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":33,\"height\":27,\"bits\":16,\"sampleFormat\":2,\"compression\":32773,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":33,\"blockHeight\":5,\"rowsPerStrip\":5,\"offsets\":[433,768,1103,1438,1773,2108],\"byteCounts\":[335,335,335,335,335,134],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.6,\"y0\":8.2,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":-32767.0,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":true}",
+    "values": {
+     "digest": "a8fa0d8644e8765d068343a9dd5d94784b51b955d71d6be30ded5f43d284c7b9",
+     "spots": "[182.0,158.0,161.0,164.0,177.0,186.0,195.0,202.0,193.0,186.0]"
+    },
+    "reasons": "c75c98e09ad61a9f6250fd776e62d07d267cc7c383d295c72547ca541c3eba0a",
+    "axes": {
+     "x": "d3096fc2652218e9f1811c7ae41033a4e61331246856c599f76b0fc56adff5c2",
+     "y": "bb7178385813da20f051099970eee26623a25e17dd45eca7b86b1509d1f491bc",
+     "ends": "[-9.6,-9.573333333333332,0.0008333333333333334,8.178333333333333,8.2,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "hole_fill_margin.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"hole_fill_margin.tif\",\"size\":3966,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":40,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[334,960,1596,2226,2858,3497],\"byteCounts\":[626,636,630,632,639,469],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "e3e937e9b2566d64072bba478f6989aaa8f8809446830cd96d3d0b2bf74f0366",
+     "spots": "[22.700000762939453,35.70000076293945,48.400001525878906,38.099998474121094,48.29999923706055,38.099998474121094,50.099998474121094,40.20000076293945,52.79999923706055,-3.4028234663852886e+38]"
+    },
+    "reasons": "e3adf2ad79a399126fdd4963ba3cf06e2fc4cf59ed1200aafbe1170b46c585bc",
+    "axes": {
+     "x": "b43b12faafc66d37e5a9a414a6411ee2c7422af94f506c3dce054c5614973a9f",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-13.0,-12.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_N08W012.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"holes_N08W012.tif\",\"size\":2644,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[382,707,990,1220,1562,1878,2106,2279,2494],\"byteCounts\":[325,283,230,342,316,228,173,215,150],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "4013f2738e5f71daa7f48a2fd4c301df75dbf1cccf55001abf26070a40c20b84",
+     "spots": "[46.599998474121094,58.79999923706055,70.80000305175781,61.79999923706055,72.4000015258789,61.70000076293945,76.19999694824219,65.0,75.5999984741211,89.0]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "81092804326dc1f6a2b4e2832285c1a992af9cd8ab1617b0f6135274a8225d8e",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-12.0,-11.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_edge_N08W013.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"holes_edge_N08W013.tif\",\"size\":3271,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":40,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,836,1320,1811,2328,2879],\"byteCounts\":[490,484,491,517,551,392],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "ffa2667d265fb5da5700f57155d72ad61d526a86cd29d27186d8481ee50b4832",
+     "spots": "[22.700000762939453,35.70000076293945,48.400001525878906,38.099998474121094,48.29999923706055,38.099998474121094,50.099998474121094,40.20000076293945,52.79999923706055,64.5]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "b43b12faafc66d37e5a9a414a6411ee2c7422af94f506c3dce054c5614973a9f",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-13.0,-12.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_land_N07W012.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"holes_land_N07W012.tif\",\"size\":1373,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":16,\"sampleFormat\":2,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":40,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,530,712,888,1062,1239],\"byteCounts\":[184,182,176,174,177,134],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.0,\"y0\":8.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "c8e7876cb8526f1656d00f49f9c42ce2aa867d099b539ab0a81f8f2f7fe6d776",
+     "spots": "[27.0,39.0,52.0,40.0,53.0,43.0,54.0,43.0,58.0,71.0]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "81092804326dc1f6a2b4e2832285c1a992af9cd8ab1617b0f6135274a8225d8e",
+     "y": "a97991081341f2127091e51b3e5821e6fb3d10491e1fb94d5e8049474f6eb5f4",
+     "ends": "[-12.0,-11.025,0.025,7.025,8.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_land_N08W013.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"holes_land_N08W013.tif\",\"size\":1396,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":16,\"sampleFormat\":2,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":40,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,522,700,886,1072,1254],\"byteCounts\":[176,178,186,186,182,142],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "c5fac6cb32535971d3cd0979b0061906836d05d21b0b04ac51460130ad1d4f95",
+     "spots": "[22.0,35.0,48.0,38.0,48.0,38.0,50.0,40.0,52.0,64.0]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "b43b12faafc66d37e5a9a414a6411ee2c7422af94f506c3dce054c5614973a9f",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-13.0,-12.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_sea_N07W012.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"holes_sea_N07W012.tif\",\"size\":2723,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[382,717,1026,1284,1619,1926,2170,2398,2578],\"byteCounts\":[335,309,258,335,307,244,228,180,145],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.0,\"y0\":8.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "4fdcb718df8966473dd17b58efb6b666531537a3a2b2483271f41a7ea1155dd8",
+     "spots": "[0.0,39.20000076293945,52.099998474121094,40.599998474121094,53.099998474121094,43.599998474121094,54.29999923706055,0.0,58.20000076293945,71.0999984741211]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "81092804326dc1f6a2b4e2832285c1a992af9cd8ab1617b0f6135274a8225d8e",
+     "y": "a97991081341f2127091e51b3e5821e6fb3d10491e1fb94d5e8049474f6eb5f4",
+     "ends": "[-12.0,-11.025,0.025,7.025,8.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_sea_N08W013.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"holes_sea_N08W013.tif\",\"size\":2641,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[382,685,991,1254,1634,1955,2212,2385,2547],\"byteCounts\":[303,306,263,380,321,257,173,162,94],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "3f6b12e54c45569ab1da6a4c6eeea47b1880ec3000756967d86db4f199cc7ff1",
+     "spots": "[0.0,0.0,48.400001525878906,38.099998474121094,48.29999923706055,38.099998474121094,50.099998474121094,40.20000076293945,52.79999923706055,64.5]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "b43b12faafc66d37e5a9a414a6411ee2c7422af94f506c3dce054c5614973a9f",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-13.0,-12.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "inf_f32.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"inf_f32.tif\",\"size\":782,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":12,\"height\":10,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[302,638],\"byteCounts\":[336,144],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.699583333333333,\"y0\":8.999583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "159b631ad22b281942f8579d929e07deb8fca30bfb7e0b0b3889ba1ab9374f98",
+     "spots": "[153.6999969482422,\"-Infinity\",154.1999969482422,154.39999389648438,155.1999969482422,155.60000610351562,157.1999969482422,157.89999389648438,158.5,157.5]"
+    },
+    "reasons": "c62d871f49fc6141a275432e2928656945e84008b01aa269ac3f5167ea6428ed",
+    "axes": {
+     "x": "1ead6157326f92d6077f5e4e76823cee27a30df8d10d6f78ff3f6c76b1f1517a",
+     "y": "468ba738e8d9e2c948b28832f4ac87ce7bd29ea763736e28b4ffa248532a93dc",
+     "ends": "[-10.699583333333333,-10.690416666666666,0.0008333333333333334,8.992083333333333,8.999583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "le_lzw_p3_f64.tif",
+    "need": "[[10,208]]",
+    "layout": "{\"name\":\"le_lzw_p3_f64.tif\",\"size\":2577,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":21,\"height\":18,\"bits\":64,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[552,1592,2206,2428],\"byteCounts\":[1040,614,222,149],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.699583333333333,\"y0\":7.899583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "c5307d7e6f63f05b259f3b1d84b1d2205d8aebcb79494d781855cb3aed75b268",
+     "spots": "[162.8,192.7,197.6,192.5,185.1,179.7,174.4,169.3,168.2,163.0]"
+    },
+    "reasons": "8e4cf216f6a5947bcda3da99901d72baa08c80f2d703895b6a5273ec1e69eef3",
+    "axes": {
+     "x": "8a40b6149fffc09d8c9af7617c457485d13d01332a617d67e0a94c581c913337",
+     "y": "23bd3eaec4404120736e9f801029f767b66949bb5394a4f262f72a3eecdd201f",
+     "ends": "[-11.699583333333333,-11.682916666666666,0.0008333333333333334,7.885416666666667,7.899583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "lzw_deferred_clear.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"lzw_deferred_clear.tif\",\"size\":7542,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":58,\"height\":42,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":58,\"blockHeight\":42,\"rowsPerStrip\":42,\"offsets\":[286],\"byteCounts\":[7256],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.899583333333334,\"y0\":8.799583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "8c019a8cc1b2857eb4bd1884a15c7227df5a1a1399bdd6942adebc88c94a27a1",
+     "spots": "[351.0,391.79998779296875,1982.4000244140625,2068.5,107.0999984741211,1268.9000244140625,1747.300048828125,307.70001220703125,1199.9000244140625,1448.300048828125]"
+    },
+    "reasons": "aeb7a4e590855ba26c0dc27ff3481890a78c0d64178b6fef89b858eb953394cc",
+    "axes": {
+     "x": "ceac4cb80530caf390877064cf4102174cd31ca9340dd831182ec87b05013923",
+     "y": "39b86d877359cdc7ac059ae8d2bace29a25d05d7b7159e80af250841ef58b23f",
+     "ends": "[-10.899583333333334,-10.852083333333335,0.0008333333333333334,8.765416666666669,8.799583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "mosaic_zero_fill.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"mosaic_zero_fill.tif\",\"size\":3218,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":48,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":48,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,803,1284,1748,2357,3110],\"byteCounts\":[457,481,464,609,753,108],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.049861111111111,\"y0\":8.549861111111111,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "5657e8cbcb19651207763933ad6939da3654be3608b5af1ae8a7d400c1064a3f",
+     "spots": "[0.0,5.900000095367432,14.800000190734863,12.800000190734863,22.399999618530273,20.0,0.0,28.600000381469727,34.900001525878906,0.0]"
+    },
+    "reasons": "0eb3515aef1468f853daac5875b258185e777c56f01844abd2cca71ebeb28ff6",
+    "axes": {
+     "x": "4d3c791533c169cd557a84bb5dd991987883ba8c7495413f959fe1d28fa84d1b",
+     "y": "8bde7acbaf3e87edef3b33ba3b07fe9d573274f8dced4ae9bb98feefda6bea3c",
+     "ends": "[-13.049861111111111,-13.036805555555556,0.0002777777777777778,8.539027777777777,8.549861111111111,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "n08w011.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"n08w011.tif\",\"size\":5400,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1939,2451,2957,3308,3800,4292,4637,4918,5187],\"byteCounts\":[504,498,343,484,484,337,273,261,209],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-11.0,\"y0\":9.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false}",
+    "values": {
+     "digest": "79ae46fce6d683d6b17e4d79b981c1816439bd2d8377a5d01a6076eee62250c4",
+     "spots": "[154.5,163.10000610351562,169.89999389648438,165.5,167.1999969482422,162.5,171.0,173.89999389648438,168.3000030517578,179.60000610351562]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "0bedf5ba1588a65978faaaf0e7f30590858c133663fc6783ee82a47eb96f6dc3",
+     "y": "d146967494691964c9b529518057430993b480db0be22db6d37ac03dccb174d4",
+     "ends": "[-11.0,-10.989166666666666,0.0002777777777777778,8.989166666666666,9.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "n08w012.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"n08w012.tif\",\"size\":5527,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1971,2480,2996,3385,3912,4430,4765,5057,5329],\"byteCounts\":[501,508,381,519,510,327,284,264,194],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-11.011111111111111,\"y0\":9.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false}",
+    "values": {
+     "digest": "9e279977f8cc7a79628b3c1d8122f88254ff41d6f8d5b68a8e3f603fb30ee014",
+     "spots": "[149.6999969482422,152.8000030517578,157.3000030517578,167.3000030517578,155.0,184.39999389648438,188.60000610351562,152.89999389648438,177.5,202.5]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "44b0287c958b7758ec1c860bce2a02ebc72d008f009f0e9d39dfc903da10b39a",
+     "y": "d146967494691964c9b529518057430993b480db0be22db6d37ac03dccb174d4",
+     "ends": "[-11.011111111111111,-11.000277777777777,0.0002777777777777778,8.989166666666666,9.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "negzero_f32.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"negzero_f32.tif\",\"size\":712,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":10,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[314,582],\"byteCounts\":[268,130],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.8,\"y0\":8.9,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "498a3cfba54e161fa42332529d5e096db1395f63f70c116ac6c5fdd06776f242",
+     "spots": "[-0.6000000238418579,0.10000000149011612,0.0,0.10000000149011612,0.4000000059604645,0.10000000149011612,3.200000047683716,3.4000000953674316,4.0,0.0]"
+    },
+    "reasons": "09719c55365a950c92a06122b6ce2634e3ce9b6dbcde1827171941658c7eedab",
+    "axes": {
+     "x": "354911ca26d378cb34cce7654ab25f9133d1e40cc788d547ea805159ddd09172",
+     "y": "03bd10ff7d8a3fda800a0f0c9263bb02e530f63351840a27802f960befd51bd9",
+     "ends": "[-10.8,-10.790833333333333,0.0008333333333333334,8.8925,8.9,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "nodata_abc.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.nodata_unreadable",
+     "nodata_abc.tif gives its no-data value as abc, which is not a number."
+    ]
+   },
+   {
+    "name": "nodata_arcgis_float_max.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"nodata_arcgis_float_max.tif\",\"size\":586,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,512],\"byteCounts\":[166,74],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.099583333333333,\"y0\":7.699583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":-3.4028234663852886e+38,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true}",
+    "values": {
+     "digest": "221e91717825832915105fefb2412a79d9c8101304ea76e17a907644fa94d2c4",
+     "spots": "[null,156.1999969482422,152.8000030517578,152.89999389648438,153.0,153.39999389648438,155.39999389648438,155.60000610351562,156.0,155.89999389648438]"
+    },
+    "reasons": "3c772bb7f104ec57dddbc70e4cecc7f214b19a5e4128e0c90a6d46ad48d6b437",
+    "axes": {
+     "x": "0f5307f21e464fb386855567781a2e83defb75e2724ece77839d3804b6600569",
+     "y": "82795f02bfab9aa904556b666a9c68a90ab27844d84433fe0eecd325a0870755",
+     "ends": "[-10.099583333333333,-10.090416666666666,0.0008333333333333334,7.692916666666667,7.699583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "nodata_empty.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"nodata_empty.tif\",\"size\":394,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":8,\"sampleFormat\":1,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":9,\"rowsPerStrip\":9,\"offsets\":[286],\"byteCounts\":[108],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-9.999583333333334,\"y0\":7.7995833333333335,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true}",
+    "values": {
+     "digest": "1dd4dd4a170ced6e175a3c5534ca58dc6f150c536bdac4d9f44c61f396040c2e",
+     "spots": "[0.0,5.0,6.0,7.0,7.0,7.0,5.0,5.0,6.0,6.0]"
+    },
+    "reasons": "ccf8e88438dc4d373433236959a827cdb4ab19f87cf4f0bfc102ec3f05dd1c36",
+    "axes": {
+     "x": "c5ef2ae0c60abc7d6898f21b4f2b16d3baabefcf9d94536e811354bbeff7c6c0",
+     "y": "c5cbd6c7f2e808ff61f0101a36dcb1f070ffbad4ceb6c7db926c065a0118ebdd",
+     "ends": "[-9.999583333333334,-9.990416666666667,0.0008333333333333334,7.792916666666667,7.7995833333333335,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "nodata_nan.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"nodata_nan.tif\",\"size\":582,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[314,507],\"byteCounts\":[193,75],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.299583333333334,\"y0\":7.499583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true}",
+    "values": {
+     "digest": "3584ff0a7bd7c1edd6071cf21137e90ac002a2867289332a2e82e06a134646b9",
+     "spots": "[151.10000610351562,null,153.60000610351562,153.8000030517578,153.8000030517578,154.10000610351562,153.39999389648438,153.5,153.60000610351562,154.0]"
+    },
+    "reasons": "af3fd4a3beea99ef5c9582dd4e461aee57e7a3187a8b6bb6fb0dd9cfc926a4fc",
+    "axes": {
+     "x": "c066efc1d4c309af4b1e4304ed9cde202d7b41dfe4aa868ebf620279ecdd4767",
+     "y": "d98d92a2d6fc71f38199373ed9f77815ec0e3acc26554f28eda0eca25439588f",
+     "ends": "[-10.299583333333334,-10.290416666666667,0.0008333333333333334,7.492916666666667,7.499583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "nodata_neg_inf.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"nodata_neg_inf.tif\",\"size\":2363,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":64,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[315],\"byteCounts\":[2048],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.2,\"y0\":7.6,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":\"-Infinity\",\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true}",
+    "values": {
+     "digest": "b3a44f504f393d4d5eb5b3338ed9a7a3ada197d7e894cb932d613df9de80c15a",
+     "spots": "[148.6,157.3,157.2,157.3,157.7,157.6,153.9,154.2,154.4,154.4]"
+    },
+    "reasons": "0187d64046d33f55d8cb2dcb74ca8fb22aab79c0b7fb4148c26537f90a6a2d18",
+    "axes": {
+     "x": "27a90eb60ad5ff7b9d1cd9ad8f03b3deaa00f5cfa58688a19cf8f8f98b10da54",
+     "y": "e43f0fdf3564afec6e7d84653f466c184d01b8a7076af6ff1c059f8d587619b0",
+     "ends": "[-10.2,-10.190833333333332,0.0008333333333333334,7.593333333333333,7.6,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "overlap_north.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"overlap_north.tif\",\"size\":1451,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":24,\"height\":20,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":24,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[322,706,1102],\"byteCounts\":[384,396,349],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.5,\"y0\":8.75,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "98cf9908b59987fe57a6accde78a68d2410d52f4aad1828461ba280f2dd4ae96",
+     "spots": "[160.89999389648438,164.8000030517578,172.1999969482422,175.10000610351562,183.8000030517578,155.1999969482422,154.8000030517578,153.6999969482422,158.10000610351562,158.0]"
+    },
+    "reasons": "43c0436e52f31f365404442fa596325f070f5176f5bb69b8383d78528b72e2ac",
+    "axes": {
+     "x": "ad6ac1cf55915749db54fecb40d1cb88718297c7d7aa06f504f2e3ff1b433ec5",
+     "y": "f1abc7588f406459b7113e590a7621e14619e148493f0afc295645bbe37e7ed1",
+     "ends": "[-12.5,-12.493611111111111,0.0002777777777777778,8.744722222222222,8.75,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "overlap_south_agrees.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"overlap_south_agrees.tif\",\"size\":1396,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":24,\"height\":19,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":1,\"predictorApplied\":false,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[330,839,1159,1306],\"byteCounts\":[509,320,147,90],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.5,\"y0\":8.744722222222222,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "915a9750499b47d9b28436ce8c24512acae374ef668531054c6ce25528545726",
+     "spots": "[169.39999389648438,170.3000030517578,171.3000030517578,176.6999969482422,177.39999389648438,180.39999389648438,179.0,184.6999969482422,183.6999969482422,185.10000610351562]"
+    },
+    "reasons": "a9546614dbc44e9f0b9c8e21cd498aafdab47895e0d1d3472b8c4a52602473b4",
+    "axes": {
+     "x": "ad6ac1cf55915749db54fecb40d1cb88718297c7d7aa06f504f2e3ff1b433ec5",
+     "y": "75014cc5641970b624359e07136a1e4282d18830f4fa85406581b5d4159f7e46",
+     "ends": "[-12.5,-12.493611111111111,0.0002777777777777778,8.739722222222222,8.744722222222222,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "overlap_south_disagrees.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"overlap_south_disagrees.tif\",\"size\":2262,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":24,\"height\":19,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":24,\"blockHeight\":1,\"rowsPerStrip\":1,\"offsets\":[438,534,630,726,822,918,1014,1110,1206,1302,1398,1494,1590,1686,1782,1878,1974,2070,2166],\"byteCounts\":[96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.5,\"y0\":8.744722222222222,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "fc126c10db3e53d5205354497903d09da2fc6b4a8e51e510e92fc97013a52978",
+     "spots": "[169.39999389648438,170.3000030517578,171.3000030517578,176.6999969482422,177.39999389648438,180.39999389648438,179.0,184.6999969482422,183.6999969482422,185.10000610351562]"
+    },
+    "reasons": "a9546614dbc44e9f0b9c8e21cd498aafdab47895e0d1d3472b8c4a52602473b4",
+    "axes": {
+     "x": "ad6ac1cf55915749db54fecb40d1cb88718297c7d7aa06f504f2e3ff1b433ec5",
+     "y": "75014cc5641970b624359e07136a1e4282d18830f4fa85406581b5d4159f7e46",
+     "ends": "[-12.5,-12.493611111111111,0.0002777777777777778,8.739722222222222,8.744722222222222,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "overlap_south_fill_edge.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"overlap_south_fill_edge.tif\",\"size\":1203,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":24,\"height\":19,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":24,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[322,632,956],\"byteCounts\":[310,324,247],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.5,\"y0\":8.744722222222222,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "2955a99c538d6ae8b1d89e47c3759b4a6a2810b77d09100d3ece56f9cda7a73b",
+     "spots": "[169.39999389648438,170.3000030517578,171.3000030517578,176.6999969482422,177.39999389648438,180.39999389648438,179.0,184.6999969482422,183.6999969482422,-32767.0]"
+    },
+    "reasons": "626c3f12ab7a3c3eea5b9cac245867d0e5c5c98b01a534819be29660b872e2bf",
+    "axes": {
+     "x": "ad6ac1cf55915749db54fecb40d1cb88718297c7d7aa06f504f2e3ff1b433ec5",
+     "y": "75014cc5641970b624359e07136a1e4282d18830f4fa85406581b5d4159f7e46",
+     "ends": "[-12.5,-12.493611111111111,0.0002777777777777778,8.739722222222222,8.744722222222222,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "overview_mask_first.tif",
+    "need": "[[10,148]]",
+    "layout": "{\"name\":\"overview_mask_first.tif\",\"size\":3267,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":24,\"height\":20,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1788,2277,2644,2802],\"byteCounts\":[489,367,158,139],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.399583333333334,\"y0\":9.299583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":2,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "084d5b8677f867ed194f9bfe276685e1636234231c80f7df1e49b0454a621d6a",
+     "spots": "[154.89999389648438,160.6999969482422,169.5,175.39999389648438,178.10000610351562,150.39999389648438,153.3000030517578,155.10000610351562,159.3000030517578,160.39999389648438]"
+    },
+    "reasons": "43c0436e52f31f365404442fa596325f070f5176f5bb69b8383d78528b72e2ac",
+    "axes": {
+     "x": "19e39a102076420aaebf3d518b0317563aaa05dfd6a928676b83220cb5a33911",
+     "y": "0e338065adadcab3e9d0d9d970da3f09da23131fe40db40d1b6f5bc7299ff996",
+     "ends": "[-10.399583333333334,-10.380416666666667,0.0008333333333333334,9.283750000000001,9.299583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "packbits_u16.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"packbits_u16.tif\",\"size\":1044,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":23,\"height\":15,\"bits\":16,\"sampleFormat\":1,\"compression\":32773,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":23,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[329,660,996],\"byteCounts\":[331,336,48],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.499583333333334,\"y0\":8.199583333333333,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":65535.0,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true}",
+    "values": {
+     "digest": "4115c246168f17ca90b5640deaeadc98d52bc84f3677e4555d06a31ae430c041",
+     "spots": "[301.0,332.0,307.0,340.0,316.0,305.0,326.0,309.0,304.0,315.0]"
+    },
+    "reasons": "f4ea880725a4c4ee3266bfc1013dc93fbfd85def3806ed7097e96569bc2012ec",
+    "axes": {
+     "x": "bde397b81883a3feec3dbea9975717a7e4adcb946e29e5a71a5da8e5abb266b8",
+     "y": "b3df91cf393164773640ce772e2e7c07e91b61e255e8f59190c978baa7df9bb8",
+     "ends": "[-11.499583333333334,-11.481250000000001,0.0008333333333333334,8.187916666666666,8.199583333333333,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "padded_last_strip.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"padded_last_strip.tif\",\"size\":515,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":11,\"height\":17,\"bits\":32,\"sampleFormat\":1,\"compression\":32946,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":11,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[322,404,477],\"byteCounts\":[82,73,38],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.0,\"y0\":8.7,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "f63b0fafd2f18f031884ebc177a2dd1de702cb1b92bbf8100f62b4899ac9ec2b",
+     "spots": "[154.0,171.0,164.0,153.0,150.0,153.0,153.0,154.0,154.0,153.0]"
+    },
+    "reasons": "1bf29fb4e29a80d9ab1a096536d423646d88c0d40620d2b920780639a1d48316",
+    "axes": {
+     "x": "b688180df597f969c399cdc9691061c1b46f58a6cb86e313161d7f0c93b9c73d",
+     "y": "711324c53324270f223c4e4ec3a726459b9d22a4a99fc3413fc5202a7b986810",
+     "ends": "[-11.0,-10.991666666666667,0.0008333333333333334,8.686666666666666,8.7,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "phase_half_cell.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"phase_half_cell.tif\",\"size\":1910,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":20,\"height\":20,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":20,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[310,870,1430],\"byteCounts\":[560,560,480],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.494305555555556,\"y0\":8.75,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "0b66aa7339055f5a7daa01c40ef66393f3ec26757553067377d708408d491d00",
+     "spots": "[189.39999389648438,189.3000030517578,188.10000610351562,185.3000030517578,185.8000030517578,178.39999389648438,183.39999389648438,182.10000610351562,187.60000610351562,195.6999969482422]"
+    },
+    "reasons": "50c1b8a6d69f6885e854b347a963d19970e78c2b81a5db3225c57129e1e87b8d",
+    "axes": {
+     "x": "1882144c01b309f1b26325255457c4bd5ef12f5580bc3027d6b2a42b402ef6fa",
+     "y": "f1abc7588f406459b7113e590a7621e14619e148493f0afc295645bbe37e7ed1",
+     "ends": "[-12.494305555555556,-12.489027777777778,0.0002777777777777778,8.744722222222222,8.75,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "pred2_none.tif",
+    "need": "[[168,2]]",
+    "layout": "{\"name\":\"pred2_none.tif\",\"size\":458,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":10,\"height\":8,\"bits\":16,\"sampleFormat\":2,\"compression\":1,\"predictor\":2,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":10,\"blockHeight\":8,\"rowsPerStrip\":8,\"offsets\":[8],\"byteCounts\":[160],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.6,\"y0\":9.1,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "d231c483e4580306fa2466cb59a4dd68123a14d02cfc4dec09fd7c86d1ea010a",
+     "spots": "[150.0,154.0,154.0,154.0,154.0,151.0,151.0,150.0,150.0,156.0]"
+    },
+    "reasons": "4c7f3da0386523b102328418c28d886bb9dc9c555671884e8fcc9bcba407e819",
+    "axes": {
+     "x": "18b7549593d3a8527cbe385fa2a88c9f3897f432a83db96f172c2549aa0463f6",
+     "y": "cd419cdc1188214ae050ad4ec35b66f47b9e577acaad7a41928eb9076aeb8cf3",
+     "ends": "[-10.6,-10.5925,0.0008333333333333334,9.094166666666666,9.1,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "pred2_packbits.tif",
+    "need": "[[64,2]]",
+    "layout": "{\"name\":\"pred2_packbits.tif\",\"size\":370,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":10,\"height\":8,\"bits\":8,\"sampleFormat\":2,\"compression\":32773,\"predictor\":2,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":10,\"blockHeight\":4,\"rowsPerStrip\":4,\"offsets\":[8,36],\"byteCounts\":[28,28],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.5,\"y0\":9.2,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "adf5c009739add232116f9ca87fc917bb47fae435be1883d01e657a7b3ebfb88",
+     "spots": "[14.0,20.0,17.0,15.0,15.0,12.0,10.0,10.0,10.0,16.0]"
+    },
+    "reasons": "4c7f3da0386523b102328418c28d886bb9dc9c555671884e8fcc9bcba407e819",
+    "axes": {
+     "x": "1b2f9530433a5d4b1c5cbe59125618ceb6b2a381ff2521360fe127f37449d3bd",
+     "y": "56271eab8fd8cf8088e62f4905523b6aba06205ca5998f6899ea2c2a132ce220",
+     "ends": "[-10.5,-10.4925,0.0008333333333333334,9.194166666666666,9.2,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "refuse_bad_adler.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"refuse_bad_adler.tif\",\"size\":459,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":8,\"height\":6,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":8,\"blockHeight\":3,\"rowsPerStrip\":3,\"offsets\":[302,381],\"byteCounts\":[79,78],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.199583333333333,\"y0\":7.199583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "refused": [
+     "terrain.block_damaged",
+     "Data block 1 of refuse_bad_adler.tif is damaged: it does not decompress to the 96 bytes the file says it holds, so download the file again."
+    ]
+   },
+   {
+    "name": "refuse_control_points.tif",
+    "need": "[[10,160]]",
+    "refused": [
+     "terrain.control_points",
+     "refuse_control_points.tif is placed by control points rather than on a grid; the toolkit does not warp grids."
+    ]
+   },
+   {
+    "name": "refuse_epsg_3857.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"refuse_epsg_3857.tif\",\"size\":478,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":8,\"height\":6,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":8,\"blockHeight\":6,\"rowsPerStrip\":6,\"offsets\":[286],\"byteCounts\":[192],\"modelType\":1,\"rasterType\":1,\"epsg\":3857,\"datum\":null,\"angularUnit\":null,\"x0\":-1358091.0,\"y0\":803667.0,\"sx\":90.0,\"sy\":90.0,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": "[151.6999969482422,151.89999389648438,152.10000610351562,152.60000610351562,152.89999389648438,152.89999389648438,153.1999969482422,155.5,151.8000030517578,152.3000030517578,152.60000610351562,152.6999969482422,152.89999389648438,152.8000030517578,153.3000030517578,153.39999389648438,150.3000030517578,150.60000610351562,150.89999389648438,150.89999389648438,151.10000610351562,155.10000610351562,155.60000610351562,156.10000610351562,150.3000030517578,150.60000610351562,150.89999389648438,151.10000610351562,151.5,155.6999969482422,155.60000610351562,156.0,150.6999969482422,150.60000610351562,151.3000030517578,151.60000610351562,151.5,155.89999389648438,155.89999389648438,156.3000030517578,150.5,151.0,151.10000610351562,151.6999969482422,152.10000610351562,155.89999389648438,156.3000030517578,156.39999389648438]",
+    "reasons": "000000000000000000000000000000000000000000000000",
+    "axes": {
+     "x": "2d391f38b644f8c8635bd321c62a639c40b033b322519bd21b08cf45a3b77726",
+     "y": "7fe0ce2c46c06032afa23e687d9dc2b27e3a36d791dfc0160b2fd5d77664845d",
+     "ends": "[-1358091.0,-1357461.0,90.0,803217.0,803667.0,90.0]"
+    }
+   },
+   {
+    "name": "refuse_fill_order_2.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.fill_order",
+     "refuse_fill_order_2.tif stores its bits in reverse order (FillOrder 2), which this reader does not read."
+    ]
+   },
+   {
+    "name": "refuse_ifd_loop.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.directory_loop",
+     "refuse_ifd_loop.tif has a directory chain that loops back on itself, so the file is damaged."
+    ]
+   },
+   {
+    "name": "refuse_jpeg.tif",
+    "need": "[[10,172]]",
+    "refused": [
+     "terrain.compression",
+     "refuse_jpeg.tif is compressed with JPEG, which this reader does not decode; it reads DEFLATE, LZW and PackBits, or no compression."
+    ]
+   },
+   {
+    "name": "refuse_no_crs.tif",
+    "need": "[[10,160]]",
+    "layout": "{\"name\":\"refuse_no_crs.tif\",\"size\":434,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":8,\"height\":6,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":8,\"blockHeight\":6,\"rowsPerStrip\":6,\"offsets\":[242],\"byteCounts\":[192],\"modelType\":null,\"rasterType\":1,\"epsg\":null,\"datum\":null,\"angularUnit\":null,\"x0\":-12.199583333333333,\"y0\":7.199583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": "[151.6999969482422,151.89999389648438,152.10000610351562,152.60000610351562,152.89999389648438,152.89999389648438,153.1999969482422,155.5,151.8000030517578,152.3000030517578,152.60000610351562,152.6999969482422,152.89999389648438,152.8000030517578,153.3000030517578,153.39999389648438,150.3000030517578,150.60000610351562,150.89999389648438,150.89999389648438,151.10000610351562,155.10000610351562,155.60000610351562,156.10000610351562,150.3000030517578,150.60000610351562,150.89999389648438,151.10000610351562,151.5,155.6999969482422,155.60000610351562,156.0,150.6999969482422,150.60000610351562,151.3000030517578,151.60000610351562,151.5,155.89999389648438,155.89999389648438,156.3000030517578,150.5,151.0,151.10000610351562,151.6999969482422,152.10000610351562,155.89999389648438,156.3000030517578,156.39999389648438]",
+    "reasons": "000000000000000000000000000000000000000000000000",
+    "axes": {
+     "x": "b326d65d53e7130bd9c63fa187b48ce6431ae5d6466327216e0e5058a395524e",
+     "y": "7b340b81cb82257160c3e4e221156f3dcd10f8a95c859d6043cc89610ba7487c",
+     "ends": "[-12.199583333333333,-12.19375,0.0008333333333333334,7.1954166666666675,7.199583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "refuse_no_georeference.tif",
+    "need": "[[10,148]]",
+    "refused": [
+     "terrain.no_georeference",
+     "refuse_no_georeference.tif carries no georeferencing, so where its cells lie is not known."
+    ]
+   },
+   {
+    "name": "refuse_old_lzw.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"refuse_old_lzw.tif\",\"size\":602,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":18,\"height\":16,\"bits\":16,\"sampleFormat\":2,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":18,\"blockHeight\":16,\"rowsPerStrip\":16,\"offsets\":[286],\"byteCounts\":[316],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.199583333333333,\"y0\":7.199583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "refused": [
+     "terrain.old_lzw",
+     "refuse_old_lzw.tif uses the pre-1992 form of LZW compression, which this reader does not decode; save it again with DEFLATE."
+    ]
+   },
+   {
+    "name": "refuse_overview_only.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.no_full_image",
+     "refuse_overview_only.tif holds only reduced-resolution or mask images, not a full-resolution grid."
+    ]
+   },
+   {
+    "name": "refuse_polar.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"refuse_polar.tif\",\"size\":478,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":8,\"height\":6,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":8,\"blockHeight\":6,\"rowsPerStrip\":6,\"offsets\":[286],\"byteCounts\":[192],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":20.0,\"y0\":89.6,\"sx\":0.05,\"sy\":0.05,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": "[151.6999969482422,151.89999389648438,152.10000610351562,152.60000610351562,152.89999389648438,152.89999389648438,153.1999969482422,155.5,151.8000030517578,152.3000030517578,152.60000610351562,152.6999969482422,152.89999389648438,152.8000030517578,153.3000030517578,153.39999389648438,150.3000030517578,150.60000610351562,150.89999389648438,150.89999389648438,151.10000610351562,155.10000610351562,155.60000610351562,156.10000610351562,150.3000030517578,150.60000610351562,150.89999389648438,151.10000610351562,151.5,155.6999969482422,155.60000610351562,156.0,150.6999969482422,150.60000610351562,151.3000030517578,151.60000610351562,151.5,155.89999389648438,155.89999389648438,156.3000030517578,150.5,151.0,151.10000610351562,151.6999969482422,152.10000610351562,155.89999389648438,156.3000030517578,156.39999389648438]",
+    "reasons": "000000000000000000000000000000000000000000000000",
+    "axes": {
+     "x": "1ab9075bdc44c5ea686a82413e4be61acd573704cebaecc0bfa48d8c297b9b0d",
+     "y": "91965c44e2f2a9b63353b8660d16e78bce0ccab3f8ea591f984a7749c0267c6f",
+     "ends": "[20.0,20.35,0.05,89.35,89.6,0.05]"
+    }
+   },
+   {
+    "name": "refuse_rotated.tif",
+    "need": "[[10,160]]",
+    "refused": [
+     "terrain.rotated",
+     "refuse_rotated.tif is not a north-up grid (it is rotated, sheared or flipped); the toolkit reads only north-up grids and does not resample."
+    ]
+   },
+   {
+    "name": "refuse_scaled.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.scaled",
+     "refuse_scaled.tif stores scaled values (a GDAL scale or offset), which this reader does not apply."
+    ]
+   },
+   {
+    "name": "refuse_truncated.tif",
+    "need": "[[200,2]]",
+    "refused": [
+     "terrain.ends_early",
+     "refuse_truncated.tif ends before the image directory it points to, so the file is incomplete; download it again."
+    ]
+   },
+   {
+    "name": "refuse_truncated_data.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"refuse_truncated_data.tif\",\"size\":1326,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":20,\"height\":18,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[330,909,1142,1285],\"byteCounts\":[579,233,143,83],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.199583333333333,\"y0\":7.199583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "refused": [
+     "terrain.ends_early",
+     "refuse_truncated_data.tif ends before the data block 4 it points to, so the file is incomplete; download it again."
+    ]
+   },
+   {
+    "name": "refuse_two_bands.tif",
+    "need": "[[10,172]]",
+    "refused": [
+     "terrain.bands",
+     "refuse_two_bands.tif holds 2 values to a cell; an elevation model holds one."
+    ]
+   },
+   {
+    "name": "refuse_zero_rows_per_strip.tif",
+    "need": "[[10,172]]",
+    "refused": [
+     "terrain.bad_tag",
+     "refuse_zero_rows_per_strip.tif has a damaged RowsPerStrip entry."
+    ]
+   },
+   {
+    "name": "refuse_zero_tile_width.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.bad_tag",
+     "refuse_zero_tile_width.tif has a damaged TileWidth entry."
+    ]
+   },
+   {
+    "name": "spacing_mismatch.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"spacing_mismatch.tif\",\"size\":782,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":10,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[302,638],\"byteCounts\":[336,144],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.493333333333334,\"y0\":8.75,\"sx\":0.0005555555555555556,\"sy\":0.0005555555555555556,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "32d0184872ed183282e5dfe482efab428c486dc7ca079ae9a2f46533d703ef50",
+     "spots": "[186.8000030517578,185.0,186.0,185.89999389648438,185.3000030517578,182.10000610351562,183.89999389648438,183.10000610351562,182.8000030517578,187.0]"
+    },
+    "reasons": "09719c55365a950c92a06122b6ce2634e3ce9b6dbcde1827171941658c7eedab",
+    "axes": {
+     "x": "e34d643838aecc8627a1aa1ecda139f0b922336cd05b9eb57ac5c6b2b8733dab",
+     "y": "8e59f0cebfa8fa48f0c4e53b78d7f6375624c5018c71cb659fec27d0210c562a",
+     "ends": "[-12.493333333333334,-12.487222222222224,0.0005555555555555556,8.745,8.75,0.0005555555555555556]"
+    }
+   },
+   {
+    "name": "sparse_f32.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"sparse_f32.tif\",\"size\":1749,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":24,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":1,\"predictorApplied\":false,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[346,0,833,1153,1453,0],\"byteCounts\":[487,0,320,300,296,0],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.099583333333333,\"y0\":8.599583333333333,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "37caab2526c07b6330282aa28c6e4ec03c5f915e697a49641047491b8ad2e933",
+     "spots": "[173.0,173.60000610351562,183.39999389648438,null,null,163.6999969482422,191.6999969482422,null,157.8000030517578,193.3000030517578]"
+    },
+    "reasons": "364558f38b0b10413f61fd7022e4dfd6fb03af4e558db251886c8cd84e41232e",
+    "axes": {
+     "x": "a0f3a25f2db47182046f952d040a6327de24d92c3ffae172e7141aaa68d432d9",
+     "y": "92c3c2d1bab64e1da46403b65763eb75db8744e9a98cb9174acc4b1a929e2281",
+     "ends": "[-11.099583333333333,-11.067083333333333,0.0008333333333333334,8.580416666666666,8.599583333333333,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "transform_f32.tif",
+    "need": "[[10,160]]",
+    "layout": "{\"name\":\"transform_f32.tif\",\"size\":806,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":13,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":13,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[338,702],\"byteCounts\":[364,104],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.199583333333333,\"y0\":8.499583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false}",
+    "values": {
+     "digest": "62b1c459f2b0cd9339cdfc27c1159754930ccdb6ac4fa5db3fc4155b140b27f8",
+     "spots": "[153.1999969482422,157.39999389648438,157.0,154.6999969482422,154.89999389648438,155.5,155.0,155.3000030517578,155.39999389648438,155.60000610351562]"
+    },
+    "reasons": "229c311fe725db46f2aff708146a8aed3764486635f4140931264c4724b0dc52",
+    "axes": {
+     "x": "ee1b9a69deecf0e6082ae222b63026b3604fe25b0a96e6c7b6ee26ccbb7823ed",
+     "y": "4953a5a5fc5977634aac22455793221751d45e3bcf61a5a5a0da5ea96a2cadf6",
+     "ends": "[-11.199583333333333,-11.189583333333333,0.0008333333333333334,8.492916666666668,8.499583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "utm_strip.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"utm_strip.tif\",\"size\":730,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":9,\"rowsPerStrip\":9,\"offsets\":[298],\"byteCounts\":[432],\"modelType\":1,\"rasterType\":1,\"epsg\":32629,\"datum\":null,\"angularUnit\":null,\"x0\":196035.0,\"y0\":882015.0,\"sx\":30.0,\"sy\":30.0,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true}",
+    "values": {
+     "digest": "1cbc9b211d0218ef469540d96587e7ca9850c81c7e1cbfa03750360fef9a30c1",
+     "spots": "[null,165.10000610351562,165.6999969482422,163.10000610351562,160.6999969482422,157.8000030517578,153.39999389648438,153.6999969482422,153.6999969482422,153.8000030517578]"
+    },
+    "reasons": "6162f3f45e4d3d73a7e50f1a94e07846bcf9a4e1fe83254059b2c9ca92bb1d00",
+    "axes": {
+     "x": "c51adc49364a425509100c01eb12fb256d556aa7b29132511a7d3ac087b7c37b",
+     "y": "a1269e1386c0c36168548bb0b1c15b2d7a6413f58f2704f8940e88d47016dcd3",
+     "ends": "[196035.0,196365.0,30.0,881775.0,882015.0,30.0]"
+    }
+   }
+  ]
+ }
 }
