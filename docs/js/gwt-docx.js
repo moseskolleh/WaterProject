@@ -964,10 +964,11 @@
     b.paragraph('The weathered zone over the bedrock and the fractured rock ' +
       'beneath it are the groundwater prospects in this ground, and the ' +
       'soundings below are interpreted for both.', { align: 'justify' });
-    /* The browser can never have an elevation model, and the Python report
-     * always says so here. Silent, a reader took the survey point map for a
-     * topographic one; and this is the sentence that explains why the ground
-     * profile below is the only ground-level figure in the document. */
+    /* The browser reads an elevation model on Site & maps; this report,
+     * like the Python one, does not draw it until step 4.4. Silent, a
+     * reader took the survey point map for a topographic one; and this is
+     * the sentence that explains why the ground profile below is the only
+     * ground-level figure in the document. */
     b.paragraph('No elevation model was supplied with this survey, so no ' +
       'topographic map is drawn: the toolkit bundles none and invents none. ' +
       'The elevations the crew recorded at the soundings are the ground ' +

@@ -946,6 +946,7 @@
      * tab is untouched - it belongs to this browser, not to the file. */
     if (state.extraction) delete state.extraction.apiKey;
     stopInversionsForNewProject();
+    forgetTerrain();
     store.replace(keepFieldSessions(migrateLoadedState(Object.assign(blankState(), state))));
     applyTheme();
     inversionsStopped = false;
@@ -989,6 +990,7 @@
       };
     });
     stopInversionsForNewProject();
+    forgetTerrain();
     store.replace(keepFieldSessions(fresh));
     inversionsStopped = false;
     await recompute();
@@ -2014,13 +2016,6 @@
 
       terrainCard(),
 
-      /* the terrain work the Python app alone does, and that neither app's
-       * reports carry it yet */
-      el('div.callout.callout-info', [
-        el('p', C.phrase('terrain.python_only')),
-        el('p', C.phrase('terrain.not_in_reports')),
-      ]),
-
       card('Interactive map', [
         el('p.muted', 'The maps above are pictures, which is what a report ' +
           'needs. This writes the same survey as a GeoLibre project file — an ' +
@@ -2139,7 +2134,8 @@
    * are not kept with the sources a sheet is: a File costs nothing until it
    * is read, and it is read only in the parts asked for - its directories
    * when it is added, and the blocks the window meets when the terrain is
-   * analysed. Nothing of it is saved with the project.
+   * analysed. Nothing of it is saved with the project, and another project,
+   * opened or started, or the workspace reset, drops it all (forgetTerrain).
    */
   function blankTerrainSession() {
     return {
@@ -2160,11 +2156,23 @@
       read: null, refusal: '',
       /* what the page keeps of the analysis of the read (terrainResult),
        * and the figures drawn from it, by name: relief, wetness, curvature
-       * and directions; a figure set to null is drawn again */
-      result: null, figures: null,
+       * and directions; a figure set to null is drawn again, and all four
+       * are when the page's colours are no longer those they were drawn
+       * in (figuresIn) */
+      result: null, figures: null, figuresIn: '',
     };
   }
   var terrainSession = blankTerrainSession();
+
+  /* Another project replaces this one, or the workspace is reset: the
+   * tiles, the settings chosen on the card and all made of them belong to
+   * the outgoing site, and are dropped as the Python app drops its dem_
+   * and terrain_ keys when a project is loaded. A run still going is
+   * stopped, and its answer finds a new session and is not shown. */
+  function forgetTerrain() {
+    dropTerrainRead(terrainSession);
+    terrainSession = blankTerrainSession();
+  }
 
   /* What the operator can say the files are, as the Python app offers it. */
   var TERRAIN_SOURCES = [
@@ -2359,10 +2367,11 @@
     var session = terrainSession;
     var cfg = config();
     cfg.terrain.drainage_area_km2 = terrainArea(session);
+    var latlon = siteLatLon();
     var plan = null, refusal = '';
     try {
       var files = session.files.map(function (file) { return session.opened.get(file).found; });
-      var centre = C.windowCentre(store.get('site'), siteLatLon(), files);
+      var centre = C.windowCentre(store.get('site'), latlon, files);
       plan = C.planElevationWindow(files, centre, terrainRadius(session), cfg, null,
         terrainDeclared(session));
     } catch (e) {
@@ -2409,7 +2418,7 @@
         Object.assign({}, read, { grid: null, assumedSea: null, reasons: null }), read.centre.label,
         { onProgress: heard(0.1, 0.9) });
       if (!current()) return;
-      session.result = terrainResult(read, answer, cfg);
+      session.result = terrainResult(read, answer, cfg, latlon);
       retraceTerrain(session);
     } catch (e) {
       if (!current() || engine.isCancelled(e)) return;
@@ -2428,12 +2437,15 @@
    * captions), the settings it was worked out with and the threshold its
    * lines were traced at, the sea cells of the analysed window (assumed
    * sea included; class 2), which the GeoJSON's description reads, and the
-   * GeoJSON itself. */
-  function terrainResult(read, answer, cfg) {
+   * GeoJSON itself. The figures star the site the window was centred on
+   * where it has a GPS fix, named by its community or "Site", as the
+   * Python figures mark it (regional._mark_site). */
+  function terrainResult(read, answer, cfg, latlon) {
     var cls = answer.core.cls, sea = 0;
     for (var i = 0; i < cls.length; i++) if (cls[i] === 2) sea += 1;
     var result = Object.assign({}, answer, { cfg: cfg, areaKm2: cfg.terrain.drainage_area_km2,
-      seaCells: sea });
+      seaCells: sea, site: latlon ? { lon: latlon.lon, lat: latlon.lat,
+        label: store.get('site.community') || 'Site' } : null });
     result.geojson = terrainGeoJson(read, result);
     return result;
   }
@@ -2557,13 +2569,58 @@
   }
 
   /* What the read found, sentence by sentence, as both apps say it under
-   * the file list, and the Copernicus licence's liability sentence in small
-   * print where the files hold a Copernicus tile. */
+   * the file list. */
   function terrainReadNodes(read) {
-    return el('div.terrain-read', { style: { overflowWrap: 'anywhere' } }, [
-      read.notes.map(function (note) { return el('p', note); }),
-      read.notice ? el('p.muted.terrain-notice', el('small', read.notice)) : null,
-    ]);
+    return el('div.terrain-read', { style: { overflowWrap: 'anywhere' } },
+      read.notes.map(function (note) { return el('p', note); }));
+  }
+
+  /* The four figures, by the name the captions give each, which also
+   * names its files as the Python app saves them (terrain_<name>.png and
+   * .svg), and the builder in gwt-charts.js that draws it. */
+  var TERRAIN_FIGURES = [
+    ['relief', 'terrainRelief'], ['wetness', 'wetnessMap'], ['curvature', 'curvatureMaps'],
+    ['directions', 'hillshadeDirections'],
+  ];
+
+  /* The figures of the analysis on show, each with the engine's captions
+   * under it and its PNG and SVG buttons, and the drainage lines as
+   * GeoJSON, as the Python app writes them. A figure is drawn once and
+   * kept: the four from a display of 1024 cells a side take most of a
+   * second, and the page is drawn again at every change on it. One set to
+   * null (a new threshold sets the relief's) is drawn again, and all four
+   * are when the theme has changed the colours they were drawn in, which
+   * are the page's (charts.palette). */
+  function terrainFigureNodes(session) {
+    var result = session.result;
+    var colours = JSON.stringify(charts.palette());
+    if (!session.figures || session.figuresIn !== colours) {
+      session.figures = { relief: null, wetness: null, curvature: null, directions: null };
+      session.figuresIn = colours;
+    }
+    var figures = session.figures;
+    var opts = { parts: result.parts, summary: result.summary, captions: result.captions,
+      site: result.site, figureCredit: session.read.figureCredit, cfg: result.cfg.terrain };
+    return [
+      TERRAIN_FIGURES.map(function (entry) {
+        var name = entry[0];
+        if (!figures[name]) figures[name] = charts[entry[1]](result.display, opts);
+        return charts.figure(figures[name], result.captions[name], { filename: 'terrain_' + name });
+      }),
+      el('div.btn-row', [
+        button('Drainage lines (GeoJSON)', function () {
+          S.download('drainage_lines.geojson', result.geojson, 'application/geo+json');
+        }, { variant: 'ghost' }),
+      ]),
+    ];
+  }
+
+  /* The Copernicus licence's liability sentence, in small print where the
+   * files hold a Copernicus tile: under the downloads once there are
+   * figures, as the Python app prints it, and under the read report until
+   * then. */
+  function terrainNotice(read) {
+    return read.notice ? el('p.muted.terrain-notice', el('small', read.notice)) : null;
   }
 
   function terrainCard() {
@@ -2587,6 +2644,13 @@
         'compilations of several sources: declare them as Another source. ' +
         'The files are read in this browser, only the parts the window ' +
         'needs, and nothing is uploaded.'),
+      /* the terrain work the Python app alone does, and that neither app's
+       * reports carry it yet, said before any file is added, as the
+       * Python app's Topography tab says it above its uploader */
+      el('div.callout.callout-info.terrain-scope', [
+        el('p', C.phrase('terrain.python_only')),
+        el('p', C.phrase('terrain.not_in_reports')),
+      ]),
       terrainDropZone(),
       /* a tile's name is one long word, which a phone has to break, in the
        * list and in the sentences that name it */
@@ -2641,6 +2705,8 @@
       session.refusal ? el('div.callout.callout-bad', { style: { overflowWrap: 'anywhere' } },
         el('p', session.refusal)) : null,
       session.read ? terrainReadNodes(session.read) : null,
+      session.result ? terrainFigureNodes(session) : null,
+      session.read ? terrainNotice(session.read) : null,
     ]));
   }
 
@@ -6848,6 +6914,7 @@
                 forgetApiKey();
                 store.replace(blankState());
                 Object.keys(derived).forEach(function (k) { derived[k] = null; });
+                forgetTerrain();
                 applyTheme(); renderChrome(); render();
                 S.toast('Workspace reset.', 'ok');
                 document.querySelectorAll('.modal-overlay').forEach(function (n) {
@@ -8032,6 +8099,7 @@
       return;
     }
     stopInversionsForNewProject();
+    forgetTerrain();
     var adopted = await adoptSaved();
     if (!adopted.from) store.replace(blankState());
     inversionsStopped = false;
