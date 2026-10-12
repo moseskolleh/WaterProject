@@ -2339,7 +2339,10 @@ def build() -> dict:
     out["formatting"] = [
         {"value": v, "text": f"{v:g}"}
         for v in (1e6, 1e15, 999999.6, 1e5, 1e7, 1234567, 0.0001, 0.00001,
-                  2.93, 0.0, 0.005, 1e-7)
+                  2.93, 0.0, 0.005, 1e-7,
+                  # subnormals, whose shortest form can lie a decade away
+                  # from their six-digit one
+                  5e-324, 1e-323, 1e-321, 1e-320, 1e-319, 1e-318, 1.000004e-318, -1e-320, 3e-321)
     ]
 
     # The portfolio view, over summaries chosen to exercise every status class

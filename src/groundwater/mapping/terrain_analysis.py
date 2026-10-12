@@ -55,6 +55,7 @@ holds the two engines to the bit.
 
 from __future__ import annotations
 
+import bisect
 import json
 import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -256,13 +257,21 @@ def _basin_roots(zt: np.ndarray, land: np.ndarray, seed: np.ndarray) -> np.ndarr
     hollow floor), or ``rows * cols``, the node OUT, for every cell that
     descends to a seed. Seeds and every cell that is not land go to OUT.
 
-    Each land cell points to the neighbour it drops most to; with none
-    lower, to a neighbour of the same height that comes earlier in the
-    grid, so that a level floor gathers into a few basins rather than one
-    per cell (the pointers cannot go round in a circle, because each step
-    goes down or goes back in the grid). The filled surface does not depend
-    on how the basins are drawn, only on every cell having a path within
-    its basin to the basin's root that never climbs above the cell.
+    Each land cell points to the land neighbour it drops most to; with
+    none lower, to a land neighbour of the same height that comes earlier
+    in the grid, so that a level floor gathers into a few basins rather
+    than one per cell (the pointers cannot go round in a circle, because
+    each step goes down or goes back in the grid). The filled surface does
+    not depend on how the basins are drawn, only on every cell having a
+    path within its basin to the basin's root that never climbs above the
+    cell.
+
+    Descent never steps onto sea or a void, because the fill is defined
+    over paths through land: a land cell beside lower sea that is not a
+    seed has no way out through the sea. With the seeds classify_cells
+    gives this changes nothing, every land cell beside sea being a seed
+    there; with a seed mask of a caller's own it keeps the fill to its
+    definition, as the browser's Priority-Flood keeps it.
     """
     rows, cols = zt.shape
     size = rows * cols
@@ -273,13 +282,13 @@ def _basin_roots(zt: np.ndarray, land: np.ndarray, seed: np.ndarray) -> np.ndarr
         for k in range(8):
             o, n = _pair(_DR[k], _DC[k], rows, cols)
             drop = zt[o] - zt[n]
-            better = drop > best[o]
+            better = land[n] & (drop > best[o])
             np.copyto(best[o], drop, where=better)
             np.copyto(target[o], index[n], where=better)
         level = land & ~seed & (best == 0.0)
         for k in (1, 2, 4, 5):          # S, W, SE, SW: the neighbours earlier in the grid
             o, n = _pair(_DR[k], _DC[k], rows, cols)
-            same = level[o] & (zt[n] == zt[o])
+            same = level[o] & land[n] & (zt[n] == zt[o])
             np.copyto(target[o], index[n], where=same)
             level[o] &= ~same
     pointer = np.empty(size + 1, dtype=np.int64)
@@ -298,9 +307,11 @@ def fill_depressions(zt, cls, seed) -> np.ndarray:
     which water standing on it could reach a seed.
 
     For each land cell this is the least, over all paths through land to a
-    seed, of the highest cell on the path, the seed included. Seeds keep
-    their height. Sea keeps its own height (NaN on assumed sea) and a void
-    is NaN. The result only ever copies heights that are already there, so
+    seed, of the highest cell on the path, the seed included; a land cell
+    with no such path, which only a seed mask other than classify_cells'
+    can leave, is +inf, the least over no paths at all. Seeds keep their
+    height. Sea keeps its own height (NaN on assumed sea) and a void is
+    NaN. The result only ever copies heights that are already there, so
     once a negative zero has been made positive, as :func:`classify_cells`
     does, any correct method gives the same bits; the browser uses
     Priority-Flood.
@@ -372,7 +383,8 @@ def _spill_levels(basins: int, lo: np.ndarray, hi: np.ndarray, passes: np.ndarra
     one of the passes' own heights, so it is the same as a minimax search
     with a heap would give, and is found by compiled code rather than a
     Python loop over every basin. A basin no chain reaches spills at
-    infinity, which only a call without seeds can produce.
+    infinity, which only a seed mask other than classify_cells' can
+    produce: land with no seed anywhere it can reach.
     """
     from scipy.sparse import csr_matrix
     from scipy.sparse.csgraph import breadth_first_order, minimum_spanning_tree
@@ -414,10 +426,18 @@ def flow_directions(zt, filled, cls, seed, metric: RowMetric, sea_level_m: float
     win, so of equal drops the first in the order E, S, W, N, SE, SW, NW,
     NE is taken, and a cardinal neighbour beats a diagonal one.
 
-    A land cell with no drop at all is 0, unless it is a seed, which flows
-    out of the analysis (:data:`FLOWS_OUT`, 255). Cells that are not land
-    are 0. The cells left at 0 lie on flats, which :func:`resolve_flats`
-    routes.
+    Whether a neighbour is lower at all is decided by comparing the
+    heights, not by the sign of the drop: two heights a few multiples of
+    2**-1074 apart give a difference that the division by some thirty
+    metres rounds to +0, and a cell with a lower neighbour would then be
+    taken for a flat with no way out, a pit after the fill. Only lower
+    neighbours are ranked by their drop, and the first of them is taken
+    whatever its drop.
+
+    A land cell with no lower neighbour is 0, unless it is a seed, which
+    flows out of the analysis (:data:`FLOWS_OUT`, 255). Cells that are not
+    land are 0. The cells left at 0 lie on flats, which
+    :func:`resolve_flats` routes.
     """
     filled = np.asarray(_grid("filled", filled), dtype=np.float64)
     shape = filled.shape
@@ -438,7 +458,9 @@ def flow_directions(zt, filled, cls, seed, metric: RowMetric, sea_level_m: float
         for k in range(8):
             o, n = _pair(_DR[k], _DC[k], rows, cols)
             drop = (filled[o] - offer[n]) / dist[_STEP[k]][o[0]][:, None]
-            better = land[o] & ~void[n] & (drop > best[o])
+            # code is 0 until a direction is written, so it marks a cell
+            # with no lower neighbour yet, as the browser's bk < 0 does
+            better = land[o] & ~void[n] & (filled[o] > offer[n]) & ((code[o] == 0) | (drop > best[o]))
             np.copyto(best[o], drop, where=better)
             code[o][better] = _ESRI[k]
     code[land & (code == 0) & seed] = FLOWS_OUT
@@ -654,6 +676,11 @@ def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
         flag[u] |= np.logical_or.reduceat(flag[front], first)
         inflow[u] -= np.diff(np.r_[first, to.size])
         front = u[(inflow[u] == 0) & has[u]]
+    # A cell still waiting for inflow lies on a loop of directions, which
+    # Kahn's order never reaches: its totals, and those of everything that
+    # drains into the loop, would come back short without a word.
+    if inflow.any():
+        raise ValueError("the flow directions form a loop")
     return count.reshape(shape), area.reshape(shape), flag.reshape(shape)
 
 
@@ -833,20 +860,31 @@ def _threshold_units(area_km2: float) -> int:
     """The drainage threshold in whole 0.01 m² units, rounded half up: 0.5
     km² is 5e7 units, about 532 cells at 8.5 degrees north and 1
     arc-second. Areas are compared as integers, so a cell is a stream cell
-    in both engines or in neither."""
+    in both engines or in neither. Both refuse an area that is not a finite
+    number of square kilometres, 0 or more, small enough to count in 0.01
+    m² units: past about 1.8e300 km² the count overflows to infinity, which
+    has no whole number to floor to."""
     area = float(area_km2)
-    if not (math.isfinite(area) and area >= 0.0):
+    units = area * 1e8 + 0.5
+    if not (math.isfinite(units) and area >= 0.0):
         raise ValueError(f"the drainage area must be a number of square kilometres, not {area_km2!r}")
-    return math.floor(area * 1e8 + 0.5)
+    return math.floor(units)
 
 
 def _vertex_positions(turns: Sequence[int], a: int, b: int) -> list[int]:
     """The positions ``a`` to ``b - 1`` of a line kept as vertices: both
     ends, and every position between them in ``turns`` (where the line
-    turns or changes how it was routed). One position is one vertex."""
+    turns or changes how it was routed). One position is one vertex.
+
+    ``turns`` is in ascending order, so the turns inside are found by two
+    binary searches rather than a scan of the whole list: a line that
+    leaves the square shown and comes back is cut into many parts, and a
+    scan per part would cost the parts times the turns."""
     if b - a == 1:
         return [a]
-    return [a, *(m for m in turns if a < m < b - 1), b - 1]
+    lo = bisect.bisect_right(turns, a)
+    hi = bisect.bisect_left(turns, b - 1)
+    return [a, *turns[lo:hi], b - 1]
 
 
 def _summed(steps: Sequence[float]) -> float:
@@ -1170,6 +1208,14 @@ def analyse_terrain(grid: ElevationGrid, cfg: TerrainConfig | None = None, *, as
     else:
         assumed = _grid("assumed_sea", assumed_sea, (rows, cols)).astype(bool)
     metric = row_metric(grid.lons, grid.lats)
+    # The routing, the wetness index and the curvature take every cell
+    # size as a distance. An axis that descends makes the sizes negative,
+    # which turns every drop round and sends water uphill into loops, and
+    # one with no step makes them 0, so both are refused here; row_metric
+    # itself takes them, because the shading is right on either order.
+    # NaN fails the test as well.
+    if not (np.all(metric.dx > 0.0) and np.all(metric.dy > 0.0)):
+        raise ValueError(phrase("terrain.axes_descend"))
     threshold = _threshold_units(cfg.drainage_area_km2)
 
     stage(0.0, phrase("terrain.stage_classes"))
@@ -1322,6 +1368,10 @@ def terrain_captions(analysis: TerrainAnalysis, read: ElevationRead | None, wher
     mid = analysis.core.rows // 2
     spacing = analysis.k_cells * ((float(analysis.core.dx[mid]) + float(analysis.core.dy[mid])) / 2.0)
     azimuths = cfg.hillshade_panel_azimuths_deg
+    if not azimuths:
+        # and_join would fail on the empty list with an IndexError; both
+        # engines refuse it with the same sentence instead
+        raise ValueError("the hillshade panels need at least one azimuth")
 
     out = {
         "title_relief": phrase("terrain.title_relief", where=where),

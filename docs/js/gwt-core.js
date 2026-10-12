@@ -5192,7 +5192,8 @@
    * Priority-Flood (Barnes, Lehman and Mulla 2014, with the queue of cells
    * already settled at their pit's spill height) gives the bits Python's
    * basin graph gives. Seeds keep their height, sea keeps its own (NaN on
-   * assumed sea) and no data stays NaN.
+   * assumed sea) and no data stays NaN; land with no path to a seed, which
+   * only a seed mask other than classifyCells' can leave, is +Infinity.
    * @param {ArrayLike<number>} zt the working heights classifyCells gives
    * @param {ArrayLike<number>} cls the classes classifyCells gives: 0 no data, 1 land, 2 sea
    * @param {ArrayLike<number>} seed 1 on the land cells water may leave the grid from
@@ -5288,6 +5289,10 @@
         }
       }
     }
+    /* land the flood never reached has no path to a seed: the least over
+     * no paths is +Infinity, which Python's basin graph gives too. Only a
+     * seed mask other than classifyCells' leaves such land. */
+    for (i = 0; i < n; i++) if (cls[i] === ROUTE_LAND && !closed[i]) filled[i] = Infinity;
     return filled;
   }
 
@@ -5296,7 +5301,9 @@
    * D8 code: terrain_analysis.flow_directions. The drop to each
    * neighbour is divided by the distance between the cell centres in the
    * cell's own row; land and sea neighbours take part (sea at its own
-   * height, assumed sea at sea level) and no data does not. The first
+   * height, assumed sea at sea level) and no data does not. Only a
+   * neighbour whose height is below the cell's is ranked, by its drop, so
+   * a drop that underflows to 0 still counts as a way down. The first
    * steepest neighbour in the order E, S, W, N, SE, SW, NW, NE wins a tie,
    * so ties go to cardinals first. A seed with no neighbour below it
    * flows out of the analysis (255); any other land cell with none is
@@ -5333,7 +5340,10 @@
           if (kind === ROUTE_VOID) continue;
           var there = kind === ROUTE_LAND ? filled[j] : (Number.isFinite(zt[j]) ? zt[j] : seaLevel);
           var drop = (here - there) / dist[k];
-          if (drop > best) {
+          /* lower is decided on the heights, not on the drop's sign: a
+           * difference of a few times 2^-1074 divided by some thirty metres
+           * rounds to +0, and the cell would be taken for a pit */
+          if (here > there && (bk < 0 || drop > best)) {
             best = drop;
             bk = k;
           }
@@ -5527,6 +5537,10 @@
       inflow[j] -= 1;
       if (inflow[j] === 0) queue[tail++] = j;
     }
+    /* a cell still waiting for inflow lies on a loop of directions, which
+     * Kahn's order never reaches: its totals, and those of all that drains
+     * into the loop, would come back short without a word */
+    for (i = 0; i < n; i++) if (inflow[i] > 0) throw new Error('the flow directions form a loop');
     return { count: count, areaUnits: areaUnits, flag: flag };
   }
 
@@ -5590,22 +5604,43 @@
    * km^2 is 5e7 units, about 532 cells at 8.5 degrees north and 1
    * arc-second. Areas are compared as whole numbers, so a cell is a stream
    * cell in both engines or in neither. Both refuse an area that is not a
-   * finite number of square kilometres, 0 or more. */
+   * finite number of square kilometres, 0 or more, small enough to count
+   * in 0.01 m^2 units: past about 1.8e300 km^2 the count overflows to
+   * Infinity, which Python cannot floor to a whole number. */
   function assemblyThreshold(areaKm2) {
     var area = typeof areaKm2 === 'number' ? areaKm2 : NaN;
-    if (!(area >= 0 && area < Infinity)) {
+    var units = area * 1e8 + 0.5;
+    if (!(area >= 0 && units < Infinity)) {
       throw new Error('the drainage area must be a number of square kilometres, not ' + areaKm2);
     }
-    return Math.floor(area * 1e8 + 0.5);
+    return Math.floor(units);
+  }
+
+  /* The first index of the ascending `turns` whose value is above `value`
+   * (`orEqual` false) or at or above it (true): Python's bisect_right and
+   * bisect_left. */
+  function assemblyBisect(turns, value, orEqual) {
+    var lo = 0, hi = turns.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (turns[mid] < value || (!orEqual && turns[mid] === value)) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
   }
 
   /* The positions a to b - 1 of a line kept as vertices: both ends, and
    * every position between them in `turns` (where the line turns or
-   * changes how it was routed). One position is one vertex. */
+   * changes how it was routed). One position is one vertex. `turns` is in
+   * ascending order, so the turns inside are found by two binary searches
+   * rather than a scan of the whole list: a line that leaves the square
+   * shown and comes back is cut into many parts, and a scan per part
+   * would cost the parts times the turns. */
   function assemblyVertexPositions(turns, a, b) {
     if (b - a === 1) return [a];
     var out = [a];
-    for (var t = 0; t < turns.length; t++) if (turns[t] > a && turns[t] < b - 1) out.push(turns[t]);
+    var hi = assemblyBisect(turns, b - 1, true);
+    for (var t = assemblyBisect(turns, a, false); t < hi; t++) out.push(turns[t]);
     out.push(b - 1);
     return out;
   }
@@ -5962,6 +5997,15 @@
     var assumed = grid.assumedSea || null;
     var lons = Float64Array.from(grid.lons), lats = Float64Array.from(grid.lats);
     var metric = rowMetric(lons, lats);
+    /* The routing, the wetness index and the curvature take every cell
+     * size as a distance. An axis that descends makes the sizes negative,
+     * which turns every drop round and sends water uphill into loops, and
+     * one with no step makes them 0, so both are refused here, as in
+     * Python; rowMetric itself takes them, because the shading is right on
+     * either order. NaN fails the test as well. */
+    for (r = 0; r < rows; r++) {
+      if (!(metric.dx[r] > 0 && metric.dy[r] > 0)) throw new Error(phrase('terrain.axes_descend'));
+    }
     var threshold = assemblyThreshold(settings.drainage_area_km2);
 
     stage(0.0, phrase('terrain.stage_classes'));
@@ -6798,17 +6842,25 @@
     if (value === 0) return Object.is(value, -0) ? '-0' : '0';
     if (value !== value) return 'nan';
     if (!isFinite(value)) return value > 0 ? 'inf' : '-inf';
-    var rounded = roundSig(value, p);
+    /* A subnormal is not put through roundSig: snapping its p-digit decimal
+     * back to the nearest subnormal double can cross into the decade below
+     * (1.000004e-318 came back as 9.99999e-319). Its exact value has
+     * hundreds of significant digits, so toExponential's rounding half up
+     * meets no tie, and gives Python's half-even digits. */
+    var rounded = Math.abs(value) < 2.2250738585072014e-308 ? value : roundSig(value, p);
     /* Not Math.log10: in V8 Math.log(1e6)/Math.LN10 is 5.999999999999999, so
      * the exponent came out one too low at exact powers of ten and %g chose
      * the fixed form where Python chooses the exponential one. The decimal
-     * string carries the exponent exactly. */
-    var exp = Number(Math.abs(rounded).toExponential().split('e')[1]);
+     * string carries the exponent exactly; the mantissa and the exponent
+     * are both taken from the one p-digit string, because a subnormal's
+     * shortest form can lie a decade away from it (the double 1e-320 is
+     * 9.99989e-321 to six digits, as Python writes it). */
+    var parts = rounded.toExponential(p - 1).split('e');
+    var exp = Number(parts[1]);
     if (exp < -4 || exp >= p) {
       /* the mantissa's digits as toExponential writes them, rather than
        * rounded / 10^exp, which is Infinity below 1e-308 */
-      var mstr = rounded.toExponential(p - 1).split('e')[0]
-        .replace(/0+$/, '').replace(/\.$/, '');
+      var mstr = parts[0].replace(/0+$/, '').replace(/\.$/, '');
       return mstr + 'e' + (exp < 0 ? '-' : '+') +
         String(Math.abs(exp)).padStart(2, '0');
     }

@@ -2817,7 +2817,8 @@ def _routing_reference(z, rows: int, cols: int, sea_level: float = 0.0, assumed=
                         filled[i] = v
                         moved = True
 
-    # 3.7 D8
+    # 3.7 D8: only a lower neighbour counts, decided on the heights, and of
+    # those the steepest drop wins
     d8 = [0] * n
     for i in range(n):
         if cls[i] != _LAND:
@@ -2830,7 +2831,7 @@ def _routing_reference(z, rows: int, cols: int, sea_level: float = 0.0, assumed=
                 continue
             v = filled[j] if cls[j] == _LAND else (zt[j] if math.isfinite(zt[j]) else sea_level)
             drop = (filled[i] - v) / dist[k]
-            if drop > best:
+            if filled[i] > v and (bk < 0 or drop > best):
                 best, bk = drop, k
         d8[i] = _ESRI[bk] if bk >= 0 else (255 if seed[i] else 0)
 
@@ -3159,6 +3160,36 @@ def test_the_browser_gives_negative_zero_heights_the_bits_of_positive_zero(routi
             assert not _routing_differences(signed, plain), case
             for name in ("zt", "filled"):
                 assert not any(v == 0 and math.copysign(1.0, v) < 0 for v in signed[name]), (case, name)
+
+
+def test_the_browser_counts_a_drop_that_underflows_to_zero_as_a_way_down(routing):
+    """The twin of Python's test of the same name: a floor of subnormal
+    heights one step above its outlet, the same with normal heights (1e-307
+    and the next double up), and a land cell a subnormal above a sea at
+    0 m. Each difference, divided by some thirty metres, rounds to +0; the
+    cell beside the outlet still flows south to it, no flat is left
+    unresolved, and the coast cell flows west into the sea rather than out
+    of the analysis. Prevents a pit after the fill that both engines once
+    made alike, where neither the parity suite nor the other engine could
+    see it."""
+    def floor(base: float, outlet: float) -> list[float]:
+        z = [10.0] * 25
+        for r in range(1, 4):
+            for c in range(1, 4):
+                z[r * 5 + c] = base
+        z[2] = outlet
+        return z
+
+    for z in (floor(5e-324, 0.0), floor(math.nextafter(1e-307, math.inf), 1e-307)):
+        js = _held_to_the_spec(routing, z, 5, 5, sea_level=-1.0, metric=_arcsecond_metric(5))
+        assert js["d8"][7] == 4 and js["unresolved"] == 0, js["d8"]
+        assert js["count"][2] == 1.0 + sum(js["count"][j] for j in range(25)
+                                           if j != 2 and _outlet_step(js, 5, j) == 2)
+        assert all(_outlet(js, 5, r * 5 + c) == 2 for r in range(1, 4) for c in range(1, 4))
+    coast = [0.0, 10.0, 10.0, 10.0, 0.0, 5e-324, 10.0, 10.0, 0.0, 10.0, 10.0, 10.0]
+    js = _held_to_the_spec(routing, coast, 3, 4, metric=_arcsecond_metric(3))
+    assert [js["cls"][r * 4] for r in range(3)] == [_SEA] * 3 and js["seed"][5] == 1
+    assert js["d8"][5] == 16, "into the sea a subnormal below it, not out of the analysis"
 
 
 def _random_heights(rng: random.Random, rows: int, cols: int) -> list[float]:
@@ -4638,6 +4669,51 @@ def _kx_calls() -> list[tuple]:
         ("hillshade p and q of two lengths", True, "hillshadeLayer", [np.full(4, 0.1), np.full(5, 0.1), 0.0, 45.0],
          lambda: ta.hillshade_layer(np.full(4, 0.1), np.full(5, 0.1), 0.0, 45.0)),
     ]
+    # a fill from a seed mask of a caller's own: no seed at all, two land
+    # areas parted by sea with one of them seeded, and a hollow beside lower
+    # sea whose only seed is far off; land no seed reaches is +inf in both
+    for label, heights, sea, seeds in (
+            ("no seed", [[5, 4, 3, 6], [2, 1, 2, 7], [5, 4, 3, 6]], [], []),
+            ("one of two land areas seeded", [[5, 2, 0, 6, 3], [5, 1, 0, 6, 2], [5, 5, 0, 6, 6]],
+             [(0, 2), (1, 2), (2, 2)], [(2, 0)]),
+            ("a hollow beside lower sea, seeded far off", [[9, 8, 7, 6], [9, 3, 4, 0], [9, 9, 9, 0]],
+             [(1, 3), (2, 3)], [(0, 0)])):
+        own_zt = np.array(heights, dtype=np.float64)
+        own_cls = np.full(own_zt.shape, ta.LAND, dtype=np.uint8)
+        own_seed = np.zeros(own_zt.shape, dtype=bool)
+        for cell in sea:
+            own_cls[cell] = ta.SEA
+        for cell in seeds:
+            own_seed[cell] = True
+        calls.append((f"fill, {label}", False, "fillDepressions", [own_zt, own_cls, own_seed, *own_zt.shape],
+                      lambda zt=own_zt, cls=own_cls, seed=own_seed: ta.fill_depressions(zt, cls, seed)))
+    # D8 where the drop to the outlet underflows to +0: subnormal heights,
+    # then normal ones a double apart
+    for base, outlet in ((5e-324, 0.0), (math.nextafter(1e-307, math.inf), 1e-307)):
+        floor = np.full((5, 5), 10.0)
+        floor[1:4, 1:4] = base
+        floor[0, 2] = outlet
+        f_cls, f_seed, _, f_zt = ta.classify_cells(floor, -1.0)
+        f_filled = ta.fill_depressions(f_zt, f_cls, f_seed)
+        fm, fm_js = _kx_metric(5)
+        calls.append((f"D8, a floor {base!r} above its outlet", False, "flowDirections",
+                      [f_zt, f_filled, f_cls, f_seed, 5, 5, fm_js, -1.0],
+                      lambda zt=f_zt, f=f_filled, cls=f_cls, seed=f_seed, m=fm: ta.flow_directions(zt, f, cls, seed,
+                                                                                                  m, -1.0)))
+    # directions round a loop, which Kahn's order never reaches, and the
+    # same broken in one place
+    ring = np.full((3, 3), 255, dtype=np.uint8)
+    ring[0, 0], ring[0, 1], ring[1, 1], ring[1, 0], ring[2, 2] = 1, 64, 16, 4, 8
+    ring_cls = np.full((3, 3), ta.LAND, dtype=np.uint8)
+    rm, rm_js = _kx_metric(3)
+    broken = ring.copy()
+    broken[1, 0] = 255
+    calls += [
+        ("totals, directions round a loop", True, "accumulateFlow", [ring, ring_cls, 3, 3, rm_js, True],
+         lambda: ta.accumulate_flow(ring, ring_cls, rm, True)),
+        ("totals, the loop broken", False, "accumulateFlow", [broken, ring_cls, 3, 3, rm_js, True],
+         lambda: ta.accumulate_flow(broken, ring_cls, rm, True)),
+    ]
     values = np.array([3.0, -0.0, 0.0, math.nan, 1.0, math.inf, 2.0])
     for lo, hi, refused in ((0.98, 0.02, True), (-0.1, 0.5, True), (0.5, 1.5, True), (math.nan, 0.5, True),
                             (0.5, math.nan, True), (-0.0, 1.0, False), (0.0, 0.0, False), (1.0, 1.0, False),
@@ -4663,29 +4739,37 @@ def test_both_engines_take_empty_and_thin_grids_alike_and_refuse_the_same_argume
     or long, a cell area that is not a whole number of units below 2**53,
     display fractions out of order or outside 0..1, None (null) for a
     straight-edge length or a z-factor, and contour intervals at the knife
-    edges. Each answer is the same to the bit, or both engines refuse.
-    Prevents one engine refusing what the other answers (Python once
-    raised on an empty grid, a null z-factor shaded the browser's relief
-    flat, and a zero spacing gave k = 1 there and an error here), and a
-    fraction of a unit cut off the areas in Python alone."""
+    edges; a fill from seed masks of a caller's own (none, one of two land
+    areas, a hollow beside lower sea seeded far off), D8 where the drop to
+    the outlet underflows to +0, and directions round a loop. Each answer
+    is the same to the bit, or both engines refuse. Prevents one engine
+    refusing what the other answers (Python once raised on an empty grid,
+    a null z-factor shaded the browser's relief flat, and a zero spacing
+    gave k = 1 there and an error here), a fraction of a unit cut off the
+    areas in Python alone, land no seed reaches left at its own height in
+    the browser and at infinity in Python, and a loop's totals coming back
+    short in both."""
     calls = _kx_calls()
     # the wetness index itself is a library's log, held at 1e-12 in the
     # seeded test above; its argument and floored cells are compared here
     drop = {"wetnessIndex": ["twi"]}
     answers = kernels.ask("calls", calls=[{"name": name, "args": _kx_tagged(args), "drop": drop.get(name, [])}
                                           for _, _, name, args, _ in calls])["ok"]
-    differ = []
+    differ, said = [], {}
     for (label, refused, name, _, python), js in zip(calls, answers, strict=True):
         try:
             answer = python()
             py = {"gave": _kx_flattened((answer[0], answer[2]) if name in drop else answer)}
         except ValueError as exc:
             py = {"refused": str(exc)}
+        said[label] = (js.get("refused"), py.get("refused"))
         if ("refused" in js) != ("refused" in py) or js.get("gave") != py.get("gave"):
             differ.append(f"{label}: browser {js}, python {py}")
         elif refused is not None and ("refused" in py) != refused:
             differ.append(f"{label}: both {'refused' if 'refused' in py else 'answered'}, against the rule")
     assert not differ, f"{len(differ)} of {len(calls)} calls differ:\n" + "\n".join(differ)
+    # a loop of directions is refused in the same words
+    assert said["totals, directions round a loop"] == ("the flow directions form a loop",) * 2
     # None (null) is the default, not a value of its own, and the coast's
     # straight edge is long enough for the length to decide
     gave = {label: js.get("gave") for (label, *_), js in zip(calls, answers, strict=True)}
@@ -5194,30 +5278,48 @@ def test_browser_analysis_matches_python_end_to_end(assembly):
 
     # both refuse a precision that is neither, a square shown outside the
     # grid or empty, a drainage threshold that is not a finite area of 0 or
-    # more, and hillshade panels with no azimuth to name
+    # more or too large to count in units, axes that do not ascend, and
+    # hillshade panels with no azimuth to name; where the sentence is the
+    # catalogue's or names the same number, in the same words
     case, options = cases[0]
-    base = _ax_request(case, options)
     rows, cols = case["rows"], case["cols"]
-    refusals = [
-        ("precision float16", {"call": "analyse", "precision": "float16"}),
-        ("shown beyond the grid", {"call": "analyse", "shown": [0, rows + 1, 0, cols]}),
-        ("shown empty", {"call": "analyse", "shown": [1, 1, 0, cols]}),
-        ("shown backwards", {"call": "analyse", "shown": [0, rows, cols, 0]}),
-        ("threshold NaN", {"call": "links", "area": {"num": _kx_hex(math.nan)}}),
-        ("threshold below 0", {"call": "links", "area": {"num": _kx_hex(-0.5)}}),
-        ("threshold infinite", {"call": "links", "area": {"num": _kx_hex(math.inf)}}),
+    descending = [v for r in range(rows - 1, -1, -1) for v in case["z"][r * cols:(r + 1) * cols][::-1]]
+    by_rows = [v for r in range(rows - 1, -1, -1) for v in case["z"][r * cols:(r + 1) * cols]]
+    refusals = [  # (label, what the call changes, how the grid is changed, the same words in both)
+        ("precision float16", {"call": "analyse", "precision": "float16"}, {}, False),
+        ("shown beyond the grid", {"call": "analyse", "shown": [0, rows + 1, 0, cols]}, {}, True),
+        ("shown empty", {"call": "analyse", "shown": [1, 1, 0, cols]}, {}, True),
+        ("shown backwards", {"call": "analyse", "shown": [0, rows, cols, 0]}, {}, True),
+        ("threshold NaN", {"call": "links", "area": {"num": _kx_hex(math.nan)}}, {}, False),
+        ("threshold below 0", {"call": "links", "area": {"num": _kx_hex(-0.5)}}, {}, True),
+        ("threshold infinite", {"call": "links", "area": {"num": _kx_hex(math.inf)}}, {}, False),
+        ("threshold too large to count", {"call": "links", "area": {"num": _kx_hex(1e301)}}, {}, True),
         ("settings threshold NaN", {"call": "analyse",
-                                    "config": {"terrain": {"drainage_area_km2": {"num": _kx_hex(math.nan)}}}}),
-        ("no panel azimuth", {"call": "captions", "config": {"terrain": {"hillshade_panel_azimuths_deg": []}}}),
+                                    "config": {"terrain": {"drainage_area_km2": {"num": _kx_hex(math.nan)}}}},
+         {}, False),
+        ("settings threshold too large to count",
+         {"call": "analyse", "config": {"terrain": {"drainage_area_km2": {"num": _kx_hex(1e301)}}}}, {}, True),
+        ("both axes descending", {"call": "analyse", "shown": None, "gridShown": None},
+         {"lons": case["lons"][::-1], "lats": case["lats"][::-1], "z": descending}, True),
+        ("latitudes descending", {"call": "analyse", "shown": None, "gridShown": None},
+         {"lats": case["lats"][::-1], "z": by_rows}, True),
+        ("no step between columns", {"call": "analyse", "shown": None, "gridShown": None},
+         {"lons": [case["lons"][0]] * cols}, True),
+        ("a column centre not a number", {"call": "analyse", "shown": None, "gridShown": None},
+         {"lons": [*case["lons"][:-1], math.nan]}, False),
+        ("no panel azimuth", {"call": "captions", "config": {"terrain": {"hillshade_panel_azimuths_deg": []}}}, {},
+         True),
     ]
-    js_refused = assembly.ask("refusals", cases=[{**base, **change} for _, change in refusals])["ok"]
+    js_refused = assembly.ask("refusals", cases=[{**_ax_request({**case, **moved}, options), **change}
+                                                 for _, change, moved, _ in refusals])["ok"]
     from groundwater.mapping import terrain_analysis as ta
+    from groundwater.text import phrase
 
-    for (label, change), js in zip(refusals, js_refused, strict=True):
+    for (label, change, moved, same_words), js in zip(refusals, js_refused, strict=True):
         settings = {key: _kx_float(v["num"]) if isinstance(v, dict) else v
                     for key, v in change.get("config", {}).get("terrain", {}).items()}
-        grid = _ax_grid(case, options)
-        with pytest.raises((ValueError, IndexError)):
+        grid = _ax_grid({**case, **moved}, options)
+        with pytest.raises(ValueError) as refused:
             if change["call"] == "analyse":
                 ta.analyse_terrain(grid, _ax_config({**options["settings"], **settings}),
                                    shown=change.get("shown", options["shown"]),
@@ -5228,6 +5330,64 @@ def test_browser_analysis_matches_python_end_to_end(assembly):
             else:
                 ta.terrain_captions(ta.analyse_terrain(grid, _ax_config(settings), precision="float64"), None, "here")
         assert "refused" in js, f"{label}: the browser answered where Python refuses"
+        if same_words:
+            assert js["refused"] == str(refused.value), label
+        if "axes" in label or "step" in label:
+            assert str(refused.value) == phrase("terrain.axes_descend"), label
+
+
+def _ax_serpentine(rows: int = 121, cols: int = 120) -> tuple[dict, dict]:
+    """One channel that turns at every cell, as tests/test_terrain_analysis.py
+    builds it: zigzagging between the two rows of each three-row lane, the
+    lanes running east and west in turn and joined through the wall row
+    between them, falling a centimetre a cell under walls 2,000 m high that
+    drain straight into it, and leaving at the west or east edge. With a
+    margin of 20 cells, the one line crosses the edge of the square shown
+    twice a lane and is cut into some 27 pieces of about 80 vertices."""
+    path: list[tuple[int, int]] = []
+    r, east = 1, True
+    while r + 2 < rows:
+        columns = range(1, cols - 1) if east else range(cols - 2, 0, -1)
+        path += [(r + k % 2, c) for k, c in enumerate(columns)]
+        if r + 5 < rows:
+            path.append((r + 2, path[-1][1]))        # through the wall to the next lane
+        r, east = r + 3, not east
+    path.append((path[-1][0], cols - 1 if not east else 0))
+    z = [2000.0] * (rows * cols)
+    for p, (pr, pc) in enumerate(path):
+        z[pr * cols + pc] = 1000.0 + (len(path) - p) / 100.0
+    step = 1 / 3600
+    case = {"rows": rows, "cols": cols, "z": z, "lons": [-12.0 + j * step for j in range(cols)],
+            "lats": [8.5 + j * step for j in range(rows)], "assumed": None, "sea_clean": True}
+    meta = {"label": "serpentine.tif", "credit": "", "notice": None, "surface": "Heights.", "area": 0.0025,
+            "radius": 1.0, "margin": 0.6, "centre": {"lon": case["lons"][cols // 2], "lat": case["lats"][rows // 2],
+                                                     "label": "Kakua"}}
+    options = {"settings": {"drainage_area_km2": 0.0025}, "shown": [20, rows - 20, 20, cols - 20],
+               "shown_as": "argument", "precision": "float64", "label": "serpentine.tif", "where": "Kakua",
+               "source_id": "unidentified", "read": None, "meta": meta}
+    return case, options
+
+
+def test_both_engines_cut_a_line_that_turns_at_every_cell_into_the_same_pieces(assembly):
+    """The twin of Python's test of a line cut into many pieces: one line
+    that turns at every cell and crosses the edge of the square shown
+    again and again, cut by both engines' binary searches over its turns
+    (once a scan of every turn for every piece, which cost a hostile
+    upload eight of its nine seconds of tracing in Python). The links, the
+    pieces, every vertex of each and the GeoJSON are the same in both, and
+    every position of a piece is a vertex. Prevents the two searches
+    keeping different vertices at the ends of a piece, which real tiles,
+    whose lines leave the square at most once, never reach."""
+    case, options = _ax_serpentine()
+    js = assembly.ask("analyse", cases=[_ax_request(case, options)])["ok"][0]
+    py = _ax_python(case, options)
+    differ = _ax_differences(assembly, case, options, js, py)
+    assert not differ, "\n".join(differ)
+    a = py["analysis"]
+    assert len(a.links) == 1 and len(a.parts) > 20 and min(len(part.vertices) for part in a.parts) > 30
+    for part in a.parts:
+        assert all(max(abs(r1 - r0), abs(c1 - c0)) == 1
+                   for (r0, c0), (r1, c1) in zip(part.vertices, part.vertices[1:], strict=False))
 
 
 def _ax_plane(side: int = 256) -> tuple[dict, dict]:

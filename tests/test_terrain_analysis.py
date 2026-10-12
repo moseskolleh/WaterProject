@@ -151,7 +151,9 @@ def _digest(*arrays) -> str:
 def _priority_flood(zt: np.ndarray, cls: np.ndarray, seed: np.ndarray) -> np.ndarray:
     """The improved Priority-Flood (Barnes, Lehman and Mulla 2014), as the
     browser runs it: seeds pushed in grid order keyed by (height, order of
-    insertion), a first-in first-out queue for cells raised into a pit."""
+    insertion), a first-in first-out queue for cells raised into a pit.
+    Land the flood never reaches has no path to a seed, and is +inf, the
+    least over no paths."""
     rows, cols = zt.shape
     height = zt.ravel().tolist()
     closed = (cls != LAND).ravel().tolist()
@@ -175,6 +177,9 @@ def _priority_flood(zt: np.ndarray, cls: np.ndarray, seed: np.ndarray) -> np.nda
             else:
                 heapq.heappush(heap, (height[j], seq, j))
                 seq += 1
+    for i, reached in enumerate(closed):
+        if not reached:
+            height[i] = math.inf
     filled = np.array(height).reshape(rows, cols)
     filled[cls != LAND] = zt[cls != LAND]
     filled[cls == VOID] = nan
@@ -525,6 +530,62 @@ def test_filling_never_lowers_a_cell_and_never_raises_a_seed():
             assert any(filled.flat[j] <= filled[r, c] for _, j in _neighbours(i, rows, cols))
 
 
+def test_filling_follows_its_definition_for_a_seed_mask_of_a_callers_own():
+    """fill_depressions is public, and the browser's twin takes any seed
+    mask, so the fill must keep to its definition - the least, over paths
+    through land to a seed, of the highest cell on the path - whatever
+    seeds it is given, not only those classify_cells gives. Prevents a land
+    cell beside lower sea that is not a seed draining its hollow out
+    through the sea (the basin descent once stepped onto sea), and land
+    that no seed can reach coming out at its own height in one engine and
+    +inf in the other: each is held here to the Priority-Flood and the
+    reconstruction, which follow the definition cell by cell."""
+    # no seed at all: no land has a path to one
+    zt = np.array([[5.0, 4.0, 3.0, 6.0], [2.0, 1.0, 2.0, 7.0], [5.0, 4.0, 3.0, 6.0]])
+    cls = np.full(zt.shape, LAND, dtype=np.uint8)
+    assert np.isposinf(fill_depressions(zt, cls, np.zeros(zt.shape, dtype=bool))).all()
+    # a hollow beside lower sea, with the only seed at the far corner: the
+    # sea is no way out, so the hollow fills to the seed's 9 m
+    zt = np.array([[9.0, 8.0, 7.0, 6.0], [9.0, 3.0, 4.0, 0.0], [9.0, 9.0, 9.0, 0.0]])
+    cls = np.full(zt.shape, LAND, dtype=np.uint8)
+    cls[1:, 3] = SEA
+    seed = np.zeros(zt.shape, dtype=bool)
+    seed[0, 0] = True
+    filled = fill_depressions(zt, cls, seed)
+    assert filled.tolist() == [[9.0, 9.0, 9.0, 9.0], [9.0, 9.0, 9.0, 0.0], [9.0, 9.0, 9.0, 0.0]]
+    # two land areas parted by a sea column, one of them seeded
+    zt = np.array([[5.0, 2.0, 0.0, 6.0, 3.0], [5.0, 1.0, 0.0, 6.0, 2.0], [5.0, 5.0, 0.0, 6.0, 6.0]])
+    cls = np.full(zt.shape, LAND, dtype=np.uint8)
+    cls[:, 2] = SEA
+    seed = np.zeros(zt.shape, dtype=bool)
+    seed[2, 0] = True
+    filled = fill_depressions(zt, cls, seed)
+    assert (filled[:, :2] == 5.0).all() and np.isposinf(filled[:, 3:]).all() and (filled[:, 2] == 0.0).all()
+    # On random grids, with seeds scattered sparsely over the land, a single
+    # seed in a corner, and seeds only along the edge (sea beside land left
+    # unseeded): the same bits as both cell-by-cell methods.
+    from scipy import ndimage
+
+    rng = np.random.default_rng(41_7)
+    unreached = beside_sea = 0
+    for seed_no, rows, cols, step, relief, voids in RANDOM_GRIDS:
+        z = _random_heights(seed_no, rows, cols, step, relief, voids)
+        cls, _, _, zt = classify_cells(z, 0.0)
+        land = cls == LAND
+        near_sea = land & ndimage.binary_dilation(cls == SEA, structure=np.ones((3, 3), dtype=bool))
+        corner = np.zeros(z.shape, dtype=bool)
+        corner[np.unravel_index(np.flatnonzero(land.ravel())[-1], z.shape)] = True
+        edge = np.zeros(z.shape, dtype=bool)
+        edge[0, :] = edge[-1, :] = edge[:, 0] = edge[:, -1] = True
+        for seeds in (land & (rng.random(z.shape) < 0.01), corner, land & edge):
+            filled = fill_depressions(zt, cls, seeds)
+            assert filled.tobytes() == _priority_flood(zt, cls, seeds).tobytes()
+            assert filled.tobytes() == _reconstruction(zt, cls, seeds).tobytes()
+            unreached += int(np.isposinf(filled[land]).sum())
+            beside_sea += int((near_sea & ~seeds).sum())
+    assert unreached > 20 and beside_sea > 1000, "the masks should leave land unreached and sea's neighbours unseeded"
+
+
 # ---------------------------------------------------------------------------
 # Directions
 # ---------------------------------------------------------------------------
@@ -586,6 +647,73 @@ def test_flow_goes_to_the_steepest_neighbour_and_ties_go_to_cardinals_first():
     cls = np.full((3, 3), LAND, dtype=np.uint8)
     code = flow_directions(z, z, cls, np.ones((3, 3), dtype=bool), metric, 0.0)
     assert code[1, 1] == S, "row 1's dy (3 m) is shorter than its dx (4 m)"
+
+
+def _d8_reference(zt, filled, cls, seed, metric, sea_level: float) -> np.ndarray:
+    """D8 as spec 3.7 writes it, one cell at a time: a neighbour counts only
+    when it is lower, and of those the steepest drop wins, the first in K
+    on a tie."""
+    rows, cols = filled.shape
+    code = np.zeros((rows, cols), dtype=np.uint8)
+    for r in range(rows):
+        dist = (metric.dx[r], metric.dy[r], metric.dx[r], metric.dy[r], *[metric.dg[r]] * 4)
+        for c in range(cols):
+            if cls[r, c] != LAND:
+                continue
+            here, best, bk = float(filled[r, c]), 0.0, -1
+            for k, j in _neighbours(r * cols + c, rows, cols):
+                rr, cc = divmod(j, cols)
+                if cls[rr, cc] == VOID:
+                    continue
+                there = float(filled[rr, cc] if cls[rr, cc] == LAND else
+                              (zt[rr, cc] if math.isfinite(zt[rr, cc]) else sea_level))
+                drop = (here - there) / float(dist[k])
+                if here > there and (bk < 0 or drop > best):
+                    best, bk = drop, k
+            code[r, c] = ESRI[bk] if bk >= 0 else (255 if seed[r, c] else 0)
+    return code
+
+
+def test_a_drop_that_underflows_to_zero_still_counts_as_a_way_down():
+    """Prevents a pit left after the fill: two heights a few multiples of
+    2**-1074 apart differ by an amount that, divided by some thirty metres,
+    rounds to +0, and a D8 that asked for a positive drop took the cell
+    beside the outlet for a flat with no way out, so the whole floor
+    drained into its middle and a line ended there as a "sink". Lower is
+    now decided on the heights. The floors here are subnormal heights, then
+    normal ones (1e-307 and the next double up), and then a coast where a
+    land cell a subnormal above sea level must flow into the sea (W), not
+    out of the analysis (255)."""
+    def floor(base: float, outlet: float) -> np.ndarray:
+        z = np.full((5, 5), 10.0)
+        z[1:4, 1:4] = base
+        z[0, 2] = outlet
+        return z
+
+    for z in (floor(5e-324, 0.0), floor(math.nextafter(1e-307, math.inf), 1e-307)):
+        out = _route(z, sea_level=-1.0)
+        assert out.unresolved == 0
+        assert out.code_d8[1, 2] == S, "the cell beside the outlet has a way down"
+        assert out.code_d8.tobytes() == _d8_reference(out.zt, out.filled, out.cls, out.seed, out.metric,
+                                                      -1.0).tobytes()
+        down = _downstream(out.code, out.cls)
+        for i in (r * 5 + c for r in range(1, 4) for c in range(1, 4)):
+            while down[i] >= 0:
+                i = down[i]
+            assert i == 2, "every cell of the floor drains to the outlet"
+        assert analyse_terrain(_elevation(z), TerrainConfig(sea_level_m=-1.0), precision="float64").unresolved == 0
+    z = np.full((3, 4), 10.0)
+    z[:, 0] = 0.0
+    z[1, 1] = 5e-324
+    out = _route(z)
+    assert (out.cls[:, 0] == SEA).all() and out.cls[1, 1] == LAND and out.seed[1, 1]
+    assert out.code_d8[1, 1] == W, "into the sea a subnormal below it, not out of the analysis"
+    # On the random grids, whose drops never underflow, the rule written
+    # out cell by cell gives the same directions.
+    for seed, rows, cols, step, relief, voids in RANDOM_GRIDS:
+        out = _route(_random_heights(seed, rows, cols, step, relief, voids))
+        assert out.code_d8.tobytes() == _d8_reference(out.zt, out.filled, out.cls, out.seed, out.metric,
+                                                      0.0).tobytes()
 
 
 @pytest.mark.parametrize("seed, rows, cols, step, relief, voids", RANDOM_GRIDS)
@@ -746,6 +874,26 @@ def test_contamination_flows_downstream_from_the_edge_and_voids_but_not_from_kno
         for sea_clean in (True, False):
             flag = accumulate_flow(r.code, r.cls, r.metric, sea_clean)[2]
             assert flag.tobytes() == _accumulate_in_order(r.code, r.cls, r.metric, sea_clean, "newest")[2].tobytes()
+
+
+def test_flow_directions_that_go_round_in_a_loop_are_refused():
+    """Prevents totals that come back short without a word: Kahn's order
+    never reaches a cell on a loop of directions, so the loop's cells, and
+    every cell draining into them, would keep only part of their area. The
+    routing never makes a loop, but accumulate_flow is public and takes any
+    directions, and a loop once came out of a grid whose axes descended.
+    Broken in one place, the same directions give exact totals."""
+    cls = np.full((3, 3), LAND, dtype=np.uint8)
+    code = np.full((3, 3), 255, dtype=np.uint8)
+    code[0, 0], code[0, 1], code[1, 1], code[1, 0] = E, N, W, S      # round a square of four cells
+    code[2, 2] = SW                                                  # and a cell draining into it
+    metric = _metric(3, 3)
+    with pytest.raises(ValueError, match="^the flow directions form a loop$"):
+        accumulate_flow(code, cls, metric, True)
+    code[1, 0] = 255
+    count, area, _ = accumulate_flow(code, cls, metric, True)
+    assert count[1, 0] == 5 and count[1, 1] == 4 and count[0, 1] == 2
+    assert area[1, 0] == 2 * metric.au_row[0] + 2 * metric.au_row[1] + metric.au_row[2]
 
 
 def test_importing_the_analysis_does_not_import_pyplot():
@@ -955,6 +1103,43 @@ def _meta(core: TerrainCore, **overrides) -> dict:
 def _parsed(text: str):
     """GeoJSON text parsed with every number kept as the text it was written as."""
     return json.loads(text, parse_float=str, parse_int=str)
+
+
+def test_an_analysis_refuses_a_grid_whose_axes_do_not_ascend():
+    """Prevents water sent uphill: with both axes running the other way
+    (an .asc file with a negative cell size, or a grid built north-first
+    through the API) every cell size comes out negative, each cardinal drop
+    turns round, the directions go round in loops, and 21,000 of 40,000
+    cells once drained to higher ground with nothing reported; with only
+    the latitudes reversed the totals refused with a sentence about whole
+    units of area; and an axis with no step gives cells of no size. Each
+    is refused in the catalogue's words. row_metric and the shading still
+    take a descending grid, on which they are right: the hillshade of the
+    reversed grid, turned back, is the hillshade of the grid."""
+    from groundwater.mapping.terrain import hillshade, slope_percent
+
+    z = _random_heights(4, 50, 45, 1.0, 3.0, 0.02)
+    grid = _elevation(z)
+    lons, lats = grid.lons, grid.lats
+    refused = {
+        "both axes descending": ElevationGrid(lons[::-1].copy(), lats[::-1].copy(), z[::-1, ::-1].copy()),
+        "latitudes descending": ElevationGrid(lons, lats[::-1].copy(), z[::-1].copy()),
+        "no step between columns": ElevationGrid(np.full(lons.size, lons[0]), lats, z),
+    }
+    for label, bad in refused.items():
+        with pytest.raises(ValueError) as caught:
+            analyse_terrain(bad, precision="float64")
+        assert str(caught.value) == phrase("terrain.axes_descend"), label
+    # an axis whose last centre is not a number has no cell size at all,
+    # which row_metric itself refuses here (the browser's gives NaN sizes,
+    # which the analysis refuses in the words above)
+    with pytest.raises(ValueError):
+        analyse_terrain(ElevationGrid(np.r_[lons[:-1], nan], lats, z), precision="float64")
+    reversed_grid = refused["both axes descending"]
+    metric = row_metric(reversed_grid.lons, reversed_grid.lats)
+    assert (metric.dx < 0).all() and (metric.dy < 0).all()
+    assert hillshade(reversed_grid)[::-1, ::-1].tobytes() == hillshade(grid).tobytes()
+    assert slope_percent(reversed_grid)[::-1, ::-1].tobytes() == slope_percent(grid).tobytes()
 
 
 def test_cells_routed_across_flats_and_filled_hollows_are_marked():
@@ -1207,6 +1392,93 @@ def test_links_are_cut_where_they_leave_the_shown_square():
     assert cut > 10
 
 
+def test_the_vertices_of_a_piece_are_found_by_binary_search_as_the_rule_writes_them():
+    """Prevents the binary search over a line's turns, which spares a line
+    cut into many pieces a scan of every turn for each piece, from keeping
+    other vertices than spec 3.10's rule: both ends, and every turn
+    strictly between them. Held on random sorted turn lists, with turns at
+    either end of the piece, none at all, and pieces of one and two
+    positions."""
+    from groundwater.mapping.terrain_analysis import _vertex_positions
+
+    def written(turns, a, b):
+        return [a] if b - a == 1 else [a] + [m for m in turns if a < m < b - 1] + [b - 1]
+
+    rng = np.random.default_rng(41_15)
+    cases = [([], 0, 1), ([], 3, 5), ([1, 2, 3], 0, 2), ([4], 4, 6), ([5], 4, 6), ([4, 5, 6], 4, 7)]
+    for _ in range(3000):
+        turns = sorted({int(m) for m in rng.integers(1, 60, int(rng.integers(0, 30)))})
+        a = int(rng.integers(0, 58))
+        b = a + int(rng.integers(1, 12))
+        if turns and rng.random() < 0.3:
+            a = int(rng.choice(turns))
+            b = a + int(rng.integers(1, 12))
+        if turns and rng.random() < 0.3:
+            b = int(rng.choice(turns)) + 1
+            a = max(0, b - int(rng.integers(1, 12)))
+        cases.append((turns, a, b))
+    for turns, a, b in cases:
+        assert _vertex_positions(turns, a, b) == written(turns, a, b), (turns, a, b)
+
+
+#: A threshold of about two and a half cells at 8.5 degrees north: above
+#: what a wall of _serpentine gathers, below what its channel's head does.
+SERPENTINE_KM2 = 0.0025
+
+
+def _serpentine(rows: int = 121, cols: int = 120) -> tuple[np.ndarray, list[tuple[int, int]], set]:
+    """One channel that turns at every cell, and where it runs: it zigzags
+    between the two rows of each three-row lane, the lanes running east and
+    west in turn and joined through the wall row between them (the joins,
+    returned too, are the only cells where it runs on without turning), and
+    it leaves the grid at the west or east edge. The channel falls a
+    centimetre a cell; every other cell is a wall 2,000 m high that drains
+    straight into it. Each lane crosses the square a margin of 20 cells
+    leaves, so the one line is cut into dozens of pieces of dozens of
+    vertices each."""
+    path: list[tuple[int, int]] = []
+    joins = set()
+    r, east = 1, True
+    while r + 2 < rows:
+        columns = range(1, cols - 1) if east else range(cols - 2, 0, -1)
+        path += [(r + k % 2, c) for k, c in enumerate(columns)]
+        if r + 5 < rows:
+            path.append((r + 2, path[-1][1]))        # through the wall to the next lane
+            joins.add(path[-1])
+        r, east = r + 3, not east
+    path.append((path[-1][0], cols - 1 if not east else 0))
+    z = np.full((rows, cols), 2000.0)
+    for p, cell in enumerate(path):
+        z[cell] = 1000.0 + (len(path) - p) / 100.0
+    # the channel takes no short cut: no cell of it touches one further on
+    # than the next
+    at = {cell: p for p, cell in enumerate(path)}
+    for p, (pr, pc) in enumerate(path):
+        assert all(at.get((pr + dr, pc + dc), p + 1) <= p + 1 for dr in (-1, 0, 1) for dc in (-1, 0, 1))
+    return z, path, joins
+
+
+def test_a_line_cut_into_many_pieces_keeps_every_vertex_of_each():
+    """One line that turns at every cell and crosses the edge of the square
+    shown again and again (a hostile upload of this shape once spent eight
+    of its nine seconds of tracing rescanning the line's turns for each
+    piece): every piece is the rule written out cell by cell, and, as the
+    line turns at every cell, every position of a piece is a vertex.
+    Prevents a vertex lost or doubled at the ends of a piece, where the
+    binary search's bounds fall."""
+    z, path, joins = _serpentine()
+    rows, cols = z.shape
+    a = analyse_terrain(_elevation(z), TerrainConfig(drainage_area_km2=SERPENTINE_KM2),
+                        shown=(20, rows - 20, 20, cols - 20), precision="float64")
+    assert len(a.links) == 1 and a.links[0].cells == len(path) and a.links[0].outlet == "edge"
+    assert a.links[0].vertices == tuple(cell for cell in path if cell not in joins)
+    assert len(a.parts) > 20 and min(len(part.vertices) for part in a.parts) > 30
+    assert (a.links, a.parts) == _links_as_written(a.core, SERPENTINE_KM2)
+    for part in a.parts:
+        first = path.index(part.vertices[0])
+        assert part.vertices == tuple(path[first:first + len(part.vertices)])
+
+
 def test_the_shown_links_do_not_change_when_the_margin_grows():
     """Prevents the lines shown from depending on how far beyond the map the
     analysis reached, once the margin holds every divide: on a corrugated
@@ -1273,6 +1545,34 @@ def test_drainage_links_from_the_core_equal_those_of_the_full_analysis():
             drainage_geojson(b.core, b.parts, meta)
     with pytest.raises(ValueError):
         drainage_links(a.core, math.nan)
+
+
+def test_a_drainage_area_too_large_to_count_in_units_is_refused():
+    """Prevents an OverflowError from Python where the browser answered with
+    no lines: an area past about 1.8e300 km² counts to infinity in 0.01 m²
+    units, which has no whole number to floor to, so both engines refuse it
+    with the sentence they give any area that is not a number of square
+    kilometres. The largest area that still counts is taken, and gives no
+    lines."""
+    core = _drawn(4, 5, [[(1, 0), (1, 1), (1, 2), (1, 3), (1, 4)]])
+    for area in (1.8e300, 1e301, sys.float_info.max):
+        with pytest.raises(ValueError, match="^the drainage area must be a number of square kilometres, not "):
+            drainage_links(core, area)
+        with pytest.raises(ValueError, match=re.escape(repr(area))):
+            analyse_terrain(_elevation(np.arange(20.0).reshape(4, 5)), TerrainConfig(drainage_area_km2=area))
+    assert drainage_links(core, 1.7976931348623156e300) == ((), ())
+    assert len(drainage_links(core, ONE_CELL_KM2)[0]) == 1
+
+
+def test_the_hillshade_panels_need_an_azimuth_to_name():
+    """Prevents an IndexError from deep inside and_join where the browser
+    refuses in words: captions for an analysis whose panel list is empty
+    are refused with the browser's sentence, word for word."""
+    a = analyse_terrain(_elevation(np.add.outer(np.arange(12.0), np.arange(10.0))),
+                        TerrainConfig(hillshade_panel_azimuths_deg=()), precision="float64")
+    assert a.hillshades == ()
+    with pytest.raises(ValueError, match="^the hillshade panels need at least one azimuth$"):
+        terrain_captions(a, None, "here")
 
 
 def test_the_drainage_geojson_escapes_names_and_rounds_as_python_does():
