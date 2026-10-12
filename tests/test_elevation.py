@@ -1085,6 +1085,8 @@ def test_a_set_is_refused_for_a_repeated_name_mixed_kinds_or_a_window_it_cannot_
     void = _made([[-32767.0] * 6] * 5, MAKE.Georef(-11.5, 8.5, ARCSEC, ARCSEC, raster=2))
     refusal = _refused(_read, {"void.tif": void}, -11.5 + 2 * ARCSEC, 8.5 - 2 * ARCSEC, 0.05)
     assert refusal.ident == "terrain.no_elevations" and refusal.values["where"] == "the test point"
+    # the radius is the half-side of a square, as the read report says it
+    assert str(refusal) == "The window within 0.05 km each way of the test point holds no elevations."
 
 
 def test_an_hgt_tile_is_placed_by_its_name_and_sized_by_its_length():

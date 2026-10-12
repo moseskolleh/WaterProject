@@ -6220,14 +6220,15 @@
     return { radius: Math.floor(radiusM / 100.0) / 10.0, margin: Math.floor(marginM / 100.0) / 10.0 };
   }
 
-  /* A caption giving `count` cells as a share of the `cells` of the square
-   * shown, by the read report's rule in whole numbers alone: under half a
-   * per cent, the `little` sentence with the count instead of "0%"; else
-   * the `share` sentence, at most 99% while any cell is not counted, never
-   * "100%". terrain_analysis._share_sentence. */
-  function shareSentence(share, little, count, cells, level) {
-    if (200 * count < cells) return phrase(little, { count: count, level: level });
-    return phrase(share, { pct: elevationPercent(count, cells), level: level });
+  /* A caption giving `count` cells as a share of `cells` (the square
+   * shown, or its land), by the read report's rule in whole numbers alone:
+   * over none but under half a per cent, the `little` sentence with the
+   * count instead of "0%"; else the `share` sentence, at most 99% while
+   * any cell is not counted, never "100%", and 0% of none. `values` are
+   * the sentences' other values. terrain_analysis._share_sentence. */
+  function shareSentence(share, little, count, cells, values) {
+    if (count > 0 && 200 * count < cells) return phrase(little, Object.assign({ count: count }, values));
+    return phrase(share, Object.assign({ pct: cells ? elevationPercent(count, cells) : 0 }, values));
   }
 
   /**
@@ -6275,15 +6276,17 @@
 
     var relief = [
       phrase('terrain.caption_relief', { interval: summary.contour_interval, area: cfg.drainage_area_km2 }),
-      phrase('terrain.caption_fill', { lines_pct: summary.flat_routed_lines_pct, pct: summary.raised_pct,
-        depth: cfg.fill_note_m }),
+      shareSentence('terrain.caption_fill', 'terrain.caption_fill_little', summary.raised, summary.land,
+        { lines_pct: summary.flat_routed_lines_pct, depth: cfg.fill_note_m }),
       margin > 0 ? phrase('terrain.caption_edge', { margin: margin }) : phrase('terrain.caption_edge_none'),
     ];
-    if (sea > 0) relief.push(shareSentence('terrain.caption_sea', 'terrain.caption_sea_little', sea, cells, level));
+    if (sea > 0) {
+      relief.push(shareSentence('terrain.caption_sea', 'terrain.caption_sea_little', sea, cells, { level: level }));
+    }
     if (unstated && sea > 0) relief.push(phrase('terrain.caption_sea_unstated', { level: level }));
     if (summary.zero_fill > 0) {
       relief.push(shareSentence('terrain.caption_zero_fill', 'terrain.caption_zero_fill_little', summary.zero_fill,
-        cells, level));
+        cells, { level: level }));
     }
     if (summary.unresolved > 0) relief.push(phrase('terrain.caption_unresolved', { n: summary.unresolved }));
     relief.push(candidates);

@@ -208,7 +208,7 @@ margin_too_many_cells: >-
   the {cap:num} the analysis takes on its own, so no radius fits; lower
   terrain.analysis_buffer_km.
 
-no_elevations: "The {radius:g} km window around {where} holds no elevations."
+no_elevations: "The window within {radius:g} km each way of {where} holds no elevations."
 
 # What was read, said under the file list in both apps. The lists ({names},
 # {tiles}, {files}) are joined by and_join in Python and C.andJoin in the
@@ -354,10 +354,21 @@ caption_fill: >-
   Water was routed over a surface whose closed hollows were filled to their
   spill level, and across flat ground by its distance from higher and lower
   ground rather than by slope: {lines_pct:.0f}% of the drainage-line cells
-  were routed that way (drawn paler), and {pct:.1f}% of the land was raised
+  were routed that way (drawn paler), and {pct:.0f}% of the land was raised
   by {depth:g} m or more (tinted). A hollow or a flat may be real, or made by
   tree canopy, buildings or an embankment that the model records as ground,
   so the paler stretches are the least certain.
+
+# For raised land that is real but would round to 0%.
+caption_fill_little: >-
+  Water was routed over a surface whose closed hollows were filled to their
+  spill level, and across flat ground by its distance from higher and lower
+  ground rather than by slope: {lines_pct:.0f}% of the drainage-line cells
+  were routed that way (drawn paler), and less than 1% of the land
+  ({count:num} {count:plural:cell|cells}) was raised by {depth:g} m or more
+  (tinted). A hollow or a flat may be real, or made by tree canopy,
+  buildings or an embankment that the model records as ground, so the paler
+  stretches are the least certain.
 
 caption_edge: >-
   The drainage was worked out over a square {margin:g} km wider on every side

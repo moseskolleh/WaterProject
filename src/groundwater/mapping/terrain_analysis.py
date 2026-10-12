@@ -1587,15 +1587,16 @@ def _measured_window(core: TerrainCore) -> tuple[float, float]:
     return math.floor(radius_m / 100.0) / 10.0, math.floor(margin_m / 100.0) / 10.0
 
 
-def _share_sentence(share: str, little: str, count: int, cells: int, level: float) -> str:
-    """A caption giving ``count`` cells as a share of the ``cells`` of the
-    square shown, by the read report's rule in whole numbers alone: under
-    half a per cent, the ``little`` sentence with the count instead of
-    "0%"; else the ``share`` sentence, at most 99% while any cell is not
-    counted, never "100%"."""
-    if 200 * count < cells:
-        return phrase(little, count=count, level=level)
-    return phrase(share, pct=_percent(count, cells), level=level)
+def _share_sentence(share: str, little: str, count: int, cells: int, **values) -> str:
+    """A caption giving ``count`` cells as a share of ``cells`` (the square
+    shown, or its land), by the read report's rule in whole numbers alone:
+    over none but under half a per cent, the ``little`` sentence with the
+    count instead of "0%"; else the ``share`` sentence, at most 99% while
+    any cell is not counted, never "100%", and 0% of none. ``values`` are
+    the sentences' other values."""
+    if count > 0 and 200 * count < cells:
+        return phrase(little, count=count, **values)
+    return phrase(share, pct=_percent(count, cells) if cells else 0, **values)
 
 
 def terrain_captions(analysis: TerrainAnalysis, read: ElevationRead | None, where: str) -> dict[str, str]:
@@ -1640,17 +1641,17 @@ def terrain_captions(analysis: TerrainAnalysis, read: ElevationRead | None, wher
 
     relief = [
         phrase("terrain.caption_relief", interval=summary["contour_interval"], area=cfg.drainage_area_km2),
-        phrase("terrain.caption_fill", lines_pct=summary["flat_routed_lines_pct"], pct=summary["raised_pct"],
-               depth=cfg.fill_note_m),
+        _share_sentence("terrain.caption_fill", "terrain.caption_fill_little", summary["raised"], summary["land"],
+                        lines_pct=summary["flat_routed_lines_pct"], depth=cfg.fill_note_m),
         phrase("terrain.caption_edge", margin=margin) if margin > 0 else phrase("terrain.caption_edge_none"),
     ]
     if sea > 0:
-        relief.append(_share_sentence("terrain.caption_sea", "terrain.caption_sea_little", sea, cells, level))
+        relief.append(_share_sentence("terrain.caption_sea", "terrain.caption_sea_little", sea, cells, level=level))
     if unstated and sea > 0:
         relief.append(phrase("terrain.caption_sea_unstated", level=level))
     if summary["zero_fill"] > 0:
         relief.append(_share_sentence("terrain.caption_zero_fill", "terrain.caption_zero_fill_little",
-                                     summary["zero_fill"], cells, level))
+                                     summary["zero_fill"], cells, level=level))
     if summary["unresolved"] > 0:
         relief.append(phrase("terrain.caption_unresolved", n=summary["unresolved"]))
     relief.append(candidates)

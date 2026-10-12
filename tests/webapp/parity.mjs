@@ -3237,9 +3237,10 @@ await withPage(async (page, base, consoleErrors) => {
   // by short digests of the same answers, and so are T7's, which reach the
   // captions' rules: a share of sea under 1% and one short of 100%, a
   // zero-filled gap of one cell in the square shown, a margin measured
-  // from the window, and sea of unstated source in the margin alone. Each
-  // GeoJSON is told the figure credit line, the fill note, the sea rule
-  // and the sea cells of its window, as an app tells it. T4, generated
+  // from the window, sea of unstated source in the margin alone, and a
+  // share of the land raised by the fill under 1% and one short of 100%.
+  // Each GeoJSON is told the figure credit line, the fill note, the sea
+  // rule and the sea cells of its window, as an app tells it. T4, generated
   // here from C.rangeStream(41, 0) as Python generates it from Stream(41,
   // 0), is held
   // by digests, the first 20 links and parts, and the GeoJSON's SHA-256,

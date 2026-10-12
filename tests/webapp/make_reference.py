@@ -2948,9 +2948,11 @@ def _ta_worded() -> list:
     480 ("less than 1%", with the count), an island of four cells in 900
     (99% sea, never 100%), a zero-filled block reaching one cell into a
     square shown with a margin of four or five cells on every side (0.1 km,
-    and "1 cell"), and sea of a file of unstated source in the margin
-    alone, which the wetness caption and the description mention and the
-    relief does not."""
+    and "1 cell"), sea of a file of unstated source in the margin alone,
+    which the wetness caption and the description mention and the relief
+    does not, a pit whose filling raises one cell of the 576 of land (less
+    than 1% of the land, with the count), and a bowl whose filling raises
+    all but one of the 400 cells shown (99% of the land, never 100%)."""
     r, c = np.arange(30)[:, None], np.arange(24)[None, :]
     corner = (2.0 + 0.3 * r[:20] + 0.2 * c) + np.zeros((20, 24))
     corner[0, 0:2] = -1.0
@@ -2961,6 +2963,11 @@ def _ta_worded() -> list:
     block[5, 4] = 0.0
     coast = (1.0 + 0.4 * r[:16] + 0.1 * np.abs(c[:, :14] - 7)) + np.zeros((16, 14))
     coast[0:2, :] = -1.0
+    pit = (2.0 + 0.3 * r[:24] + 0.2 * c) + np.zeros((24, 24))
+    pit[12, 12] -= 3.0
+    bowl = np.full((30, 30), 10.0)
+    bowl[1:-1, 1:-1] = 1.0 + 0.01 * r[1:-1] + 0.02 * np.arange(1, 29)[None, :]
+    bowl[15, 15] = 20.0
     return [
         _ta_window("T7: two cells of sea in a square of 480", np.round(corner, 2), sea_clean=True),
         _ta_window("T7: an island of four cells in 900, 99% sea", island, sea_clean=True),
@@ -2968,6 +2975,9 @@ def _ta_worded() -> list:
                    settings={"sea_straight_edge_cells": 5}, shown=[5, 26, 4, 20], sea_clean=True),
         _ta_window("T7: sea of unstated source in the margin alone", np.round(coast, 2), area=0.003,
                    shown=[3, 16, 0, 14]),
+        _ta_window("T7: a pit raising one cell of land in 576", np.round(pit, 2), sea_clean=True),
+        _ta_window("T7: a bowl raised but for one cell of 400 shown, 99% of the land", np.round(bowl, 2),
+                   shown=[5, 25, 5, 25], sea_clean=True),
     ]
 
 
