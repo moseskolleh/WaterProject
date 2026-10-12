@@ -10,36 +10,55 @@ answer: a plain Priority-Flood and a morphological reconstruction for the
 fill, Barnes's labelled flats for the flat directions, and a cell-by-cell
 accumulation in another order for the areas.
 
+The second half holds what is assembled from the routing: the drainage
+lines (against the rules of the design written out one cell at a time),
+their parts in the square shown, the GeoJSON, the summary, the float32
+storage and the captions.
+
 The grids are south-first, as the analysis holds them: row 0 is the south
 edge and north is row + 1.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import heapq
 import inspect
+import json
+import math
+import re
 import subprocess
 import sys
 from collections import deque
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from groundwater.config import TerrainConfig
-from groundwater.mapping import terrain_analysis as ta
-from groundwater.mapping.elevation import RowMetric, row_metric
+from groundwater.mapping.elevation import ElevationGrid, RowMetric, WindowCentre, read_elevation, row_metric
 from groundwater.mapping.terrain_analysis import (
     LAND,
     SEA,
     VOID,
+    DrainageLink,
+    DrainagePart,
+    TerrainCore,
     accumulate_flow,
+    analyse_terrain,
     classify_cells,
+    display_range,
+    drainage_geojson,
+    drainage_links,
     fill_depressions,
     flow_directions,
+    horn_gradients,
     resolve_flats,
+    terrain_captions,
 )
+from groundwater.text import phrase
 
 # The neighbour order K (E, S, W, N, SE, SW, NW, NE) and its ESRI codes,
 # written out again here so that a change to the module's is caught.
@@ -426,12 +445,10 @@ def test_assumed_sea_is_an_outlet_with_no_height_and_no_slope_beside_it():
     # holds what drains through it, and nothing is carried on into the sea.
     assert out.count[5, 6] > 1
     assert (out.count[assumed] == 0).all() and (out.area[assumed] == 0).all()
-    # Where the surface kernels are merged: no slope is computed beside
-    # assumed sea, because its 3 by 3 window holds no height there.
-    horn = getattr(ta, "horn_gradients", None)
-    if horn is not None:
-        p, q, tanb = horn(out.zt, out.metric)
-        assert np.isnan(tanb[:, 6]).all() and np.isnan(p[:, 6]).all() and np.isnan(q[:, 6]).all()
+    # No slope is computed beside assumed sea, because its 3 by 3 window
+    # holds no height there.
+    p, q, tanb = horn_gradients(out.zt, out.metric)
+    assert np.isnan(tanb[:, 6]).all() and np.isnan(p[:, 6]).all() and np.isnan(q[:, 6]).all()
 
 
 def test_negative_zero_heights_give_the_same_bits_as_positive_zero():
@@ -747,3 +764,776 @@ def test_importing_the_analysis_does_not_import_pyplot():
     )
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
     assert result.stdout.splitlines() == ["[]", "1.0 []"]
+
+
+# ---------------------------------------------------------------------------
+# The analysis assembled: drainage lines, the summary, storage and captions
+# ---------------------------------------------------------------------------
+
+DEM = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+COPERNICUS_PAIR = ("Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif", "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif")
+#: A threshold a little under the area of one 1 arc-second cell at 8.5
+#: degrees north (about 94,000 units of 0.01 m²), so that every land cell
+#: of a core drawn by hand is a stream cell.
+ONE_CELL_KM2 = 0.0005
+#: About three cells: thresholds low enough for a small grid to hold lines.
+SMALL_KM2 = 0.003
+
+
+def _elevation(z, lat: float = 8.5, step: float = 1 / 3600, **kwargs) -> ElevationGrid:
+    """A grid on the lattice ``_metric`` measures (south row at ``lat``),
+    from a source that writes the sea as 0 m unless ``sea_clean`` is given."""
+    z = np.asarray(z, dtype=np.float64)
+    rows, cols = z.shape
+    kwargs.setdefault("sea_clean", True)
+    return ElevationGrid(-12.0 + np.arange(cols) * step, lat + np.arange(rows) * step, z, **kwargs)
+
+
+def _drawn(rows: int, cols: int, paths, sea=(), flat=(), raised=(), shown=None) -> TerrainCore:
+    """A core drawn by hand. The cells of ``paths`` are land, each pointing
+    to the next cell of its path; a path's last cell flows out of the
+    analysis unless another path takes it on or it is in ``sea``. Every
+    other cell is a void. ``flat`` and ``raised`` list the cells marked as
+    routed across a flat and as raised by the fill."""
+    cls = np.full((rows, cols), VOID, dtype=np.uint8)
+    code = np.zeros((rows, cols), dtype=np.uint8)
+    for path in paths:
+        for cell in path:
+            cls[cell] = LAND
+    for cell in sea:
+        cls[cell] = SEA
+    steps = list(zip(DR, DC, strict=True))
+    for path in paths:
+        for (r, c), (rr, cc) in zip(path, path[1:], strict=False):
+            code[r, c] = ESRI[steps.index((rr - r, cc - c))]
+    code[(cls == LAND) & (code == 0)] = 255
+    metric = _metric(rows, cols)
+    count, area, flag = accumulate_flow(code, cls, metric, True)
+    marks = {}
+    for name, cells in (("flat_routed", flat), ("raised", raised)):
+        mask = np.zeros((rows, cols), dtype=bool)
+        for cell in cells:
+            mask[cell] = True
+        marks[name] = mask
+    return TerrainCore(rows=rows, cols=cols, shown=shown or (0, rows, 0, cols),
+                       lons=-12.0 + np.arange(cols) * (1 / 3600), lats=8.5 + np.arange(rows) * (1 / 3600),
+                       dx=metric.dx, dy=metric.dy, dg=metric.dg, cls=cls, code=code, flag=flag,
+                       count=count, area_units=area, **marks)
+
+
+def _links_as_written(core: TerrainCore, area_km2: float):
+    """The drainage lines and their parts as the design writes them out,
+    one cell at a time on plain lists: an oracle for drainage_links, which
+    walks the stream cells alone on arrays of its own."""
+    rows, cols = core.rows, core.cols
+    size = rows * cols
+    threshold = math.floor(area_km2 * 1e8 + 0.5)
+    kind = core.cls.ravel().tolist()
+    code = core.code.ravel().tolist()
+    au = core.area_units.ravel().tolist()
+    cnt = core.count.ravel().tolist()
+    flag = core.flag.ravel().tolist()
+    raised = core.raised.ravel().tolist()
+    flat = core.flat_routed.ravel().tolist()
+    down = _downstream(core.code, core.cls)
+    stream = [kind[i] == LAND and au[i] >= threshold for i in range(size)]
+    sd = [0] * size
+    for i in range(size):
+        if stream[i] and down[i] >= 0:
+            sd[down[i]] += 1
+    starts = [i for i in range(size) if stream[i] and (sd[i] == 0 or sd[i] >= 2)]
+
+    def rc(i):
+        return divmod(i, cols)
+
+    def dist(i):
+        k = ESRI.index(code[i])
+        sizes = (core.dx, core.dy, core.dx, core.dy, core.dg, core.dg, core.dg, core.dg)[k]
+        return float(sizes[i // cols])
+
+    def key(i):
+        return code[i], flat[i]
+
+    def vertices(p):
+        if len(p) == 1:
+            return [p[0]]
+        return [p[0]] + [p[m] for m in range(1, len(p) - 1) if key(p[m]) != key(p[m - 1])] + [p[-1]]
+
+    def length(p):
+        total = 0.0
+        for m in range(len(p) - 1):
+            total += dist(p[m])
+        return total
+
+    traced = []
+    for s in starts:
+        cells, cur = [s], s
+        while True:
+            d = down[cur]
+            if d >= 0:
+                if sd[d] >= 2:
+                    terminal, outlet = d, "confluence"
+                    break
+                cells.append(d)
+                cur = d
+            elif code[cur] == 255:
+                r, c = rc(cur)
+                terminal, outlet = None, ("edge" if r in (0, rows - 1) or c in (0, cols - 1) else "void")
+                break
+            elif code[cur] == 0:
+                terminal, outlet = None, "sink"
+                break
+            else:
+                k = ESRI.index(code[cur])
+                r, c = rc(cur)
+                terminal, outlet = (r + DR[k]) * cols + c + DC[k], "sea"
+                break
+        positions = cells + ([terminal] if terminal is not None else [])
+        traced.append((cells, positions, outlet, starts.index(terminal) if outlet == "confluence" else -1))
+
+    order = {}
+    for n in sorted(range(len(starts)), key=lambda n: (cnt[starts[n]], starts[n])):
+        incoming = [order[m] for m, t in enumerate(traced) if t[3] == n]
+        top = max(incoming, default=0)
+        order[n] = 1 if not incoming else (top + 1 if incoming.count(top) >= 2 else top)
+
+    r0, r1, c0, c1 = core.shown
+    links, parts = [], []
+    for n, (cells, positions, outlet, downstream) in enumerate(traced):
+        links.append(DrainageLink(
+            id=n, start=starts[n], vertices=tuple(rc(x) for x in vertices(positions)), cells=len(cells),
+            outlet=outlet, downstream=downstream, strahler=order[n], area_units=au[cells[-1]],
+            length_m=length(positions), edge_contaminated=flag[cells[-1]],
+            filled_cells=sum(raised[x] for x in cells), flat_routed_cells=sum(flat[x] for x in cells)))
+        runs, run = [], []
+        for x in positions:
+            r, c = rc(x)
+            if r0 <= r < r1 and c0 <= c < c1:
+                run.append(x)
+            elif run:
+                runs.append(run)
+                run = []
+        if run:
+            runs.append(run)
+        for part, p in enumerate(run for run in runs if len(run) > 1):
+            own = [x for x in p if x in cells]
+            v = vertices(p)
+            parts.append(DrainagePart(
+                id=n, part=part, vertices=tuple(rc(x) for x in v), stretch_flat=tuple(flat[x] for x in v[:-1]),
+                outlet=outlet if p[-1] == positions[-1] else "beyond_view", strahler=order[n],
+                downstream=downstream, area_units=au[own[-1]], length_m=length(p),
+                edge_contaminated=flag[own[-1]], filled_cells=sum(raised[x] for x in own),
+                flat_routed_cells=sum(flat[x] for x in own)))
+    return tuple(links), tuple(parts)
+
+
+def _layers(a) -> list[np.ndarray]:
+    """Every layer of an analysis, the core's included."""
+    core = a.core
+    return [a.filled, a.fill_depth, a.stream, a.p, a.q, a.tanb, *a.hillshades, a.hillshade_multi, a.twi_arg,
+            a.twi, a.profile, a.tangential, core.cls, core.code, core.flag, core.raised, core.flat_routed,
+            core.count, core.area_units, core.lons, core.lats, core.dx, core.dy, core.dg]
+
+
+def _fingerprint(a) -> str:
+    """Everything an analysis says, as one string: the layers' bytes, the
+    lines and the summary."""
+    return _digest(*_layers(a)) + repr((a.links, a.parts, a.summary, a.k_cells, a.unresolved))
+
+
+def _meta(core: TerrainCore, **overrides) -> dict:
+    """What drainage_geojson is told about a window, with some made-up
+    values a test can override."""
+    centre = WindowCentre(float(core.lons[core.cols // 2]), float(core.lats[core.rows // 2]), "Kakua", True)
+    meta = {"label": "elevation model test.tif, source not stated", "credit": "", "notice": None,
+            "surface": phrase("terrain.surface_unknown"), "area": SMALL_KM2, "radius": 1.0, "margin": 0.5,
+            "centre": centre}
+    meta.update(overrides)
+    return meta
+
+
+def _parsed(text: str):
+    """GeoJSON text parsed with every number kept as the text it was written as."""
+    return json.loads(text, parse_float=str, parse_int=str)
+
+
+def test_cells_routed_across_flats_and_filled_hollows_are_marked():
+    """Prevents a drainage line drawn as if its route were known where the
+    fill or the flat resolution chose it: a cell left level by D8 or raised
+    by the fill is marked flat_routed, a cell raised by fill_note_m or more
+    is marked raised, and the lines count both, so the figures can draw
+    those stretches paler and the export can say how many there are."""
+    rows, cols = 12, 14
+    z = 30.0 - np.arange(cols)[None, :] * 1.0 + np.arange(rows)[:, None] * 0.1 + np.zeros((rows, cols))
+    z[3:9, 3:7] = 25.0                       # a level terrace on a slope falling east
+    z[9, 10] -= 3.0                          # a hollow filled by about 2 m
+    z[2, 10] -= 1.5                          # and one filled by about 0.4 m
+    a = analyse_terrain(_elevation(z), TerrainConfig(drainage_area_km2=SMALL_KM2), precision="float64")
+    out = _route(z)
+    land = out.cls == LAND
+    depth = np.where(land, out.filled - out.zt, nan)
+    assert (a.core.flat_routed == (land & ((out.code_d8 == 0) | (depth > 0)))).all()
+    assert (a.core.raised == (land & (depth >= 1.0))).all()
+    assert a.fill_depth.tobytes() == depth.tobytes()
+    # The terrace's cells with no way down are routed across it; its east
+    # edge, which drops to the slope below, is routed by slope.
+    assert a.core.flat_routed[4:8, 4:6].all() and not a.core.flat_routed[3:9, 6].any()
+    assert a.core.flat_routed[9, 10] and a.core.raised[9, 10] and depth[9, 10] > 1.0
+    assert a.core.flat_routed[2, 10] and not a.core.raised[2, 10] and 0.0 < depth[2, 10] < 1.0
+    assert a.core.raised.sum() == 1 and not a.core.flat_routed[land & (out.code_d8 != 0) & (depth == 0)].any()
+    # Each stream cell is one line's own, so the lines' counts add up to the
+    # marked stream cells, and every stretch is marked by its first vertex.
+    stream = a.stream
+    assert sum(link.flat_routed_cells for link in a.links) == (stream & a.core.flat_routed).sum() > 0
+    assert sum(link.filled_cells for link in a.links) == (stream & a.core.raised).sum()
+    assert any(any(part.stretch_flat) for part in a.parts) and not all(all(p.stretch_flat) for p in a.parts)
+    for part in a.parts:
+        assert part.stretch_flat == tuple(bool(a.core.flat_routed[v]) for v in part.vertices[:-1])
+    summary = a.summary
+    assert summary["raised"] == 1 and summary["raised_pct"] == (100.0 * 1) / land.sum()
+    assert summary["flat_routed_stream"] == (stream & a.core.flat_routed).sum()
+    assert summary["flat_routed_lines_pct"] == (100.0 * summary["flat_routed_stream"]) / summary["stream"]
+    assert summary["max_fill_m"] == depth[9, 10]
+
+
+def test_sea_in_a_file_of_unstated_source_marks_lines_as_uncertain():
+    """Prevents a line ending at what may be a 0 m fill value, in a file
+    whose source does not say it writes the sea as 0 m, from being drawn as
+    certain: its upslope area may continue under the fill. A source that
+    does say so (Copernicus, SRTM) leaves the same lines undashed."""
+    rows, cols = 20, 25
+    r = np.arange(rows)[:, None]
+    c = np.arange(cols)[None, :]
+    z = 2.0 + r * 0.5 + np.abs((c % 6) - 3) * 0.3 + np.zeros((rows, cols))   # gullies running south
+    z[:, 0] -= 5.0                                        # the west and east edges drain out sideways,
+    z[:, -1] -= 5.0                                       # and the north edge drains north,
+    z[-1, :] = z[-2, :] - 1.0                             # so no line inside starts on the edge
+    z[:2, :] = -1.0                                       # the sea along the south edge
+    cfg = TerrainConfig(drainage_area_km2=SMALL_KM2)
+    clean = analyse_terrain(_elevation(z, sea_clean=True), cfg)
+    unstated = analyse_terrain(_elevation(z, sea_clean=False), cfg)
+    assert clean.links == drainage_links(clean.core, SMALL_KM2)[0]
+
+    def inland(a):
+        """The lines into the sea that run nowhere near the west or east edge."""
+        return [link for link in a.links if link.outlet == "sea" and all(1 < c < cols - 2 for _, c in link.vertices)]
+
+    to_sea, unsure = inland(clean), inland(unstated)
+    assert len(to_sea) >= 3 and not any(link.edge_contaminated for link in to_sea)
+    assert [link.vertices for link in unsure] == [link.vertices for link in to_sea]
+    assert all(link.edge_contaminated for link in unsure)
+    assert all(part.edge_contaminated for part in unstated.parts if part.outlet == "sea")
+    assert unstated.summary["contaminated_stream"] > clean.summary["contaminated_stream"]
+    # Only the flags differ: the routing does not depend on the sea rule.
+    assert (clean.core.code == unstated.core.code).all()
+    assert (clean.core.area_units == unstated.core.area_units).all()
+    sentence = phrase("terrain.caption_sea_unstated", level=0.0)
+    assert sentence in terrain_captions(unstated, None, "Bonthe")["relief"]
+    assert sentence not in terrain_captions(clean, None, "Bonthe")["relief"]
+
+
+def _hand_network() -> TerrainCore:
+    """Fifteen lines drawn by hand on a 14 by 16 grid, each cell named by
+    (row, column) with north at row + 1: a main stem along row 4 leaving by
+    the east edge, joined by single tributaries, by two at once, by a
+    second-order tributary, and by three first-order lines that meet at one
+    cell first."""
+    main = [(4, c) for c in range(1, 16)]
+    paths = [
+        main,
+        [(8, 3), (7, 3), (6, 3), (5, 3), (4, 3)],                 # 1 joins 1 at (4, 3)
+        [(8, 6), (7, 6), (6, 6), (5, 6), (4, 6)],                 # 1 and 1 join 2 at (4, 6)
+        [(2, 6), (3, 6), (4, 6)],
+        [(12, 9), (11, 9), (10, 9), (9, 9), (8, 9)],              # 1 joins 1 at (8, 9) ...
+        [(8, 12), (8, 11), (8, 10), (8, 9)],
+        [(8, 9), (7, 9), (6, 9), (5, 9), (4, 9)],                 # ... and that 2 joins 2 at (4, 9)
+        [(1, 10), (1, 11), (1, 12)],                              # three 1s meet at (1, 12) ...
+        [(0, 13), (1, 12)],
+        [(1, 14), (1, 13), (1, 12)],
+        [(1, 12), (2, 12), (3, 12), (4, 12)],                     # ... and that 2 joins 3 at (4, 12)
+    ]
+    return _drawn(14, 16, paths)
+
+
+def test_links_meet_at_confluences_and_strahler_order_rises_only_where_equal_orders_meet():
+    """Prevents lines that do not meet where they join, a line counted
+    twice or not at all, and a Strahler order that rises at every junction
+    (a first-order tributary does not make a river third order) or that
+    misses a rise where two equal orders meet, three-way junctions
+    included."""
+    core = _hand_network()
+    links, _ = drainage_links(core, ONE_CELL_KM2)
+    start = {divmod(link.start, core.cols): link for link in links}
+    assert len(links) == 15 and sorted(start) == [
+        (0, 13), (1, 10), (1, 12), (1, 14), (2, 6), (4, 1), (4, 3), (4, 6), (4, 9), (4, 12),
+        (8, 3), (8, 6), (8, 9), (8, 12), (12, 9)]
+    assert [link.id for link in links] == list(range(15))
+    assert [link.start for link in links] == sorted(link.start for link in links), "ids in grid order"
+    order = {cell: link.strahler for cell, link in start.items()}
+    assert order == {(0, 13): 1, (1, 10): 1, (1, 14): 1, (2, 6): 1, (4, 1): 1, (8, 3): 1, (8, 6): 1, (8, 12): 1,
+                     (12, 9): 1,
+                     (4, 3): 2,      # 1 + 1
+                     (4, 6): 2,      # 2 + 1 + 1: the higher order carries on
+                     (8, 9): 2,      # 1 + 1
+                     (1, 12): 2,     # 1 + 1 + 1
+                     (4, 9): 3,      # 2 + 2
+                     (4, 12): 3}     # 3 + 2
+    # Every line ends where the line it joins starts, and only a cell that
+    # two or more lines run into starts a line other than a headwater.
+    joined: dict[int, list[DrainageLink]] = {}
+    for link in links:
+        if link.outlet == "confluence":
+            below = links[link.downstream]
+            assert link.vertices[-1] == below.vertices[0]
+            joined.setdefault(below.id, []).append(link)
+        else:
+            assert link.downstream == -1
+    assert {cell: len(joined[link.id]) for cell, link in start.items() if link.id in joined} == {
+        (4, 3): 2, (4, 6): 3, (8, 9): 2, (1, 12): 3, (4, 9): 2, (4, 12): 2}
+    assert [link.outlet for link in links if link.outlet != "confluence"] == ["edge"]
+    stem = start[(4, 12)]
+    assert stem.vertices == ((4, 12), (4, 15)) and stem.cells == 4
+    assert stem.length_m == (core.dx[4] + core.dx[4]) + core.dx[4]
+    assert stem.area_units == core.area_units[4, 15] and stem.edge_contaminated
+    assert start[(0, 13)].vertices == ((0, 13), (1, 12)) and start[(0, 13)].length_m == core.dg[0]
+    # Against the rules written out one cell at a time, by hand and on
+    # random grids.
+    assert drainage_links(core, ONE_CELL_KM2) == _links_as_written(core, ONE_CELL_KM2)
+    for seed, rows, cols, step, relief, voids in RANDOM_GRIDS:
+        z = _random_heights(seed, rows, cols, step, relief, voids)
+        a = analyse_terrain(_elevation(z, sea_clean=bool(seed % 2)), TerrainConfig(drainage_area_km2=SMALL_KM2),
+                            precision="float64")
+        assert len(a.links) > 10 and max(link.strahler for link in a.links) >= 2
+        assert (a.links, a.parts) == _links_as_written(a.core, SMALL_KM2)
+
+
+def test_link_vertices_are_kept_where_the_line_turns_or_changes_how_it_was_routed():
+    """Prevents a line simplified past what lineament work needs: a vertex
+    dropped where the line turns or where it passes between a stretch
+    routed by slope and one routed across a flat, or a vertex kept where
+    nothing changes, which would make straight flat-routed runs look like
+    many short segments. Nothing between two vertices is lost."""
+    path = [(2, 1), (2, 2), (2, 3), (2, 4), (3, 5), (4, 6), (4, 7), (4, 8), (4, 9), (4, 10)]
+    to_sea = [(7, 2), (7, 3), (7, 4), (6, 5), (6, 6)]
+    core = _drawn(9, 11, [path, to_sea], sea=[(6, 6)], flat=[(2, 3), (2, 4), (3, 5), (4, 6)], raised=[(2, 4)])
+    links, parts = drainage_links(core, ONE_CELL_KM2)
+    edge, sea = sorted(links, key=lambda link: link.outlet)
+    assert edge.outlet == "edge" and sea.outlet == "sea"
+    # E, E, then flat-routed E, NE, NE, E, then by slope again E, E, E.
+    assert edge.vertices == ((2, 1), (2, 3), (2, 4), (4, 6), (4, 7), (4, 10))
+    assert edge.cells == 10 and edge.flat_routed_cells == 4 and edge.filled_cells == 1
+    dx, dg = core.dx, core.dg
+    assert edge.length_m == ((((((((dx[2] + dx[2]) + dx[2]) + dg[2]) + dg[3]) + dx[4]) + dx[4]) + dx[4]) + dx[4])
+    # A line into the sea ends on the sea cell, and the step into it counts.
+    assert sea.vertices == ((7, 2), (7, 4), (6, 5), (6, 6)) and sea.cells == 4
+    assert sea.length_m == ((dx[7] + dx[7]) + dg[7]) + dx[6]
+    assert sea.area_units == core.area_units[6, 5]
+    whole = {part.id: part for part in parts}
+    assert whole[edge.id].vertices == edge.vertices
+    assert whole[edge.id].stretch_flat == (False, True, True, True, False)
+    assert whole[sea.id].stretch_flat == (False, False, False)
+    # On random grids: from each vertex the cells run straight along its
+    # direction, routed the same way, to the next vertex; and a vertex
+    # between the ends is a cell where the direction or the routing changes.
+    for seed, rows, cols, step, relief, voids in RANDOM_GRIDS:
+        a = analyse_terrain(_elevation(_random_heights(seed, rows, cols, step, relief, voids)),
+                            TerrainConfig(drainage_area_km2=SMALL_KM2), precision="float64")
+        code, flat = a.core.code, a.core.flat_routed
+        upstream: dict[int, list[int]] = {}
+        for i, d in enumerate(_downstream(code, a.core.cls)):
+            if d >= 0 and a.stream.flat[i]:
+                upstream.setdefault(d, []).append(i)
+        for line in (*a.links, *a.parts):
+            for v, (here, there) in enumerate(zip(line.vertices, line.vertices[1:], strict=False)):
+                if isinstance(line, DrainagePart):
+                    assert line.stretch_flat[v] == flat[here]
+                k = ESRI.index(code[here])
+                r, c = here
+                while (r, c) != there:
+                    assert code[r, c] == code[here] and flat[r, c] == flat[here], "a vertex was dropped"
+                    r, c = r + DR[k], c + DC[k]
+            for r, c in line.vertices[1:-1]:
+                came_from = upstream[r * a.core.cols + c]
+                assert len(came_from) == 1
+                before = divmod(came_from[0], a.core.cols)
+                assert (code[before], flat[before]) != (code[r, c], flat[r, c]), "a vertex where nothing changes"
+
+
+def test_links_are_cut_where_they_leave_the_shown_square():
+    """Prevents lines drawn into the margin, which is analysed only so that
+    the edge does not bend the lines, a piece of one cell drawn as a dot, a
+    line that leaves and re-enters drawn as one piece across the gap, and a
+    piece ending at the edge of the map claiming the line's own outlet."""
+    shown = (2, 9, 2, 9)
+    path = [(5, 0), (5, 1), (5, 2), (5, 3), (5, 4), (6, 4), (7, 4), (8, 4), (9, 4), (9, 5), (8, 5), (7, 5),
+            (7, 6), (7, 7), (7, 8), (7, 9), (7, 10)]
+    corner = [(1, 1), (2, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9), (1, 10)]
+    core = _drawn(12, 11, [path, corner], shown=shown)
+    links, parts = drainage_links(core, ONE_CELL_KM2)
+    grazing, crossing = links
+    assert grazing.vertices[0] == (1, 1) and crossing.vertices[0] == (5, 0)
+    assert all(part.id == crossing.id for part in parts), "a piece of one cell was kept"
+    first, second = parts
+    dx, dy = core.dx, core.dy
+    assert (first.part, second.part) == (0, 1)
+    assert first.vertices == ((5, 2), (5, 4), (8, 4)) and first.outlet == "beyond_view"
+    assert first.length_m == (((dx[5] + dx[5]) + dy[5]) + dy[6]) + dy[7]
+    assert first.area_units == core.area_units[8, 4] and first.strahler == crossing.strahler == 1
+    assert second.vertices == ((8, 5), (7, 5), (7, 8)) and second.outlet == "beyond_view"
+    assert second.length_m == ((dy[8] + dx[7]) + dx[7]) + dx[7]
+    assert second.area_units == core.area_units[7, 8] and crossing.area_units == core.area_units[7, 10]
+    assert crossing.outlet == "edge" and crossing.vertices[-1] == (7, 10)
+    # A square holding the line's end gives the piece the line's outlet;
+    # over the whole grid each line is one piece, the same as the line.
+    wider = dataclasses.replace(core, shown=(2, 9, 2, 11))
+    assert drainage_links(wider, ONE_CELL_KM2)[1][-1].outlet == "edge"
+    everything = dataclasses.replace(core, shown=(0, 12, 0, 11))
+    for link, part in zip(*drainage_links(everything, ONE_CELL_KM2), strict=True):
+        assert (part.id, part.part, part.vertices, part.outlet, part.length_m, part.area_units) == (
+            link.id, 0, link.vertices, link.outlet, link.length_m, link.area_units)
+    # Against the rules written out, on random grids and random squares.
+    rng = np.random.default_rng(41)
+    cut = 0
+    for seed, rows, cols, step, relief, voids in RANDOM_GRIDS:
+        r0, c0 = int(rng.integers(0, rows // 3)), int(rng.integers(0, cols // 3))
+        r1, c1 = int(rng.integers(rows // 2, rows + 1)), int(rng.integers(cols // 2, cols + 1))
+        a = analyse_terrain(_elevation(_random_heights(seed, rows, cols, step, relief, voids)),
+                            TerrainConfig(drainage_area_km2=SMALL_KM2), shown=(r0, r1, c0, c1), precision="float64")
+        assert a.parts == _links_as_written(a.core, SMALL_KM2)[1]
+        cut += sum(part.outlet == "beyond_view" for part in a.parts)
+        for part in a.parts:
+            assert all(r0 <= r < r1 and c0 <= c < c1 for r, c in part.vertices) and len(part.vertices) >= 2
+        assert [(p.id, p.part) for p in a.parts] == sorted((p.id, p.part) for p in a.parts)
+    assert cut > 10
+
+
+def test_the_shown_links_do_not_change_when_the_margin_grows():
+    """Prevents the lines shown from depending on how far beyond the map the
+    analysis reached, once the margin holds every divide: on a corrugated
+    surface of short gullies running down to sea channels, with a level
+    terrace and a hollow, margins of 16 and 32 cells give the same pieces
+    to the bit, while no margin at all does not."""
+    step, shown, big = 2.0 ** -12, 40, 32        # a lattice whose coordinates are exact in binary
+    n = shown + 2 * big
+    r = np.arange(n)[:, None]
+    c = np.arange(n)[None, :]
+    strip = r % 12
+    z = np.minimum(strip, 12 - strip) * 2.0 + np.abs((c % 8) - 4) * 0.75 + 0.25 * ((r * 7 + c * 13) % 5)
+    z = np.where(strip == 0, -1.0, z)           # sea channels every 12 rows, joined to the west and east edges
+    z[40:46, 42:55] = 5.0                       # a level valley floor across three gullies
+    z[63, 50] -= 6.0                            # a hollow filled by more than a metre
+    cfg = TerrainConfig(drainage_area_km2=0.004)
+
+    def shown_lines(margin: int):
+        o, size = big - margin, shown + 2 * margin
+        grid = ElevationGrid(-12.0 + (o + np.arange(size)) * step, 8.0 + (o + np.arange(size)) * step,
+                             z[o:o + size, o:o + size].copy(), sea_clean=True)
+        a = analyse_terrain(grid, cfg, shown=(margin, margin + shown, margin, margin + shown), precision="float64")
+        first = {link.id: divmod(link.start, a.core.cols) for link in a.links}
+
+        def moved(cell):
+            return cell[0] - margin, cell[1] - margin
+
+        # ids count the lines in the margin too, so a line is named by the
+        # cell it starts at, counted from the square shown
+        return [(moved(first[part.id]), dataclasses.replace(
+                    part, id=0, vertices=tuple(map(moved, part.vertices)),
+                    downstream=0 if part.downstream < 0 else 1),
+                 moved(first[part.downstream]) if part.downstream >= 0 else None)
+                for part in a.parts], a.summary
+
+    sixteen, summary = shown_lines(16)
+    assert len(sixteen) > 100 and {p.outlet for _, p, _ in sixteen} >= {"sea", "confluence", "beyond_view"}
+    assert summary["raised"] > 0 and summary["flat_routed_stream"] > 10
+    assert max(p.strahler for _, p, _ in sixteen) == 3
+    assert shown_lines(32) == (sixteen, summary)
+    assert shown_lines(0)[0] != sixteen
+
+
+def test_drainage_links_from_the_core_equal_those_of_the_full_analysis():
+    """Prevents the browser's re-threshold on the page, which traces the
+    lines again from the core its worker handed over, from drawing other
+    lines than a full analysis at that threshold: the core is all the
+    tracing needs, whether its counts arrive as int64 or, as the browser
+    holds them, as float64."""
+    z = _random_heights(4, 50, 45, 1.0, 3.0, 0.02)
+    cfg = TerrainConfig(drainage_area_km2=SMALL_KM2)
+    shown = (6, 44, 5, 40)
+    a = analyse_terrain(_elevation(z, sea_clean=False), cfg, shown=shown)
+    assert drainage_links(a.core, SMALL_KM2) == (a.links, a.parts) and len(a.parts) > 10
+    handed = dataclasses.replace(a.core, count=a.core.count.astype(np.float64),
+                                 area_units=a.core.area_units.astype(np.float64))
+    assert drainage_links(handed, SMALL_KM2) == (a.links, a.parts)
+    for area in (0.001, 0.01):
+        b = analyse_terrain(_elevation(z, sea_clean=False), dataclasses.replace(cfg, drainage_area_km2=area),
+                            shown=shown)
+        assert drainage_links(a.core, area) == (b.links, b.parts)
+        meta = _meta(a.core, area=area)
+        assert drainage_geojson(a.core, drainage_links(handed, area)[1], meta) == \
+            drainage_geojson(b.core, b.parts, meta)
+    with pytest.raises(ValueError):
+        drainage_links(a.core, math.nan)
+
+
+def test_the_drainage_geojson_escapes_names_and_rounds_as_python_does():
+    """Prevents the two engines writing different bytes for the same lines:
+    a file or place name with quotes, a backslash, control characters or
+    letters outside ASCII is escaped as Python's json.dumps escapes it with
+    ensure_ascii, and every number is written in its fixed form, rounded
+    from its binary value as Python rounds it (-0.000000 for a small
+    negative), with no whitespace anywhere outside the strings."""
+    z = _random_heights(2, 41, 37, 0.1, 2.0, 0.0)
+    rows, cols = z.shape
+    grid = ElevationGrid(-4e-7 + np.arange(cols) / 3600, 8.4999995 + np.arange(rows) / 3600, z, sea_clean=True)
+    a = analyse_terrain(grid, TerrainConfig(drainage_area_km2=SMALL_KM2), shown=(5, 36, 4, 33))
+    name = 'Bo "east" \\ tile\n\t\x01 Mɔyamba – Sɛwa \U0001f30a \x7f'
+    meta = _meta(a.core, label=name, credit="© \"x\"", centre=WindowCentre(-4e-7, 8.4999995, name, False))
+    text = drainage_geojson(a.core, a.parts, meta)
+    assert text.isascii() and not re.search(r"\s", re.sub(r'"(?:[^"\\]|\\.)*"', "", text))
+    for escaped in ('\\"east\\"', "\\\\ tile", "\\n", "\\t", "\\u0001", "M\\u0254yamba", "\\u2013",
+                    "\\ud83c\\udf0a", "\\u007f", "\\u00a9", "km\\u00b2"):
+        assert escaped in text, escaped
+    description = phrase("terrain.geojson_description", label=name, area=SMALL_KM2, radius=1.0, where=name,
+                         margin=0.5, surface=meta["surface"])
+    assert json.dumps(description) in text
+    doc = _parsed(text)
+    assert doc["description"] == description and doc["attribution"] == "© \"x\""
+    assert doc["centre"] == ["-0.000000", f"{8.4999995:.6f}"]
+    assert (doc["drainage_area_km2"], doc["radius_km"], doc["margin_km"]) == ("0.003", "1", "0.5")
+    assert len(doc["features"]) == len(a.parts) > 10
+    for feature, part in zip(doc["features"], a.parts, strict=True):
+        props = feature["properties"]
+        assert props["area_km2"] == f"{part.area_units / 1e8:.6f}"
+        assert props["length_m"] == f"{part.length_m:.1f}"
+        assert (props["id"], props["part"], props["strahler"], props["downstream"]) == (
+            str(part.id), str(part.part), str(part.strahler), str(part.downstream))
+        assert feature["geometry"]["coordinates"] == [
+            [f"{grid.lons[c]:.6f}", f"{grid.lats[r]:.6f}"] for r, c in part.vertices]
+        assert re.fullmatch(r"\d+\.\d{6}", props["area_km2"]) and re.fullmatch(r"\d+\.\d", props["length_m"])
+
+
+def test_the_drainage_geojson_carries_its_description_threshold_and_window():
+    """Prevents a download of drainage lines that, once separated from the
+    app, no longer says what they are: candidates worked out from which
+    model at which threshold, over which window and margin, credited as the
+    licence asks, with the Copernicus liability sentence when (and only
+    when) the set holds a Copernicus file."""
+    read = read_elevation([(name, DEM / name) for name in COPERNICUS_PAIR], None, 0.4, margin_km=0.2)
+    cfg = TerrainConfig(drainage_area_km2=0.01)
+    a = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown)
+    meta = {"label": read.grid.source, "credit": read.grid.credit, "notice": read.notice, "surface": read.surface,
+            "area": 0.01, "radius": 0.4, "margin": 0.2, "centre": read.centre}
+    doc = json.loads(drainage_geojson(a.core, a.parts, meta))
+    assert list(doc) == ["type", "description", "attribution", "notice", "drainage_area_km2", "radius_km",
+                         "margin_km", "centre", "features"]
+    assert doc["type"] == "FeatureCollection"
+    assert doc["description"] == phrase("terrain.geojson_description", label=read.grid.source, area=0.01,
+                                        radius=0.4, where=read.centre.label, margin=0.2, surface=read.surface)
+    assert doc["description"] == terrain_captions(a, read, read.centre.label)["geojson_description"]
+    assert "Copernicus GLO-30 tiles N08 W012 and N08 W011" in doc["description"]
+    assert doc["attribution"] == phrase("terrain.credit_copernicus_modified")
+    assert doc["notice"] == phrase("terrain.copernicus_liability")
+    assert (doc["drainage_area_km2"], doc["radius_km"], doc["margin_km"]) == (0.01, 0.4, 0.2)
+    assert doc["centre"] == [float(f"{read.centre.lon:.6f}"), float(f"{read.centre.lat:.6f}")]
+    assert len(doc["features"]) == len(a.parts) > 0
+    for feature, part in zip(doc["features"], a.parts, strict=True):
+        assert list(feature) == ["type", "properties", "geometry"]
+        assert feature["type"] == "Feature" and feature["geometry"]["type"] == "LineString"
+        assert list(feature["properties"]) == ["id", "part", "strahler", "outlet", "area_km2", "length_m",
+                                               "edge_contaminated", "filled_cells", "flat_routed_cells",
+                                               "downstream"]
+        props = feature["properties"]
+        assert (props["id"], props["part"], props["outlet"], props["edge_contaminated"], props["filled_cells"],
+                props["flat_routed_cells"]) == (part.id, part.part, part.outlet, part.edge_contaminated,
+                                                part.filled_cells, part.flat_routed_cells)
+    # Without a Copernicus file there is no notice member at all.
+    plain = json.loads(drainage_geojson(a.core, a.parts, dict(meta, notice=None, credit="")))
+    assert "notice" not in plain and plain["attribution"] == ""
+    assert json.loads(drainage_geojson(a.core, (), meta))["features"] == []
+
+
+def test_thresholds_are_taken_in_float64_before_storage_narrows():
+    """Prevents a verdict taken on a float32 copy: a hollow filled by just
+    under a metre is 1.0 m once stored in float32, but it is not raised,
+    its depth is reported to the last bit, and every count, share and
+    display limit of the summary is the same whichever storage was asked
+    for."""
+    short = 1.0 - 2.0 ** -26                     # float32 rounds it to exactly 1.0
+    assert np.float32(short) == 1.0
+    z = np.full((10, 12), 10.0)
+    z[2:4, 2:4] = 10.0 - short                   # filled by just under a metre
+    z[2:4, 7:9] = 9.0                            # filled by a metre exactly
+    z[6:8, 4:6] = 10.0 - 2.0 ** -20
+    cfg = TerrainConfig(drainage_area_km2=SMALL_KM2)
+    narrow = analyse_terrain(_elevation(z), cfg)
+    wide = analyse_terrain(_elevation(z), cfg, precision="float64")
+    for a in (narrow, wide):
+        assert not a.core.raised[2:4, 2:4].any() and a.core.raised[2:4, 7:9].all()
+        assert a.core.raised.sum() == 4 and a.summary["raised"] == 4
+        assert a.core.flat_routed[2:4, 2:4].all() and a.core.flat_routed[6:8, 4:6].all()
+    assert narrow.fill_depth.dtype == np.float32 and (narrow.fill_depth[2:4, 2:4] == 1.0).all()
+    assert (wide.fill_depth[2:4, 2:4] == short).all()
+    assert narrow.summary == wide.summary
+    assert (narrow.links, narrow.parts) == (wide.links, wide.parts)
+    only = z.copy()
+    only[2:4, 7:9] = 10.0
+    assert analyse_terrain(_elevation(only), cfg).summary["max_fill_m"] == short
+    # The display limits too: the wetness range is chosen on the exact
+    # argument and curvature's on the float64 layers.
+    hilly = _random_heights(9, 40, 40, 1.0, 3.0, 0.02) * 10.0
+    narrow = analyse_terrain(_elevation(hilly), cfg)
+    wide = analyse_terrain(_elevation(hilly), cfg, precision="float64")
+    assert narrow.summary == wide.summary
+    low, high = display_range(wide.twi_arg, 0.02, 0.98)
+    assert narrow.summary["twi_range"] == (float(np.log(low)), float(np.log(high)))
+    bends = np.abs(np.concatenate([wide.profile.ravel(), wide.tangential.ravel()]))
+    assert narrow.summary["curvature_limit"] == display_range(bends, 0.98, 0.98)[0] > 0
+
+
+def test_float32_storage_rounds_the_float64_kernels():
+    """Prevents the float32 layers from being anything but the float64
+    kernels rounded once (a kernel run in float32 would draw other
+    shading), and the layers held for parity and lineament work - p, q,
+    the wetness argument, the filled surface and the core - from being
+    narrowed at all."""
+    z = _random_heights(5, 33, 33, 0.1, 1.0, 0.08) * 40.0
+    assumed = np.zeros(z.shape, dtype=bool)
+    assumed[:6, -5:] = True
+    cfg = TerrainConfig(drainage_area_km2=SMALL_KM2)
+    wide = analyse_terrain(_elevation(z), cfg, assumed_sea=assumed, precision="float64")
+    narrow = analyse_terrain(_elevation(z), cfg, assumed_sea=assumed, precision="float32")
+    pairs = [(getattr(wide, name), getattr(narrow, name))
+             for name in ("tanb", "hillshade_multi", "twi", "profile", "tangential", "fill_depth")]
+    pairs += list(zip(wide.hillshades, narrow.hillshades, strict=True))
+    assert len(narrow.hillshades) == len(cfg.hillshade_panel_azimuths_deg) == 4
+    for x64, x32 in pairs:
+        assert x64.dtype == np.float64 and x32.dtype == np.float32
+        assert x32.tobytes() == x64.astype(np.float32).tobytes()
+        assert np.isfinite(x64).any() and np.isnan(x64).any()
+    for name in ("p", "q", "twi_arg", "filled", "stream"):
+        assert getattr(narrow, name).tobytes() == getattr(wide, name).tobytes(), name
+    assert narrow.p.dtype == narrow.q.dtype == narrow.twi_arg.dtype == narrow.filled.dtype == np.float64
+    for f in dataclasses.fields(TerrainCore):
+        x, y = getattr(narrow.core, f.name), getattr(wide.core, f.name)
+        assert (x.tobytes() == y.tobytes()) if isinstance(x, np.ndarray) else x == y, f.name
+    with pytest.raises(ValueError):
+        analyse_terrain(_elevation(z), cfg, precision="float16")
+
+
+def test_every_caption_names_its_figure_and_the_caveat_is_the_catalogued_one():
+    """Prevents a figure printed with another figure's caption, a caption
+    that leaves out what the figure cannot be trusted for (the sea, a
+    zero-filled gap, sea in a file of unstated source, a flat left without
+    a direction) or mentions one the square does not show, and a caveat or
+    a GeoJSON description in words other than the catalogue's. (That the
+    caveat is drawn inside each figure is for the figures' own test.)"""
+    read = read_elevation([(name, DEM / name) for name in COPERNICUS_PAIR], None, 0.4, margin_km=0.2)
+    cfg = TerrainConfig(drainage_area_km2=0.01)
+    a = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown)
+    caps = terrain_captions(a, read, "Kakua")
+    s = a.summary
+    assert read.surface == phrase("terrain.surface_copernicus")
+    titles = {"title_relief": "Shaded relief and drainage lines - Kakua",
+              "title_wetness": "Topographic wetness index - Kakua", "title_curvature": "Curvature - Kakua",
+              "title_directions": "Shaded relief from four directions - Kakua"}
+    assert {key: caps[key] for key in titles} == titles
+    assert [caps[f"panel_{n}"] for n in range(4)] == [
+        "Light from 270°", "Light from 315°", "Light from 0°", "Light from 45°"]
+    candidates = phrase("terrain.caption_candidates")
+    relief = [phrase("terrain.caption_relief", interval=s["contour_interval"], area=0.01),
+              phrase("terrain.caption_fill", lines_pct=s["flat_routed_lines_pct"], pct=s["raised_pct"], depth=1.0),
+              phrase("terrain.caption_edge", margin=0.2), candidates]
+    assert s["sea_pct"] == s["zero_fill"] == s["unresolved"] == 0
+    assert caps["relief"] == " ".join(relief)
+    assert caps["wetness"] == " ".join([phrase("terrain.caption_twi", floor=0.001, n=s["floored"]), candidates,
+                                        read.surface])
+    curvature = re.fullmatch(r"Curvature over (\d+) m, per km\. .*", caps["curvature"])
+    assert curvature and abs(int(curvature.group(1)) - cfg.curvature_spacing_m) < 31
+    assert caps["curvature"].endswith(f"{candidates} {read.surface}")
+    assert caps["directions"] == phrase("terrain.caption_directions", azimuths="270°, 315°, 0° and 45°",
+                                        altitude=45.0)
+    assert caps["figure_caveat"] == phrase("terrain.figure_caveat", surface=read.surface)
+    assert caps["geojson_description"] == phrase("terrain.geojson_description", label=read.grid.source, area=0.01,
+                                                 radius=0.4, where="Kakua", margin=0.2, surface=read.surface)
+    stages = ("classes", "fill", "flow", "flats", "accumulate", "drainage", "shading", "curvature")
+    assert [caps[f"stage_{name}"] for name in stages] == [phrase(f"terrain.stage_{name}") for name in stages]
+    heard = []
+    analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown,
+                    progress=lambda fraction, label: heard.append((fraction, label)))
+    assert [label for _, label in heard[:-1]] == [caps[f"stage_{name}"] for name in stages]
+    assert [fraction for fraction, _ in heard] == sorted(fraction for fraction, _ in heard)
+    assert heard[0][0] == 0.0 and heard[-1][0] == 1.0
+
+    # Sea, a zero-filled gap and a file of unstated source, read whole.
+    rows, cols = 24, 30
+    z = 3.0 + np.arange(rows)[:, None] * 0.4 + np.abs((np.arange(cols)[None, :] % 6) - 3) * 0.2
+    z = z + np.zeros((rows, cols))
+    for c, depth in enumerate([2, 3, 1, 2, 3, 2, 1, 3, 2]):
+        z[:depth, c] = -1.0                      # a ragged sea in the south-west
+    z[:, 24:] = 0.0                              # a gap a mosaic filled with 0 m, with a straight edge
+    gappy = dataclasses.replace(cfg, sea_straight_edge_cells=12, drainage_area_km2=SMALL_KM2)
+    b = analyse_terrain(_elevation(z, sea_clean=False), gappy)
+    caps = terrain_captions(b, None, "Kakua")
+    s = b.summary
+    assert s["sea"] > 0 and s["zero_fill"] == rows * 6 and s["unresolved"] == 0
+    assert s["land"] + s["sea"] + s["assumed_sea"] + s["uncovered"] + s["zero_fill"] == s["cells"] == z.size
+    assert s["zero_fill_pct"] == (100.0 * rows * 6) / z.size and s["sea_pct"] == (100.0 * s["sea"]) / z.size
+    surface = phrase("terrain.surface_unknown")
+    relief = [phrase("terrain.caption_relief", interval=s["contour_interval"], area=SMALL_KM2),
+              phrase("terrain.caption_fill", lines_pct=s["flat_routed_lines_pct"], pct=s["raised_pct"], depth=1.0),
+              phrase("terrain.caption_edge", margin=gappy.analysis_buffer_km),
+              phrase("terrain.caption_sea", pct=s["sea_pct"], level=0.0),
+              phrase("terrain.caption_sea_unstated", level=0.0),
+              phrase("terrain.caption_zero_fill", pct=s["zero_fill_pct"], level=0.0)]
+    assert caps["relief"] == " ".join([*relief, candidates])
+    assert caps["figure_caveat"] == phrase("terrain.figure_caveat", surface=surface)
+    assert caps["wetness"].endswith(surface) and caps["curvature"].endswith(surface)
+    unresolved = dataclasses.replace(b, summary={**s, "unresolved": 3})
+    assert terrain_captions(unresolved, None, "Kakua")["relief"] == " ".join(
+        [*relief, phrase("terrain.caption_unresolved", n=3), candidates])
+    clean = analyse_terrain(_elevation(z, sea_clean=True, source_id="srtm"), gappy)
+    caps = terrain_captions(clean, None, "Kakua")
+    assert phrase("terrain.caption_sea_unstated", level=0.0) not in caps["relief"]
+    assert caps["figure_caveat"] == phrase("terrain.figure_caveat", surface=phrase("terrain.surface_srtm"))
+
+
+def test_the_analysis_is_a_function_of_the_window_alone():
+    """Prevents an analysis that depends on anything but the window - its
+    heights and cells, the assumed sea, the square shown, the settings and
+    the source's sea rule - such as the label or the files it was read
+    from, the memory layout of its heights, a negative zero, a cache or
+    state left by an earlier run, or one that changes what it was given."""
+    z = _random_heights(4, 50, 45, 1.0, 3.0, 0.02)
+    z[z == 0] = -0.0
+    z[20, 20] = np.inf                           # a height no reader would pass on
+    assumed = np.zeros(z.shape, dtype=bool)
+    assumed[:12, :8] = True
+    shown = (6, 44, 5, 40)
+    cfg = TerrainConfig(drainage_area_km2=SMALL_KM2)
+    given = (z.copy(), assumed.copy())
+    first = analyse_terrain(_elevation(z, source="one", files=("a.tif",), credit="x"), cfg,
+                            assumed_sea=assumed, shown=shown)
+    assert z.tobytes() == given[0].tobytes() and assumed.tobytes() == given[1].tobytes()
+    positive = np.asfortranarray(np.where(z == 0, 0.0, z))
+    other = analyse_terrain(_elevation(positive, source="two", files=("b.hgt", "c.hgt"),
+                                       resolution_note="about 31 by 31 m", source_id="hgt"), cfg,
+                            assumed_sea=assumed.astype(np.uint8), shown=list(shown))
+    again = analyse_terrain(_elevation(z), cfg, assumed_sea=assumed, shown=shown)
+    assert _fingerprint(first) == _fingerprint(other) == _fingerprint(again)
+    # The summary counts each cell of the square shown once.
+    s = first.summary
+    view = (slice(shown[0], shown[1]), slice(shown[2], shown[3]))
+    assert s["assumed_sea"] == assumed[view].sum() > 0 and s["implausible"] == 1
+    assert s["voids"] == (np.isnan(z) & ~assumed)[view].sum() > 0
+    assert s["uncovered"] == s["voids"] + s["implausible"] and s["zero_fill"] == 0
+    assert s["land"] + s["sea"] + s["assumed_sea"] + s["uncovered"] + s["zero_fill"] == s["cells"]
+    assert s["cells"] == (shown[1] - shown[0]) * (shown[3] - shown[2])
+    # What a model holds beyond the window cannot reach the analysis: the
+    # same window cut from a larger model gives the same answer.
+    big = np.full((60, 55), 50.0)
+    big[3:53, 4:49] = z
+    lons, lats = -12.0 + (np.arange(55) - 4) * (1 / 3600), 8.5 + (np.arange(60) - 3) * (1 / 3600)
+    cut = ElevationGrid(lons[4:49], lats[3:53], big[3:53, 4:49], sea_clean=True)
+    assert _fingerprint(analyse_terrain(cut, cfg, assumed_sea=assumed, shown=shown)) == _fingerprint(first)
+    with pytest.raises(ValueError):
+        analyse_terrain(_elevation(z), cfg, shown=(0, 51, 0, 45))
