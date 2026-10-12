@@ -96,6 +96,7 @@
     "analysis_radius_km": 10.0,
     "analysis_buffer_km": 5.0,
     "max_cells": 2000000,
+    "max_blocks": 100000,
     "sea_level_m": 0.0,
     "sea_straight_edge_cells": 150,
     "implausible_below_m": -1000.0,

@@ -2519,13 +2519,16 @@ _OVERLAP_AT = [-12.5 + 12 * _ARCSEC, 8.75 - 19 * _ARCSEC]
 
 #: The windows both elevation layers plan and read. A file is a committed
 #: fixture (served to the page through the overlay), alone or as
-#: [fixture, the name it is given], or [[lon0, lat0, side, bump], name]: an
-#: .hgt tile of heights from integer arithmetic on each cell's place in the
-#: world, which the page
-#: makes itself for the ranges its plan reads and no others, so that no
-#: 2.9 MB tile is committed; a bump [row, column, metres] puts one cell out
-#: of step. A centre is a GPS-like point [lon, lat, label]; with none the
-#: site's area window centres it, and with no site the files' middle.
+#: [fixture, the name it is given], or as [fixture, name, patches], each
+#: patch [offset, hex] overwriting the fixture's bytes there, so that a
+#: damaged header needs no file of its own; or [[lon0, lat0, side, bump],
+#: name]: an .hgt tile of heights from integer arithmetic on each cell's
+#: place in the world, which the page makes itself for the ranges its plan
+#: reads and no others, so that no 2.9 MB tile is committed; a bump [row,
+#: column, metres] puts one cell out of step. A centre is a GPS-like point
+#: [lon, lat, label]; with none the site's area window centres it, and with
+#: no site the files' middle. "cap" and "blocks" set terrain.max_cells and
+#: terrain.max_blocks.
 ELEVATION_WINDOWS = [
     {"case": "the Copernicus pair across 11 W", "files": [_COP_W012, _COP_W011],
      "centre": [-11.0, 9.0 - 20 * _ARCSEC, "the test point"], "radius": 0.5, "margin": 0.0},
@@ -2577,6 +2580,43 @@ ELEVATION_WINDOWS = [
     {"case": "two tiles at one corner, in UTF-16 order", "files": [
         [[-13, 8, 1201, [600, 600, 1]], "N08W013\uff21.hgt"], [[-13, 8, 1201, None], "N08W013\U0001F600.hgt"]],
      "centre": [-12.5, 8.5, "the test point"], "radius": 0.3, "margin": 0.0},
+    # what the 4.1a review settled: the files read, a margin alone over the
+    # cap, the centre checked before the cap and a gap between tiles named,
+    # shares under half a percent, the cap on blocks, and files refused as
+    # they are opened (a GDAL mask, a pixel scale with one byte flipped, a
+    # NaN tiepoint in the GLO-30 layout)
+    {"case": "a window inside one tile of the pair", "files": [_COP_W012, _COP_W011],
+     "centre": [-11.011111111111111 + 34 * _ARCSEC, 8.995, "the test point"], "radius": 0.1, "margin": 0.0},
+    {"case": "a margin alone over the cap", "files": [_COP_W012, _COP_W011],
+     "centre": [-11.0, 8.995, "the test point"], "radius": 1.0, "margin": 5.0, "cap": 10_000},
+    {"case": "a centre far north of the tile, once refused for its radius", "files": [
+        [[-12, 8, 3601, None], "N08W012.hgt"]], "centre": [-11.5, 79.7, "the test point"], "radius": 10.0,
+     "margin": 5.0},
+    {"case": "a centre in a gap between tiles", "files": [
+        [[-12, 8, 1201, None], "N08W012.hgt"], [[-11, 8, 1201, None], "N08W011.hgt"],
+        [[-12, 7, 1201, None], "N07W012.hgt"]], "centre": [-10.95, 7.97, "the test point"], "radius": 5.0,
+     "margin": 0.0},
+    {"case": "a centre east of the tiles", "files": [
+        [[-12, 8, 1201, None], "N08W012.hgt"], [[-11, 8, 1201, None], "N08W011.hgt"],
+        [[-12, 7, 1201, None], "N07W012.hgt"]], "centre": [-9.5, 8.5, "Bo"], "radius": 5.0, "margin": 0.0},
+    {"case": "a gap under half a percent", "files": ["holes_N08W012.tif", "holes_land_N08W013.tif",
+                                                    "holes_land_N07W012.tif"],
+     "centre": [-12.0 + 9 * 0.025, 7.975 + 10 * 0.025, "the test point"], "radius": 26.0, "margin": 0.0,
+     "declared": ["copernicus_glo30", ""]},
+    {"case": "a sea under half a percent", "files": ["holes_N08W012.tif", "holes_sea_N08W013.tif",
+                                                    "holes_sea_N07W012.tif"],
+     "centre": [-12.0 + 9 * 0.025, 7.975 + 10 * 0.025, "the test point"], "radius": 26.0, "margin": 0.0,
+     "declared": ["copernicus_glo30", ""]},
+    {"case": "one block over the cap on blocks", "files": [_COP_W012, _COP_W011],
+     "centre": [-11.0, 9.0 - 20 * _ARCSEC, "the test point"], "radius": 0.5, "margin": 0.0, "blocks": 11},
+    {"case": "at the cap on blocks", "files": [_COP_W012, _COP_W011],
+     "centre": [-11.0, 9.0 - 20 * _ARCSEC, "the test point"], "radius": 0.5, "margin": 0.0, "blocks": 12},
+    {"case": "a file with a GDAL mask", "files": ["internal_mask.tif"], "radius": 0.2, "margin": 0.0},
+    {"case": "a pixel scale with one byte flipped", "files": [
+        ["holes_sea_N07W012.tif", "holes_sea_N07W012.tif", [[293, "1f"]]]], "radius": 5.0, "margin": 0.0},
+    {"case": "a NaN tiepoint in the GLO-30 layout beside a good tile", "files": [
+        _COP_W012, ["n08w011.tif", "n08w011.tif", [[534, "000000000000f87f"]]]],
+     "centre": [-11.0, 8.995, "the test point"], "radius": 0.3, "margin": 0.0},
 ]
 
 
@@ -2629,8 +2669,12 @@ def _elevation_window(case: dict) -> dict:
 
     blobs, names = {}, []
     for entry in case["files"]:
-        source, name = (entry, entry) if isinstance(entry, str) else entry
-        blobs[name] = (DEM_FIXTURES / source).read_bytes() if isinstance(source, str) else _hgt_bytes(source)
+        source, name, *patches = (entry, entry) if isinstance(entry, str) else entry
+        blob = (DEM_FIXTURES / source).read_bytes() if isinstance(source, str) else _hgt_bytes(source)
+        for offset, hexed in patches[0] if patches else []:
+            patch = bytes.fromhex(hexed)
+            blob = blob[:offset] + patch + blob[offset + len(patch):]
+        blobs[name] = blob
         names.append(name)
     reads: list = []
 
@@ -2667,6 +2711,8 @@ def _elevation_window(case: dict) -> dict:
     cfg = TerrainConfig()
     if case.get("cap"):
         cfg = dataclasses.replace(cfg, max_cells=case["cap"])
+    if case.get("blocks"):
+        cfg = dataclasses.replace(cfg, max_blocks=case["blocks"])
     try:
         plan = plan_window(files, centre, case["radius"], cfg, 1, case["margin"], declared)
     except GeoTiffError as refused:

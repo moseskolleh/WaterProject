@@ -3000,7 +3000,8 @@ await withPage(async (page, base, consoleErrors) => {
   // make_reference.py, each run as the page runs it: the files opened for
   // their layouts, the set credited, the window centred and planned, only
   // the ranges the plan names read, and the window read. The committed
-  // fixtures come through the harness's overlay; an .hgt tile is made here
+  // fixtures come through the harness's overlay, a damaged header as a
+  // fixture with a few bytes patched here; an .hgt tile is made here
   // by the integer arithmetic the reference made it with, for the ranges
   // the plan reads and no others. Held exactly: each file's source and
   // notes or its refusal; the label, credit, notice, surface note and sea
@@ -3062,10 +3063,15 @@ await withPage(async (page, base, consoleErrors) => {
     for (const kase of EW.cases) {
       const sources = {}, names = [];
       for (const entry of kase.files) {
-        const [source, name] = typeof entry === 'string' ? [entry, entry] : entry;
+        const [source, name, patches] = typeof entry === 'string' ? [entry, entry, null] : entry;
         names.push(name);
         if (typeof source === 'string') {
           const bytes = new Uint8Array(await (await fetch('/__fixtures/dem/' + source)).arrayBuffer());
+          // a damaged header made from a fixture: each patch [offset, hex]
+          // overwrites its bytes, as make_reference.py patches them
+          for (const [at, hex] of patches || []) {
+            for (let k = 0; k < hex.length / 2; k++) bytes[at + k] = parseInt(hex.slice(2 * k, 2 * k + 2), 16);
+          }
           sources[name] = { size: bytes.length, chunks: [[0, bytes]], at: (o, n) => bytes.subarray(o, o + n) };
         } else {
           sources[name] = { size: 2 * source[2] * source[2], chunks: [], at: (o, n) => hgtRange(source, o, n) };
@@ -3094,7 +3100,10 @@ await withPage(async (page, base, consoleErrors) => {
           ? { lon: kase.centre[0], lat: kase.centre[1], label: kase.centre[2], exact: true, note: null }
           : C.windowCentre(kase.site || null, null, files);
         answer.centre = [number(centre.lon), number(centre.lat), centre.label, centre.exact, centre.note];
-        const config = kase.cap ? { terrain: { max_cells: kase.cap } } : null;
+        const caps = {};
+        if (kase.cap) caps.max_cells = kase.cap;
+        if (kase.blocks) caps.max_blocks = kase.blocks;
+        const config = kase.cap || kase.blocks ? { terrain: caps } : null;
         let plan;
         try {
           plan = C.planElevationWindow(files, centre, kase.radius, config, kase.margin, declared);

@@ -303,6 +303,16 @@ class TerrainConfig:
     # (its time, and its memory against Community Cloud's 690 MB) and in the
     # browser worker.
     max_cells: int = _TERRAIN["max_cells"]
+    # One limit on the blocks a read decodes, each a decode of its own: a
+    # file cut into tiles of a cell or two costs a decode a cell, and two
+    # million of them took over a minute and a gigabyte in CPython. A block
+    # table longer than this is refused when the file is opened, so opening
+    # one never builds a list of millions, and a window planned over more is
+    # refused before a block is read. A Copernicus window at the cap meets a
+    # few dozen blocks, and an .hgt set with missing tiles beside the sea
+    # about 9,000 (each row of an .hgt is a strip of its own). Provisional,
+    # as the cap on cells is.
+    max_blocks: int = _TERRAIN["max_blocks"]
     # Ground at or below this, joined to the edge, is sea. Copernicus writes
     # sea and estuaries as exactly 0.0; 0.5 m would take in 26,352 land
     # cells around Freetown.

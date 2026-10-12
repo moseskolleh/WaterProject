@@ -10,9 +10,10 @@ supervisor with a laptop in Makeni can obtain any of them and cannot
 install GDAL:
 
 ``.hgt``
-    An SRTM tile as NASA publishes it: raw big-endian int16, 1201x1201
-    (3 arc-second) or 3601x3601 (1 arc-second), no header at all. The
-    filename carries the south-west corner (``N08W013.hgt``).
+    An SRTM-format tile, as NASA and others publish it: raw big-endian
+    int16, 1201x1201 (3 arc-second) or 3601x3601 (1 arc-second), no
+    header at all. The filename carries the south-west corner
+    (``N08W013.hgt``); nothing in the file says whose survey it is.
 ``.asc`` / ``.grd``
     An ESRI ASCII grid: six header lines then the rows, north to south.
     Every GIS exports it.
@@ -279,10 +280,16 @@ def read_srtm_hgt(path: str | Path) -> ElevationGrid:
     step = 1.0 / (side - 1)
     lons = lon0 + np.arange(side) * step
     lats = lat0 + np.arange(side) * step
+    # Credited as the windowed read credits an undeclared .hgt: NASA's SRTM,
+    # NASADEM and void-filled compilations all come in this format, so the
+    # file alone says nothing of its source. The file is described directly
+    # rather than through the accept step, which would refuse a tile within
+    # a degree of a pole that this reader has always read.
+    found = ElevationFile(path.name, 2 * raw.size, hgt_layout(path.name, 2 * raw.size), "hgt", "hgt")
+    label, credit, _, _, sea_clean = elevation_label_and_credit([found])
     return ElevationGrid(
-        lons, lats, grid,
-        source=f"SRTM tile {path.stem.upper()} (NASA/USGS, public domain)",
-        resolution_note=_HGT_SIDES[side],
+        lons, lats, grid, source=label, resolution_note=_HGT_SIDES[side], credit=credit, source_id="hgt",
+        files=(path.name,), sea_clean=sea_clean,
     )
 
 
@@ -601,10 +608,19 @@ def _accept(layout: GeoTiffLayout, name: str) -> None:
     """Refuse a file that is not in WGS 84 longitude and latitude, in
     degrees, with every cell centre more than a degree from a pole.
 
-    At a pole a cell has no width east to west, and the window arithmetic
-    divides by it. A projected file is named by its CRS, because the
-    operator can then tell which copy of the tile they sent.
+    A file carrying a GDAL mask is refused first: the cells it hides
+    usually hold 0, which would read as ground at sea level. A projected
+    file is named by its CRS, because the operator can then tell which copy
+    of the tile they sent. Georeferencing no elevation model has - an
+    origin that is infinite or not a number, longitudes beyond any map,
+    cells under 1e-7 or over 1 degree - is refused before the poles are
+    looked at, since each would otherwise reach the window arithmetic as
+    an infinity or a hang; the test is written so that NaN fails it. At a
+    pole a cell has no width east to west, and the window arithmetic
+    divides by it.
     """
+    if layout.has_mask:
+        raise GeoTiffError("terrain.internal_mask", file=name)
     model = layout.model_type
     if model == 1:
         raise GeoTiffError("terrain.projected", file=name, crs=_projected_name(layout.epsg))
@@ -615,7 +631,11 @@ def _accept(layout: GeoTiffLayout, name: str) -> None:
     wgs84 = layout.epsg == 4326 or (layout.epsg in (None, 32767) and layout.datum == 6326)
     if not wgs84 or layout.angular_unit not in (None, 9102):
         raise GeoTiffError("terrain.not_wgs84", file=name, crs=_geographic_name(layout))
+    east = layout.x0 + (layout.width - 1) * layout.sx
     south = layout.y0 - (layout.height - 1) * layout.sy
+    if not (layout.x0 >= -540.0 and east <= 540.0 and south >= -90.0 and layout.y0 <= 90.0
+            and layout.sx >= 1e-7 and layout.sx <= 1.0 and layout.sy >= 1e-7 and layout.sy <= 1.0):
+        raise GeoTiffError("terrain.bad_georeference", file=name)
     if not (south > -89.0 and layout.y0 < 89.0):
         raise GeoTiffError("terrain.polar", file=name)
 
@@ -657,7 +677,9 @@ def _spacing_is(value: float, step: float) -> bool:
 
 
 def _on_degree(value: float) -> bool:
-    return abs(value - math.floor(value + 0.5)) <= _DEGREE_TOL
+    # finite first: math.floor of an infinity or NaN raises, where the
+    # browser's Math.floor carries it on
+    return math.isfinite(value) and abs(value - math.floor(value + 0.5)) <= _DEGREE_TOL
 
 
 def _inside_square(layout: GeoTiffLayout, lon0: int, lat0: int) -> bool:
@@ -984,7 +1006,8 @@ def window_centre(site, files: Sequence[ElevationFile]) -> WindowCentre:
 
 
 def _extent(files: Sequence[ElevationFile]) -> tuple[float, float, float, float]:
-    """(west, south, east, north) of the union of the files' cell centres."""
+    """(west, south, east, north): the bounding box of the files' cell
+    centres, which holds any gap between them too."""
     west = min(f.layout.x0 for f in files)
     east = max(f.layout.x0 + (f.layout.width - 1) * f.layout.sx for f in files)
     south = min(f.layout.y0 - (f.layout.height - 1) * f.layout.sy for f in files)
@@ -1129,11 +1152,14 @@ def plan_window(files: Sequence[ElevationFile], centre: WindowCentre, radius_km:
 
     ``radius_km`` is the half-side of the square shown; the analysis also
     reads ``margin_km`` (by default ``cfg.analysis_buffer_km``; the
-    topographic map passes 0) beyond it on every side, and the cap applies
-    to the whole. ``stride`` reads every stride-th lattice cell, for the
-    Python app's wide topographic map; 0 picks the least stride that fits
-    under the cap. ``declared`` is the operator's statement of the source,
-    which wins over what the names say.
+    topographic map passes 0) beyond it on every side, and the cap on cells
+    applies to the whole, once the centre is known to lie on a file (else
+    it lies in a gap between them or outside them); the cap on blocks
+    applies to the blocks the plan names, counted before they are listed.
+    ``stride`` reads every stride-th lattice cell, for the Python app's wide
+    topographic map; 0 picks the least stride that fits under the cap.
+    ``declared`` is the operator's statement of the source, which wins over
+    what the names say.
 
     The steps, the arithmetic and the order of the refusals are the
     browser's (``C.planElevationWindow``), so that both engines plan the
@@ -1168,7 +1194,10 @@ def plan_window(files: Sequence[ElevationFile], centre: WindowCentre, radius_km:
         if abs(lay.sx - sx) > 1e-9 * sx or abs(lay.sy - sy) > 1e-9 * sy:
             raise GeoTiffError("terrain.join_spacing", a=ordered[0].name, b=found.name)
         ex, ey = (lay.x0 - x0) / sx, (y0 - lay.y0) / sy
-        if abs(ex - math.floor(ex + 0.5)) > 1e-6 or abs(ey - math.floor(ey + 0.5)) > 1e-6:
+        # written so that an infinite or NaN offset fails, finite first
+        # because math.floor of one raises
+        if not (math.isfinite(ex) and math.isfinite(ey) and abs(ex - math.floor(ex + 0.5)) <= 1e-6
+                and abs(ey - math.floor(ey + 0.5)) <= 1e-6):
             raise GeoTiffError("terrain.join_phase", a=ordered[0].name, b=found.name)
         offsets.append((math.floor(ex + 0.5), math.floor(ey + 0.5)))
 
@@ -1183,36 +1212,50 @@ def plan_window(files: Sequence[ElevationFile], centre: WindowCentre, radius_km:
             raise GeoTiffError("terrain.join_products", a=ordered[first].name, pa=_PRODUCT_NAMES[sources[first]],
                                b=ordered[k].name, pb=_PRODUCT_NAMES[source])
 
-    # 5-6. the centre cell, and the half sizes from its cell size
-    ci = math.floor((centre.lon - x0) / sx + 0.5)
-    cj = math.floor((y0 - centre.lat) / sy + 0.5)
+    # 5. the centre cell; a centre no finite cell index reaches lies on no
+    # file (math.floor of an infinity or NaN raises, where the browser's
+    # Math.floor carries it on to the same refusal)
+    fi, fj = (centre.lon - x0) / sx + 0.5, (y0 - centre.lat) / sy + 0.5
+    ci = math.floor(fi) if math.isfinite(fi) else None
+    cj = math.floor(fj) if math.isfinite(fj) else None
+
+    # 8, before the cap: the centre must lie on a file, so that a centre off
+    # the files is told so rather than given a radius that would not help.
+    # It lies in a gap between them when the files' bounding box holds it,
+    # judged on whole cells so the engines cannot disagree.
+    boxes = [(oi, oi + f.layout.width, oj, oj + f.layout.height) for (oi, oj), f in zip(offsets, ordered, strict=True)]
+    if ci is None or cj is None or not any(i0 <= ci < i1 and j0 <= cj < j1 for i0, i1, j0, j1 in boxes):
+        extent = _bounds_text(_extent(ordered))
+        if (ci is not None and cj is not None and min(b[0] for b in boxes) <= ci < max(b[1] for b in boxes)
+                and min(b[2] for b in boxes) <= cj < max(b[3] for b in boxes)):
+            raise GeoTiffError("terrain.site_gap", where=centre.label, extent=extent)
+        raise GeoTiffError("terrain.site_outside", where=centre.label, extent=extent)
+
+    # 6. the half sizes from the centre cell's size
     dx_c, dy_c = wgs84_cell_size(y0 - cj * sy, sx, sy)
     hx = math.ceil((radius + margin) * 1000 / dx_c)
     hy = math.ceil((radius + margin) * 1000 / dy_c)
     hxs = math.ceil(radius * 1000 / dx_c)
     hys = math.ceil(radius * 1000 / dy_c)
     if stride == 0:
-        stride = max(1, math.ceil(math.sqrt((2 * hx + 1) * (2 * hy + 1) / cfg.max_cells)))
-        while (2 * -(-hx // stride) + 1) * (2 * -(-hy // stride) + 1) > cfg.max_cells:
-            stride += 1
+        stride = _least_stride(hx, hy, cfg.max_cells)
     if stride > 1:
         hx, hy, hxs, hys = -(-hx // stride), -(-hy // stride), -(-hxs // stride), -(-hys // stride)
     width, height = 2 * hx + 1, 2 * hy + 1
 
-    # 7. the cap, on everything analysed, and the least window analysed
+    # 7. the cap, on everything analysed, and the least window analysed. When
+    # the margin alone is over the cap no radius fits, and the sentence says
+    # to lower the margin rather than offer a radius of 0 km.
     if width * height > cfg.max_cells:
+        hx0 = -(-math.ceil(1000 * margin / dx_c) // stride)
+        hy0 = -(-math.ceil(1000 * margin / dy_c) // stride)
+        if (2 * hx0 + 1) * (2 * hy0 + 1) > cfg.max_cells:
+            raise GeoTiffError("terrain.margin_too_many_cells", margin=margin, cap=cfg.max_cells)
         h = math.floor((math.sqrt(cfg.max_cells) - 1) / 2)
         fit = max(0.0, math.floor((h * min(dx_c, dy_c) * stride - 1000 * margin) / 100) / 10)
         raise GeoTiffError("terrain.too_many_cells", radius=radius, margin=margin, cap=cfg.max_cells, fit=fit)
     if width < 3 or height < 3:
         raise GeoTiffError("terrain.too_small", w=width, h=height)
-
-    # 8. the centre must lie on a file
-    if not any(oi <= ci < oi + f.layout.width and oj <= cj < oj + f.layout.height
-               for (oi, oj), f in zip(offsets, ordered, strict=True)):
-        west, south, east, north = _extent(ordered)
-        raise GeoTiffError("terrain.site_outside", where=centre.label,
-                           extent=_bounds_text((west, south, east, north)))
 
     # 9. the axes, origin plus index times step, never arange or linspace
     lons = x0 + (ci + stride * (np.arange(width) - hx)) * sx
@@ -1222,6 +1265,15 @@ def plan_window(files: Sequence[ElevationFile], centre: WindowCentre, radius_km:
     i_first, j_first = ci - stride * hx, cj - stride * hy
     tile, missing, edges = _missing_tiles(ordered, sources, offsets, sx, i_first, j_first, stride, width,
                                           height)
+
+    # the blocks, counted before any is listed: each costs a decode of its
+    # own, so a file cut into tiny blocks is refused here however few cells
+    # the window holds. A block holding both window cells and an edge is
+    # counted once for each, so the count bounds the decodes from above.
+    counts = _count_blocks(ordered, offsets, i_first, j_first, stride, width, height, edges)
+    if sum(counts) > cfg.max_blocks:
+        most = counts.index(max(counts))
+        raise GeoTiffError("terrain.too_many_blocks", file=ordered[most].name, n=sum(counts), cap=cfg.max_blocks)
 
     blocks = _plan_blocks(ordered, offsets, i_first, j_first, stride, width, height, edges)
     return WindowPlan(
@@ -1271,6 +1323,64 @@ def _missing_tiles(files: Sequence[ElevationFile], sources: Sequence[str], offse
                 else:
                     edges.append(PlanEdge(m, k, None, 0))
     return p, missing, tuple(edges)
+
+
+def _least_stride(hx: int, hy: int, cap: int) -> int:
+    """The least stride at which a window of ``hx`` and ``hy`` cells each
+    side of its centre holds no more than ``cap`` cells, by binary search.
+
+    The cells held, (2*ceil(hx/s) + 1) * (2*ceil(hy/s) + 1), never grow as
+    the stride s grows, and none below sqrt(cells / cap) can fit, so the
+    search runs from there to max(hx, hy, 1), where the window is at most 3
+    by 3. A cap under 9 then fits nothing, and the cap refuses the window.
+    Stepping up a stride at a time instead took longer than any operator
+    waits once a damaged cell size made the window enormous.
+    """
+    def fits(stride: int) -> bool:
+        return (2 * -(-hx // stride) + 1) * (2 * -(-hy // stride) + 1) <= cap
+
+    low = max(1, math.ceil(math.sqrt((2 * hx + 1) * (2 * hy + 1) / cap)))
+    high = max(hx, hy, 1, low)
+    while low < high:
+        middle = (low + high) // 2
+        if fits(middle):
+            high = middle
+        else:
+            low = middle + 1
+    return low
+
+
+def _blocks_met(extent: int, size: int, first: int, stride: int, n: int) -> int:
+    """How many blocks of ``size`` cells along an axis of ``extent`` cells
+    hold one of the window's cells ``first + stride*q`` (q from 0 to n - 1),
+    in the file's own cell numbering: worked out a block at a time over the
+    blocks the window spans, never a cell at a time."""
+    low, high = max(first, 0), min(first + stride * (n - 1) + 1, extent)
+    if low >= high:
+        return 0
+    return sum(1 for b in range(low // size, (high - 1) // size + 1)
+               if _steps(b * size, min(size, extent - b * size), first, stride, n) is not None)
+
+
+def _count_blocks(files: Sequence[ElevationFile], offsets: Sequence[tuple[int, int]], i_first: int,
+                  j_first: int, stride: int, width: int, height: int, edges: Sequence[PlanEdge]) -> list[int]:
+    """The blocks each file gives up, counted without listing them: the
+    block rows holding a window row times the block columns holding a window
+    column (a strip spans every column, so it is one block column), and the
+    blocks holding each full edge, a row of tiles or a column of them (or
+    of strips)."""
+    counts = []
+    for k, (found, (oi, oj)) in enumerate(zip(files, offsets, strict=True)):
+        lay = found.layout
+        count = (_blocks_met(lay.height, lay.block_height, j_first - oj, stride, height)
+                 * _blocks_met(lay.width, lay.block_width, i_first - oi, stride, width))
+        for edge in edges:
+            if edge.file == k and edge.row is not None:
+                count += -(-lay.width // lay.block_width)
+            elif edge.file == k:
+                count += -(-lay.height // lay.block_height)
+        counts.append(count)
+    return counts
 
 
 def _plan_blocks(files: Sequence[ElevationFile], offsets: Sequence[tuple[int, int]], i_first: int,
@@ -1486,8 +1596,14 @@ def read_window(plan: WindowPlan, read_at_by_name: Mapping[str, Callable[[int, i
         tile_y = (j_first + stride * np.arange(height)) // plan.tile
         for m, (tx, ty) in enumerate(plan.missing):
             if edge_count[m] and not edge_land[m]:
-                sea |= (tile_y[:, None] == ty) & (tile_x[None, :] == tx) & (why == 3)
-                sea_tiles.append(plan.tile_code((tx, ty)))
+                # a tile is named only when some window cell of it is taken
+                # as sea: a window reaching just the row or column an .hgt
+                # tile shares with the next meets that tile without a cell
+                # of it going uncovered
+                hit = (tile_y[:, None] == ty) & (tile_x[None, :] == tx) & (why == 3)
+                if hit.any():
+                    sea |= hit
+                    sea_tiles.append(plan.tile_code((tx, ty)))
     if not (why == 0).any():
         raise GeoTiffError("terrain.no_elevations", radius=plan.radius_km, where=plan.centre.label)
 
@@ -1498,23 +1614,34 @@ def read_window(plan: WindowPlan, read_at_by_name: Mapping[str, Callable[[int, i
     uncovered = int((why == 3).sum()) - assumed
     label, credit, notice, surface, sea_clean = elevation_label_and_credit(plan.files, plan.declared)
     dx, dy = plan.dx * stride, plan.dy * stride
-    names = [f.name for f in plan.files]
+    # the files read are those with a block in the plan, an edge block
+    # included, in plan order; the label and credit stay the whole set's
+    names = [plan.files[k].name for k in sorted({block.file for block in plan.blocks})]
     grid = ElevationGrid(
         plan.lons, plan.lats, np.ascontiguousarray(win[::-1]), source=label,
         resolution_note=_cell_note(dx, dy), credit=credit, source_id=_set_source(plan.sources),
         files=tuple(names), sea_clean=sea_clean,
     )
 
-    notes = [phrase("terrain.read_summary", n=len(names), names=and_join(names), cells=cells, dx=dx, dy=dy,
-                    where=plan.centre.label, radius=plan.radius_km)]
+    # the summary counts the square shown, which is what its radius describes;
+    # the margin read beyond it has a sentence of its own
+    r0, r1, c0, c1 = plan.shown
+    notes = [phrase("terrain.read_summary", n=len(names), names=and_join(names), cells=(r1 - r0) * (c1 - c0),
+                    dx=dx, dy=dy, where=plan.centre.label, radius=plan.radius_km)]
     if plan.centre.note:
         notes.append(plan.centre.note)
     if plan.margin_km > 0:
         notes.append(phrase("terrain.read_margin", margin=plan.margin_km))
-    if uncovered:
-        notes.append(phrase("terrain.read_uncovered", pct=100.0 * uncovered / cells))
-    if assumed:
-        notes.append(phrase("terrain.read_assumed_sea", pct=100.0 * assumed / cells, n=len(sea_tiles),
+    if uncovered and 200 * uncovered < cells:
+        notes.append(phrase("terrain.read_uncovered_little", count=uncovered))
+    elif uncovered:
+        notes.append(phrase("terrain.read_uncovered", pct=_percent(uncovered, cells)))
+    if assumed and 200 * assumed < cells:
+        notes.append(phrase("terrain.read_assumed_sea_little", count=assumed, n=len(sea_tiles),
+                            tiles=and_join(sea_tiles), level=cfg.sea_level_m,
+                            product=_PRODUCT_NAMES[_set_source(plan.sources)]))
+    elif assumed:
+        notes.append(phrase("terrain.read_assumed_sea", pct=_percent(assumed, cells), n=len(sea_tiles),
                             tiles=and_join(sea_tiles), level=cfg.sea_level_m,
                             product=_PRODUCT_NAMES[_set_source(plan.sources)]))
     if voids:
@@ -1534,6 +1661,16 @@ def read_window(plan: WindowPlan, read_at_by_name: Mapping[str, Callable[[int, i
         centre=plan.centre, notes=tuple(notes), assumed=assumed, prompts=prompts, surface=surface,
         notice=notice, figure_credit=figure_credit, reasons=why[::-1].copy(), plan=plan,
     )
+
+
+def _percent(count: int, cells: int) -> int:
+    """``count`` as a whole percentage of ``cells``, half up, in integers
+    alone so that both engines give the same figure: a read report saying
+    "100%" while some cell was read would contradict itself, so a share
+    short of the whole is at most 99. A share under half a percent has a
+    sentence of its own ("less than 1%") and never comes here."""
+    pct = (200 * count + cells) // (2 * cells)
+    return 99 if count < cells and pct == 100 else pct
 
 
 def read_elevation(sources: Sequence[tuple[str, str | Path | bytes]], site=None, radius_km: float | None = None,

@@ -45,7 +45,12 @@ an elevation model the toolkit takes is decided a layer up, in
 ``docs/js/gwt-core.js`` carries the same reader for the browser, rule for
 rule, and the parity suite holds the two to the same layout, the same
 cells and the same refusals. Where GDAL reads a legal file one way, both
-read it that way; where a file is broken, both refuse it with the same
+read it that way, but for rules the project settled for itself: a sparse
+block is a void rather than ground at 0 m, an integer file's no-data value
+that is not a whole number in range matches no cell (GDAL's mask band and
+its own statistics disagree there), and a GDAL mask following the image is
+noted (``has_mask``) rather than applied, so that the elevation layer can
+refuse the file. Where a file is broken, both refuse it with the same
 sentence from ``data/text/terrain.yaml`` rather than with whatever a
 library happens to say. Reading is split so a window can be read without
 the rest of a 48 MB tile: :func:`geotiff_layout` says which bytes it
@@ -56,11 +61,12 @@ window meets, and :func:`decode_block` turns one block into heights.
 from __future__ import annotations
 
 import functools
+import math
 import re
 import struct
 import zlib
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -649,6 +655,8 @@ _SINGLE = {_NEW_SUBFILE_TYPE, _SUBFILE_TYPE, _IMAGE_WIDTH, _IMAGE_LENGTH, _COMPR
 _PER_SAMPLE = {_BITS_PER_SAMPLE, _SAMPLE_FORMAT}
 #: The tags whose values the layout reads, out of line where they do not fit
 _VALUE_TAGS = sorted(set(_TAG_NAMES) - {_NEW_SUBFILE_TYPE, _SUBFILE_TYPE})
+#: The block tables, each held to terrain.max_blocks before its values are read
+_BLOCK_TABLES = (_STRIP_OFFSETS, _STRIP_BYTE_COUNTS, _TILE_OFFSETS, _TILE_BYTE_COUNTS)
 
 #: JavaScript reads a 64-bit offset or count as two 32-bit halves, exact
 #: below 2**53, and the two engines keep one limit.
@@ -673,7 +681,6 @@ _ROUNDS = 16
 #: The most directories walked looking for the full-resolution image
 _MAX_DIRECTORIES = 64
 
-_FLT_MAX = 3.4028234663852886e38
 _NUMBER = re.compile(r"[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?")
 _SCALE_ITEM = re.compile(r'<Item[^>]*role="(scale|offset)"[^>]*>([^<]*)</Item>')
 
@@ -710,7 +717,11 @@ class GeoTiffLayout:
     is None. ``nodata`` is GDAL_NODATA already cast to the sample type, or
     None when no sample can equal it. ``geo_ascii`` (the GeoAsciiParams
     text) and ``has_nodata_tag`` are kept for the elevation layer's GLO-30
-    fingerprint. The browser's layout has the same fields in camelCase.
+    fingerprint. ``has_mask`` is True when the directory after the image is
+    a mask of the image's size, as GDAL writes one (``GDAL_TIFF_INTERNAL_MASK``
+    or the COG driver from a masked source): the cells it marks invalid
+    usually hold 0, which reads as ground, and the reader does not apply
+    it. The browser's layout has the same fields in camelCase.
     """
 
     name: str
@@ -743,6 +754,7 @@ class GeoTiffLayout:
     ifd_index: int
     geo_ascii: str | None = None
     has_nodata_tag: bool = False
+    has_mask: bool = False
 
 
 @dataclass(frozen=True)
@@ -801,8 +813,10 @@ def geotiff_layout(name: str, size: int,
     upload in the browser and a test alike: the caller reads what is asked
     for and calls again. The header and the directories are walked one
     dependent read at a time; the values of the chosen directory's tags are
-    asked for together. However a file is chunked, the answer is the one the
-    whole file gives, refusals included.
+    asked for together; last, once the image is described, the directory
+    after it is read to see whether it is the image's GDAL mask. However a
+    file is chunked, the answer is the one the whole file gives, refusals
+    included.
     """
     try:
         return _layout(_Chunks(name, size, chunks))
@@ -842,7 +856,7 @@ def _layout(src: _Chunks) -> GeoTiffLayout:
     else:
         raise GeoTiffError("terrain.not_tiff", file=name)
     # classic and BigTIFF differ only in these widths
-    count_size, entry_size, inline, word = (8, 20, 8, "Q") if big else (2, 12, 4, "I")
+    entry_size, inline, word = (20, 8, "Q") if big else (12, 4, "I")
 
     # The directory chain, to the first full-resolution image: COGs and
     # pyramids keep overviews and masks beside it, before it as often as
@@ -855,19 +869,9 @@ def _layout(src: _Chunks) -> GeoTiffLayout:
         if ifd == 0:
             raise GeoTiffError("terrain.no_full_image", file=name)
         seen.add(ifd)
-        (n,) = struct.unpack(order + ("Q" if big else "H"), src.need(ifd, count_size, "image directory"))
-        _addressable(n, name)
-        body = src.need(ifd + count_size, n * entry_size + inline, "image directory")
-        entries: dict[int, tuple[int, int, bytes]] = {}
-        for k in range(n):
-            tag, kind = struct.unpack_from(order + "HH", body, k * entry_size)
-            if tag in entries:
-                continue  # a repeated tag: the first stands, as in libtiff
-            # tag, type, count and a value field, the last two 4 or 8 bytes wide
-            (count,) = struct.unpack_from(order + word, body, k * entry_size + 4)
-            entries[tag] = (kind, count, body[k * entry_size + 4 + inline:(k + 1) * entry_size])
+        n, body, entries = _directory(src, ifd, order, big)
         if _full_image(entries, order, inline, big, name):
-            break  # its own next pointer is never looked at
+            break  # its next pointer is looked at only for its mask, after the image is described
         # The next pointer is judged in this order in both engines: 0 ends
         # the chain, then 2**53 or more is too large, then a directory
         # already walked is a loop, then a 65th directory is not walked.
@@ -884,18 +888,24 @@ def _layout(src: _Chunks) -> GeoTiffLayout:
 
     # The chosen directory's entries, in ascending tag order, each judged in
     # this order in both engines: its type, then (BigTIFF) a count of 2**53
-    # or more, then its count, then an out-of-line offset of 2**53 or more,
-    # then values running past the end of the file. Values not yet read are
+    # or more, then its count, then a block table longer than
+    # terrain.max_blocks, then an out-of-line offset of 2**53 or more, then
+    # values running past the end of the file. Values not yet read are
     # asked for together once every entry has passed, since none depends on
     # another, so the refusal a file earns does not depend on how it was
     # read.
     raw: dict[int, tuple[int, int, bytes]] = {}
     missing: list[tuple[int, int]] = []
+    max_blocks = _max_blocks()
     for tag in _VALUE_TAGS:
         if tag not in entries:
             continue
         kind, count, field = entries[tag]
         length = _checked_entry(entries, tag, big, name)
+        # a block table is held to the cap before its values are asked for,
+        # so that opening a file never reads or builds millions of offsets
+        if tag in _BLOCK_TABLES and count > max_blocks:
+            raise GeoTiffError("terrain.too_many_blocks", file=name, n=count, cap=max_blocks)
         if length <= inline:
             raw[tag] = (kind, count, field[:length])
             continue
@@ -912,7 +922,69 @@ def _layout(src: _Chunks) -> GeoTiffLayout:
     # check reads one: a LONG8 value of 2**53 or more is refused here, ahead
     # of every check on what the values mean.
     values = {tag: _decoded(order, kind, count, data, name) for tag, (kind, count, data) in raw.items()}
-    return _describe(src, order, big, index, values)
+    layout = _describe(src, order, big, index, values)
+    # Last, once the image has passed every check, the directory after it:
+    # GDAL writes a mask of the image's cells there (masks before the image
+    # belong to other images, and are passed by as the chain is walked)
+    if _mask_follows(src, order, big, n, body, seen, layout.width, layout.height):
+        return replace(layout, has_mask=True)
+    return layout
+
+
+def _directory(src: _Chunks, at: int, order: str, big: bool) -> tuple[int, bytes, dict[int, tuple[int, int, bytes]]]:
+    """The directory at ``at``: its entry count, its bytes (the entries and
+    the next pointer), and each tag's first entry as (type, count, value
+    field), a repeated tag's first standing, as in libtiff."""
+    count_size, entry_size, inline, word = (8, 20, 8, "Q") if big else (2, 12, 4, "I")
+    (n,) = struct.unpack(order + ("Q" if big else "H"), src.need(at, count_size, "image directory"))
+    _addressable(n, src.name)
+    body = src.need(at + count_size, n * entry_size + inline, "image directory")
+    entries: dict[int, tuple[int, int, bytes]] = {}
+    for k in range(n):
+        tag, kind = struct.unpack_from(order + "HH", body, k * entry_size)
+        if tag in entries:
+            continue
+        # tag, type, count and a value field, the last two 4 or 8 bytes wide
+        (count,) = struct.unpack_from(order + word, body, k * entry_size + 4)
+        entries[tag] = (kind, count, body[k * entry_size + 4 + inline:(k + 1) * entry_size])
+    return n, body, entries
+
+
+def _mask_follows(src: _Chunks, order: str, big: bool, n: int, body: bytes, seen: set[int], width: int,
+                  height: int) -> bool:
+    """Whether the directory after the image is a mask of it: NewSubfileType
+    with the mask bit and not the reduced-image bit, and the image's width
+    and height.
+
+    The next pointer is judged as the chain judges one, in the same order
+    in both engines: 0 means no mask, then 2**53 or more is too large, then
+    a directory already walked is no mask. The mask's NewSubfileType, then
+    its width and its height, are each read as the chain reads
+    NewSubfileType, held in the entry itself.
+    """
+    name = src.name
+    entry_size, inline, word = (20, 8, "Q") if big else (12, 4, "I")
+    (following,) = struct.unpack_from(order + word, body, n * entry_size)
+    if following == 0:
+        return False
+    _addressable(following, name)
+    if following in seen:
+        return False
+    _, _, entries = _directory(src, following, order, big)
+    kind = _held_value(entries, _NEW_SUBFILE_TYPE, order, inline, big, name)
+    if kind is None or kind & 0b101 != 0b100:
+        return False
+    return (_held_value(entries, _IMAGE_WIDTH, order, inline, big, name) == width
+            and _held_value(entries, _IMAGE_LENGTH, order, inline, big, name) == height)
+
+
+def _max_blocks() -> int:
+    """terrain.max_blocks as configured by default. The raw reader takes no
+    configuration, so a file's block table is held to the default in both
+    engines; a window's blocks are held to the project's own setting."""
+    from .config import TerrainConfig
+
+    return TerrainConfig().max_blocks
 
 
 def _checked_entry(entries: dict, tag: int, big: bool, name: str) -> int:
@@ -951,19 +1023,25 @@ def _full_image(entries: dict, order: str, inline: int, big: bool, name: str) ->
     one value, held in the entry itself (a LONG8 is not, in a classic TIFF),
     or the entry is damaged.
     """
-    kinds: list[int | None] = []
-    for tag in (_NEW_SUBFILE_TYPE, _SUBFILE_TYPE):
-        if tag not in entries or entries[tag][0] not in _TYPE_SIZE:
-            kinds.append(None)
-            continue
-        length = _checked_entry(entries, tag, big, name)
-        if length > inline:
-            raise _bad_tag(name, tag)
-        kind, _, field = entries[tag]
-        (value,) = struct.unpack(order + _TYPE_FORMAT[kind], field[:length])
-        kinds.append(_addressable(value, name))
-    new, old = kinds
+    new = _held_value(entries, _NEW_SUBFILE_TYPE, order, inline, big, name)
+    old = _held_value(entries, _SUBFILE_TYPE, order, inline, big, name)
     return ((new or 0) & 0b101) == 0 and old != 2 and _IMAGE_WIDTH in entries and _IMAGE_LENGTH in entries
+
+
+def _held_value(entries: dict, tag: int, order: str, inline: int, big: bool, name: str) -> int | None:
+    """One whole number held in a directory entry itself, or None when the
+    tag is absent or of a field type TIFF does not define, which TIFF 6.0
+    tells a reader to skip. One of a known type must be an unsigned integer
+    type, one value, held in the entry itself (a LONG8 is not, in a classic
+    TIFF), or the entry is damaged."""
+    if tag not in entries or entries[tag][0] not in _TYPE_SIZE:
+        return None
+    length = _checked_entry(entries, tag, big, name)
+    if length > inline:
+        raise _bad_tag(name, tag)
+    kind, _, field = entries[tag]
+    (value,) = struct.unpack(order + _TYPE_FORMAT[kind], field[:length])
+    return _addressable(value, name)
 
 
 def _describe(src: _Chunks, order: str, big: bool, index: int, values: dict) -> GeoTiffLayout:
@@ -1183,14 +1261,18 @@ def _cast_nodata(value: float, sample_format: int, bits: int) -> float | int | N
     """GDAL_NODATA as a sample of the file's type holds it, or None when no
     sample can equal it.
 
-    A float32 value beyond the largest float32 is clamped to it first, as
-    GDAL does: ArcGIS writes ``-3.40282346639e+038``, a hair beyond, which
-    would otherwise round to -inf and match nothing in the file.
+    A float32 value is rounded to the nearest float32, as GDAL casts it, and
+    one beyond the largest float32 by more than half a step rounds to an
+    infinity, as GDAL's does. ArcGIS writes ``-3.40282346639e+038``, which
+    lies within half a step of the largest float32 and so rounds to it on
+    its own. Python's float32 packing refuses a value that rounds to an
+    infinity rather than giving one, so the infinity is given here.
     """
     if sample_format == 3 and bits == 32:
-        if value == value and abs(value) != float("inf") and abs(value) > _FLT_MAX:
-            value = _FLT_MAX if value > 0 else -_FLT_MAX
-        return struct.unpack("<f", struct.pack("<f", value))[0]
+        try:
+            return struct.unpack("<f", struct.pack("<f", value))[0]
+        except OverflowError:
+            return math.copysign(math.inf, value)
     if sample_format == 3:
         return value
     if value != value or abs(value) == float("inf") or value != int(value):

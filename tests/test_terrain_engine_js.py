@@ -865,6 +865,7 @@ def test_the_browser_reader_reads_every_committed_fixture_as_the_manifest_says(r
         assert layout["name"] == name and layout["size"] == (DEM / name).stat().st_size, name
         assert layout["predictorApplied"] == (entry["predictor"] != 1 and entry["compression"] in (5, 8, 32946))
         assert layout["hasNodataTag"] == ("nodata" in entry), name
+        assert layout["hasMask"] is entry.get("has_mask", False), name
         if "nodata" not in entry or entry["nodata_value"] in (None, "no cell"):
             assert layout["nodata"] is None, name
         else:
@@ -1229,7 +1230,9 @@ def test_the_browser_reader_refuses_each_damaged_or_unsupported_header_with_its_
     ]
     for text, kind, nodata in [
         ("1.5", "i16", None), ("70000", "i16", None), (" -32768\t", "i16", -32768.0), ("-0", "i16", 0.0),
-        ("-1", "u8", None), ("1e39", "f32", flt_max), ("-1e39", "f32", -flt_max), ("Infinity", "f32", math.inf),
+        ("-1", "u8", None), ("1e39", "f32", math.inf), ("-1e39", "f32", -math.inf), ("Infinity", "f32", math.inf),
+        ("-3.40282346639e+038", "f32", -flt_max), ("3.4028235677973362e38", "f32", flt_max),
+        ("3.4028235677973366e38", "f32", math.inf),
         ("+NaN", "f32", math.nan), ("0.1", "f32", struct.unpack("<f", struct.pack("<f", 0.1))[0]),
         ("0.1", "f64", 0.1), ("1e400", "f64", math.inf), ("-0", "f64", -0.0), (" \n", "f32", None),
     ]:
@@ -1646,6 +1649,75 @@ def test_the_two_readers_agree_on_files_made_in_memory_with_every_option(reader)
     assert outcomes["read"] >= 150 and len(outcomes) == 20, outcomes
 
 
+def test_the_two_readers_agree_on_masks_block_tables_at_the_cap_and_no_data_beyond_float32(reader):
+    """The rules the 4.1a review settled, through both readers and compared
+    whole, round by round: a GDAL mask after the image (noted), one before
+    it, of another size or reduced (not a mask of it), a mask directory past
+    the end of the file or with a damaged NewSubfileType; a block table one
+    entry over terrain.max_blocks (refused by its length before its values
+    are read) and one at it; no-data values beyond float32, which round to
+    an infinity rather than clamp to the largest float32, and those within
+    half a step of it, which round to it; and damaged georeferencing, which
+    the raw layer reads and the elevation layer refuses. Prevents the
+    browser noting a mask, counting a table or casting a no-data value
+    otherwise than Python."""
+    from groundwater.config import TerrainConfig
+
+    make = _builder()
+    bounds = _terrain_bounds()
+    cap = TerrainConfig().max_blocks
+    sx = 1 / 1200
+    rows = make.metres(make.patch(10, 6, 62))
+    valid = [[c >= 3 for c in range(10)] for _ in range(6)]
+
+    def masked(mask, after=True) -> bytes:
+        full = make.image(rows, "f32", "<", compression=8)
+        full.tags.update(make.Georef(-11.9, 8.4, sx, sx, raster=1).tags())
+        return make.assemble("<", [full, mask] if after else [mask, full])
+
+    def recounted(data: bytes, tag: int, count: int) -> bytes:
+        return _patched(data, _entry(data, tag) + 4, struct.pack("<I", count))
+
+    signed = make.mask_image(valid)
+    signed.tags[make.NEW_SUBFILE_TYPE] = (make.SSHORT, [4])
+    plain = masked(make.mask_image(valid))
+    ifd = struct.unpack_from("<I", plain, 4)[0]
+    count = struct.unpack_from("<H", plain, ifd)[0]
+    strips = make.single("s.tif", "", rows, "f32", make.Georef(-11.9, 8.4, sx, sx, raster=1),
+                         rows_per_strip=1).data
+    peaks = [row[:] for row in rows]
+    peaks[0][0], peaks[0][1], peaks[1][0] = 3.4028234663852886e38, math.inf, -math.inf
+    files = {
+        "a mask after the image": plain,
+        "a mask before the image": masked(make.mask_image(valid), after=False),
+        "a mask a row short": masked(make.mask_image(valid[:5])),
+        "a reduced mask": masked(make.mask_image(valid, subfile=5)),
+        "a mask as a page": masked(make.mask_image(valid, subfile=6)),
+        "a mask past the end": _patched(plain, ifd + 2 + 12 * count, struct.pack("<I", len(plain) + 8)),
+        "a mask of a signed type": masked(signed),
+        "a table one over the cap": recounted(strips, make.STRIP_OFFSETS, cap + 1),
+        "a table at the cap": recounted(strips, make.STRIP_BYTE_COUNTS, cap),
+        "a NaN origin": make.single("n.tif", "", rows, "f32", make.Georef(math.nan, 8.4, sx, sx)).data,
+        "a subnormal cell size": make.single("i.tif", "", rows, "f32",
+                                             make.Georef(-11.9, 8.4, sx, 1e-320)).data,
+    }
+    for text in ("3.5e38", "1e39", "-1e39", "3.4028235677973366e38", "3.4028235677973362e38",
+                 "-3.40282346639e+038", "inf"):
+        files[f"no-data {text}"] = make.single("d.tif", "", peaks, "f32", make.Georef(-11.9, 8.4, sx, sx),
+                                               nodata=text).data
+    seen = {}
+    for what, data in files.items():
+        answer = _readers_agree(reader, "case.tif", data, bounds, what)
+        layout = answer["whole"].get("layout") or {}
+        seen[what] = layout.get("hasMask", _outcome(answer))
+    assert seen["a mask after the image"] is True and seen["a mask as a page"] is True
+    assert not any(seen[k] for k in ("a mask before the image", "a mask a row short", "a reduced mask"))
+    assert seen["a mask past the end"] == "terrain.ends_early"
+    assert seen["a mask of a signed type"] == "terrain.bad_tag"
+    assert seen["a table one over the cap"] == "terrain.too_many_blocks"
+    assert seen["a table at the cap"] == "terrain.ends_early"
+
+
 # ------------------------------------------------------------ the elevation layer
 
 _ELEVATION = r"""
@@ -1947,8 +2019,9 @@ def _python_window(request: dict, site=None) -> dict:
     else:
         centre = window_centre(site, files)
     out["centre"] = centre_view(centre)
-    max_cells = ((request["config"] or {}).get("terrain") or {}).get("max_cells")
-    cfg = TerrainConfig() if max_cells is None else dataclasses.replace(TerrainConfig(), max_cells=max_cells)
+    caps = {key: value for key, value in ((request["config"] or {}).get("terrain") or {}).items()
+            if value is not None}
+    cfg = dataclasses.replace(TerrainConfig(), **caps)
     plan = guard(lambda: plan_window(files, centre, request["radius"], cfg, 1, request["margin"], declared))
     if isinstance(plan, dict):
         out["plan"] = plan
@@ -1992,14 +2065,16 @@ def _python_window(request: dict, site=None) -> dict:
     return json.loads(json.dumps(out))
 
 
-def _window(files, radius, margin=0.0, centre=None, cap=None, declared=("detect", ""), site=None, latlon=None):
+def _window(files, radius, margin=0.0, centre=None, cap=None, declared=("detect", ""), site=None, latlon=None,
+            blocks=None):
     """One request of the driver's ``window``: files as (name, path), the
     radius and margin in km (a margin of None is the configured one), a
     GPS-like centre or none (then the site's, or the files' middle), an
-    explicit cap on cells, and the operator's declaration."""
+    explicit cap on cells and on blocks, and the operator's declaration."""
+    terrain = {key: value for key, value in (("max_cells", cap), ("max_blocks", blocks)) if value is not None}
     return {"files": [{"name": name, "path": str(path)} for name, path in files], "centre": centre,
             "site": site, "latlon": latlon, "radius": radius, "margin": margin,
-            "config": {"terrain": {"max_cells": cap}} if cap is not None else None, "declared": list(declared)}
+            "config": {"terrain": terrain} if terrain else None, "declared": list(declared)}
 
 
 def _point(lon: float, lat: float, label: str = "the test point") -> dict:
@@ -2278,6 +2353,77 @@ def _elevation_cases(tmp_path: Path):
     yield _window([made("N08W011_FABDEM_V1-2.tif", _bytes_of(str(DEM / "n08w011.tif")))], 0.2, 0.0,
                   _point(-10.995, 8.995), declared=("copernicus_glo30", "")), None, "a FABDEM name, declared"
 
+    # what the 4.1a review found, each through both engines. Damaged
+    # georeferencing is refused as the file is opened - alone, with a site
+    # centre or none, and beside a good tile - the GLO-30 fingerprint's
+    # layout among them, whose degree test once raised in Python alone
+    good = (COPERNICUS_W012, DEM / COPERNICUS_W012)
+    square = make.metres(make.patch(12, 12, 7))
+    for label, georef in (
+        ("a NaN tiepoint", make.Georef(math.nan, 8.0, arcsec, arcsec, raster=2, copernicus_keys=True)),
+        ("an infinite tiepoint", make.Georef(math.inf, 8.0, arcsec, arcsec, raster=2, copernicus_keys=True)),
+        ("a tiepoint at minus infinity", make.Georef(-math.inf, 8.0, arcsec, arcsec, raster=2,
+                                                     copernicus_keys=True)),
+        ("a plain NaN tiepoint", make.Georef(math.nan, 7.99, 0.001, 0.001)),
+        ("a tiepoint at 1.7e308", make.Georef(1.7e308, 8.0, 0.001, 0.001, raster=1)),
+        ("a tiepoint at -1.7e308", make.Georef(-1.7e308, 8.0, 0.001, 0.001, raster=1)),
+        ("a subnormal cell width", make.Georef(-12.0, 8.0, 1e-320, 0.001)),
+        ("a cell just under 1e-7 degree", make.Georef(-12.0, 8.0, 0.001, 9.9e-8)),
+        ("a cell of two degrees", make.Georef(-12.0, 8.0, 2.0, 0.5)),
+        ("longitudes past 540", make.Georef(535.0, 8.0, 1.0, 0.5)),
+        ("a NaN translation", make.Georef(math.nan, 8.0, arcsec, arcsec, transform=True)),
+        ("an infinite cell height", make.Georef(-12.0, 8.0, 0.001, math.inf)),
+        ("a cell of one degree", make.Georef(-12.0, 20.0, 1.0, 1.0)),
+    ):
+        damaged = made(f"{label}.tif", tif(square, georef))
+        yield _window([damaged], 0.3, 0.0), None, label
+        yield _window([damaged], 0.3, 0.0, _point(-11.995, 7.995)), None, f"{label}, a site centre"
+        yield _window([good, damaged], 0.3, 0.0, _point(-11.0, 8.995)), None, f"{label}, beside a good tile"
+    flat = bytearray(_bytes_of(str(DEM / "holes_sea_N07W012.tif")))
+    flat[293] = 0x1F  # the high byte of ModelPixelScale's Y: a cell 1.9e-156 degree tall
+    yield _window([made("holes_sea_N07W012.tif", bytes(flat))], 5.0, 0.0), None, "a corrupted pixel scale"
+    yield (_window([("internal_mask.tif", DEM / "internal_mask.tif"), good], 0.2, 0.0, _point(-11.0, 8.995)),
+           None, "a masked file beside a good tile")
+
+    # a centre in a gap between tiles, one outside them all, and one far off
+    # at a latitude where the cap would have been asked about first
+    corner = made("N08W011.hgt", hgt(_hgt_tile(1201, -11, 8)))
+    yield _window([n08w012, corner, n07w012], 5.0, 0.0, _point(-10.95, 7.97)), None, "a centre in a gap"
+    yield _window([n08w012, corner, n07w012], 5.0, 0.0, _point(-9.5, 8.5)), None, "a centre east of the tiles"
+    yield _window([n08w012], 10.0, None, _point(-11.5, 79.7)), None, "a centre at 79.7 N"
+
+    # a margin alone over the cap on cells, at any radius
+    yield _window(pair, 10.0, 5.0, at, cap=10_000), None, "a margin alone over the cap"
+    yield _window(pair, 0.0, 5.0, at, cap=10_000), None, "a margin alone over the cap, at a radius of 0"
+
+    # the cap on blocks: a file cut into 2 by 2 tiles at it and one over, the
+    # file with the most blocks named, and an .hgt set whose edge columns
+    # are a strip a row
+    tiny = made("tiny.tif", tif(make.metres(make.patch(40, 40, 8)), make.Georef(-11.5, 8.5, arcsec, arcsec),
+                                tile=(2, 2)))
+    middle = _point(-11.5 + 20 * arcsec, 8.5 - 20 * arcsec)
+    planned = len(plan_window(opened([tiny]), WindowCentre(middle["lon"], middle["lat"], "p", True), 0.3,
+                              margin_km=0.0).blocks)
+    yield _window([tiny], 0.3, 0.0, middle, blocks=planned), None, "tiny tiles at the cap on blocks"
+    yield _window([tiny], 0.3, 0.0, middle, blocks=planned - 1), None, "tiny tiles over the cap on blocks"
+    yield _window(pair, 0.5, 0.0, _point(-11.0, 9.0 - 20 * arcsec), blocks=3), None, "a pair over the cap"
+    yield _window(sea_set, 5.0, 0.0, _point(-12.02, 8.02), blocks=1000), None, "edge columns over the cap"
+
+    # the read report: the files read, the shown square counted, a gap and
+    # a sea under half a percent, and a sea tile named only where it is sea
+    yield (_window(pair, 0.1, 0.0, _point(-11.011111111111111 + 34 * arcsec, 8.995)), None,
+           "a window inside one tile of a pair")
+    yield _window([n08w012], 15.0, 0.0, _point(-11.5, 9 - 162 / 1200)), None, "a gap under half a percent"
+    yield _window([n08w012], 15.0, 0.0, _point(-11.5, 9 - 161 / 1200)), None, "a gap over half a percent"
+    corner_sea = sea_set + [made("N08W012.hgt", hgt(_hgt_tile(1201, -12, 8, sea)))]
+    yield (_window(corner_sea, 5.0, 0.0, _point(-12 + 50 / 1200, 8 + 50 / 1200)), None,
+           "a sea under half a percent")
+    seam = _hgt_tile(1201, -12, 8)
+    seam[-1, :] = 0
+    seam[:, -1] = 0
+    yield (_window([made("N08W012.hgt", hgt(seam))], 1.0, 0.0, _point(-12 + 1189 / 1200, 9 - 1195 / 1200)),
+           None, "a window reaching an .hgt's shared column")
+
 
 def _hold_area_centre(py: dict, js: dict, where: str) -> None:
     """A chiefdom's or district's label point to 1e-9 degrees, then taken
@@ -2346,7 +2492,9 @@ def test_the_two_elevation_layers_agree_on_every_fixture_set_and_window(elevatio
     refusals = {"terrain.projected", "terrain.no_crs", "terrain.not_wgs84", "terrain.polar", "terrain.hgt_name",
                 "terrain.hgt_size", "terrain.duplicate_name", "terrain.mixed_formats", "terrain.join_spacing",
                 "terrain.join_phase", "terrain.join_products", "terrain.join_disagree", "terrain.site_outside",
-                "terrain.too_many_cells", "terrain.too_small", "terrain.no_elevations"}
+                "terrain.too_many_cells", "terrain.too_small", "terrain.no_elevations", "terrain.internal_mask",
+                "terrain.bad_georeference", "terrain.site_gap", "terrain.margin_too_many_cells",
+                "terrain.too_many_blocks"}
     assert refusals <= set(outcomes) and "error" in outcomes, sorted(refusals - set(outcomes))
     assert outcomes["read"] >= 200 and assumed >= 3 and missing_land >= 3 and prompts >= 3, (
         outcomes, assumed, missing_land, prompts)

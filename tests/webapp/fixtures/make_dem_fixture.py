@@ -432,6 +432,33 @@ def image(rows, kind: str, order: str, *, compression: int = 1, predictor: int =
     return Ifd(tags, blocks, bool(tile))
 
 
+def mask_image(valid: list[list[bool]], *, subfile: int = 4) -> Ifd:
+    """A mask directory as GDAL writes one beside an image (GDAL_TIFF_INTERNAL_MASK,
+    or the COG driver from a masked source): one bit a cell, most significant
+    first, each row padded to a whole byte, 1 where the cell is valid, in one
+    DEFLATE strip, Photometric 4 (transparency mask) and NewSubfileType 4."""
+    height, width = len(valid), len(valid[0])
+    raw = bytearray()
+    for row in valid:
+        line = bytearray(-(-width // 8))
+        for c, ok in enumerate(row):
+            if ok:
+                line[c // 8] |= 0x80 >> (c % 8)
+        raw += line
+    tags = {
+        NEW_SUBFILE_TYPE: (LONG, [subfile]),
+        IMAGE_WIDTH: (SHORT, [width]),
+        IMAGE_LENGTH: (SHORT, [height]),
+        BITS_PER_SAMPLE: (SHORT, [1]),
+        COMPRESSION: (SHORT, [8]),
+        PHOTOMETRIC: (SHORT, [4]),
+        SAMPLES_PER_PIXEL: (SHORT, [1]),
+        ROWS_PER_STRIP: (SHORT, [height]),
+        PLANAR_CONFIG: (SHORT, [1]),
+    }
+    return Ifd(tags, [zlib.compress(bytes(raw), DEFLATE_LEVEL)], False)
+
+
 def _payload(order: str, kind: int, values) -> tuple[bytes, int]:
     if isinstance(values, (bytes, bytearray)):
         return bytes(values), len(values)
@@ -630,9 +657,12 @@ def nodata_value(text: str | None, kind: str):
         value = float(s)
     fmt, bits, code = KINDS[kind]
     if fmt == 3 and bits == 32:
-        if value == value and abs(value) != float("inf") and abs(value) > FLT_MAX:
-            value = FLT_MAX if value > 0 else -FLT_MAX
-        return struct.unpack("f", struct.pack("f", value))[0]
+        # rounded to the nearest float32, as GDAL casts it: beyond the largest
+        # by more than half a step is an infinity, which struct refuses to pack
+        try:
+            return struct.unpack("f", struct.pack("f", value))[0]
+        except OverflowError:
+            return float("inf") if value > 0 else float("-inf")
     if fmt == 3:
         return value
     if value != value or abs(value) == float("inf") or value != int(value):
@@ -1149,6 +1179,28 @@ def overview_mask_first() -> Fixture:
     return Fixture("overview_mask_first.tif", data, entry, samples)
 
 
+def internal_mask() -> Fixture:
+    """A float32 image followed by the mask GDAL writes for it, hiding cells that hold 0.0."""
+    dm = patch(12, 9, 47)
+    rows = metres(dm)
+    valid = [[c >= 4 for c in range(12)] for _ in range(9)]
+    for r in range(9):
+        for c in range(4):
+            rows[r][c] = 0.0  # what GDAL writes under a mask: ground at sea level, to a reader that ignores it
+    georef = Georef(-10.6, 8.8, ARCSEC, ARCSEC, raster=2)
+    full = image(rows, "f32", "<", compression=8, rows_per_strip=9)
+    full.tags.update(georef.tags())
+    data = assemble("<", [full, mask_image(valid)])
+    entry, samples = describe(
+        "internal_mask.tif",
+        "A float32 image followed by a GDAL internal mask (NewSubfileType 4, Photometric 4, 1-bit DEFLATE) "
+        "marking its first four columns invalid, which hold 0.0. The raw layer reads every sample and notes "
+        "the mask; the elevation layer refuses the file rather than read the hidden cells as ground at 0 m.",
+        rows, "f32", georef, order="<", bigtiff=False, compression=8, predictor=1, tile=None, rows_per_strip=9,
+        nodata=None, elevation="terrain.internal_mask", has_mask=True)
+    return Fixture("internal_mask.tif", data, entry, samples)
+
+
 def nodata_variants() -> list[Fixture]:
     sx = 1 / 1200
     out = []
@@ -1167,7 +1219,8 @@ def nodata_variants() -> list[Fixture]:
         row[0] = row[1] = -FLT_MAX
     out.append(single("nodata_arcgis_float_max.tif",
                       "float32, GDAL_NODATA '-3.40282346639e+038' as ArcGIS writes it, which rounds to "
-                      "-FLT_MAX once clamped, the value of its two-column fill margin.",
+                      "-FLT_MAX in float32 (it lies within half a step of it), the value of its two-column "
+                      "fill margin.",
                       rows, "f32", Georef(-10.1, 7.7, sx, sx, raster=1), compression=8, predictor=2,
                       rows_per_strip=7, nodata="-3.40282346639e+038"))
     out.append(single("nodata_empty.tif",
@@ -1490,6 +1543,9 @@ class GdalSpec:
     nodata: str | None
     creation: dict = field(default_factory=dict)
     driver: str = "GTiff"
+    #: columns from the west that GDAL's internal mask marks invalid (0: no mask)
+    masked_columns: int = 0
+    elevation: str = "read"
 
 
 def gdal_specs() -> list[GdalSpec]:
@@ -1497,6 +1553,9 @@ def gdal_specs() -> list[GdalSpec]:
     rows = metres(patch(40, 40, 51))
     i16 = whole_metres(patch(33, 27, 53))
     i16[3][4] = i16[3][5] = -32767
+    masked_rows = metres(patch(14, 10, 55))
+    for row in masked_rows:
+        row[:5] = [0.0] * 5
     return [
         GdalSpec("gdal_cog_deflate_p3_f32.tif",
                  "GDAL's COG driver: DEFLATE with the floating-point predictor, 16 x 16 tiles, PixelIsPoint, "
@@ -1520,6 +1579,14 @@ def gdal_specs() -> list[GdalSpec]:
                  Georef(-9.5, 8.3, sx, sx, raster=1), None,
                  {"COMPRESS": "LZW", "PREDICTOR": "3", "ENDIANNESS": "BIG", "TILED": "YES",
                   "BLOCKXSIZE": "16", "BLOCKYSIZE": "16"}),
+        GdalSpec("gdal_internal_mask_f32.tif",
+                 "GDAL GTiff with GDAL_TIFF_INTERNAL_MASK: float32 DEFLATE and the 1-bit mask GDAL writes "
+                 "after the image, hiding its first five columns, which hold 0.0. GDAL reads them as masked; "
+                 "the elevation layer refuses the file.",
+                 "f32", masked_rows, "<", 8, 1, None, 10,
+                 Georef(-9.4, 8.4, ARCSEC, ARCSEC, raster=2), None,
+                 {"COMPRESS": "DEFLATE", "BLOCKYSIZE": "10"}, masked_columns=5,
+                 elevation="terrain.internal_mask"),
     ]
 
 
@@ -1527,7 +1594,8 @@ def gdal_entry(spec: GdalSpec) -> tuple[dict, bytes]:
     entry, samples = describe(
         spec.name, spec.purpose, spec.rows, spec.kind, spec.georef, order=spec.order, bigtiff=False,
         compression=spec.compression, predictor=spec.predictor, tile=spec.tile,
-        rows_per_strip=spec.rows_per_strip, nodata=spec.nodata)
+        rows_per_strip=spec.rows_per_strip, nodata=spec.nodata, elevation=spec.elevation,
+        **({"has_mask": True} if spec.masked_columns else {}))
     entry["made_by"] = "GDAL, through rasterio (make_dem_fixture.py --gdal)"
     entry["gdal_creation_options"] = spec.creation
     return entry, samples
@@ -1561,6 +1629,14 @@ def write_gdal_set(directory: Path) -> None:
                     source.update_tags(AREA_OR_POINT="Point" if g.raster == 2 else "Area")
                 with memory.open() as source:
                     gdal_copy(source, str(target), driver="COG", **spec.creation)
+        elif spec.masked_columns:
+            valid = np.full(array.shape, 255, dtype="uint8")
+            valid[:, :spec.masked_columns] = 0
+            with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True), \
+                    rasterio.open(target, "w", **profile, **spec.creation) as sink:
+                sink.update_tags(AREA_OR_POINT="Point" if g.raster == 2 else "Area")
+                sink.write(array, 1)
+                sink.write_mask(valid)
         else:
             with rasterio.open(target, "w", **profile, **spec.creation) as sink:
                 sink.update_tags(AREA_OR_POINT="Point" if g.raster == 2 else "Area")
@@ -1622,7 +1698,7 @@ SETS = {
 def build() -> dict[str, Fixture]:
     """Every file this script writes, by name, in memory."""
     fixtures = copernicus_pair() + joins() + holes() + [mosaic(), utm_strip()] + codecs()
-    fixtures += [overview_mask_first()] + nodata_variants() + refusals()
+    fixtures += [overview_mask_first(), internal_mask()] + nodata_variants() + refusals()
     by_name = {f.name: f for f in fixtures}
     if len(by_name) != len(fixtures):
         raise AssertionError("two fixtures share a name")
@@ -1654,6 +1730,7 @@ def manifest(fixtures: dict[str, Fixture]) -> bytes:
         ("samples_sha256: SHA-256 of every sample, north row first, each little-endian in its own type, as GDAL "
          "reads the file with masked=False; a sparse block reads as 0 there, though the reader voids it."),
         "voids: the cells the per-sample rule of spec section 2.5 voids (bounds -1000 and 9000 m), when any.",
+        "has_mask: given, as true, only when the directory after the image is a GDAL mask of it.",
         "sets: files meant to be read together; declare is the source the operator declares for the set.",
     ]
     out = ['{"about": ' + line(about) + ',\n "files": {\n']
