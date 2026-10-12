@@ -483,6 +483,56 @@ def test_subsurface_maps_flow(app):
     assert "no measurement between" in captions
 
 
+def test_the_topography_tab_draws_a_map_from_geotiff_tiles(sample_data):
+    """A GeoTIFF was refused with a gdal_translate command to run first, and
+    one file was all the tab took. Tiles uploaded together are now opened as
+    they arrive, a file that cannot be read is refused beside its name, and
+    the map is drawn from one window read across the tiles, with the read
+    report and the Copernicus notice under it."""
+    from groundwater.text import phrase
+
+    dem = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+    names = ["Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+             "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"]
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Site maps"
+    # a GPS fix on the two tiles' shared edge, 8.995 N, 11.0 W
+    at.session_state["meta_easting"] = 280126.0
+    at.session_state["meta_northing"] = 994900.0
+    at.session_state["meta_zone"] = "29N"
+    at.run()
+    assert not at.exception, at.exception
+    assert phrase("terrain.browser_reads_none") in [str(c.value) for c in at.caption]
+    at.slider(key="map_radius").set_value(5)
+
+    # a projected copy is refused by name, and the map cannot be asked for
+    at.file_uploader(key="dem_upload").set_value(
+        [("refuse_epsg_3857.tif", (dem / "refuse_epsg_3857.tif").read_bytes(), "image/tiff")])
+    at.run()
+    assert not at.exception, at.exception
+    assert any("refuse_epsg_3857.tif" in str(e.value) for e in at.error)
+    assert at.button(key="run_topo").disabled
+
+    at.file_uploader(key="dem_upload").set_value(
+        [(n, (dem / n).read_bytes(), "image/tiff") for n in names])
+    at.run()
+    assert not at.exception and not at.error, [e.value for e in at.error]
+    at.button(key="run_topo").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert not at.error, [e.value for e in at.error]
+    assert Path(at.session_state["topo_path"]).stat().st_size > 30_000
+    report = at.session_state["topo_report"]
+    assert report["notes"][0].startswith(f"Read 2 files ({names[0]} and {names[1]})")
+    assert report["notice"] == phrase("terrain.copernicus_liability")
+    captions = [str(c.value) for c in at.caption]
+    assert all(note in captions for note in report["notes"]) and report["notice"] in captions
+    # the tiles are kept on disk, under the names they were uploaded with
+    kept = at.session_state["dem_upload_kept"]["files"]
+    assert [name for name, _ in kept] == names
+    assert all(Path(path).is_file() for _, path in kept)
+
+
 def test_project_state_tracked(app):
     """The state the project file persists is maintained by the app."""
     assert "rates_overrides" in app.session_state

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import struct
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -383,6 +384,100 @@ def test_topographic_map_renders_with_contours_and_spot_heights(tmp_path):
         spot_heights=[(-12.05, 9.05, "VES 1  84 m")],
     )
     assert path.stat().st_size > 30_000
+
+
+#: Two abutting GLO-30-style tiles, 40 cells square, named as Copernicus
+#: names them (tests/webapp/fixtures/dem/MANIFEST.json)
+DEM = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+COPERNICUS_PAIR = ("Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+                   "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif")
+
+
+def _figure_text(fig) -> str:
+    """Every piece of text drawn in a figure, with its wrapping undone."""
+    texts = list(fig.texts) + [t for ax in fig.axes for t in ax.texts]
+    return " ".join(" ".join(t.get_text().split()) for t in texts)
+
+
+def test_a_topographic_map_is_framed_on_the_square_asked_for_beyond_the_grid_edge():
+    """A window running off the edge of a grid used to be cut to the grid,
+    so the map came out narrower than the square asked for and off centre,
+    with nothing on it to say that ground was missing. The frame is the
+    square, the part the grid does not reach is left blank inside it, and
+    the share of it is worked out for the page to say."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping import area_window
+    from groundwater.mapping.regional import ADMIN_CREDIT
+    from groundwater.mapping.terrain import uncovered_percent
+
+    grid = _grid(n=300)                     # 12.2-11.9 W, 8.9-9.2 N
+    site = _site()
+    centre = area_window(site, 5.0)
+    assert centre is not None
+    dlon = 5.0 / (111.32 * math.cos(math.radians(centre.lat)))
+    dlat = 5.0 / 111.32
+    beyond = centre.lon + dlon - float(grid.lons.max())
+    assert 0.0 < beyond < dlon, "Kuntolo's square runs off the grid's east edge"
+
+    fig = plot_topographic_map(grid, site, radius_km=5.0)
+    try:
+        ax = fig.axes[0]
+        assert ax.get_xlim() == pytest.approx((centre.lon - dlon, centre.lon + dlon))
+        assert ax.get_ylim() == pytest.approx((centre.lat - dlat, centre.lat + dlat))
+        # the catalogue's credit line, with the cell size worked out on the
+        # ellipsoid, then the boundaries' credit
+        text = _figure_text(fig)
+        assert "Elevation: test grid. Cells about 110 by 111 m. " + ADMIN_CREDIT in text
+    finally:
+        plt.close(fig)
+
+    # the share beyond the edge, counted in the grid's own cells
+    share = uncovered_percent(grid, site, 5.0)
+    assert share == pytest.approx(100.0 * beyond / (2 * dlon), abs=2.0)
+    assert uncovered_percent(grid, None, 5.0) == 0.0, "the middle of the grid is covered"
+
+
+def test_a_topographic_map_of_tiles_is_drawn_from_the_window_read_and_framed_on_it():
+    """The map of GeoTIFF tiles is drawn from the window read for it, framed
+    on the whole of that window even where the tiles stop short of it, and
+    credited with the read's own credit line, Copernicus notice included."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping import read_elevation
+    from groundwater.mapping.regional import ADMIN_CREDIT
+
+    read = read_elevation([(n, DEM / n) for n in COPERNICUS_PAIR], None, 1.0, margin_km=0.0)
+    assert read.uncovered > 0, "the 1 km window runs off the 40-row tiles"
+    fig = plot_topographic_map(read)
+    try:
+        ax = fig.axes[0]
+        assert ax.get_xlim() == (read.grid.lons[0], read.grid.lons[-1])
+        assert ax.get_ylim() == (read.grid.lats[0], read.grid.lats[-1])
+        text = _figure_text(fig)
+        assert " ".join(f"{read.figure_credit} {ADMIN_CREDIT}".split()) in text
+        assert "Copernicus WorldDEM-30" in read.figure_credit
+        assert "One cell in" not in text, "read at the files' own spacing"
+    finally:
+        plt.close(fig)
+
+
+def test_a_topographic_map_wider_than_the_cap_says_it_draws_one_cell_in_several():
+    """A wide map reads every few cells rather than refusing, and the figure
+    says it is not an average of them."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import read_elevation
+
+    read = read_elevation([(n, DEM / n) for n in COPERNICUS_PAIR], None, 1.0, TerrainConfig(max_cells=1000),
+                          stride=0, margin_km=0.0)
+    assert read.plan is not None and read.plan.stride > 1
+    fig = plot_topographic_map(read)
+    try:
+        assert f"One cell in {read.plan.stride} each way is drawn, without averaging." in _figure_text(fig)
+    finally:
+        plt.close(fig)
 
 
 def test_a_topographic_map_of_nothing_but_voids_is_refused(tmp_path):
