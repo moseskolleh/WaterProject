@@ -41,6 +41,7 @@ from groundwater.mapping import (
     transverse_resistance_map,
     traverse_profile,
 )
+from groundwater.mapping.elevation import row_metric
 from groundwater.mapping.subsurface import PROTECTIVE_CLASSES
 from groundwater.mapping.terrain import hillshade, slope_percent
 from groundwater.models import LayeredModel, SiteMetadata, VESSounding
@@ -385,21 +386,64 @@ def test_a_window_that_the_model_does_not_cover_says_so():
         _grid().window(-5.0, 5.0, 10.0)
 
 
-def test_hillshade_lights_the_north_west_and_stays_in_range():
+def test_hillshade_lights_the_north_west_by_default():
+    """The default sun is in the north-west, so on a ridge running north and
+    south the slope facing west is the brighter. The shading used to
+    measure its azimuth a quarter turn out and lit 315 from the north-east,
+    where the east-facing slope was brighter and the relief read inverted;
+    the old test asked only that the two slopes differ. The values are the
+    cosine of incidence, 0 to 1, with no value on the edge of the grid."""
     grid = _grid()
     shade = hillshade(grid)
     assert shade.shape == grid.z.shape
-    assert shade.min() >= 0.0 and shade.max() <= 1.0
-    # a slope facing the sun is brighter than the one facing away
-    west_facing = shade[:, 10].mean()
-    east_facing = shade[:, -10].mean()
-    assert not math.isclose(west_facing, east_facing, rel_tol=1e-3)
+    assert np.nanmin(shade) >= 0.0 and np.nanmax(shade) <= 1.0
+    assert np.isnan(shade[0]).all() and np.isnan(shade[:, -1]).all()
+    west_facing = float(np.nanmean(shade[:, 10]))
+    east_facing = float(np.nanmean(shade[:, -10]))
+    assert west_facing > east_facing + 0.01
 
 
 def test_slope_is_reported_as_a_percentage_of_real_ground():
+    """A slope is a hundred times its tangent, measured on each row's cell
+    size in metres: a plane rising 3 m in every 100 m eastwards is 3%
+    wherever it is measured. The edge has no slope, so the largest is
+    taken over the cells that have one."""
     flat = _grid(relief=0.0)
-    assert slope_percent(flat).max() == pytest.approx(0.0, abs=1e-9)
-    assert slope_percent(_grid(relief=400.0)).max() > slope_percent(_grid()).max()
+    assert np.nanmax(slope_percent(flat)) == pytest.approx(0.0, abs=1e-9)
+    assert np.nanmax(slope_percent(_grid(relief=400.0))) > np.nanmax(slope_percent(_grid()))
+    grid = _grid()
+    dx = row_metric(grid.lons, grid.lats).dx
+    columns = np.arange(len(grid.lons), dtype=float)[None, :]
+    plane = ElevationGrid(grid.lons, grid.lats, 50.0 + 0.03 * columns * dx[:, None])
+    slope = slope_percent(plane)
+    assert np.isnan(slope[0]).all() and np.isnan(slope[:, 0]).all()
+    assert np.nanmin(slope) == pytest.approx(3.0, rel=1e-4)
+    assert np.nanmax(slope) == pytest.approx(3.0, rel=1e-4)
+
+
+def test_slope_is_nan_beside_a_void_rather_than_a_cliff():
+    """A void has no height, so the eight cells round it have no slope and
+    neither does the edge of the grid: they are NaN. The shading used to
+    stand the grid's mean height in for a void and drew a cliff round it,
+    and the slope took one-sided differences at the edge. Every other cell
+    keeps the slope it has without the void."""
+    grid = _grid()
+    clean = slope_percent(grid)
+    holed = _grid()
+    holed.z[30, 30] = np.nan
+    slope = slope_percent(holed)
+    shade = hillshade(holed)
+    beside = np.zeros(slope.shape, dtype=bool)
+    beside[29:32, 29:32] = True
+    edge = np.zeros(slope.shape, dtype=bool)
+    edge[[0, -1], :] = True
+    edge[:, [0, -1]] = True
+    for layer in (slope, shade):
+        assert np.isnan(layer[beside]).all()
+        assert np.isnan(layer[edge]).all()
+        assert np.isfinite(layer[~beside & ~edge]).all()
+    assert np.array_equal(slope[~beside & ~edge], clean[~beside & ~edge])
+    assert np.nanmax(slope) <= np.nanmax(clean)
 
 
 def test_topographic_map_renders_with_contours_and_spot_heights(tmp_path):
