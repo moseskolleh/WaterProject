@@ -14,19 +14,28 @@ bounded rule (geotiff._inflate_block), so a stream zlib refuses and the
 browser accepts, or the reverse, fails here by name. The parity suite holds
 the same on a committed set in Chromium (the ``inflate`` section of
 tests/webapp/parity.mjs), where DecompressionStream checks it a third way.
+
+The browser's GeoTIFF reader (C.geotiffLayout, C.blockRanges,
+C.decodeTiffBlock, C.readGeoTiff) is held here to the committed fixtures in
+tests/webapp/fixtures/dem, whose MANIFEST.json says what GDAL reads in each,
+and to files made in memory by the same builder for what no fixture holds.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import io
 import json
+import math
 import random
 import shutil
 import struct
 import subprocess
+import sys
 import zlib
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -549,3 +558,617 @@ def test_browser_packbits_matches_the_python_decoder(tmp_path):
     reading a QGIS "low compression" file differently."""
     runs = _both_engines_agree(tmp_path, "packbits", _packbits_cases())
     assert runs >= 100
+
+
+# ------------------------------------------------------- GeoTIFF reader
+
+DEM = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+
+# gwt-core.js kept up in one Node vm and asked one question a line, so that
+# a test can drive the reader step by step - the byte-range protocol above
+# all - as the page's own loop does, without starting Node for each step.
+# Numbers JSON cannot carry (NaN, the infinities, -0) go as strings.
+_READER = r"""
+import { readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+import vm from 'node:vm';
+const sandbox = vm.createContext({ console, structuredClone });
+for (const f of ['gwt-data.js', 'gwt-core.js']) {
+  vm.runInContext(readFileSync(process.argv[2] + '/' + f, 'utf8'), sandbox, { filename: f });
+}
+const C = sandbox.GWT.core;
+const Bytes = vm.runInContext('Uint8Array', sandbox);
+// bytes copied into the sandbox's own Uint8Array, holding only what is given
+const copy = (buffer) => { const out = new Bytes(buffer.length); out.set(buffer); return out; };
+const b64 = (typed) => Buffer.from(typed.buffer, typed.byteOffset, typed.byteLength).toString('base64');
+const plain = (key, v) => (typeof v !== 'number' ? v : Object.is(v, -0) ? '-0.0' :
+  Number.isFinite(v) ? v : String(v));
+const ops = {
+  // a file on disk (path), or one made in the test (data, base64)
+  read({ path, data, name }) {
+    const read = C.readGeoTiff(copy(path ? readFileSync(path) : Buffer.from(data, 'base64')), name);
+    return { layout: read.layout, rows: read.rows, cols: read.cols,
+             z: b64(read.z), x: b64(read.x), y: b64(read.y) };
+  },
+  layout({ name, size, chunks }) {
+    const got = C.geotiffLayout(name, size,
+      chunks.map(([offset, data]) => [offset, copy(Buffer.from(data, 'base64'))]));
+    return Array.isArray(got) ? { need: got } : { layout: got };
+  },
+  // a window read as the elevation layer reads one: the ranges blockRanges
+  // lists, each decoded from only its own bytes and written where it lands
+  window({ path, name, j0, j1, i0, i1, bounds }) {
+    const file = readFileSync(path);
+    const layout = C.geotiffLayout(name, file.length, [[0, copy(file)]]);
+    const ranges = C.blockRanges(layout, j0, j1, i0, i1);
+    const w = i1 - i0, values = new Float64Array((j1 - j0) * w), reasons = new Uint8Array(values.length);
+    reasons.fill(9);
+    const across = layout.tiled ? Math.ceil(layout.width / layout.blockWidth) : 1;
+    for (const [index, offset, length, rows] of ranges) {
+      const block = C.decodeTiffBlock(layout, index, copy(file.subarray(offset, offset + length)), rows, bounds);
+      const top = Math.floor(index / across) * layout.blockHeight + (rows ? rows[0] : 0);
+      const left = (index % across) * layout.blockWidth;
+      for (let r = 0; r < block.rows; r++) {
+        for (let c = 0; c < block.cols; c++) {
+          const j = top + r, i = left + c;
+          if (j < j0 || j >= j1 || i < i0 || i >= i1) continue;
+          values[(j - j0) * w + i - i0] = block.values[r * block.cols + c];
+          reasons[(j - j0) * w + i - i0] = block.reasons[r * block.cols + c];
+        }
+      }
+    }
+    return { ranges, values: b64(values), reasons: b64(reasons) };
+  },
+};
+for await (const line of createInterface({ input: process.stdin })) {
+  const request = JSON.parse(line);
+  let answer;
+  try {
+    answer = { ok: ops[request.op](request) };
+  } catch (e) {
+    answer = e && e.ident ? { refused: e.ident, code: e.code, values: e.values, message: e.message }
+      : { threw: String(e && e.stack || e) };
+  }
+  process.stdout.write(JSON.stringify(answer, plain) + '\n');
+}
+"""
+
+
+class _Reader:
+    """The browser's GeoTIFF reader in a Node vm, asked one question at a time."""
+
+    def __init__(self, tmp_path: Path):
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node is not installed; run `node --version` to check")
+        driver = tmp_path / "reader.mjs"
+        driver.write_text(_READER, encoding="utf-8")
+        self._node = subprocess.Popen([node, str(driver), str(JS)], stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, text=True, encoding="utf-8")
+
+    def ask(self, op: str, **request) -> dict:
+        assert self._node.stdin is not None and self._node.stdout is not None
+        self._node.stdin.write(json.dumps({"op": op, **request}) + "\n")
+        self._node.stdin.flush()
+        line = self._node.stdout.readline()
+        assert line, "the Node driver stopped; its error is above"
+        answer = json.loads(line)
+        assert "threw" not in answer, answer["threw"]
+        return answer
+
+    def close(self) -> None:
+        assert self._node.stdin is not None
+        self._node.stdin.close()
+        self._node.wait(timeout=60)
+
+
+@pytest.fixture
+def reader(tmp_path):
+    browser = _Reader(tmp_path)
+    yield browser
+    browser.close()
+
+
+_MANIFEST = json.loads((DEM / "MANIFEST.json").read_text(encoding="ascii"))
+_FILES = _MANIFEST["files"]
+_DTYPES = {(1, 8): "u1", (2, 8): "i1", (1, 16): "u2", (2, 16): "i2",
+           (1, 32): "u4", (2, 32): "i4", (3, 32): "f4", (3, 64): "f8"}
+# MANIFEST.json's layout facts and the browser's names for them
+_FACTS = {"byte_order": "byteOrder", "bigtiff": "bigtiff", "width": "width", "height": "height",
+          "tiled": "tiled", "block_width": "blockWidth", "block_height": "blockHeight",
+          "rows_per_strip": "rowsPerStrip", "compression": "compression", "predictor": "predictor",
+          "sample_format": "sampleFormat", "bits": "bits", "model_type": "modelType",
+          "raster_type": "rasterType", "epsg": "epsg"}
+# the words a refusal is filled with, where the file decides them (addendum A2)
+_REFUSED_WITH = {
+    "refuse_truncated.tif": {"part": "image directory"},
+    "refuse_truncated_data.tif": {"part": "data block 4"},
+    "refuse_bad_adler.tif": {"n": 1, "bytes": 96},
+    "refuse_zero_rows_per_strip.tif": {"tag": "RowsPerStrip"},
+    "refuse_zero_tile_width.tif": {"tag": "TileWidth"},
+    "refuse_jpeg.tif": {"method": "JPEG"},
+    "refuse_two_bands.tif": {"n": 2},
+    "nodata_abc.tif": {"text": "abc"},
+}
+
+
+def _number(value) -> float:
+    """A number as the driver sends it, as a float: JSON writes a whole one as
+    an integer, and the driver NaN, the infinities and -0 as strings."""
+    return float(value)
+
+
+def _bits(value) -> bytes:
+    """A number's float64 bits, so that -0, NaN and the infinities compare as they are."""
+    return struct.pack("<d", float(value))
+
+
+def _floats(b64: str):
+    import numpy as np
+
+    return np.frombuffer(base64.b64decode(b64), "<f8")
+
+
+def _gdal_samples(entry: dict, layout: dict, z_north) -> bytes:
+    """The file's samples as MANIFEST.json's digest holds them (GDAL's view),
+    rebuilt from the reader's: each void back to what the file stores there - 0
+    in a sparse block, as GDAL reads one without a no-data value, else the
+    no-data value, else NaN - and each -0 the file stores back from the +0 the
+    reader made of it."""
+    import numpy as np
+
+    native = z_north.copy()
+    sparse = np.zeros(native.shape, dtype=bool)
+    across = -(-layout["width"] // layout["blockWidth"]) if layout["tiled"] else 1
+    for index in entry.get("sparse_blocks", []):
+        ty, tx = divmod(index, across)
+        sparse[ty * layout["blockHeight"]:(ty + 1) * layout["blockHeight"],
+               tx * layout["blockWidth"]:(tx + 1) * layout["blockWidth"]] = True
+    voids = np.isnan(native)
+    native[voids & sparse] = 0.0
+    if layout["nodata"] is not None:
+        native[voids & ~sparse] = _number(layout["nodata"])
+    for r, c in entry.get("negative_zero_cells", []):
+        assert native[r, c] == 0 and not np.signbit(native[r, c]), f"-0 at ({r}, {c}) was kept"
+        native[r, c] = -0.0
+    dtype = _DTYPES[(layout["sampleFormat"], layout["bits"])]
+    return native.astype("<" + dtype).tobytes()
+
+
+def test_the_browser_reader_reads_every_committed_fixture_as_the_manifest_says(reader):
+    """C.readGeoTiff on every file in tests/webapp/fixtures/dem: read or refused as
+    MANIFEST.json says, a refusal with the sentence groundwater.text writes for the
+    same values; the layout facts; the cell centres to the bit; every sample as
+    GDAL reads the file (but for sparse blocks and -0, which the reader voids and
+    canonicalises on purpose); the axes as start + index * step; and the cells the
+    per-sample rule voids under the configured plausibility bounds. Prevents the
+    browser reading a fixture otherwise than GDAL does - a byte-order, predictor or
+    half-cell slip shows up as a wrong digest or centre - and a refusal carrying
+    another sentence, or other words, than the catalogue's."""
+    import numpy as np
+
+    from groundwater.config import TerrainConfig
+    from groundwater.text import phrase
+
+    terrain = TerrainConfig()
+    bounds = [terrain.implausible_below_m, terrain.implausible_above_m]
+    assert len(_FILES) >= 60
+    for name, entry in sorted(_FILES.items()):
+        answer = reader.ask("read", path=str(DEM / name), name=name)
+        if entry["raw"] != "read":
+            assert answer.get("refused") == entry["raw"], f"{name}: {answer}"
+            values = answer["values"]
+            assert values["file"] == name, name
+            assert answer["code"] == entry["raw"].removeprefix("terrain."), name
+            assert answer["message"] == phrase(entry["raw"], **values), name
+            for key, value in _REFUSED_WITH.get(name, {}).items():
+                assert values[key] == value, f"{name}: {key} is {values[key]!r}, not {value!r}"
+            continue
+        assert "ok" in answer, f"{name}: {answer}"
+        read = answer["ok"]
+        layout = read["layout"]
+        for fact, key in _FACTS.items():
+            if fact in entry:
+                assert layout[key] == entry[fact], f"{name}: {key} is {layout[key]!r}, not {entry[fact]!r}"
+        assert layout["ifdIndex"] == entry.get("ifd_index", 0), name
+        assert layout["name"] == name and layout["size"] == (DEM / name).stat().st_size, name
+        assert layout["predictorApplied"] == (entry["predictor"] != 1 and entry["compression"] in (5, 8, 32946))
+        assert layout["hasNodataTag"] == ("nodata" in entry), name
+        if "nodata" not in entry or entry["nodata_value"] in (None, "no cell"):
+            assert layout["nodata"] is None, name
+        else:
+            assert _bits(_number(layout["nodata"])) == _bits(entry["nodata_value"]), name
+        for key in ("x0", "y0", "sx", "sy"):
+            assert repr(_number(layout[key])) == repr(entry[key]), (
+                f"{name}: {key} is {layout[key]!r}, not {entry[key]!r}")
+
+        rows, cols = read["rows"], read["cols"]
+        assert (rows, cols) == (entry["height"], entry["width"]), name
+        z_north = _floats(read["z"]).reshape(rows, cols)[::-1]
+        digest = hashlib.sha256(_gdal_samples(entry, layout, z_north)).hexdigest()
+        assert digest == entry["samples_sha256"], f"{name}: the samples differ from GDAL's"
+        x0, y0, sx, sy = (_number(layout[k]) for k in ("x0", "y0", "sx", "sy"))
+        assert _floats(read["x"]).tobytes() == np.array([x0 + i * sx for i in range(cols)]).tobytes(), name
+        assert _floats(read["y"]).tobytes() == np.array(
+            [y0 - (rows - 1 - r) * sy for r in range(rows)]).tobytes(), name
+
+        window = reader.ask("window", path=str(DEM / name), name=name, j0=0, j1=rows, i0=0, i1=cols,
+                            bounds=bounds)["ok"]
+        why = np.frombuffer(base64.b64decode(window["reasons"]), np.uint8)
+        voids = {"no_data": int((why == 1).sum()), "implausible": int((why == 2).sum())}
+        assert voids == entry.get("voids", {"no_data": 0, "implausible": 0}), f"{name}: {voids}"
+
+
+def _chunks(data: bytes, ranges) -> list:
+    return [[offset, base64.b64encode(data[offset:offset + length]).decode("ascii")]
+            for offset, length in ranges]
+
+
+def _entry(data: bytes, tag: int) -> int:
+    """Where the first directory's entry for ``tag`` starts, in a classic TIFF."""
+    order = "<" if data[:2] == b"II" else ">"
+    ifd = struct.unpack_from(order + "I", data, 4)[0]
+    for k in range(struct.unpack_from(order + "H", data, ifd)[0]):
+        if struct.unpack_from(order + "H", data, ifd + 2 + 12 * k)[0] == tag:
+            return ifd + 2 + 12 * k
+    raise KeyError(tag)
+
+
+def _patched(data: bytes, at: int, raw: bytes) -> bytes:
+    return data[:at] + raw + data[at + len(raw):]
+
+
+@cache
+def _builder():
+    """tests/webapp/fixtures/make_dem_fixture.py, to make files in memory that no
+    fixture holds, with the samples it meant them to hold."""
+    name = "make_dem_fixture"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, DEM.parent / "make_dem_fixture.py")
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module   # a dataclass looks its module up while the class is made
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+def _covered(ranges, offset: int, length: int) -> bool:
+    return any(o <= offset and offset + length <= o + n for o, n in ranges)
+
+
+def test_the_browser_layout_asks_only_for_the_bytes_it_still_needs(reader):
+    """C.geotiffLayout driven as the page drives it, from nothing, a round at a
+    time, given exactly the ranges it names and nothing more, on every committed
+    fixture. Each round names a sorted, de-duplicated list of ranges inside the
+    file that no chunk it already has covers, and never a byte of image data; the
+    last round ends on exactly the layout (or the refusal) the whole file gives at
+    once. The same holds when each range is read rounded out to 64 KiB, as the
+    Python driver reads; and a range split across two chunks is asked for again
+    whole. Prevents a reader that asks again for what it has, asks for tile data
+    it does not need, never settles on a directory it cannot see, or ends on a
+    layout other than the one the whole file gives."""
+    for name in sorted(_FILES):
+        data = (DEM / name).read_bytes()
+        size = len(data)
+        whole = reader.ask("layout", name=name, size=size, chunks=_chunks(data, [(0, size)]))
+        assert "need" not in whole.get("ok", {}), name
+        blocks = []
+        if "ok" in whole:
+            layout = whole["ok"]["layout"]
+            blocks = [(o, n) for o, n in zip(layout["offsets"], layout["byteCounts"], strict=True) if n]
+        for rounding in (1, 65536):
+            have: list[tuple[int, int]] = []
+            for _ in range(140):
+                answer = reader.ask("layout", name=name, size=size, chunks=_chunks(data, have))
+                need = answer.get("ok", {}).get("need")
+                if need is None:
+                    break
+                if not have:
+                    assert need == [[0, 16]], name
+                assert need == [list(r) for r in sorted({tuple(r) for r in need})], f"{name}: {need}"
+                for offset, length in need:
+                    assert length > 0 and offset >= 0 and offset + length <= size, f"{name}: {need}"
+                    assert not _covered(have, offset, length), f"{name}: asked again for {offset}+{length}"
+                    # the 16-byte header read may run into data that starts at byte 8
+                    for o, n in blocks if (offset, length) != (0, 16) else []:
+                        assert offset + length <= o or o + n <= offset, (
+                            f"{name}: asked for image data at {offset}+{length}")
+                    start = offset - offset % rounding
+                    end = min(size, -(-(offset + length) // rounding) * rounding)
+                    have.append((start, end - start))
+            else:
+                pytest.fail(f"{name}: the layout still asks for bytes after 140 rounds")
+            assert answer == whole, f"{name}: driven round by round it ends as {answer}, not {whole}"
+
+    # a range must lie in one chunk: the first directory split in two is asked for again
+    name = "be_lzw_p2_int16.tif"
+    data = (DEM / name).read_bytes()
+    ifd = struct.unpack_from(">I", data, 4)[0]
+    halves = [(0, ifd + 20), (ifd + 20, len(data) - ifd - 20)]
+    need = reader.ask("layout", name=name, size=len(data), chunks=_chunks(data, halves))["ok"]["need"]
+    assert any(o < ifd + 20 < o + n for o, n in need), need
+
+    # two tags whose values lie in the same bytes: the range is asked for once
+    offsets_at, counts_at = _entry(data, 273), _entry(data, 279)
+    data = _patched(data, counts_at + 8, data[offsets_at + 8:offsets_at + 12])
+    entries = struct.unpack_from(">H", data, ifd)[0]
+    need = reader.ask("layout", name=name, size=len(data),
+                      chunks=_chunks(data, [(0, 16), (ifd, 2 + 12 * entries + 4)]))["ok"]["need"]
+    shared = [struct.unpack_from(">I", data, offsets_at + 8)[0], 12]
+    assert need.count(shared) == 1 and len({tuple(r) for r in need}) == len(need) >= 3, need
+
+
+# fixtures read in windows: tiled and striped, compressed and not, sparse
+# tiles, both byte orders and an image directory at the end of the file
+_WINDOWED = ["Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif", "sparse_f32.tif",
+             "bigtiff_deflate_p2_f32.tif", "nodata_neg_inf.tif", "le_lzw_p3_f64.tif",
+             "be_lzw_p2_int16.tif", "transform_f32.tif", "inf_f32.tif", "utm_strip.tif",
+             "pred2_none.tif", "packbits_u16.tif", "nodata_empty.tif", "padded_last_strip.tif",
+             "overlap_south_disagrees.tif"]
+
+
+def _windows(rows: int, cols: int) -> list[tuple[int, int, int, int]]:
+    """Windows (j0, j1, i0, i1) of every shape a reader is asked for: all of it,
+    one cell, one row, one column, across block edges, inside one strip, the
+    corners."""
+    out = {(0, rows, 0, cols), (0, 1, 0, 1), (rows - 1, rows, cols - 1, cols),
+           (rows // 2, rows // 2 + 1, 0, cols), (0, rows, cols // 2, cols // 2 + 1),
+           (1, rows - 1, 1, cols - 1), (3, min(rows, 10), 2, min(cols, 19)),
+           (rows // 3, 2 * rows // 3 + 1, cols // 4, 3 * cols // 4 + 1),
+           (min(rows - 1, 15), min(rows, 17), min(cols - 1, 15), min(cols, 17))}
+    return sorted(w for w in out if w[0] < w[1] and w[2] < w[3])
+
+
+def test_the_browser_reader_decodes_only_the_blocks_a_window_meets(reader):
+    """C.blockRanges and C.decodeTiffBlock on windows of tiled and striped
+    fixtures: the blocks listed are exactly those the window meets, in the file's
+    order; an uncompressed strip only part of which is wanted is read for those
+    rows alone (offset and length to the byte), and every other block whole; and
+    the window, put together from those bytes only, equals the whole read's slice
+    to the bit, with the reasons of the per-sample rule, with and without the
+    plausibility bounds. Prevents a window that decodes blocks it does not need,
+    misses one it does, reads a partial strip from the wrong place, or comes out
+    other than the same cells read whole."""
+    import numpy as np
+
+    from groundwater.config import TerrainConfig
+
+    terrain = TerrainConfig()
+    low, high = terrain.implausible_below_m, terrain.implausible_above_m
+    partial = 0
+    for name in _WINDOWED:
+        whole = reader.ask("read", path=str(DEM / name), name=name)["ok"]
+        layout, rows, cols = whole["layout"], whole["rows"], whole["cols"]
+        z_north = _floats(whole["z"]).reshape(rows, cols)[::-1]
+        bw, bh, size = layout["blockWidth"], layout["blockHeight"], layout["bits"] // 8
+        across = -(-cols // bw) if layout["tiled"] else 1
+        for j0, j1, i0, i1 in _windows(rows, cols):
+            for bounds in (None, [low, high]):
+                got = reader.ask("window", path=str(DEM / name), name=name, j0=j0, j1=j1, i0=i0, i1=i1,
+                                 bounds=bounds)["ok"]
+                where = f"{name} rows {j0}:{j1} columns {i0}:{i1} bounds {bounds}"
+                meets = [ty * across + tx for ty in range(j0 // bh, (j1 - 1) // bh + 1)
+                         for tx in range(i0 // bw, (i1 - 1) // bw + 1)]
+                assert [r[0] for r in got["ranges"]] == meets, where
+                for index, offset, length, part in got["ranges"]:
+                    top = (index // across) * bh
+                    held = min(bh, rows - top)
+                    r0, r1 = max(j0 - top, 0), min(j1 - top, held)
+                    sparse = layout["offsets"][index] == 0 and layout["byteCounts"][index] == 0
+                    if layout["compression"] == 1 and not layout["tiled"] and (r0, r1) != (0, held):
+                        partial += 1
+                        assert part == [r0, r1], where
+                        assert (offset, length) == ((0, 0) if sparse else (
+                            layout["offsets"][index] + r0 * cols * size, (r1 - r0) * cols * size)), where
+                    else:
+                        assert part is None, where
+                        assert (offset, length) == (layout["offsets"][index], layout["byteCounts"][index]), where
+                values = _floats(got["values"]).reshape(j1 - j0, i1 - i0)
+                why = np.frombuffer(base64.b64decode(got["reasons"]), np.uint8).reshape(values.shape)
+                expected = z_north[j0:j1, i0:i1].copy()
+                reasons = np.where(np.isnan(expected), 1, 0).astype(np.uint8)
+                if bounds:
+                    odd = ~np.isnan(expected) & (np.isinf(expected) | (expected < low) | (expected > high))
+                    reasons[odd] = 2
+                    expected[odd] = np.nan
+                assert why.tobytes() == reasons.tobytes(), where
+                assert values.tobytes() == expected.tobytes(), where
+    assert partial >= 20
+
+
+def _spread(rng: random.Random, kind: str, width: int, height: int) -> list[list]:
+    """Samples of ``kind`` over its whole range, so that every carry and every
+    byte of every word is exercised."""
+    if kind[0] == "f":
+        return [[rng.uniform(-500.0, 3000.0) for _ in range(width)] for _ in range(height)]
+    bits = int(kind[1:])
+    low, high = (0, (1 << bits) - 1) if kind[0] == "u" else (-(1 << (bits - 1)), (1 << (bits - 1)) - 1)
+    return [[rng.randint(low, high) for _ in range(width)] for _ in range(height)]
+
+
+def test_the_browser_reader_undoes_both_predictors_on_every_sample_type_byte_order_and_layout(reader):
+    """C.readGeoTiff on files the fixture builder makes in memory: horizontal
+    differencing on 8-, 16-, 32- and 64-bit words (float bit patterns included,
+    the 64-bit ones added as two 32-bit halves with the carry taken across) and
+    the floating-point predictor on float32 and float64, each in both byte
+    orders, under LZW and DEFLATE, in tiles with padding and in strips, classic
+    and BigTIFF; and a Predictor tag left alone without LZW or DEFLATE. Every
+    sample must be the one the builder wrote. Prevents a predictor undone in the
+    host's byte order instead of the file's, a carry lost between the halves of a
+    64-bit word - no committed fixture differences 64-bit words - or a predictor
+    applied where libtiff and GDAL ignore it."""
+    import numpy as np
+
+    make = _builder()
+    rng = random.Random(4101)
+    georef = make.Georef(-11.0, 8.0, 1 / 1200, 1 / 1200, raster=1)
+    runs = []
+    for kind in ("u8", "i8", "u16", "i16", "u32", "i32", "f32", "f64"):
+        for order in "<>":
+            for compression in (5, 8):
+                for layout in ({"tile": (16, 16)}, {"rows_per_strip": 5}):
+                    for predictor in (2, 3) if kind[0] == "f" else (2,):
+                        runs.append((kind, order, compression, predictor, layout, len(runs) % 3 == 0))
+            for compression in (1, 32773):
+                runs.append((kind, order, compression, 2, {"rows_per_strip": 5}, False))
+    for kind, order, compression, predictor, layout, bigtiff in runs:
+        made = make.single("made.tif", "", _spread(rng, kind, 37, 23), kind, georef, order=order,
+                           bigtiff=bigtiff, compression=compression, predictor=predictor, **layout)
+        where = f"{kind} {order} compression {compression} predictor {predictor} {layout} bigtiff {bigtiff}"
+        read = reader.ask("read", data=base64.b64encode(made.data).decode("ascii"), name=made.name)["ok"]
+        assert read["layout"]["predictorApplied"] == (compression in (5, 8)), where
+        z_north = _floats(read["z"]).reshape(23, 37)[::-1]
+        dtype = _DTYPES[(read["layout"]["sampleFormat"], read["layout"]["bits"])]
+        assert z_north.astype(np.dtype(dtype).newbyteorder("<")).tobytes() == made.samples, where
+    assert len(runs) >= 90
+
+
+def test_the_browser_reader_refuses_each_damaged_or_unsupported_header_with_its_sentence(reader):
+    """C.readGeoTiff and C.geotiffLayout on files the fixture builder makes in
+    memory, each broken or unusual in one way no committed fixture is: every
+    header check, sample type, compression and predictor rule, each kind of
+    damaged entry, the 2^53 limit, the 64-directory walk, the 64 MiB block limit,
+    the georeferencing forms GDAL takes or refuses, and the no-data and GDAL
+    scale texts. Each is refused with its sentence and the words addendum A2
+    gives it, or read with the layout it should have. Prevents the reader
+    misreading a file it should refuse, refusing one GDAL reads, or naming the
+    wrong tag, method or code in the sentence the operator sees."""
+    from groundwater.text import phrase
+
+    make = _builder()
+    sx = 1 / 1200
+    georef = make.Georef(-12.2, 7.2, sx, sx, raster=1)
+    small = make.metres(make.patch(8, 6, 41))
+    whole = make.whole_metres(make.patch(8, 6, 41))
+    flt_max = 3.4028234663852886e38
+
+    def tif(rows=small, kind="f32", **options) -> bytes:
+        return make.single("case.tif", "", rows, kind, georef, **options).data
+
+    def chain(overviews: int) -> bytes:
+        """``overviews`` reduced images ahead of the full one."""
+        ifds = []
+        for _ in range(overviews):
+            reduced = make.image([[1.0, 2.0], [3.0, 4.0]], "f32", "<")
+            reduced.tags[make.NEW_SUBFILE_TYPE] = (make.LONG, [1])
+            ifds.append(reduced)
+        full = make.image(small, "f32", "<")
+        full.tags.update(georef.tags())
+        return make.assemble("<", ifds + [full])
+
+    plain, big = tif(rows_per_strip=4), tif(bigtiff=True)
+    counts_at = _entry(plain, 279)
+    matrix = [sx, 0.0, 0.0, -12.2, 0.0, -sx, 0.0, 7.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    keys = make.GEO_KEY_DIRECTORY
+
+    def items(*pairs):
+        return make.metadata_xml(*((role.upper(), role, text) for role, text in pairs))
+
+    cases = [
+        ("a ZIP file", b"PK\x03\x04" + bytes(60), "terrain.not_tiff", {}),
+        ("TIFF version 44", _patched(plain, 2, b"\x2c\x00"), "terrain.not_tiff", {}),
+        ("BigTIFF with 4-byte offsets", _patched(big, 4, b"\x04\x00"), "terrain.not_tiff", {}),
+        ("a first directory at 2^53", _patched(big, 8, struct.pack("<Q", 1 << 53)), "terrain.too_large", {}),
+        ("a first directory at 2^53 - 1", _patched(big, 8, struct.pack("<Q", (1 << 53) - 1)),
+         "terrain.ends_early", {"part": "image directory"}),
+        ("ten bytes", plain[:10], "terrain.ends_early", {"part": "file header"}),
+        ("no directory at all", _patched(plain, 4, bytes(4)), "terrain.no_full_image", {}),
+        ("63 overviews, then the image", chain(63), "read", {"ifdIndex": 63}),
+        ("64 overviews, then the image", chain(64), "terrain.no_full_image", {}),
+        ("SampleFormat 4", tif(tags={make.SAMPLE_FORMAT: (make.SHORT, [4])}),
+         "terrain.sample_type", {"bits": 32, "kind": "SampleFormat 4"}),
+        ("12-bit samples", tif(whole, "u16", tags={make.BITS_PER_SAMPLE: (make.SHORT, [12])}),
+         "terrain.sample_type", {"bits": 12, "kind": "unsigned integer"}),
+        ("signed 64-bit samples", tif(tags={make.BITS_PER_SAMPLE: (make.SHORT, [64]),
+                                            make.SAMPLE_FORMAT: (make.SHORT, [2])}),
+         "terrain.sample_type", {"bits": 64, "kind": "signed integer"}),
+        ("Zstandard", tif(tags={make.COMPRESSION: (make.SHORT, [50000])}),
+         "terrain.compression", {"method": "Zstandard"}),
+        ("compression 9", tif(tags={make.COMPRESSION: (make.SHORT, [9])}),
+         "terrain.compression", {"method": "TIFF method 9"}),
+        ("LZW with predictor 4", tif(compression=5, tags={make.PREDICTOR: (make.SHORT, [4])}),
+         "terrain.predictor", {"code": 4}),
+        ("LZW integers with predictor 3", tif(whole, "i16", compression=5, tags={make.PREDICTOR: (make.SHORT, [3])}),
+         "terrain.predictor", {"code": 3}),
+        ("no compression with predictor 7", tif(tags={make.PREDICTOR: (make.SHORT, [7])}),
+         "read", {"predictor": 7, "predictorApplied": False}),
+        ("RowsPerStrip that disagrees with the strips",
+         tif(rows_per_strip=4, tags={make.ROWS_PER_STRIP: (make.SHORT, [2])}),
+         "terrain.bad_tag", {"tag": "StripOffsets"}),
+        ("one byte count short", _patched(plain, counts_at + 4, struct.pack("<I", 1)),
+         "terrain.bad_tag", {"tag": "StripByteCounts"}),
+        ("ImageWidth 0", tif(tags={make.IMAGE_WIDTH: (make.SHORT, [0])}), "terrain.bad_tag", {"tag": "ImageWidth"}),
+        ("TileLength 0", tif(tile=(16, 16), tags={make.TILE_LENGTH: (make.SHORT, [0])}),
+         "terrain.bad_tag", {"tag": "TileLength"}),
+        ("a negative RowsPerStrip", tif(tags={make.ROWS_PER_STRIP: (make.SSHORT, [-1])}),
+         "terrain.bad_tag", {"tag": "RowsPerStrip"}),
+        ("Compression written as text", tif(tags={make.COMPRESSION: (make.ASCII, b"1\x00")}),
+         "terrain.bad_tag", {"tag": "Compression"}),
+        ("PlanarConfiguration of an unknown type", tif(tags={make.PLANAR_CONFIG: (13, b"\x01\x00\x00\x00")}),
+         "terrain.bad_tag", {"tag": "PlanarConfiguration"}),
+        ("NewSubfileType of an unknown type", tif(tags={make.NEW_SUBFILE_TYPE: (13, b"\x01\x00\x00\x00")}),
+         "read", {"ifdIndex": 0}),
+        ("GeoKeyDirectory version 2", tif(tags={keys: (make.SHORT, [2, 1, 0, 0])}),
+         "terrain.bad_tag", {"tag": "GeoKeyDirectory"}),
+        ("GeoKeyDirectory short of its keys", tif(tags={keys: (make.SHORT, [1, 1, 0, 2, 1024, 0, 1, 2])}),
+         "terrain.bad_tag", {"tag": "GeoKeyDirectory"}),
+        ("a transformation of 15 values", tif(tags={make.MODEL_TRANSFORMATION: (make.DOUBLE, matrix[:15])},
+                                              drop=(make.MODEL_PIXEL_SCALE, make.MODEL_TIEPOINT)),
+         "terrain.bad_tag", {"tag": "ModelTransformation"}),
+        ("a transformation flipped north to south",
+         tif(tags={make.MODEL_TRANSFORMATION: (make.DOUBLE, matrix[:5] + [sx] + matrix[6:])},
+             drop=(make.MODEL_PIXEL_SCALE, make.MODEL_TIEPOINT)), "terrain.rotated", {}),
+        ("a negative pixel scale", tif(tags={make.MODEL_PIXEL_SCALE: (make.DOUBLE, [sx, -sx, 0.0])}),
+         "terrain.rotated", {}),
+        ("a scale and no tiepoint", tif(drop=(make.MODEL_TIEPOINT,)), "terrain.no_georeference", {}),
+        ("one tiepoint and no scale", tif(drop=(make.MODEL_PIXEL_SCALE,)), "terrain.no_georeference", {}),
+        ("a transformation beside several tiepoints, as GDAL reads it",
+         tif(tags={make.MODEL_TRANSFORMATION: (make.DOUBLE, matrix),
+                   make.MODEL_TIEPOINT: (make.DOUBLE, [0.0, 0.0, 0.0, -12.2, 7.2, 0.0,
+                                                       7.0, 5.0, 0.0, -12.19, 7.19, 0.0])},
+             drop=(make.MODEL_PIXEL_SCALE,)),
+         "read", {"x0": (-12.2 - 0 * sx) + 0.5 * sx, "y0": (7.2 + 0 * sx) - 0.5 * sx}),
+        ("blocks of 128 MiB", tif(small, "f64", tile=(16, 16), tags={make.TILE_WIDTH: (make.SHORT, [4096]),
+                                                                    make.TILE_LENGTH: (make.SHORT, [4096])}),
+         "terrain.block_too_large", {"mb": 128}),
+        ("GDAL scale 1.0 and offset -0", tif(metadata=items(("scale", " 1.0 "), ("offset", "-0"))), "read", {}),
+        ("GDAL offset 0.5", tif(metadata=items(("scale", "1"), ("offset", "0.5"))), "terrain.scaled", {}),
+        ("GDAL scale nan", tif(metadata=items(("scale", "nan"),)), "terrain.scaled", {}),
+        ("an empty GDAL scale", tif(metadata=items(("scale", ""),)), "terrain.scaled", {}),
+    ]
+    for text, kind, nodata in [
+        ("1.5", "i16", None), ("70000", "i16", None), (" -32768\t", "i16", -32768.0), ("-0", "i16", 0.0),
+        ("-1", "u8", None), ("1e39", "f32", flt_max), ("-1e39", "f32", -flt_max), ("Infinity", "f32", math.inf),
+        ("+NaN", "f32", math.nan), ("0.1", "f32", struct.unpack("<f", struct.pack("<f", 0.1))[0]),
+        ("0.1", "f64", 0.1), ("1e400", "f64", math.inf), ("-0", "f64", -0.0), (" \n", "f32", None),
+    ]:
+        rows = whole if kind[0] != "f" else small
+        if kind == "u8":
+            rows = [[v % 256 for v in row] for row in whole]
+        cases.append((f"no-data {text!r} on {kind}", tif(rows, kind, nodata=text), "read",
+                      {"nodata": nodata, "hasNodataTag": True}))
+    for text, trimmed in [("0x10", "0x10"), ("1e", "1e"), (" 5 apples\n", "5 apples"), ("--1", "--1")]:
+        cases.append((f"no-data {text!r}", tif(nodata=text), "terrain.nodata_unreadable", {"text": trimmed}))
+
+    for what, data, outcome, facts in cases:
+        answer = reader.ask("read", data=base64.b64encode(data).decode("ascii"), name="case.tif")
+        if outcome != "read":
+            assert answer.get("refused") == outcome, f"{what}: {answer}"
+            assert answer["message"] == phrase(outcome, **answer["values"]), what
+            assert answer["values"] == {"file": "case.tif", **facts}, f"{what}: {answer['values']}"
+            continue
+        assert "ok" in answer, f"{what}: {answer}"
+        layout = answer["ok"]["layout"]
+        for key, value in facts.items():
+            if isinstance(value, float) or key == "nodata":
+                assert (layout[key] is None) == (value is None), f"{what}: {key} is {layout[key]!r}"
+                if value is not None:
+                    assert _bits(_number(layout[key])) == _bits(value), f"{what}: {key} is {layout[key]!r}"
+            else:
+                assert layout[key] == value, f"{what}: {key} is {layout[key]!r}, not {value!r}"
+
+    # a block of exactly 64 MiB is not too large: the limit is on anything more
+    data = tif(small, "f64", tile=(16, 16), tags={make.TILE_WIDTH: (make.SHORT, [2048]),
+                                                 make.TILE_LENGTH: (make.SHORT, [4096])})
+    answer = reader.ask("layout", name="case.tif", size=len(data), chunks=_chunks(data, [(0, len(data))]))
+    assert answer["ok"]["layout"]["blockWidth"] == 2048, answer
