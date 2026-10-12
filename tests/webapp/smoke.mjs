@@ -4022,6 +4022,286 @@ await withPage(async (page, base, consoleErrors) => {
       f.painted.length === f.want.length && f.painted.every((share) => share > 0.6)),
     JSON.stringify(terrainFigures.map(([name, f]) => [name, f.png, f.painted])));
 
+  // The Topography and terrain card on Site & maps (PLAN.md step 4.1), at
+  // #/site/terrain. Files dropped on it or picked are opened for their
+  // layout at once, so a refusal or a question about a file's source shows
+  // beside its name in the engine's words. "Analyse the terrain" plans the
+  // window on the page, reads the blocks it meets in the reads
+  // C.elevationBlockRanges gives, the edge blocks of a missing tile
+  // included, each block cut out with a buffer of its own, and has the
+  // worker read the window: the read report on the card is the one the
+  // engine writes for the same files read whole with the same settings. The
+  // site is put on the shared edge of the committed Copernicus pair, 8.995 N,
+  // 11.0 W, and then on the corner of the holes_sea tiles, 8 N, 12 W, where
+  // the fourth tile is missing and taken as sea.
+  const dem = async (name) => ({ name, mimeType: 'image/tiff',
+    buffer: await readFile(new URL('./fixtures/dem/' + name, import.meta.url)) });
+  const demSet = (names) => Promise.all(names.map(dem));
+  const pair = await demSet(['Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif',
+    'Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif']);
+  const odd = await demSet(['refuse_jpeg.tif', 'n08w011.tif']);
+  const holes = await demSet(['holes_N08W012.tif', 'holes_sea_N08W013.tif', 'holes_sea_N07W012.tif']);
+  /* the files as page.evaluate can carry them */
+  const carried = (files) => files.map((f) => ({ name: f.name, bytes: Array.from(f.buffer) }));
+  const keptSite = await page.evaluate(() => {
+    const store = window.GWT.app.store;
+    const kept = { easting: store.get('site.easting'), northing: store.get('site.northing'),
+      utm_zone: store.get('site.utm_zone') };
+    store.set('site.easting', 280126.0);
+    store.set('site.northing', 994900.0);
+    store.set('site.utm_zone', 29);
+    /* what the page reads of the files, and the blocks it hands the worker */
+    window.__slices = [];
+    window.__slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (start, end, type) {
+      if (this instanceof File) window.__slices.push([this.name, start, end]);
+      return window.__slice.call(this, start, end, type);
+    };
+    const engine = window.GWT.engine;
+    window.__readElevation = engine.readElevation;
+    engine.readElevation = function (plan, blocks, cfg, options) {
+      window.__sent = blocks.map((b) => (b ? [b.byteOffset, b.byteLength, b.buffer.byteLength] : null));
+      return window.__readElevation.call(this, plan, blocks, cfg, options);
+    };
+    location.hash = '#/site/terrain';
+    return kept;
+  });
+  await page.waitForFunction(() => {
+    const node = document.querySelector('#page-host .item-target');
+    return node && node.getAttribute('data-item') === 'terrain';
+  });
+  const terrainCard = await page.evaluate(async () => {
+    const arrived = () => {
+      const node = document.querySelector('#page-host .item-target');
+      const top = node ? node.getBoundingClientRect().top : Infinity;
+      return top >= 0 && top < window.innerHeight / 2;
+    };
+    for (let waited = 0; waited < 5000 && !arrived(); waited += 100) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const titles = Array.from(document.querySelectorAll('#page-host .card-title'))
+      .map((t) => t.textContent);
+    const at = titles.indexOf('Topography and terrain');
+    return { nav: window.GWT.app.store.get('nav'), hash: location.hash, inView: arrived(),
+      title: document.querySelector('#page-host .item-target .card-title').textContent,
+      before: titles[at - 1], after: titles[at + 1] };
+  });
+  check('terrain card: #/site/terrain opens Site & maps on the Topography and terrain card',
+    terrainCard.nav === 'site' && terrainCard.hash === '#/site/terrain' &&
+    terrainCard.title === 'Topography and terrain' && terrainCard.inView, JSON.stringify(terrainCard));
+  check('terrain card: it sits between Geology and aquifers and the Interactive map',
+    terrainCard.before === 'Geology and aquifers' && terrainCard.after === 'Interactive map',
+    JSON.stringify(terrainCard));
+
+  /* the card's list as it stands: each file's details and its callouts */
+  const listed = () => page.evaluate(() => Array.from(
+    document.querySelectorAll('[data-item="terrain"] .terrain-file')).map((node) => ({
+    name: node.getAttribute('data-file'),
+    details: node.querySelector('.muted').textContent,
+    refusals: Array.from(node.querySelectorAll('.callout-bad p')).map((p) => p.textContent),
+    prompts: Array.from(node.querySelectorAll('.callout-warn p')).map((p) => p.textContent),
+  })));
+  const opened = (n) => page.waitForFunction((count) => {
+    const files = document.querySelectorAll('[data-item="terrain"] .terrain-file');
+    return files.length === count && Array.from(files).every((f) => !f.textContent.includes('opening…'));
+  }, n);
+  /* files dropped on the card, as a drag from the desktop delivers them */
+  const drop = (files, extra) => page.evaluate(([list, hgt]) => {
+    const transfer = new DataTransfer();
+    list.forEach((f) => transfer.items.add(new File([new Uint8Array(f.bytes)], f.name)));
+    /* an SRTM-format tile, placed by its name and sized by its length */
+    if (hgt) transfer.items.add(new File([new Uint8Array(2 * 1201 * 1201)], hgt));
+    document.querySelector('[data-item="terrain"] .upload-zone').dispatchEvent(
+      new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+  }, [carried(files), extra || null]);
+  /* a field of the card by its label */
+  const setField = (label, value) => page.evaluate(([text, v]) => {
+    const host = Array.from(document.querySelectorAll('[data-item="terrain"] label.field'))
+      .find((f) => f.querySelector('.field-label').textContent === text);
+    const input = host.querySelector('input, select');
+    input.value = v;
+    input.dispatchEvent(new Event('change'));
+  }, [label, value]);
+  /* the Analyse button: pressed, or whether it can be */
+  const analyse = (press) => page.evaluate((click) => {
+    const node = Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain');
+    if (click) node.click();
+    return node.disabled;
+  }, press);
+  const removeAll = () => page.evaluate(() => {
+    const names = Array.from(document.querySelectorAll('[data-item="terrain"] .terrain-file'))
+      .map((node) => node.getAttribute('data-file'));
+    for (const name of names) {
+      Array.from(document.querySelectorAll(`[data-item="terrain"] .terrain-file[data-file="${name}"] button`))
+        .find((b) => b.textContent === 'Remove').click();
+    }
+  });
+  /* "Analyse the terrain" pressed, what the page read and handed the
+   * worker, and the read the engine makes of the same files read whole,
+   * at the radius and with the source the card was given */
+  const readOnCard = async (files, radius, declared) => {
+    await page.evaluate(() => { window.__slices = []; window.__sent = null; });
+    await analyse(true);
+    await page.waitForFunction(() => document.querySelector('[data-item="terrain"] .terrain-read'),
+      null, { timeout: 60000 });
+    return page.evaluate(([list, r, d]) => {
+      const C = window.GWT.core, app = window.GWT.app, cfg = app.config();
+      const whole = {};
+      list.forEach((f) => { whole[f.name] = new Uint8Array(f.bytes); });
+      const found = list.map((f) => C.elevationFile(f.name, whole[f.name].length, [[0, whole[f.name]]]));
+      const centre = C.windowCentre(app.store.get('site'), app.siteLatLon(), found);
+      const plan = C.planElevationWindow(found, centre, r, cfg, null, d);
+      const blocks = plan.blocks.map((b) => (b.length
+        ? whole[plan.files[b.file].name].slice(b.offset, b.offset + b.length) : null));
+      const read = C.readElevationWindow(plan, blocks, cfg, null);
+      const shown = document.querySelector('[data-item="terrain"] .terrain-read');
+      const last = window.GWT.engine.history().filter((h) => h.type === 'readElevation').pop();
+      return {
+        notes: Array.from(shown.querySelectorAll(':scope > p:not(.terrain-notice)')).map((p) => p.textContent),
+        notice: shown.querySelector('.terrain-notice')?.textContent || null,
+        want: { notes: read.notes, notice: read.notice },
+        liability: C.phrase('terrain.copernicus_liability'),
+        slices: window.__slices.splice(0),
+        reads: C.elevationBlockRanges(plan).map((x) => [x.name, x.offset, x.offset + x.length]),
+        blocks: plan.blocks.filter((b) => b.length).length,
+        edgeOnly: plan.blocks.filter((b) => !b.window).length,
+        sent: window.__sent,
+        lengths: plan.blocks.map((b) => (b.length ? b.length : null)),
+        ran: last ? [last.mode, last.outcome] : null,
+      };
+    }, [carried(files), radius, declared]);
+  };
+  /* the blocks went to the worker each with a buffer of its own, and the
+   * worker read them */
+  const ownBuffers = (read) => read.sent.length === read.lengths.length &&
+    read.sent.every((b, i) => (b === null ? read.lengths[i] === null
+      : b[0] === 0 && b[1] === read.lengths[i] && b[2] === b[1])) &&
+    JSON.stringify(read.ran) === '["worker","done"]';
+
+  await drop(odd, 'N08W012.hgt');
+  await opened(3);
+  const dropped = {
+    list: await listed(),
+    read: await page.evaluate(() => window.__slices.splice(0)),
+    engine: await page.evaluate((files) => files.map((f) => {
+      const C = window.GWT.core, bytes = new Uint8Array(f.bytes);
+      try {
+        const found = C.elevationFile(f.name, bytes.length, [[0, bytes]]);
+        return { refusals: [], prompts: C.fileNotes(found, ['detect', '']) };
+      } catch (e) {
+        return { refusals: [e.message], prompts: [] };
+      }
+    }), carried(odd)),
+    disabled: await analyse(false),
+  };
+  await setField('Source of the elevation model', 'copernicus_glo30');
+  dropped.declared = await listed();
+  await setField('Source of the elevation model', 'detect');
+  check('terrain card: a dropped file\'s refusal and a question about its source show at once, in the ' +
+    'engine\'s words',
+    dropped.list.map((f) => f.name).join() === 'refuse_jpeg.tif,n08w011.tif,N08W012.hgt' &&
+    dropped.list.slice(0, 2).every((f, i) => JSON.stringify([f.refusals, f.prompts]) ===
+      JSON.stringify([dropped.engine[i].refusals, dropped.engine[i].prompts])) &&
+    dropped.list[0].refusals.length === 1 && dropped.list[1].prompts.length === 1 &&
+    dropped.list[1].details === '5.4 kB · source not recognised' && dropped.disabled,
+    JSON.stringify(dropped));
+  /* a cloud-optimised file's directories are all in its first 64 KiB */
+  check('terrain card: a GeoTIFF is opened from its first 64 KiB alone and an .hgt tile from its name, ' +
+    'as the Python app opens them',
+    JSON.stringify(dropped.read) === JSON.stringify(odd.map((f) => [f.name, 0, f.buffer.length])) &&
+    JSON.stringify(dropped.list[2]) === JSON.stringify({ name: 'N08W012.hgt',
+      details: '2.9 MB · SRTM format, source not stated', refusals: [], prompts: [] }),
+    JSON.stringify([dropped.read, dropped.list[2]]));
+  check('terrain card: declaring the source answers the question about it',
+    dropped.declared[1].prompts.length === 0 && dropped.declared[0].refusals.length === 1,
+    JSON.stringify(dropped.declared));
+  await removeAll();
+  const removed = await listed();
+  check('terrain card: Remove takes a file off the list', removed.length === 0, JSON.stringify(removed));
+
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'),
+    page.click('[data-item="terrain"] .upload-zone')]);
+  await chooser.setFiles(pair);
+  await opened(2);
+  const picked = await listed();
+  const opening = await page.evaluate(() => window.__slices.splice(0));
+  check('terrain card: the Copernicus pair picked is listed with its sizes and recognised',
+    JSON.stringify(picked.map((f) => [f.name, f.details, f.refusals, f.prompts])) === JSON.stringify([
+      [pair[0].name, '5.5 kB · recognised as Copernicus GLO-30', [], []],
+      [pair[1].name, '5.4 kB · recognised as Copernicus GLO-30', [], []]]), JSON.stringify(picked));
+  check('terrain card: the pair picked is opened from its first 64 KiB, as a dropped file is',
+    JSON.stringify(opening) === JSON.stringify(pair.map((f) => [f.name, 0, f.buffer.length])),
+    JSON.stringify(opening));
+
+  /* the widest radius asked for is over the cap on cells at 1 arc-second */
+  await setField('Radius of the square shown (km)', '50');
+  await analyse(true);
+  await page.waitForFunction(() => document.querySelector('[data-item="terrain"] .btn-row ~ .callout-bad'));
+  const overCap = await page.evaluate((files) => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const found = files.map((f) => C.elevationFile(f.name, f.bytes.length, [[0, new Uint8Array(f.bytes)]]));
+    let want = '';
+    try {
+      C.planElevationWindow(found, C.windowCentre(app.store.get('site'), app.siteLatLon(), found), 50,
+        app.config(), null, ['detect', '']);
+    } catch (e) {
+      want = e.message;
+    }
+    return { shown: document.querySelector('[data-item="terrain"] .btn-row ~ .callout-bad').textContent,
+      want, read: !!document.querySelector('[data-item="terrain"] .terrain-read'),
+      reads: window.__slices.splice(0) };
+  }, carried(pair));
+  check('terrain card: a window over the cap is refused on the card in the engine\'s words, with the ' +
+    'radius that fits, and nothing is read',
+    overCap.shown === overCap.want && overCap.want.includes('km fits') && !overCap.read &&
+    overCap.reads.length === 0, JSON.stringify(overCap));
+
+  await setField('Radius of the square shown (km)', '1');
+  const pairRead = await readOnCard(pair, 1, ['detect', '']);
+  check('terrain card: the read report is the engine\'s for the same files read whole, with the ' +
+    'Copernicus notice in small print',
+    pairRead.notes.length > 1 && JSON.stringify(pairRead.notes) === JSON.stringify(pairRead.want.notes) &&
+    pairRead.notes[0].startsWith('Read 2 files (') && pairRead.notes[0].includes(', 1 km each way.') &&
+    pairRead.notice === pairRead.want.notice && pairRead.notice === pairRead.liability,
+    JSON.stringify(pairRead));
+  check('terrain card: the blocks are read in merged reads, one a file here, and nothing else is read',
+    JSON.stringify(pairRead.slices) === JSON.stringify(pairRead.reads) &&
+    pairRead.reads.length === 2 && pairRead.blocks > pairRead.reads.length,
+    JSON.stringify([pairRead.slices, pairRead.reads, pairRead.blocks]));
+  check('terrain card: each block goes to the worker with a buffer of its own, and the worker reads them',
+    ownBuffers(pairRead), JSON.stringify([pairRead.sent, pairRead.ran]));
+
+  /* three tiles around a missing fourth, declared Copernicus GLO-30 since
+   * their names are not Copernicus's */
+  await removeAll();
+  await page.evaluate(() => {
+    const store = window.GWT.app.store;
+    store.set('site.easting', -12.0);
+    store.set('site.northing', 8.0);
+    store.set('site.utm_zone', null);
+  });
+  await drop(holes);
+  await opened(3);
+  await setField('Source of the elevation model', 'copernicus_glo30');
+  await setField('Radius of the square shown (km)', '15');
+  const holesRead = await readOnCard(holes, 15, ['copernicus_glo30', '']);
+  await page.evaluate((kept) => {
+    Blob.prototype.slice = window.__slice;
+    window.GWT.engine.readElevation = window.__readElevation;
+    const store = window.GWT.app.store;
+    Object.keys(kept).forEach((key) => store.set('site.' + key, kept[key]));
+  }, keptSite);
+  check('terrain card: a missing tile beside sea-level edges is read as sea, as the engine reads it under ' +
+    'the source declared',
+    JSON.stringify(holesRead.notes) === JSON.stringify(holesRead.want.notes) &&
+    holesRead.notes.some((note) => note.includes('a tile not supplied (N07 W013)')) &&
+    holesRead.notice === holesRead.liability, JSON.stringify(holesRead));
+  check('terrain card: the edge blocks beside the missing tile are read too, outside the window',
+    JSON.stringify(holesRead.slices) === JSON.stringify(holesRead.reads) && holesRead.edgeOnly > 0 &&
+    ownBuffers(holesRead), JSON.stringify([holesRead.slices, holesRead.reads, holesRead.edgeOnly,
+      holesRead.sent, holesRead.ran]));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

@@ -2004,6 +2004,8 @@
         ]),
       ]),
 
+      terrainCard(),
+
       /* the terrain work the Python app alone does, and that neither app's
        * reports carry it yet */
       el('div.callout.callout-info', [
@@ -2120,6 +2122,346 @@
   function degreesText(latlon) {
     return C.pyFixed(Math.abs(latlon.lat), 5) + '° ' + (latlon.lat >= 0 ? 'N' : 'S') +
       ', ' + C.pyFixed(Math.abs(latlon.lon), 5) + '° ' + (latlon.lon >= 0 ? 'E' : 'W');
+  }
+
+  /* --- topography and terrain (PLAN.md step 4.1) ---------------------------
+   *
+   * No elevation model is bundled with the app and none is downloaded, so
+   * the terrain is worked out from tiles the operator drops on the card. They
+   * are not kept with the sources a sheet is: a File costs nothing until it
+   * is read, and it is read only in the parts asked for - its directories
+   * when it is added, and the blocks the window meets when the terrain is
+   * analysed. Nothing of it is saved with the project.
+   */
+  function blankTerrainSession() {
+    return {
+      /* the files, in the order they were added */
+      files: [],
+      /* File -> {found, refusal}: what elevationFile opened, or why it
+       * refused the file; a file still being opened has no entry */
+      opened: new Map(),
+      declared: 'detect', declaredText: '',
+      /* null until the operator sets them: the configuration's default */
+      radiusKm: null, areaKm2: null,
+      /* counts the runs asked for, so that an answer to an older one, or to
+       * files since replaced, is dropped */
+      run: 0,
+      reading: false,
+      /* what the engine read of the window, and why the last run was refused */
+      read: null, refusal: '',
+      /* the analysis of the read and the figures drawn from it */
+      result: null, figures: null,
+    };
+  }
+  var terrainSession = blankTerrainSession();
+
+  /* What the operator can say the files are, as the Python app offers it. */
+  var TERRAIN_SOURCES = [
+    { value: 'detect', label: 'Detect from the file names' },
+    { value: 'copernicus_glo30', label: 'Copernicus GLO-30' },
+    { value: 'srtm', label: 'SRTM' },
+    { value: 'other', label: 'Another source' },
+  ];
+
+  /* What a file was recognised as, from its name and georeferencing
+   * together, in the file list. */
+  var TERRAIN_DETECTED = {
+    copernicus_glo30: 'recognised as Copernicus GLO-30',
+    srtm: 'recognised as SRTM',
+    hgt: 'SRTM format, source not stated',
+    unidentified: 'source not recognised',
+  };
+
+  /* A GeoTIFF is opened as geotiff.open_geotiff opens one: its first 64 KiB,
+   * which hold every directory of a cloud-optimised file, then each range
+   * still missing rounded up to 64 KiB, for at most 16 more rounds. */
+  var TERRAIN_READ_UNIT = 65536;
+  var TERRAIN_ROUNDS = 16;
+
+  async function fileBytes(file, offset, length) {
+    return new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+  }
+
+  /* One file opened for its layout alone (C.elevationFile): an .hgt from its
+   * name and length, with nothing read, a GeoTIFF from its directories.
+   * Refused, it throws the engine's sentence. */
+  async function openElevationFile(file) {
+    var name = file.name, size = file.size;
+    var chunks = [];
+    var found = C.elevationFile(name, size, chunks);
+    for (var round = 0; Array.isArray(found) && round <= TERRAIN_ROUNDS; round++) {
+      for (var k = 0; k < found.length; k++) {
+        var offset = found[k][0];
+        var length = Math.ceil(found[k][1] / TERRAIN_READ_UNIT) * TERRAIN_READ_UNIT;
+        chunks.push([offset, await fileBytes(file, offset, Math.min(length, size - offset))]);
+      }
+      found = C.elevationFile(name, size, chunks);
+    }
+    if (Array.isArray(found)) {
+      throw new Error(C.phrase('terrain.ends_early', { file: name, part: 'image directory' }));
+    }
+    return found;
+  }
+
+  /* What the operator declared, as the engine takes it: their own words
+   * count only for another source. */
+  function terrainDeclared(session) {
+    return [session.declared, session.declared === 'other' ? session.declaredText : ''];
+  }
+
+  /* The read, and whatever was made of it, no longer describe the files or
+   * their source: they are dropped, and a run still going is left to finish
+   * unheard. */
+  function dropTerrainRead(session) {
+    session.run += 1;
+    session.reading = false;
+    session.read = null;
+    session.refusal = '';
+    session.result = null;
+    session.figures = null;
+  }
+
+  /* Files dropped or picked join the list, a file under a name already
+   * listed taking its place, and each is opened at once, so a refusal or a
+   * question about its source shows beside its name before anything is
+   * analysed. */
+  async function addTerrainFiles(files) {
+    if (!files || !files.length) return;
+    var session = terrainSession;
+    files.forEach(function (file) {
+      session.files = session.files.filter(function (f) { return f.name !== file.name; })
+        .concat([file]);
+    });
+    dropTerrainRead(session);
+    render();
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i], opened;
+      try {
+        opened = { found: await openElevationFile(file), refusal: '' };
+      } catch (e) {
+        opened = { found: null, refusal: e.message };
+      }
+      if (terrainSession === session && session.files.indexOf(file) >= 0) {
+        session.opened.set(file, opened);
+      }
+    }
+    refresh();
+  }
+
+  function removeTerrainFile(file) {
+    var session = terrainSession;
+    session.files = session.files.filter(function (f) { return f !== file; });
+    session.opened.delete(file);
+    dropTerrainRead(session);
+    render();
+  }
+
+  /* The bytes of each block the plan names, read as C.elevationBlockRanges
+   * says, which is how the Python app reads them: file by file, blocks
+   * within 64 KiB of each other in one read of at most 16 MiB, the edge
+   * blocks of a missing tile included. Each block is cut out with slice,
+   * never subarray, so that it holds a buffer of its own: the request to the
+   * worker is a copy, and a view would carry the whole read with it. */
+  async function terrainBlocks(plan, session) {
+    var fileOf = new Map();
+    session.files.forEach(function (file) {
+      fileOf.set(session.opened.get(file).found, file);
+    });
+    var blocks = plan.blocks.map(function () { return null; });
+    var reads = C.elevationBlockRanges(plan);
+    for (var r = 0; r < reads.length; r++) {
+      var read = reads[r], bytes;
+      try {
+        bytes = await fileBytes(fileOf.get(plan.files[read.file]), read.offset, read.length);
+      } catch (e) {
+        throw new Error('Could not read ' + read.name + ': ' + e.message);
+      }
+      read.blocks.forEach(function (b) {
+        var at = plan.blocks[b].offset - read.offset;
+        blocks[b] = bytes.slice(at, at + plan.blocks[b].length);
+      });
+    }
+    return blocks;
+  }
+
+  function terrainRadius(session) {
+    return session.radiusKm !== null ? session.radiusKm
+      : config().terrain.analysis_radius_km;
+  }
+
+  function terrainArea(session) {
+    return session.areaKm2 !== null ? session.areaKm2
+      : config().terrain.drainage_area_km2;
+  }
+
+  /* "Analyse the terrain". The window is planned around the site on the
+   * page, which is quick: its centre, the square shown and the margin
+   * beyond it, the cap, and the blocks each file must give up. Those blocks
+   * are read here and handed to the engine worker, which turns them into
+   * the window's grid and the read report. */
+  async function runTerrain() {
+    var session = terrainSession;
+    var run = ++session.run;
+    function current() { return terrainSession === session && session.run === run; }
+    session.reading = true;
+    session.read = null;
+    session.refusal = '';
+    session.result = null;
+    session.figures = null;
+    render();
+    try {
+      var cfg = config();
+      var declared = terrainDeclared(session);
+      var files = session.files.map(function (file) { return session.opened.get(file).found; });
+      var centre = C.windowCentre(store.get('site'), siteLatLon(), files);
+      var plan = C.planElevationWindow(files, centre, terrainRadius(session), cfg, null, declared);
+      var blocks = await terrainBlocks(plan, session);
+      if (!current()) return;
+      var read = await engine.readElevation(plan, blocks, cfg);
+      if (!current()) return;
+      session.read = read;
+    } catch (e) {
+      if (!current() || engine.isCancelled(e)) return;
+      /* a refusal is the engine's sentence; a worker that stopped says
+       * so in its own */
+      session.refusal = e.message;
+    } finally {
+      if (current()) session.reading = false;
+      refresh();
+    }
+  }
+
+  function sizeText(bytes) {
+    return bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB'
+      : bytes >= 1e6 ? (bytes / 1e6).toFixed(1) + ' MB'
+        : (bytes / 1e3).toFixed(1) + ' kB';
+  }
+
+  /* The drop zone, its handlers as uploadZone has them. Any file can be
+   * picked: an accept list makes Android's picker grey out .hgt, and each
+   * file is read to see what it is. */
+  function terrainDropZone() {
+    var zone = el('div.upload-zone', {
+      tabindex: '0', role: 'button',
+      onclick: function () { pick(); },
+      onkeydown: function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); }
+      },
+    }, [
+      el('strong', 'Elevation model tiles'),
+      el('span', 'Click or drop GeoTIFF (.tif) or SRTM-format (.hgt) tiles here'),
+    ]);
+    function pick() { S.pickFile('', true).then(addTerrainFiles); }
+    zone.addEventListener('dragover', function (e) {
+      e.preventDefault(); zone.classList.add('over');
+    });
+    zone.addEventListener('dragleave', function () { zone.classList.remove('over'); });
+    zone.addEventListener('drop', function (e) {
+      e.preventDefault(); zone.classList.remove('over');
+      addTerrainFiles(Array.prototype.slice.call(e.dataTransfer.files || []));
+    });
+    return zone;
+  }
+
+  /* A file in the list: its size and the source it was recognised as, or
+   * why it was refused, and what is said about it alone, in the engine's
+   * words under the source declared now. */
+  function terrainFileNode(session, file) {
+    var opened = session.opened.get(file);
+    var details = [sizeText(file.size)];
+    if (!opened) details.push('opening…');
+    else if (opened.found) details.push(TERRAIN_DETECTED[opened.found.sourceId]);
+    return el('div.terrain-file', { 'data-file': file.name }, [
+      el('div.btn-row', [
+        el('strong', file.name),
+        el('span.muted', details.join(' · ')),
+        button('Remove', function () { removeTerrainFile(file); }, { variant: 'ghost' }),
+      ]),
+      opened && opened.refusal
+        ? el('div.callout.callout-bad', el('p', opened.refusal)) : null,
+      opened && opened.found
+        ? C.fileNotes(opened.found, terrainDeclared(session)).map(function (note) {
+          return el('div.callout.callout-warn', el('p', note));
+        }) : null,
+    ]);
+  }
+
+  /* What the read found, sentence by sentence, as both apps say it under
+   * the file list, and the Copernicus licence's liability sentence in small
+   * print where the files hold a Copernicus tile. */
+  function terrainReadNodes(read) {
+    return el('div.terrain-read', { style: { overflowWrap: 'anywhere' } }, [
+      read.notes.map(function (note) { return el('p', note); }),
+      read.notice ? el('p.muted.terrain-notice', el('small', read.notice)) : null,
+    ]);
+  }
+
+  function terrainCard() {
+    var session = terrainSession;
+    var waiting = session.files.some(function (file) { return !session.opened.has(file); });
+    var refused = session.files.some(function (file) {
+      var opened = session.opened.get(file);
+      return !!opened && !!opened.refusal;
+    });
+    return itemNode('terrain', card('Topography and terrain', [
+      el('p.muted', 'No elevation model is bundled with this app and none is ' +
+        'downloaded, so the terrain is worked out from tiles you supply: ' +
+        'GeoTIFF tiles (.tif) in longitude and latitude, as Copernicus GLO-30 ' +
+        'and USGS EarthExplorer SRTM tiles are published and as QGIS saves a ' +
+        'clip, and SRTM-format tiles (.hgt), several tiles joined into one ' +
+        'model. Keep the names the tiles came with: an .hgt tile is placed by ' +
+        'its name alone. Copernicus GLO-30 tiles can be downloaded by hand ' +
+        'from the copernicus-dem-30m bucket of the Registry of Open Data on ' +
+        'AWS, and NASA SRTM and NASADEM tiles from NASA Earthdata or USGS ' +
+        'EarthExplorer. The tiles on viewfinderpanoramas are void-filled ' +
+        'compilations of several sources: declare them as Another source. ' +
+        'The files are read in this browser, only the parts the window ' +
+        'needs, and nothing is uploaded.'),
+      terrainDropZone(),
+      /* a tile's name is one long word, which a phone has to break, in the
+       * list and in the sentences that name it */
+      session.files.length ? el('div.terrain-files', {
+        style: { margin: '0.6rem 0 0.9rem', overflowWrap: 'anywhere' },
+      }, session.files.map(function (file) { return terrainFileNode(session, file); })) : null,
+      el('div.field-row', [
+        field('Source of the elevation model', S.selectInput(session.declared, TERRAIN_SOURCES,
+          function (value) {
+            session.declared = value;
+            dropTerrainRead(session);
+            render();
+          }), 'Detected, a tile is credited as Copernicus GLO-30 or SRTM only when ' +
+          'its name and its georeferencing agree; a source stated here wins.'),
+        session.declared === 'other' ? field('The source, in your own words',
+          S.textInput(session.declaredText, function (value) {
+            session.declaredText = value;
+            dropTerrainRead(session);
+            render();
+          }), 'Named in the figures\' credit line as you write it.') : null,
+      ]),
+      el('div.field-row', [
+        field('Radius of the square shown (km)', S.numberInput(terrainRadius(session),
+          function (value) {
+            session.radiusKm = value === null ? null : S.clamp(value, 1, 50);
+            render();
+          }, { min: 1, max: 50, step: 1 })),
+        field('Drainage threshold (km²)', S.numberInput(terrainArea(session),
+          function (value) {
+            session.areaKm2 = value === null ? null : S.clamp(value, 0.05, 100);
+            render();
+          }, { min: 0.05, max: 100, step: 0.05 }),
+        'A drainage line starts where more than this drains to a cell.'),
+      ]),
+      el('div.btn-row', { style: { marginBottom: '0.9rem' } }, [
+        button('Analyse the terrain', function () { runTerrain(); }, {
+          variant: 'primary',
+          disabled: !session.files.length || waiting || refused || session.reading,
+        }),
+      ]),
+      session.reading ? el('p.muted', C.phrase('terrain.stage_read') + '…') : null,
+      session.refusal ? el('div.callout.callout-bad', { style: { overflowWrap: 'anywhere' } },
+        el('p', session.refusal)) : null,
+      session.read ? terrainReadNodes(session.read) : null,
+    ]));
   }
 
   /* --- the area a report should map ---------------------------------------
