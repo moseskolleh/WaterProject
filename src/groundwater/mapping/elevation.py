@@ -1335,6 +1335,10 @@ class ElevationRead:
     FABDEM licence). ``surface`` and ``notice`` (the Copernicus liability
     sentence, or None) are also given alone, for the figures and the
     downloads; ``figure_credit`` is the credit line a figure carries.
+    ``reasons`` says why each cell holds what it does, row 0 south as in
+    the grid: 0 a height, 1 no data in the file, 2 a height that could not
+    be ground, 3 no file supplies it (assumed sea included). The read
+    report counts them; the parity suite holds them cell by cell.
     """
 
     grid: ElevationGrid
@@ -1352,6 +1356,7 @@ class ElevationRead:
     surface: str = ""
     notice: str | None = None
     figure_credit: str = ""
+    reasons: np.ndarray | None = field(default=None, repr=False)
     plan: WindowPlan | None = field(default=None, repr=False)
 
 
@@ -1527,7 +1532,7 @@ def read_window(plan: WindowPlan, read_at_by_name: Mapping[str, Callable[[int, i
         grid=grid, assumed_sea=sea[::-1].copy(), shown=plan.shown, cells=cells, voids=voids,
         uncovered=uncovered, implausible=implausible, coverage=(cells - uncovered - assumed) / cells,
         centre=plan.centre, notes=tuple(notes), assumed=assumed, prompts=prompts, surface=surface,
-        notice=notice, figure_credit=figure_credit, plan=plan,
+        notice=notice, figure_credit=figure_credit, reasons=why[::-1].copy(), plan=plan,
     )
 
 

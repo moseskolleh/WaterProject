@@ -97234,5 +97234,404 @@
     }
    }
   ]
+ },
+ "elevation_window": {
+  "angles": "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",
+  "sin": "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",
+  "cos": "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",
+  "metrics": [
+   {
+    "lons": "[-11.5,-11.499722222222223,-11.499444444444444,-11.499166666666667,-11.498888888888889]",
+    "lats": "[8.0,8.000277777777777,8.000555555555556,8.000833333333333,8.001111111111111,8.001388888888888,8.001666666666667,8.001944444444444,8.002222222222223]",
+    "rows": "[30.623134641963713,30.72105156643647,43.37694531254462,94077.0,30.623113913183737,30.721051978737385,43.3769309705068,94077.0,30.623093183688432,30.721052391052257,43.376916627979014,94077.0,30.623072453477796,30.721052803381074,43.376902284961275,94077.0,30.623051722551832,30.721053215723845,43.37688794145358,94077.0,30.623030990910532,30.72105362808057,43.376873597455926,94077.0,30.623010258553908,30.72105404045124,43.376859252968316,94077.0,30.62298952548195,30.72105445283587,43.37684490799076,94077.0,30.622968791694667,30.721054865234436,43.37683056252324,94077.0]"
+   },
+   {
+    "lons": "[-13.0,-12.999166666666667,-12.998333333333333,-12.9975]",
+    "lats": "[8.994166666666667,8.995,8.995833333333334,8.996666666666666,8.9975,8.998333333333333,8.999166666666667,9.0]",
+    "rows": "[91.63310940775513,92.16784865689426,129.96745387124344,844563.0,91.63289982829555,92.16785281483054,129.9673090566959,844561.0,91.63269022956908,92.1678569731396,129.96716422900548,844559.0,91.63248061157579,92.16786113182144,129.96701938817222,844557.0,91.63227097431573,92.16786529087607,129.96687453419622,844555.0,91.63206131778895,92.1678694503035,129.9667296670776,844553.0,91.63185164199548,92.1678736101037,129.96658478681633,844551.0,91.63164194693537,92.16787777027669,129.9664398934126,844549.0]"
+   },
+   {
+    "lons": "[-12.0,-11.975,-11.95]",
+    "lats": "[7.725,7.75,7.7749999999999995,7.8,7.824999999999999,7.85]",
+    "rows": "[2757.8974642364783,2764.8585214323807,3905.1813103592576,762519631.0,2757.7350411645834,2764.8617540906257,3905.06889523093,762475614.0,2757.5720963196345,2764.8649969435237,3904.9561223814253,762431457.0,2757.408629730831,2764.868249988664,3904.8429918640054,762387157.0,2757.244641427464,2764.8715132236302,3904.729503732108,762342716.0,2757.0801314389196,2764.8747866459967,3904.6156580393413,762298134.0]"
+   }
+  ],
+  "cases": [
+   {
+    "case": "the Copernicus pair across 11 W",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.994444444444444,
+     "the test point"
+    ],
+    "radius": 0.5,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.994444444444444,\"the test point\",true,null],\"plan\":{\"order\":[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,20,17,17,17,17,35,35,0],\"dx\":30.54434651669809,\"dy\":30.72261668094374,\"lons\":[\"b5a0da1a3c5906af5998938c72a0d54999244297aec699519fda669fc8e89166\",-11.004722222222222,-10.995277777777778],\"lats\":[\"48ca81ea6925ccd677fb75e1c1e3cf909e5bb7cbfe06f9c99b5f0e6ee0439fd4\",8.989722222222222,8.999166666666667],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[0,7,5057,264,null,true,[]],[0,8,5329,194,null,true,[]],[1,0,1939,504,null,true,[]],[1,1,2451,498,null,true,[]],[1,3,3308,484,null,true,[]],[1,4,3800,484,null,true,[]],[1,6,4637,273,null,true,[]],[1,7,4918,261,null,true,[]]]\"},\"read\":{\"z\":[\"40358726df251ed97726a3894483b56d471a8277fa8915ace65a11a3f27cf09c\",[149.6999969482422,161.39999389648438,164.3000030517578,159.10000610351562,158.60000610351562,161.0,172.5,190.8000030517578,191.10000610351562,169.1999969482422]],\"reasons\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"sea\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"counts\":[1225,0,0,0,0],\"coverage\":1.0,\"shown\":[0,35,0,35],\"notes\":[\"Read 2 files (Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif): 1,220 cells about 31 by 31 m around the test point, 0.5 km each way.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30 tiles N08 W012 and N08 W011, produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",2480,3043],[\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",1939,3240]]}"
+   },
+   {
+    "case": "the pair with a margin around the square shown",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.2,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":{\"order\":[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,18,17,17,10,10,35,35,0],\"dx\":30.54429994277126,\"dy\":30.722617604943384,\"lons\":[\"b5a0da1a3c5906af5998938c72a0d54999244297aec699519fda669fc8e89166\",-11.004722222222222,-10.995277777777778],\"lats\":[\"633c97430d0dfb41e19a58a1f9986cf3cf73e2109cabbaf888db2288580aa8c1\",8.990277777777777,8.999722222222223],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[0,7,5057,264,null,true,[]],[0,8,5329,194,null,true,[]],[1,0,1939,504,null,true,[]],[1,1,2451,498,null,true,[]],[1,3,3308,484,null,true,[]],[1,4,3800,484,null,true,[]],[1,6,4637,273,null,true,[]],[1,7,4918,261,null,true,[]]]\"},\"read\":{\"z\":[\"ced19563a2fb722b4584428b748d59393965404ef357fd44ed6ae6ba03471fab\",[155.5,162.10000610351562,164.6999969482422,159.5,158.6999969482422,161.6999969482422,178.5,196.5,186.39999389648438,174.10000610351562]],\"reasons\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"sea\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"counts\":[1225,0,0,0,0],\"coverage\":1.0,\"shown\":[7,28,7,28],\"notes\":[\"Read 2 files (Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif): 1,220 cells about 31 by 31 m around the test point, 0.3 km each way.\",\"The analysis also reads 0.2 km beyond the square shown, so that the edge of the analysis does not bend the drainage lines.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30 tiles N08 W012 and N08 W011, produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",2480,3043],[\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",1939,3240]]}"
+   },
+   {
+    "case": "an overlap that agrees",
+    "files": [
+     "overlap_north.tif",
+     "overlap_south_agrees.tif"
+    ],
+    "centre": [
+     -12.496666666666666,
+     8.744722222222222,
+     "the test point"
+    ],
+    "radius": 0.45,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and overlap_south_agrees.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.496666666666666,8.744722222222222,\"the test point\",true,null],\"plan\":{\"order\":[\"overlap_north.tif\",\"overlap_south_agrees.tif\"],\"sources\":[\"unidentified\",\"unidentified\"],\"offsets\":[[0,0],[0,19]],\"at\":[12,19,15,15,15,15,31,31,0],\"dx\":30.5649924319411,\"dy\":30.722206940151565,\"lons\":[\"d248ca73f000f377f8471ea0ca92fd410c1418e290edc10fcde127662e2bca0e\",-12.500833333333333,-12.4925],\"lats\":[\"bf593a42285312c920eb6595c46607d7ae4d365e93e54024746c14fd0105708a\",8.740555555555556,8.748888888888889],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,322,384,null,true,[]],[0,1,706,396,null,true,[]],[0,2,1102,349,null,true,[]],[1,0,330,509,null,true,[]],[1,1,839,320,null,true,[]]]\"},\"read\":{\"z\":[\"c6d8c8e32e5cd07d94c024283fe1afcd146f63f6db7c347fb52bf50709f19d0c\",[null,171.39999389648438,null,183.60000610351562,183.6999969482422,162.5,181.8000030517578,null,153.5,null]],\"reasons\":\"2e25c45847636c72fd2c1ff3beb6c6fe4c74e42bead01c6b90f6f934fe695853\",\"sea\":\"343571b72b92d40a13a49090bf1c3175a7de0bae40f990ef9a2e5ee9744405cd\",\"counts\":[961,0,217,0,0],\"coverage\":0.7741935483870968,\"shown\":[0,31,0,31],\"notes\":[\"Read 2 files (overlap_north.tif and overlap_south_agrees.tif): 961 cells about 31 by 31 m around the test point, 0.45 km each way.\",\"23% of the window read lies outside the files supplied and is treated as a gap.\",\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\"],\"prompts\":[],\"figure\":\"Elevation: elevation model overlap_north.tif and overlap_south_agrees.tif, source not stated. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"unidentified\"},\"reads\":[[\"overlap_north.tif\",322,1129],[\"overlap_south_agrees.tif\",330,829]]}"
+   },
+   {
+    "case": "an overlap that disagrees",
+    "files": [
+     "overlap_north.tif",
+     "overlap_south_disagrees.tif"
+    ],
+    "centre": [
+     -12.496666666666666,
+     8.744722222222222,
+     "the test point"
+    ],
+    "radius": 0.45,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and overlap_south_disagrees.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.496666666666666,8.744722222222222,\"the test point\",true,null],\"plan\":{\"order\":[\"overlap_north.tif\",\"overlap_south_disagrees.tif\"],\"sources\":[\"unidentified\",\"unidentified\"],\"offsets\":[[0,0],[0,19]],\"at\":[12,19,15,15,15,15,31,31,0],\"dx\":30.5649924319411,\"dy\":30.722206940151565,\"lons\":[\"d248ca73f000f377f8471ea0ca92fd410c1418e290edc10fcde127662e2bca0e\",-12.500833333333333,-12.4925],\"lats\":[\"bf593a42285312c920eb6595c46607d7ae4d365e93e54024746c14fd0105708a\",8.740555555555556,8.748888888888889],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,322,384,null,true,[]],[0,1,706,396,null,true,[]],[0,2,1102,349,null,true,[]],[1,0,438,96,null,true,[]],[1,1,534,96,null,true,[]],[1,2,630,96,null,true,[]],[1,3,726,96,null,true,[]],[1,4,822,96,null,true,[]],[1,5,918,96,null,true,[]],[1,6,1014,96,null,true,[]],[1,7,1110,96,null,true,[]],[1,8,1206,96,null,true,[]],[1,9,1302,96,null,true,[]],[1,10,1398,96,null,true,[]],[1,11,1494,96,null,true,[]],[1,12,1590,96,null,true,[]],[1,13,1686,96,null,true,[]],[1,14,1782,96,null,true,[]],[1,15,1878,96,null,true,[]]]\"},\"read\":[\"refused\",\"terrain.join_disagree\",\"overlap_north.tif and overlap_south_disagrees.tif overlap but disagree at 3 shared cells, by up to 1.20 m, so they are not neighbouring tiles of one release.\"],\"reads\":[[\"overlap_north.tif\",322,1129],[\"overlap_south_disagrees.tif\",438,1536]]}"
+   },
+   {
+    "case": "an undeclared fill at the shared edge",
+    "files": [
+     "overlap_north.tif",
+     "overlap_south_fill_edge.tif"
+    ],
+    "centre": [
+     -12.496666666666666,
+     8.744722222222222,
+     "the test point"
+    ],
+    "radius": 0.45,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and overlap_south_fill_edge.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.496666666666666,8.744722222222222,\"the test point\",true,null],\"plan\":{\"order\":[\"overlap_north.tif\",\"overlap_south_fill_edge.tif\"],\"sources\":[\"unidentified\",\"unidentified\"],\"offsets\":[[0,0],[0,19]],\"at\":[12,19,15,15,15,15,31,31,0],\"dx\":30.5649924319411,\"dy\":30.722206940151565,\"lons\":[\"d248ca73f000f377f8471ea0ca92fd410c1418e290edc10fcde127662e2bca0e\",-12.500833333333333,-12.4925],\"lats\":[\"bf593a42285312c920eb6595c46607d7ae4d365e93e54024746c14fd0105708a\",8.740555555555556,8.748888888888889],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,322,384,null,true,[]],[0,1,706,396,null,true,[]],[0,2,1102,349,null,true,[]],[1,0,322,310,null,true,[]],[1,1,632,324,null,true,[]],[1,2,956,247,null,true,[]]]\"},\"read\":{\"z\":[\"c6d8c8e32e5cd07d94c024283fe1afcd146f63f6db7c347fb52bf50709f19d0c\",[null,171.39999389648438,null,183.60000610351562,183.6999969482422,162.5,181.8000030517578,null,153.5,null]],\"reasons\":\"2e25c45847636c72fd2c1ff3beb6c6fe4c74e42bead01c6b90f6f934fe695853\",\"sea\":\"343571b72b92d40a13a49090bf1c3175a7de0bae40f990ef9a2e5ee9744405cd\",\"counts\":[961,0,217,0,0],\"coverage\":0.7741935483870968,\"shown\":[0,31,0,31],\"notes\":[\"Read 2 files (overlap_north.tif and overlap_south_fill_edge.tif): 961 cells about 31 by 31 m around the test point, 0.45 km each way.\",\"23% of the window read lies outside the files supplied and is treated as a gap.\",\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\"],\"prompts\":[],\"figure\":\"Elevation: elevation model overlap_north.tif and overlap_south_fill_edge.tif, source not stated. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"unidentified\"},\"reads\":[[\"overlap_north.tif\",322,1129],[\"overlap_south_fill_edge.tif\",322,881]]}"
+   },
+   {
+    "case": "half a cell out of phase",
+    "files": [
+     "overlap_north.tif",
+     "phase_half_cell.tif"
+    ],
+    "centre": [
+     -12.495,
+     8.745,
+     "the test point"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and phase_half_cell.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.495,8.745,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.join_phase\",\"The cells of overlap_north.tif and phase_half_cell.tif do not line up: one is offset from the other by part of a cell, and the toolkit does not resample.\"]}"
+   },
+   {
+    "case": "another cell size",
+    "files": [
+     "overlap_north.tif",
+     "spacing_mismatch.tif"
+    ],
+    "centre": [
+     -12.495,
+     8.745,
+     "the test point"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and spacing_mismatch.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.495,8.745,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.join_spacing\",\"overlap_north.tif and spacing_mismatch.tif have different cell sizes; the toolkit joins only files on one grid and does not resample.\"]}"
+   },
+   {
+    "case": "two products",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     [
+      "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif",
+      "n08_w011_1arc_v3.tif"
+     ]
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"srtm\",[]]],\"credit\":[\"elevation model Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and n08_w011_1arc_v3.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.join_products\",\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif is Copernicus GLO-30 and n08_w011_1arc_v3.tif is SRTM; files from different products are not joined, because their surfaces and height datums differ.\"]}"
+   },
+   {
+    "case": "renamed tiles",
+    "files": [
+     "n08w012.tif",
+     "n08w011.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[\"terrain.looks_copernicus\"]]],\"credit\":[\"elevation model n08w012.tif and n08w011.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":{\"order\":[\"n08w012.tif\",\"n08w011.tif\"],\"sources\":[\"unidentified\",\"unidentified\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,18,10,10,10,10,21,21,0],\"dx\":30.54429994277126,\"dy\":30.722617604943384,\"lons\":[\"0a7aed521424c72e6e5f3e4bf167798b6b7612f6ab66853880a57319822f68bd\",-11.002777777777778,-10.997222222222222],\"lats\":[\"7bd70f62a96dde295ac721d699487fe0a168cd34fd4e11defffdd1e168ce6cdf\",8.992222222222223,8.997777777777777],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[1,0,1939,504,null,true,[]],[1,3,3308,484,null,true,[]]]\"},\"read\":{\"z\":[\"960cb6298a4a8897064b68b9b17e899a8bc4dcc08fa103cefacd9c80f1b2d56a\",[157.1999969482422,161.39999389648438,160.60000610351562,164.8000030517578,160.3000030517578,162.1999969482422,165.3000030517578,175.8000030517578,168.10000610351562,167.10000610351562]],\"reasons\":\"696790e55e1473861daed6b5f6e6c06b606be794b7a95f08828461b13797df63\",\"sea\":\"696790e55e1473861daed6b5f6e6c06b606be794b7a95f08828461b13797df63\",\"counts\":[441,0,0,0,0],\"coverage\":1.0,\"shown\":[0,21,0,21],\"notes\":[\"Read 2 files (n08w012.tif and n08w011.tif): 441 cells about 31 by 31 m around the test point, 0.3 km each way.\",\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\"],\"prompts\":[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"],\"figure\":\"Elevation: elevation model n08w012.tif and n08w011.tif, source not stated. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"unidentified\"},\"reads\":[[\"n08w012.tif\",2480,2277],[\"n08w011.tif\",1939,1853]]}"
+   },
+   {
+    "case": "a tile missing beside sea",
+    "files": [
+     "holes_N08W012.tif",
+     "holes_sea_N08W013.tif",
+     "holes_sea_N07W012.tif"
+    ],
+    "centre": [
+     -12.0,
+     8.0,
+     "the test point"
+    ],
+    "radius": 30.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-12.0,8.0,\"the test point\",true,null],\"plan\":{\"order\":[\"holes_sea_N08W013.tif\",\"holes_N08W012.tif\",\"holes_sea_N07W012.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0],[40,40]],\"at\":[40,40,11,11,11,11,23,23,40],\"dx\":2756.082117776303,\"dy\":2764.89464097885,\"lons\":[\"da6214128ad8b964cbac2fbb2252aa886c4469e05cd5f2496562323330dcfb07\",-12.275,-11.725],\"lats\":[\"6ea33a60d7871802577ee28949f849837a401041a59d4a94d44e196d0f7316b6\",7.725,8.275],\"missing\":[[0,1]],\"edges\":[[0,0,39,null],[0,2,null,0]],\"blocks\":\"[[0,4,1634,321,null,true,[]],[0,5,1955,257,null,true,[]],[0,6,2212,173,null,false,[0]],[0,7,2385,162,null,true,[0]],[0,8,2547,94,null,true,[0]],[1,3,1220,342,null,true,[]],[1,6,2106,173,null,true,[]],[2,0,382,335,null,true,[1]],[2,3,1284,335,null,false,[1]],[2,6,2170,228,null,false,[1]]]\"},\"read\":{\"z\":[\"532f7a8f5619824d37096b8a28fbcc492b525eb172d082c6545d1785b05927cf\",[null,0.0,null,45.400001525878906,null,50.79999923706055,0.0,53.29999923706055,49.900001525878906,57.20000076293945]],\"reasons\":\"09fcfbe8bc208c9abd06b1baf74d70d7ed7dda512239af9ef16059cf3129fa64\",\"sea\":\"3d5ea0e77a762ee6a7e54d643f69b72b7b9ce16b42d166552187d514c901ed02\",\"counts\":[529,0,0,0,132],\"coverage\":0.7504725897920604,\"shown\":[0,23,0,23],\"notes\":[\"Read 3 files (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif): 529 cells about 2756 by 2765 m around the test point, 30 km each way.\",\"25% of the window read lies in a tile not supplied (N07 W013) whose whole edge with the tiles supplied is at or below 0 m, so it is taken as open sea with no height (Copernicus GLO-30 publishes no tiles for open sea).\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2756 by 2765 m.\",\"cell\":\"about 2756 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"holes_sea_N08W013.tif\",1634,1007],[\"holes_N08W012.tif\",1220,1059],[\"holes_sea_N07W012.tif\",382,2016]]}"
+   },
+   {
+    "case": "a tile missing beside land",
+    "files": [
+     "holes_N08W012.tif",
+     "holes_land_N08W013.tif",
+     "holes_land_N07W012.tif"
+    ],
+    "centre": [
+     -12.0,
+     8.0,
+     "the test point"
+    ],
+    "radius": 30.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-12.0,8.0,\"the test point\",true,null],\"plan\":{\"order\":[\"holes_land_N08W013.tif\",\"holes_N08W012.tif\",\"holes_land_N07W012.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0],[40,40]],\"at\":[40,40,11,11,11,11,23,23,40],\"dx\":2756.082117776303,\"dy\":2764.89464097885,\"lons\":[\"da6214128ad8b964cbac2fbb2252aa886c4469e05cd5f2496562323330dcfb07\",-12.275,-11.725],\"lats\":[\"6ea33a60d7871802577ee28949f849837a401041a59d4a94d44e196d0f7316b6\",7.725,8.275],\"missing\":[[0,1]],\"edges\":[[0,0,39,null],[0,2,null,0]],\"blocks\":\"[[0,4,1072,182,null,true,[]],[0,5,1254,142,null,true,[0]],[1,3,1220,342,null,true,[]],[1,6,2106,173,null,true,[]],[2,0,346,184,null,true,[1]],[2,1,530,182,null,true,[1]],[2,2,712,176,null,false,[1]],[2,3,888,174,null,false,[1]],[2,4,1062,177,null,false,[1]],[2,5,1239,134,null,false,[1]]]\"},\"read\":{\"z\":[\"b0086a01ad5ebce8a2c333c1989d306839c0488b0101565d6fed96b7c0548e6c\",[null,43.0,null,45.0,null,50.79999923706055,47.0,53.29999923706055,49.0,57.20000076293945]],\"reasons\":\"09fcfbe8bc208c9abd06b1baf74d70d7ed7dda512239af9ef16059cf3129fa64\",\"sea\":\"d4d575b02e5060ed7839e504edc119f897469bbe680b7349c8d6304ccd69f249\",\"counts\":[529,0,132,0,0],\"coverage\":0.7504725897920604,\"shown\":[0,23,0,23],\"notes\":[\"Read 3 files (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif): 529 cells about 2756 by 2765 m around the test point, 30 km each way.\",\"25% of the window read lies outside the files supplied and is treated as a gap.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2756 by 2765 m.\",\"cell\":\"about 2756 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"holes_land_N08W013.tif\",1072,324],[\"holes_N08W012.tif\",1220,1059],[\"holes_land_N07W012.tif\",346,1027]]}"
+   },
+   {
+    "case": "a tile missing beside sea seen in the window only",
+    "files": [
+     "holes_N08W012.tif",
+     "holes_edge_N08W013.tif",
+     "holes_sea_N07W012.tif"
+    ],
+    "centre": [
+     -12.0,
+     8.0,
+     "the test point"
+    ],
+    "radius": 15.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (holes_edge_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-12.0,8.0,\"the test point\",true,null],\"plan\":{\"order\":[\"holes_edge_N08W013.tif\",\"holes_N08W012.tif\",\"holes_sea_N07W012.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0],[40,40]],\"at\":[40,40,6,6,6,6,13,13,40],\"dx\":2756.082117776303,\"dy\":2764.89464097885,\"lons\":[\"a4c9b7afba9376eef59376c7e9a0ec7beb637df8373f8b05d3de105e8ff8fbe4\",-12.15,-11.85],\"lats\":[\"72183598896dc894993acb44a3a853a6a8f5e03b065c907c333f217d3861bf7e\",7.85,8.15],\"missing\":[[0,1]],\"edges\":[[0,0,39,null],[0,2,null,0]],\"blocks\":\"[[0,4,2328,551,null,true,[]],[0,5,2879,392,null,true,[0]],[1,6,2106,173,null,true,[]],[2,0,382,335,null,true,[1]],[2,3,1284,335,null,false,[1]],[2,6,2170,228,null,false,[1]]]\"},\"read\":{\"z\":[\"935cd225a3ad2fed4a1056fd3d5890508ced6d701d7794ffa79dde66710d364c\",[null,null,46.0,null,0.0,0.0,47.29999923706055,44.79999923706055,48.599998474121094,52.5]],\"reasons\":\"3333330000000333333000000033333300000003333330000000333333000000033333300000003333330000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"sea\":\"0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"counts\":[169,0,42,0,0],\"coverage\":0.7514792899408284,\"shown\":[0,13,0,13],\"notes\":[\"Read 3 files (holes_edge_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif): 169 cells about 2756 by 2765 m around the test point, 15 km each way.\",\"25% of the window read lies outside the files supplied and is treated as a gap.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (holes_edge_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2756 by 2765 m.\",\"cell\":\"about 2756 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"holes_edge_N08W013.tif\",2328,943],[\"holes_N08W012.tif\",2106,173],[\"holes_sea_N07W012.tif\",382,2016]]}"
+   },
+   {
+    "case": "a hole beside an undeclared margin",
+    "files": [
+     "hole_fill_margin.tif"
+    ],
+    "centre": [
+     -12.02,
+     8.5,
+     "the test point"
+    ],
+    "radius": 8.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (hole_fill_margin.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[]],\"centre\":[-12.02,8.5,\"the test point\",true,null],\"plan\":{\"order\":[\"hole_fill_margin.tif\"],\"sources\":[\"copernicus_glo30\"],\"offsets\":[[0,0]],\"at\":[39,20,3,3,3,3,7,7,40],\"dx\":2752.619858734077,\"dy\":2764.9634632808666,\"lons\":[\"857a55388de42cff9382f1204a354142cf7c19daeb13afde54d5e0309697185d\",-12.1,-11.95],\"lats\":[\"5b031476d3f73a9f808189b860d718bd1a987fed8dcfbb33bbef72b5be2d4dc5\",8.425,8.575],\"missing\":[[1,0]],\"edges\":[[0,0,null,39]],\"blocks\":\"[[0,0,334,626,null,false,[0]],[0,1,960,636,null,false,[0]],[0,2,1596,630,null,true,[0]],[0,3,2226,632,null,true,[0]],[0,4,2858,639,null,false,[0]],[0,5,3497,469,null,false,[0]]]\"},\"read\":{\"z\":[\"7939ea3aac932e5d2c4d2cdddab0850aa611ab60fc3682426cf39795ddb2ea42\",[54.0,null,null,null,54.900001525878906,null,null,null,55.5,null]],\"reasons\":\"0022333002233300223330022333002233300223330022333\",\"sea\":\"0000000000000000000000000000000000000000000000000\",\"counts\":[49,0,21,14,0],\"coverage\":0.5714285714285714,\"shown\":[0,7,0,7],\"notes\":[\"Read 1 file (hole_fill_margin.tif): 49 cells about 2753 by 2765 m around the test point, 8 km each way.\",\"43% of the window read lies outside the files supplied and is treated as a gap.\",\"14 cells were infinite or outside -1000 to 9000 m and were taken as having no elevation.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (hole_fill_margin.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2753 by 2765 m.\",\"cell\":\"about 2753 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"hole_fill_margin.tif\",334,3632]]}"
+   },
+   {
+    "case": "an .hgt pair across 9 N",
+    "files": [
+     [
+      [
+       -13,
+       9,
+       1201,
+       null
+      ],
+      "N09W013.hgt"
+     ],
+     [
+      [
+       -13,
+       8,
+       1201,
+       null
+      ],
+      "N08W013.hgt"
+     ]
+    ],
+    "centre": [
+     -12.5,
+     9.0,
+     "the test point"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"hgt\",[]],[\"hgt\",[]]],\"credit\":[\"SRTM-format tiles N09W013.hgt and N08W013.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-12.5,9.0,\"the test point\",true,null],\"plan\":{\"order\":[\"N09W013.hgt\",\"N08W013.hgt\"],\"sources\":[\"hgt\",\"hgt\"],\"offsets\":[[0,0],[0,1200]],\"at\":[600,1200,3,3,3,3,7,7,1200],\"dx\":91.63164194695361,\"dy\":92.1678777702763,\"lons\":[\"85a08aa8ddc4996a4cc4e491513aa9ea1021d026ef7c441b03d4896b05369e4f\",-12.5025,-12.4975],\"lats\":[\"475d97bca64cdefb4cd104377b11376988ad5420f8c580b9a091bd68604aa953\",8.9975,9.0025],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1197,2875194,2402,null,true,[]],[0,1198,2877596,2402,null,true,[]],[0,1199,2879998,2402,null,true,[]],[0,1200,2882400,2402,null,true,[]],[1,0,0,2402,null,true,[]],[1,1,2402,2402,null,true,[]],[1,2,4804,2402,null,true,[]],[1,3,7206,2402,null,true,[]]]\"},\"read\":{\"z\":[\"2bdab3960e54107d1bcdec98116376944848d9ba3036e94d7611de95bdd8a9c1\",[246.0,331.0,268.0,222.0,159.0,244.0,198.0,135.0,72.0,174.0]],\"reasons\":\"0000000000000000000000000000000000000000000000000\",\"sea\":\"0000000000000000000000000000000000000000000000000\",\"counts\":[49,0,0,0,0],\"coverage\":1.0,\"shown\":[0,7,0,7],\"notes\":[\"Read 2 files (N09W013.hgt and N08W013.hgt): 49 cells about 92 by 92 m around the test point, 0.2 km each way.\",\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: SRTM-format tiles N09W013.hgt and N08W013.hgt, source not stated. Cells about 92 by 92 m.\",\"cell\":\"about 92 by 92 m\",\"source\":\"hgt\"},\"reads\":[[\"N09W013.hgt\",2875194,9608],[\"N08W013.hgt\",0,9608]]}"
+   },
+   {
+    "case": "outside the files",
+    "files": [
+     "n08w011.tif"
+    ],
+    "centre": [
+     -10.0,
+     8.0,
+     "Bo"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[\"terrain.looks_copernicus\"]]],\"credit\":[\"elevation model n08w011.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"]],\"centre\":[-10.0,8.0,\"Bo\",true,null],\"plan\":[\"refused\",\"terrain.site_outside\",\"The window centre at Bo lies outside the elevation model supplied, which covers 8.989-9.000 N, 10.989-11.000 W.\"]}"
+   },
+   {
+    "case": "over the cap",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 1.1,
+    "margin": 0.5,
+    "cap": 10000,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.too_many_cells\",\"A 1.1 km radius, with the 0.5 km margin analysed around it, needs more cells than the 10,000 the analysis takes; a radius of 0.9 km fits.\"]}"
+   },
+   {
+    "case": "the radius the cap says fits",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.9,
+    "margin": 0.5,
+    "cap": 10000,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":{\"order\":[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,18,46,46,30,30,93,93,0],\"dx\":30.54429994277126,\"dy\":30.722617604943384,\"lons\":[\"8947bbeb6a031a320d59357a1c8321024707c382517ddffa7f9b8c89aec04290\",-11.012777777777778,-10.987222222222222],\"lats\":[\"eca3248a1c6360cbb2e8a7f54d9d4d9b9bd2642a671f5535d9a9d7a575be9a77\",8.982222222222223,9.007777777777777],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,1971,501,null,true,[]],[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,3,3385,519,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[0,6,4765,284,null,true,[]],[0,7,5057,264,null,true,[]],[0,8,5329,194,null,true,[]],[1,0,1939,504,null,true,[]],[1,1,2451,498,null,true,[]],[1,2,2957,343,null,true,[]],[1,3,3308,484,null,true,[]],[1,4,3800,484,null,true,[]],[1,5,4292,337,null,true,[]],[1,6,4637,273,null,true,[]],[1,7,4918,261,null,true,[]],[1,8,5187,209,null,true,[]]]\"},\"read\":{\"z\":[\"7e52955450091bd37b9cadd7385a15135a33027364eced5235ceab6066a6c3ed\",[null,null,null,null,162.3000030517578,164.89999389648438,null,null,null,null]],\"reasons\":\"f655b05e313799f7e6ab18434be4398d530c811b8e2380000eb3ebaf9edf1b7b\",\"sea\":\"285736b12e1e6f1e4a08ef964a9b1d4732e4ff6aa00962f5d7a5a49cc86f7777\",\"counts\":[8649,0,5449,0,0],\"coverage\":0.3699849693606197,\"shown\":[16,77,16,77],\"notes\":[\"Read 2 files (Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif): 8,650 cells about 31 by 31 m around the test point, 0.9 km each way.\",\"The analysis also reads 0.5 km beyond the square shown, so that the edge of the analysis does not bend the drainage lines.\",\"63% of the window read lies outside the files supplied and is treated as a gap.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30 tiles N08 W012 and N08 W011, produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",1971,3552],[\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",1939,3457]]}"
+   },
+   {
+    "case": "one cell over the cap (a window of 1,225 cells)",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.4,
+    "margin": 0.1,
+    "cap": 1224,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.too_many_cells\",\"A 0.4 km radius, with the 0.1 km margin analysed around it, needs more cells than the 1,220 the analysis takes; a radius of 0.3 km fits.\"]}"
+   },
+   {
+    "case": "centred on a chiefdom",
+    "files": [
+     [
+      [
+       -12,
+       7,
+       1201,
+       null
+      ],
+      "N07W012.hgt"
+     ]
+    ],
+    "site": {
+     "community": "T",
+     "chiefdom": "Koya",
+     "district": "Kenema"
+    },
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"hgt\",[]]],\"credit\":[\"SRTM-format tile N07W012.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[]],\"centre\":[-11.29277563328588,7.62020801741642,\"Koya chiefdom\",false,\"The project has no GPS fix, so the window is centred on Koya chiefdom.\"],\"plan\":{\"order\":[\"N07W012.hgt\"],\"sources\":[\"hgt\"],\"offsets\":[[0,0]],\"at\":[849,456,4,4,4,4,9,9,1200],\"dx\":91.95246475738408,\"dy\":92.16150185491452,\"lons\":[\"aeff1092043b2d5c7b372590c22f3485c6ffc3c9b97919d967c2aaa7294ff2dc\",-11.295833333333333,-11.289166666666667],\"lats\":[\"c1e9d951eb4611219b929c9e2063711e93a41cb4788478195aa3003b9337b58d\",7.616666666666666,7.623333333333333],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,452,1085704,2402,null,true,[]],[0,453,1088106,2402,null,true,[]],[0,454,1090508,2402,null,true,[]],[0,455,1092910,2402,null,true,[]],[0,456,1095312,2402,null,true,[]],[0,457,1097714,2402,null,true,[]],[0,458,1100116,2402,null,true,[]],[0,459,1102518,2402,null,true,[]],[0,460,1104920,2402,null,true,[]]]\"},\"read\":{\"z\":[\"fd0890be3d35a9c346c0bca9edde94f7248c943f10463dfc73d5a667ad0310b4\",[115.0,251.0,222.0,193.0,164.0,135.0,106.0,77.0,48.0,19.0]],\"reasons\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"sea\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"counts\":[81,0,0,0,0],\"coverage\":1.0,\"shown\":[0,9,0,9],\"notes\":[\"Read 1 file (N07W012.hgt): 81 cells about 92 by 92 m around Koya chiefdom, 0.3 km each way.\",\"The project has no GPS fix, so the window is centred on Koya chiefdom.\",\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: SRTM-format tile N07W012.hgt, source not stated. Cells about 92 by 92 m.\",\"cell\":\"about 92 by 92 m\",\"source\":\"hgt\"},\"reads\":[[\"N07W012.hgt\",1085704,21618]]}"
+   },
+   {
+    "case": "no site, centred on the files",
+    "files": [
+     "n08w011.tif"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[\"terrain.looks_copernicus\"]]],\"credit\":[\"elevation model n08w011.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"]],\"centre\":[-10.994583333333333,8.994583333333333,\"8.99458 N, 10.99458 W\",false,\"The project records no location, so the window is centred on the middle of the elevation model.\"],\"plan\":{\"order\":[\"n08w011.tif\"],\"sources\":[\"unidentified\"],\"offsets\":[[0,0]],\"at\":[20,20,7,7,7,7,15,15,0],\"dx\":30.54434651669809,\"dy\":30.72261668094374,\"lons\":[\"f81ee05f3d81a9d7dc5f77a6cf6c7f7db7149793d185714673f204d129a7ecb1\",-10.99638888888889,-10.9925],\"lats\":[\"fc897b0cd91a79034c9c0e6d03f9178ef243a15b0637d1cac18947abdc30a469\",8.9925,8.99638888888889],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,1939,504,null,true,[]],[0,1,2451,498,null,true,[]],[0,3,3308,484,null,true,[]],[0,4,3800,484,null,true,[]]]\"},\"read\":{\"z\":[\"567ad4635f79b0e74dfde03cb889c4e4659b75d1a705db76fb3d26661cc7df4f\",[165.60000610351562,163.8000030517578,167.6999969482422,167.8000030517578,164.6999969482422,168.10000610351562,167.1999969482422,167.1999969482422,165.1999969482422,171.1999969482422]],\"reasons\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"sea\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"counts\":[225,0,0,0,0],\"coverage\":1.0,\"shown\":[0,15,0,15],\"notes\":[\"Read 1 file (n08w011.tif): 225 cells about 31 by 31 m around 8.99458 N, 10.99458 W, 0.2 km each way.\",\"The project records no location, so the window is centred on the middle of the elevation model.\",\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\"],\"prompts\":[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"],\"figure\":\"Elevation: elevation model n08w011.tif, source not stated. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"unidentified\"},\"reads\":[[\"n08w011.tif\",1939,2345]]}"
+   },
+   {
+    "case": "two tiles at one corner, in UTF-16 order",
+    "files": [
+     [
+      [
+       -13,
+       8,
+       1201,
+       [
+        600,
+        600,
+        1
+       ]
+      ],
+      "N08W013\uff21.hgt"
+     ],
+     [
+      [
+       -13,
+       8,
+       1201,
+       null
+      ],
+      "N08W013\ud83d\ude00.hgt"
+     ]
+    ],
+    "centre": [
+     -12.5,
+     8.5,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"hgt\",[]],[\"hgt\",[]]],\"credit\":[\"SRTM-format tiles N08W013\\ud83d\\ude00.hgt and N08W013\\uff21.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-12.5,8.5,\"the test point\",true,null],\"plan\":{\"order\":[\"N08W013\\ud83d\\ude00.hgt\",\"N08W013\\uff21.hgt\"],\"sources\":[\"hgt\",\"hgt\"],\"offsets\":[[0,0],[0,0]],\"at\":[600,600,4,4,4,4,9,9,1200],\"dx\":91.75399529113591,\"dy\":92.1654487760289,\"lons\":[\"18872aef660e77cf955769d874e435d4ae9c3d55b13843f3c86f3ae72c201360\",-12.503333333333334,-12.496666666666666],\"lats\":[\"7118f5b167fad0e3e53abc28d5436899ed6b6ae93afd28f4f0e97bbb8279657b\",8.496666666666666,8.503333333333334],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,596,1431592,2402,null,true,[]],[0,597,1433994,2402,null,true,[]],[0,598,1436396,2402,null,true,[]],[0,599,1438798,2402,null,true,[]],[0,600,1441200,2402,null,true,[]],[0,601,1443602,2402,null,true,[]],[0,602,1446004,2402,null,true,[]],[0,603,1448406,2402,null,true,[]],[0,604,1450808,2402,null,true,[]],[1,596,1431592,2402,null,true,[]],[1,597,1433994,2402,null,true,[]],[1,598,1436396,2402,null,true,[]],[1,599,1438798,2402,null,true,[]],[1,600,1441200,2402,null,true,[]],[1,601,1443602,2402,null,true,[]],[1,602,1446004,2402,null,true,[]],[1,603,1448406,2402,null,true,[]],[1,604,1450808,2402,null,true,[]]]\"},\"read\":[\"refused\",\"terrain.join_disagree\",\"N08W013\\ud83d\\ude00.hgt and N08W013\\uff21.hgt overlap but disagree at 1 shared cells, by up to 1.00 m, so they are not neighbouring tiles of one release.\"],\"reads\":[[\"N08W013\\ud83d\\ude00.hgt\",1431592,21618],[\"N08W013\\uff21.hgt\",1431592,21618]]}"
+   }
+  ]
  }
 }
