@@ -1544,6 +1544,14 @@
       engine.cancel('analysePumping');
       S.toast('The pumping analysis was stopped. The test is still loaded, and ' +
         'the Pumping test page can run the analysis again.', 'warn');
+    } else if (key === 'terrain') {
+      /* the run is dropped with whatever it had read, the worker stopped
+       * and the bar taken away (dropTerrainRead), at once even while the
+       * page is still reading the files, which cannot be stopped; the run
+       * draws the card again as it ends */
+      dropTerrainRead(terrainSession);
+      S.toast('The terrain analysis was stopped, and nothing of it is kept. The tiles ' +
+        'are still on the Topography and terrain card, which can analyse them again.', 'warn');
     }
   }
 
@@ -2146,10 +2154,13 @@
       /* counts the runs asked for, so that an answer to an older one, or to
        * files since replaced, is dropped */
       run: 0,
-      reading: false,
+      /* a run is reading the files or analysing them */
+      running: false,
       /* what the engine read of the window, and why the last run was refused */
       read: null, refusal: '',
-      /* the analysis of the read and the figures drawn from it */
+      /* what the page keeps of the analysis of the read (terrainResult),
+       * and the figures drawn from it, by name: relief, wetness, curvature
+       * and directions; a figure set to null is drawn again */
       result: null, figures: null,
     };
   }
@@ -2209,12 +2220,22 @@
     return [session.declared, session.declared === 'other' ? session.declaredText : ''];
   }
 
+  /* The engine tasks a terrain run asks for. */
+  var TERRAIN_TASKS = ['readElevation', 'analyseTerrain'];
+
   /* The read, and whatever was made of it, no longer describe the files or
-   * their source: they are dropped, and a run still going is left to finish
-   * unheard. */
+   * their source: they are dropped, and a run still going is stopped, so
+   * that the worker is not kept busy on an answer nobody will see, and its
+   * bar goes with it. Bumping the run is what drops that answer if it
+   * arrives all the same: the engine cannot stop the page's own reads of
+   * the files. */
   function dropTerrainRead(session) {
     session.run += 1;
-    session.reading = false;
+    if (session.running) {
+      engine.cancel(TERRAIN_TASKS);
+      if (work.terrain) workEnd(work.terrain);
+    }
+    session.running = false;
     session.read = null;
     session.refusal = '';
     session.result = null;
@@ -2261,8 +2282,9 @@
    * within 64 KiB of each other in one read of at most 16 MiB, the edge
    * blocks of a missing tile included. Each block is cut out with slice,
    * never subarray, so that it holds a buffer of its own: the request to the
-   * worker is a copy, and a view would carry the whole read with it. */
-  async function terrainBlocks(plan, session) {
+   * worker is a copy, and a view would carry the whole read with it.
+   * `heard(fraction)` is told how many of the reads are done. */
+  async function terrainBlocks(plan, session, heard) {
     var fileOf = new Map();
     session.files.forEach(function (file) {
       fileOf.set(session.opened.get(file).found, file);
@@ -2280,6 +2302,7 @@
         var at = plan.blocks[b].offset - read.offset;
         blocks[b] = bytes.slice(at, at + plan.blocks[b].length);
       });
+      heard((r + 1) / reads.length);
     }
     return blocks;
   }
@@ -2294,41 +2317,188 @@
       : config().terrain.drainage_area_km2;
   }
 
+  /* A device that says it has 2 GB of memory or less is asked before a
+   * window of more than a million cells is analysed, since the worker
+   * holds the whole window several times over while it works, and a phone
+   * short of memory may answer by closing the tab. Only Chromium browsers
+   * say how much memory a device has (navigator.deviceMemory, rounded);
+   * the others are never asked. */
+  var TERRAIN_LOW_MEMORY_GB = 2;
+  var TERRAIN_ASK_CELLS = 1000000;
+
+  function terrainNeedsAsking(plan) {
+    /* deviceMemory is not in the DOM library tsc checks this file against */
+    var memory = /** @type {any} */ (navigator).deviceMemory;
+    return memory !== undefined && memory <= TERRAIN_LOW_MEMORY_GB && plan.cells > TERRAIN_ASK_CELLS;
+  }
+
+  /* The question, in the browser's own words: the Python app runs on a
+   * computer, and never asks it. */
+  function askTerrainMemory() {
+    var asked = S.modal('This device may run short of memory', el('p',
+      'This device reports 2 GB of memory or less; a window this size may close the tab. ' +
+      'Run it anyway?'), [
+      button('Run it anyway', function () {
+        asked.close();
+        runTerrain(true);
+      }, { variant: 'primary' }),
+    ]);
+  }
+
   /* "Analyse the terrain". The window is planned around the site on the
    * page, which is quick: its centre, the square shown and the margin
    * beyond it, the cap, and the blocks each file must give up. Those blocks
    * are read here and handed to the engine worker, which turns them into
-   * the window's grid and the read report. */
-  async function runTerrain() {
+   * the window's grid and the read report, and then analyses the grid. The
+   * work bar names each stage as the engine does, and its Cancel stops the
+   * run (cancelWork). The lines are traced at the card's threshold, as the
+   * Python app traces them; one changed while the run was going is traced
+   * again from its answer (retraceTerrain). `asked` is true once a device
+   * short of memory has been told to go ahead with a large window. */
+  async function runTerrain(asked) {
     var session = terrainSession;
-    var run = ++session.run;
-    function current() { return terrainSession === session && session.run === run; }
-    session.reading = true;
-    session.read = null;
-    session.refusal = '';
-    session.result = null;
-    session.figures = null;
-    render();
+    var cfg = config();
+    cfg.terrain.drainage_area_km2 = terrainArea(session);
+    var plan = null, refusal = '';
     try {
-      var cfg = config();
-      var declared = terrainDeclared(session);
       var files = session.files.map(function (file) { return session.opened.get(file).found; });
       var centre = C.windowCentre(store.get('site'), siteLatLon(), files);
-      var plan = C.planElevationWindow(files, centre, terrainRadius(session), cfg, null, declared);
-      var blocks = await terrainBlocks(plan, session);
+      plan = C.planElevationWindow(files, centre, terrainRadius(session), cfg, null,
+        terrainDeclared(session));
+    } catch (e) {
+      refusal = e.message;
+    }
+    /* asked first, with what is on the card left as it is */
+    if (plan && !asked && terrainNeedsAsking(plan)) {
+      askTerrainMemory();
+      return;
+    }
+    var run = ++session.run;
+    function current() { return terrainSession === session && session.run === run; }
+    session.read = null;
+    session.refusal = refusal;
+    session.result = null;
+    session.figures = null;
+    if (!plan) {
+      render();
+      return;
+    }
+    session.running = true;
+    var stageRead = C.phrase('terrain.stage_read');
+    var job = workBegin('terrain', 'Analysing the terrain');
+    workProgress(job, 0, stageRead);
+    /* a part of the run, from `from` to `from + width` of the bar: reading
+     * the files, reading the window out of their blocks, analysing it */
+    function heard(from, width) {
+      return function (fraction, label) {
+        workProgress(job, from + width * fraction, label || stageRead);
+      };
+    }
+    render();
+    try {
+      var blocks = await terrainBlocks(plan, session, heard(0, 0.05));
       if (!current()) return;
-      var read = await engine.readElevation(plan, blocks, cfg);
+      var read = await engine.readElevation(plan, blocks, cfg, { onProgress: heard(0.05, 0.05) });
       if (!current()) return;
       session.read = read;
+      refresh();
+      /* The grid is sent once, as itself. The read goes with it for the
+       * captions, which take its surface note and its plan, so it goes
+       * without the grid and the other layers of a value a cell. */
+      var answer = await engine.analyseTerrain(read.grid, cfg,
+        Object.assign({}, read, { grid: null, assumedSea: null, reasons: null }), read.centre.label,
+        { onProgress: heard(0.1, 0.9) });
+      if (!current()) return;
+      session.result = terrainResult(read, answer, cfg);
+      retraceTerrain(session);
     } catch (e) {
       if (!current() || engine.isCancelled(e)) return;
       /* a refusal is the engine's sentence; a worker that stopped says
        * so in its own */
       session.refusal = e.message;
     } finally {
-      if (current()) session.reading = false;
+      workEnd(job);
+      if (current()) session.running = false;
       refresh();
     }
+  }
+
+  /* What the page keeps of an analysis: the worker's answer (the display
+   * layers, the core at full size, the lines, the summary and the
+   * captions), the settings it was worked out with and the threshold its
+   * lines were traced at, the sea cells of the analysed window (assumed
+   * sea included; class 2), which the GeoJSON's description reads, and the
+   * GeoJSON itself. */
+  function terrainResult(read, answer, cfg) {
+    var cls = answer.core.cls, sea = 0;
+    for (var i = 0; i < cls.length; i++) if (cls[i] === 2) sea += 1;
+    var result = Object.assign({}, answer, { cfg: cfg, areaKm2: cfg.terrain.drainage_area_km2,
+      seaCells: sea });
+    result.geojson = terrainGeoJson(read, result);
+    return result;
+  }
+
+  /* The drainage lines shown, as GeoJSON, told what terrain.geojson_meta
+   * tells it in the Python app, so that its description says what the
+   * captions say. */
+  function terrainGeoJson(read, result) {
+    var settings = result.cfg.terrain;
+    return C.drainageGeoJson(result.core, result.parts, {
+      label: read.grid.label, figure_credit: read.figureCredit, notice: read.notice,
+      surface: read.surface, area: settings.drainage_area_km2, radius: read.plan.radiusKm,
+      margin: read.plan.marginKm, centre: read.centre, fill_note_m: settings.fill_note_m,
+      sea_clean: read.grid.seaClean, sea_cells: result.seaCells, sea_level_m: settings.sea_level_m,
+    });
+  }
+
+  /* The summary's counts of drainage-line cells in the square shown at a
+   * threshold, as C.analyseTerrain counts them: a land cell (class 1) is
+   * on a line where at least the threshold drains to it, the threshold in
+   * whole 0.01 m² units rounded half up, and each share is of those
+   * cells, 0 of none. */
+  function terrainStreamCounts(core, areaKm2) {
+    var threshold = Math.floor(areaKm2 * 1e8 + 0.5);
+    var cls = core.cls, area = core.areaUnits, flatRouted = core.flatRouted, flag = core.flag;
+    var cols = core.cols, shown = core.shown, stream = 0, flat = 0, flagged = 0;
+    for (var r = shown[0]; r < shown[1]; r++) {
+      for (var i = r * cols + shown[2]; i < r * cols + shown[3]; i++) {
+        if (cls[i] !== 1 || area[i] < threshold) continue;
+        stream += 1;
+        flat += flatRouted[i];
+        flagged += flag[i] ? 1 : 0;
+      }
+    }
+    return {
+      flat_routed_stream: flat, stream: stream, contaminated_stream: flagged,
+      flat_routed_lines_pct: stream ? (100.0 * flat) / stream : 0.0,
+      contaminated_pct: stream ? (100.0 * flagged) / stream : 0.0, threshold_units: threshold,
+    };
+  }
+
+  /* A new drainage threshold for the analysis on show, worked out on the
+   * page from the core the worker handed over, without analysing the
+   * ground again. The lines are traced afresh by C.drainageLinks, the one
+   * function both apps trace with, on the same core, so they are the
+   * lines an analysis at this threshold draws in either app. What names
+   * the threshold follows them: the summary's counts of line cells, which
+   * the relief's caption gives a share of, the captions (C.terrainCaptions,
+   * given the parts of an analysis it reads) and the GeoJSON. Nothing else
+   * depends on the threshold, so of the figures only the relief is drawn
+   * again. */
+  function retraceTerrain(session) {
+    var result = session.result, read = session.read, area = terrainArea(session);
+    if (!result || !read || result.areaKm2 === area) return;
+    var cfg = Object.assign({}, result.cfg, {
+      terrain: Object.assign({}, result.cfg.terrain, { drainage_area_km2: area }) });
+    var lines = C.drainageLinks(result.core, area);
+    var summary = Object.assign({}, result.summary, terrainStreamCounts(result.core, area));
+    var captions = C.terrainCaptions({ grid: read.grid, core: result.core, settings: cfg.terrain,
+      summary: summary, kCells: result.kCells }, read, read.centre.label);
+    var next = Object.assign({}, result, { cfg: cfg, areaKm2: area, links: lines.links,
+      parts: lines.parts, summary: summary, captions: captions });
+    next.geojson = terrainGeoJson(read, next);
+    session.result = next;
+    if (session.figures) session.figures.relief = null;
   }
 
   function sizeText(bytes) {
@@ -2447,17 +2617,27 @@
         field('Drainage threshold (km²)', S.numberInput(terrainArea(session),
           function (value) {
             session.areaKm2 = value === null ? null : S.clamp(value, 0.05, 100);
+            retraceTerrain(session);
             render();
           }, { min: 0.05, max: 100, step: 0.05 }),
-        'A drainage line starts where more than this drains to a cell.'),
+        'A drainage line starts where more than this drains to a cell. A new threshold ' +
+          'redraws the lines without analysing the ground again.'),
       ]),
       el('div.btn-row', { style: { marginBottom: '0.9rem' } }, [
-        button('Analyse the terrain', function () { runTerrain(); }, {
+        button('Analyse the terrain', function () { runTerrain(false); }, {
           variant: 'primary',
-          disabled: !session.files.length || waiting || refused || session.reading,
+          disabled: !session.files.length || waiting || refused || session.running,
         }),
       ]),
-      session.reading ? el('p.muted', C.phrase('terrain.stage_read') + '…') : null,
+      session.running ? el('p.muted', 'Analysing the terrain. The bar at the top of the page ' +
+        'shows how far it has got, and its Cancel stops it.') : null,
+      /* Opened from file://, the page does the work itself and draws
+       * nothing while the engine reads or analyses, so it says so before a
+       * run is started; a press of Cancel is read only between the two. In
+       * the browser's own words: the Python app always has its engine. */
+      !session.running && engine.mode() === 'page'
+        ? el('p.muted.terrain-page-only', 'This copy of the app has no background worker (' +
+          engine.unavailable() + '), so the analysis will hold the page until it finishes.') : null,
       session.refusal ? el('div.callout.callout-bad', { style: { overflowWrap: 'anywhere' } },
         el('p', session.refusal)) : null,
       session.read ? terrainReadNodes(session.read) : null,
@@ -7952,6 +8132,8 @@
     hashFor: hashFor, routeFrom: routeFrom,
     sampleRanges: sampleRanges, rangeFor: rangeFor, surveyOdds: surveyOdds,
     costSpreads: costSpreads, surveyMeasurements: surveyMeasurements,
+    /* the Topography and terrain card's files, read and analysis */
+    terrainSession: function () { return terrainSession; },
   };
 
   if (typeof document !== 'undefined') {

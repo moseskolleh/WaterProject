@@ -4302,6 +4302,410 @@ await withPage(async (page, base, consoleErrors) => {
     ownBuffers(holesRead), JSON.stringify([holesRead.slices, holesRead.reads, holesRead.edgeOnly,
       holesRead.sent, holesRead.ran]));
 
+  // "Analyse the terrain" goes on from the read to the analysis, in the
+  // engine worker, with each stage the engine names shown in the work bar
+  // and its Cancel there, which stops the worker and keeps nothing. The
+  // answer is the engine's at the card's drainage threshold. A new
+  // threshold is worked out on the page from the core the worker handed
+  // over, with no request to the engine: the lines, the captions, the
+  // summary and the GeoJSON are those of an analysis at that threshold, and
+  // of the figures only the relief is to be drawn again. An answer to a run
+  // since dropped is not shown. With no worker the card says, before a run,
+  // that the page will be held, and a Cancel read between the read and the
+  // analysis stops it there. A device that says it has 2 GB of memory or
+  // less is asked before a window of more than a million cells. The tile is
+  // an SRTM-format .hgt made here: ridges and hollows falling to the
+  // south-west, at 3 arc-seconds, around a site at 8.5 N, 11.5 W.
+  await removeAll();
+  const keptTerrain = await page.evaluate(() => {
+    const app = window.GWT.app, engine = window.GWT.engine, store = app.store;
+    const kept = { easting: store.get('site.easting'), northing: store.get('site.northing'),
+      utm_zone: store.get('site.utm_zone') };
+    store.set('site.easting', -11.5);
+    store.set('site.northing', 8.5);
+    store.set('site.utm_zone', null);
+    const n = 1201, view = new DataView(new ArrayBuffer(2 * n * n));
+    for (let row = 0; row < n; row++) {
+      for (let col = 0; col < n; col++) {
+        const x = col, y = n - 1 - row;
+        const z = 300 - 0.1 * (x + y) + 35 * Math.sin(x / 31) * Math.sin(y / 23) + 20 * Math.cos((x - y) / 47);
+        view.setInt16(2 * (row * n + col), Math.round(z), false);
+      }
+    }
+    window.__hgt = new File([view.buffer], 'N08W012.hgt');
+    /* what the page reads of the tile */
+    window.__slices = [];
+    window.__slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (start, end, type) {
+      if (this instanceof File) window.__slices.push([this.name, start, end]);
+      return window.__slice.call(this, start, end, type);
+    };
+    /* what the card asks the engine to analyse, the stages it hears, and,
+     * when the test says so, the request held back until released, or a
+     * Cancel pressed the moment the analysis is asked for */
+    window.__analyseTerrain = engine.analyseTerrain;
+    engine.analyseTerrain = function (grid, cfg, read, where, options) {
+      const heard = window.__heard = [];
+      window.__asked = { area: cfg.terrain.drainage_area_km2, where, label: read.centre.label,
+        stripped: [read.grid, read.assumedSea, read.reasons].every((v) => v === null),
+        captions: [!!read.plan, !!read.surface], grid: grid.rows * grid.cols };
+      const opts = Object.assign({}, options, { onProgress: (fraction, label) => {
+        heard.push([fraction, label]);
+        options.onProgress(fraction, label);
+      } });
+      const go = () => window.__analyseTerrain.call(engine, grid, cfg, read, where, opts);
+      if (window.__hold) return new Promise((resolve) => { window.__release = resolve; }).then(go);
+      const answer = go();
+      if (window.__cancelNow) app.cancelWork('terrain');
+      return answer;
+    };
+    /* the session's answer, and the engine's own analysis of the grid the
+     * card read, at a threshold, with the GeoJSON the Python app writes */
+    window.__terrainGot = () => {
+      const r = app.terrainSession().result;
+      return JSON.stringify({ links: r.links, parts: r.parts, summary: r.summary, captions: r.captions,
+        geojson: r.geojson });
+    };
+    window.__terrainWant = (areaKm2) => {
+      const C = window.GWT.core, read = app.terrainSession().read, cfg = app.config();
+      cfg.terrain.drainage_area_km2 = areaKm2;
+      const a = C.analyseTerrain(read.grid, cfg, null, 'float32', read.grid.shown);
+      let sea = 0;
+      for (const v of a.core.cls) sea += v === 2 ? 1 : 0;
+      const geojson = C.drainageGeoJson(a.core, a.parts, { label: read.grid.label,
+        figure_credit: read.figureCredit, notice: read.notice, surface: read.surface, area: areaKm2,
+        radius: read.plan.radiusKm, margin: read.plan.marginKm, centre: read.centre,
+        fill_note_m: a.settings.fill_note_m, sea_clean: read.grid.seaClean, sea_cells: sea,
+        sea_level_m: a.settings.sea_level_m });
+      return JSON.stringify({ links: a.links, parts: a.parts, summary: a.summary,
+        captions: C.terrainCaptions(a, read, read.centre.label), geojson });
+    };
+    window.__until = async (test, ms) => {
+      const began = performance.now();
+      while (!test()) {
+        if (performance.now() - began > (ms || 60000)) return false;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return true;
+    };
+    window.__settled = () => !app.terrainSession().running && !app.working('terrain');
+    window.__lastTerrain = () => engine.history().filter((h) => h.type === 'readElevation' ||
+      h.type === 'analyseTerrain').slice(-2).map((h) => [h.type, h.mode, h.outcome, !!h.ran]);
+    window.__card = () => {
+      const host = document.querySelector('[data-item="terrain"]');
+      const button = Array.from(host.querySelectorAll('button'))
+        .find((b) => b.textContent === 'Analyse the terrain');
+      return { read: !!host.querySelector('.terrain-read'),
+        refusals: Array.from(host.querySelectorAll('.btn-row ~ .callout-bad')).map((c) => c.textContent),
+        pageOnly: host.querySelector('.terrain-page-only')?.textContent || null,
+        running: Array.from(host.querySelectorAll('p.muted'))
+          .some((p) => p.textContent.startsWith('Analysing the terrain.')),
+        disabled: button.disabled, bar: !!document.querySelector('#work-status .work-bar') };
+    };
+    window.__toasts = () => Array.from(document.querySelectorAll('.toast')).map((t) => t.textContent);
+    const transfer = new DataTransfer();
+    transfer.items.add(window.__hgt);
+    document.querySelector('[data-item="terrain"] .upload-zone').dispatchEvent(
+      new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+    return kept;
+  });
+  await opened(1);
+  /* the tile as found, whatever was declared for the files before it */
+  await setField('Source of the elevation model', 'detect');
+  const stages = await page.evaluate(() => ['classes', 'fill', 'flow', 'flats', 'accumulate', 'drainage',
+    'shading', 'curvature'].map((s) => window.GWT.core.phrase('terrain.stage_' + s)));
+  /* labels in the order the engine names its stages, none twice */
+  const inOrder = (labels) => labels.every((label, i) => stages.indexOf(label) >= 0 &&
+    (i === 0 || stages.indexOf(label) > stages.indexOf(labels[i - 1])));
+
+  /* a run to the end in the worker, the work bar watched as it goes */
+  await setField('Radius of the square shown (km)', '30');
+  await setField('Drainage threshold (km²)', '0.25');
+  const worked = await page.evaluate(async () => {
+    const seen = [];
+    const watch = new MutationObserver(() => {
+      const bar = document.querySelector('#work-status .work-bar[data-work="terrain"]');
+      if (bar) {
+        seen.push([bar.querySelector('.work-label').textContent,
+          bar.querySelector('.work-detail').textContent,
+          parseFloat(bar.querySelector('.progress-fill').style.width) || 0, bar.textContent.includes('Cancel')]);
+      }
+    });
+    watch.observe(document.querySelector('#work-status'), { subtree: true, childList: true,
+      characterData: true, attributes: true });
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const during = window.__card();
+    const done = await window.__until(window.__settled);
+    watch.disconnect();
+    const s = window.GWT.app.terrainSession();
+    return { during, done, seen, after: window.__card(), ran: window.__lastTerrain(), asked: window.__asked,
+      heard: window.__heard, centre: s.read.centre.label, cells: s.read.grid.rows * s.read.grid.cols,
+      areaKm2: s.result.areaKm2, lines: s.result.parts.length, got: window.__terrainGot(),
+      want: window.__terrainWant(0.25), stage: window.GWT.core.phrase('terrain.stage_read') };
+  });
+  const barDetails = worked.seen.map((b) => b[1]).filter((d, i, all) => d !== all[i - 1]);
+  check('terrain analysis: the read goes on to the analysis in the worker, the grid sent once and the read ' +
+    'without its cells',
+    worked.done && JSON.stringify(worked.ran) ===
+      '[["readElevation","worker","done",true],["analyseTerrain","worker","done",true]]' &&
+    worked.asked.stripped && worked.asked.captions.every(Boolean) && worked.asked.where === worked.centre &&
+    worked.asked.grid === worked.cells && worked.cells > 500000 && worked.cells < 1000000,
+    JSON.stringify([worked.done, worked.ran, worked.asked, worked.cells]));
+  check('terrain analysis: the work bar names each stage as the engine does, and holds Cancel while it runs',
+    worked.during.running && worked.during.disabled && worked.seen.length > 0 &&
+    worked.seen.every((b) => b[0] === 'Analysing the terrain' && b[3]) &&
+    worked.seen.every((b, i) => i === 0 || b[2] >= worked.seen[i - 1][2]) &&
+    inOrder(barDetails.filter((d) => d !== worked.stage)) && barDetails.some((d) => d !== worked.stage) &&
+    worked.heard.length > 0 && worked.heard[0][1] === stages[0] &&
+    inOrder(worked.heard.map((h) => h[1]).filter((label, i, all) => label !== all[i - 1])) &&
+    !worked.after.bar && !worked.after.running && !worked.after.disabled,
+    JSON.stringify([worked.during, barDetails, worked.seen.slice(0, 3), worked.heard, worked.after]));
+  check('terrain analysis: the lines, summary, captions and GeoJSON are the engine\'s at the card\'s threshold',
+    worked.asked.area === 0.25 && worked.areaKm2 === 0.25 && worked.lines > 10 && worked.got === worked.want,
+    JSON.stringify([worked.asked.area, worked.areaKm2, worked.lines, worked.got.slice(0, 300),
+      worked.want.slice(0, 300)]));
+
+  /* a new threshold, and back */
+  const retraced = { first: worked.got };
+  await page.evaluate(() => {
+    const s = window.GWT.app.terrainSession();
+    window.__mark = window.GWT.engine.history().length;
+    window.__figures = { relief: { drawn: 'relief' }, wetness: { drawn: 'wetness' },
+      curvature: { drawn: 'curvature' }, directions: { drawn: 'directions' } };
+    s.figures = Object.assign({}, window.__figures);
+  });
+  await setField('Drainage threshold (km²)', '2');
+  Object.assign(retraced, await page.evaluate(() => {
+    const s = window.GWT.app.terrainSession();
+    const figures = Object.keys(window.__figures).filter((key) => s.figures[key] === window.__figures[key]);
+    return { asked: window.GWT.engine.history().length - window.__mark, areaKm2: s.result.areaKm2,
+      relief: s.figures.relief, figures, got: window.__terrainGot(), want: window.__terrainWant(2),
+      caption: s.result.captions.relief };
+  }));
+  await setField('Drainage threshold (km²)', '0.25');
+  Object.assign(retraced, await page.evaluate(() => ({ back: window.__terrainGot(),
+    askedBack: window.GWT.engine.history().length - window.__mark })));
+  check('terrain threshold: a new one traces the lines again on the page, with no request to the engine',
+    retraced.asked === 0 && retraced.askedBack === 0 && retraced.areaKm2 === 2 &&
+    retraced.got !== retraced.first && JSON.parse(retraced.got).parts.length <
+      JSON.parse(retraced.first).parts.length,
+    JSON.stringify([retraced.asked, retraced.askedBack, retraced.areaKm2]));
+  check('terrain threshold: the lines, summary, captions and GeoJSON are those of an analysis at the new ' +
+    'threshold, and back again those of the first',
+    retraced.got === retraced.want && retraced.back === retraced.first &&
+    retraced.caption.includes('where more than 2 km² drains'),
+    JSON.stringify([retraced.caption, retraced.got.slice(0, 300), retraced.want.slice(0, 300)]));
+  check('terrain threshold: of the figures, only the relief is to be drawn again',
+    retraced.relief === null && retraced.figures.join() === 'wetness,curvature,directions',
+    JSON.stringify([retraced.relief, retraced.figures]));
+
+  /* a threshold changed while the analysis runs is traced from its answer */
+  await setField('Radius of the square shown (km)', '3');
+  await page.evaluate(() => {
+    window.__hold = true;
+    window.__release = null;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    return window.__until(() => window.__release);
+  });
+  await setField('Drainage threshold (km²)', '1');
+  const during = await page.evaluate(async () => {
+    window.__hold = false;
+    window.__release();
+    const done = await window.__until(window.__settled);
+    const s = window.GWT.app.terrainSession();
+    return { done, asked: window.__asked.area, areaKm2: s.result.areaKm2, got: window.__terrainGot(),
+      want: window.__terrainWant(1), ran: window.__lastTerrain() };
+  });
+  check('terrain threshold: one changed while the analysis runs is traced again from its answer',
+    during.done && during.asked === 0.25 && during.areaKm2 === 1 && during.got === during.want &&
+    JSON.stringify(during.ran) ===
+      '[["readElevation","worker","done",true],["analyseTerrain","worker","done",true]]',
+    JSON.stringify([during.done, during.asked, during.areaKm2, during.ran]));
+
+  /* an answer to a run dropped while it was out is not shown */
+  const heldBack = await page.evaluate(async () => {
+    window.__hold = true;
+    window.__release = null;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    await window.__until(() => window.__release);
+    return true;
+  });
+  await setField('Source of the elevation model', 'srtm');
+  const stale = await page.evaluate(async () => {
+    window.__hold = false;
+    const mark = window.GWT.engine.history().length;
+    window.__release();
+    await window.__until(() => window.GWT.engine.history().length > mark);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const s = window.GWT.app.terrainSession();
+    return { ran: window.__lastTerrain(), read: s.read, result: s.result, card: window.__card() };
+  });
+  check('terrain analysis: an answer to a run dropped since, by another source declared, is not shown',
+    heldBack && stale.ran[1].join() === 'analyseTerrain,worker,done,true' && stale.read === null &&
+    stale.result === null && !stale.card.read && !stale.card.running && !stale.card.bar &&
+    !stale.card.disabled, JSON.stringify(stale));
+  await setField('Source of the elevation model', 'detect');
+
+  /* Cancel in the work bar, part way through a large window's analysis */
+  await setField('Radius of the square shown (km)', '40');
+  const halted = await page.evaluate(async () => {
+    const app = window.GWT.app, stages = ['classes', 'fill', 'flow', 'flats', 'accumulate', 'drainage',
+      'shading', 'curvature'].map((s) => window.GWT.core.phrase('terrain.stage_' + s));
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    let bar = null;
+    await window.__until(() => {
+      bar = document.querySelector('#work-status .work-bar[data-work="terrain"]');
+      return bar && stages.indexOf(bar.querySelector('.work-detail').textContent) >= 0;
+    });
+    const shown = bar ? bar.querySelector('.work-detail').textContent : '';
+    const pressed = performance.now();
+    bar.querySelector('button').click();
+    await window.__until(window.__settled, 5000);
+    const stoppedIn = Math.round(performance.now() - pressed);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const s = app.terrainSession();
+    return { shown, stoppedIn, ran: window.__lastTerrain(), read: s.read, result: s.result,
+      card: window.__card(), toasts: window.__toasts() };
+  });
+  check('terrain cancel: Cancel stops the analysis in the worker at once, and nothing of the run is kept',
+    halted.shown !== '' && halted.stoppedIn < 1000 &&
+    JSON.stringify(halted.ran) ===
+      '[["readElevation","worker","done",true],["analyseTerrain","worker","cancelled",false]]' &&
+    halted.read === null && halted.result === null && !halted.card.read && !halted.card.running &&
+    !halted.card.bar && !halted.card.disabled && halted.card.refusals.length === 0 &&
+    halted.toasts.some((t) => t.startsWith('The terrain analysis was stopped, and nothing of it is kept.')),
+    JSON.stringify(halted));
+
+  /* with no worker: the line before a run, the same answer from the page,
+   * and a Cancel read between the read and the analysis */
+  await setField('Radius of the square shown (km)', '3');
+  const pageRun = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine;
+    const inWorker = { card: window.__card(), mode: engine.mode() };
+    engine.forcePage(true);
+    app.render();
+    const before = window.__card();
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const running = window.__card();
+    const done = await window.__until(window.__settled);
+    const answer = { ran: window.__lastTerrain(), got: window.__terrainGot(), want: window.__terrainWant(1) };
+    window.__cancelNow = true;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const cancelled = await window.__until(window.__settled);
+    window.__cancelNow = false;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const s = app.terrainSession();
+    const after = { ran: window.__lastTerrain(), read: s.read, result: s.result, card: window.__card(),
+      toasts: window.__toasts() };
+    engine.forcePage(false);
+    app.render();
+    return { inWorker, before, reason: engine.unavailable(), running, done, answer, cancelled, after,
+      back: window.__card() };
+  });
+  check('terrain page-only: with no worker the card says, before a run, that the page will be held',
+    pageRun.inWorker.mode === 'worker' && pageRun.inWorker.card.pageOnly === null &&
+    pageRun.before.pageOnly === 'This copy of the app has no background worker (forced), so the analysis ' +
+      'will hold the page until it finishes.' && pageRun.running.pageOnly === null &&
+    pageRun.back.pageOnly === null,
+    JSON.stringify([pageRun.inWorker, pageRun.before, pageRun.running, pageRun.back]));
+  check('terrain page-only: the page reads and analyses the window itself, to the same answer',
+    pageRun.done && JSON.stringify(pageRun.answer.ran) ===
+      '[["readElevation","page","done",true],["analyseTerrain","page","done",true]]' &&
+    pageRun.answer.got === pageRun.answer.want && pageRun.answer.got === during.got,
+    JSON.stringify([pageRun.answer.ran, pageRun.answer.got === pageRun.answer.want,
+      pageRun.answer.got === during.got]));
+  check('terrain page-only: a Cancel read between the read and the analysis stops it there, keeping nothing',
+    pageRun.cancelled && JSON.stringify(pageRun.after.ran) ===
+      '[["readElevation","page","done",true],["analyseTerrain","page","cancelled",false]]' &&
+    pageRun.after.read === null && pageRun.after.result === null && !pageRun.after.card.read &&
+    !pageRun.after.card.bar &&
+    pageRun.after.toasts.some((t) => t.startsWith('The terrain analysis was stopped')),
+    JSON.stringify(pageRun.after));
+
+  /* a device that says it has little memory, asked before a large window */
+  const memory = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const press = () => Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const modal = () => {
+      const box = document.querySelector('.modal-overlay .modal');
+      return box ? { title: box.querySelector('h3').textContent,
+        text: box.querySelector('.modal-body').textContent,
+        buttons: Array.from(box.querySelectorAll('button')).map((b) => b.textContent) } : null;
+    };
+    const tap = (label) => Array.from(document.querySelectorAll('.modal-overlay button'))
+      .find((b) => b.textContent === label).click();
+    const setRadius = (km) => {
+      const host = Array.from(document.querySelectorAll('[data-item="terrain"] label.field'))
+        .find((f) => f.querySelector('.field-label').textContent === 'Radius of the square shown (km)');
+      const input = host.querySelector('input');
+      input.value = String(km);
+      input.dispatchEvent(new Event('change'));
+    };
+    const marks = () => window.GWT.engine.history().length;
+    const out = {};
+    Object.defineProperty(navigator, 'deviceMemory', { value: 2, configurable: true });
+    setRadius(45);
+    const mark = marks();
+    window.__slices = [];
+    press();
+    out.asked = modal();
+    out.asking = { card: window.__card(), working: app.working('terrain'), slices: window.__slices.length };
+    tap('Close');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    out.closed = { modal: modal(), card: window.__card(), requests: marks() - mark,
+      slices: window.__slices.length };
+    press();
+    tap('Run it anyway');
+    out.anyway = { modal: modal(), running: app.terrainSession().running };
+    await window.__until(() => window.GWT.engine.history().length > mark || window.__settled());
+    out.anyway.cells = app.terrainSession().read ? app.terrainSession().read.grid.rows *
+      app.terrainSession().read.grid.cols : null;
+    app.cancelWork('terrain');
+    await window.__until(window.__settled);
+    setRadius(3);
+    press();
+    out.small = { modal: modal(), running: app.terrainSession().running };
+    await window.__until(window.__settled);
+    out.small.result = !!app.terrainSession().result;
+    Object.defineProperty(navigator, 'deviceMemory', { value: 4, configurable: true });
+    setRadius(45);
+    press();
+    out.ample = { modal: modal(), running: app.terrainSession().running };
+    app.cancelWork('terrain');
+    await window.__until(window.__settled);
+    delete navigator.deviceMemory;
+    return out;
+  });
+  check('terrain memory: a device that says it has 2 GB or less is asked before a window of over a ' +
+    'million cells, and nothing is read until it says to go on',
+    JSON.stringify(memory.asked) === JSON.stringify({ title: 'This device may run short of memory',
+      text: 'This device reports 2 GB of memory or less; a window this size may close the tab. Run it anyway?',
+      buttons: ['×', 'Run it anyway', 'Close'] }) &&
+    !memory.asking.working && !memory.asking.card.running && memory.asking.slices === 0 &&
+    memory.closed.modal === null && memory.closed.requests === 0 && memory.closed.slices === 0 &&
+    !memory.closed.card.read && !memory.closed.card.disabled,
+    JSON.stringify([memory.asked, memory.asking, memory.closed]));
+  check('terrain memory: told to go on it runs; a smaller window, or a device with more memory, is not asked',
+    memory.anyway.modal === null && memory.anyway.running && memory.anyway.cells > 1000000 &&
+    memory.small.modal === null && memory.small.running && memory.small.result &&
+    memory.ample.modal === null && memory.ample.running,
+    JSON.stringify([memory.anyway, memory.small, memory.ample]));
+
+  await removeAll();
+  await page.evaluate((kept) => {
+    Blob.prototype.slice = window.__slice;
+    window.GWT.engine.analyseTerrain = window.__analyseTerrain;
+    const store = window.GWT.app.store;
+    Object.keys(kept).forEach((key) => store.set('site.' + key, kept[key]));
+  }, keptTerrain);
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });
