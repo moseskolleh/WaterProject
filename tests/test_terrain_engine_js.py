@@ -5461,19 +5461,21 @@ def _ax_worded(name: str, z, *, sea_clean: bool = True, settings: dict | None = 
 def test_both_engines_word_shares_margins_and_unstated_sea_alike(assembly):
     """The twin of Python's wording tests, on the windows that reach each
     rule: a bay of 63 cells in 40,000 ("less than 1%"), an island of 8
-    cells in 1,600 (99%, never 100%) and a sea covering everything (100%),
-    a zero-filled block reaching 30 cells into a square of 12,000, a grid
-    analysed whole (no margin), squares shown inside it with a margin of
-    0.3 or 0.1 km and a radius floored to 2.7 or 1.9 km, with no read, a
-    read without a plan, and plans with a margin and without, and sea of a
-    source that may write a fill value as sea, in the square shown and in
-    the margin alone. Every layer, the captions and the GeoJSON are the
-    same in both engines, and Python's captions say what each window is
-    there to make them say. Prevents the browser stating another share, a
-    margin or radius measured another way or rounded rather than floored,
-    the edge caption of a margin it did not have, or leaving out the sea
-    sentence where Python adds it, which windows of 3 to 60 cells a side
-    reach too rarely to hold."""
+    cells in 1,600 (99%, never 100%) and a sea covering everything (100%,
+    and 0% of no land raised), a pit raising 1 cell of land in 40,000
+    ("less than 1%") and a bowl raising all of the land shown (100%) or
+    all but five cells of it (99%), a zero-filled block reaching 30 cells
+    into a square of 12,000, a grid analysed whole (no margin), squares
+    shown inside it with a margin of 0.3 or 0.1 km and a radius floored to
+    2.7 or 1.9 km, with no read, a read without a plan, and plans with a
+    margin and without, and sea of a source that may write a fill value as
+    sea, in the square shown and in the margin alone. Every layer, the
+    captions and the GeoJSON are the same in both engines, and Python's
+    captions say what each window is there to make them say. Prevents the
+    browser stating another share, a margin or radius measured another way
+    or rounded rather than floored, the edge caption of a margin it did not
+    have, or leaving out the sea sentence where Python adds it, which
+    windows of 3 to 60 cells a side reach too rarely to hold."""
     import numpy as np
 
     from groundwater.text import phrase
@@ -5490,12 +5492,23 @@ def test_both_engines_word_shares_margins_and_unstated_sea_alike(assembly):
     slope = 5.0 + 0.05 * c + 0.02 * r + np.zeros((n, n))
     coast = 2.0 + 0.5 * r[:20] + np.abs((c[:, :25] % 6) - 3) * 0.3 + np.zeros((20, 25))
     coast[:2, :] = -1.0
+    pit = slope.copy()
+    pit[100, 100] -= 3.0
+    bowl = np.full((60, 60), 10.0)
+    bowl[1:-1, 1:-1] = 1.0 + 0.01 * c[:, :58] + 0.005 * r[:58]
+    rock = bowl.copy()
+    rock[30, 30:35] = 20.0
     plain = {"surface": "", "plan": None}
     windows = [  # (window, a sentence Python's captions must hold)
         (_ax_worded("bay.tif", bay, sea_cells=63), ("relief", "Less than 1% of the square shown (63 cells)")),
         (_ax_worded("island.tif", island, sea_cells=1592), ("relief", "99% of the square shown is taken as sea")),
         (_ax_worded("sea.tif", np.zeros((40, 40)), sea_cells=1600),
          ("relief", "100% of the square shown is taken as sea")),
+        (_ax_worded("sea.tif", np.zeros((40, 40)), sea_cells=1600),
+         ("relief", "and 0% of the land was raised by 1 m or more")),
+        (_ax_worded("pit.tif", pit), ("relief", "and less than 1% of the land (1 cell) was raised by 1 m or more")),
+        (_ax_worded("bowl.tif", bowl, shown=[5, 55, 5, 55]), ("relief", "and 100% of the land was raised")),
+        (_ax_worded("bowl.tif", rock, shown=[5, 55, 5, 55]), ("relief", "and 99% of the land was raised")),
         (_ax_worded("corner.tif", corner, settings={"sea_straight_edge_cells": 12}, shown=[20, 120, 0, 120]),
          ("relief", "Less than 1% of the square shown (30 cells) is at or below 0 m")),
         (_ax_worded("whole.tif", slope), ("relief", phrase("terrain.caption_edge_none"))),

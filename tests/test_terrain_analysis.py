@@ -1967,8 +1967,10 @@ def test_every_caption_names_its_figure_and_the_caveat_is_the_catalogued_one():
     assert [caps[f"panel_{n}"] for n in range(4)] == [
         "Light from 270°", "Light from 315°", "Light from 0°", "Light from 45°"]
     candidates = phrase("terrain.caption_candidates")
+    # 21 of the 841 cells of land shown raised is 2.5%, said as 2%
+    assert (s["raised"], s["land"]) == (21, 841)
     relief = [phrase("terrain.caption_relief", interval=s["contour_interval"], area=0.01),
-              phrase("terrain.caption_fill", lines_pct=s["flat_routed_lines_pct"], pct=s["raised_pct"], depth=1.0),
+              phrase("terrain.caption_fill", lines_pct=s["flat_routed_lines_pct"], pct=2, depth=1.0),
               phrase("terrain.caption_edge", margin=0.2), candidates]
     assert s["sea_pct"] == s["zero_fill"] == s["unresolved"] == 0
     assert caps["relief"] == " ".join(relief)
@@ -2004,13 +2006,13 @@ def test_every_caption_names_its_figure_and_the_caveat_is_the_catalogued_one():
     b = analyse_terrain(_elevation(z, sea_clean=False), gappy)
     caps = terrain_captions(b, None, "Kakua")
     s = b.summary
-    assert s["sea"] == 19 and s["zero_fill"] == rows * 6 and s["unresolved"] == 0
+    assert s["sea"] == 19 and s["zero_fill"] == rows * 6 and s["unresolved"] == 0 and s["raised"] == 0
     assert s["land"] + s["sea"] + s["assumed_sea"] + s["uncovered"] + s["zero_fill"] == s["cells"] == z.size
     assert s["zero_fill_pct"] == (100.0 * rows * 6) / z.size and s["sea_pct"] == (100.0 * s["sea"]) / z.size
     surface = phrase("terrain.surface_unknown")
-    # 19 of 720 cells is 2.6%, said as 3%; 144 of them 20%
+    # 19 of 720 cells is 2.6%, said as 3%; 144 of them 20%; no land raised 0%
     relief = [phrase("terrain.caption_relief", interval=s["contour_interval"], area=SMALL_KM2),
-              phrase("terrain.caption_fill", lines_pct=s["flat_routed_lines_pct"], pct=s["raised_pct"], depth=1.0),
+              phrase("terrain.caption_fill", lines_pct=s["flat_routed_lines_pct"], pct=0, depth=1.0),
               phrase("terrain.caption_edge_none"),
               phrase("terrain.caption_sea", pct=3, level=0.0),
               phrase("terrain.caption_sea_unstated", level=0.0),
@@ -2131,6 +2133,48 @@ def test_shares_of_sea_and_zero_fill_are_whole_per_cents_never_0_or_a_false_100(
     relief = terrain_captions(a, None, "here")["relief"]
     assert phrase("terrain.caption_zero_fill_little", count=30, level=0.0) in relief
     assert "0% of the square shown" not in relief
+
+
+def test_the_share_of_the_land_raised_is_a_whole_per_cent_never_0_or_a_false_100():
+    """Prevents the relief caption saying "0.0%" of the land was raised by
+    the fill while a raised cell is tinted on the map, or "100%" while
+    some land shown was not raised: the share of the land shown that the
+    fill raised by fill_note_m or more is worked out in whole numbers by
+    the read report's rule, as the sea's is, a share under half a per cent
+    is said as "less than 1%" with the number of cells, and one short of
+    the whole is at most 99%. All of the land is 100%, none of it 0%, and
+    a square shown with no land at all says 0% rather than failing."""
+    n = 200
+    plane = 5.0 + 0.05 * np.arange(n)[None, :] + 0.02 * np.arange(n)[:, None] + np.zeros((n, n))
+    plane[100, 100] -= 3.0                      # one pit 3 m deep: 1 cell of 40,000 raised, 0.0025%
+    a = analyse_terrain(_elevation(plane), precision="float64")
+    s = a.summary
+    assert (s["raised"], s["land"]) == (1, 40000)
+    relief = terrain_captions(a, None, "here")["relief"]
+    assert phrase("terrain.caption_fill_little", lines_pct=s["flat_routed_lines_pct"], count=1, depth=1.0) in relief
+    assert "and less than 1% of the land (1 cell) was raised by 1 m or more" in relief
+    assert "0% of the land" not in relief
+
+    # A rim at 10 m round a floor of 1 to 1.9 m, shown without the rim: the
+    # fill raises every cell shown, and then all but five set above the
+    # spill level, 2,495 of 2,500 (99.8%).
+    k = 60
+    bowl = np.full((k, k), 10.0)
+    bowl[1:-1, 1:-1] = 1.0 + 0.01 * np.arange(k - 2)[None, :] + 0.005 * np.arange(k - 2)[:, None]
+    rock = bowl.copy()
+    rock[30, 30:35] = 20.0
+    for heights, raised, pct in ((bowl, 2500, 100), (rock, 2495, 99)):
+        a = analyse_terrain(_elevation(heights), shown=(5, 55, 5, 55), precision="float64")
+        s = a.summary
+        assert (s["raised"], s["land"]) == (raised, 2500)
+        relief = terrain_captions(a, None, "here")["relief"]
+        assert phrase("terrain.caption_fill", lines_pct=s["flat_routed_lines_pct"], pct=pct, depth=1.0) in relief
+    assert "100% of the land" not in relief
+
+    sea = analyse_terrain(_elevation(np.zeros((40, 40))), precision="float64")
+    assert sea.summary["land"] == sea.summary["raised"] == 0
+    relief = terrain_captions(sea, None, "here")["relief"]
+    assert phrase("terrain.caption_fill", lines_pct=0.0, pct=0, depth=1.0) in relief
 
 
 def test_the_analysis_is_a_function_of_the_window_alone():
