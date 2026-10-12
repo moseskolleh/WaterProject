@@ -106,7 +106,7 @@
   function withConfig(overrides) {
     var cfg = defaultConfig();
     if (!overrides) return cfg;
-    ['style', 'ves', 'pumping', 'design', 'ves_range', 'odds', 'cost_range']
+    ['style', 'ves', 'pumping', 'design', 'ves_range', 'odds', 'cost_range', 'terrain']
       .forEach(function (section) {
       var over = overrides[section];
       if (!over) return;

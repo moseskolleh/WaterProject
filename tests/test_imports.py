@@ -60,3 +60,21 @@ def test_analysis_imports_leave_the_plotting_stack_alone():
     before, after = result.stdout.splitlines()
     assert before == "[]"
     assert after == "True True"
+
+
+def test_reading_an_elevation_model_loads_no_matplotlib():
+    """The elevation grid and its readers import without matplotlib.
+
+    They were moved out of mapping/terrain.py, which draws, so that the
+    terrain analysis can read a model without the plotting stack; an import
+    of anything that loads pyplot would quietly undo that.
+    """
+    code = (
+        "import sys\n"
+        "from groundwater.mapping.elevation import ElevationGrid, load_elevation\n"
+        "print(sorted(m for m in sys.modules if m.split('.')[0] == 'matplotlib'))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "[]"
