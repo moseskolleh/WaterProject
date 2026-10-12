@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import html as _html
 import re as _re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -283,7 +284,58 @@ class KeptFile:
         return self._data
 
 
-def kept_upload(label: str, key: str, **kwargs):
+class KeptPath:
+    """An uploaded file kept on disk while its page is off screen.
+
+    An elevation tile runs to 50 MB. Kept as bytes in session it was held
+    twice while its uploader held it too, and once more for the rest of the
+    session after that, where the reader that wants it seeks in a file and
+    needs only a path. Stands in for ``UploadedFile`` as :class:`KeptFile`
+    does: ``name`` is the name it was uploaded under, ``path`` where it is
+    kept, and the bytes are read from there only when ``getvalue``,
+    ``getbuffer`` or ``read`` asks for them.
+    """
+
+    def __init__(self, name: str, path: str | Path):
+        self.name = name
+        self.path = Path(path)
+        self.size = self.path.stat().st_size
+
+    def getvalue(self) -> bytes:
+        return self.path.read_bytes()
+
+    def getbuffer(self) -> memoryview:
+        return memoryview(self.getvalue())
+
+    def read(self) -> bytes:
+        return self.getvalue()
+
+
+def _kept_folder(key: str) -> Path:
+    return workdir() / "kept" / key
+
+
+def _keep_on_disk(key: str, files) -> list[tuple[str, str]]:
+    """Write a new upload's files where ``kept_upload(on_disk=True)`` keeps
+    them, once, and say where: ``[(name, path)]``.
+
+    The previous upload's files go first, since nothing refers to them once
+    the session holds the new ones. Each is written under its basename, so a
+    crafted name cannot write outside the folder, with its place in the
+    upload in front, so two files of one name do not overwrite each other.
+    """
+    folder = _kept_folder(key)
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    kept = []
+    for n, upload in enumerate(files):
+        path = folder / f"{n}_{Path(upload.name).name or 'upload'}"
+        path.write_bytes(upload.getbuffer())
+        kept.append((upload.name, str(path)))
+    return kept
+
+
+def kept_upload(label: str, key: str, *, on_disk: bool = False, **kwargs):
     """``st.file_uploader`` whose file outlives a visit to another page.
 
     Streamlit forgets an uploader's file at the end of a run that does not
@@ -295,6 +347,12 @@ def kept_upload(label: str, key: str, **kwargs):
     that was on screen holding one and is empty now because its user
     cleared it, is taken at its word. Returns what ``st.file_uploader``
     would: a file, a list of files with ``accept_multiple_files``, or None.
+
+    With ``on_disk`` each new upload is written once, as it arrives, to
+    ``workdir()/"kept"/<key>/<n>_<name>``, and the session holds the names
+    and paths, ``[(name, path)]``, rather than the bytes. The page is then
+    handed :class:`KeptPath` objects for a fresh upload and a kept one
+    alike, so that it reads both the same way, from disk.
     """
     session = st.session_state
     store = f"{key}_kept"
@@ -307,14 +365,23 @@ def kept_upload(label: str, key: str, **kwargs):
         ids = [getattr(f, "file_id", None) or (f.name, f.size) for f in files]
         if kept.get("ids") != ids or kept.get("restored"):
             session[store] = {"ids": ids,
-                              "files": [(f.name, bytes(f.getvalue())) for f in files]}
-        return value
+                              "files": _keep_on_disk(key, files) if on_disk
+                              else [(f.name, bytes(f.getvalue())) for f in files]}
+        if not on_disk:
+            return value
+        fresh = [KeptPath(name, path) for name, path in session[store]["files"]]
+        return fresh if many else fresh[0]
     # empty and on screen last run: cleared by its user, unless it has been
     # empty since the page came back and the kept file stood in for it
     if not returning and not kept.get("restored"):
-        session.pop(store, None)
+        _forget_upload(key, on_disk)
         return value
-    restored = [KeptFile(name, data) for name, data in kept.get("files", [])]
+    if on_disk:
+        # a file the session's folder no longer holds is not offered back
+        restored = [KeptPath(name, path) for name, path in kept.get("files", [])
+                    if Path(path).is_file()]
+    else:
+        restored = [KeptFile(name, data) for name, data in kept.get("files", [])]
     if not restored:
         return value
     session[store] = {**kept, "restored": True}
@@ -324,9 +391,15 @@ def kept_upload(label: str, key: str, **kwargs):
         "session. Upload another file to replace it."
     )
     if remove.button("Remove", key=f"{key}_forget"):
-        session.pop(store, None)
+        _forget_upload(key, on_disk)
         return value
     return restored if many else restored[0]
+
+
+def _forget_upload(key: str, on_disk: bool) -> None:
+    """Drop what ``kept_upload`` keeps for the uploader ``key``, files too."""
+    if st.session_state.pop(f"{key}_kept", None) is not None and on_disk:
+        shutil.rmtree(_kept_folder(key), ignore_errors=True)
 
 
 def choose_input(label: str, key: str, types: list[str], samples: list[str]) -> Path | None:
@@ -817,6 +890,12 @@ def _load_project() -> None:
         # cleared too, so a project with no sources at all cannot inherit the
         # previous project's rebuild banner
         "recompute_diagnostics",
+        # the outgoing site's maps, drawn around its position from its
+        # elevation model and its soundings, and the GeoLibre file built
+        # from them
+        "topo_path", "topo_source", "topo_report", "topo_inputs", "profile_path",
+        "map_paths", "subsurface_paths", "section_path", "pseudosection_path",
+        "traverse", "geolibre_path", "geolibre_area", "geolibre_layers",
     ):
         st.session_state.pop(result_key, None)
     overrides = updates.pop("rates_overrides", None)

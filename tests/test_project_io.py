@@ -1,13 +1,19 @@
 """Project save/load round-trip, including the WASH committee."""
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from groundwater.project_io import (
+    RESET_ON_LOAD_KEYS,
     committee_records,
     deserialize_project,
     serialize_project,
     stale_on_load,
 )
+
+APP = Path(__file__).resolve().parents[1] / "app"
 
 
 def test_scalar_inputs_round_trip():
@@ -132,6 +138,93 @@ def test_loading_clears_the_outgoing_project_including_the_uploaders():
     # the loaded file supplies these itself; the branding and nav are not the
     # project's to clear
     assert not ({"org_name", "nav"} & stale)
+
+
+def test_an_elevation_model_and_its_terrain_do_not_outlive_a_project_load():
+    """An elevation model is not saved in a project, and its uploader kept
+    its tiles through a load: the incoming site's topographic map was then
+    drawn from, and credited to, the outgoing site's tiles, and the
+    outgoing site's maps stayed on its Site maps page."""
+    session = {
+        # the outgoing site's elevation model, as kept_upload holds it
+        "dem_upload": object(),
+        "dem_upload_kept": {"ids": ["f1"], "files": [("N08W013.hgt", "/tmp/kept/0_N08W013.hgt")]},
+        "dem_upload_forget": False,
+        # what was declared about it, and the terrain settings
+        "terrain_source": "other",
+        "terrain_source_text": "viewfinderpanoramas",
+        "terrain_radius_km": 10.0,
+        # the maps drawn for that site
+        "topo_path": "/tmp/topographic_map.png",
+        "topo_source": "SRTM-format tile N08W013.hgt, source not stated",
+        "topo_report": {"notes": [], "notice": None},
+        "profile_path": "/tmp/ground_profile.png",
+        "map_paths": ["/tmp/study_area_map.png"],
+        # settings that belong to the user and the session, not the project
+        "map_radius": 40,
+        "org_name": "GeomentAqua",
+        "nav": "Site maps",
+    }
+    stale = set(stale_on_load(session))
+    assert {"dem_upload", "dem_upload_kept", "dem_upload_forget"} <= stale
+    assert {"terrain_source", "terrain_source_text", "terrain_radius_km"} <= stale
+    assert {"topo_path", "topo_source", "topo_report", "profile_path", "map_paths"} <= stale
+    assert not ({"map_radius", "org_name", "nav"} & stale)
+
+
+def _session_keys_written(source: str) -> set[str]:
+    """The session keys a page's source assigns, as ``st.session_state["key"]``
+    or ``st.session_state.key``."""
+    keys = set()
+    for node in ast.walk(ast.parse(source)):
+        for target in node.targets if isinstance(node, ast.Assign) else []:
+            if isinstance(target, ast.Subscript) and ast.unparse(target.value) == "st.session_state":
+                if isinstance(target.slice, ast.Constant):
+                    keys.add(target.slice.value)
+            elif isinstance(target, ast.Attribute) and ast.unparse(target.value) == "st.session_state":
+                keys.add(target.attr)
+    return keys
+
+
+def test_the_outgoing_sites_subsurface_maps_and_geolibre_file_do_not_outlive_a_project_load():
+    """The Site maps page shows its subsurface maps, sections and traverse,
+    and offers them and its GeoLibre file for download, from session state
+    alone, and a project load left them there: the incoming site's page
+    offered the outgoing site's depth-to-bedrock map and GeoLibre file as
+    its own. Every result the page keeps is now dropped by a load, in both
+    the lists that drop them, so a map added to the page later cannot be
+    left out of one; the Portfolio page's GeoLibre file, which is of the
+    pooled sites rather than of one, is kept."""
+    session = {
+        "subsurface_paths": ["/tmp/depth_to_bedrock_map.png"],
+        "section_path": "/tmp/geoelectric_section.png",
+        "pseudosection_path": "/tmp/pseudosection.png",
+        "traverse": {"length_m": 300.0, "bearing_deg": 40.0},
+        "geolibre_path": "/tmp/kuntolo.geolibre.json",
+        "geolibre_area": "",
+        "geolibre_layers": [("Survey points", 5)],
+        "topo_inputs": (["f1"], ("detect", "")),
+        "geolibre_portfolio": "/tmp/portfolio.geolibre.json",
+    }
+    stale = set(stale_on_load(session))
+    assert set(session) - {"geolibre_portfolio"} <= stale
+    assert "geolibre_portfolio" not in stale
+
+    # every result the Site maps page keeps, against both lists: the one
+    # stale_on_load reads and the one _load_project clears by name
+    written = _session_keys_written((APP / "views" / "site_maps.py").read_text(encoding="utf-8"))
+    assert {"map_paths", "subsurface_paths", "geolibre_path", "topo_inputs"} <= written
+    assert written <= set(RESET_ON_LOAD_KEYS), written - set(RESET_ON_LOAD_KEYS)
+    shared = ast.parse((APP / "shared.py").read_text(encoding="utf-8"))
+    load = next(node for node in ast.walk(shared)
+                if isinstance(node, ast.FunctionDef) and node.name == "_load_project")
+    cleared = {
+        item.value for node in ast.walk(load)
+        if isinstance(node, ast.For) and ast.unparse(node.target) == "result_key"
+        and isinstance(node.iter, ast.Tuple)
+        for item in node.iter.elts if isinstance(item, ast.Constant)
+    }
+    assert written <= cleared, written - cleared
 
 
 def test_bad_file_raises():

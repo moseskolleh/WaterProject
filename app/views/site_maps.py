@@ -30,22 +30,56 @@ from groundwater.mapping import (
     plot_study_area_map,
     plot_topographic_map,
     protective_capacity_map,
+    read_elevation,
     site_location_map,
     transverse_resistance_map,
     traverse_profile,
 )
+from groundwater.mapping.elevation import ElevationFile, file_notes, open_elevation_file
+from groundwater.mapping.terrain import uncovered_cells, uncovered_note
 from groundwater.siting import assess_siting
+from groundwater.text import phrase
 
 from shared import (
     app_config,
     _file_stem,
     kept_upload,
+    KeptPath,
     offer_download,
     _offer_raster,
     save_upload,
     site_from_state,
     workdir,
 )
+
+#: What the operator may say an elevation model is, as the elevation layer
+#: names it, and as the picker shows it
+_SOURCES = {
+    "detect": "Detect from the file names",
+    "copernicus_glo30": "Copernicus GLO-30",
+    "srtm": "SRTM",
+    "other": "Another source",
+}
+
+#: Grids read whole, one file at a time, by the Python app alone; every
+#: other file is a tile, read a window at a time and joined to the others
+_GRID_SUFFIXES = {".asc", ".grd", ".xyz", ".csv", ".txt"}
+
+#: The topographic map and what was said of it: the figure, its credit, its
+#: read report, and the files and declared source it was drawn from
+_TOPO_KEYS = ("topo_path", "topo_source", "topo_report", "topo_inputs")
+
+
+def _open_tile(kept: KeptPath) -> ElevationFile:
+    """A kept GeoTIFF or ``.hgt`` tile opened for its layout alone: only the
+    bytes that describe it are read, not its heights."""
+    with kept.path.open("rb") as handle:
+        def read_at(offset: int, length: int) -> bytes:
+            handle.seek(offset)
+            return handle.read(length)
+
+        return open_elevation_file(kept.name, kept.size, read_at)
+
 
 def render() -> None:
     st.header("Maps of the study area")
@@ -152,54 +186,136 @@ def render() -> None:
     with tab_topo:
         st.caption(
             "No elevation model is bundled with this toolkit and none is "
-            "downloaded, so a topographic map is drawn from a file you "
-            "supply and the figure names its source. An SRTM tile "
-            "(`.hgt`, free from NASA Earthdata or viewfinderpanoramas), an "
-            "ESRI ASCII grid (`.asc`, what any GIS exports) or "
-            "longitude/latitude/elevation columns (`.xyz`, `.csv`) are all "
-            "read here, without GDAL. A GeoTIFF converts with "
-            "`gdal_translate -of AAIGrid`."
+            "downloaded, so a topographic map is drawn from files you supply, "
+            "and the figure names their source. GeoTIFF tiles (`.tif`) in "
+            "longitude and latitude, as Copernicus GLO-30 and USGS "
+            "EarthExplorer SRTM tiles are published and as QGIS saves a "
+            "clip, and SRTM-format tiles (`.hgt`) are read a window at a "
+            "time, several tiles joined into one model. An ESRI ASCII grid "
+            "(`.asc`, what any GIS exports) or longitude/latitude/elevation "
+            "columns (`.xyz`, `.csv`) are read one file at a time. None of "
+            "it needs GDAL. Copernicus GLO-30 tiles can be downloaded by hand "
+            "from the copernicus-dem-30m bucket of the Registry of Open Data "
+            "on AWS, and NASA SRTM and NASADEM tiles from NASA Earthdata or "
+            "USGS EarthExplorer. The tiles on viewfinderpanoramas are "
+            "void-filled compilations of several sources: declare them as "
+            "Another source."
         )
-        _dem_file = kept_upload(
-            "Elevation model covering the site", "dem_upload",
-            type=["hgt", "asc", "grd", "xyz", "csv", "txt"],
-            help="One tile or grid. SRTM tiles are named for their "
-            "south-west corner, as in N08W013.hgt; keep the name, because "
-            "the file itself carries no header saying where on Earth it is.",
+        st.caption(phrase("terrain.browser_reads_none"))
+        _dem_files = kept_upload(
+            "Elevation models covering the site", "dem_upload",
+            type=["tif", "tiff", "hgt", "asc", "grd", "xyz", "csv", "txt"],
+            accept_multiple_files=True, on_disk=True,
+            help="One or more GeoTIFF or .hgt tiles, or one grid. Keep the "
+            "names the tiles came with: an SRTM .hgt tile is placed by its "
+            "name alone (N08W013.hgt is the one whose south-west corner is "
+            "8 N, 13 W), and a Copernicus tile is credited as one only when "
+            "its name and its georeferencing agree.",
+        ) or []
+        _source = st.selectbox(
+            "Source of the elevation model", list(_SOURCES),
+            format_func=_SOURCES.__getitem__, key="terrain_source",
+            help="What the figure credits for GeoTIFF and .hgt tiles. "
+            "Detected, a tile is credited as Copernicus GLO-30 or SRTM only "
+            "when its name and its georeferencing agree; a source stated "
+            "here wins over what the names say.",
         )
-        if _dem_file is not None and st.button(
-            "Draw the topographic map", key="run_topo", type="primary"
-        ):
-            # the tile's own name, without any folder a crafted name carries
-            dem_path = save_upload(_dem_file)
+        _source_text = ""
+        if _source == "other":
+            _source_text = st.text_input(
+                "The source, in your own words", key="terrain_source_text",
+                help="Named in the figure's credit line as you write it.",
+            )
+        _declared = (_source, _source_text)
+        # what a map drawn now would be drawn from: the files in the
+        # uploader, by the ids kept_upload gives them (the same ids when it
+        # hands them back after a visit to another page), and their source
+        _drawn_from = ((st.session_state.get("dem_upload_kept") or {}).get("ids"), _declared)
+        _grids = [f for f in _dem_files if Path(f.name).suffix.lower() in _GRID_SUFFIXES]
+        _tiles = [f for f in _dem_files if f not in _grids]
+        # each tile is opened for its layout alone as soon as it is
+        # uploaded, so a file that cannot be read says so beside its name
+        # rather than when the map is asked for
+        _refused = False
+        for _tile in _tiles:
             try:
-                grid = load_elevation(dem_path)
+                _found = _open_tile(_tile)
             except ValueError as exc:
                 st.error(str(exc))
+                _refused = True
             else:
-                try:
-                    topo_path = workdir() / "topographic_map.png"
+                for _note in file_notes(_found, _declared):
+                    st.warning(_note)
+        if _grids and len(_dem_files) > 1:
+            st.error(
+                f"{', '.join(f.name for f in _grids)}: an ESRI ASCII or XYZ "
+                "grid is read on its own and is not joined to other files. "
+                "Upload one grid alone, or GeoTIFF and .hgt tiles only."
+            )
+            _refused = True
+        if _dem_files and st.button(
+            "Draw the topographic map", key="run_topo", type="primary",
+            disabled=_refused,
+        ):
+            topo_path = workdir() / "topographic_map.png"
+            _spots = [
+                (s.site.latlon[1], s.site.latlon[0],
+                 f"{s.sounding_id} {s.site.elevation_m:.0f} m")
+                for s in _soundings
+                if s.site.latlon is not None and s.site.elevation_m is not None
+            ]
+            try:
+                if _grids:
+                    # the grid readers name the file in what they say, so
+                    # it is read under the name it was uploaded with
+                    grid = load_elevation(save_upload(_grids[0]))
                     plot_topographic_map(
-                        grid, site if site.latlon is not None else None,
-                        path=topo_path, style=app_config().style,
-                        radius_km=float(radius),
-                        spot_heights=[
-                            (s.site.latlon[1], s.site.latlon[0],
-                             f"{s.sounding_id} {s.site.elevation_m:.0f} m")
-                            for s in _soundings
-                            if s.site.latlon is not None
-                            and s.site.elevation_m is not None
-                        ],
-                    )
-                    st.session_state["topo_path"] = str(topo_path)
-                    st.session_state["topo_source"] = grid.source
-                except ValueError as exc:
-                    st.error(str(exc))
+                        grid, site, path=topo_path, style=app_config().style,
+                        radius_km=float(radius), spot_heights=_spots)
+                    note = uncovered_note(*uncovered_cells(grid, site, float(radius)))
+                    report = {"notes": [note] if note else [], "notice": None}
+                    source = grid.source
+                else:
+                    # every tile read at once for the square asked for, one
+                    # cell in every few where the files are finer than the
+                    # cap on cells allows at this width
+                    read = read_elevation(
+                        [(f.name, f.path) for f in _tiles], site, float(radius),
+                        app_config().terrain, stride=0, margin_km=0,
+                        declared=_declared)
+                    plot_topographic_map(
+                        read, site, path=topo_path, style=app_config().style,
+                        spot_heights=_spots)
+                    report = {"notes": list(read.notes), "notice": read.notice}
+                    source = read.grid.source
+            except ValueError as exc:
+                # the previous map was of other files, or of another window
+                for stale in _TOPO_KEYS:
+                    st.session_state.pop(stale, None)
+                st.error(str(exc))
+            else:
+                st.session_state["topo_path"] = str(topo_path)
+                st.session_state["topo_source"] = source
+                st.session_state["topo_report"] = report
+                st.session_state["topo_inputs"] = _drawn_from
+        # a map is shown only beside the files it was drawn from, under the
+        # source declared for them: once they are refused, replaced or
+        # removed, or another source is declared, its figure, credit and read
+        # report no longer describe what the page holds. A refusal at upload
+        # never reaches the except branch above, as it disables the button.
+        if _refused or st.session_state.get("topo_inputs") != _drawn_from:
+            for stale in _TOPO_KEYS:
+                st.session_state.pop(stale, None)
         if st.session_state.get("topo_path"):
             st.image(st.session_state["topo_path"])
             offer_download(Path(st.session_state["topo_path"]),
                            "Download topographic map")
             st.caption(f"Elevation from {st.session_state.get('topo_source', '')}.")
+            _report = st.session_state.get("topo_report") or {}
+            for _note in _report.get("notes", []):
+                st.caption(_note)
+            if _report.get("notice"):
+                st.caption(_report["notice"])
 
         st.divider()
         st.subheader("Ground profile along the traverse")

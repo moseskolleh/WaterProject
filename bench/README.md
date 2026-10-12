@@ -2,9 +2,10 @@
 
 A change that claims to make the toolkit faster quotes a before and an
 after from here (PLAN.md, "Efficiency claims are measured"). Two scripts
-take the numbers, both on the bundled examples so that two commits are
-timed on the same work, and `baseline.json` holds the last set taken on
-the machine named inside it.
+take the numbers, both on the bundled examples (except the terrain
+group, which reads a seeded synthetic tile, because no elevation model
+is bundled) so that two commits are timed on the same work, and
+`baseline.json` holds the last set taken on the machine named inside it.
 
 ## Running it
 
@@ -34,8 +35,8 @@ python bench/run.py --from py.json --from web.json --out bench/baseline.json \
 ```
 
 `--only GROUP` (repeatable) is one of `import`, `forward`,
-`inversion`, `range`, `cost`, `pumping`, `reports`, `recompute`,
-`streamlit`.
+`inversion`, `range`, `cost`, `pumping`, `terrain`, `reports`,
+`recompute`, `streamlit`.
 `--quick` takes 2 samples per measure instead of 5 (`web.mjs --quick`:
 1 run instead of 3), which is enough to see that something moved and
 not enough to quote.
@@ -95,6 +96,24 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   illustrative discharges `run_kuntolo_step_test.py` carries in its
   comments (which reaches the Hantush-Bierschenk analysis), and the Dr
   Timbo constant-rate test with its recovery.
+- `terrain/*` - reading an operator's elevation model (PLAN.md step
+  4.1). No elevation model is bundled, so the setup writes a synthetic
+  3600 by 3600 float32 tile (a seeded fractal surface with a tilt and
+  centimetre steps) laid out as the Copernicus GLO-30 tile N08 W012 is:
+  PixelIsPoint, EPSG 4326, 1/3600 degree. `read a window, DEFLATE GLO-30
+  layout` reads the window the terrain analysis takes by default (the
+  radius shown, 10 km, plus the 5 km margin analysed around it, centred
+  on the middle of the tile) from 1024 square tiles compressed with
+  DEFLATE and the floating-point predictor, as the published tiles are;
+  the window meets four of the sixteen. `read a window, LZW 512 tiles`
+  reads the same window from 512 square LZW tiles with no predictor, as
+  GDAL's COG driver writes by default; the file holds only the nine tiles
+  the window meets, because the pure-Python encoder that writes it takes
+  about a second a tile. `... loop decoder` is the same read with the
+  reader's LZW decoder swapped for the 40-line loop it is tested against,
+  which is the measure behind decoding a Clear segment at a time. `read a
+  whole DEFLATE tile` is `read_geotiff` on the whole file, as the command
+  line and the tests read it. File writing is setup and is not timed.
 - `reports/*` - each document the package builds, from inputs made
   beforehand, written with its figures into a temporary folder: the
   geophysical, pumping, completion, water quality, handover, cost
@@ -243,6 +262,39 @@ headless Chromium, the same 20,000 took 33 ms and 25 ms (median of
 five), and 90 to 103 ms and 113 to 119 ms with the CPU slowed four
 times, over two runs. `run.py --only cost` times the default on the Dr
 Timbo design (`cost/*` above).
+
+## Reading an elevation model: what a window costs
+
+PLAN.md step 4.1 reads an operator's GeoTIFF a window at a time. On 12
+October 2026, on this repository's 4-CPU machine (Xeon at 2.1 GHz, load
+average 1.3 to 1.5, numpy 2.4.6), `run.py --only terrain` gave, median
+of five:
+
+| measure | median | IQR |
+|---|---|---|
+| read a window, DEFLATE GLO-30 layout | 202 ms | 21 ms |
+| read a window, LZW 512 tiles | 403 ms | 62 ms |
+| read a window, LZW 512 tiles, loop decoder | 2.22 s | 91 ms |
+| read a whole DEFLATE tile | 672 ms | 34 ms |
+
+The window is the default the terrain analysis reads: a 10 km radius
+shown and the 5 km margin around it, 983 by 979 cells at 1 arc-second.
+The DEFLATE window decodes four 1024-square tiles (4.2 million samples)
+and the LZW window nine 512-square tiles (2.4 million), so the two do
+not decode the same number of cells: per sample, LZW costs about three
+and a half times what DEFLATE with the floating-point predictor does,
+because zlib inflates in C and the LZW decoder is numpy. Decoding LZW a
+Clear segment at a time, rather than one code at a time as the 40-line
+loop it is tested against does, makes the LZW read 5.5 times quicker.
+The browser engine's reads are not timed here: `web.mjs` drives the app,
+and the app has no elevation model page until step 4.1c.
+
+On the same day `web.mjs` measured what the reader costs the browser
+app before anyone uses it: `gwt-core.js` grew from 1.06 MB to 1.18 MB
+with the codecs, the GeoTIFF reader and the elevation layer, and time to
+interactive on the throttled profile went from 11.11 s to 11.84 s
+(median of three cold loads each, the commit before the step and the
+step's last commit), first contentful paint staying at 2.4 s.
 
 ## The committed baseline
 

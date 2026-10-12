@@ -96211,5 +96211,1713 @@
    125664.49153877099,
    188496.34461156157
   ]
+ },
+ "inflate": [
+  {
+   "name": "stored, heights",
+   "verdict": "accepted",
+   "sha256": "c1446ac70cf2a3decc5cf65e91894ee5e08c076802fe25e648438d43583dcde2",
+   "length": 3000
+  },
+  {
+   "name": "stored, random bytes",
+   "verdict": "accepted",
+   "sha256": "ff767bacb7f93a3b3661545a70a018cde00f7e55e7e9ff3053c69fd65524d8be",
+   "length": 1500
+  },
+  {
+   "name": "fixed codes, text",
+   "verdict": "accepted",
+   "sha256": "78855266f27ac63d755ea3fb5faf6d564292bc77f44d9abde7b1bfc36ed90e59",
+   "length": 2000
+  },
+  {
+   "name": "fixed codes, a short row",
+   "verdict": "accepted",
+   "sha256": "6804b8472b724066d66fc2d9c745aa7989596ddce198f32341708084443b5f1c",
+   "length": 64
+  },
+  {
+   "name": "fixed codes, long runs",
+   "verdict": "accepted",
+   "sha256": "3e382cdf4b3c8a2c0280437a41b50a46a958672dc500a2e317a95185e72bf695",
+   "length": 3000
+  },
+  {
+   "name": "dynamic codes, heights",
+   "verdict": "accepted",
+   "sha256": "41da47e543aee97dcd7d70a2cfd840d3351163807877f5f1966f29f3d65c5c1c",
+   "length": 6000
+  },
+  {
+   "name": "dynamic codes, floats at level 9",
+   "verdict": "accepted",
+   "sha256": "281ef585d4a6941a5613083ecdd9210acbfd97229d8a0eb0457c189aca2f5da0",
+   "length": 6000
+  },
+  {
+   "name": "dynamic codes, level 1",
+   "verdict": "accepted",
+   "sha256": "91a109b553147888b124e9e193dc6a9de212c9d7990dd9da57575c11a8aa1355",
+   "length": 4000
+  },
+  {
+   "name": "dynamic codes, floats, filtered",
+   "verdict": "accepted",
+   "sha256": "c2ae75c299f46be062fc328fe227dafda3ff5cc384c6d38466c61be0b8dcc32a",
+   "length": 4000
+  },
+  {
+   "name": "dynamic codes, text and floats at level 4",
+   "verdict": "accepted",
+   "sha256": "1b8787a987b9a59478175afcbb098eab1b7d9af0b74c7a32c62c34cf75bde353",
+   "length": 4000
+  },
+  {
+   "name": "run-length, runs",
+   "verdict": "accepted",
+   "sha256": "c6beda2871d614407be65370ae5eb9cd95a5a9780246c3a38c0675f20bc34524",
+   "length": 5000
+  },
+  {
+   "name": "run-length, heights",
+   "verdict": "accepted",
+   "sha256": "386f40895c8c14e0858ce2ec9cc21bd01eeb3097a88d0b82d0b43a27aabc2a13",
+   "length": 4000
+  },
+  {
+   "name": "Huffman only, text",
+   "verdict": "accepted",
+   "sha256": "64bbb42e6030cc8170876d8beac17eadaf8f4642dc77267bb0629ea59bb8d31d",
+   "length": 3000
+  },
+  {
+   "name": "Huffman only, floats",
+   "verdict": "accepted",
+   "sha256": "094a4c4498f56c5e2fd9dc8eabb5362f2496befefb87898f0aa9eb26e653c7dd",
+   "length": 3000
+  },
+  {
+   "name": "a 512-byte window",
+   "verdict": "accepted",
+   "sha256": "b893c72d81cc74c6612110b1def1ffa46e2bc97f0347719a809cd344cf821457",
+   "length": 3000
+  },
+  {
+   "name": "memLevel 1",
+   "verdict": "accepted",
+   "sha256": "785d86563a393a95ad942f5dc44599ea5d3a204d22f86e6047148671e6eaf5fa",
+   "length": 3000
+  },
+  {
+   "name": "memLevel 9, level 9, repeats",
+   "verdict": "accepted",
+   "sha256": "ddcc4cb209193ac45e5bfa971ec97b1ea4b41d051bb503adf523dbc91a77665b",
+   "length": 4000
+  },
+  {
+   "name": "zeros",
+   "verdict": "accepted",
+   "sha256": "668946bab9868b28489bb906205ee1026045c8bcd3ca62a1bdf733c65491351b",
+   "length": 8000
+  },
+  {
+   "name": "stored and Huffman pieces, flushed and joined 1",
+   "verdict": "accepted",
+   "sha256": "ecceb3768c1d27aa37fe10089191410afd41fd2752fb933cab697783d1a26fc8",
+   "length": 4800
+  },
+  {
+   "name": "stored and Huffman pieces, flushed and joined 2",
+   "verdict": "accepted",
+   "sha256": "c2cf8fcc7cd0ae5a008bfe6f140016fe26277d3579c5e0296b806a046de3db80",
+   "length": 4800
+  },
+  {
+   "name": "stored and Huffman pieces, flushed and joined 3",
+   "verdict": "accepted",
+   "sha256": "074540ac55c18d6a85ef4f5f726ab82b9b781a62f5949a495a12c1d57af11db0",
+   "length": 4800
+  },
+  {
+   "name": "one compressor, sync and full flushes",
+   "verdict": "accepted",
+   "sha256": "d27bb9010cccdd2718abc8c7281195c161b9fc8685f74bae4bd856903120e764",
+   "length": 3600
+  },
+  {
+   "name": "empty, level 6",
+   "verdict": "accepted",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "length": 0
+  },
+  {
+   "name": "empty, stored",
+   "verdict": "accepted",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "length": 0
+  },
+  {
+   "name": "empty, asked for nothing of a full block",
+   "verdict": "accepted",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "length": 0
+  },
+  {
+   "name": "a last strip stored exactly",
+   "verdict": "accepted",
+   "sha256": "fc904bdd8d3636faf438b4b28979f35003620610a380feebcd0a77de5b36fd86",
+   "length": 300
+  },
+  {
+   "name": "a last strip padded to a full block",
+   "verdict": "accepted",
+   "sha256": "fc904bdd8d3636faf438b4b28979f35003620610a380feebcd0a77de5b36fd86",
+   "length": 300
+  },
+  {
+   "name": "a last strip padded part of the way",
+   "verdict": "accepted",
+   "sha256": "fc904bdd8d3636faf438b4b28979f35003620610a380feebcd0a77de5b36fd86",
+   "length": 300
+  },
+  {
+   "name": "junk after the checksum",
+   "verdict": "accepted",
+   "sha256": "88586e2883e700d1e84ca8951d304118dced616eb91e0abc4a04b434925ad516",
+   "length": 2000
+  },
+  {
+   "name": "a writer's padding after the checksum",
+   "verdict": "accepted",
+   "sha256": "88586e2883e700d1e84ca8951d304118dced616eb91e0abc4a04b434925ad516",
+   "length": 2000
+  },
+  {
+   "name": "cut short",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "a bad Adler-32",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "a bit flipped in a Huffman block",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "raw DEFLATE with no zlib wrapper",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "more than one full block",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "fewer bytes than the block needs",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  }
+ ],
+ "geotiff": {
+  "bounds": [
+   -1000.0,
+   9000.0
+  ],
+  "files": [
+   {
+    "name": "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",\"size\":5400,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1939,2451,2957,3308,3800,4292,4637,4918,5187],\"byteCounts\":[504,498,343,484,484,337,273,261,209],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-11.0,\"y0\":9.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "79ae46fce6d683d6b17e4d79b981c1816439bd2d8377a5d01a6076eee62250c4",
+     "spots": "[154.5,163.10000610351562,169.89999389648438,165.5,167.1999969482422,162.5,171.0,173.89999389648438,168.3000030517578,179.60000610351562]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "0bedf5ba1588a65978faaaf0e7f30590858c133663fc6783ee82a47eb96f6dc3",
+     "y": "d146967494691964c9b529518057430993b480db0be22db6d37ac03dccb174d4",
+     "ends": "[-11.0,-10.989166666666666,0.0002777777777777778,8.989166666666666,9.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"size\":5527,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1971,2480,2996,3385,3912,4430,4765,5057,5329],\"byteCounts\":[501,508,381,519,510,327,284,264,194],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-11.011111111111111,\"y0\":9.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "9e279977f8cc7a79628b3c1d8122f88254ff41d6f8d5b68a8e3f603fb30ee014",
+     "spots": "[149.6999969482422,152.8000030517578,157.3000030517578,167.3000030517578,155.0,184.39999389648438,188.60000610351562,152.89999389648438,177.5,202.5]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "44b0287c958b7758ec1c860bce2a02ebc72d008f009f0e9d39dfc903da10b39a",
+     "y": "d146967494691964c9b529518057430993b480db0be22db6d37ac03dccb174d4",
+     "ends": "[-11.011111111111111,-11.000277777777777,0.0002777777777777778,8.989166666666666,9.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "be_deflate_p3_f32.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"be_deflate_p3_f32.tif\",\"size\":1179,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":17,\"height\":13,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":17,\"blockHeight\":1,\"rowsPerStrip\":1,\"offsets\":[402,456,514,572,630,691,751,812,872,934,998,1057,1122],\"byteCounts\":[54,58,58,58,61,60,61,60,62,64,59,65,57],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.6,\"y0\":8.1,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "8274ef403c3e45fdcc316486c3892a03b3cb03446613ed061a694e6be9829199",
+     "spots": "[152.60000610351562,160.3000030517578,170.39999389648438,152.3000030517578,161.3000030517578,151.0,155.5,153.60000610351562,155.39999389648438,159.5]"
+    },
+    "reasons": "6010945c47b0d30293abfba46fc65c5cd721948467cab7f01d2dd219705ec40b",
+    "axes": {
+     "x": "56fc563c5467acb5252ed119b2aec2a99dc92b57dc3bc519d7178ab6f68722b7",
+     "y": "50764b99b24b113e44ff4d087e9c939561fa5af1360a199276ec6975167cc2a8",
+     "ends": "[-11.6,-11.586666666666666,0.0008333333333333334,8.09,8.1,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "be_lzw_p2_int16.tif",
+    "need": "[[282,2]]",
+    "layout": "{\"name\":\"be_lzw_p2_int16.tif\",\"size\":615,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":19,\"height\":17,\"bits\":16,\"sampleFormat\":2,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":19,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[8,121,227],\"byteCounts\":[113,106,54],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.8,\"y0\":7.98,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":-32767.0,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "9ae519a2debd59c07a8819c6cee9c52f9c3f491432013cf466a0652e4a0e3afe",
+     "spots": "[163.0,194.0,183.0,174.0,165.0,156.0,156.0,154.0,154.0,158.0]"
+    },
+    "reasons": "e05df3a5cf00ac2bb3e52ed80c948044651303c27c01f4f8fb8dda7a84491169",
+    "axes": {
+     "x": "48738461bd0d7194acfa3c94980261e3866c429f439e88ccb885619ee2dfcfef",
+     "y": "06498e10e6f9b3a8549e410a1037af4e3ee3dacc083ab7624cf35ee715ee0052",
+     "ends": "[-11.8,-11.785,0.0008333333333333334,7.966666666666667,7.98,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "bigtiff_be_lzw_p2_i32.tif",
+    "need": "[[16,8]]",
+    "layout": "{\"name\":\"bigtiff_be_lzw_p2_i32.tif\",\"size\":656,\"byteOrder\":\">\",\"bigtiff\":true,\"width\":15,\"height\":12,\"bits\":32,\"sampleFormat\":2,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":15,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[452,554],\"byteCounts\":[102,102],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.3,\"y0\":8.4,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "b062ba2fde2436ae6e51d46008d11d7248cb90e8d1a8da49ce3cb17859d1bb1c",
+     "spots": "[150.0,151.0,159.0,162.0,153.0,152.0,155.0,155.0,155.0,157.0]"
+    },
+    "reasons": "83f087ec4c2bcff1d7eb0d9da429c9f966242055061ebf7f6f9b22775b20a833",
+    "axes": {
+     "x": "e6949d66e74198f0ecf626610061076f52e7d38f033c43af79fdd43e8cc7e0c6",
+     "y": "97aa09a1a1a3a781c1f8a7de47379626f0c7375c2e5ff98dae6cfc785f4d8a34",
+     "ends": "[-11.3,-11.288333333333334,0.0008333333333333334,8.390833333333333,8.4,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "bigtiff_deflate_p2_f32.tif",
+    "need": "[[16,8]]",
+    "layout": "{\"name\":\"bigtiff_deflate_p2_f32.tif\",\"size\":1331,\"byteOrder\":\"<\",\"bigtiff\":true,\"width\":18,\"height\":20,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":2,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[540,945,1117,1265],\"byteCounts\":[405,172,148,66],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.399583333333334,\"y0\":8.299583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":-9999.0,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "923c4844ae001e626431d23a9325c1be70b63efe3bf9a81322f6b18614357f09",
+     "spots": "[161.89999389648438,163.0,168.89999389648438,171.6999969482422,173.3000030517578,152.10000610351562,153.1999969482422,154.89999389648438,156.0,156.5]"
+    },
+    "reasons": "a67af50450d7e855b5cd54de275395fb950187fce0e53b8ad9d41dc184b6790c",
+    "axes": {
+     "x": "c0c4f3dd8d5b5e1f1309c9f1b85f1f3d2783e80f4da67fc72189d114454c783a",
+     "y": "afd01dda0fac061d7e56be9c4299967087f8de967c5de4257a8b40b9af3282fa",
+     "ends": "[-11.399583333333334,-11.385416666666668,0.0008333333333333334,8.283750000000001,8.299583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "gdal_cog_deflate_p3_f32.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"gdal_cog_deflate_p3_f32.tif\",\"size\":6693,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[3234,3710,4218,4594,5111,5617,5955,6240,6503],\"byteCounts\":[468,500,368,509,498,330,277,255,186],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.8,\"y0\":8.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "2b5b8bc57952ba04bfecc7e7932b781fa40f0a5ae5b25933765a0d4700d625dc",
+     "spots": "[150.89999389648438,152.6999969482422,159.10000610351562,169.39999389648438,157.8000030517578,179.6999969482422,189.60000610351562,151.0,174.39999389648438,204.0]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "f00b8c2a8a396d394a89d9520770e9fcf0e3932ea5294f44bcb09755cc5b7513",
+     "y": "6a9ee35a42fb2c93268af4063ca2c98f2ec8a3063b124c5363396b4bc57a145e",
+     "ends": "[-9.8,-9.789166666666667,0.0002777777777777778,7.989166666666667,8.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "gdal_internal_mask_f32.tif",
+    "need": "[[10,208]]",
+    "layout": "{\"name\":\"gdal_internal_mask_f32.tif\",\"size\":779,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":14,\"height\":10,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":14,\"blockHeight\":10,\"rowsPerStrip\":10,\"offsets\":[378],\"byteCounts\":[208],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.4,\"y0\":8.4,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false,\"hasMask\":true}",
+    "values": {
+     "digest": "8a2cbe50fa38249e165507d2826e9c7d9a65a61dd72e74f9ef9867b516c79faf",
+     "spots": "[0.0,0.0,0.0,0.0,153.8000030517578,154.8000030517578,156.60000610351562,157.39999389648438,158.10000610351562,159.10000610351562]"
+    },
+    "reasons": "0a13032d6e91709e88effb654657fcb620432caa2dc1f37db32871eb5e3a2aa7",
+    "axes": {
+     "x": "662f2723e94cc03658602cda5aa8a79640541ef3028d5db0e96468f7c9589c9b",
+     "y": "1b11c3e2f9077d3bc6a85be435a007945ddb64a9cf9f61913305165397211755",
+     "ends": "[-9.4,-9.39638888888889,0.0002777777777777778,8.3975,8.4,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "gdal_lzw_p2_f32.tif",
+    "need": "[[10,208]]",
+    "layout": "{\"name\":\"gdal_lzw_p2_f32.tif\",\"size\":2364,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":37,\"height\":29,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":37,\"blockHeight\":8,\"rowsPerStrip\":8,\"offsets\":[402,918,1460,2004],\"byteCounts\":[516,542,544,360],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.699583333333333,\"y0\":8.099583333333333,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "4261a70be9e2435413ce672ba9eef38f19e81fe2760edc4e143f37c8c709fe4c",
+     "spots": "[184.10000610351562,185.3000030517578,177.5,173.89999389648438,174.5,157.89999389648438,163.60000610351562,175.6999969482422,183.89999389648438,192.5]"
+    },
+    "reasons": "5fa67304d1c7d3d8ee8ba3456c39eaa2d562c38c36115be2bde2bdebeeaad13e",
+    "axes": {
+     "x": "632618b7ee71a6d67ec3a77c0059fa5163fe1c2607428c27f336a8f7dca02576",
+     "y": "ef8bc35531e73505ef4bdd93aa6acd62e926602e86914b52a2042207a3cad418",
+     "ends": "[-9.699583333333333,-9.669583333333334,0.0008333333333333334,8.07625,8.099583333333333,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "gdal_mm_lzw_p3_tiled_f64.tif",
+    "need": "[[10,220]]",
+    "layout": "{\"name\":\"gdal_mm_lzw_p3_tiled_f64.tif\",\"size\":4167,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":35,\"height\":22,\"bits\":64,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[426,1455,2524,2986,3458,3933],\"byteCounts\":[1029,1069,462,472,475,234],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.499583333333334,\"y0\":8.299583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "79ea73df4309a89133cf0ab62ce46e2d4bd5422ef8593649d2db3c4c12eeffa1",
+     "spots": "[171.7,193.0,175.6,173.3,195.2,155.2,183.3,156.1,157.5,191.9]"
+    },
+    "reasons": "b25fe9aefbb1fa22802dec7537a662830973607280103c01925a6426f30b65a2",
+    "axes": {
+     "x": "9584b09307c1ec1f9c414603f8045ca880e11efe0bcafddb0168e7a3ea84689f",
+     "y": "422cc7f27c21d050f8984138884b1e4066752552c35c93088ac5f8ac90979520",
+     "ends": "[-9.499583333333334,-9.47125,0.0008333333333333334,8.282083333333334,8.299583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "gdal_mm_packbits_i16.tif",
+    "need": "[[10,208]]",
+    "layout": "{\"name\":\"gdal_mm_packbits_i16.tif\",\"size\":2242,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":33,\"height\":27,\"bits\":16,\"sampleFormat\":2,\"compression\":32773,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":33,\"blockHeight\":5,\"rowsPerStrip\":5,\"offsets\":[433,768,1103,1438,1773,2108],\"byteCounts\":[335,335,335,335,335,134],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-9.6,\"y0\":8.2,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":-32767.0,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "a8fa0d8644e8765d068343a9dd5d94784b51b955d71d6be30ded5f43d284c7b9",
+     "spots": "[182.0,158.0,161.0,164.0,177.0,186.0,195.0,202.0,193.0,186.0]"
+    },
+    "reasons": "c75c98e09ad61a9f6250fd776e62d07d267cc7c383d295c72547ca541c3eba0a",
+    "axes": {
+     "x": "d3096fc2652218e9f1811c7ae41033a4e61331246856c599f76b0fc56adff5c2",
+     "y": "bb7178385813da20f051099970eee26623a25e17dd45eca7b86b1509d1f491bc",
+     "ends": "[-9.6,-9.573333333333332,0.0008333333333333334,8.178333333333333,8.2,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "hole_fill_margin.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"hole_fill_margin.tif\",\"size\":3966,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":40,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[334,960,1596,2226,2858,3497],\"byteCounts\":[626,636,630,632,639,469],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "e3e937e9b2566d64072bba478f6989aaa8f8809446830cd96d3d0b2bf74f0366",
+     "spots": "[22.700000762939453,35.70000076293945,48.400001525878906,38.099998474121094,48.29999923706055,38.099998474121094,50.099998474121094,40.20000076293945,52.79999923706055,-3.4028234663852886e+38]"
+    },
+    "reasons": "e3adf2ad79a399126fdd4963ba3cf06e2fc4cf59ed1200aafbe1170b46c585bc",
+    "axes": {
+     "x": "b43b12faafc66d37e5a9a414a6411ee2c7422af94f506c3dce054c5614973a9f",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-13.0,-12.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_N08W012.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"holes_N08W012.tif\",\"size\":2644,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[382,707,990,1220,1562,1878,2106,2279,2494],\"byteCounts\":[325,283,230,342,316,228,173,215,150],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "4013f2738e5f71daa7f48a2fd4c301df75dbf1cccf55001abf26070a40c20b84",
+     "spots": "[46.599998474121094,58.79999923706055,70.80000305175781,61.79999923706055,72.4000015258789,61.70000076293945,76.19999694824219,65.0,75.5999984741211,89.0]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "81092804326dc1f6a2b4e2832285c1a992af9cd8ab1617b0f6135274a8225d8e",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-12.0,-11.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_edge_N08W013.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"holes_edge_N08W013.tif\",\"size\":3271,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":40,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,836,1320,1811,2328,2879],\"byteCounts\":[490,484,491,517,551,392],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "ffa2667d265fb5da5700f57155d72ad61d526a86cd29d27186d8481ee50b4832",
+     "spots": "[22.700000762939453,35.70000076293945,48.400001525878906,38.099998474121094,48.29999923706055,38.099998474121094,50.099998474121094,40.20000076293945,52.79999923706055,64.5]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "b43b12faafc66d37e5a9a414a6411ee2c7422af94f506c3dce054c5614973a9f",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-13.0,-12.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_land_N07W012.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"holes_land_N07W012.tif\",\"size\":1373,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":16,\"sampleFormat\":2,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":40,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,530,712,888,1062,1239],\"byteCounts\":[184,182,176,174,177,134],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.0,\"y0\":8.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "c8e7876cb8526f1656d00f49f9c42ce2aa867d099b539ab0a81f8f2f7fe6d776",
+     "spots": "[27.0,39.0,52.0,40.0,53.0,43.0,54.0,43.0,58.0,71.0]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "81092804326dc1f6a2b4e2832285c1a992af9cd8ab1617b0f6135274a8225d8e",
+     "y": "a97991081341f2127091e51b3e5821e6fb3d10491e1fb94d5e8049474f6eb5f4",
+     "ends": "[-12.0,-11.025,0.025,7.025,8.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_land_N08W013.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"holes_land_N08W013.tif\",\"size\":1396,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":16,\"sampleFormat\":2,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":40,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,522,700,886,1072,1254],\"byteCounts\":[176,178,186,186,182,142],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "c5fac6cb32535971d3cd0979b0061906836d05d21b0b04ac51460130ad1d4f95",
+     "spots": "[22.0,35.0,48.0,38.0,48.0,38.0,50.0,40.0,52.0,64.0]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "b43b12faafc66d37e5a9a414a6411ee2c7422af94f506c3dce054c5614973a9f",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-13.0,-12.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_sea_N07W012.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"holes_sea_N07W012.tif\",\"size\":2723,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[382,717,1026,1284,1619,1926,2170,2398,2578],\"byteCounts\":[335,309,258,335,307,244,228,180,145],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.0,\"y0\":8.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "4fdcb718df8966473dd17b58efb6b666531537a3a2b2483271f41a7ea1155dd8",
+     "spots": "[0.0,39.20000076293945,52.099998474121094,40.599998474121094,53.099998474121094,43.599998474121094,54.29999923706055,0.0,58.20000076293945,71.0999984741211]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "81092804326dc1f6a2b4e2832285c1a992af9cd8ab1617b0f6135274a8225d8e",
+     "y": "a97991081341f2127091e51b3e5821e6fb3d10491e1fb94d5e8049474f6eb5f4",
+     "ends": "[-12.0,-11.025,0.025,7.025,8.0,0.025]"
+    }
+   },
+   {
+    "name": "holes_sea_N08W013.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"holes_sea_N08W013.tif\",\"size\":2641,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[382,685,991,1254,1634,1955,2212,2385,2547],\"byteCounts\":[303,306,263,380,321,257,173,162,94],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.0,\"y0\":9.0,\"sx\":0.025,\"sy\":0.025,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "3f6b12e54c45569ab1da6a4c6eeea47b1880ec3000756967d86db4f199cc7ff1",
+     "spots": "[0.0,0.0,48.400001525878906,38.099998474121094,48.29999923706055,38.099998474121094,50.099998474121094,40.20000076293945,52.79999923706055,64.5]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "b43b12faafc66d37e5a9a414a6411ee2c7422af94f506c3dce054c5614973a9f",
+     "y": "7384b6f7ab7893e98eb652176860f2e8c0f2a8fb1c97be6f2595ecbfdf3bcc1e",
+     "ends": "[-13.0,-12.025,0.025,8.025,9.0,0.025]"
+    }
+   },
+   {
+    "name": "inf_f32.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"inf_f32.tif\",\"size\":782,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":12,\"height\":10,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[302,638],\"byteCounts\":[336,144],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.699583333333333,\"y0\":8.999583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "159b631ad22b281942f8579d929e07deb8fca30bfb7e0b0b3889ba1ab9374f98",
+     "spots": "[153.6999969482422,\"-Infinity\",154.1999969482422,154.39999389648438,155.1999969482422,155.60000610351562,157.1999969482422,157.89999389648438,158.5,157.5]"
+    },
+    "reasons": "c62d871f49fc6141a275432e2928656945e84008b01aa269ac3f5167ea6428ed",
+    "axes": {
+     "x": "1ead6157326f92d6077f5e4e76823cee27a30df8d10d6f78ff3f6c76b1f1517a",
+     "y": "468ba738e8d9e2c948b28832f4ac87ce7bd29ea763736e28b4ffa248532a93dc",
+     "ends": "[-10.699583333333333,-10.690416666666666,0.0008333333333333334,8.992083333333333,8.999583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "internal_mask.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"internal_mask.tif\",\"size\":616,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":9,\"rowsPerStrip\":9,\"offsets\":[424],\"byteCounts\":[180],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.6,\"y0\":8.8,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":true}",
+    "values": {
+     "digest": "2c1b70267280ea469e4f5f09ad660e753abf6b2858040d6c69e4912bae71b4b1",
+     "spots": "[0.0,167.10000610351562,161.6999969482422,159.0,156.39999389648438,154.3000030517578,153.3000030517578,153.39999389648438,153.89999389648438,154.0]"
+    },
+    "reasons": "ccf8e88438dc4d373433236959a827cdb4ab19f87cf4f0bfc102ec3f05dd1c36",
+    "axes": {
+     "x": "7673719d9e5d9bb84082ae96afbe4353282018281432a35353d2cf4a9e39109c",
+     "y": "e5d0cde409b59d0bc1efaa7add133c7696c68103e850d489912d337d52233bb7",
+     "ends": "[-10.6,-10.596944444444444,0.0002777777777777778,8.797777777777778,8.8,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "le_lzw_p3_f64.tif",
+    "need": "[[10,208]]",
+    "layout": "{\"name\":\"le_lzw_p3_f64.tif\",\"size\":2577,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":21,\"height\":18,\"bits\":64,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[552,1592,2206,2428],\"byteCounts\":[1040,614,222,149],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.699583333333333,\"y0\":7.899583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "c5307d7e6f63f05b259f3b1d84b1d2205d8aebcb79494d781855cb3aed75b268",
+     "spots": "[162.8,192.7,197.6,192.5,185.1,179.7,174.4,169.3,168.2,163.0]"
+    },
+    "reasons": "8e4cf216f6a5947bcda3da99901d72baa08c80f2d703895b6a5273ec1e69eef3",
+    "axes": {
+     "x": "8a40b6149fffc09d8c9af7617c457485d13d01332a617d67e0a94c581c913337",
+     "y": "23bd3eaec4404120736e9f801029f767b66949bb5394a4f262f72a3eecdd201f",
+     "ends": "[-11.699583333333333,-11.682916666666666,0.0008333333333333334,7.885416666666667,7.899583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "lzw_deferred_clear.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"lzw_deferred_clear.tif\",\"size\":7542,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":58,\"height\":42,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":58,\"blockHeight\":42,\"rowsPerStrip\":42,\"offsets\":[286],\"byteCounts\":[7256],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.899583333333334,\"y0\":8.799583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "8c019a8cc1b2857eb4bd1884a15c7227df5a1a1399bdd6942adebc88c94a27a1",
+     "spots": "[351.0,391.79998779296875,1982.4000244140625,2068.5,107.0999984741211,1268.9000244140625,1747.300048828125,307.70001220703125,1199.9000244140625,1448.300048828125]"
+    },
+    "reasons": "aeb7a4e590855ba26c0dc27ff3481890a78c0d64178b6fef89b858eb953394cc",
+    "axes": {
+     "x": "ceac4cb80530caf390877064cf4102174cd31ca9340dd831182ec87b05013923",
+     "y": "39b86d877359cdc7ac059ae8d2bace29a25d05d7b7159e80af250841ef58b23f",
+     "ends": "[-10.899583333333334,-10.852083333333335,0.0008333333333333334,8.765416666666669,8.799583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "mosaic_zero_fill.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"mosaic_zero_fill.tif\",\"size\":3218,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":48,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":48,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,803,1284,1748,2357,3110],\"byteCounts\":[457,481,464,609,753,108],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-13.049861111111111,\"y0\":8.549861111111111,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "5657e8cbcb19651207763933ad6939da3654be3608b5af1ae8a7d400c1064a3f",
+     "spots": "[0.0,5.900000095367432,14.800000190734863,12.800000190734863,22.399999618530273,20.0,0.0,28.600000381469727,34.900001525878906,0.0]"
+    },
+    "reasons": "0eb3515aef1468f853daac5875b258185e777c56f01844abd2cca71ebeb28ff6",
+    "axes": {
+     "x": "4d3c791533c169cd557a84bb5dd991987883ba8c7495413f959fe1d28fa84d1b",
+     "y": "8bde7acbaf3e87edef3b33ba3b07fe9d573274f8dced4ae9bb98feefda6bea3c",
+     "ends": "[-13.049861111111111,-13.036805555555556,0.0002777777777777778,8.539027777777777,8.549861111111111,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "n08w011.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"n08w011.tif\",\"size\":5400,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1939,2451,2957,3308,3800,4292,4637,4918,5187],\"byteCounts\":[504,498,343,484,484,337,273,261,209],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-11.0,\"y0\":9.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "79ae46fce6d683d6b17e4d79b981c1816439bd2d8377a5d01a6076eee62250c4",
+     "spots": "[154.5,163.10000610351562,169.89999389648438,165.5,167.1999969482422,162.5,171.0,173.89999389648438,168.3000030517578,179.60000610351562]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "0bedf5ba1588a65978faaaf0e7f30590858c133663fc6783ee82a47eb96f6dc3",
+     "y": "d146967494691964c9b529518057430993b480db0be22db6d37ac03dccb174d4",
+     "ends": "[-11.0,-10.989166666666666,0.0002777777777777778,8.989166666666666,9.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "n08w012.tif",
+    "need": "[[192,2]]",
+    "layout": "{\"name\":\"n08w012.tif\",\"size\":5527,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":40,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1971,2480,2996,3385,3912,4430,4765,5057,5329],\"byteCounts\":[501,508,381,519,510,327,284,264,194],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":9102,\"x0\":-11.011111111111111,\"y0\":9.0,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":\"WGS 84|\",\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "9e279977f8cc7a79628b3c1d8122f88254ff41d6f8d5b68a8e3f603fb30ee014",
+     "spots": "[149.6999969482422,152.8000030517578,157.3000030517578,167.3000030517578,155.0,184.39999389648438,188.60000610351562,152.89999389648438,177.5,202.5]"
+    },
+    "reasons": "e865055695c76ac705e903838d7b2fe9eb5a136623724621c6f84379ae10813b",
+    "axes": {
+     "x": "44b0287c958b7758ec1c860bce2a02ebc72d008f009f0e9d39dfc903da10b39a",
+     "y": "d146967494691964c9b529518057430993b480db0be22db6d37ac03dccb174d4",
+     "ends": "[-11.011111111111111,-11.000277777777777,0.0002777777777777778,8.989166666666666,9.0,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "negzero_f32.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"negzero_f32.tif\",\"size\":712,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":10,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[314,582],\"byteCounts\":[268,130],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.8,\"y0\":8.9,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "498a3cfba54e161fa42332529d5e096db1395f63f70c116ac6c5fdd06776f242",
+     "spots": "[-0.6000000238418579,0.10000000149011612,0.0,0.10000000149011612,0.4000000059604645,0.10000000149011612,3.200000047683716,3.4000000953674316,4.0,0.0]"
+    },
+    "reasons": "09719c55365a950c92a06122b6ce2634e3ce9b6dbcde1827171941658c7eedab",
+    "axes": {
+     "x": "354911ca26d378cb34cce7654ab25f9133d1e40cc788d547ea805159ddd09172",
+     "y": "03bd10ff7d8a3fda800a0f0c9263bb02e530f63351840a27802f960befd51bd9",
+     "ends": "[-10.8,-10.790833333333333,0.0008333333333333334,8.8925,8.9,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "nodata_abc.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.nodata_unreadable",
+     "nodata_abc.tif gives its no-data value as abc, which is not a number."
+    ]
+   },
+   {
+    "name": "nodata_arcgis_float_max.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"nodata_arcgis_float_max.tif\",\"size\":586,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[346,512],\"byteCounts\":[166,74],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.099583333333333,\"y0\":7.699583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":-3.4028234663852886e+38,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "221e91717825832915105fefb2412a79d9c8101304ea76e17a907644fa94d2c4",
+     "spots": "[null,156.1999969482422,152.8000030517578,152.89999389648438,153.0,153.39999389648438,155.39999389648438,155.60000610351562,156.0,155.89999389648438]"
+    },
+    "reasons": "3c772bb7f104ec57dddbc70e4cecc7f214b19a5e4128e0c90a6d46ad48d6b437",
+    "axes": {
+     "x": "0f5307f21e464fb386855567781a2e83defb75e2724ece77839d3804b6600569",
+     "y": "82795f02bfab9aa904556b666a9c68a90ab27844d84433fe0eecd325a0870755",
+     "ends": "[-10.099583333333333,-10.090416666666666,0.0008333333333333334,7.692916666666667,7.699583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "nodata_empty.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"nodata_empty.tif\",\"size\":394,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":8,\"sampleFormat\":1,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":9,\"rowsPerStrip\":9,\"offsets\":[286],\"byteCounts\":[108],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-9.999583333333334,\"y0\":7.7995833333333335,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "1dd4dd4a170ced6e175a3c5534ca58dc6f150c536bdac4d9f44c61f396040c2e",
+     "spots": "[0.0,5.0,6.0,7.0,7.0,7.0,5.0,5.0,6.0,6.0]"
+    },
+    "reasons": "ccf8e88438dc4d373433236959a827cdb4ab19f87cf4f0bfc102ec3f05dd1c36",
+    "axes": {
+     "x": "c5ef2ae0c60abc7d6898f21b4f2b16d3baabefcf9d94536e811354bbeff7c6c0",
+     "y": "c5cbd6c7f2e808ff61f0101a36dcb1f070ffbad4ceb6c7db926c065a0118ebdd",
+     "ends": "[-9.999583333333334,-9.990416666666667,0.0008333333333333334,7.792916666666667,7.7995833333333335,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "nodata_nan.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"nodata_nan.tif\",\"size\":582,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[314,507],\"byteCounts\":[193,75],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.299583333333334,\"y0\":7.499583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "3584ff0a7bd7c1edd6071cf21137e90ac002a2867289332a2e82e06a134646b9",
+     "spots": "[151.10000610351562,null,153.60000610351562,153.8000030517578,153.8000030517578,154.10000610351562,153.39999389648438,153.5,153.60000610351562,154.0]"
+    },
+    "reasons": "af3fd4a3beea99ef5c9582dd4e461aee57e7a3187a8b6bb6fb0dd9cfc926a4fc",
+    "axes": {
+     "x": "c066efc1d4c309af4b1e4304ed9cde202d7b41dfe4aa868ebf620279ecdd4767",
+     "y": "d98d92a2d6fc71f38199373ed9f77815ec0e3acc26554f28eda0eca25439588f",
+     "ends": "[-10.299583333333334,-10.290416666666667,0.0008333333333333334,7.492916666666667,7.499583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "nodata_neg_inf.tif",
+    "need": "[[10,196]]",
+    "layout": "{\"name\":\"nodata_neg_inf.tif\",\"size\":2363,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":64,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[315],\"byteCounts\":[2048],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.2,\"y0\":7.6,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":\"-Infinity\",\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "b3a44f504f393d4d5eb5b3338ed9a7a3ada197d7e894cb932d613df9de80c15a",
+     "spots": "[148.6,157.3,157.2,157.3,157.7,157.6,153.9,154.2,154.4,154.4]"
+    },
+    "reasons": "0187d64046d33f55d8cb2dcb74ca8fb22aab79c0b7fb4148c26537f90a6a2d18",
+    "axes": {
+     "x": "27a90eb60ad5ff7b9d1cd9ad8f03b3deaa00f5cfa58688a19cf8f8f98b10da54",
+     "y": "e43f0fdf3564afec6e7d84653f466c184d01b8a7076af6ff1c059f8d587619b0",
+     "ends": "[-10.2,-10.190833333333332,0.0008333333333333334,7.593333333333333,7.6,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "overlap_north.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"overlap_north.tif\",\"size\":1451,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":24,\"height\":20,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":3,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":24,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[322,706,1102],\"byteCounts\":[384,396,349],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.5,\"y0\":8.75,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "98cf9908b59987fe57a6accde78a68d2410d52f4aad1828461ba280f2dd4ae96",
+     "spots": "[160.89999389648438,164.8000030517578,172.1999969482422,175.10000610351562,183.8000030517578,155.1999969482422,154.8000030517578,153.6999969482422,158.10000610351562,158.0]"
+    },
+    "reasons": "43c0436e52f31f365404442fa596325f070f5176f5bb69b8383d78528b72e2ac",
+    "axes": {
+     "x": "ad6ac1cf55915749db54fecb40d1cb88718297c7d7aa06f504f2e3ff1b433ec5",
+     "y": "f1abc7588f406459b7113e590a7621e14619e148493f0afc295645bbe37e7ed1",
+     "ends": "[-12.5,-12.493611111111111,0.0002777777777777778,8.744722222222222,8.75,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "overlap_south_agrees.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"overlap_south_agrees.tif\",\"size\":1396,\"byteOrder\":\">\",\"bigtiff\":false,\"width\":24,\"height\":19,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":1,\"predictorApplied\":false,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[330,839,1159,1306],\"byteCounts\":[509,320,147,90],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.5,\"y0\":8.744722222222222,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "915a9750499b47d9b28436ce8c24512acae374ef668531054c6ce25528545726",
+     "spots": "[169.39999389648438,170.3000030517578,171.3000030517578,176.6999969482422,177.39999389648438,180.39999389648438,179.0,184.6999969482422,183.6999969482422,185.10000610351562]"
+    },
+    "reasons": "a9546614dbc44e9f0b9c8e21cd498aafdab47895e0d1d3472b8c4a52602473b4",
+    "axes": {
+     "x": "ad6ac1cf55915749db54fecb40d1cb88718297c7d7aa06f504f2e3ff1b433ec5",
+     "y": "75014cc5641970b624359e07136a1e4282d18830f4fa85406581b5d4159f7e46",
+     "ends": "[-12.5,-12.493611111111111,0.0002777777777777778,8.739722222222222,8.744722222222222,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "overlap_south_disagrees.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"overlap_south_disagrees.tif\",\"size\":2262,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":24,\"height\":19,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":24,\"blockHeight\":1,\"rowsPerStrip\":1,\"offsets\":[438,534,630,726,822,918,1014,1110,1206,1302,1398,1494,1590,1686,1782,1878,1974,2070,2166],\"byteCounts\":[96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.5,\"y0\":8.744722222222222,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "fc126c10db3e53d5205354497903d09da2fc6b4a8e51e510e92fc97013a52978",
+     "spots": "[169.39999389648438,170.3000030517578,171.3000030517578,176.6999969482422,177.39999389648438,180.39999389648438,179.0,184.6999969482422,183.6999969482422,185.10000610351562]"
+    },
+    "reasons": "a9546614dbc44e9f0b9c8e21cd498aafdab47895e0d1d3472b8c4a52602473b4",
+    "axes": {
+     "x": "ad6ac1cf55915749db54fecb40d1cb88718297c7d7aa06f504f2e3ff1b433ec5",
+     "y": "75014cc5641970b624359e07136a1e4282d18830f4fa85406581b5d4159f7e46",
+     "ends": "[-12.5,-12.493611111111111,0.0002777777777777778,8.739722222222222,8.744722222222222,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "overlap_south_fill_edge.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"overlap_south_fill_edge.tif\",\"size\":1203,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":24,\"height\":19,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":24,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[322,632,956],\"byteCounts\":[310,324,247],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.5,\"y0\":8.744722222222222,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "2955a99c538d6ae8b1d89e47c3759b4a6a2810b77d09100d3ece56f9cda7a73b",
+     "spots": "[169.39999389648438,170.3000030517578,171.3000030517578,176.6999969482422,177.39999389648438,180.39999389648438,179.0,184.6999969482422,183.6999969482422,-32767.0]"
+    },
+    "reasons": "626c3f12ab7a3c3eea5b9cac245867d0e5c5c98b01a534819be29660b872e2bf",
+    "axes": {
+     "x": "ad6ac1cf55915749db54fecb40d1cb88718297c7d7aa06f504f2e3ff1b433ec5",
+     "y": "75014cc5641970b624359e07136a1e4282d18830f4fa85406581b5d4159f7e46",
+     "ends": "[-12.5,-12.493611111111111,0.0002777777777777778,8.739722222222222,8.744722222222222,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "overview_mask_first.tif",
+    "need": "[[10,148]]",
+    "layout": "{\"name\":\"overview_mask_first.tif\",\"size\":3267,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":24,\"height\":20,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":3,\"predictorApplied\":true,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[1788,2277,2644,2802],\"byteCounts\":[489,367,158,139],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.399583333333334,\"y0\":9.299583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":2,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "084d5b8677f867ed194f9bfe276685e1636234231c80f7df1e49b0454a621d6a",
+     "spots": "[154.89999389648438,160.6999969482422,169.5,175.39999389648438,178.10000610351562,150.39999389648438,153.3000030517578,155.10000610351562,159.3000030517578,160.39999389648438]"
+    },
+    "reasons": "43c0436e52f31f365404442fa596325f070f5176f5bb69b8383d78528b72e2ac",
+    "axes": {
+     "x": "19e39a102076420aaebf3d518b0317563aaa05dfd6a928676b83220cb5a33911",
+     "y": "0e338065adadcab3e9d0d9d970da3f09da23131fe40db40d1b6f5bc7299ff996",
+     "ends": "[-10.399583333333334,-10.380416666666667,0.0008333333333333334,9.283750000000001,9.299583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "packbits_u16.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"packbits_u16.tif\",\"size\":1044,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":23,\"height\":15,\"bits\":16,\"sampleFormat\":1,\"compression\":32773,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":23,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[329,660,996],\"byteCounts\":[331,336,48],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.499583333333334,\"y0\":8.199583333333333,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":65535.0,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "4115c246168f17ca90b5640deaeadc98d52bc84f3677e4555d06a31ae430c041",
+     "spots": "[301.0,332.0,307.0,340.0,316.0,305.0,326.0,309.0,304.0,315.0]"
+    },
+    "reasons": "f4ea880725a4c4ee3266bfc1013dc93fbfd85def3806ed7097e96569bc2012ec",
+    "axes": {
+     "x": "bde397b81883a3feec3dbea9975717a7e4adcb946e29e5a71a5da8e5abb266b8",
+     "y": "b3df91cf393164773640ce772e2e7c07e91b61e255e8f59190c978baa7df9bb8",
+     "ends": "[-11.499583333333334,-11.481250000000001,0.0008333333333333334,8.187916666666666,8.199583333333333,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "padded_last_strip.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"padded_last_strip.tif\",\"size\":515,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":11,\"height\":17,\"bits\":32,\"sampleFormat\":1,\"compression\":32946,\"predictor\":2,\"predictorApplied\":true,\"tiled\":false,\"blockWidth\":11,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[322,404,477],\"byteCounts\":[82,73,38],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.0,\"y0\":8.7,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "f63b0fafd2f18f031884ebc177a2dd1de702cb1b92bbf8100f62b4899ac9ec2b",
+     "spots": "[154.0,171.0,164.0,153.0,150.0,153.0,153.0,154.0,154.0,153.0]"
+    },
+    "reasons": "1bf29fb4e29a80d9ab1a096536d423646d88c0d40620d2b920780639a1d48316",
+    "axes": {
+     "x": "b688180df597f969c399cdc9691061c1b46f58a6cb86e313161d7f0c93b9c73d",
+     "y": "711324c53324270f223c4e4ec3a726459b9d22a4a99fc3413fc5202a7b986810",
+     "ends": "[-11.0,-10.991666666666667,0.0008333333333333334,8.686666666666666,8.7,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "phase_half_cell.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"phase_half_cell.tif\",\"size\":1910,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":20,\"height\":20,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":20,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[310,870,1430],\"byteCounts\":[560,560,480],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.494305555555556,\"y0\":8.75,\"sx\":0.0002777777777777778,\"sy\":0.0002777777777777778,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "0b66aa7339055f5a7daa01c40ef66393f3ec26757553067377d708408d491d00",
+     "spots": "[189.39999389648438,189.3000030517578,188.10000610351562,185.3000030517578,185.8000030517578,178.39999389648438,183.39999389648438,182.10000610351562,187.60000610351562,195.6999969482422]"
+    },
+    "reasons": "50c1b8a6d69f6885e854b347a963d19970e78c2b81a5db3225c57129e1e87b8d",
+    "axes": {
+     "x": "1882144c01b309f1b26325255457c4bd5ef12f5580bc3027d6b2a42b402ef6fa",
+     "y": "f1abc7588f406459b7113e590a7621e14619e148493f0afc295645bbe37e7ed1",
+     "ends": "[-12.494305555555556,-12.489027777777778,0.0002777777777777778,8.744722222222222,8.75,0.0002777777777777778]"
+    }
+   },
+   {
+    "name": "pred2_none.tif",
+    "need": "[[168,2]]",
+    "layout": "{\"name\":\"pred2_none.tif\",\"size\":458,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":10,\"height\":8,\"bits\":16,\"sampleFormat\":2,\"compression\":1,\"predictor\":2,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":10,\"blockHeight\":8,\"rowsPerStrip\":8,\"offsets\":[8],\"byteCounts\":[160],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.6,\"y0\":9.1,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "d231c483e4580306fa2466cb59a4dd68123a14d02cfc4dec09fd7c86d1ea010a",
+     "spots": "[150.0,154.0,154.0,154.0,154.0,151.0,151.0,150.0,150.0,156.0]"
+    },
+    "reasons": "4c7f3da0386523b102328418c28d886bb9dc9c555671884e8fcc9bcba407e819",
+    "axes": {
+     "x": "18b7549593d3a8527cbe385fa2a88c9f3897f432a83db96f172c2549aa0463f6",
+     "y": "cd419cdc1188214ae050ad4ec35b66f47b9e577acaad7a41928eb9076aeb8cf3",
+     "ends": "[-10.6,-10.5925,0.0008333333333333334,9.094166666666666,9.1,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "pred2_packbits.tif",
+    "need": "[[64,2]]",
+    "layout": "{\"name\":\"pred2_packbits.tif\",\"size\":370,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":10,\"height\":8,\"bits\":8,\"sampleFormat\":2,\"compression\":32773,\"predictor\":2,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":10,\"blockHeight\":4,\"rowsPerStrip\":4,\"offsets\":[8,36],\"byteCounts\":[28,28],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-10.5,\"y0\":9.2,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "adf5c009739add232116f9ca87fc917bb47fae435be1883d01e657a7b3ebfb88",
+     "spots": "[14.0,20.0,17.0,15.0,15.0,12.0,10.0,10.0,10.0,16.0]"
+    },
+    "reasons": "4c7f3da0386523b102328418c28d886bb9dc9c555671884e8fcc9bcba407e819",
+    "axes": {
+     "x": "1b2f9530433a5d4b1c5cbe59125618ceb6b2a381ff2521360fe127f37449d3bd",
+     "y": "56271eab8fd8cf8088e62f4905523b6aba06205ca5998f6899ea2c2a132ce220",
+     "ends": "[-10.5,-10.4925,0.0008333333333333334,9.194166666666666,9.2,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "refuse_bad_adler.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"refuse_bad_adler.tif\",\"size\":459,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":8,\"height\":6,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":8,\"blockHeight\":3,\"rowsPerStrip\":3,\"offsets\":[302,381],\"byteCounts\":[79,78],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.199583333333333,\"y0\":7.199583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "refused": [
+     "terrain.block_damaged",
+     "Data block 1 of refuse_bad_adler.tif is damaged: it does not decompress to the 96 bytes the file says it holds, so download the file again."
+    ]
+   },
+   {
+    "name": "refuse_control_points.tif",
+    "need": "[[10,160]]",
+    "refused": [
+     "terrain.control_points",
+     "refuse_control_points.tif is placed by control points rather than on a grid; the toolkit does not warp grids."
+    ]
+   },
+   {
+    "name": "refuse_epsg_3857.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"refuse_epsg_3857.tif\",\"size\":478,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":8,\"height\":6,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":8,\"blockHeight\":6,\"rowsPerStrip\":6,\"offsets\":[286],\"byteCounts\":[192],\"modelType\":1,\"rasterType\":1,\"epsg\":3857,\"datum\":null,\"angularUnit\":null,\"x0\":-1358091.0,\"y0\":803667.0,\"sx\":90.0,\"sy\":90.0,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": "[151.6999969482422,151.89999389648438,152.10000610351562,152.60000610351562,152.89999389648438,152.89999389648438,153.1999969482422,155.5,151.8000030517578,152.3000030517578,152.60000610351562,152.6999969482422,152.89999389648438,152.8000030517578,153.3000030517578,153.39999389648438,150.3000030517578,150.60000610351562,150.89999389648438,150.89999389648438,151.10000610351562,155.10000610351562,155.60000610351562,156.10000610351562,150.3000030517578,150.60000610351562,150.89999389648438,151.10000610351562,151.5,155.6999969482422,155.60000610351562,156.0,150.6999969482422,150.60000610351562,151.3000030517578,151.60000610351562,151.5,155.89999389648438,155.89999389648438,156.3000030517578,150.5,151.0,151.10000610351562,151.6999969482422,152.10000610351562,155.89999389648438,156.3000030517578,156.39999389648438]",
+    "reasons": "000000000000000000000000000000000000000000000000",
+    "axes": {
+     "x": "2d391f38b644f8c8635bd321c62a639c40b033b322519bd21b08cf45a3b77726",
+     "y": "7fe0ce2c46c06032afa23e687d9dc2b27e3a36d791dfc0160b2fd5d77664845d",
+     "ends": "[-1358091.0,-1357461.0,90.0,803217.0,803667.0,90.0]"
+    }
+   },
+   {
+    "name": "refuse_fill_order_2.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.fill_order",
+     "refuse_fill_order_2.tif stores its bits in reverse order (FillOrder 2), which this reader does not read."
+    ]
+   },
+   {
+    "name": "refuse_ifd_loop.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.directory_loop",
+     "refuse_ifd_loop.tif has a directory chain that loops back on itself, so the file is damaged."
+    ]
+   },
+   {
+    "name": "refuse_jpeg.tif",
+    "need": "[[10,172]]",
+    "refused": [
+     "terrain.compression",
+     "refuse_jpeg.tif is compressed with JPEG, which this reader does not decode; it reads DEFLATE, LZW and PackBits, or no compression."
+    ]
+   },
+   {
+    "name": "refuse_no_crs.tif",
+    "need": "[[10,160]]",
+    "layout": "{\"name\":\"refuse_no_crs.tif\",\"size\":434,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":8,\"height\":6,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":8,\"blockHeight\":6,\"rowsPerStrip\":6,\"offsets\":[242],\"byteCounts\":[192],\"modelType\":null,\"rasterType\":1,\"epsg\":null,\"datum\":null,\"angularUnit\":null,\"x0\":-12.199583333333333,\"y0\":7.199583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": "[151.6999969482422,151.89999389648438,152.10000610351562,152.60000610351562,152.89999389648438,152.89999389648438,153.1999969482422,155.5,151.8000030517578,152.3000030517578,152.60000610351562,152.6999969482422,152.89999389648438,152.8000030517578,153.3000030517578,153.39999389648438,150.3000030517578,150.60000610351562,150.89999389648438,150.89999389648438,151.10000610351562,155.10000610351562,155.60000610351562,156.10000610351562,150.3000030517578,150.60000610351562,150.89999389648438,151.10000610351562,151.5,155.6999969482422,155.60000610351562,156.0,150.6999969482422,150.60000610351562,151.3000030517578,151.60000610351562,151.5,155.89999389648438,155.89999389648438,156.3000030517578,150.5,151.0,151.10000610351562,151.6999969482422,152.10000610351562,155.89999389648438,156.3000030517578,156.39999389648438]",
+    "reasons": "000000000000000000000000000000000000000000000000",
+    "axes": {
+     "x": "b326d65d53e7130bd9c63fa187b48ce6431ae5d6466327216e0e5058a395524e",
+     "y": "7b340b81cb82257160c3e4e221156f3dcd10f8a95c859d6043cc89610ba7487c",
+     "ends": "[-12.199583333333333,-12.19375,0.0008333333333333334,7.1954166666666675,7.199583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "refuse_no_georeference.tif",
+    "need": "[[10,148]]",
+    "refused": [
+     "terrain.no_georeference",
+     "refuse_no_georeference.tif carries no georeferencing, so where its cells lie is not known."
+    ]
+   },
+   {
+    "name": "refuse_old_lzw.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"refuse_old_lzw.tif\",\"size\":602,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":18,\"height\":16,\"bits\":16,\"sampleFormat\":2,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":18,\"blockHeight\":16,\"rowsPerStrip\":16,\"offsets\":[286],\"byteCounts\":[316],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.199583333333333,\"y0\":7.199583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "refused": [
+     "terrain.old_lzw",
+     "refuse_old_lzw.tif uses the pre-1992 form of LZW compression, which this reader does not decode; save it again with DEFLATE."
+    ]
+   },
+   {
+    "name": "refuse_overview_only.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.no_full_image",
+     "refuse_overview_only.tif holds only reduced-resolution or mask images, not a full-resolution grid."
+    ]
+   },
+   {
+    "name": "refuse_polar.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"refuse_polar.tif\",\"size\":478,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":8,\"height\":6,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":8,\"blockHeight\":6,\"rowsPerStrip\":6,\"offsets\":[286],\"byteCounts\":[192],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":20.0,\"y0\":89.6,\"sx\":0.05,\"sy\":0.05,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": "[151.6999969482422,151.89999389648438,152.10000610351562,152.60000610351562,152.89999389648438,152.89999389648438,153.1999969482422,155.5,151.8000030517578,152.3000030517578,152.60000610351562,152.6999969482422,152.89999389648438,152.8000030517578,153.3000030517578,153.39999389648438,150.3000030517578,150.60000610351562,150.89999389648438,150.89999389648438,151.10000610351562,155.10000610351562,155.60000610351562,156.10000610351562,150.3000030517578,150.60000610351562,150.89999389648438,151.10000610351562,151.5,155.6999969482422,155.60000610351562,156.0,150.6999969482422,150.60000610351562,151.3000030517578,151.60000610351562,151.5,155.89999389648438,155.89999389648438,156.3000030517578,150.5,151.0,151.10000610351562,151.6999969482422,152.10000610351562,155.89999389648438,156.3000030517578,156.39999389648438]",
+    "reasons": "000000000000000000000000000000000000000000000000",
+    "axes": {
+     "x": "1ab9075bdc44c5ea686a82413e4be61acd573704cebaecc0bfa48d8c297b9b0d",
+     "y": "91965c44e2f2a9b63353b8660d16e78bce0ccab3f8ea591f984a7749c0267c6f",
+     "ends": "[20.0,20.35,0.05,89.35,89.6,0.05]"
+    }
+   },
+   {
+    "name": "refuse_rotated.tif",
+    "need": "[[10,160]]",
+    "refused": [
+     "terrain.rotated",
+     "refuse_rotated.tif is not a north-up grid (it is rotated, sheared or flipped); the toolkit reads only north-up grids and does not resample."
+    ]
+   },
+   {
+    "name": "refuse_scaled.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.scaled",
+     "refuse_scaled.tif stores scaled values (a GDAL scale or offset), which this reader does not apply."
+    ]
+   },
+   {
+    "name": "refuse_truncated.tif",
+    "need": "[[200,2]]",
+    "refused": [
+     "terrain.ends_early",
+     "refuse_truncated.tif ends before the image directory it points to, so the file is incomplete; download it again."
+    ]
+   },
+   {
+    "name": "refuse_truncated_data.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"refuse_truncated_data.tif\",\"size\":1326,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":20,\"height\":18,\"bits\":32,\"sampleFormat\":3,\"compression\":5,\"predictor\":1,\"predictorApplied\":false,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[330,909,1142,1285],\"byteCounts\":[579,233,143,83],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.199583333333333,\"y0\":7.199583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "refused": [
+     "terrain.ends_early",
+     "refuse_truncated_data.tif ends before the data block 4 it points to, so the file is incomplete; download it again."
+    ]
+   },
+   {
+    "name": "refuse_two_bands.tif",
+    "need": "[[10,172]]",
+    "refused": [
+     "terrain.bands",
+     "refuse_two_bands.tif holds 2 values to a cell; an elevation model holds one."
+    ]
+   },
+   {
+    "name": "refuse_zero_rows_per_strip.tif",
+    "need": "[[10,172]]",
+    "refused": [
+     "terrain.bad_tag",
+     "refuse_zero_rows_per_strip.tif has a damaged RowsPerStrip entry."
+    ]
+   },
+   {
+    "name": "refuse_zero_tile_width.tif",
+    "need": "[[10,184]]",
+    "refused": [
+     "terrain.bad_tag",
+     "refuse_zero_tile_width.tif has a damaged TileWidth entry."
+    ]
+   },
+   {
+    "name": "spacing_mismatch.tif",
+    "need": "[[10,172]]",
+    "layout": "{\"name\":\"spacing_mismatch.tif\",\"size\":782,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":10,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[302,638],\"byteCounts\":[336,144],\"modelType\":2,\"rasterType\":2,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-12.493333333333334,\"y0\":8.75,\"sx\":0.0005555555555555556,\"sy\":0.0005555555555555556,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "32d0184872ed183282e5dfe482efab428c486dc7ca079ae9a2f46533d703ef50",
+     "spots": "[186.8000030517578,185.0,186.0,185.89999389648438,185.3000030517578,182.10000610351562,183.89999389648438,183.10000610351562,182.8000030517578,187.0]"
+    },
+    "reasons": "09719c55365a950c92a06122b6ce2634e3ce9b6dbcde1827171941658c7eedab",
+    "axes": {
+     "x": "e34d643838aecc8627a1aa1ecda139f0b922336cd05b9eb57ac5c6b2b8733dab",
+     "y": "8e59f0cebfa8fa48f0c4e53b78d7f6375624c5018c71cb659fec27d0210c562a",
+     "ends": "[-12.493333333333334,-12.487222222222224,0.0005555555555555556,8.745,8.75,0.0005555555555555556]"
+    }
+   },
+   {
+    "name": "sparse_f32.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"sparse_f32.tif\",\"size\":1749,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":40,\"height\":24,\"bits\":32,\"sampleFormat\":3,\"compression\":8,\"predictor\":1,\"predictorApplied\":false,\"tiled\":true,\"blockWidth\":16,\"blockHeight\":16,\"rowsPerStrip\":null,\"offsets\":[346,0,833,1153,1453,0],\"byteCounts\":[487,0,320,300,296,0],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.099583333333333,\"y0\":8.599583333333333,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "37caab2526c07b6330282aa28c6e4ec03c5f915e697a49641047491b8ad2e933",
+     "spots": "[173.0,173.60000610351562,183.39999389648438,null,null,163.6999969482422,191.6999969482422,null,157.8000030517578,193.3000030517578]"
+    },
+    "reasons": "364558f38b0b10413f61fd7022e4dfd6fb03af4e558db251886c8cd84e41232e",
+    "axes": {
+     "x": "a0f3a25f2db47182046f952d040a6327de24d92c3ffae172e7141aaa68d432d9",
+     "y": "92c3c2d1bab64e1da46403b65763eb75db8744e9a98cb9174acc4b1a929e2281",
+     "ends": "[-11.099583333333333,-11.067083333333333,0.0008333333333333334,8.580416666666666,8.599583333333333,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "transform_f32.tif",
+    "need": "[[10,160]]",
+    "layout": "{\"name\":\"transform_f32.tif\",\"size\":806,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":13,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":13,\"blockHeight\":7,\"rowsPerStrip\":7,\"offsets\":[338,702],\"byteCounts\":[364,104],\"modelType\":2,\"rasterType\":1,\"epsg\":4326,\"datum\":null,\"angularUnit\":null,\"x0\":-11.199583333333333,\"y0\":8.499583333333334,\"sx\":0.0008333333333333334,\"sy\":0.0008333333333333334,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":false,\"hasMask\":false}",
+    "values": {
+     "digest": "62b1c459f2b0cd9339cdfc27c1159754930ccdb6ac4fa5db3fc4155b140b27f8",
+     "spots": "[153.1999969482422,157.39999389648438,157.0,154.6999969482422,154.89999389648438,155.5,155.0,155.3000030517578,155.39999389648438,155.60000610351562]"
+    },
+    "reasons": "229c311fe725db46f2aff708146a8aed3764486635f4140931264c4724b0dc52",
+    "axes": {
+     "x": "ee1b9a69deecf0e6082ae222b63026b3604fe25b0a96e6c7b6ee26ccbb7823ed",
+     "y": "4953a5a5fc5977634aac22455793221751d45e3bcf61a5a5a0da5ea96a2cadf6",
+     "ends": "[-11.199583333333333,-11.189583333333333,0.0008333333333333334,8.492916666666668,8.499583333333334,0.0008333333333333334]"
+    }
+   },
+   {
+    "name": "utm_strip.tif",
+    "need": "[[10,184]]",
+    "layout": "{\"name\":\"utm_strip.tif\",\"size\":730,\"byteOrder\":\"<\",\"bigtiff\":false,\"width\":12,\"height\":9,\"bits\":32,\"sampleFormat\":3,\"compression\":1,\"predictor\":1,\"predictorApplied\":false,\"tiled\":false,\"blockWidth\":12,\"blockHeight\":9,\"rowsPerStrip\":9,\"offsets\":[298],\"byteCounts\":[432],\"modelType\":1,\"rasterType\":1,\"epsg\":32629,\"datum\":null,\"angularUnit\":null,\"x0\":196035.0,\"y0\":882015.0,\"sx\":30.0,\"sy\":30.0,\"nodata\":null,\"ifdIndex\":0,\"geoAscii\":null,\"hasNodataTag\":true,\"hasMask\":false}",
+    "values": {
+     "digest": "1cbc9b211d0218ef469540d96587e7ca9850c81c7e1cbfa03750360fef9a30c1",
+     "spots": "[null,165.10000610351562,165.6999969482422,163.10000610351562,160.6999969482422,157.8000030517578,153.39999389648438,153.6999969482422,153.6999969482422,153.8000030517578]"
+    },
+    "reasons": "6162f3f45e4d3d73a7e50f1a94e07846bcf9a4e1fe83254059b2c9ca92bb1d00",
+    "axes": {
+     "x": "c51adc49364a425509100c01eb12fb256d556aa7b29132511a7d3ac087b7c37b",
+     "y": "a1269e1386c0c36168548bb0b1c15b2d7a6413f58f2704f8940e88d47016dcd3",
+     "ends": "[196035.0,196365.0,30.0,881775.0,882015.0,30.0]"
+    }
+   }
+  ]
+ },
+ "elevation_window": {
+  "angles": "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",
+  "sin": "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",
+  "cos": "AAAAAAAA8D8Vv0hH3ejuP6tMWOh6tus/zDt/Zp6g5j/////////fP5AGk8F9kNA/AAAAAAAAAICQBpPBfZDQv////////9+/zTt/Zp6g5r+rTFjoerbrvxW/SEfd6O6/AAAAAAAA8L8Vv0hH3ejuv6tMWOh6tuu/zDt/Zp6g5r/////////fv5AGk8F9kNC/AAAAAAAAAACQBpPBfZDQP////////98/zTt/Zp6g5j+rTFjoerbrPxW/SEfd6O4/AAAAAAAA8D8Vv0hH3ejuP6tMWOh6tus/zDt/Zp6g5j/////////fP5AGk8F9kNA/AAAAAAAAAICQBpPBfZDQv////////9+/zTt/Zp6g5r+rTFjoerbrvxW/SEfd6O6/AAAAAAAA8L8Vv0hH3ejuv6tMWOh6tuu/zDt/Zp6g5r/////////fv5AGk8F9kNC/AAAAAAAAAACQBpPBfZDQP////////98/zTt/Zp6g5j+rTFjoerbrPxW/SEfd6O4/AAAAAAAA8D8Vv0hH3ejuP6tMWOh6tus/zDt/Zp6g5j/////////fP5AGk8F9kNA/AAAAAAAAAICQBpPBfZDQv////////9+/zTt/Zp6g5r+rTFjoerbrvxW/SEfd6O6/AAAAAAAA8L8Vv0hH3ejuv6tMWOh6tuu/zDt/Zp6g5r/////////fv5AGk8F9kNC/AAAAAAAAAACQBpPBfZDQP////////98/zTt/Zp6g5j+rTFjoerbrPxW/SEfd6O4/AAAAAAAA8D8Vv0hH3ejuP6tMWOh6tus/zDt/Zp6g5j/////////fP5AGk8F9kNA/AAAAAAAAAICQBpPBfZDQv////////9+/zTt/Zp6g5r+rTFjoerbrvxW/SEfd6O6/AAAAAAAA8L8Vv0hH3ejuv6tMWOh6tuu/zDt/Zp6g5r/////////fv5AGk8F9kNC/AAAAAAAAAACQBpPBfZDQP////////98/zTt/Zp6g5j+rTFjoerbrPxW/SEfd6O4/AAAAAAAA8D8lDJf6O5DvPya2rnEZm+8/j5DPAIeZ7z8ipPuiaqPvP9Egy9p8gu8/3JuLlct27z9FGXUKH3HvP7v2MTnjqu8/MVKwRy6U7z+qoAhyZ53vPyqqgHyEg+8/AmpUCx2C7z9j5iMYq5TvP05VLN9eu+8/iQ3v5hiU7z99DGAvYLvvP47n93aarO8/mAELe1mR7z9YzB+nZZjvPyDp2W2Td+8/l5QDwd+h7z9OHWaVHKXvP5qR7891c+8/62I3m3Cg7z8502elJabvPwl4sdCYgO8/17V9XyNs7z9dXqgxl7PvPx4LkK2stO8/T1MiCuWo7z8am25rZXvvP5gSwjGZnu8/6a2KDci57z+8X8g6GL/vP1MxMuAZgO8/YpfokWV+7z/GY/cdB73vPyO3Aib9ue8/Ylu6k7um7z+zQGND2mvvPy5OILFJqsm/tSaQnLrs5L9ygdd3IH3hPwe1T2QD7M6/sK+6oyRE6r8Mstj7HfDvPwJyfmgpHuW/fksgjAj+4D+YN6iEpNnqP3eevyXpjOY/xo+5UmJj1b9MyVH3R//pP/rgySCO/++/P7PgOG9X7r8ELUmqGILvv329wZT6I+y/FmfV35gt7D8dv4qkOdy/P2jrkuzUrO6/m7wmteUe3r8Ct2otNkfVv/wMqkpBCeQ/l84xfEPu7z/7ZQmZWYjqP3J3+6+0MO0/VsC9c3AYxL+YbVa9DYTqP92pVBG0g7o/Eu+xdfpa6T9x9DdQxh3NPwxBcJHNKuy/uCBPJ7Ss5j+ZIh8FqXvpP2roM2uq/e+/Ix1fTGUc1D9rCN+REnPivxrKsJZz+ua/tEzwwzHZ7z8NCukr5+nuv74XF1W8Nuw/rCJ2nTtnuz8zfgmO4Z/rv5jgeHhztOq/BailSxhA2T8fL8kH9ZbXv4UtSiSq2O2/AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAADwP8w7f2aeoOY/OZ1SokbfsTw5nVKiRt+xvAAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/TjhgCez/7z+baOyS6rnvPw==",
+  "metrics": [
+   {
+    "lons": "[-11.5,-11.499722222222223,-11.499444444444444,-11.499166666666667,-11.498888888888889]",
+    "lats": "[8.0,8.000277777777777,8.000555555555556,8.000833333333333,8.001111111111111,8.001388888888888,8.001666666666667,8.001944444444444,8.002222222222223]",
+    "rows": "[30.623134641963713,30.72105156643647,43.37694531254462,94077.0,30.623113913183737,30.721051978737385,43.3769309705068,94077.0,30.623093183688432,30.721052391052257,43.376916627979014,94077.0,30.623072453477796,30.721052803381074,43.376902284961275,94077.0,30.623051722551832,30.721053215723845,43.37688794145358,94077.0,30.623030990910532,30.72105362808057,43.376873597455926,94077.0,30.623010258553908,30.72105404045124,43.376859252968316,94077.0,30.62298952548195,30.72105445283587,43.37684490799076,94077.0,30.622968791694667,30.721054865234436,43.37683056252324,94077.0]"
+   },
+   {
+    "lons": "[-13.0,-12.999166666666667,-12.998333333333333,-12.9975]",
+    "lats": "[8.994166666666667,8.995,8.995833333333334,8.996666666666666,8.9975,8.998333333333333,8.999166666666667,9.0]",
+    "rows": "[91.63310940775513,92.16784865689426,129.96745387124344,844563.0,91.63289982829555,92.16785281483054,129.9673090566959,844561.0,91.63269022956908,92.1678569731396,129.96716422900548,844559.0,91.63248061157579,92.16786113182144,129.96701938817222,844557.0,91.63227097431573,92.16786529087607,129.96687453419622,844555.0,91.63206131778895,92.1678694503035,129.9667296670776,844553.0,91.63185164199548,92.1678736101037,129.96658478681633,844551.0,91.63164194693537,92.16787777027669,129.9664398934126,844549.0]"
+   },
+   {
+    "lons": "[-12.0,-11.975,-11.95]",
+    "lats": "[7.725,7.75,7.7749999999999995,7.8,7.824999999999999,7.85]",
+    "rows": "[2757.8974642364783,2764.8585214323807,3905.1813103592576,762519631.0,2757.7350411645834,2764.8617540906257,3905.06889523093,762475614.0,2757.5720963196345,2764.8649969435237,3904.9561223814253,762431457.0,2757.408629730831,2764.868249988664,3904.8429918640054,762387157.0,2757.244641427464,2764.8715132236302,3904.729503732108,762342716.0,2757.0801314389196,2764.8747866459967,3904.6156580393413,762298134.0]"
+   }
+  ],
+  "cases": [
+   {
+    "case": "the Copernicus pair across 11 W",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.994444444444444,
+     "the test point"
+    ],
+    "radius": 0.5,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.994444444444444,\"the test point\",true,null],\"plan\":{\"order\":[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,20,17,17,17,17,35,35,0],\"dx\":30.54434651669809,\"dy\":30.72261668094374,\"lons\":[\"b5a0da1a3c5906af5998938c72a0d54999244297aec699519fda669fc8e89166\",-11.004722222222222,-10.995277777777778],\"lats\":[\"48ca81ea6925ccd677fb75e1c1e3cf909e5bb7cbfe06f9c99b5f0e6ee0439fd4\",8.989722222222222,8.999166666666667],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[0,7,5057,264,null,true,[]],[0,8,5329,194,null,true,[]],[1,0,1939,504,null,true,[]],[1,1,2451,498,null,true,[]],[1,3,3308,484,null,true,[]],[1,4,3800,484,null,true,[]],[1,6,4637,273,null,true,[]],[1,7,4918,261,null,true,[]]]\"},\"read\":{\"z\":[\"40358726df251ed97726a3894483b56d471a8277fa8915ace65a11a3f27cf09c\",[149.6999969482422,161.39999389648438,164.3000030517578,159.10000610351562,158.60000610351562,161.0,172.5,190.8000030517578,191.10000610351562,169.1999969482422]],\"reasons\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"sea\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"counts\":[1225,0,0,0,0],\"coverage\":1.0,\"shown\":[0,35,0,35],\"notes\":[\"Read 2 files (Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif): 1,220 cells about 31 by 31 m around the test point, 0.5 km each way.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30 tiles N08 W012 and N08 W011, produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",2480,3043],[\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",1939,3240]]}"
+   },
+   {
+    "case": "the pair with a margin around the square shown",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.2,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":{\"order\":[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,18,17,17,10,10,35,35,0],\"dx\":30.54429994277126,\"dy\":30.722617604943384,\"lons\":[\"b5a0da1a3c5906af5998938c72a0d54999244297aec699519fda669fc8e89166\",-11.004722222222222,-10.995277777777778],\"lats\":[\"633c97430d0dfb41e19a58a1f9986cf3cf73e2109cabbaf888db2288580aa8c1\",8.990277777777777,8.999722222222223],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[0,7,5057,264,null,true,[]],[0,8,5329,194,null,true,[]],[1,0,1939,504,null,true,[]],[1,1,2451,498,null,true,[]],[1,3,3308,484,null,true,[]],[1,4,3800,484,null,true,[]],[1,6,4637,273,null,true,[]],[1,7,4918,261,null,true,[]]]\"},\"read\":{\"z\":[\"ced19563a2fb722b4584428b748d59393965404ef357fd44ed6ae6ba03471fab\",[155.5,162.10000610351562,164.6999969482422,159.5,158.6999969482422,161.6999969482422,178.5,196.5,186.39999389648438,174.10000610351562]],\"reasons\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"sea\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"counts\":[1225,0,0,0,0],\"coverage\":1.0,\"shown\":[7,28,7,28],\"notes\":[\"Read 2 files (Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif): 441 cells about 31 by 31 m around the test point, 0.3 km each way.\",\"The analysis also reads 0.2 km beyond the square shown, so that the edge of the analysis does not bend the drainage lines.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30 tiles N08 W012 and N08 W011, produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",2480,3043],[\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",1939,3240]]}"
+   },
+   {
+    "case": "an overlap that agrees",
+    "files": [
+     "overlap_north.tif",
+     "overlap_south_agrees.tif"
+    ],
+    "centre": [
+     -12.496666666666666,
+     8.744722222222222,
+     "the test point"
+    ],
+    "radius": 0.45,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and overlap_south_agrees.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.496666666666666,8.744722222222222,\"the test point\",true,null],\"plan\":{\"order\":[\"overlap_north.tif\",\"overlap_south_agrees.tif\"],\"sources\":[\"unidentified\",\"unidentified\"],\"offsets\":[[0,0],[0,19]],\"at\":[12,19,15,15,15,15,31,31,0],\"dx\":30.5649924319411,\"dy\":30.722206940151565,\"lons\":[\"d248ca73f000f377f8471ea0ca92fd410c1418e290edc10fcde127662e2bca0e\",-12.500833333333333,-12.4925],\"lats\":[\"bf593a42285312c920eb6595c46607d7ae4d365e93e54024746c14fd0105708a\",8.740555555555556,8.748888888888889],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,322,384,null,true,[]],[0,1,706,396,null,true,[]],[0,2,1102,349,null,true,[]],[1,0,330,509,null,true,[]],[1,1,839,320,null,true,[]]]\"},\"read\":{\"z\":[\"c6d8c8e32e5cd07d94c024283fe1afcd146f63f6db7c347fb52bf50709f19d0c\",[null,171.39999389648438,null,183.60000610351562,183.6999969482422,162.5,181.8000030517578,null,153.5,null]],\"reasons\":\"2e25c45847636c72fd2c1ff3beb6c6fe4c74e42bead01c6b90f6f934fe695853\",\"sea\":\"343571b72b92d40a13a49090bf1c3175a7de0bae40f990ef9a2e5ee9744405cd\",\"counts\":[961,0,217,0,0],\"coverage\":0.7741935483870968,\"shown\":[0,31,0,31],\"notes\":[\"Read 2 files (overlap_north.tif and overlap_south_agrees.tif): 961 cells about 31 by 31 m around the test point, 0.45 km each way.\",\"23% of the window read lies outside the files supplied and is treated as a gap.\",\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\"],\"prompts\":[],\"figure\":\"Elevation: elevation model overlap_north.tif and overlap_south_agrees.tif, source not stated. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"unidentified\"},\"reads\":[[\"overlap_north.tif\",322,1129],[\"overlap_south_agrees.tif\",330,829]]}"
+   },
+   {
+    "case": "an overlap that disagrees",
+    "files": [
+     "overlap_north.tif",
+     "overlap_south_disagrees.tif"
+    ],
+    "centre": [
+     -12.496666666666666,
+     8.744722222222222,
+     "the test point"
+    ],
+    "radius": 0.45,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and overlap_south_disagrees.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.496666666666666,8.744722222222222,\"the test point\",true,null],\"plan\":{\"order\":[\"overlap_north.tif\",\"overlap_south_disagrees.tif\"],\"sources\":[\"unidentified\",\"unidentified\"],\"offsets\":[[0,0],[0,19]],\"at\":[12,19,15,15,15,15,31,31,0],\"dx\":30.5649924319411,\"dy\":30.722206940151565,\"lons\":[\"d248ca73f000f377f8471ea0ca92fd410c1418e290edc10fcde127662e2bca0e\",-12.500833333333333,-12.4925],\"lats\":[\"bf593a42285312c920eb6595c46607d7ae4d365e93e54024746c14fd0105708a\",8.740555555555556,8.748888888888889],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,322,384,null,true,[]],[0,1,706,396,null,true,[]],[0,2,1102,349,null,true,[]],[1,0,438,96,null,true,[]],[1,1,534,96,null,true,[]],[1,2,630,96,null,true,[]],[1,3,726,96,null,true,[]],[1,4,822,96,null,true,[]],[1,5,918,96,null,true,[]],[1,6,1014,96,null,true,[]],[1,7,1110,96,null,true,[]],[1,8,1206,96,null,true,[]],[1,9,1302,96,null,true,[]],[1,10,1398,96,null,true,[]],[1,11,1494,96,null,true,[]],[1,12,1590,96,null,true,[]],[1,13,1686,96,null,true,[]],[1,14,1782,96,null,true,[]],[1,15,1878,96,null,true,[]]]\"},\"read\":[\"refused\",\"terrain.join_disagree\",\"overlap_north.tif and overlap_south_disagrees.tif overlap but disagree at 3 shared cells, by up to 1.20 m, so they are not neighbouring tiles of one release.\"],\"reads\":[[\"overlap_north.tif\",322,1129],[\"overlap_south_disagrees.tif\",438,1536]]}"
+   },
+   {
+    "case": "an undeclared fill at the shared edge",
+    "files": [
+     "overlap_north.tif",
+     "overlap_south_fill_edge.tif"
+    ],
+    "centre": [
+     -12.496666666666666,
+     8.744722222222222,
+     "the test point"
+    ],
+    "radius": 0.45,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and overlap_south_fill_edge.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.496666666666666,8.744722222222222,\"the test point\",true,null],\"plan\":{\"order\":[\"overlap_north.tif\",\"overlap_south_fill_edge.tif\"],\"sources\":[\"unidentified\",\"unidentified\"],\"offsets\":[[0,0],[0,19]],\"at\":[12,19,15,15,15,15,31,31,0],\"dx\":30.5649924319411,\"dy\":30.722206940151565,\"lons\":[\"d248ca73f000f377f8471ea0ca92fd410c1418e290edc10fcde127662e2bca0e\",-12.500833333333333,-12.4925],\"lats\":[\"bf593a42285312c920eb6595c46607d7ae4d365e93e54024746c14fd0105708a\",8.740555555555556,8.748888888888889],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,322,384,null,true,[]],[0,1,706,396,null,true,[]],[0,2,1102,349,null,true,[]],[1,0,322,310,null,true,[]],[1,1,632,324,null,true,[]],[1,2,956,247,null,true,[]]]\"},\"read\":{\"z\":[\"c6d8c8e32e5cd07d94c024283fe1afcd146f63f6db7c347fb52bf50709f19d0c\",[null,171.39999389648438,null,183.60000610351562,183.6999969482422,162.5,181.8000030517578,null,153.5,null]],\"reasons\":\"2e25c45847636c72fd2c1ff3beb6c6fe4c74e42bead01c6b90f6f934fe695853\",\"sea\":\"343571b72b92d40a13a49090bf1c3175a7de0bae40f990ef9a2e5ee9744405cd\",\"counts\":[961,0,217,0,0],\"coverage\":0.7741935483870968,\"shown\":[0,31,0,31],\"notes\":[\"Read 2 files (overlap_north.tif and overlap_south_fill_edge.tif): 961 cells about 31 by 31 m around the test point, 0.45 km each way.\",\"23% of the window read lies outside the files supplied and is treated as a gap.\",\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\"],\"prompts\":[],\"figure\":\"Elevation: elevation model overlap_north.tif and overlap_south_fill_edge.tif, source not stated. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"unidentified\"},\"reads\":[[\"overlap_north.tif\",322,1129],[\"overlap_south_fill_edge.tif\",322,881]]}"
+   },
+   {
+    "case": "half a cell out of phase",
+    "files": [
+     "overlap_north.tif",
+     "phase_half_cell.tif"
+    ],
+    "centre": [
+     -12.495,
+     8.745,
+     "the test point"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and phase_half_cell.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.495,8.745,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.join_phase\",\"The cells of overlap_north.tif and phase_half_cell.tif do not line up: one is offset from the other by part of a cell, and the toolkit does not resample.\"]}"
+   },
+   {
+    "case": "another cell size",
+    "files": [
+     "overlap_north.tif",
+     "spacing_mismatch.tif"
+    ],
+    "centre": [
+     -12.495,
+     8.745,
+     "the test point"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"elevation model overlap_north.tif and spacing_mismatch.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-12.495,8.745,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.join_spacing\",\"overlap_north.tif and spacing_mismatch.tif have different cell sizes; the toolkit joins only files on one grid and does not resample.\"]}"
+   },
+   {
+    "case": "two products",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     [
+      "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif",
+      "n08_w011_1arc_v3.tif"
+     ]
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"srtm\",[]]],\"credit\":[\"elevation model Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and n08_w011_1arc_v3.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.join_products\",\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif is Copernicus GLO-30 and n08_w011_1arc_v3.tif is SRTM; files from different products are not joined, because their surfaces and height datums differ.\"]}"
+   },
+   {
+    "case": "renamed tiles",
+    "files": [
+     "n08w012.tif",
+     "n08w011.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[\"terrain.looks_copernicus\"]]],\"credit\":[\"elevation model n08w012.tif and n08w011.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[],[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":{\"order\":[\"n08w012.tif\",\"n08w011.tif\"],\"sources\":[\"unidentified\",\"unidentified\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,18,10,10,10,10,21,21,0],\"dx\":30.54429994277126,\"dy\":30.722617604943384,\"lons\":[\"0a7aed521424c72e6e5f3e4bf167798b6b7612f6ab66853880a57319822f68bd\",-11.002777777777778,-10.997222222222222],\"lats\":[\"7bd70f62a96dde295ac721d699487fe0a168cd34fd4e11defffdd1e168ce6cdf\",8.992222222222223,8.997777777777777],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[1,0,1939,504,null,true,[]],[1,3,3308,484,null,true,[]]]\"},\"read\":{\"z\":[\"960cb6298a4a8897064b68b9b17e899a8bc4dcc08fa103cefacd9c80f1b2d56a\",[157.1999969482422,161.39999389648438,160.60000610351562,164.8000030517578,160.3000030517578,162.1999969482422,165.3000030517578,175.8000030517578,168.10000610351562,167.10000610351562]],\"reasons\":\"696790e55e1473861daed6b5f6e6c06b606be794b7a95f08828461b13797df63\",\"sea\":\"696790e55e1473861daed6b5f6e6c06b606be794b7a95f08828461b13797df63\",\"counts\":[441,0,0,0,0],\"coverage\":1.0,\"shown\":[0,21,0,21],\"notes\":[\"Read 2 files (n08w012.tif and n08w011.tif): 441 cells about 31 by 31 m around the test point, 0.3 km each way.\",\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\"],\"prompts\":[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"],\"figure\":\"Elevation: elevation model n08w012.tif and n08w011.tif, source not stated. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"unidentified\"},\"reads\":[[\"n08w012.tif\",2480,2277],[\"n08w011.tif\",1939,1853]]}"
+   },
+   {
+    "case": "a tile missing beside sea",
+    "files": [
+     "holes_N08W012.tif",
+     "holes_sea_N08W013.tif",
+     "holes_sea_N07W012.tif"
+    ],
+    "centre": [
+     -12.0,
+     8.0,
+     "the test point"
+    ],
+    "radius": 30.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-12.0,8.0,\"the test point\",true,null],\"plan\":{\"order\":[\"holes_sea_N08W013.tif\",\"holes_N08W012.tif\",\"holes_sea_N07W012.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0],[40,40]],\"at\":[40,40,11,11,11,11,23,23,40],\"dx\":2756.082117776303,\"dy\":2764.89464097885,\"lons\":[\"da6214128ad8b964cbac2fbb2252aa886c4469e05cd5f2496562323330dcfb07\",-12.275,-11.725],\"lats\":[\"6ea33a60d7871802577ee28949f849837a401041a59d4a94d44e196d0f7316b6\",7.725,8.275],\"missing\":[[0,1]],\"edges\":[[0,0,39,null],[0,2,null,0]],\"blocks\":\"[[0,4,1634,321,null,true,[]],[0,5,1955,257,null,true,[]],[0,6,2212,173,null,false,[0]],[0,7,2385,162,null,true,[0]],[0,8,2547,94,null,true,[0]],[1,3,1220,342,null,true,[]],[1,6,2106,173,null,true,[]],[2,0,382,335,null,true,[1]],[2,3,1284,335,null,false,[1]],[2,6,2170,228,null,false,[1]]]\"},\"read\":{\"z\":[\"532f7a8f5619824d37096b8a28fbcc492b525eb172d082c6545d1785b05927cf\",[null,0.0,null,45.400001525878906,null,50.79999923706055,0.0,53.29999923706055,49.900001525878906,57.20000076293945]],\"reasons\":\"09fcfbe8bc208c9abd06b1baf74d70d7ed7dda512239af9ef16059cf3129fa64\",\"sea\":\"3d5ea0e77a762ee6a7e54d643f69b72b7b9ce16b42d166552187d514c901ed02\",\"counts\":[529,0,0,0,132],\"coverage\":0.7504725897920604,\"shown\":[0,23,0,23],\"notes\":[\"Read 3 files (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif): 529 cells about 2756 by 2765 m around the test point, 30 km each way.\",\"25% of the window read lies in a tile not supplied (N07 W013) whose whole edge with the tiles supplied is at or below 0 m, so it is taken as open sea with no height (Copernicus GLO-30 publishes no tiles for open sea).\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2756 by 2765 m.\",\"cell\":\"about 2756 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"holes_sea_N08W013.tif\",1634,1007],[\"holes_N08W012.tif\",1220,1059],[\"holes_sea_N07W012.tif\",382,2016]]}"
+   },
+   {
+    "case": "a tile missing beside land",
+    "files": [
+     "holes_N08W012.tif",
+     "holes_land_N08W013.tif",
+     "holes_land_N07W012.tif"
+    ],
+    "centre": [
+     -12.0,
+     8.0,
+     "the test point"
+    ],
+    "radius": 30.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-12.0,8.0,\"the test point\",true,null],\"plan\":{\"order\":[\"holes_land_N08W013.tif\",\"holes_N08W012.tif\",\"holes_land_N07W012.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0],[40,40]],\"at\":[40,40,11,11,11,11,23,23,40],\"dx\":2756.082117776303,\"dy\":2764.89464097885,\"lons\":[\"da6214128ad8b964cbac2fbb2252aa886c4469e05cd5f2496562323330dcfb07\",-12.275,-11.725],\"lats\":[\"6ea33a60d7871802577ee28949f849837a401041a59d4a94d44e196d0f7316b6\",7.725,8.275],\"missing\":[[0,1]],\"edges\":[[0,0,39,null],[0,2,null,0]],\"blocks\":\"[[0,4,1072,182,null,true,[]],[0,5,1254,142,null,true,[0]],[1,3,1220,342,null,true,[]],[1,6,2106,173,null,true,[]],[2,0,346,184,null,true,[1]],[2,1,530,182,null,true,[1]],[2,2,712,176,null,false,[1]],[2,3,888,174,null,false,[1]],[2,4,1062,177,null,false,[1]],[2,5,1239,134,null,false,[1]]]\"},\"read\":{\"z\":[\"b0086a01ad5ebce8a2c333c1989d306839c0488b0101565d6fed96b7c0548e6c\",[null,43.0,null,45.0,null,50.79999923706055,47.0,53.29999923706055,49.0,57.20000076293945]],\"reasons\":\"09fcfbe8bc208c9abd06b1baf74d70d7ed7dda512239af9ef16059cf3129fa64\",\"sea\":\"d4d575b02e5060ed7839e504edc119f897469bbe680b7349c8d6304ccd69f249\",\"counts\":[529,0,132,0,0],\"coverage\":0.7504725897920604,\"shown\":[0,23,0,23],\"notes\":[\"Read 3 files (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif): 529 cells about 2756 by 2765 m around the test point, 30 km each way.\",\"25% of the window read lies outside the files supplied and is treated as a gap.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2756 by 2765 m.\",\"cell\":\"about 2756 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"holes_land_N08W013.tif\",1072,324],[\"holes_N08W012.tif\",1220,1059],[\"holes_land_N07W012.tif\",346,1027]]}"
+   },
+   {
+    "case": "a tile missing beside sea seen in the window only",
+    "files": [
+     "holes_N08W012.tif",
+     "holes_edge_N08W013.tif",
+     "holes_sea_N07W012.tif"
+    ],
+    "centre": [
+     -12.0,
+     8.0,
+     "the test point"
+    ],
+    "radius": 15.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (holes_edge_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-12.0,8.0,\"the test point\",true,null],\"plan\":{\"order\":[\"holes_edge_N08W013.tif\",\"holes_N08W012.tif\",\"holes_sea_N07W012.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0],[40,40]],\"at\":[40,40,6,6,6,6,13,13,40],\"dx\":2756.082117776303,\"dy\":2764.89464097885,\"lons\":[\"a4c9b7afba9376eef59376c7e9a0ec7beb637df8373f8b05d3de105e8ff8fbe4\",-12.15,-11.85],\"lats\":[\"72183598896dc894993acb44a3a853a6a8f5e03b065c907c333f217d3861bf7e\",7.85,8.15],\"missing\":[[0,1]],\"edges\":[[0,0,39,null],[0,2,null,0]],\"blocks\":\"[[0,4,2328,551,null,true,[]],[0,5,2879,392,null,true,[0]],[1,6,2106,173,null,true,[]],[2,0,382,335,null,true,[1]],[2,3,1284,335,null,false,[1]],[2,6,2170,228,null,false,[1]]]\"},\"read\":{\"z\":[\"935cd225a3ad2fed4a1056fd3d5890508ced6d701d7794ffa79dde66710d364c\",[null,null,46.0,null,0.0,0.0,47.29999923706055,44.79999923706055,48.599998474121094,52.5]],\"reasons\":\"3333330000000333333000000033333300000003333330000000333333000000033333300000003333330000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"sea\":\"0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"counts\":[169,0,42,0,0],\"coverage\":0.7514792899408284,\"shown\":[0,13,0,13],\"notes\":[\"Read 3 files (holes_edge_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif): 169 cells about 2756 by 2765 m around the test point, 15 km each way.\",\"25% of the window read lies outside the files supplied and is treated as a gap.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (holes_edge_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2756 by 2765 m.\",\"cell\":\"about 2756 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"holes_edge_N08W013.tif\",2328,943],[\"holes_N08W012.tif\",2106,173],[\"holes_sea_N07W012.tif\",382,2016]]}"
+   },
+   {
+    "case": "a hole beside an undeclared margin",
+    "files": [
+     "hole_fill_margin.tif"
+    ],
+    "centre": [
+     -12.02,
+     8.5,
+     "the test point"
+    ],
+    "radius": 8.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (hole_fill_margin.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[]],\"centre\":[-12.02,8.5,\"the test point\",true,null],\"plan\":{\"order\":[\"hole_fill_margin.tif\"],\"sources\":[\"copernicus_glo30\"],\"offsets\":[[0,0]],\"at\":[39,20,3,3,3,3,7,7,40],\"dx\":2752.619858734077,\"dy\":2764.9634632808666,\"lons\":[\"857a55388de42cff9382f1204a354142cf7c19daeb13afde54d5e0309697185d\",-12.1,-11.95],\"lats\":[\"5b031476d3f73a9f808189b860d718bd1a987fed8dcfbb33bbef72b5be2d4dc5\",8.425,8.575],\"missing\":[[1,0]],\"edges\":[[0,0,null,39]],\"blocks\":\"[[0,0,334,626,null,false,[0]],[0,1,960,636,null,false,[0]],[0,2,1596,630,null,true,[0]],[0,3,2226,632,null,true,[0]],[0,4,2858,639,null,false,[0]],[0,5,3497,469,null,false,[0]]]\"},\"read\":{\"z\":[\"7939ea3aac932e5d2c4d2cdddab0850aa611ab60fc3682426cf39795ddb2ea42\",[54.0,null,null,null,54.900001525878906,null,null,null,55.5,null]],\"reasons\":\"0022333002233300223330022333002233300223330022333\",\"sea\":\"0000000000000000000000000000000000000000000000000\",\"counts\":[49,0,21,14,0],\"coverage\":0.5714285714285714,\"shown\":[0,7,0,7],\"notes\":[\"Read 1 file (hole_fill_margin.tif): 49 cells about 2753 by 2765 m around the test point, 8 km each way.\",\"43% of the window read lies outside the files supplied and is treated as a gap.\",\"14 cells were infinite or outside -1000 to 9000 m and were taken as having no elevation.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (hole_fill_margin.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2753 by 2765 m.\",\"cell\":\"about 2753 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"hole_fill_margin.tif\",334,3632]]}"
+   },
+   {
+    "case": "an .hgt pair across 9 N",
+    "files": [
+     [
+      [
+       -13,
+       9,
+       1201,
+       null
+      ],
+      "N09W013.hgt"
+     ],
+     [
+      [
+       -13,
+       8,
+       1201,
+       null
+      ],
+      "N08W013.hgt"
+     ]
+    ],
+    "centre": [
+     -12.5,
+     9.0,
+     "the test point"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"hgt\",[]],[\"hgt\",[]]],\"credit\":[\"SRTM-format tiles N09W013.hgt and N08W013.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-12.5,9.0,\"the test point\",true,null],\"plan\":{\"order\":[\"N09W013.hgt\",\"N08W013.hgt\"],\"sources\":[\"hgt\",\"hgt\"],\"offsets\":[[0,0],[0,1200]],\"at\":[600,1200,3,3,3,3,7,7,1200],\"dx\":91.63164194695361,\"dy\":92.1678777702763,\"lons\":[\"85a08aa8ddc4996a4cc4e491513aa9ea1021d026ef7c441b03d4896b05369e4f\",-12.5025,-12.4975],\"lats\":[\"475d97bca64cdefb4cd104377b11376988ad5420f8c580b9a091bd68604aa953\",8.9975,9.0025],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1197,2875194,2402,null,true,[]],[0,1198,2877596,2402,null,true,[]],[0,1199,2879998,2402,null,true,[]],[0,1200,2882400,2402,null,true,[]],[1,0,0,2402,null,true,[]],[1,1,2402,2402,null,true,[]],[1,2,4804,2402,null,true,[]],[1,3,7206,2402,null,true,[]]]\"},\"read\":{\"z\":[\"2bdab3960e54107d1bcdec98116376944848d9ba3036e94d7611de95bdd8a9c1\",[246.0,331.0,268.0,222.0,159.0,244.0,198.0,135.0,72.0,174.0]],\"reasons\":\"0000000000000000000000000000000000000000000000000\",\"sea\":\"0000000000000000000000000000000000000000000000000\",\"counts\":[49,0,0,0,0],\"coverage\":1.0,\"shown\":[0,7,0,7],\"notes\":[\"Read 2 files (N09W013.hgt and N08W013.hgt): 49 cells about 92 by 92 m around the test point, 0.2 km each way.\",\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: SRTM-format tiles N09W013.hgt and N08W013.hgt, source not stated. Cells about 92 by 92 m.\",\"cell\":\"about 92 by 92 m\",\"source\":\"hgt\"},\"reads\":[[\"N09W013.hgt\",2875194,9608],[\"N08W013.hgt\",0,9608]]}"
+   },
+   {
+    "case": "outside the files",
+    "files": [
+     "n08w011.tif"
+    ],
+    "centre": [
+     -10.0,
+     8.0,
+     "Bo"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[\"terrain.looks_copernicus\"]]],\"credit\":[\"elevation model n08w011.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"]],\"centre\":[-10.0,8.0,\"Bo\",true,null],\"plan\":[\"refused\",\"terrain.site_outside\",\"The window centre at Bo lies outside the elevation model supplied, which covers 8.989-9.000 N, 10.989-11.000 W.\"]}"
+   },
+   {
+    "case": "over the cap",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 1.1,
+    "margin": 0.5,
+    "cap": 10000,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.too_many_cells\",\"A 1.1 km radius, with the 0.5 km margin analysed around it, needs more cells than the 10,000 the analysis takes; a radius of 0.9 km fits.\"]}"
+   },
+   {
+    "case": "the radius the cap says fits",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.9,
+    "margin": 0.5,
+    "cap": 10000,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":{\"order\":[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,18,46,46,30,30,93,93,0],\"dx\":30.54429994277126,\"dy\":30.722617604943384,\"lons\":[\"8947bbeb6a031a320d59357a1c8321024707c382517ddffa7f9b8c89aec04290\",-11.012777777777778,-10.987222222222222],\"lats\":[\"eca3248a1c6360cbb2e8a7f54d9d4d9b9bd2642a671f5535d9a9d7a575be9a77\",8.982222222222223,9.007777777777777],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,1971,501,null,true,[]],[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,3,3385,519,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[0,6,4765,284,null,true,[]],[0,7,5057,264,null,true,[]],[0,8,5329,194,null,true,[]],[1,0,1939,504,null,true,[]],[1,1,2451,498,null,true,[]],[1,2,2957,343,null,true,[]],[1,3,3308,484,null,true,[]],[1,4,3800,484,null,true,[]],[1,5,4292,337,null,true,[]],[1,6,4637,273,null,true,[]],[1,7,4918,261,null,true,[]],[1,8,5187,209,null,true,[]]]\"},\"read\":{\"z\":[\"7e52955450091bd37b9cadd7385a15135a33027364eced5235ceab6066a6c3ed\",[null,null,null,null,162.3000030517578,164.89999389648438,null,null,null,null]],\"reasons\":\"f655b05e313799f7e6ab18434be4398d530c811b8e2380000eb3ebaf9edf1b7b\",\"sea\":\"285736b12e1e6f1e4a08ef964a9b1d4732e4ff6aa00962f5d7a5a49cc86f7777\",\"counts\":[8649,0,5449,0,0],\"coverage\":0.3699849693606197,\"shown\":[16,77,16,77],\"notes\":[\"Read 2 files (Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif): 3,720 cells about 31 by 31 m around the test point, 0.9 km each way.\",\"The analysis also reads 0.5 km beyond the square shown, so that the edge of the analysis does not bend the drainage lines.\",\"63% of the window read lies outside the files supplied and is treated as a gap.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30 tiles N08 W012 and N08 W011, produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",1971,3552],[\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",1939,3457]]}"
+   },
+   {
+    "case": "one cell over the cap (a window of 1,225 cells)",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.4,
+    "margin": 0.1,
+    "cap": 1224,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.too_many_cells\",\"A 0.4 km radius, with the 0.1 km margin analysed around it, needs more cells than the 1,220 the analysis takes; a radius of 0.3 km fits.\"]}"
+   },
+   {
+    "case": "centred on a chiefdom",
+    "files": [
+     [
+      [
+       -12,
+       7,
+       1201,
+       null
+      ],
+      "N07W012.hgt"
+     ]
+    ],
+    "site": {
+     "community": "T",
+     "chiefdom": "Koya",
+     "district": "Kenema"
+    },
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"hgt\",[]]],\"credit\":[\"SRTM-format tile N07W012.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[]],\"centre\":[-11.29277563328588,7.62020801741642,\"Koya chiefdom\",false,\"The project has no GPS fix, so the window is centred on Koya chiefdom.\"],\"plan\":{\"order\":[\"N07W012.hgt\"],\"sources\":[\"hgt\"],\"offsets\":[[0,0]],\"at\":[849,456,4,4,4,4,9,9,1200],\"dx\":91.95246475738408,\"dy\":92.16150185491452,\"lons\":[\"aeff1092043b2d5c7b372590c22f3485c6ffc3c9b97919d967c2aaa7294ff2dc\",-11.295833333333333,-11.289166666666667],\"lats\":[\"c1e9d951eb4611219b929c9e2063711e93a41cb4788478195aa3003b9337b58d\",7.616666666666666,7.623333333333333],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,452,1085704,2402,null,true,[]],[0,453,1088106,2402,null,true,[]],[0,454,1090508,2402,null,true,[]],[0,455,1092910,2402,null,true,[]],[0,456,1095312,2402,null,true,[]],[0,457,1097714,2402,null,true,[]],[0,458,1100116,2402,null,true,[]],[0,459,1102518,2402,null,true,[]],[0,460,1104920,2402,null,true,[]]]\"},\"read\":{\"z\":[\"fd0890be3d35a9c346c0bca9edde94f7248c943f10463dfc73d5a667ad0310b4\",[115.0,251.0,222.0,193.0,164.0,135.0,106.0,77.0,48.0,19.0]],\"reasons\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"sea\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"counts\":[81,0,0,0,0],\"coverage\":1.0,\"shown\":[0,9,0,9],\"notes\":[\"Read 1 file (N07W012.hgt): 81 cells about 92 by 92 m around Koya chiefdom, 0.3 km each way.\",\"The project has no GPS fix, so the window is centred on Koya chiefdom.\",\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: SRTM-format tile N07W012.hgt, source not stated. Cells about 92 by 92 m.\",\"cell\":\"about 92 by 92 m\",\"source\":\"hgt\"},\"reads\":[[\"N07W012.hgt\",1085704,21618]]}"
+   },
+   {
+    "case": "no site, centred on the files",
+    "files": [
+     "n08w011.tif"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"unidentified\",[\"terrain.looks_copernicus\"]]],\"credit\":[\"elevation model n08w011.tif, source not stated\",\"\",null,\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\",false],\"prompts\":[[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"]],\"centre\":[-10.994583333333333,8.994583333333333,\"8.99458 N, 10.99458 W\",false,\"The project records no location, so the window is centred on the middle of the elevation model.\"],\"plan\":{\"order\":[\"n08w011.tif\"],\"sources\":[\"unidentified\"],\"offsets\":[[0,0]],\"at\":[20,20,7,7,7,7,15,15,0],\"dx\":30.54434651669809,\"dy\":30.72261668094374,\"lons\":[\"f81ee05f3d81a9d7dc5f77a6cf6c7f7db7149793d185714673f204d129a7ecb1\",-10.99638888888889,-10.9925],\"lats\":[\"fc897b0cd91a79034c9c0e6d03f9178ef243a15b0637d1cac18947abdc30a469\",8.9925,8.99638888888889],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,0,1939,504,null,true,[]],[0,1,2451,498,null,true,[]],[0,3,3308,484,null,true,[]],[0,4,3800,484,null,true,[]]]\"},\"read\":{\"z\":[\"567ad4635f79b0e74dfde03cb889c4e4659b75d1a705db76fb3d26661cc7df4f\",[165.60000610351562,163.8000030517578,167.6999969482422,167.8000030517578,164.6999969482422,168.10000610351562,167.1999969482422,167.1999969482422,165.1999969482422,171.1999969482422]],\"reasons\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"sea\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"counts\":[225,0,0,0,0],\"coverage\":1.0,\"shown\":[0,15,0,15],\"notes\":[\"Read 1 file (n08w011.tif): 225 cells about 31 by 31 m around 8.99458 N, 10.99458 W, 0.2 km each way.\",\"The project records no location, so the window is centred on the middle of the elevation model.\",\"The source does not say whether its heights are of the ground or include tree canopy and buildings; assume they include them.\"],\"prompts\":[\"n08w011.tif is laid out like a Copernicus GLO-30 tile but is not named like one; if it is one, choose Copernicus GLO-30 as the source so that the figures carry its notice.\"],\"figure\":\"Elevation: elevation model n08w011.tif, source not stated. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"unidentified\"},\"reads\":[[\"n08w011.tif\",1939,2345]]}"
+   },
+   {
+    "case": "two tiles at one corner, in UTF-16 order",
+    "files": [
+     [
+      [
+       -13,
+       8,
+       1201,
+       [
+        600,
+        600,
+        1
+       ]
+      ],
+      "N08W013\uff21.hgt"
+     ],
+     [
+      [
+       -13,
+       8,
+       1201,
+       null
+      ],
+      "N08W013\ud83d\ude00.hgt"
+     ]
+    ],
+    "centre": [
+     -12.5,
+     8.5,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"hgt\",[]],[\"hgt\",[]]],\"credit\":[\"SRTM-format tiles N08W013\\ud83d\\ude00.hgt and N08W013\\uff21.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-12.5,8.5,\"the test point\",true,null],\"plan\":{\"order\":[\"N08W013\\ud83d\\ude00.hgt\",\"N08W013\\uff21.hgt\"],\"sources\":[\"hgt\",\"hgt\"],\"offsets\":[[0,0],[0,0]],\"at\":[600,600,4,4,4,4,9,9,1200],\"dx\":91.75399529113591,\"dy\":92.1654487760289,\"lons\":[\"18872aef660e77cf955769d874e435d4ae9c3d55b13843f3c86f3ae72c201360\",-12.503333333333334,-12.496666666666666],\"lats\":[\"7118f5b167fad0e3e53abc28d5436899ed6b6ae93afd28f4f0e97bbb8279657b\",8.496666666666666,8.503333333333334],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,596,1431592,2402,null,true,[]],[0,597,1433994,2402,null,true,[]],[0,598,1436396,2402,null,true,[]],[0,599,1438798,2402,null,true,[]],[0,600,1441200,2402,null,true,[]],[0,601,1443602,2402,null,true,[]],[0,602,1446004,2402,null,true,[]],[0,603,1448406,2402,null,true,[]],[0,604,1450808,2402,null,true,[]],[1,596,1431592,2402,null,true,[]],[1,597,1433994,2402,null,true,[]],[1,598,1436396,2402,null,true,[]],[1,599,1438798,2402,null,true,[]],[1,600,1441200,2402,null,true,[]],[1,601,1443602,2402,null,true,[]],[1,602,1446004,2402,null,true,[]],[1,603,1448406,2402,null,true,[]],[1,604,1450808,2402,null,true,[]]]\"},\"read\":[\"refused\",\"terrain.join_disagree\",\"N08W013\\ud83d\\ude00.hgt and N08W013\\uff21.hgt overlap but disagree at 1 shared cells, by up to 1.00 m, so they are not neighbouring tiles of one release.\"],\"reads\":[[\"N08W013\\ud83d\\ude00.hgt\",1431592,21618],[\"N08W013\\uff21.hgt\",1431592,21618]]}"
+   },
+   {
+    "case": "a window inside one tile of the pair",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.001666666666667,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.1,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.001666666666667,8.995,\"the test point\",true,null],\"plan\":{\"order\":[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0]],\"at\":[34,18,4,4,4,4,9,9,0],\"dx\":30.54429994277126,\"dy\":30.722617604943384,\"lons\":[\"6a57064bd81f67082a0539fa94ff98c58432a1226014003976938ae798c1bba3\",-11.002777777777778,-11.000555555555556],\"lats\":[\"77f6350640dd715f17d547b3b09c5f20db49b33655994c6111f082411c43470f\",8.99388888888889,8.99611111111111],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]]]\"},\"read\":{\"z\":[\"6e6e92c88c5e6909fa2257b5a8ac763f24a9fbf9555f993942b4b0cfbe7291ea\",[155.0,158.5,158.5,158.5,161.0,161.0,161.39999389648438,161.6999969482422,164.10000610351562,166.89999389648438]],\"reasons\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"sea\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"counts\":[81,0,0,0,0],\"coverage\":1.0,\"shown\":[0,9,0,9],\"notes\":[\"Read 1 file (Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif): 81 cells about 31 by 31 m around the test point, 0.1 km each way.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30 tiles N08 W012 and N08 W011, produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",2480,2277]]}"
+   },
+   {
+    "case": "a margin alone over the cap",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 1.0,
+    "margin": 5.0,
+    "cap": 10000,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.995,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.margin_too_many_cells\",\"The 5 km margin analysed around the window needs more cells than the 10,000 the analysis takes on its own, so no radius fits; lower terrain.analysis_buffer_km.\"]}"
+   },
+   {
+    "case": "a centre far north of the tile, once refused for its radius",
+    "files": [
+     [
+      [
+       -12,
+       8,
+       3601,
+       null
+      ],
+      "N08W012.hgt"
+     ]
+    ],
+    "centre": [
+     -11.5,
+     79.7,
+     "the test point"
+    ],
+    "radius": 10.0,
+    "margin": 5.0,
+    "expect": "{\"files\":[[\"hgt\",[]]],\"credit\":[\"SRTM-format tile N08W012.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[]],\"centre\":[-11.5,79.7,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.site_outside\",\"The window centre at the test point lies outside the elevation model supplied, which covers 8.000-9.000 N, 11.000-12.000 W.\"]}"
+   },
+   {
+    "case": "a centre in a gap between tiles",
+    "files": [
+     [
+      [
+       -12,
+       8,
+       1201,
+       null
+      ],
+      "N08W012.hgt"
+     ],
+     [
+      [
+       -11,
+       8,
+       1201,
+       null
+      ],
+      "N08W011.hgt"
+     ],
+     [
+      [
+       -12,
+       7,
+       1201,
+       null
+      ],
+      "N07W012.hgt"
+     ]
+    ],
+    "centre": [
+     -10.95,
+     7.97,
+     "the test point"
+    ],
+    "radius": 5.0,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"hgt\",[]],[\"hgt\",[]],[\"hgt\",[]]],\"credit\":[\"SRTM-format tiles N08W012.hgt, N08W011.hgt and N07W012.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-10.95,7.97,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.site_gap\",\"The window centre at the test point lies in a gap between the files supplied, which span 7.000-9.000 N, 10.000-12.000 W; supply the tile that holds it.\"]}"
+   },
+   {
+    "case": "a centre east of the tiles",
+    "files": [
+     [
+      [
+       -12,
+       8,
+       1201,
+       null
+      ],
+      "N08W012.hgt"
+     ],
+     [
+      [
+       -11,
+       8,
+       1201,
+       null
+      ],
+      "N08W011.hgt"
+     ],
+     [
+      [
+       -12,
+       7,
+       1201,
+       null
+      ],
+      "N07W012.hgt"
+     ]
+    ],
+    "centre": [
+     -9.5,
+     8.5,
+     "Bo"
+    ],
+    "radius": 5.0,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"hgt\",[]],[\"hgt\",[]],[\"hgt\",[]]],\"credit\":[\"SRTM-format tiles N08W012.hgt, N08W011.hgt and N07W012.hgt, source not stated\",\"\",null,\"SRTM-format heights come from radar and include part of the tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-9.5,8.5,\"Bo\",true,null],\"plan\":[\"refused\",\"terrain.site_outside\",\"The window centre at Bo lies outside the elevation model supplied, which covers 7.000-9.000 N, 10.000-12.000 W.\"]}"
+   },
+   {
+    "case": "a gap under half a percent",
+    "files": [
+     "holes_N08W012.tif",
+     "holes_land_N08W013.tif",
+     "holes_land_N07W012.tif"
+    ],
+    "centre": [
+     -11.775,
+     8.225,
+     "the test point"
+    ],
+    "radius": 26.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-11.775,8.225,\"the test point\",true,null],\"plan\":{\"order\":[\"holes_land_N08W013.tif\",\"holes_N08W012.tif\",\"holes_land_N07W012.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0],[40,40]],\"at\":[49,31,10,10,10,10,21,21,40],\"dx\":2754.5498996586516,\"dy\":2764.9251087973594,\"lons\":[\"b8e7f03f97d5b08ba60291837299fe14492e6441ab15edd36bbce9b1eeee72b5\",-12.025,-11.525],\"lats\":[\"a619b3b5c8465c825ced3c4bda56bcd0094ab5371e7a0dcd417ee15d285bc952\",7.975,8.475],\"missing\":[[0,1]],\"edges\":[[0,0,39,null],[0,2,null,0]],\"blocks\":\"[[0,3,886,186,null,true,[]],[0,4,1072,182,null,true,[]],[0,5,1254,142,null,true,[0]],[1,3,1220,342,null,true,[]],[1,4,1562,316,null,true,[]],[1,6,2106,173,null,true,[]],[1,7,2279,215,null,true,[]],[2,0,346,184,null,true,[1]],[2,1,530,182,null,false,[1]],[2,2,712,176,null,false,[1]],[2,3,888,174,null,false,[1]],[2,4,1062,177,null,false,[1]],[2,5,1239,134,null,false,[1]]]\"},\"read\":{\"z\":[\"ec902dfa42708e5073a18c978dec3cd5349de32127dcf89e0420bcc304b03cf6\",[null,49.099998474121094,55.20000076293945,60.70000076293945,53.5,58.599998474121094,65.0,57.29999923706055,62.900001525878906,68.4000015258789]],\"reasons\":\"b9686f7a48b7b2cd0a9a9c58e6d74bb0cba68bf3d550b2d30cb6b5cf0c69a17a\",\"sea\":\"696790e55e1473861daed6b5f6e6c06b606be794b7a95f08828461b13797df63\",\"counts\":[441,0,2,0,0],\"coverage\":0.9954648526077098,\"shown\":[0,21,0,21],\"notes\":[\"Read 3 files (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif): 441 cells about 2755 by 2765 m around the test point, 26 km each way.\",\"Less than 1% of the window read (2 cells) lies outside the files supplied and is treated as a gap.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (holes_land_N08W013.tif, holes_N08W012.tif and holes_land_N07W012.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2755 by 2765 m.\",\"cell\":\"about 2755 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"holes_land_N08W013.tif\",886,510],[\"holes_N08W012.tif\",1220,1274],[\"holes_land_N07W012.tif\",346,1027]]}"
+   },
+   {
+    "case": "a sea under half a percent",
+    "files": [
+     "holes_N08W012.tif",
+     "holes_sea_N08W013.tif",
+     "holes_sea_N07W012.tif"
+    ],
+    "centre": [
+     -11.775,
+     8.225,
+     "the test point"
+    ],
+    "radius": 26.0,
+    "margin": 0.0,
+    "declared": [
+     "copernicus_glo30",
+     ""
+    ],
+    "expect": "{\"files\":[[\"unidentified\",[]],[\"unidentified\",[]],[\"unidentified\",[]]],\"credit\":[\"Copernicus GLO-30, as stated by the operator (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif)\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[],[]],\"centre\":[-11.775,8.225,\"the test point\",true,null],\"plan\":{\"order\":[\"holes_sea_N08W013.tif\",\"holes_N08W012.tif\",\"holes_sea_N07W012.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0],[40,40]],\"at\":[49,31,10,10,10,10,21,21,40],\"dx\":2754.5498996586516,\"dy\":2764.9251087973594,\"lons\":[\"b8e7f03f97d5b08ba60291837299fe14492e6441ab15edd36bbce9b1eeee72b5\",-12.025,-11.525],\"lats\":[\"a619b3b5c8465c825ced3c4bda56bcd0094ab5371e7a0dcd417ee15d285bc952\",7.975,8.475],\"missing\":[[0,1]],\"edges\":[[0,0,39,null],[0,2,null,0]],\"blocks\":\"[[0,5,1955,257,null,true,[]],[0,6,2212,173,null,false,[0]],[0,7,2385,162,null,false,[0]],[0,8,2547,94,null,true,[0]],[1,3,1220,342,null,true,[]],[1,4,1562,316,null,true,[]],[1,6,2106,173,null,true,[]],[1,7,2279,215,null,true,[]],[2,0,382,335,null,true,[1]],[2,1,717,309,null,true,[]],[2,3,1284,335,null,false,[1]],[2,6,2170,228,null,false,[1]]]\"},\"read\":{\"z\":[\"f6b75baf3720941e490131e09bab09defd4d6723e9d25a628ccb2956849a74be\",[null,49.099998474121094,55.20000076293945,60.70000076293945,53.5,58.599998474121094,65.0,57.29999923706055,62.900001525878906,68.4000015258789]],\"reasons\":\"b9686f7a48b7b2cd0a9a9c58e6d74bb0cba68bf3d550b2d30cb6b5cf0c69a17a\",\"sea\":\"9124cd2263c1fe40f4c666576f53a7361cefd84eba20fcc82cb39cc060e578f2\",\"counts\":[441,0,0,0,2],\"coverage\":0.9954648526077098,\"shown\":[0,21,0,21],\"notes\":[\"Read 3 files (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif): 441 cells about 2755 by 2765 m around the test point, 26 km each way.\",\"Less than 1% of the window read (2 cells) lies in a tile not supplied (N07 W013) whose whole edge with the tiles supplied is at or below 0 m, so it is taken as open sea with no height (Copernicus GLO-30 publishes no tiles for open sea).\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30, as stated by the operator (holes_sea_N08W013.tif, holes_N08W012.tif and holes_sea_N07W012.tif), produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 2755 by 2765 m.\",\"cell\":\"about 2755 by 2765 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"holes_sea_N08W013.tif\",1955,686],[\"holes_N08W012.tif\",1220,1274],[\"holes_sea_N07W012.tif\",382,2016]]}"
+   },
+   {
+    "case": "one block over the cap on blocks",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.994444444444444,
+     "the test point"
+    ],
+    "radius": 0.5,
+    "margin": 0.0,
+    "blocks": 11,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.994444444444444,\"the test point\",true,null],\"plan\":[\"refused\",\"terrain.too_many_blocks\",\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif keeps the samples asked for in 12 blocks, more than the 11 the reader takes; save it again with larger tiles or strips.\"]}"
+   },
+   {
+    "case": "at the cap on blocks",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    ],
+    "centre": [
+     -11.0,
+     8.994444444444444,
+     "the test point"
+    ],
+    "radius": 0.5,
+    "margin": 0.0,
+    "blocks": 12,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"copernicus_glo30\",[]]],\"credit\":[\"Copernicus GLO-30 tiles N08 W012 and N08 W011\",\"produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved\",\"The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\",true],\"prompts\":[[],[]],\"centre\":[-11.0,8.994444444444444,\"the test point\",true,null],\"plan\":{\"order\":[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\"],\"sources\":[\"copernicus_glo30\",\"copernicus_glo30\"],\"offsets\":[[0,0],[40,0]],\"at\":[40,20,17,17,17,17,35,35,0],\"dx\":30.54434651669809,\"dy\":30.72261668094374,\"lons\":[\"b5a0da1a3c5906af5998938c72a0d54999244297aec699519fda669fc8e89166\",-11.004722222222222,-10.995277777777778],\"lats\":[\"48ca81ea6925ccd677fb75e1c1e3cf909e5bb7cbfe06f9c99b5f0e6ee0439fd4\",8.989722222222222,8.999166666666667],\"missing\":[],\"edges\":[],\"blocks\":\"[[0,1,2480,508,null,true,[]],[0,2,2996,381,null,true,[]],[0,4,3912,510,null,true,[]],[0,5,4430,327,null,true,[]],[0,7,5057,264,null,true,[]],[0,8,5329,194,null,true,[]],[1,0,1939,504,null,true,[]],[1,1,2451,498,null,true,[]],[1,3,3308,484,null,true,[]],[1,4,3800,484,null,true,[]],[1,6,4637,273,null,true,[]],[1,7,4918,261,null,true,[]]]\"},\"read\":{\"z\":[\"40358726df251ed97726a3894483b56d471a8277fa8915ace65a11a3f27cf09c\",[149.6999969482422,161.39999389648438,164.3000030517578,159.10000610351562,158.60000610351562,161.0,172.5,190.8000030517578,191.10000610351562,169.1999969482422]],\"reasons\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"sea\":\"0e509ea424b4f7857df5df49a85ec3bd433bbbcd85ec5463f90233e97b1ed1f7\",\"counts\":[1225,0,0,0,0],\"coverage\":1.0,\"shown\":[0,35,0,35],\"notes\":[\"Read 2 files (Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif and Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif): 1,220 cells about 31 by 31 m around the test point, 0.5 km each way.\",\"Copernicus GLO-30 is a surface model: its heights include tree canopy and buildings, not only the ground.\"],\"prompts\":[],\"figure\":\"Elevation: Copernicus GLO-30 tiles N08 W012 and N08 W011, produced using Copernicus WorldDEM-30 \\u00a9 DLR e.V. 2010-2014 and \\u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. Cells about 31 by 31 m.\",\"cell\":\"about 31 by 31 m\",\"source\":\"copernicus_glo30\"},\"reads\":[[\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",2480,3043],[\"Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif\",1939,3240]]}"
+   },
+   {
+    "case": "a file with a GDAL mask",
+    "files": [
+     "internal_mask.tif"
+    ],
+    "radius": 0.2,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"refused\",\"terrain.internal_mask\",\"internal_mask.tif marks some of its cells as invalid with a GDAL mask, which this reader does not apply; save it again with a no-data value instead.\"]]}"
+   },
+   {
+    "case": "a pixel scale with one byte flipped",
+    "files": [
+     [
+      "holes_sea_N07W012.tif",
+      "holes_sea_N07W012.tif",
+      [
+       [
+        293,
+        "1f"
+       ]
+      ]
+     ]
+    ],
+    "radius": 5.0,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"refused\",\"terrain.bad_georeference\",\"holes_sea_N07W012.tif places its cells at longitudes, latitudes or spacings no elevation model has, so its georeferencing is damaged.\"]]}"
+   },
+   {
+    "case": "a NaN tiepoint in the GLO-30 layout beside a good tile",
+    "files": [
+     "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+     [
+      "n08w011.tif",
+      "n08w011.tif",
+      [
+       [
+        534,
+        "000000000000f87f"
+       ]
+      ]
+     ]
+    ],
+    "centre": [
+     -11.0,
+     8.995,
+     "the test point"
+    ],
+    "radius": 0.3,
+    "margin": 0.0,
+    "expect": "{\"files\":[[\"copernicus_glo30\",[]],[\"refused\",\"terrain.bad_georeference\",\"n08w011.tif places its cells at longitudes, latitudes or spacings no elevation model has, so its georeferencing is damaged.\"]]}"
+   }
+  ]
  }
 }

@@ -1,0 +1,323 @@
+# Terrain from an elevation model the operator supplies (PLAN.md step 4.1):
+# why a file is refused, what was read, how its source is credited, and what
+# the figures drawn from it say, in the words both engines write. The Python
+# package reads them in groundwater/geotiff.py (the GeoTIFF reader),
+# mapping/elevation.py (the elevation layer: windows, joins and credits),
+# mapping/terrain_analysis.py (the analysis) and mapping/terrain.py (the
+# figures), which the Streamlit Site maps page draws in
+# app/views/site_maps.py; the browser reads them through the reader,
+# elevation and terrain functions of gwt-core.js (C.readGeoTiff,
+# C.readElevationWindow, C.terrainCredit, C.analyseTerrain and those beside
+# them). Every entry is read by its quoted id in both engines, never by an id
+# built from pieces. The template rules are in src/groundwater/text.py;
+# CONTRIBUTING.md says how to add an entry.
+
+# Why a file, a join of files or a window is refused. Each is raised by its
+# full id - GeoTiffError("terrain.not_tiff", file=name) in Python,
+# tiffError('terrain.not_tiff', {file: name}) in the browser - and parity
+# compares the sentences word for word. {file}, {a} and {b} are file names as
+# supplied; {part}, {tag}, {kind}, {crs} and {method} are short words both
+# engines build from the same pieces.
+not_tiff: >-
+  {file} is not a TIFF file: it does not begin with II or MM followed by 42
+  or 43.
+
+ends_early: >-
+  {file} ends before the {part} it points to, so the file is incomplete;
+  download it again.
+
+too_large: >-
+  {file} points beyond what this reader can address, so the file is damaged
+  or not a GeoTIFF.
+
+directory_loop: >-
+  {file} has a directory chain that loops back on itself, so the file is
+  damaged.
+
+no_full_image: >-
+  {file} holds only reduced-resolution or mask images, not a full-resolution
+  grid.
+
+bad_tag: "{file} has a damaged {tag} entry."
+
+bands: "{file} holds {n:g} values to a cell; an elevation model holds one."
+
+sample_type: >-
+  {file} stores {bits:g}-bit {kind} samples; the reader takes 8-, 16- and
+  32-bit integers and 32- and 64-bit floating point.
+
+compression: >-
+  {file} is compressed with {method}, which this reader does not decode; it
+  reads DEFLATE, LZW and PackBits, or no compression.
+
+# {method} above, by the TIFF compression number as a string. A number not
+# listed is named "TIFF method" and the number. The keys are quoted because a
+# table is looked up by a string.
+compression_names:
+  "2": CCITT RLE
+  "3": CCITT Group 3
+  "4": CCITT Group 4
+  "6": old-style JPEG
+  "7": JPEG
+  "34887": LERC
+  "34925": LZMA
+  "50000": Zstandard
+  "50001": WebP
+  "50002": JPEG XL
+
+old_lzw: >-
+  {file} uses the pre-1992 form of LZW compression, which this reader does
+  not decode; save it again with DEFLATE.
+
+predictor: "{file} uses TIFF predictor {code:g}, which this reader does not undo."
+
+fill_order: >-
+  {file} stores its bits in reverse order (FillOrder 2), which this reader
+  does not read.
+
+no_georeference: >-
+  {file} carries no georeferencing, so where its cells lie is not known.
+
+# Infinite or not-a-number origins, longitudes beyond any map, and cell
+# sizes no elevation model has (under 1e-7 or over 1 degree) all come from
+# a damaged header, and each would otherwise reach the window arithmetic.
+bad_georeference: >-
+  {file} places its cells at longitudes, latitudes or spacings no elevation
+  model has, so its georeferencing is damaged.
+
+# GDAL writes a mask of invalid cells as a directory of its own after the
+# image; the cells it hides usually hold 0, which would read as ground at
+# sea level.
+internal_mask: >-
+  {file} marks some of its cells as invalid with a GDAL mask, which this
+  reader does not apply; save it again with a no-data value instead.
+
+rotated: >-
+  {file} is not a north-up grid (it is rotated, sheared or flipped); the
+  toolkit reads only north-up grids and does not resample.
+
+control_points: >-
+  {file} is placed by control points rather than on a grid; the toolkit does
+  not warp grids.
+
+no_crs: "{file} does not say which coordinate system it uses."
+
+projected: >-
+  {file} is in {crs}. The toolkit reads elevation models in WGS 84 longitude
+  and latitude (EPSG 4326), the form Copernicus, SRTM and NASADEM tiles are
+  published in; supply the tile as downloaded rather than a reprojected copy,
+  which has already been resampled.
+
+not_wgs84: >-
+  {file} gives its coordinates as {crs}, not WGS 84 longitude and latitude in
+  degrees.
+
+polar: >-
+  {file} reaches within a degree of a pole, where a cell has no width east to
+  west; the toolkit does not read it.
+
+nodata_unreadable: "{file} gives its no-data value as {text}, which is not a number."
+
+scaled: >-
+  {file} stores scaled values (a GDAL scale or offset), which this reader does
+  not apply.
+
+block_too_large: >-
+  {file} keeps its samples in blocks of {mb:.0f} MB, too large to read in
+  part; save it again with tiles or strips.
+
+# Many tiny blocks cost a decode each, so a file cut into them is refused
+# before any is read, as a whole file or for a window.
+too_many_blocks: >-
+  {file} keeps the samples asked for in {n:num} blocks, more than the
+  {cap:num} the reader takes; save it again with larger tiles or strips.
+
+# Every way a block can fail to decompress gives this one sentence.
+block_damaged: >-
+  Data block {n:g} of {file} is damaged: it does not decompress to the
+  {bytes:.0f} bytes the file says it holds, so download the file again.
+
+# An SRTM-format .hgt tile has no header: where it lies comes from its name,
+# and how fine it is from its length. {file} is the name in quotes here, as
+# the toolkit has always written it, and {n} the number of 16-bit samples.
+hgt_name: >-
+  '{file}' does not name its corner. An SRTM tile is named for its south-west
+  corner, as in N08W013.hgt; the file itself carries no header saying where
+  on Earth it is.
+
+hgt_size: >-
+  '{file}' holds {n:.0f} samples, which is not a square SRTM tile (1201x1201
+  or 3601x3601).
+
+duplicate_name: "Two files are both called {file}; supply each tile once."
+
+mixed_formats: >-
+  {a} and {b} are of different kinds; tiles are joined only when they are all
+  GeoTIFF or all .hgt.
+
+join_spacing: >-
+  {a} and {b} have different cell sizes; the toolkit joins only files on one
+  grid and does not resample.
+
+join_phase: >-
+  The cells of {a} and {b} do not line up: one is offset from the other by
+  part of a cell, and the toolkit does not resample.
+
+join_products: >-
+  {a} is {pa} and {b} is {pb}; files from different products are not joined,
+  because their surfaces and height datums differ.
+
+join_disagree: >-
+  {a} and {b} overlap but disagree at {n:num} shared cells, by up to {m:.2f}
+  m, so they are not neighbouring tiles of one release.
+
+# The window. {where} is the area window's label, or the coordinates written
+# as 9.03487 N, 11.92862 W; {extent} is what the files cover, as
+# terrain._bounds_text writes it.
+site_outside: >-
+  The window centre at {where} lies outside the elevation model supplied,
+  which covers {extent}.
+
+# The files' bounding box holds the centre, but no file does.
+site_gap: >-
+  The window centre at {where} lies in a gap between the files supplied,
+  which span {extent}; supply the tile that holds it.
+
+# It gives no count of cells: written to three figures, a count just over
+# the cap reads as the cap itself, and the sentence contradicts itself.
+too_many_cells: >-
+  A {radius:g} km radius, with the {margin:g} km margin analysed around it,
+  needs more cells than the {cap:num} the analysis takes; a radius of {fit:g}
+  km fits.
+
+too_small: "The window holds {w:g} by {h:g} cells; the analysis needs at least 3 by 3."
+
+# The margin alone is over the cap, so no radius shown can fit.
+margin_too_many_cells: >-
+  The {margin:g} km margin analysed around the window needs more cells than
+  the {cap:num} the analysis takes on its own, so no radius fits; lower
+  terrain.analysis_buffer_km.
+
+no_elevations: "The {radius:g} km window around {where} holds no elevations."
+
+# What was read, said under the file list in both apps. The lists ({names},
+# {tiles}, {files}) are joined by and_join in Python and C.andJoin in the
+# browser: "a", "a and b", "a, b and c".
+read_summary: >-
+  Read {n:g} {n:plural:file|files} ({names}): {cells:num} cells about {dx:.0f}
+  by {dy:.0f} m around {where}, {radius:g} km each way.
+
+read_margin: >-
+  The analysis also reads {margin:g} km beyond the square shown, so that the
+  edge of the analysis does not bend the drainage lines.
+
+read_uncovered: >-
+  {pct:.0f}% of the window read lies outside the files supplied and is treated
+  as a gap.
+
+# For a gap that is real but would round to 0%.
+read_uncovered_little: >-
+  Less than 1% of the window read ({count:num} {count:plural:cell|cells}) lies outside the files
+  supplied and is treated as a gap.
+
+read_assumed_sea: >-
+  {pct:.0f}% of the window read lies in {n:plural:a tile|tiles} not supplied
+  ({tiles}) whose whole edge with the tiles supplied is at or below {level:g}
+  m, so it is taken as open sea with no height ({product} publishes no tiles
+  for open sea).
+
+read_assumed_sea_little: >-
+  Less than 1% of the window read ({count:num} {count:plural:cell|cells}) lies in {n:plural:a
+  tile|tiles} not supplied ({tiles}) whose whole edge with the tiles supplied
+  is at or below {level:g} m, so it is taken as open sea with no height
+  ({product} publishes no tiles for open sea).
+
+read_voids: "{n:num} cells have no elevation in the file and are treated as gaps."
+
+read_implausible: >-
+  {n:num} cells were infinite or outside {lo:g} to {hi:g} m and were taken as
+  having no elevation.
+
+# Where the window is centred when the project has no GPS fix.
+centre_area: "The project has no GPS fix, so the window is centred on {label}."
+
+centre_no_site: >-
+  The project records no location, so the window is centred on the middle of
+  the elevation model.
+
+# Said about one file whose name and layout disagree about where it came
+# from. None of them credits a source: only the file's name and
+# georeferencing together, or the operator's own statement, do that.
+name_mismatch: >-
+  {file} is named like a Copernicus GLO-30 tile but its georeferencing does
+  not match one (WGS 84, one arc-second each way, inside the square its name
+  gives), so it is credited as a file of unstated source.
+
+looks_copernicus: >-
+  {file} is laid out like a Copernicus GLO-30 tile but is not named like one;
+  if it is one, choose Copernicus GLO-30 as the source so that the figures
+  carry its notice.
+
+fabdem_licence: >-
+  {file} looks like a FABDEM tile, which its makers license for non-commercial
+  use only (CC BY-NC-SA 4.0), and which is made from Copernicus GLO-30, whose
+  notices may apply too; the toolkit does not record either licence, so the
+  credit is yours to add.
+
+# What kind of surface the heights describe, by source: in the read report,
+# inside every terrain figure and in the drainage lines' GeoJSON.
+surface_copernicus: >-
+  Copernicus GLO-30 is a surface model: its heights include tree canopy and
+  buildings, not only the ground.
+
+surface_srtm: >-
+  SRTM-format heights come from radar and include part of the tree canopy and
+  buildings, not only the ground.
+
+surface_unknown: >-
+  The source does not say whether its heights are of the ground or include
+  tree canopy and buildings; assume they include them.
+
+# What the figures credit. A label names the files and where they came from;
+# figure_credit adds the credit a licence asks for, and figure_credit_bare
+# stands alone where no licence is known. {tiles} are tile codes ("N08
+# W012"), {files} file names, {declared} what the operator stated.
+label_copernicus: "Copernicus GLO-30 {n:plural:tile|tiles} {tiles}"
+
+label_srtm: "SRTM {n:plural:tile|tiles} {tiles}"
+
+label_hgt: "SRTM-format {n:plural:tile|tiles} {files}, source not stated"
+
+label_mixed: "Copernicus GLO-30 {n:plural:tile|tiles} {tiles} with {files}, source not stated"
+
+label_unidentified: "elevation model {files}, source not stated"
+
+label_declared: "{declared}, as stated by the operator ({files})"
+
+# The Copernicus DEM licence's Article 6(b), word for word, for a product
+# made from the data: every terrain figure is one (filled, shaded,
+# contoured). Its Article 6(c), the liability sentence, is printed wherever a
+# set holds a Copernicus file.
+credit_copernicus_modified: >-
+  produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus
+  Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European
+  Union and ESA; all rights reserved
+
+copernicus_liability: >-
+  The organisations in charge of the Copernicus programme by law or by
+  delegation do not incur any liability for any use of the Copernicus
+  WorldDEM-30
+
+credit_srtm: NASA/USGS, public domain
+
+figure_credit: "Elevation: {label}, {credit}. Cells about {dx:.0f} by {dy:.0f} m."
+
+figure_credit_bare: "Elevation: {label}. Cells about {dx:.0f} by {dy:.0f} m."
+
+# The progress label while the files are read.
+stage_read: Reading the elevation model
+
+# Said by both apps until the browser reads elevation models itself.
+browser_reads_none: >-
+  The browser app does not read elevation models yet; the Topography tab of
+  the Python app's Site maps page does.

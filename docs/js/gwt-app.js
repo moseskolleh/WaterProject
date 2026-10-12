@@ -2004,6 +2004,10 @@
         ]),
       ]),
 
+      /* the topographic map is drawn from an elevation model the operator
+       * supplies, and only the Python app reads one so far */
+      el('div.callout.callout-info', el('p', C.phrase('terrain.browser_reads_none'))),
+
       card('Interactive map', [
         el('p.muted', 'The maps above are pictures, which is what a report ' +
           'needs. This writes the same survey as a GeoLibre project file — an ' +
@@ -6484,6 +6488,8 @@
           'page; the server version uses pdfplumber, which finds a table from ' +
           'the rules drawn around it. And the sign-off ledger on the Depth ' +
           'Spine is kept in the project file rather than in a session.']),
+        /* and one thing is not here yet, which "every page" would hide */
+        el('p', C.phrase('terrain.browser_reads_none')),
         el('p', ['A WebAssembly build of the Streamlit app is published ' +
           'beside this one — it runs the real Python package in the browser, ' +
           'at the cost of a 60 MB first load.']),

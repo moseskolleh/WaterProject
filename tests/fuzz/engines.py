@@ -5,7 +5,10 @@ analyses; ``BrowserEngine`` hands the same bytes to ``gwt-core.js`` through
 ``engine.mjs``, a Node process kept open for the whole run; ``divergences``
 compares the two with the comparison ``make_reference.py`` uses for the
 committed reference values, at the tolerances ``parity.mjs`` holds each kind
-of quantity to.
+of quantity to. The kinds from ``rasters.py`` are handed a raster or a block
+of one instead of a workbook, and their summaries carry every quantity that
+has to agree exactly as a string - a digest, or an integer written out -
+which the comparison holds to equality rather than to PARSE_TOL.
 
 The summaries here and in ``page.js`` carry the same keys in the same order.
 """
@@ -13,6 +16,7 @@ The summaries here and in ``page.js`` carry the same keys in the same order.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import math
 import select
@@ -253,7 +257,76 @@ def _drilling(path: Path, name: str, options: dict) -> dict:
     return out
 
 
-_KINDS = {"ves": _ves, "pumping": _pumping, "quality": _quality, "drilling": _drilling}
+def _deflate(path: Path, name: str, options: dict) -> dict:
+    """PLAN.md step 4.1: one DEFLATE block, inflated under the bounded rule.
+    Whether it reads and what it gives travel as strings, so they are held
+    to agreeing exactly."""
+    from groundwater.geotiff import _CodecError, _inflate_block
+
+    try:
+        block = _inflate_block(path.read_bytes(), options["expected"], options["full"])
+    except _CodecError as exc:
+        return {"verdict": exc.code, "sha256": None, "length": None}
+    return {"verdict": "accepted", "sha256": hashlib.sha256(block).hexdigest(),
+            "length": str(len(block))}
+
+
+def _f64_digest(values) -> str:
+    """SHA-256 of float64 values, little-endian, every NaN 0x7FF8000000000000
+    and the signs of zeros kept."""
+    a = np.array(values, dtype="<f8").ravel()
+    a[np.isnan(a)] = np.nan
+    return hashlib.sha256(a.tobytes()).hexdigest()
+
+
+def _geotiff(path: Path, name: str, options: dict) -> dict:
+    """PLAN.md step 4.1: a whole GeoTIFF through the raw reader. The ranges
+    its layout asks for given the first 16 bytes; the layout, every field of
+    it, the numbers that need not be whole as their float64 bits; or a
+    refusal, id and sentence; and the read: the values and the axes by
+    digest, and the reasons of the per-sample rule under the elevation
+    layer's bounds, north row first, as a string of digits. Every one
+    travels as a string, so it is held to agreeing exactly."""
+    import dataclasses
+    import re
+    import struct
+
+    from groundwater.geotiff import GeoTiffError, block_ranges, decode_block, geotiff_layout, read_geotiff
+
+    data = path.read_bytes()
+    out = {"need": None, "layout": None, "refused": None, "values": None, "reasons": None, "axes": None}
+    try:
+        need = geotiff_layout(name, len(data), [(0, data[:16])])
+        out["need"] = json.dumps(need, separators=(",", ":")) if isinstance(need, list) else "layout"
+    except GeoTiffError as exc:
+        out["need"] = exc.ident
+    try:
+        layout = geotiff_layout(name, len(data), [(0, data)])
+        assert not isinstance(layout, list)
+        fields = {}
+        for key, value in dataclasses.asdict(layout).items():
+            if key in ("x0", "y0", "sx", "sy", "nodata") and value is not None:
+                value = "7ff8000000000000" if value != value else struct.pack(">d", value).hex()
+            fields[re.sub(r"_([a-z])", lambda m: m.group(1).upper(), key)] = value
+        out["layout"] = json.dumps(fields, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        raster = read_geotiff(data, name)
+    except GeoTiffError as exc:
+        out["refused"] = f"{exc.ident}: {exc}"
+        return out
+    reasons = np.zeros((layout.height, layout.width), dtype=np.uint8)
+    across = -(-layout.width // layout.block_width) if layout.tiled else 1
+    for index, offset, length, rows in block_ranges(layout, 0, layout.height, 0, layout.width):
+        _, why = decode_block(layout, index, data[offset:offset + length], rows, tuple(options["bounds"]))
+        top, left = index // across * layout.block_height, index % across * layout.block_width
+        reasons[top:top + why.shape[0], left:left + why.shape[1]] = why
+    out["values"] = _f64_digest(raster.z)
+    out["reasons"] = "".join(str(r) for r in reasons.ravel().tolist())
+    out["axes"] = _f64_digest(np.concatenate([raster.x, raster.y]))
+    return out
+
+
+_KINDS = {"ves": _ves, "pumping": _pumping, "quality": _quality, "drilling": _drilling,
+          "deflate": _deflate, "geotiff": _geotiff}
 
 
 def python_summary(kind: str, path: Path, name: str, options: dict) -> dict:

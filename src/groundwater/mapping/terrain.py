@@ -14,41 +14,40 @@ elevations are drawn as spot heights and as a ground profile along the
 traverse, where they are exactly what they claim to be, and the contoured
 map waits for a real elevation model.
 
-Three formats are read, all with numpy alone, because a drilling
-supervisor with a laptop in Makeni can obtain any of them and cannot
-install GDAL:
-
-``.hgt``
-    An SRTM tile as NASA publishes it: raw big-endian int16, 1201x1201
-    (3 arc-second) or 3601x3601 (1 arc-second), no header at all. The
-    filename carries the south-west corner (``N08W013.hgt``).
-``.asc`` / ``.grd``
-    An ESRI ASCII grid: six header lines then the rows, north to south.
-    Every GIS exports it.
-``.xyz`` / ``.csv``
-    Three columns of longitude, latitude, elevation on a regular grid,
-    in any row order. What a phone GPS logger and most online elevation
-    services hand back.
-
-A void in any of them (SRTM's -32768, the grid's own NODATA value) is
-carried through as NaN rather than as a number, so a hole in the data is
-drawn as a hole rather than as a hollow in the ground.
+The grid and the readers for the formats an operator has are in
+:mod:`.elevation`, which loads no pyplot, so that reading a model does not
+import the plotting stack. They are re-exported here, and every import from
+this module keeps working.
 """
 
 from __future__ import annotations
 
 import math
-import re
 import textwrap
-from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import Normalize
 
 from ..config import HouseStyle
 from ..models import SiteMetadata
 from ..plotting import figure_context, save_figure
+from ..text import phrase
+from .elevation import (  # noqa: F401 - the moved names, re-exported
+    _HGT_SIDES,
+    _READERS,
+    _SRTM_VOID,
+    ElevationGrid,
+    ElevationRead,
+    _bounds_text,
+    grid_fill_probe,
+    load_elevation,
+    read_esri_ascii,
+    read_srtm_hgt,
+    read_xyz,
+    wgs84_cell_size,
+)
 from .regional import (
     ADMIN_CREDIT,
     AreaWindow,
@@ -57,9 +56,6 @@ from .regional import (
     area_window,
     load_admin,
 )
-
-#: SRTM marks a void with this value; it is not an elevation.
-_SRTM_VOID = -32768
 
 
 def _land_cmap():
@@ -77,335 +73,6 @@ def _land_cmap():
     return LinearSegmentedColormap.from_list(
         "terrain_land", base(np.linspace(0.25, 1.0, 256))
     )
-
-#: What ``.hgt`` side lengths mean, by the number of int16 samples in the file.
-_HGT_SIDES = {1201: "3 arc-second (about 90 m)", 3601: "1 arc-second (about 30 m)"}
-
-
-@dataclass
-class ElevationGrid:
-    """A regular grid of ground elevations in geographic coordinates.
-
-    ``lons`` and ``lats`` are the cell-centre coordinates of the columns
-    and rows; ``z`` is ``(len(lats), len(lons))`` metres above the datum
-    the source used, with NaN where the source had no value. ``lats``
-    ascends, so row 0 is the southern edge - matplotlib's convention, not
-    the raster convention, and the readers flip northern-first files to
-    match rather than leaving each caller to remember which way up its
-    data came.
-
-    ``source`` is what the figure credits. It is not decoration: a
-    contour map with no stated source is a contour map nobody can check.
-    """
-
-    lons: np.ndarray
-    lats: np.ndarray
-    z: np.ndarray
-    source: str = "user-supplied elevation model"
-    #: metres per sample, for the resolution note on the figure
-    resolution_note: str = ""
-
-    def __post_init__(self) -> None:
-        self.lons = np.asarray(self.lons, dtype=float)
-        self.lats = np.asarray(self.lats, dtype=float)
-        self.z = np.asarray(self.z, dtype=float)
-        if self.z.shape != (len(self.lats), len(self.lons)):
-            raise ValueError(
-                f"elevation grid is {self.z.shape}, but {len(self.lats)} "
-                f"latitudes and {len(self.lons)} longitudes were given"
-            )
-
-    @property
-    def bounds(self) -> tuple[float, float, float, float]:
-        """``(lon_min, lat_min, lon_max, lat_max)`` of the cell centres."""
-        return (
-            float(self.lons.min()), float(self.lats.min()),
-            float(self.lons.max()), float(self.lats.max()),
-        )
-
-    def covers(self, lon: float, lat: float) -> bool:
-        lon_min, lat_min, lon_max, lat_max = self.bounds
-        return lon_min <= lon <= lon_max and lat_min <= lat <= lat_max
-
-    def elevation_at(self, lon: float, lat: float) -> float | None:
-        """Bilinear elevation at a point, or ``None`` outside or in a void."""
-        if not self.covers(lon, lat):
-            return None
-        ix = float(np.interp(lon, self.lons, np.arange(len(self.lons))))
-        iy = float(np.interp(lat, self.lats, np.arange(len(self.lats))))
-        x0, y0 = int(math.floor(ix)), int(math.floor(iy))
-        x1 = min(x0 + 1, len(self.lons) - 1)
-        y1 = min(y0 + 1, len(self.lats) - 1)
-        fx, fy = ix - x0, iy - y0
-        corners = np.array([
-            [self.z[y0, x0], self.z[y0, x1]],
-            [self.z[y1, x0], self.z[y1, x1]],
-        ], dtype=float)
-        if not np.all(np.isfinite(corners)):
-            return None  # a void is not an elevation, and averaging one is worse
-        top = corners[0, 0] * (1 - fx) + corners[0, 1] * fx
-        bottom = corners[1, 0] * (1 - fx) + corners[1, 1] * fx
-        return float(top * (1 - fy) + bottom * fy)
-
-    def window(self, lon: float, lat: float, radius_km: float) -> ElevationGrid:
-        """The part of the grid inside a square window, for a local map.
-
-        A whole SRTM tile is 1201x1201 samples and a 5 km site map wants
-        about 120 of them across. Contouring the whole tile to show a
-        tenth of a degree of it is slow and, worse, flattens the colour
-        ramp onto the range of a mountain range the site is nowhere near.
-
-        The window keeps one row and column beyond each edge where the
-        grid has them, so a contour crossing the frame is drawn to the
-        frame rather than stopping short of it.
-        """
-        dlat = radius_km / 111.32
-        dlon = radius_km / (111.32 * max(math.cos(math.radians(lat)), 1e-6))
-        ix = np.where((self.lons >= lon - dlon) & (self.lons <= lon + dlon))[0]
-        iy = np.where((self.lats >= lat - dlat) & (self.lats <= lat + dlat))[0]
-        if len(ix) < 2 or len(iy) < 2:
-            raise ValueError(
-                f"the elevation model covers {_bounds_text(self.bounds)}, which "
-                f"holds fewer than two samples of the {radius_km:g} km window "
-                f"around {abs(lat):.4f} {'N' if lat >= 0 else 'S'}, "
-                f"{abs(lon):.4f} {'E' if lon >= 0 else 'W'}. Supply a model "
-                "covering the site, or widen the window."
-            )
-        x0, x1 = max(ix[0] - 1, 0), min(ix[-1] + 2, len(self.lons))
-        y0, y1 = max(iy[0] - 1, 0), min(iy[-1] + 2, len(self.lats))
-        return ElevationGrid(
-            self.lons[x0:x1], self.lats[y0:y1], self.z[y0:y1, x0:x1],
-            source=self.source, resolution_note=self.resolution_note,
-        )
-
-
-def _bounds_text(bounds: tuple[float, float, float, float]) -> str:
-    lon_min, lat_min, lon_max, lat_max = bounds
-    return (
-        f"{abs(lat_min):.3f}-{abs(lat_max):.3f} "
-        f"{'N' if lat_min >= 0 else 'S'}, "
-        f"{abs(lon_max):.3f}-{abs(lon_min):.3f} "
-        f"{'E' if lon_min >= 0 else 'W'}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Readers
-# ---------------------------------------------------------------------------
-
-def read_srtm_hgt(path: str | Path) -> ElevationGrid:
-    """Read one SRTM ``.hgt`` tile.
-
-    The file is nothing but samples - big-endian int16, northern row
-    first - so the corner comes from the name (``N08W013.hgt`` is the
-    tile whose south-west corner is 8 N, 13 W) and the resolution from
-    the file's own length. A name that does not carry a corner is an
-    error rather than a guess: placing a tile in the wrong degree square
-    puts the contours 100 km from the site with nothing on the figure to
-    say so.
-    """
-    path = Path(path)
-    match = re.match(
-        r"^([NS])(\d{2})([EW])(\d{3})", path.stem.upper()
-    )
-    if match is None:
-        raise ValueError(
-            f"'{path.name}' does not name its corner. An SRTM tile is named "
-            "for its south-west corner, as in N08W013.hgt; the file itself "
-            "carries no header saying where on Earth it is."
-        )
-    ns, lat_deg, ew, lon_deg = match.groups()
-    lat0 = float(lat_deg) * (1 if ns == "N" else -1)
-    lon0 = float(lon_deg) * (1 if ew == "E" else -1)
-
-    raw = np.fromfile(str(path), dtype=">i2")
-    side = int(round(math.sqrt(raw.size)))
-    if side * side != raw.size or side not in _HGT_SIDES:
-        raise ValueError(
-            f"'{path.name}' holds {raw.size} samples, which is not a square "
-            f"SRTM tile ({' or '.join(f'{s}x{s}' for s in _HGT_SIDES)})."
-        )
-    grid = raw.reshape(side, side).astype(float)
-    grid[grid == _SRTM_VOID] = np.nan
-    # the file runs north to south; ElevationGrid runs south to north
-    grid = grid[::-1, :]
-    step = 1.0 / (side - 1)
-    lons = lon0 + np.arange(side) * step
-    lats = lat0 + np.arange(side) * step
-    return ElevationGrid(
-        lons, lats, grid,
-        source=f"SRTM tile {path.stem.upper()} (NASA/USGS, public domain)",
-        resolution_note=_HGT_SIDES[side],
-    )
-
-
-def read_esri_ascii(path: str | Path) -> ElevationGrid:
-    """Read an ESRI ASCII grid (``.asc``).
-
-    Six header lines then the rows, north first. ``xllcorner`` gives the
-    outer edge of the first cell and ``xllcenter`` its centre; both are
-    accepted, and the difference between them is half a cell - which at
-    3 arc-seconds is 45 m, enough to move a contour off a valley.
-    """
-    path = Path(path)
-    header: dict[str, float] = {}
-    rows: list[list[float]] = []
-    with open(path, encoding="utf-8") as fh:
-        for line in fh:
-            parts = line.split()
-            if not parts:
-                continue
-            key = parts[0].lower()
-            if key in {
-                "ncols", "nrows", "xllcorner", "yllcorner", "xllcenter",
-                "yllcenter", "cellsize", "nodata_value",
-            }:
-                header[key] = float(parts[1])
-                continue
-            rows.append([float(v) for v in parts])
-
-    for required in ("ncols", "nrows", "cellsize"):
-        if required not in header:
-            raise ValueError(f"'{path.name}' has no {required} in its header")
-    ncols, nrows = int(header["ncols"]), int(header["nrows"])
-    cell = header["cellsize"]
-    if "xllcenter" in header:
-        x0, y0 = header["xllcenter"], header["yllcenter"]
-    else:
-        x0 = header["xllcorner"] + cell / 2.0
-        y0 = header["yllcorner"] + cell / 2.0
-
-    flat = np.array([v for row in rows for v in row], dtype=float)
-    if flat.size != ncols * nrows:
-        raise ValueError(
-            f"'{path.name}' declares {nrows}x{ncols} cells but holds "
-            f"{flat.size} values"
-        )
-    grid = flat.reshape(nrows, ncols)
-    nodata = header.get("nodata_value")
-    if nodata is not None:
-        grid = np.where(grid == nodata, np.nan, grid)
-    grid = grid[::-1, :]  # the file runs north to south
-    return ElevationGrid(
-        x0 + np.arange(ncols) * cell,
-        y0 + np.arange(nrows) * cell,
-        grid,
-        source=f"elevation grid {path.name}",
-        resolution_note=f"{cell * 111320:.0f} m cell",
-    )
-
-
-def read_xyz(path: str | Path) -> ElevationGrid:
-    """Read longitude, latitude, elevation columns onto a regular grid.
-
-    Row order does not matter; the distinct longitudes and latitudes are
-    recovered and each triple placed in its cell. Any cell no row filled
-    stays NaN, so a partial export is a map with a hole in it rather than
-    a map with a fabricated hollow.
-
-    A file whose points do not sit on a regular grid is refused. Gridding
-    scattered heights is interpolation, and interpolating a landscape
-    from scattered points is the thing this module will not do quietly.
-    """
-    path = Path(path)
-    values: list[tuple[float, float, float]] = []
-    with open(path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or line[0] in "#;":
-                continue
-            parts = re.split(r"[,\s;]+", line)
-            if len(parts) < 3:
-                continue
-            try:
-                values.append((float(parts[0]), float(parts[1]), float(parts[2])))
-            except ValueError:
-                continue  # a header row, named or not
-    if len(values) < 4:
-        raise ValueError(
-            f"'{path.name}' holds {len(values)} usable rows; an elevation "
-            "grid needs at least a 2x2 block of longitude, latitude, elevation."
-        )
-    arr = np.array(values, dtype=float)
-    lons = np.unique(np.round(arr[:, 0], 9))
-    lats = np.unique(np.round(arr[:, 1], 9))
-    if len(lons) < 2 or len(lats) < 2:
-        raise ValueError(
-            f"'{path.name}' spans {len(lons)} longitudes and {len(lats)} "
-            "latitudes; a grid needs at least two of each."
-        )
-    if len(lons) * len(lats) < len(arr):
-        raise ValueError(
-            f"'{path.name}' holds {len(arr)} rows over a "
-            f"{len(lats)}x{len(lons)} grid, so some cells are given twice. "
-            "This reader places points on a grid; it does not interpolate."
-        )
-    # A regular grid has evenly spaced columns and rows. Without this, any
-    # scatter of points is a "grid" whose axes are the distinct coordinates
-    # that happen to appear, and searchsorted drops each reading into a cell
-    # chosen by rounding - a landscape assembled out of nothing.
-    for axis, values in (("longitudes", lons), ("latitudes", lats)):
-        steps = np.diff(values)
-        if len(steps) > 1 and steps.std() > steps.mean() * 0.01:
-            raise ValueError(
-                f"'{path.name}' has unevenly spaced {axis}, so its points do "
-                "not lie on a regular grid. This reader places points on a "
-                "grid; it does not interpolate a surface from scattered "
-                "heights."
-            )
-    filled = int(np.isfinite(grid_fill_probe(arr, lons, lats)).sum())
-    cells = len(lons) * len(lats)
-    if filled * 2 < cells:
-        raise ValueError(
-            f"'{path.name}' fills {filled} of {cells} cells in the "
-            f"{len(lats)}x{len(lons)} grid its coordinates imply. That is a "
-            "scatter of points rather than a grid with gaps in it, and this "
-            "reader does not interpolate a surface from scattered heights."
-        )
-    grid = np.full((len(lats), len(lons)), np.nan)
-    ix = np.searchsorted(lons, np.round(arr[:, 0], 9))
-    iy = np.searchsorted(lats, np.round(arr[:, 1], 9))
-    grid[iy, ix] = arr[:, 2]
-    step = float(np.median(np.diff(lons))) if len(lons) > 1 else 0.0
-    return ElevationGrid(
-        lons, lats, grid,
-        source=f"elevation grid {path.name}",
-        resolution_note=f"{step * 111320:.0f} m cell" if step else "",
-    )
-
-
-def grid_fill_probe(
-    arr: np.ndarray, lons: np.ndarray, lats: np.ndarray
-) -> np.ndarray:
-    """The grid an XYZ file would produce, for counting how full it is."""
-    grid = np.full((len(lats), len(lons)), np.nan)
-    grid[np.searchsorted(lats, np.round(arr[:, 1], 9)),
-         np.searchsorted(lons, np.round(arr[:, 0], 9))] = arr[:, 2]
-    return grid
-
-
-_READERS = {
-    ".hgt": read_srtm_hgt,
-    ".asc": read_esri_ascii,
-    ".grd": read_esri_ascii,
-    ".xyz": read_xyz,
-    ".csv": read_xyz,
-    ".txt": read_xyz,
-}
-
-
-def load_elevation(path: str | Path) -> ElevationGrid:
-    """Read an elevation model, choosing the reader by file extension."""
-    path = Path(path)
-    reader = _READERS.get(path.suffix.lower())
-    if reader is None:
-        raise ValueError(
-            f"'{path.name}' is not an elevation format this toolkit reads. "
-            f"It reads {', '.join(sorted(_READERS))}: an SRTM .hgt tile, an "
-            "ESRI ASCII grid, or longitude/latitude/elevation columns. A "
-            "GeoTIFF can be converted with `gdal_translate -of AAIGrid`."
-        )
-    return reader(path)
 
 
 # ---------------------------------------------------------------------------
@@ -479,8 +146,96 @@ def _contour_interval(z: np.ndarray) -> float:
 # The map
 # ---------------------------------------------------------------------------
 
+def _square(grid: ElevationGrid, site: SiteMetadata | None, radius_km: float,
+            admin_path: str | Path | None = None
+            ) -> tuple[AreaWindow | None, float, float, tuple[float, float, float, float]]:
+    """The square a topographic map of ``grid`` is framed on: its centre
+    (the site's area window, else the middle of the grid) and its
+    ``(west, east, south, north)``, ``radius_km`` each way, worked out as
+    :meth:`ElevationGrid.window` cuts its window."""
+    window = area_window(site, radius_km, admin_path) if site is not None else None
+    if window is not None:
+        lon, lat = float(window.lon), float(window.lat)
+    else:
+        lon, lat = float(np.mean(grid.lons)), float(np.mean(grid.lats))
+    dlat = radius_km / 111.32
+    dlon = radius_km / (111.32 * max(math.cos(math.radians(lat)), 1e-6))
+    return window, lon, lat, (lon - dlon, lon + dlon, lat - dlat, lat + dlat)
+
+
+def _lattice_span(axis: np.ndarray, lo: float, hi: float) -> tuple[int, int]:
+    """How many points of the axis's lattice, carried on past its ends,
+    fall between ``lo`` and ``hi``, and how many of those the axis holds."""
+    n = len(axis)
+    step = (float(axis[-1]) - float(axis[0])) / (n - 1)
+    first = math.ceil((lo - float(axis[0])) / step - 1e-9)
+    last = math.floor((hi - float(axis[0])) / step + 1e-9)
+    if last < first:
+        return 0, 0
+    return last - first + 1, max(0, min(last, n - 1) - max(first, 0) + 1)
+
+
+def uncovered_cells(grid: ElevationGrid, site: SiteMetadata | None, radius_km: float,
+                    admin_path: str | Path | None = None) -> tuple[int, int]:
+    """How many cells of the square a topographic map of ``grid`` is framed
+    on the grid does not reach, and how many cells the square holds, both
+    counted on the grid's own spacing: ``(count, cells)``.
+
+    It is what a window read from tiles counts as uncovered, counted for a
+    single ESRI ASCII or XYZ grid, whose map is cut from the whole grid
+    rather than read as a window. Counts rather than a share, so that
+    :func:`uncovered_note` can choose its sentence in whole numbers, as
+    the read report of tiles does: a share in floating point rounds a gap
+    of a few cells to "0%". A grid with no spacing along an axis, or a
+    square narrower than one of its cells, holds no cells to count, and
+    gives ``(0, 0)``.
+    """
+    _, _, _, (west, east, south, north) = _square(grid, site, radius_km, admin_path)
+    if len(grid.lons) < 2 or len(grid.lats) < 2:
+        return 0, 0
+    across, covered_x = _lattice_span(grid.lons, west, east)
+    down, covered_y = _lattice_span(grid.lats, south, north)
+    cells = across * down
+    return cells - covered_x * covered_y, cells
+
+
+def uncovered_note(count: int, cells: int) -> str | None:
+    """What the read report says of ``count`` cells of the ``cells`` in a
+    map's square that the elevation model does not reach, or None when it
+    reaches them all.
+
+    The share is rounded to a whole per cent in integers, half up, by the
+    rule the read report of tiles follows in both engines. A gap of under
+    half a per cent would round to "0%", which says no ground is missing in
+    the one sentence printed because some is, so its cells are counted
+    instead; and a square the model reaches at all is not called 100%
+    uncovered, so a share that rounds up to the whole is given as 99%.
+    """
+    if count <= 0 or cells <= 0:
+        return None
+    if 200 * count < cells:
+        return phrase("terrain.read_uncovered_little", count=count)
+    pct = (200 * count + cells) // (2 * cells)
+    if count < cells and pct == 100:
+        pct = 99
+    return phrase("terrain.read_uncovered", pct=pct)
+
+
+def _grid_credit(grid: ElevationGrid) -> str:
+    """The credit line of a figure drawn from a grid that was not read as a
+    window: its label, the credit its licence asks for, and its cell size
+    in metres where it is."""
+    lat = float(np.mean(grid.lats))
+    step_lon = (float(grid.lons[-1]) - float(grid.lons[0])) / max(len(grid.lons) - 1, 1)
+    step_lat = (float(grid.lats[-1]) - float(grid.lats[0])) / max(len(grid.lats) - 1, 1)
+    dx, dy = wgs84_cell_size(lat, step_lon, step_lat)
+    if grid.credit:
+        return phrase("terrain.figure_credit", label=grid.source, credit=grid.credit, dx=dx, dy=dy)
+    return phrase("terrain.figure_credit_bare", label=grid.source, dx=dx, dy=dy)
+
+
 def plot_topographic_map(
-    grid: ElevationGrid,
+    data: ElevationRead | ElevationGrid,
     site: SiteMetadata | None = None,
     path: str | Path | None = None,
     style: HouseStyle | None = None,
@@ -493,11 +248,17 @@ def plot_topographic_map(
 ):
     """Topographic map of the study area: relief, contours and spot heights.
 
-    ``grid`` is the elevation model; ``radius_km`` cuts a local window
-    around the site out of it. The figure carries the model's own source
-    and sample spacing, because a contour drawn from 90 m SRTM through a
-    5 km window is a 90 m contour however finely it is plotted, and a
-    reader deciding where to put a borehole is entitled to know that.
+    ``data`` is a window read from GeoTIFF or ``.hgt`` tiles
+    (:func:`.elevation.read_elevation`), drawn as it is and framed on the
+    square it was read for, or a whole grid (an ESRI ASCII or XYZ file),
+    out of which ``radius_km`` cuts a window around the site, framed on the
+    square asked for even where the grid stops short of it: ground the
+    model does not cover is left blank inside the frame, not cut off the
+    map. Either way the figure carries the model's credit line and cell
+    size, because a contour drawn from 90 m SRTM through a 5 km window is
+    a 90 m contour however finely it is plotted, and a reader deciding
+    where to put a borehole is entitled to know that. ``site`` is marked;
+    for a whole grid it also centres the window.
 
     ``spot_heights`` are ``(lon, lat, label)`` triples - the survey's own
     levelled points. They are drawn as measured values on top of the
@@ -505,16 +266,36 @@ def plot_topographic_map(
     reader can see both and the survey is the one that was on the ground.
     """
     style = style or HouseStyle()
-    if radius_km is not None:
-        window = area_window(site, radius_km, admin_path) if site is not None else None
-        if window is not None:
-            grid = grid.window(window.lon, window.lat, radius_km)
-        else:
-            centre_lon = float(np.mean(grid.lons))
-            centre_lat = float(np.mean(grid.lats))
-            grid = grid.window(centre_lon, centre_lat, radius_km)
+    if isinstance(data, ElevationRead):
+        # the read is the square asked for, and the square shown is all of
+        # it when no margin was read around it
+        r0, r1, c0, c1 = data.shown
+        whole = data.grid
+        grid = ElevationGrid(
+            whole.lons[c0:c1], whole.lats[r0:r1], whole.z[r0:r1, c0:c1], source=whole.source,
+            resolution_note=whole.resolution_note, credit=whole.credit, source_id=whole.source_id,
+            files=whole.files, sea_clean=whole.sea_clean,
+        )
+        frame = (float(grid.lons[0]), float(grid.lons[-1]), float(grid.lats[0]), float(grid.lats[-1]))
+        where = data.centre.label
+        stride = data.plan.stride if data.plan is not None else 1
+        # a map wider than the cap on cells allows at the files' own spacing
+        # is read one cell in every few, which is not an average of them,
+        # and the figure says so
+        credit = data.figure_credit
+        if stride > 1:
+            credit += f" One cell in {stride} each way is drawn, without averaging."
     else:
-        window = area_window(site, None, admin_path) if site is not None else None
+        grid = data
+        if radius_km is not None:
+            window, lon, lat, frame = _square(grid, site, radius_km, admin_path)
+            grid = grid.window(lon, lat, radius_km)
+        else:
+            window = area_window(site, None, admin_path) if site is not None else None
+            frame = (float(grid.lons.min()), float(grid.lons.max()),
+                     float(grid.lats.min()), float(grid.lats.max()))
+        where = _where_label(site, window)
+        credit = _grid_credit(grid)
 
     finite = grid.z[np.isfinite(grid.z)]
     if finite.size == 0:
@@ -540,8 +321,11 @@ def plot_topographic_map(
             interpolation="bilinear", zorder=1, aspect="auto",
         )
         if show_hillshade:
+            # hillshade() shades a gap as flat ground at the mean height;
+            # left out here, a gap the files do not cover reads as a gap
+            shade = np.where(np.isfinite(grid.z), hillshade(grid), np.nan)
             ax.imshow(
-                hillshade(grid), extent=extent, origin="lower", cmap="gray",
+                shade, extent=extent, origin="lower", cmap="gray",
                 alpha=0.35, interpolation="bilinear", zorder=2, aspect="auto",
             )
         mesh_lon, mesh_lat = np.meshgrid(grid.lons, grid.lats)
@@ -550,10 +334,10 @@ def plot_topographic_map(
                 mesh_lon, mesh_lat, grid.z, levels=levels,
                 colors="#5A3A1E", linewidths=0.6, zorder=3,
             )
-            ax.clabel(cs, cs.levels[::2], fmt="%g", fontsize=6.5, inline=True)
+            ax.clabel(cs, np.asarray(cs.levels)[::2], fmt="%g", fontsize=6.5, inline=True)
         sm = plt.cm.ScalarMappable(
             cmap=land,
-            norm=plt.Normalize(vmin=float(finite.min()), vmax=float(finite.max())),
+            norm=Normalize(vmin=float(finite.min()), vmax=float(finite.max())),
         )
         cbar = fig.colorbar(sm, ax=ax, pad=0.02, shrink=0.85)
         cbar.set_label("Ground elevation (m)")
@@ -571,13 +355,10 @@ def plot_topographic_map(
             ax.plot(ring[:, 0], ring[:, 1], color="#333333", lw=1.0, zorder=5)
         if site is not None:
             _mark_site(ax, site, "#C1272D")
-        ax.set_xlim(extent[0], extent[1])
-        ax.set_ylim(extent[2], extent[3])
-        credit = grid.source
-        if grid.resolution_note:
-            credit += f", {grid.resolution_note} sampling"
-        _geo_axes_finish(ax, float(np.mean(ax.get_ylim())),
-                         f"Elevation: {credit}. {ADMIN_CREDIT}")
+        # the square asked for, whatever part of it the model covers
+        ax.set_xlim(frame[0], frame[1])
+        ax.set_ylim(frame[2], frame[3])
+        _geo_axes_finish(ax, float(np.mean(ax.get_ylim())), f"{credit} {ADMIN_CREDIT}")
         ax.text(
             0.01, 0.985,
             f"Contour interval {interval:g} m",
@@ -587,7 +368,6 @@ def plot_topographic_map(
                       alpha=0.9),
         )
         if title is None:
-            where = _where_label(site, window)
             title = f"Topographic map - {where}" if where else "Topographic map"
         ax.set_title(title)
         fig.tight_layout()

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import struct
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -183,6 +184,30 @@ def test_srtm_hgt_is_read_the_right_way_up_and_in_the_right_degree_square(tmp_pa
     assert grid.z[0, -1] > grid.z[0, 0]
 
 
+def test_load_elevation_credits_an_undeclared_hgt_as_source_not_stated(tmp_path):
+    """An .hgt tile read whole is labelled as the windowed read labels it:
+    an SRTM-format tile of unstated source, with no product credit, since
+    NASA's SRTM, NASADEM and void-filled compilations all come in this
+    format and the file says nothing of whose it is. Prevents the whole-file
+    reader crediting NASA/USGS for heights that may be someone else's."""
+    from groundwater.mapping.elevation import read_elevation
+    from groundwater.text import phrase
+
+    path = tmp_path / "N08W013.hgt"
+    _write_hgt(path)
+    grid = load_elevation(path)
+    assert grid.source == phrase("terrain.label_hgt", n=1, files="N08W013.hgt")
+    assert "NASA" not in grid.source
+    assert (grid.credit, grid.source_id, grid.sea_clean, grid.files) == ("", "hgt", True, ("N08W013.hgt",))
+    windowed = read_elevation([("N08W013.hgt", path)], None, 1.0, margin_km=0.0)
+    assert (windowed.grid.source, windowed.grid.credit) == (grid.source, grid.credit)
+    # a tile within a degree of a pole is still read whole, as it always was;
+    # only the windowed read, which divides by a cell's width, refuses it
+    polar = tmp_path / "N89W013.hgt"
+    _write_hgt(polar)
+    assert load_elevation(polar).source == phrase("terrain.label_hgt", n=1, files="N89W013.hgt")
+
+
 def test_an_srtm_tile_that_does_not_name_its_corner_is_refused(tmp_path):
     path = tmp_path / "elevation.hgt"
     _write_hgt(path)
@@ -294,14 +319,36 @@ def test_a_grid_with_a_hole_in_it_is_still_a_grid(tmp_path):
     assert np.isnan(grid.z).sum() == 1
 
 
-def test_load_elevation_names_the_formats_it_reads(tmp_path):
-    path = tmp_path / "dem.tif"
+def test_load_elevation_reads_a_geotiff_and_names_the_formats_it_reads(tmp_path):
+    """A GeoTIFF tile reads as it is published, with no GDAL to convert it
+    first: the heights the raw reader gives, its source credited only when
+    its name says so, and a file of another kind refused with the list of
+    what is read rather than with advice to install GDAL."""
+    from pathlib import Path
+
+    from groundwater.geotiff import read_geotiff
+    from groundwater.text import phrase
+
+    dem = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+    name = "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    path = tmp_path / name
+    path.write_bytes((dem / name).read_bytes())
+    grid = load_elevation(path)
+    raster = read_geotiff(dem / name)
+    assert np.array_equal(grid.z, raster.z) and np.array_equal(grid.lons, raster.x)
+    assert np.array_equal(grid.lats, raster.y) and grid.lats[0] < grid.lats[-1]
+    assert grid.source == phrase("terrain.label_copernicus", n=1, tiles="N08 W011")
+    assert grid.credit == phrase("terrain.credit_copernicus_modified") and grid.sea_clean
+    renamed = tmp_path / "clip.TIFF"
+    renamed.write_bytes((dem / name).read_bytes())
+    assert load_elevation(renamed).source == phrase("terrain.label_unidentified", files="clip.TIFF")
+    path = tmp_path / "dem.dat"
     path.write_bytes(b"II*\x00")
     with pytest.raises(ValueError) as excinfo:
         load_elevation(path)
     message = str(excinfo.value)
-    assert ".hgt" in message and ".asc" in message
-    assert "gdal_translate" in message, "say how to convert a GeoTIFF"
+    assert ".hgt" in message and ".asc" in message and ".tif" in message
+    assert "gdal_translate" not in message
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +408,160 @@ def test_topographic_map_renders_with_contours_and_spot_heights(tmp_path):
         spot_heights=[(-12.05, 9.05, "VES 1  84 m")],
     )
     assert path.stat().st_size > 30_000
+
+
+#: Two abutting GLO-30-style tiles, 40 cells square, named as Copernicus
+#: names them (tests/webapp/fixtures/dem/MANIFEST.json)
+DEM = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+COPERNICUS_PAIR = ("Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+                   "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif")
+
+
+def _figure_text(fig) -> str:
+    """Every piece of text drawn in a figure, with its wrapping undone."""
+    texts = list(fig.texts) + [t for ax in fig.axes for t in ax.texts]
+    return " ".join(" ".join(t.get_text().split()) for t in texts)
+
+
+def test_a_topographic_map_is_framed_on_the_square_asked_for_beyond_the_grid_edge():
+    """A window running off the edge of a grid used to be cut to the grid,
+    so the map came out narrower than the square asked for and off centre,
+    with nothing on it to say that ground was missing. The frame is the
+    square, the part the grid does not reach is left blank inside it, and
+    the share of it is worked out for the page to say."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping import area_window
+    from groundwater.mapping.regional import ADMIN_CREDIT
+    from groundwater.mapping.terrain import uncovered_cells
+
+    grid = _grid(n=300)                     # 12.2-11.9 W, 8.9-9.2 N
+    site = _site()
+    centre = area_window(site, 5.0)
+    assert centre is not None
+    dlon = 5.0 / (111.32 * math.cos(math.radians(centre.lat)))
+    dlat = 5.0 / 111.32
+    beyond = centre.lon + dlon - float(grid.lons.max())
+    assert 0.0 < beyond < dlon, "Kuntolo's square runs off the grid's east edge"
+
+    fig = plot_topographic_map(grid, site, radius_km=5.0)
+    try:
+        ax = fig.axes[0]
+        assert ax.get_xlim() == pytest.approx((centre.lon - dlon, centre.lon + dlon))
+        assert ax.get_ylim() == pytest.approx((centre.lat - dlat, centre.lat + dlat))
+        # the catalogue's credit line, with the cell size worked out on the
+        # ellipsoid, then the boundaries' credit
+        text = _figure_text(fig)
+        assert "Elevation: test grid. Cells about 110 by 111 m. " + ADMIN_CREDIT in text
+    finally:
+        plt.close(fig)
+
+    # the share beyond the edge, counted in the grid's own cells
+    count, cells = uncovered_cells(grid, site, 5.0)
+    assert 100.0 * count / cells == pytest.approx(100.0 * beyond / (2 * dlon), abs=2.0)
+    assert uncovered_cells(grid, None, 5.0)[0] == 0, "the middle of the grid is covered"
+
+
+@pytest.mark.parametrize("count, cells, said", [
+    (0, 400, None),
+    (2, 401, "Less than 1% of the window read (2 cells)"),
+    (1, 200, "1% of the window read"),
+    (5, 200, "3% of the window read"),
+    (199, 200, "99% of the window read"),
+    (200, 200, "100% of the window read"),
+])
+def test_the_gap_in_a_grid_map_is_said_in_whole_per_cents_worked_out_in_integers(count, cells, said):
+    """The share of a grid map's square the grid did not reach was a float
+    formatted with no decimals: a real gap of a few cells read "0% of the
+    window read lies outside the files supplied", and half a per cent
+    rounded to even, not up as the read report of tiles rounds it. The
+    share is now worked out in integers, half up; a gap under half a per
+    cent is counted in cells, and a share short of the whole is not called
+    100%."""
+    from groundwater.mapping.terrain import uncovered_note
+
+    note = uncovered_note(count, cells)
+    if said is None:
+        assert note is None
+    else:
+        assert note is not None and note.startswith(said), note
+
+
+def test_a_sliver_of_gap_or_a_corner_of_cover_in_a_grid_map_is_not_rounded_away():
+    """The two ends a float share got wrong, on real grids: a 3-arc-second
+    grid read 27.6 km around its middle misses about a third of a per cent
+    of the square, which was reported as 0%, and a square that reaches two
+    rows and two columns into a grid's corner was reported as 100% outside
+    it beside a map drawn from those cells."""
+    from groundwater.mapping import area_window
+    from groundwater.mapping.terrain import uncovered_cells, uncovered_note
+
+    step = 3 / 3600
+    lons, lats = -12.0 + step * np.arange(601), 8.5 + step * np.arange(601)
+    grid = ElevationGrid(lons, lats, np.full((601, 601), 50.0), source="test grid")
+    count, cells = uncovered_cells(grid, None, 27.6)
+    assert (count, cells) == (1190, 358785)
+    assert uncovered_note(count, cells) == (
+        "Less than 1% of the window read (1,190 cells) lies outside the files "
+        "supplied and is treated as a gap.")
+
+    # a one-arc-second grid whose south-west corner lies a cell and a half
+    # inside the north-east corner of Kuntolo's 10 km square
+    site = _site()
+    centre = area_window(site, 10.0)
+    assert centre is not None
+    step = 1 / 3600
+    west = centre.lon + 10.0 / (111.32 * math.cos(math.radians(centre.lat))) - 1.5 * step
+    south = centre.lat + 10.0 / 111.32 - 1.5 * step
+    grid = ElevationGrid(west + step * np.arange(400), south + step * np.arange(400),
+                         np.full((400, 400), 50.0), source="test grid")
+    assert grid.window(centre.lon, centre.lat, 10.0).z.shape == (3, 3), "a map can be drawn"
+    count, cells = uncovered_cells(grid, site, 10.0)
+    assert cells - count == 4
+    assert uncovered_note(count, cells) == (
+        "99% of the window read lies outside the files supplied and is treated as a gap.")
+
+
+def test_a_topographic_map_of_tiles_is_drawn_from_the_window_read_and_framed_on_it():
+    """The map of GeoTIFF tiles is drawn from the window read for it, framed
+    on the whole of that window even where the tiles stop short of it, and
+    credited with the read's own credit line, Copernicus notice included."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping import read_elevation
+    from groundwater.mapping.regional import ADMIN_CREDIT
+
+    read = read_elevation([(n, DEM / n) for n in COPERNICUS_PAIR], None, 1.0, margin_km=0.0)
+    assert read.uncovered > 0, "the 1 km window runs off the 40-row tiles"
+    fig = plot_topographic_map(read)
+    try:
+        ax = fig.axes[0]
+        assert ax.get_xlim() == (read.grid.lons[0], read.grid.lons[-1])
+        assert ax.get_ylim() == (read.grid.lats[0], read.grid.lats[-1])
+        text = _figure_text(fig)
+        assert " ".join(f"{read.figure_credit} {ADMIN_CREDIT}".split()) in text
+        assert "Copernicus WorldDEM-30" in read.figure_credit
+        assert "One cell in" not in text, "read at the files' own spacing"
+    finally:
+        plt.close(fig)
+
+
+def test_a_topographic_map_wider_than_the_cap_says_it_draws_one_cell_in_several():
+    """A wide map reads every few cells rather than refusing, and the figure
+    says it is not an average of them."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import read_elevation
+
+    read = read_elevation([(n, DEM / n) for n in COPERNICUS_PAIR], None, 1.0, TerrainConfig(max_cells=1000),
+                          stride=0, margin_km=0.0)
+    assert read.plan is not None and read.plan.stride > 1
+    fig = plot_topographic_map(read)
+    try:
+        assert f"One cell in {read.plan.stride} each way is drawn, without averaging." in _figure_text(fig)
+    finally:
+        plt.close(fig)
 
 
 def test_a_topographic_map_of_nothing_but_voids_is_refused(tmp_path):

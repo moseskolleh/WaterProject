@@ -1,4 +1,5 @@
-/* What the browser engine makes of one generated workbook.
+/* What the browser engine makes of one generated workbook, or of one
+ * generated raster or block of one.
  *
  * Loaded into the bare engine page by engine.mjs. Each summary here has a
  * twin in engines.py that builds the same keys from the Python objects; the
@@ -186,10 +187,101 @@
     return out;
   }
 
+  /* engines.py _deflate: PLAN.md step 4.1's DEFLATE block under the
+   * bounded rule, whether it reads and what it gives as strings */
+  function deflate(bytes, name, options) {
+    var block;
+    try {
+      block = C.inflateZlib(bytes, options.expected, options.full);
+    } catch (e) {
+      if (e && e.code) return { verdict: e.code, sha256: null, length: null };
+      throw e;
+    }
+    return { verdict: 'accepted', sha256: C.sha256Hex(block), length: String(block.length) };
+  }
+
+  /* SHA-256 of float64 values, little-endian, every NaN 0x7FF8000000000000
+   * and the signs of zeros kept */
+  function f64Digest(values) {
+    var bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+    for (var i = 0; i < values.length; i++) {
+      if (values[i] !== values[i]) {
+        view.setUint32(8 * i, 0, true);
+        view.setUint32(8 * i + 4, 0x7FF80000, true);
+      } else {
+        view.setFloat64(8 * i, values[i], true);
+      }
+    }
+    return C.sha256Hex(bytes);
+  }
+  /* a number's float64 bits, big-endian, as hex */
+  function f64Hex(v) {
+    if (v !== v) return '7ff8000000000000';
+    var view = new DataView(new ArrayBuffer(8)), out = '';
+    view.setFloat64(0, v, false);
+    for (var i = 0; i < 8; i++) out += (view.getUint8(i) + 256).toString(16).slice(1);
+    return out;
+  }
+  var LAYOUT_FLOATS = ['x0', 'y0', 'sx', 'sy', 'nodata'];
+
+  /* engines.py _geotiff: PLAN.md step 4.1's whole GeoTIFF through the raw
+   * reader, the ranges, the layout or refusal, and the read, every one a
+   * string */
+  function geotiff(bytes, name, options) {
+    var out = { need: null, layout: null, refused: null, values: null, reasons: null, axes: null };
+    try {
+      var need = C.geotiffLayout(name, bytes.length, [[0, bytes.subarray(0, 16)]]);
+      out.need = Array.isArray(need) ? JSON.stringify(need) : 'layout';
+    } catch (e) {
+      if (!e || !e.ident) throw e;
+      out.need = e.ident;
+    }
+    var layout, read;
+    try {
+      layout = C.geotiffLayout(name, bytes.length, [[0, bytes]]);
+      var fields = {};
+      Object.keys(layout).sort().forEach(function (key) {
+        var value = layout[key];
+        fields[key] = LAYOUT_FLOATS.indexOf(key) >= 0 && value !== null ? f64Hex(value) : value;
+      });
+      out.layout = JSON.stringify(fields);
+      read = C.readGeoTiff(bytes, name);
+    } catch (e) {
+      if (!e || !e.ident) throw e;
+      out.refused = e.ident + ': ' + e.message;
+      return out;
+    }
+    var reasons = new Array(layout.width * layout.height);
+    var across = layout.tiled ? Math.ceil(layout.width / layout.blockWidth) : 1;
+    C.blockRanges(layout, 0, layout.height, 0, layout.width).forEach(function (range) {
+      var block = C.decodeTiffBlock(layout, range[0], bytes.subarray(range[1], range[1] + range[2]), range[3],
+        options.bounds);
+      var top = Math.floor(range[0] / across) * layout.blockHeight, left = (range[0] % across) * layout.blockWidth;
+      for (var r = 0; r < block.rows; r++) {
+        for (var c = 0; c < block.cols; c++) {
+          reasons[(top + r) * layout.width + left + c] = block.reasons[r * block.cols + c];
+        }
+      }
+    });
+    var axes = new Float64Array(read.x.length + read.y.length);
+    axes.set(read.x);
+    axes.set(read.y, read.x.length);
+    out.values = f64Digest(read.z);
+    out.reasons = reasons.join('');
+    out.axes = f64Digest(axes);
+    return out;
+  }
+
   var KINDS = { ves: ves, pumping: pumping, quality: quality, drilling: drilling };
+  /* the kinds from rasters.py, handed the file's bytes rather than the
+   * sheets of a workbook */
+  var FILES = { deflate: deflate, geotiff: geotiff };
 
   global.FUZZ = {
     run: async function (kind, name, b64, options) {
+      if (FILES[kind]) {
+        try { return FILES[kind](S.base64ToBytes(b64), name, options || {}); } catch (e) { return failure(e); }
+      }
       var sheets;
       try { sheets = await S.readXlsx(S.base64ToBytes(b64)); } catch (e) { return failure(e); }
       try { return KINDS[kind](sheets, name, options || {}); } catch (e) { return failure(e); }

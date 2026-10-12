@@ -727,7 +727,10 @@ shows what is attached before you build it.
 
 In the browser app: [`#/site`](index.html#/site).
 
-Four tabs, from the country down to the rock under the borehole.
+Four tabs, from the country down to the rock under the borehole. The
+browser app's Site & maps page carries the study area, setting and
+interactive map; the Topography tab, and the subsurface maps outside the
+reports, are in the Python app for now.
 Enter the UTM coordinates in the sidebar to place the site star; the
 window slider sets how much ground the local maps cover. Every figure
 carries its data attribution, and the study area, geological and
@@ -793,19 +796,65 @@ not a unit whose colour you have misread. The entry appears only when
 unmapped ground is actually in the window, so its absence means there is
 none, not that nobody checked.
 
-**Topography** - no elevation model is bundled with this toolkit and
-none is downloaded, so the topographic map is drawn from a file you
-supply and names its source on the figure. Three formats are read
-without GDAL: an SRTM tile (`.hgt`, free from NASA Earthdata; keep the
-filename, because the file carries no header saying where on Earth it
-is), an ESRI ASCII grid (`.asc`, what any GIS exports) or
-longitude/latitude/elevation columns (`.xyz`, `.csv`). A GeoTIFF
-converts with `gdal_translate -of AAIGrid`. You get a hypsometric
-tint, hillshade, labelled contours at an interval chosen for the
-relief, and your soundings as spot heights over it. Below that, the
-ground profile along the traverse, which needs no elevation model at
-all: it is the elevation recorded at each sounding, in order along the
-line, measured at the pegs and straight between them.
+**Topography** (Python app only for now; the browser app's Site & maps
+page says so) - no elevation model is bundled with this toolkit and
+none is downloaded, so the topographic map is drawn from files you
+supply and names their source on the figure. All of it is read without
+GDAL:
+
+- **GeoTIFF tiles** (`.tif`) in longitude and latitude (WGS 84), as
+  Copernicus GLO-30 and USGS EarthExplorer SRTM tiles are published and
+  as QGIS saves a clip: uncompressed or compressed with DEFLATE (with or
+  without a predictor, as the published GLO-30 tiles are), LZW (what
+  GDAL's COG driver and QGIS write by default) or PackBits, in strips or
+  tiles, BigTIFF included. LZW reads more slowly than DEFLATE in the
+  Python app (`bench/README.md` has the figures). A reprojected copy (UTM, for example) is
+  refused rather than resampled, because it has already been resampled
+  once: supply the tile as you downloaded it. JPEG, LERC, Zstandard and
+  the other lossy or newer codecs are refused by name.
+- **SRTM-format tiles** (`.hgt`, from NASA Earthdata). Keep the
+  filename: the file carries no header saying where on Earth it is, so
+  `N08W013.hgt` is placed by its name alone.
+- **One grid** (`.asc`, what any GIS exports, or
+  longitude/latitude/elevation columns in `.xyz` or `.csv`).
+
+GeoTIFF and `.hgt` tiles are read **a window at a time**, only the
+blocks the window meets, and **several tiles are joined** into one
+model. A 40 km window around most sites needs two to four 1-degree
+tiles, so upload all of them; Copernicus tiles abut, SRTM tiles share
+an edge row that must agree to the bit. Tiles that do not sit on one
+grid, or that come from different products, are refused rather than
+resampled. Ground no file covers is a gap, and the map is still framed
+on the whole square asked for, with a sentence saying how much is
+covered. The one exception is the sea: Copernicus and SRTM publish no
+tiles for open sea, so a missing tile is taken as sea, with no height,
+when the full shared edge of every tile beside it is at or below 0 m;
+a missing tile with any land on that edge stays a gap. Supply tiles
+rather than a mosaic of them: a mosaic or clip saved without a no-data
+value fills its gaps with 0 m, which is not sea. Heights below -1000 m
+or above 9000 m, and infinite values, are read as no data and counted.
+When the window is wider than the cap on cells (`terrain.max_cells`),
+the map draws one cell in every few each way, without averaging, and
+says so.
+
+**Credit.** The source is recognised from the tiles' names together
+with their georeferencing, so a renamed tile is credited as a file of
+unstated source; a file laid out exactly like a GLO-30 tile but not
+named like one asks you to say what it is. The *Source of the elevation
+model* box lets you state it, and what you state wins. Copernicus tiles
+carry their licence's "produced using Copernicus WorldDEM-30 ..."
+notice on the figure, and its liability sentence under the download
+(see `THIRD_PARTY_NOTICES.md`). A `.hgt` tile is credited as an
+SRTM-format tile of unstated source unless you say it is SRTM, because
+NASADEM and void-filled compilations such as the viewfinderpanoramas
+tiles use the same format; declare those as another source.
+
+You get a hypsometric tint, hillshade, labelled contours at an
+interval chosen for the relief, and your soundings as spot heights over
+it. Below that, the ground profile along the traverse, which needs no
+elevation model at all: it is the elevation recorded at each sounding,
+in order along the line, measured at the pegs and straight between
+them.
 
 **Subsurface** - maps of this site rather than of the country, every
 one drawn from the soundings themselves: depth to bedrock, interpreted
