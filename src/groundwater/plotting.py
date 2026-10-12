@@ -71,12 +71,23 @@ def figure_context(style: HouseStyle | None = None):
             raise
 
 
-def save_figure(fig, path: str | Path, style: HouseStyle | None = None) -> Path:
-    """Save with consistent DPI and tight layout; return the path."""
+def save_figure(fig, path: str | Path, style: HouseStyle | None = None, svg: bool = False) -> Path:
+    """Save with consistent DPI and tight layout; return the path.
+
+    With ``svg`` the figure is also written as ``path.with_suffix(".svg")``,
+    before it is closed, for a figure a reader will want to scale or edit:
+    the lines and the text stay vectors, and a raster layer in it is kept
+    at its own resolution. The SVG carries no date and no matplotlib
+    version, as the PNG carries none, so the same figure writes the same
+    metadata whenever it is drawn.
+    """
     style = style or _DEFAULT
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=style.figure_dpi, bbox_inches="tight", metadata={"Software": None})
+    if svg:
+        fig.savefig(path.with_suffix(".svg"), format="svg", dpi=style.figure_dpi, bbox_inches="tight",
+                    metadata={"Creator": None, "Date": None})
     plt.close(fig)
     return path
 

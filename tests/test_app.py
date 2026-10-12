@@ -502,7 +502,8 @@ def test_the_topography_tab_draws_a_map_from_geotiff_tiles(sample_data):
     at.session_state["meta_zone"] = "29N"
     at.run()
     assert not at.exception, at.exception
-    assert phrase("terrain.browser_reads_none") in [str(c.value) for c in at.caption]
+    captions = [str(c.value) for c in at.caption]
+    assert phrase("terrain.python_only") in captions and phrase("terrain.not_in_reports") in captions
     at.slider(key="map_radius").set_value(5)
 
     # a projected copy is refused by name, and the map cannot be asked for
@@ -599,6 +600,128 @@ def test_a_topographic_map_is_not_shown_beside_files_it_was_not_drawn_from(sampl
     at.file_uploader(key="dem_upload").set_value([])
     at.run()
     assert not shown(), "no files at all"
+
+
+def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_data):
+    """The Topography tab drew a map of the tiles and nothing more. "Analyse
+    the terrain" reads the window with its margin, analyses it and draws the
+    four terrain figures, each with the engine's captions under it and its
+    PNG and SVG offered, the drainage lines as GeoJSON, the read report, and
+    the Copernicus liability sentence under the downloads. The session keeps
+    the files and the sentences, not the analysis, and the radius and the
+    threshold are carried through a visit to another page."""
+    import json
+
+    import numpy as np
+
+    from groundwater.text import phrase
+
+    dem = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+    pair = [(n, (dem / n).read_bytes(), "image/tiff")
+            for n in ("Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+                      "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif")]
+    notice = phrase("terrain.copernicus_liability")
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Site maps"
+    # a GPS fix on the two tiles' shared edge, 8.995 N, 11.0 W
+    at.session_state["meta_easting"] = 280126.0
+    at.session_state["meta_northing"] = 994900.0
+    at.session_state["meta_zone"] = "29N"
+    at.run()
+    assert not at.exception, at.exception
+    at.file_uploader(key="dem_upload").set_value(pair)
+    at.run()
+    # the tiles are 40 cells, about 1.2 km, either side of 11 W
+    at.number_input(key="terrain_radius_km").set_value(1.0)
+    at.number_input(key="terrain_area_km2").set_value(0.05)
+    at.run()
+    at.button(key="run_terrain").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert not at.error, [e.value for e in at.error]
+
+    result = at.session_state["terrain_result"]
+    assert set(result) == {"figures", "geojson", "summary", "captions", "notes", "notice", "inputs"}
+    assert not any(isinstance(value, np.ndarray) for value in result["summary"].values()), (
+        "the analysis's layers are dropped")
+    assert [key for key, _, _ in result["figures"]] == ["relief", "wetness", "curvature", "directions"]
+    names = []
+    for key, png, svg in result["figures"]:
+        assert Path(png).name == f"terrain_{key}.png" and Path(svg) == Path(png).with_suffix(".svg")
+        assert Path(png).stat().st_size > 20_000 and Path(svg).stat().st_size > 20_000
+        names += [Path(png).name, Path(svg).name]
+    lines = json.loads(Path(result["geojson"]).read_text(encoding="utf-8"))
+    assert lines["features"], "a 0.05 km2 threshold traces lines on the tiles"
+    assert lines["description"] == result["captions"]["geojson_description"]
+    assert lines["notice"] == result["notice"] == notice
+    assert result["notes"][0].startswith("Read 2 files (")
+
+    captions = [str(c.value) for c in at.caption]
+    for key in ("relief", "wetness", "curvature", "directions"):
+        assert result["captions"][key] in captions, key
+    assert all(note in captions for note in result["notes"])
+    assert notice in captions
+    offered = [element.proto.label for element in at.get("download_button")]
+    assert [f"Download {name}" for name in names] + ["Download the drainage lines (GeoJSON)"] == [
+        label for label in offered if "terrain_" in label or "drainage" in label]
+
+    goto(at, "Overview")
+    goto(at, "Site maps")
+    assert not at.exception, at.exception
+    assert at.number_input(key="terrain_radius_km").value == 1.0
+    assert at.number_input(key="terrain_area_km2").value == 0.05
+    assert at.session_state["terrain_result"] == result, "the same files, handed back by the uploader"
+    assert result["captions"]["relief"] in [str(c.value) for c in at.caption]
+
+
+def test_the_topography_tab_analyses_an_ascii_grid_in_a_window_of_its_own(sample_data):
+    """An ESRI ASCII grid is read whole, not as a window of tiles, so the
+    analysis cuts the window out of it around the site, the margin as far
+    as the grid reaches, and credits the figures and the drainage lines
+    with the grid's own line; there is no Copernicus notice to give."""
+    import json
+    import re
+
+    from groundwater.text import phrase
+
+    # a valley along 11 W falling to the south, at 3 arc-seconds
+    n, step = 120, 1 / 1200
+    rows = []
+    for r in range(n):                       # the file runs north first
+        lat = 8.95 + (n - 1 - r + 0.5) * step
+        rows.append(" ".join(
+            f"{50 + 2000 * abs(-11.05 + (c + 0.5) * step + 11.0) + 1000 * (lat - 8.95):.1f}"
+            for c in range(n)))
+    text = (f"ncols {n}\nnrows {n}\nxllcorner -11.05\nyllcorner 8.95\ncellsize {step!r}\n"
+            "NODATA_value -9999\n" + "\n".join(rows) + "\n")
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Site maps"
+    at.session_state["meta_easting"] = 280126.0
+    at.session_state["meta_northing"] = 994900.0
+    at.session_state["meta_zone"] = "29N"
+    at.run()
+    at.file_uploader(key="dem_upload").set_value([("valley.asc", text.encode(), "text/plain")])
+    at.run()
+    at.number_input(key="terrain_radius_km").set_value(1.0)
+    at.number_input(key="terrain_area_km2").set_value(0.05)
+    at.run()
+    at.button(key="run_terrain").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert not at.error, [e.value for e in at.error]
+
+    result = at.session_state["terrain_result"]
+    assert result["notice"] is None and result["notes"] == [], "a GPS fix, inside the grid"
+    lines = json.loads(Path(result["geojson"]).read_text(encoding="utf-8"))
+    assert lines["features"], "the valley drains more than 0.05 km2"
+    assert lines["attribution"].startswith("Elevation: ") and "valley.asc" in lines["attribution"]
+    assert "notice" not in lines and lines["description"] == result["captions"]["geojson_description"]
+    # the grid ends 5 km south of the site, so the square shown has about 4
+    # km of the 5 km margin on that side, and the caption says what it had
+    said = re.search(r"over a square ([0-9.]+) km wider on every side", result["captions"]["relief"])
+    assert said and 3.8 <= float(said.group(1)) <= 4.1, result["captions"]["relief"]
+    assert phrase("terrain.caption_edge", margin=float(said.group(1))) in result["captions"]["relief"]
+    assert all(Path(png).is_file() and Path(svg).is_file() for _, png, svg in result["figures"])
 
 
 def test_project_state_tracked(app):

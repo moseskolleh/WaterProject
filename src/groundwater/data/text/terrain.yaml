@@ -466,7 +466,13 @@ stage_shading: Shading the relief
 
 stage_curvature: Working out curvature and wetness
 
-# Said by both apps until the browser reads elevation models itself.
-browser_reads_none: >-
-  The browser app does not read elevation models yet; the Topography tab of
-  the Python app's Site maps page does.
+# Said by both apps: what of the terrain work only the Python app does, and
+# that neither app's reports carry it yet (PLAN.md step 4.4).
+python_only: >-
+  The browser app reads GeoTIFF and .hgt elevation models; ESRI ASCII and XYZ
+  grids, the topographic map over the wider map radius and the ground profile
+  on the Site maps page are in the Python app.
+
+not_in_reports: >-
+  The topographic map and the terrain figures are not carried into the reports
+  yet.

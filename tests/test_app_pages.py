@@ -80,8 +80,10 @@ def test_the_terrain_inputs_are_carried_between_pages():
     """Streamlit drops a widget's value at the end of a run that does not
     draw it, so the source declared for an elevation model would go each
     time the Site maps page was off screen, and the next map would credit
-    the tiles as their names alone say. The declaration is carried as the
-    map window is, and still goes with the model when a project is loaded."""
+    the tiles as their names alone say; the terrain analysis's radius and
+    drainage threshold would go back to their defaults the same way. All
+    four are carried as the map window is, and still go with the model
+    when a project is loaded."""
     import state
     from groundwater.project_io import stale_on_load
 
@@ -93,13 +95,15 @@ def test_the_terrain_inputs_are_carried_between_pages():
             key = _key_of(name, call)
             if key is not None and key.startswith("terrain_"):
                 terrain.add(key)
-    assert {"terrain_source", "terrain_source_text"} <= terrain
+    inputs = {"terrain_source", "terrain_source_text", "terrain_radius_km", "terrain_area_km2"}
+    assert terrain == inputs
     assert all(state.carried(key) for key in terrain), terrain
     session = {"terrain_source": "other", "terrain_source_text": "viewfinderpanoramas",
-               "dem_upload_kept": {"ids": [], "files": []}, "map_radius": 40}
-    assert set(state.carry_widget_values(session)) == {
-        "terrain_source", "terrain_source_text", "map_radius"}
-    assert {"terrain_source", "terrain_source_text"} <= set(stale_on_load(session))
+               "terrain_radius_km": 5.0, "terrain_area_km2": 0.25,
+               "dem_upload_kept": {"ids": [], "files": []}, "map_radius": 40,
+               "terrain_result": {"figures": []}}
+    assert set(state.carry_widget_values(session)) == inputs | {"map_radius"}
+    assert inputs | {"terrain_result"} <= set(stale_on_load(session))
 
 
 def test_a_fragment_holds_no_saved_input():
