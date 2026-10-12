@@ -63,6 +63,8 @@ So, concretely, what is missing:
    answer "is that a swamp, a village, a road, a quarry?"
 3. **No terrain.** Which is the gap that costs the most, because siting
    in weathered/fractured basement is largely a topographic argument.
+   (PLAN.md step 4.1 has since added a terrain analysis to both apps,
+   from an elevation model the operator supplies; see 4.1 below.)
 4. **No geoprocessing.** No buffer, overlay, watershed, viewshed or
    zonal statistics. The separation distances in
    `data/site_separation_distances.csv` are enforced as *numbers*, never
@@ -167,8 +169,22 @@ New components: `terrain_position` (valley bottom versus interfluve),
 `wetness_index`, `distance_to_lineament`, `upslope_contributing_area`.
 In basement terrain these are not decoration — valley bottoms and
 lineament intersections are where the weathered profile thickens and
-the fractures connect. Needs a DEM (SRTM or Copernicus 30 m COG) added
-to `data_provenance.yaml` with its SHA-256, like everything else.
+the fractures connect. Needs a DEM (SRTM or Copernicus 30 m COG), and
+that DEM is never bundled: the operator downloads the tiles by hand and
+supplies them, so `data_provenance.yaml` records each source (the
+`copernicus_dem_glo30` and `srtm_hgt` entries) with its licence and
+credit and `files: []`, because there is no committed file to pin a
+SHA-256 to.
+
+**Part done (PLAN.md step 4.1).** Both apps now read the operator's
+GeoTIFF or `.hgt` tiles a window at a time and work out the filled
+surface, D8 flow with flats resolved, upslope area, drainage lines with
+Strahler order, the wetness index, profile and tangential curvature and
+hillshade from several directions. They do it in the toolkit's own two
+engines, held to each other by parity, rather than in Whitebox; they
+draw the layers as figures and write the drainage lines as GeoJSON. The
+four siting components above, lineaments (step 4.2) and basin
+delineation are still to do.
 
 **4.2 Pre-survey screening — a lifecycle stage we do not cover.** The
 toolkit currently begins when field data arrives. It has nothing to say
@@ -291,8 +307,9 @@ thousand-tool GIS.
   inlining it in a shared project file — ShareAlike travels with an
   inlined copy. Any new DEM or population raster goes into
   `data_provenance.yaml` and `THIRD_PARTY_NOTICES.md` with its licence
-  and SHA-256, and reads **unverified — needs confirmation** until it is
-  evidenced.
+  and, if a file is bundled, its SHA-256 (one the operator supplies, as
+  the elevation models are, is recorded with `files: []`), and reads
+  **unverified — needs confirmation** until it is evidenced.
 - **Credentials.** `redactCredentials()` runs on anything leaving the
   workspace; the Python package redacts by default. Our own rule — the
   API key never enters a saved project file — must hold for

@@ -421,7 +421,7 @@ further and name one thing on them:
 | Address | Opens |
 |---|---|
 | [`#/overview`](index.html#/overview) | Overview |
-| [`#/site`](index.html#/site) | Site & maps |
+| [`#/site`](index.html#/site), [`#/site/terrain`](index.html#/site/terrain) | Site & maps, at its topography and terrain card <!-- 4.1c: check against the built page --> |
 | [`#/ves`](index.html#/ves), `#/ves/VES-3` | Geophysics, at sounding VES-3 |
 | [`#/vescopilot`](index.html#/vescopilot) | VES co-pilot |
 | [`#/design`](index.html#/design) | Borehole design |
@@ -725,12 +725,15 @@ shows what is attached before you build it.
 
 ## 10. Site maps
 
-In the browser app: [`#/site`](index.html#/site).
+In the browser app: [`#/site`](index.html#/site), and the terrain
+at [`#/site/terrain`](index.html#/site/terrain).
 
-Four tabs, from the country down to the rock under the borehole. The
-browser app's Site & maps page carries the study area, setting and
-interactive map; the Topography tab, and the subsurface maps outside the
-reports, are in the Python app for now.
+From the country down to the rock under the borehole. The Python app
+lays the page out in four tabs: Study area & setting, Topography,
+Subsurface and Interactive. The browser app's Site & maps page is one
+page of cards instead: where the site sits, the study area, geology and
+aquifers, topography and terrain, and the interactive map. <!-- 4.1c: check against the built page -->
+The subsurface maps outside the reports are in the Python app for now.
 Enter the UTM coordinates in the sidebar to place the site star; the
 window slider sets how much ground the local maps cover. Every figure
 carries its data attribution, and the study area, geological and
@@ -796,11 +799,13 @@ not a unit whose colour you have misread. The entry appears only when
 unmapped ground is actually in the window, so its absence means there is
 none, not that nobody checked.
 
-**Topography** (Python app only for now; the browser app's Site & maps
-page says so) - no elevation model is bundled with this toolkit and
-none is downloaded, so the topographic map is drawn from files you
-supply and names their source on the figure. All of it is read without
-GDAL:
+**Topography** - no elevation model is bundled with this toolkit and
+none is downloaded, so the terrain is worked out from files you supply,
+and every figure names their source. Both apps read GeoTIFF and `.hgt`
+tiles and analyse the ground around the site: the Python app on its
+Topography tab, the browser app on the *Topography and terrain* card
+([`#/site/terrain`](index.html#/site/terrain)). <!-- 4.1c: check against the built page -->
+None of it needs GDAL.
 
 - **GeoTIFF tiles** (`.tif`) in longitude and latitude (WGS 84), as
   Copernicus GLO-30 and USGS EarthExplorer SRTM tiles are published and
@@ -808,53 +813,252 @@ GDAL:
   without a predictor, as the published GLO-30 tiles are), LZW (what
   GDAL's COG driver and QGIS write by default) or PackBits, in strips or
   tiles, BigTIFF included. LZW reads more slowly than DEFLATE in the
-  Python app (`bench/README.md` has the figures). A reprojected copy (UTM, for example) is
-  refused rather than resampled, because it has already been resampled
-  once: supply the tile as you downloaded it. JPEG, LERC, Zstandard and
-  the other lossy or newer codecs are refused by name.
+  Python app (`bench/README.md` has the figures). A reprojected copy (UTM,
+  for example) is refused rather than resampled, because it has already
+  been resampled once: supply the tile as you downloaded it. JPEG, LERC,
+  Zstandard and the other lossy or newer codecs are refused by name, and
+  so are old-style LZW, a rotated grid or one placed by control points,
+  scaled values, a GDAL mask of invalid cells, and a file cut into more
+  blocks than `terrain.max_blocks`. Each refusal is a sentence that
+  names the file and says why, and what to do where there is something
+  to do.
 - **SRTM-format tiles** (`.hgt`, from NASA Earthdata). Keep the
   filename: the file carries no header saying where on Earth it is, so
   `N08W013.hgt` is placed by its name alone.
-- **One grid** (`.asc`, what any GIS exports, or
-  longitude/latitude/elevation columns in `.xyz` or `.csv`).
+- **One grid** (Python app only): `.asc`, what any GIS exports, or
+  longitude/latitude/elevation columns in `.xyz` or `.csv`. It is read
+  whole and on its own, never joined to other files.
 
-GeoTIFF and `.hgt` tiles are read **a window at a time**, only the
-blocks the window meets, and **several tiles are joined** into one
-model. A 40 km window around most sites needs two to four 1-degree
-tiles, so upload all of them; Copernicus tiles abut, SRTM tiles share
-an edge row that must agree to the bit. Tiles that do not sit on one
-grid, or that come from different products, are refused rather than
-resampled. Ground no file covers is a gap, and the map is still framed
-on the whole square asked for, with a sentence saying how much is
-covered. The one exception is the sea: Copernicus and SRTM publish no
-tiles for open sea, so a missing tile is taken as sea, with no height,
-when the full shared edge of every tile beside it is at or below 0 m;
-a missing tile with any land on that edge stays a gap. Supply tiles
-rather than a mosaic of them: a mosaic or clip saved without a no-data
-value fills its gaps with 0 m, which is not sea. Heights below -1000 m
-or above 9000 m, and infinite values, are read as no data and counted.
-When the window is wider than the cap on cells (`terrain.max_cells`),
-the map draws one cell in every few each way, without averaging, and
-says so.
+**Where to get the tiles.** Download them by hand; neither app links
+to them or fetches them. Copernicus GLO-30 tiles are in the
+copernicus-dem-30m bucket of the Registry of Open Data on AWS, and NASA
+SRTM and NASADEM tiles on NASA Earthdata and USGS EarthExplorer. The
+tiles on viewfinderpanoramas are void-filled compilations of several
+sources: declare them as *Another source* (see Credit, below).
+
+**Several tiles, and why.** GeoTIFF and `.hgt` tiles are read a window
+at a time, only the blocks the window meets, and several tiles are
+joined into one model. The terrain analysis reads the square shown and
+5 km beyond it on every side, 30 km across at the defaults, so a site
+within 15 km of the edge of a 1-degree tile needs the tile beside it as
+well, and a site near a corner all four tiles that meet there. The
+Python app's wider topographic map (below), 40 km each way by default,
+needs two to four tiles around most sites. Supply every tile the window
+touches. Copernicus tiles abut; SRTM tiles share an edge row, which must
+agree to the bit. Tiles that do not sit on one grid, or that come from
+different products, are refused rather than resampled.
+
+**Supply tiles, not a mosaic.** A mosaic or clip of tiles saved
+without a no-data value fills its gaps with 0 m, and 0 m is what
+Copernicus writes for the sea. So a 0 m area that meets the land along
+a straight line of grid cells 150 long or more
+(`terrain.sea_straight_edge_cells`) is taken for such a fill and treated
+as a gap rather than sea, and the caption says how much of the square
+that was; a smaller fill can still pass for sea. And unless the files
+are Copernicus or SRTM-format tiles, recognised or declared, a drainage
+line that ends in ground at or below 0 m is dashed, because that ground
+may be a fill value rather than the sea. Supply the tiles as you
+downloaded them and neither question arises.
+
+**Gaps, missing tiles and the sea.** Ground no file covers is a gap,
+and the read says how much of the window that is. The one exception is
+the sea: Copernicus and SRTM publish no tiles for open sea, so a missing
+tile is taken as sea, with no height, when the full shared edge of every
+tile beside it is at or below 0 m; a missing tile with any land on that
+edge stays a gap. The figures hatch it. The sea itself is ground at or
+below 0 m (`terrain.sea_level_m`) joined to the edge of the analysed
+square, so a tidal estuary counts as sea and the drainage lines end at
+its head; ground at or below 0 m inland that is not joined to the edge
+stays land. Heights below -1000 m or above 9000 m, and infinite values, are
+read as no data and counted.
 
 **Credit.** The source is recognised from the tiles' names together
 with their georeferencing, so a renamed tile is credited as a file of
 unstated source; a file laid out exactly like a GLO-30 tile but not
-named like one asks you to say what it is. The *Source of the elevation
-model* box lets you state it, and what you state wins. Copernicus tiles
-carry their licence's "produced using Copernicus WorldDEM-30 ..."
-notice on the figure, and its liability sentence under the download
-(see `THIRD_PARTY_NOTICES.md`). A `.hgt` tile is credited as an
-SRTM-format tile of unstated source unless you say it is SRTM, because
-NASADEM and void-filled compilations such as the viewfinderpanoramas
-tiles use the same format; declare those as another source.
+named like one asks you to say what it is. A file that looks like a
+FABDEM tile is flagged: its makers license it for non-commercial use
+only, the Copernicus notices may apply to it too, and the credit is
+yours to add. The *Source of the elevation model* choice (detect it from
+the file names, Copernicus GLO-30, SRTM, or another source in your own
+words) lets you state the source, and what you state wins. <!-- 4.1c: check against the built page -->
+Copernicus tiles carry their licence's "produced using Copernicus
+WorldDEM-30 ..." notice inside every figure, and its liability sentence
+under the downloads, in the drainage lines' GeoJSON and, in the browser
+app, in small print on the card (see `THIRD_PARTY_NOTICES.md`). <!-- 4.1c: check against the built page -->
+A `.hgt` tile is credited as an SRTM-format tile of unstated source
+unless you say it is SRTM, because NASADEM and void-filled compilations
+such as the viewfinderpanoramas tiles use the same format; declare those
+as another source.
 
-You get a hypsometric tint, hillshade, labelled contours at an
-interval chosen for the relief, and your soundings as spot heights over
-it. Below that, the ground profile along the traverse, which needs no
-elevation model at all: it is the elevation recorded at each sounding,
-in order along the line, measured at the pegs and straight between
-them.
+**The window, the margin and the cap.** The square shown runs 10 km
+each way from the site by default (`terrain.analysis_radius_km`). It is
+centred on the GPS fix; without one, on the chiefdom or district, and
+with no location at all, on the middle of the files, and the read says
+which. The analysis also works over 5 km beyond the square on every side
+(`terrain.analysis_buffer_km`), so that the edge of the analysis does
+not bend the drainage lines: the lines are traced over the whole and cut
+where the map ends. Checked against an 11 km margin on three 10 km
+windows of a real Copernicus tile, no undashed line cell in the square
+shown appeared or disappeared, and 0 to 100 of them kept a changed
+upslope area. At the defaults the analysed square is about 983 by 979
+cells at 1 arc-second. It may hold at most 2,000,000 cells, margin
+included (`terrain.max_cells`), in both apps alike, so that whether a
+window is refused does not depend on which app ran it: at 1 arc-second
+the widest square shown is 16.5 km each way, and a wider radius is
+refused with the radius that fits. Coarser tiles fit a wider radius.
+
+**Analysing the terrain.** Add the tiles: in the Python app with the
+uploader on the Topography tab, in the browser app by dropping them on
+the card or picking them (any file can be picked; the card reads each
+one to see what it is). <!-- 4.1c: check against the built page -->
+Each GeoTIFF and `.hgt` file is read for its layout as soon as it is
+added, so a refusal, or a question about its source, shows beside its
+name before anything is analysed; the browser card also lists each
+file's size and the source detected. <!-- 4.1c: check against the built page -->
+Set the radius of the square shown (1 to 50 km) and the drainage
+threshold (0.05 to 100 km²; 0.5 km² unless `terrain.drainage_area_km2`
+says otherwise): a drainage line starts where more than that drains to
+a cell. <!-- 4.1c: check against the built page --> Then press
+**Analyse the terrain**. The progress names each stage as it runs, from
+reading the elevation model to working out curvature and wetness. In the
+browser app the analysis runs in the background, with the bar across the
+top of the page and its **Cancel**, which stops it and keeps nothing. <!-- 4.1c: check against the built page -->
+What the read found comes first: the files read, the cells and their
+size, how much of the window is a gap or taken as sea, and any heights
+read as no data. Then the four figures, each with the same captions
+under it in both apps. <!-- 4.1c: check against the built page -->
+
+In the browser app a new drainage threshold redraws the lines without
+analysing the ground again: the card traces them afresh on the page
+from the analysis it holds, and redraws the relief figure and the
+GeoJSON with them. <!-- 4.1c: check against the built page --> The
+Python app keeps the figures but not the analysis, so a new threshold
+there needs another press of the button. The lines come out the same
+either way. A new radius, other files or another declared source need a
+new analysis in both apps, and the figures drawn from the old files or
+the old source are taken away. <!-- 4.1c: check against the built page -->
+
+**The four figures.** Everything on them is worked out from the
+elevation model alone, so it is a candidate to check on the ground, not
+a mapped stream, spring, wet patch or fracture. The heights are of a
+surface, not always of the ground: Copernicus GLO-30 is a surface model
+whose heights include tree canopy and buildings, SRTM-format heights
+come from radar and include part of them, and the heights of any other
+file should be taken to include them. Each figure draws its credit line
+and that caveat inside the image, so both go with a downloaded PNG or
+SVG; the captions under it say the rest. On every map the sea is pale
+blue, a missing tile taken as sea the same blue hatched, and gaps grey.
+
+- **Shaded relief and drainage lines.** The land coloured by height
+  under a hillshade lit from four directions (GDAL's multidirectional
+  composite), with contours at an interval chosen for the relief, and
+  the drainage lines, drawn wider as their Strahler order rises. Water
+  is routed over a surface whose closed hollows are filled to their
+  spill level, and across flat ground by its distance from higher and
+  lower ground rather than by slope. Land the fill raised by 1 m or more
+  (`terrain.fill_note_m`) is tinted purple, and a stretch of line routed
+  across a filled hollow or a flat is drawn paler. Those are the least
+  certain stretches, because a hollow or a flat may be real or made by
+  canopy, buildings or an embankment that the model records as ground,
+  and they are most of the lines: in three 10 km windows of a real
+  Copernicus tile, 79 to 87 percent of the drainage-line cells were
+  routed that way. A dashed line may take in water from beyond the
+  analysed square or from behind a gap in the model (and, for files
+  other than Copernicus or SRTM-format tiles, from behind ground at or
+  below 0 m, which may be a fill rather than the sea), so its upslope
+  area and order may be larger or smaller than shown. The captions give
+  the share of the square taken as sea or as a 0 m fill, the share of
+  the line cells drawn paler and of the land tinted, and any cells on
+  flats left without a direction.
+- **Topographic wetness index**, ln(a / tan β), with water routed to a
+  single neighbour (D8): high values mark ground where water gathers
+  and lingers. Slopes gentler than 0.001 (`terrain.flat_tan_slope`) are
+  taken as 0.001, so a swamp floor still shows. Lightened cells receive
+  water from beyond the analysed square or from behind a gap, so their
+  values are uncertain.
+- **Curvature**, worked out over about 90 m
+  (`terrain.curvature_spacing_m`), per km, in two panels. Down the slope
+  (profile), positive is convex, where flow speeds up, and negative
+  concave; across it (tangential), negative is converging flow, the
+  hollows, and positive diverging, the spurs. Ground flatter than 0.001
+  is not drawn.
+- **Shaded relief from four directions**: four panels, lit from the
+  west, north-west, north and north-east (270, 315, 0 and 45 degrees) at
+  45 degrees above the horizon, so that none is lit from the bottom of
+  the map, where light makes valleys read as ridges. A straight feature
+  shows most strongly under light across it and fades under light along
+  it; anything seen here is inferred from the terrain, not confirmed by
+  geophysics.
+
+**Downloads.** Each figure downloads as PNG and SVG, and the drainage
+lines as GeoJSON (*Drainage lines (GeoJSON)* on the browser card). <!-- 4.1c: check against the built page -->
+Each GeoJSON feature is one piece of a line inside the square shown,
+with its link number and part, its Strahler order, where it ends, its
+upslope area in km² and its length in metres, `edge_contaminated` where
+it is dashed on the figure, and `flat_routed_cells` and `filled_cells`:
+its cells routed across flats or filled hollows, and those of them the
+fill raised by 1 m or more. The file's `description` says what the lines
+are and are not, and the file carries the figures' credit line. The
+layers themselves are not offered as GeoTIFF yet.
+
+**Nothing is saved with the project, and nothing goes into a report
+yet.** The tiles, the radius and threshold chosen on the page, the
+figures and the drainage lines belong to the session: loading a project
+drops them in both apps, as starting a new project or resetting does in
+the browser app, so add the tiles again to work the terrain out afresh;
+the same files and settings give the same figures. <!-- 4.1c: check against the built page --> The topographic map
+and the terrain figures are not carried into any report yet, and both
+apps say so on the page; download the figures to use them.
+
+**On a phone, and from a copy opened as a file.** If the browser app's
+background engine stops partway through the terrain, most likely for
+lack of memory, the card says so and suggests a smaller radius, rather
+than running the analysis again on the page, where it could take the
+tab down with it. A device that reports 2 GB of memory or less asks
+before it analyses a window of more than 1,000,000 cells; the default
+window at 1 arc-second is just under that. <!-- 4.1c: check against the built page -->
+A copy opened as a file has no background engine: the card says before
+a run that the page will be held until the analysis finishes, and
+Cancel is read only between reading the files and analysing them. <!-- 4.1c: check against the built page -->
+
+**Settings.** The radius and the threshold are set on the page; the
+rest are under `terrain` in the project's configuration. Most of these
+defaults are provisional choices that want a hydrogeologist's or the
+owner's confirmation; the changelog lists which, and why.
+
+| Setting | Default | What it sets |
+|---|---|---|
+| `terrain.analysis_radius_km` | 10 | the radius the page starts at |
+| `terrain.analysis_buffer_km` | 5 | the margin analysed beyond the square shown |
+| `terrain.max_cells` | 2,000,000 | the cap on the cells analysed, margin included, and on the cells the wider map draws before it thins them |
+| `terrain.max_blocks` | 100,000 | the most blocks a file may be cut into, or a window may need decoded |
+| `terrain.sea_level_m` | 0 | ground at or below this, joined to the edge, is sea |
+| `terrain.sea_straight_edge_cells` | 150 | a 0 m area meeting land along a straight line this many cells long is a fill, not sea |
+| `terrain.implausible_below_m`, `terrain.implausible_above_m` | -1000, 9000 | heights outside these are read as no data |
+| `terrain.drainage_area_km2` | 0.5 | the drainage threshold the page starts at, in km² |
+| `terrain.fill_note_m` | 1 | the raise at which filled land is tinted |
+| `terrain.flat_tan_slope` | 0.001 | the least slope (as a tangent) the wetness index takes, and the slope below which curvature is not drawn |
+| `terrain.curvature_spacing_m` | 90 | the distance curvature is worked out over |
+| `terrain.hillshade_azimuths_deg` | 225, 270, 315, 360 | the suns of the composite hillshade |
+| `terrain.hillshade_panel_azimuths_deg` | 270, 315, 0, 45 | the suns of the four panels |
+| `terrain.hillshade_altitude_deg` | 45 | the height of the sun above the horizon |
+| `terrain.hillshade_z_factor` | 1 | the vertical exaggeration: none |
+
+**The topographic map and the ground profile** (Python app only). The
+Topography tab also draws a topographic map over the wider window the
+slider at the top of the page sets: a hypsometric tint, hillshade,
+labelled contours at an interval chosen for the relief, and your
+soundings as spot heights over it, from tiles or from one `.asc` or
+`.xyz` grid. The map is framed on the whole square asked for, with a
+sentence saying how much of it the files cover. When the window holds
+more cells than `terrain.max_cells`, the map draws one cell in every few
+each way, without averaging, and says so. Below that, the ground
+profile along the traverse, which needs no elevation model at all: it
+is the elevation recorded at each sounding, in order along the line,
+measured at the pegs and straight between them. Both apps' geophysical
+survey reports carry the profile. The Python app also analyses one
+`.asc` or `.xyz` grid, cut to the same window and held to the same cap
+as tiles.
 
 **Subsurface** - maps of this site rather than of the country, every
 one drawn from the soundings themselves: depth to bedrock, interpreted
