@@ -78,6 +78,20 @@ fill_order: >-
 no_georeference: >-
   {file} carries no georeferencing, so where its cells lie is not known.
 
+# Infinite or not-a-number origins, longitudes beyond any map, and cell
+# sizes no elevation model has (under 1e-7 or over 1 degree) all come from
+# a damaged header, and each would otherwise reach the window arithmetic.
+bad_georeference: >-
+  {file} places its cells at longitudes, latitudes or spacings no elevation
+  model has, so its georeferencing is damaged.
+
+# GDAL writes a mask of invalid cells as a directory of its own after the
+# image; the cells it hides usually hold 0, which would read as ground at
+# sea level.
+internal_mask: >-
+  {file} marks some of its cells as invalid with a GDAL mask, which this
+  reader does not apply; save it again with a no-data value instead.
+
 rotated: >-
   {file} is not a north-up grid (it is rotated, sheared or flipped); the
   toolkit reads only north-up grids and does not resample.
@@ -111,6 +125,12 @@ scaled: >-
 block_too_large: >-
   {file} keeps its samples in blocks of {mb:.0f} MB, too large to read in
   part; save it again with tiles or strips.
+
+# Many tiny blocks cost a decode each, so a file cut into them is refused
+# before any is read, as a whole file or for a window.
+too_many_blocks: >-
+  {file} keeps the samples asked for in {n:num} blocks, more than the
+  {cap:num} the reader takes; save it again with larger tiles or strips.
 
 # Every way a block can fail to decompress gives this one sentence.
 block_damaged: >-
@@ -158,6 +178,11 @@ site_outside: >-
   The window centre at {where} lies outside the elevation model supplied,
   which covers {extent}.
 
+# The files' bounding box holds the centre, but no file does.
+site_gap: >-
+  The window centre at {where} lies in a gap between the files supplied,
+  which span {extent}; supply the tile that holds it.
+
 # It gives no count of cells: written to three figures, a count just over
 # the cap reads as the cap itself, and the sentence contradicts itself.
 too_many_cells: >-
@@ -166,6 +191,12 @@ too_many_cells: >-
   km fits.
 
 too_small: "The window holds {w:g} by {h:g} cells; the analysis needs at least 3 by 3."
+
+# The margin alone is over the cap, so no radius shown can fit.
+margin_too_many_cells: >-
+  The {margin:g} km margin analysed around the window needs more cells than
+  the {cap:num} the analysis takes on its own, so no radius fits; lower
+  terrain.analysis_buffer_km.
 
 no_elevations: "The {radius:g} km window around {where} holds no elevations."
 
@@ -184,11 +215,22 @@ read_uncovered: >-
   {pct:.0f}% of the window read lies outside the files supplied and is treated
   as a gap.
 
+# For a gap that is real but would round to 0%.
+read_uncovered_little: >-
+  Less than 1% of the window read ({count:num} cells) lies outside the files
+  supplied and is treated as a gap.
+
 read_assumed_sea: >-
   {pct:.0f}% of the window read lies in {n:plural:a tile|tiles} not supplied
   ({tiles}) whose whole edge with the tiles supplied is at or below {level:g}
   m, so it is taken as open sea with no height ({product} publishes no tiles
   for open sea).
+
+read_assumed_sea_little: >-
+  Less than 1% of the window read ({count:num} cells) lies in {n:plural:a
+  tile|tiles} not supplied ({tiles}) whose whole edge with the tiles supplied
+  is at or below {level:g} m, so it is taken as open sea with no height
+  ({product} publishes no tiles for open sea).
 
 read_voids: "{n:num} cells have no elevation in the file and are treated as gaps."
 
@@ -207,8 +249,9 @@ centre_no_site: >-
 # from. None of them credits a source: only the file's name and
 # georeferencing together, or the operator's own statement, do that.
 name_mismatch: >-
-  {file} is named like a Copernicus GLO-30 tile but its georeferencing places
-  it elsewhere, so it is credited as a file of unstated source.
+  {file} is named like a Copernicus GLO-30 tile but its georeferencing does
+  not match one (WGS 84, one arc-second each way, inside the square its name
+  gives), so it is credited as a file of unstated source.
 
 looks_copernicus: >-
   {file} is laid out like a Copernicus GLO-30 tile but is not named like one;
