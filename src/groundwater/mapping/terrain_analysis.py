@@ -625,6 +625,35 @@ def resolve_flats(filled, cls, code_d8) -> tuple[np.ndarray, int]:
     return code, int(np.count_nonzero(~done))
 
 
+#: The width under which accumulate_flow's waves hand the rest over to a
+#: loop over cells. A wave costs about 25 microseconds however narrow it
+#: is, so a path winding through the whole window would cost one wave per
+#: cell; the loop costs under a microsecond a cell however the cells lie.
+_SCALAR_FRONT = 256
+
+
+def _kahn_tail(front: np.ndarray, down: np.ndarray, inflow: np.ndarray, count: np.ndarray, area: np.ndarray,
+               flag: np.ndarray) -> None:
+    """Kahn's algorithm carried on one cell at a time from the cells
+    ``front``, in place on accumulate_flow's flattened layers: the way the
+    browser runs all of it, from a stack rather than a queue, which changes
+    no sum. The layers are read and written through memoryviews, so no
+    Python object is held per cell: a tail of a million cells adds no
+    memory and takes about half a second."""
+    to, waiting, cells, units, flagged = (a.data for a in (down, inflow, count, area, flag))
+    ready = front.tolist()
+    while ready:
+        i = ready.pop()
+        d = to[i]
+        cells[d] += cells[i]
+        units[d] += units[i]
+        if flagged[i]:
+            flagged[d] = True
+        waiting[d] -= 1
+        if waiting[d] == 0 and to[d] >= 0:
+            ready.append(d)
+
+
 def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
                     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The cells and the area draining through every land cell, and
@@ -682,11 +711,17 @@ def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
     flag = (land & risky).ravel()
 
     # Kahn's order in waves: every cell with nothing left to receive passes
-    # its totals on at once, grouped by the cell they go to.
+    # its totals on at once, grouped by the cell they go to. A wave costs
+    # the same dozen numpy calls however few cells it holds, so a channel
+    # winding through the whole window would take one wave per cell. A
+    # front never widens (each of its cells has a cell of the last front
+    # upstream), so once it is narrower than _SCALAR_FRONT the rest goes
+    # one cell at a time (_kahn_tail). The sums are integers and the flag
+    # an or, so the order changes nothing.
     has = down >= 0
     inflow = np.bincount(down[has], minlength=size)
     front = np.flatnonzero(has & (inflow == 0) & land.ravel())
-    while front.size:
+    while front.size >= _SCALAR_FRONT:
         to = down[front]
         order = np.argsort(to)
         to = to[order]
@@ -698,6 +733,7 @@ def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
         flag[u] |= np.logical_or.reduceat(flag[front], first)
         inflow[u] -= np.diff(np.r_[first, to.size])
         front = u[(inflow[u] == 0) & has[u]]
+    _kahn_tail(front, down, inflow, count, area, flag)
     return count.reshape(shape), area.reshape(shape), flag.reshape(shape)
 
 

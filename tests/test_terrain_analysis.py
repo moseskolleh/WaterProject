@@ -777,6 +777,41 @@ def test_contamination_flows_downstream_from_the_edge_and_voids_but_not_from_kno
             assert flag.tobytes() == _accumulate_in_order(r.code, r.cls, r.metric, sea_clean, "newest")[2].tobytes()
 
 
+def test_a_valley_winding_through_the_window_accumulates_as_kahn_does_one_cell_at_a_time():
+    """Prevents accumulate_flow from taking a round of numpy calls for every
+    cell of a long winding path (a valley snaking across a window at the
+    cap took 25 s), and from losing or counting twice any area where its
+    waves hand over to the loop over single cells: 298 parallel lines, a
+    front wider than the 256 cells the waves need, run into one channel
+    that winds through the rest of the grid past sea and a void, and every
+    count, area and flag is what Kahn's algorithm gives one cell at a
+    time."""
+    rows, cols = 300, 300
+    cls = np.full((rows, cols), LAND, dtype=np.uint8)
+    cls[0, :] = cls[:, 0] = cls[:, -1] = SEA
+    cls[150:250, -1] = VOID
+    code = np.zeros((rows, cols), dtype=np.uint8)
+    code[1:100, 1:-1] = N                        # parallel lines north, into the channel's first row
+    path = []
+    for r in range(100, rows):                   # the channel: east, north, west, north, ...
+        path.extend((r, c) for c in (range(1, cols - 1) if r % 2 == 0 else range(cols - 2, 0, -1)))
+    steps = list(zip(DR, DC, strict=True))
+    for (r, c), (rr, cc) in zip(path, path[1:], strict=False):
+        code[r, c] = ESRI[steps.index((rr - r, cc - c))]
+    code[path[-1]] = 255                         # out of the analysis at the north edge
+    metric = _metric(rows, cols)
+    land = cls == LAND
+    for sea_clean in (True, False):
+        count, area, flag = accumulate_flow(code, cls, metric, sea_clean)
+        assert count[path[-1]] == land.sum() == (rows - 1) * (cols - 2)
+        assert area[path[-1]] == np.broadcast_to(metric.au_row[:, None], land.shape)[land].sum()
+        assert count[path[1000]] == 100 * (cols - 2) + 1000 - (cols - 3)
+        assert flag[path[-1]] and flag[200, cols - 2] and (sea_clean != flag[120, 5])
+        for order in ("newest", "random") if sea_clean else ("newest",):
+            expected = _accumulate_in_order(code, cls, metric, sea_clean, order)
+            assert [a.tobytes() for a in (count, area, flag)] == [a.tobytes() for a in expected]
+
+
 def test_importing_the_analysis_does_not_import_pyplot():
     """Prevents the terrain analysis pulling in matplotlib, or scipy at
     import, which the browser's Pyodide build and the import bench would
