@@ -2613,3 +2613,639 @@ def test_the_browser_reads_a_plans_blocks_in_the_ranges_python_reads(elevation):
             name, offset, length, _ = holding[0]
             assert name == names[block.file] and offset <= block.offset
             assert block.offset + block.length <= offset + length, f"trial {trial}: block {b} spills out"
+
+
+# ------------------------------------------ terrain routing (browser engine)
+#
+# C.classifyCells, C.fillDepressions, C.flowDirections, C.resolveFlats and
+# C.accumulateFlow (gwt-core.js, "Terrain analysis: routing"), run in the
+# Node vm against closed forms on grids built by hand, and against the
+# routing rules written again below as plain Python loops, bit for bit, on
+# a few hundred small seeded grids full of ties. groundwater.mapping.terrain_analysis
+# answers to the same spec in tests/test_terrain_analysis.py.
+
+_ROUTING = r"""
+import { readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+import vm from 'node:vm';
+const sandbox = vm.createContext({ console, structuredClone });
+for (const f of ['gwt-data.js', 'gwt-core.js']) {
+  vm.runInContext(readFileSync(process.argv[2] + '/' + f, 'utf8'), sandbox, { filename: f });
+}
+const C = sandbox.GWT.core;
+const Floats = vm.runInContext('Float64Array', sandbox), Bytes = vm.runInContext('Uint8Array', sandbox);
+// base64 into the sandbox's own typed arrays, and typed arrays back to base64
+const floats = (text) => {
+  const raw = Buffer.from(text, 'base64'), out = new Floats(raw.length / 8);
+  new Uint8Array(out.buffer).set(raw);
+  return out;
+};
+const bytes = (text) => {
+  const raw = Buffer.from(text, 'base64'), out = new Bytes(raw.length);
+  out.set(raw);
+  return out;
+};
+const b64 = (typed) => Buffer.from(typed.buffer, typed.byteOffset, typed.byteLength).toString('base64');
+const ops = {
+  // the routing core as the analysis chains it, every layer handed back;
+  // `unfilled` routes the working heights themselves, as a surface that
+  // was never filled, so that level cells with no way out are reached too
+  route({ z, rows, cols, seaLevel, assumedSea, straightEdge, metric, seaClean, unfilled }) {
+    const m = { dx: floats(metric.dx), dy: floats(metric.dy), dg: floats(metric.dg), auRow: floats(metric.au) };
+    const sea = assumedSea === null ? null : bytes(assumedSea);
+    const k = straightEdge === undefined ? C.classifyCells(floats(z), rows, cols, seaLevel, sea)
+      : C.classifyCells(floats(z), rows, cols, seaLevel, sea, straightEdge);
+    const filled = unfilled ? Floats.from(k.zt) : C.fillDepressions(k.zt, k.cls, k.seed, rows, cols);
+    const d8 = C.flowDirections(k.zt, filled, k.cls, k.seed, rows, cols, m, seaLevel);
+    const flats = C.resolveFlats(filled, k.cls, d8, rows, cols);
+    const acc = C.accumulateFlow(flats.code, k.cls, rows, cols, m, seaClean);
+    const layers = { cls: k.cls, seed: k.seed, zeroFill: k.zeroFill, zt: k.zt, filled, d8, code: flats.code,
+                     count: acc.count, area: acc.areaUnits, flag: acc.flag };
+    return { unresolved: flats.unresolved,
+             layers: Object.fromEntries(Object.entries(layers).map(([name, a]) => [name, b64(a)])),
+             types: Object.fromEntries(Object.entries(layers).map(([name, a]) => [name, a.constructor.name])) };
+  },
+};
+for await (const line of createInterface({ input: process.stdin })) {
+  const request = JSON.parse(line);
+  let answer;
+  try {
+    answer = { ok: ops[request.op](request) };
+  } catch (e) {
+    answer = { threw: String(e && e.stack || e) };
+  }
+  process.stdout.write(JSON.stringify(answer) + '\n');
+}
+"""
+
+# the neighbour order K that settles every tie, (row, column) steps with
+# north row + 1, and the ESRI code of each direction
+_K = ((0, 1), (-1, 0), (0, -1), (1, 0), (-1, 1), (-1, -1), (1, -1), (1, 1))
+_ESRI = (1, 4, 16, 64, 2, 8, 32, 128)
+_VOID, _LAND, _SEA = 0, 1, 2
+# the layers the driver hands back, and the typed array each must be: counts
+# and areas in Float64Array, which no catchment wraps or rounds
+_LAYERS = {"cls": "Uint8Array", "seed": "Uint8Array", "zeroFill": "Uint8Array", "zt": "Float64Array",
+           "filled": "Float64Array", "d8": "Uint8Array", "code": "Uint8Array", "count": "Float64Array",
+           "area": "Float64Array", "flag": "Uint8Array"}
+
+
+@pytest.fixture
+def routing(tmp_path):
+    """The browser's routing core in a Node vm, asked one grid at a time."""
+    browser = _Reader(tmp_path, _ROUTING, "routing.mjs")
+    yield browser
+    browser.close()
+
+
+def _square_metric(rows: int) -> tuple:
+    """Cells 30 m square in every row: dx, dy, dg and the area in 0.01 m^2."""
+    return [30.0] * rows, [30.0] * rows, [math.sqrt(1800.0)] * rows, [90000.0] * rows
+
+
+def _arcsecond_metric(rows: int, lat0: float = 8.5) -> tuple:
+    """Each row's cell size on a 1 arc-second lattice from ``lat0`` north,
+    as elevation.row_metric gives it (held to C.rowMetric above)."""
+    import numpy as np
+
+    from groundwater.mapping.elevation import row_metric
+
+    arcsec = 1.0 / 3600.0
+    m = row_metric(np.array([-11.5, -11.5 + arcsec]), np.array([lat0 + k * arcsec for k in range(max(rows, 2))]))
+    return (m.dx[:rows].tolist(), m.dy[:rows].tolist(), m.dg[:rows].tolist(), m.au_row[:rows].tolist())
+
+
+def _route(routing, z, rows: int, cols: int, *, sea_level: float = 0.0, assumed=None, edge: int | None = 150,
+           metric=None, sea_clean: bool = True, unfilled: bool = False) -> dict:
+    """The browser's routing of the grid ``z`` (south row first, row-major):
+    every layer as a list, ``unresolved``, and the typed array of each.
+    ``edge=None`` leaves the straight-edge length out, for the default."""
+    import numpy as np
+
+    metric = metric or _square_metric(rows)
+    request = {
+        "z": base64.b64encode(np.asarray(z, dtype="<f8").tobytes()).decode("ascii"),
+        "rows": rows, "cols": cols, "seaLevel": sea_level,
+        "assumedSea": None if assumed is None else base64.b64encode(bytes(assumed)).decode("ascii"),
+        "metric": {name: base64.b64encode(np.asarray(values, dtype="<f8").tobytes()).decode("ascii")
+                   for name, values in zip(("dx", "dy", "dg", "au"), metric, strict=True)},
+        "seaClean": sea_clean, "unfilled": unfilled,
+    }
+    if edge is not None:
+        request["straightEdge"] = edge
+    answer = routing.ask("route", **request)["ok"]
+    out = {"unresolved": answer["unresolved"], "types": answer["types"]}
+    for name, kind in _LAYERS.items():
+        raw = base64.b64decode(answer["layers"][name])
+        out[name] = np.frombuffer(raw, dtype="<f8" if kind == "Float64Array" else "u1").tolist()
+    return out
+
+
+def _routing_reference(z, rows: int, cols: int, sea_level: float = 0.0, assumed=None, edge: int = 150,
+                       metric=None, sea_clean: bool = True, unfilled: bool = False) -> dict:
+    """The routing rules - classes, fill, D8, flats, totals - written again
+    from their definitions alone, as plain loops over Python floats, in the
+    shape ``_route`` returns. Two steps are
+    reached a different way from the browser's, so that neither engine's
+    method is taken on trust: the fill by its definition (each inner land
+    cell the higher of its own height and its lowest neighbour's fill,
+    relaxed until nothing moves) rather than by a priority queue, and the
+    totals by walking every cell's path down rather than in Kahn's order."""
+    from collections import deque
+
+    metric = metric or _square_metric(rows)
+    dx, dy, dg, au_row = metric
+    n = rows * cols
+    around = []
+    for i in range(n):
+        r, c = divmod(i, cols)
+        around.append([(k, (r + dr) * cols + c + dc) for k, (dr, dc) in enumerate(_K)
+                       if 0 <= r + dr < rows and 0 <= c + dc < cols])
+    edge_cell = [len(around[i]) < 8 for i in range(n)]
+
+    # 3.5 classes: sea joined to the edge or to assumed sea, then the zero-fill test
+    taken = [bool(assumed is not None and assumed[i]) for i in range(n)]
+    finite = [math.isfinite(z[i]) and not taken[i] for i in range(n)]
+    zt = [z[i] + 0.0 if finite[i] else math.nan for i in range(n)]
+    cand = [(finite[i] and zt[i] <= sea_level) or taken[i] for i in range(n)]
+    label = [0] * n
+    count_labels = 0
+    for i in range(n):
+        if cand[i] and not label[i]:
+            count_labels += 1
+            label[i] = count_labels
+            stack = [i]
+            while stack:
+                for _, j in around[stack.pop()]:
+                    if cand[j] and not label[j]:
+                        label[j] = count_labels
+                        stack.append(j)
+    joined = {label[i] for i in range(n) if cand[i] and (edge_cell[i] or taken[i])}
+    sea0 = [cand[i] and label[i] in joined for i in range(n)]
+    land0 = [finite[i] and not sea0[i] for i in range(n)]
+    sea0f = [sea0[i] and finite[i] for i in range(n)]
+    gaps: set[int] = set()
+    lines = [[(r * cols + c, (r + 1) * cols + c) for c in range(cols)] for r in range(rows - 1)]
+    lines += [[(r * cols + c, r * cols + c + 1) for r in range(rows)] for c in range(cols - 1)]
+    for pairs in lines:
+        run: list[int] = []
+        for a, b in [*pairs, (-1, -1)]:
+            if a >= 0 and ((sea0f[a] and land0[b]) or (land0[a] and sea0f[b])):
+                run.append(a if sea0f[a] else b)
+                continue
+            if len(run) >= edge:
+                gaps.update(label[s] for s in run)
+            run = []
+    zero = [sea0[i] and label[i] in gaps for i in range(n)]
+    cls = [_SEA if sea0[i] and not zero[i] else _LAND if land0[i] else _VOID for i in range(n)]
+    zt = [math.nan if cls[i] == _VOID else zt[i] for i in range(n)]
+    seed = [cls[i] == _LAND and (edge_cell[i] or any(cls[j] != _LAND for _, j in around[i])) for i in range(n)]
+
+    # 3.6 the fill, by its definition
+    filled = [zt[i] if cls[i] != _VOID else math.nan for i in range(n)]
+    if not unfilled:
+        inner = [i for i in range(n) if cls[i] == _LAND and not seed[i]]
+        for i in inner:
+            filled[i] = math.inf
+        moved = True
+        while moved:
+            moved = False
+            for order in (inner, inner[::-1]):
+                for i in order:
+                    v = max(zt[i], min(filled[j] for _, j in around[i]))
+                    if v < filled[i]:
+                        filled[i] = v
+                        moved = True
+
+    # 3.7 D8
+    d8 = [0] * n
+    for i in range(n):
+        if cls[i] != _LAND:
+            continue
+        r = i // cols
+        dist = (dx[r], dy[r], dx[r], dy[r], dg[r], dg[r], dg[r], dg[r])
+        best, bk = 0.0, -1
+        for k, j in around[i]:
+            if cls[j] == _VOID:
+                continue
+            v = filled[j] if cls[j] == _LAND else (zt[j] if math.isfinite(zt[j]) else sea_level)
+            drop = (filled[i] - v) / dist[k]
+            if drop > best:
+                best, bk = drop, k
+        d8[i] = _ESRI[bk] if bk >= 0 else (255 if seed[i] else 0)
+
+    # 3.8 flats, with one global K
+    noflow = [cls[i] == _LAND and d8[i] == 0 for i in range(n)]
+    low = [cls[i] == _LAND and d8[i] != 0 and any(noflow[j] and filled[j] == filled[i] for _, j in around[i])
+           for i in range(n)]
+    high = [noflow[i] and any(cls[j] == _LAND and filled[j] > filled[i] for _, j in around[i]) for i in range(n)]
+
+    def levels(starts):
+        level = [1 if s else 0 for s in starts]
+        queue = deque(i for i in range(n) if starts[i])
+        while queue:
+            c = queue.popleft()
+            for _, j in around[c]:
+                if noflow[j] and filled[j] == filled[c] and not level[j]:
+                    level[j] = level[c] + 1
+                    queue.append(j)
+        return level
+
+    away, towards = levels(high), levels(low)
+    kmax = max(away, default=0)
+    mask = [(kmax - away[i]) + 2 * towards[i] if away[i] > 0 else 2 * towards[i] for i in range(n)]
+    code = list(d8)
+    unresolved = 0
+    for i in range(n):
+        if not noflow[i]:
+            continue
+        best, bk = mask[i], -1
+        for k, j in around[i]:
+            if cls[j] == _LAND and filled[j] == filled[i] and mask[j] < best:
+                best, bk = mask[j], k
+        if bk >= 0:
+            code[i] = _ESRI[bk]
+        else:
+            unresolved += 1
+
+    # 3.9 totals, by walking each land cell's path down
+    down = [-1] * n
+    for i in range(n):
+        if cls[i] == _LAND and code[i] in _ESRI:
+            r, c = divmod(i, cols)
+            dr, dc = _K[_ESRI.index(code[i])]
+            if 0 <= r + dr < rows and 0 <= c + dc < cols and cls[(r + dr) * cols + c + dc] == _LAND:
+                down[i] = (r + dr) * cols + c + dc
+    count, area, flag = [0] * n, [0] * n, [0] * n
+    for i in range(n):
+        if cls[i] != _LAND:
+            continue
+        mine = edge_cell[i] or any(cls[j] == _VOID or (cls[j] == _SEA and not sea_clean) for _, j in around[i])
+        j, steps = i, 0
+        while j >= 0:
+            count[j] += 1
+            area[j] += int(au_row[i // cols])
+            flag[j] |= mine
+            j = down[j]
+            steps += 1
+            assert steps <= n, "the directions go round in a circle"
+    return {"cls": cls, "seed": [int(s) for s in seed], "zeroFill": [int(v) for v in zero], "zt": zt,
+            "filled": filled, "d8": d8, "code": code, "unresolved": unresolved,
+            "count": [float(v) for v in count], "area": [float(v) for v in area], "flag": [int(f) for f in flag]}
+
+
+def _routing_differences(js: dict, ref: dict) -> list[str]:
+    """The layers in which the two answers differ, float layers compared by
+    their bits (every NaN the one NaN, signs of zero kept)."""
+    import numpy as np
+
+    differ = []
+    for name, kind in _LAYERS.items():
+        if kind == "Float64Array":
+            a, b = np.array(js[name], dtype="<f8"), np.array(ref[name], dtype="<f8")
+            a[np.isnan(a)] = np.nan
+            b[np.isnan(b)] = np.nan
+            bad = np.flatnonzero(a.view("<u8") != b.view("<u8"))
+        else:
+            bad = np.flatnonzero(np.array(js[name]) != np.array(ref[name]))
+        if bad.size:
+            k = int(bad[0])
+            differ.append(f"{name} at {bad.size} cells, first {k}: browser {js[name][k]!r}, spec {ref[name][k]!r}")
+    if js["unresolved"] != ref["unresolved"]:
+        differ.append(f"unresolved: browser {js['unresolved']}, spec {ref['unresolved']}")
+    return differ
+
+
+def _held_to_the_spec(routing, z, rows: int, cols: int, **options) -> dict:
+    """The browser's routing, after requiring it equal to the spec's loops."""
+    js = _route(routing, z, rows, cols, **options)
+    reference = dict(options)
+    if reference.get("edge", 150) is None:
+        reference["edge"] = 150
+    differ = _routing_differences(js, _routing_reference(z, rows, cols, **reference))
+    assert not differ, "\n".join(differ)
+    assert js["types"] == _LAYERS
+    return js
+
+
+def _outlet(js: dict, cols: int, i: int) -> int:
+    """The last land cell on the path down from cell ``i``."""
+    while True:
+        r, c = divmod(i, cols)
+        k = _ESRI.index(js["code"][i]) if js["code"][i] in _ESRI else None
+        if k is None:
+            return i
+        j = (r + _K[k][0]) * cols + c + _K[k][1]
+        if js["cls"][j] != _LAND:
+            return i
+        i = j
+
+
+def _outlet_step(js: dict, cols: int, i: int) -> int:
+    """The cell the code of cell ``i`` points at, or -1."""
+    if js["code"][i] not in _ESRI:
+        return -1
+    r, c = divmod(i, cols)
+    dr, dc = _K[_ESRI.index(js["code"][i])]
+    return (r + dr) * cols + c + dc
+
+
+def _conserved(js: dict, cols: int) -> None:
+    """Every land cell drains to one end cell, whose count holds it once."""
+    land = [i for i, kind in enumerate(js["cls"]) if kind == _LAND]
+    ends: dict[int, int] = {}
+    for i in land:
+        ends[_outlet(js, cols, i)] = ends.get(_outlet(js, cols, i), 0) + 1
+    assert {end: js["count"][end] for end in ends} == {end: float(n) for end, n in ends.items()}
+    assert sum(ends.values()) == len(land)
+
+
+def test_the_browser_fills_a_single_pit_to_its_spill_point_and_routes_it_out(routing):
+    """A pit 5 m deep in ground rising 1 m a cell eastwards: the pit is
+    filled to 12 m, the height of its lowest way out, and nothing else
+    moves; the filled pit, level with its spill cells, is routed west
+    across them rather than left with no direction, and everything leaves
+    over the western edge. Prevents a fill that stops short of the spill
+    height (or overtops it), a level cell left with code 0 for the
+    accumulation to strand, and counts that lose or double a cell."""
+    rows, cols = 5, 6
+    z = [10.0 + c for r in range(rows) for c in range(cols)]
+    pit = 2 * cols + 3
+    z[pit] = 5.0
+    js = _held_to_the_spec(routing, z, rows, cols)
+    assert js["cls"] == [_LAND] * (rows * cols)
+    assert js["filled"][pit] == 12.0
+    assert [i for i in range(rows * cols) if js["filled"][i] != z[i]] == [pit]
+    assert js["d8"][pit] == 0 and js["code"][pit] == 16 and js["unresolved"] == 0
+    # the western column has nowhere lower to go, so leaves the analysis
+    assert [js["code"][r * cols] for r in range(rows)] == [255] * rows
+    assert all(code in _ESRI for i, code in enumerate(js["code"]) if i % cols)
+    _conserved(js, cols)
+    assert sum(js["count"][r * cols] for r in range(rows)) == rows * cols
+    assert sum(js["area"][r * cols] for r in range(rows)) == rows * cols * 90000.0
+    assert js["count"][pit] == 1 + sum(js["count"][j] for j in range(rows * cols)
+                                       if j != pit and _outlet_step(js, cols, j) == pit)
+
+
+def test_the_browser_drains_a_plateau_two_ways_each_part_to_its_nearer_outlet(routing):
+    """A plateau at 5 m inside a 9 m rim, with a 4 m notch in the west and
+    east ends: no plateau cell has a lower neighbour, so the flat must be
+    resolved, and Barnes's mask sends each half to its own notch; the
+    middle column, as near to both, goes the way that comes first in the
+    order E, S, W, N. Prevents flats left unresolved, a flat drained all
+    one way, and a tie broken differently from Python."""
+    rows, cols = 5, 11
+    z = [9.0] * (rows * cols)
+    for r in range(1, 4):
+        for c in range(1, 10):
+            z[r * cols + c] = 5.0
+    west, east = 2 * cols, 2 * cols + cols - 1
+    z[west] = z[east] = 4.0
+    for metric in (_square_metric(rows), _arcsecond_metric(rows)):
+        js = _held_to_the_spec(routing, z, rows, cols, metric=metric)
+        assert js["unresolved"] == 0
+        assert js["code"][west] == js["code"][east] == 255
+        for r in range(1, 4):
+            for c in range(1, 10):
+                if c < 5:
+                    assert _outlet(js, cols, r * cols + c) == west, (r, c)
+                elif c > 5:
+                    assert _outlet(js, cols, r * cols + c) == east, (r, c)
+        assert js["code"][2 * cols + 5] == 1   # east, the first of the two equal ways in K
+        assert [js["code"][2 * cols + c] for c in (2, 3, 4)] == [16, 16, 16]
+        assert [js["code"][2 * cols + c] for c in (6, 7, 8)] == [1, 1, 1]
+        assert js["count"][west] + js["count"][east] == rows * cols
+        _conserved(js, cols)
+
+
+def test_the_browser_takes_low_ground_joined_to_the_edge_as_sea_and_drains_the_coast_into_it(routing):
+    """Two southern rows at or below 0 m are sea; a hollow at -0.5 m on the
+    ridge inland is not joined to it, so it stays land and is filled to
+    its spill height. Every coastal cell flows into the sea, at the sea's
+    own height, or at sea level where a missing tile was taken as sea (no
+    height, so no slope is invented), and such a tile is sea even inland;
+    sea flags the coastal cells only for a source not known to write sea
+    as 0 m. Prevents inland ground below zero turning into sea, a coast
+    that does not drain to the sea, assumed sea given a height or turned
+    into land, and the sea flag set or dropped for the wrong source."""
+    rows, cols = 7, 8
+    z = [0.0, -1.0, 0.0, -2.0, 0.0, -1.0, 0.0, 0.0,
+         0.0, 0.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0]
+    # land rising to a ridge in row 5; the northern edge, lower, takes nothing in
+    z += [1.0] * cols + [2.0] * cols + [3.0] * cols + [4.0] * cols + [3.5] * cols
+    hollow = 4 * cols + 4
+    z[hollow] = -0.5
+    clean = _held_to_the_spec(routing, z, rows, cols, sea_clean=True)
+    unclean = _held_to_the_spec(routing, z, rows, cols, sea_clean=False)
+    assert clean["cls"] == [_SEA] * (2 * cols) + [_LAND] * (5 * cols)
+    assert clean["filled"][hollow] == 2.0 and clean["zt"][hollow] == -0.5
+    assert all(clean["seed"][2 * cols + c] for c in range(cols))
+    for c in range(cols):
+        assert clean["cls"][_outlet_step(clean, cols, 2 * cols + c)] == _SEA, c
+    for c in range(2, cols - 2):
+        # inland of the coast nothing touches the edge, a void or the sea
+        assert clean["flag"][2 * cols + c] == 0 and unclean["flag"][2 * cols + c] == 1, c
+    assert clean["count"] == unclean["count"] and clean["code"] == unclean["code"]
+
+    assumed = [1] * (2 * cols) + [0] * (5 * cols)
+    nowhere = [math.nan] * (2 * cols) + z[2 * cols:]
+    for heights in (nowhere, z):   # a height under assumed sea is never read
+        js = _held_to_the_spec(routing, heights, rows, cols, assumed=assumed)
+        assert js["cls"][:2 * cols] == [_SEA] * (2 * cols)
+        assert all(math.isnan(v) for v in js["zt"][:2 * cols] + js["filled"][:2 * cols])
+        # 1 m above sea level, the drop is steepest straight south
+        assert [js["code"][2 * cols + c] for c in range(cols)] == [4] * cols
+    # a missing tile taken as sea inland is sea though it meets no edge, and
+    # the hollow below 0 m beside it joins it
+    inland = [0] * (rows * cols)
+    inland[3 * cols + 3] = inland[3 * cols + 4] = 1
+    js = _held_to_the_spec(routing, z, rows, cols, assumed=inland)
+    assert [js["cls"][i] for i in (3 * cols + 3, 3 * cols + 4, hollow)] == [_SEA] * 3
+    assert js["zt"][hollow] == -0.5 and math.isnan(js["zt"][3 * cols + 3])
+    assert js["cls"][_outlet_step(js, cols, 4 * cols + 3)] == _SEA
+
+
+def test_the_browser_treats_a_void_as_an_outlet_and_flags_what_drains_past_it(routing):
+    """A cone with a cell of no data on its eastern flank and infinite
+    heights in two corners: the voids are taken out (their neighbours
+    become seeds), never drained into, and every cell beside them, and
+    everything downstream, is flagged, while the summit and the western
+    flank, which nothing uncertain drains into, stay unflagged. Prevents a
+    void read as a height, flow into a void, and contamination that does
+    not travel downstream or travels where it should not."""
+    rows = cols = 7
+    z = [10.0 - (abs(r - 3) + abs(c - 3)) for r in range(rows) for c in range(cols)]
+    void = 3 * cols + 5
+    z[void] = math.nan
+    z[0] = math.inf
+    z[rows * cols - 1] = -math.inf
+    js = _held_to_the_spec(routing, z, rows, cols)
+    assert [i for i, kind in enumerate(js["cls"]) if kind == _VOID] == [0, void, rows * cols - 1]
+    beside = [j for j in range(rows * cols) if j != void and abs(j // cols - 3) <= 1 and abs(j % cols - 5) <= 1]
+    assert all(js["seed"][j] and js["flag"][j] for j in beside)
+    assert all(_outlet_step(js, cols, j) not in (0, void, rows * cols - 1) for j in range(rows * cols))
+    summit = 3 * cols + 3
+    assert js["flag"][summit] == 0 and js["count"][summit] == 1.0
+    for j in range(rows * cols):
+        if js["flag"][j] or js["cls"][j] != _LAND:
+            continue
+        # an unflagged cell is inland, beside no void, and has nothing flagged upstream
+        assert 0 < j // cols < rows - 1 and 0 < j % cols < cols - 1 and j not in beside
+        assert not any(js["flag"][i] for i in range(rows * cols) if _outlet_step(js, cols, i) == j)
+    _conserved(js, cols)
+
+
+def test_the_browser_takes_a_long_straight_edge_of_zeros_as_a_gap_not_sea(routing):
+    """A band of 0 m three columns wide down the western edge meets land
+    along one straight column boundary eight cells long: with the
+    straight-edge length at 8 the band is a mosaic's zero fill and becomes
+    no data, and at 9 (or the default, 150) it stays sea. A corner of sea
+    in the south-east, whose edges step every cell, stays sea either
+    way. Prevents a zero-filled gap read as sea (drainage
+    ending at it unflagged, 100 km inland) and a real coast voided."""
+    rows, cols = 8, 12
+    z = [2.0 + 0.5 * r + c for r in range(rows) for c in range(cols)]
+    band = [r * cols + c for r in range(rows) for c in range(3)]
+    corner = [0 * cols + 9, 0 * cols + 10, 0 * cols + 11, 1 * cols + 10, 1 * cols + 11, 2 * cols + 11]
+    for i in band:
+        z[i] = 0.0
+    for i in corner:
+        z[i] = -1.0
+    gap = _held_to_the_spec(routing, z, rows, cols, edge=8)
+    assert [i for i, v in enumerate(gap["zeroFill"]) if v] == band
+    assert all(gap["cls"][i] == _VOID and math.isnan(gap["zt"][i]) for i in band)
+    assert all(gap["cls"][i] == _SEA for i in corner)
+    # beside the gap the land runs south, never into it, and is flagged
+    assert [gap["code"][r * cols + 3] for r in range(rows)] == [255] + [4] * (rows - 1)
+    assert all(gap["flag"][r * cols + 3] for r in range(rows))
+    for edge in (9, None):
+        sea = _held_to_the_spec(routing, z, rows, cols, edge=edge)
+        assert not any(sea["zeroFill"])
+        assert all(sea["cls"][i] == _SEA for i in band + corner)
+        # beside the sea the land runs west, into it
+        assert [sea["code"][r * cols + 3] for r in range(rows)] == [16] * rows
+    # a missing tile taken as sea joined to the gap is part of it, and goes too
+    assumed = [0] * (rows * cols)
+    for r in range(rows):
+        assumed[r * cols] = 1
+    joined = _held_to_the_spec(routing, z, rows, cols, edge=8, assumed=assumed)
+    assert [i for i, v in enumerate(joined["zeroFill"]) if v] == band
+
+
+def test_the_browser_gives_negative_zero_heights_the_bits_of_positive_zero(routing):
+    """The four signed-zero cases of the design review (a +0 or -0 seed
+    beside a void, with a pit of the other sign beside it, either way
+    round) and a coast of -0 and +0 sea: every layer, compared by its
+    bits, equals that of the same grid with every zero positive, and no
+    -0 is left in the working or filled heights. Prevents a fill that
+    copies a -0 onto a +0 cell (the browser's Priority-Flood) where
+    Python's basin graph keeps +0, which gives the engines different bits
+    and different digests."""
+    nan = math.nan
+    cases = [
+        [[9, 9, 9, 9, 9, 9], [9, nan, 0.0, -0.0, 9, 9], [9, 9, 9, 9, 9, 9]],
+        [[9, 9, 9, 9, 9, 9], [9, nan, -0.0, 0.0, 9, 9], [9, 9, 9, 9, 9, 9]],
+        [[9, 9, 9, 9, 9, 9], [9, 9, 0.0, -0.0, nan, 9], [9, 9, 9, 9, 9, 9]],
+        [[9, 9, 9, 9, 9, 9], [9, 9, -0.0, 0.0, nan, 9], [9, 9, 9, 9, 9, 9]],
+        [[-0.0, 0.0, -0.0, 0.0], [1.0, -0.0, 2.0, 1.0], [3.0, 2.0, 0.0, 2.0], [4.0, 3.0, 3.0, 4.0]],
+    ]
+    for case in cases:
+        rows, cols = len(case), len(case[0])
+        z = [float(v) for row in case for v in row]
+        positive = [0.0 if v == 0 else v for v in z]
+        for sea_level in (0.0, -1.0):
+            signed = _held_to_the_spec(routing, z, rows, cols, sea_level=sea_level)
+            plain = _route(routing, positive, rows, cols, sea_level=sea_level)
+            assert not _routing_differences(signed, plain), case
+            for name in ("zt", "filled"):
+                assert not any(v == 0 and math.copysign(1.0, v) < 0 for v in signed[name]), (case, name)
+
+
+def _random_heights(rng: random.Random, rows: int, cols: int) -> list[float]:
+    """Heights full of ties: a few levels on half-metre steps, terraces,
+    plateaus with odd cells, or a coast; with zeros of both signs."""
+    kind = rng.choice(["levels", "terraces", "plateau", "coast"])
+    levels = [-1.0, -0.0, 0.0, 0.5, 1.0, 1.0, 1.5, 2.0, 2.0, 3.0, 4.0, 5.0]
+    z = []
+    for r in range(rows):
+        for c in range(cols):
+            if kind == "levels":
+                v = rng.choice(levels)
+            elif kind == "terraces":
+                v = math.floor((0.7 * r + 0.4 * c + rng.random() * 2.0) / 1.5) * 1.5 - 1.5
+            elif kind == "plateau":
+                v = 3.0 if rng.random() < 0.8 else rng.choice(levels)
+            else:
+                v = math.floor(1.0 * r + rng.random() * 3.0) * 0.5 - 1.0
+            z.append(v)
+    if rng.random() < 0.3:   # a straight band of zeros along the west or south edge
+        width, west = rng.randint(1, 3), rng.random() < 0.5
+        for r in range(rows):
+            for c in range(cols):
+                if (c if west else r) < width:
+                    z[r * cols + c] = rng.choice([0.0, -0.0])
+    for _ in range(rng.choice([0, 0, 1, 2, 4])):
+        z[rng.randrange(rows * cols)] = rng.choice([math.nan, math.nan, math.inf, -math.inf])
+    return z
+
+
+def _random_case(rng: random.Random) -> tuple:
+    """One seeded grid for the routing test: ``(z, rows, cols, options)``,
+    the options as ``_route`` takes them."""
+    rows, cols = rng.randint(1, 16), rng.randint(1, 16)
+    z = _random_heights(rng, rows, cols)
+    assumed = None
+    if rng.random() < 0.3:
+        # missing tiles taken as sea, along the south or west edge or in a
+        # block anywhere, inland ones included
+        assumed = [0] * (rows * cols)
+        side, depth = rng.choice(["south", "west", "block"]), rng.randint(1, 3)
+        r0, c0 = rng.randrange(rows), rng.randrange(cols)
+        r1, c1 = rng.randint(r0 + 1, min(rows, r0 + 4)), rng.randint(c0 + 1, min(cols, c0 + 4))
+        for i in range(rows * cols):
+            r, c = divmod(i, cols)
+            inside = {"south": r < depth, "west": c < depth, "block": r0 <= r < r1 and c0 <= c < c1}[side]
+            if inside and rng.random() < 0.9:
+                assumed[i] = 1
+                if rng.random() < 0.9:
+                    z[i] = math.nan
+    options = {
+        "sea_level": rng.choice([0.0, 0.0, 0.0, 1.0, -0.5]),
+        "assumed": assumed,
+        "edge": rng.choice([1, 2, 3, 4, 5, 150, None]),
+        "metric": _square_metric(rows) if rng.random() < 0.5 else _arcsecond_metric(rows, rng.choice([8.0, 9.5])),
+        "sea_clean": rng.random() < 0.5,
+        "unfilled": rng.random() < 0.15,
+    }
+    return z, rows, cols, options
+
+
+def test_the_browser_routing_equals_the_spec_written_as_loops_on_seeded_grids_with_ties(routing):
+    """400 small seeded grids (1 to 16 cells a side) of heights on a few
+    levels, terraces, plateaus and coasts, with voids, infinities, zeros of
+    both signs, bands of zeros, missing tiles taken as sea (with no height,
+    and now and then a stray one; on an edge or inland), sea levels of 0,
+    1 and -0.5 m, straight-edge lengths from 1 to the default, both kinds
+    of source, 30 m cells and 1 arc-second ones, and a share routed
+    without filling: every layer of the browser's routing equals, bit for
+    bit, the routing rules written as plain loops (``_routing_reference``), and
+    on filled surfaces no flat is left unresolved and every land cell
+    drains to one end. Prevents any rule of the routing core - the sea and
+    zero-fill tests, the fill, a tie in D8 or on a flat, the mask, the
+    totals, the flags - drifting from the spec in the browser, where
+    Python's vectorised twin, written from the same pseudo-code, holds to
+    it too."""
+    rng = random.Random(41_0_3)
+    unresolved = 0
+    for trial in range(400):
+        z, rows, cols, options = _random_case(rng)
+        js = _route(routing, z, rows, cols, **options)
+        reference = dict(options, edge=150 if options["edge"] is None else options["edge"])
+        differ = _routing_differences(js, _routing_reference(z, rows, cols, **reference))
+        assert not differ, f"trial {trial} ({rows} x {cols}, {options}):\n" + "\n".join(differ)
+        assert js["types"] == _LAYERS
+        if not options["unfilled"]:
+            assert js["unresolved"] == 0, f"trial {trial}"
+            _conserved(js, cols)
+        unresolved += js["unresolved"]
+    assert unresolved > 0   # the unfilled surfaces reached the unresolved count
