@@ -30,6 +30,7 @@ import math
 import re
 import subprocess
 import sys
+import tracemalloc
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
@@ -658,6 +659,34 @@ def test_a_flat_drains_away_from_higher_ground_as_barnes_describes():
     out = _route(z)
     assert out.unresolved == 0 and out.count[0, 1] == z.size
     assert out.code.tobytes() == _barnes_flats(out.filled, out.cls, out.code_d8)[0].tobytes()
+
+
+def test_a_large_flat_is_resolved_without_a_table_per_cell_and_as_before():
+    """Prevents resolve_flats from holding tables of eight neighbours for
+    every flat cell beside its search graph, about 270 bytes a cell: a
+    constant fill makes a flat of the whole window easily, and at the cap
+    that took the analysis past the app's memory. The flat keeps under 200
+    bytes a cell, and its directions, ties and all, are those the tables
+    gave (the digest of the codes the version with tables wrote)."""
+    n = 400
+    z = np.full((n, n), 50.0)
+    z[180:220, 150:230] = 60.0                   # higher ground the flat drains away from
+    z[300:310, 40:45] = 55.0
+    cls, seed, _, zt = classify_cells(z, 0.0)
+    filled = fill_depressions(zt, cls, seed)
+    code_d8 = flow_directions(zt, filled, cls, seed, _metric(n, n), 0.0)
+    flats = int(np.count_nonzero((cls == LAND) & (code_d8 == 0)))
+    assert flats > 0.98 * n * n - 2000
+    tracemalloc.start()
+    try:
+        code, unresolved = resolve_flats(filled, cls, code_d8)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert unresolved == 0 and (code[cls == LAND] != 0).all()
+    assert peak < 200 * flats, f"{peak / flats:.0f} bytes a flat cell"
+    assert hashlib.sha256(code.tobytes()).hexdigest() == \
+        "3f7be2d3afb5d38540d0546e93e641fb485de402936ae71dd8737d43c5efe800"
 
 
 # ---------------------------------------------------------------------------

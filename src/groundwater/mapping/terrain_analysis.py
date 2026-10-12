@@ -455,37 +455,84 @@ def _padded(a: np.ndarray, fill) -> np.ndarray:
     return out.ravel()
 
 
-def _flat_levels(table: np.ndarray, onto: np.ndarray, from_higher: np.ndarray, from_outlets: np.ndarray
-                 ) -> tuple[np.ndarray, np.ndarray]:
-    """The two breadth-first levels of the flats: 1 at the seeds, one more
-    for each step, 0 where no seed reaches. Node ``i`` steps to
-    ``table[i, k]`` wherever ``onto[i, k]``; the steps from higher ground
-    start at the nodes ``from_higher``, those towards the outlets at
-    ``from_outlets``.
+def _flat_steps(k: int, cells: np.ndarray, level: np.ndarray, node: np.ndarray, height: np.ndarray,
+                is_flat: np.ndarray, offset: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
+    """The neighbour in direction ``k`` of each node at padded index
+    ``cells``, as a node number (-1 where it is none), and whether a search
+    steps onto it: a flat cell at the node's own height ``level``."""
+    j = cells + offset[k]
+    there = node[j]
+    with np.errstate(invalid="ignore"):
+        onto = (there >= 0) & (height[j] == level) & is_flat[j]
+    return there, onto
+
+
+def _flat_graph(node: np.ndarray, height: np.ndarray, is_flat: np.ndarray, offset: Sequence[int],
+                from_higher: np.ndarray, from_outlets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The graph the flats are searched on, in compressed rows (``indptr``
+    and ``indices``, int32): row ``i`` lists the nodes node ``i`` steps
+    to, in the order K, and two more rows are the virtual nodes the
+    searches start from, joined to ``from_higher`` and to the outlets.
+
+    It is written in place, a direction at a time, so that no table of
+    eight neighbours per node is held: a 2-million-cell flat would hold
+    several of them, at once, beside the graph itself.
+    """
+    cells = np.flatnonzero(node >= 0)            # the nodes, in their order
+    level = height[cells]
+    nodes = cells.size
+    indptr = np.zeros(nodes + 3, dtype=np.int32)
+    degree = indptr[1:nodes + 1]
+    for k in range(8):
+        degree += _flat_steps(k, cells, level, node, height, is_flat, offset)[1]
+    np.cumsum(degree, out=degree)
+    indptr[nodes + 1] = indptr[nodes] + from_higher.size
+    indptr[nodes + 2] = indptr[nodes + 1] + from_outlets.size
+    indices = np.empty(int(indptr[nodes + 2]), dtype=np.int32)
+    fill = indptr[:nodes].copy()                 # where each row's next step goes
+    for k in range(8):
+        there, onto = _flat_steps(k, cells, level, node, height, is_flat, offset)
+        at = np.flatnonzero(onto)
+        indices[fill[at]] = there[at]
+        fill[at] += 1
+    indices[indptr[nodes]:indptr[nodes + 1]] = from_higher
+    indices[indptr[nodes + 1]:] = from_outlets
+    return indptr, indices
+
+
+def _flat_levels(node: np.ndarray, height: np.ndarray, is_flat: np.ndarray, offset: Sequence[int],
+                 from_higher: np.ndarray, from_outlets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The two breadth-first levels of the flats on the graph
+    :func:`_flat_graph` writes (int32, by node): 1 at the seeds, one more
+    for each step, 0 where no seed reaches; the first from higher ground,
+    the second towards the outlets.
 
     One graph serves both searches, each from a virtual node of its own
     joined to its seeds. No step leads onto an outlet, so the search from
     higher ground never sets foot on one and never uses the steps out of
     one, which only the other search needs. csgraph's search builds a tree
     holding each node at its least number of steps from a seed, and the
-    level is that depth, counted by pointer doubling up the tree.
+    level is that depth, counted by pointer doubling up the tree once the
+    graph has been let go.
     """
     from scipy.sparse import csr_matrix
     from scipy.sparse.csgraph import breadth_first_order
 
-    nodes = table.shape[0]
-    indptr = np.zeros(nodes + 3, dtype=np.int32)
-    np.cumsum(onto.sum(axis=1), out=indptr[1:nodes + 1])
-    indptr[nodes + 1] = indptr[nodes] + from_higher.size
-    indptr[nodes + 2] = indptr[nodes + 1] + from_outlets.size
-    indices = np.concatenate([table[onto], from_higher, from_outlets]).astype(np.int32, copy=False)
+    indptr, indices = _flat_graph(node, height, is_flat, offset, from_higher, from_outlets)
+    nodes = indptr.size - 3
+    # csgraph searches a float64 matrix and would copy any other data into
+    # one; the values themselves are never read.
     graph = csr_matrix((np.ones(indices.size), indices, indptr), shape=(nodes + 2, nodes + 2))
+    del indptr, indices
+    sources = (nodes, nodes + 1)
+    parents = [breadth_first_order(graph, source, directed=True, return_predecessors=True)[1] for source in sources]
+    del graph
     levels = []
-    for source in (nodes, nodes + 1):
-        _, parent = breadth_first_order(graph, source, directed=True, return_predecessors=True)
+    for source, parent in zip(sources, parents, strict=True):
         reached = parent >= 0
-        depth = reached.astype(np.int64)          # steps from a node up to anc
+        depth = reached.astype(np.int32)          # steps from a node up to anc
         anc = np.where(reached, parent, source)
+        del reached
         while True:
             depth += depth[anc]
             nxt = anc[anc]
@@ -548,34 +595,31 @@ def resolve_flats(filled, cls, code_d8) -> tuple[np.ndarray, int]:
     node = np.full(is_node.size, -1, dtype=np.int32)
     node[cells] = np.arange(nodes, dtype=np.int32)
     outlets = node[cells[~is_flat[cells]]]
+    from_higher = node[flat[high]]
+    del is_land, flowing, flat, at, high, is_node, cells
 
     # Each node's neighbours at its own height (all of them flat cells or
     # outlets); a search steps only onto a flat cell.
-    level = height[cells]
-    table = np.empty((nodes, 8), dtype=np.int32)
-    same = np.empty((nodes, 8), dtype=bool)
-    onto = np.empty((nodes, 8), dtype=bool)
+    away, towards = _flat_levels(node, height, is_flat, offset, from_higher, outlets)
+    top = int(away.max())
+    towards = 2 * towards.astype(np.int64)
+    mask = np.where(away > 0, (top - away) + towards, towards)
+    del away, towards
+
+    # Each flat cell takes the neighbour at its height with the smallest
+    # mask below its own.
+    flat = np.flatnonzero(is_flat)
+    here = height[flat]
+    best = mask[node[flat]]
+    step = np.full(flat.size, -1, dtype=np.int8)
     with np.errstate(invalid="ignore"):
         for k in range(8):
-            j = cells + offset[k]
-            table[:, k] = node[j]
-            same[:, k] = (node[j] >= 0) & (height[j] == level)
-            onto[:, k] = same[:, k] & is_flat[j]
-    on_flat = is_flat[cells]
-    away, towards = _flat_levels(table, onto, node[flat[high]], outlets)
-    top = int(away.max())
-    mask = np.where(away > 0, (top - away) + 2 * towards, 2 * towards)
-
-    mine = np.flatnonzero(on_flat)
-    best = mask[mine]
-    step = np.full(mine.size, -1, dtype=np.int64)
-    for k in range(8):
-        there = table[mine, k]
-        better = same[mine, k] & (mask[there] < best)
-        best = np.where(better, mask[there], best)
-        step = np.where(better, k, step)
-    where = cells[mine]
-    grid_index = (where // wide - 1) * cols + (where % wide - 1)
+            j = flat + offset[k]
+            there = node[j]
+            better = (there >= 0) & (height[j] == here) & (mask[there] < best)
+            best = np.where(better, mask[there], best)
+            step = np.where(better, k, step)
+    grid_index = (flat // wide - 1) * cols + (flat % wide - 1)
     done = step >= 0
     np.put(code, grid_index[done], np.asarray(_ESRI, dtype=np.uint8)[step[done]])
     return code, int(np.count_nonzero(~done))
