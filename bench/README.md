@@ -348,25 +348,37 @@ app/streamlit_app.py`, open Site maps in a browser and let it finish
 loading, then read `ps -o rss= -p PID` for the Streamlit process (in
 kilobytes; divide by 1024 for MB as `terrain_memory.py` counts them).
 
-TODO: the date, the machine (CPU, CPU count, Python, numpy and scipy, from the runs' `machine` blocks) and the load average.
+Taken on 12 October 2026 on this repository's 4-CPU machine (Xeon at
+2.1 GHz, Python 3.13.16, numpy 2.4.6, scipy 1.17.1, load average 0.7 to
+0.9), `run.py --only terrain`, median of five:
 
 | measure | median | IQR |
 |---|---|---|
-| analyse the default window | TODO | TODO |
-| analyse at the cap | TODO | TODO |
-| trace drainage lines from the core | TODO | TODO |
+| analyse the default window | 1.39 s | 44 ms |
+| analyse at the cap | 2.79 s | 540 ms |
+| trace drainage lines from the core | 53 ms | 3 ms |
 
-TODO: `terrain_memory.py` at the cap: `increase_mb`, with `read_mb` and `first_use_mb` beside it, and its date.
+The spread at the cap is one slow sample (3.84 s); the other four lie
+between 2.60 and 2.82 s.
 
-TODO: the Streamlit app's idle RSS after loading Site maps, by `ps`, and the date it was taken.
+`terrain_memory.py` at the cap (1,971,207 cells, 16.5 km shown), three
+runs: `increase_mb` 279, 270 and 272, with `read_mb` 14 to 33 and
+`first_use_mb` 52 to 70 beside it. The Streamlit app's idle RSS, with
+Site maps loaded in Chromium and the app left to settle, was 159 MB
+(163,276 kB by `/proc`'s VmRSS, which `ps -o rss` reads) the same day.
 
-TODO: the sum against 690 MB, and whether the app's idle RSS already holds what `read_mb` and `first_use_mb` count.
+So the worst peak increase plus the idle app is 279 + 159 = 438 MB.
+The idle app does not yet hold `scipy.ndimage` and `scipy.sparse.csgraph`,
+which the analysis loads on first use, and the read's bytes are not in
+the idle figure either; counting both as well, at their largest (85 MB),
+gives 523 MB. Both are under 690 MB, and the median at the cap is under
+6.0 s, so **2,000,000 cells is kept**.
 
-TODO: the verdict on both limits: 2,000,000 kept, or lowered to what.
-
-TODO: the browser worker's time at the cap (`bench/web.mjs`, `terrain-worker`), and the page-only fallback at 4x.
-
-TODO: the ad hoc Pyodide run at the cap, labelled as ad hoc, on the `spikes/pyodide-engine/measure.mjs` pattern.
+Not measured yet: the browser worker's time at the cap and the page-only
+fallback at 4x (`web.mjs` needs the page step 4.1c adds), and an ad hoc
+Pyodide run at the cap. The cap is one number for every runtime, so a
+slower runtime makes a long wait, not a different answer; part c measures
+the browser before the cap can be said to suit it.
 
 ## The committed baseline
 
