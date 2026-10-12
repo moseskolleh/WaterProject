@@ -358,8 +358,8 @@ Taken on 12 October 2026 on this repository's 4-CPU machine (Xeon at
 | analyse at the cap | 2.79 s | 540 ms |
 | trace drainage lines from the core | 53 ms | 3 ms |
 
-The spread at the cap is one slow sample (3.84 s); the other four lie
-between 2.60 and 2.82 s.
+The spread at the cap comes from two slower samples (3.84 and 3.33 s);
+the other three lie between 2.60 and 2.79 s.
 
 `terrain_memory.py` at the cap (1,971,207 cells, 16.5 km shown), three
 runs: `increase_mb` 279, 270 and 272, with `read_mb` 14 to 33 and
