@@ -7,20 +7,23 @@ sines and cosines through sin_cos_deg, so that the browser's engine gives
 the same bits; the parity suite holds the two together. These tests hold
 the Python kernels to what each layer means: closed forms for planes, a
 cone and a quadratic surface, GDAL's own formula for the composite shade
-(and gdaldem itself where it is installed), and the rules for voids, flats
-and the edge.
+and gdaldem's own bytes for it (committed, and run again where GDAL's
+Python bindings are installed), and the rules for voids, flats and the
+edge.
 """
 
 from __future__ import annotations
 
+import json
 import math
 import random
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from groundwater.config import TerrainConfig
-from groundwater.mapping.elevation import row_metric, sin_cos_deg
+from groundwater.mapping.elevation import RowMetric, row_metric, sin_cos_deg
 from groundwater.mapping.terrain import _contour_interval
 from groundwater.mapping.terrain_analysis import (
     LAND,
@@ -210,37 +213,109 @@ def test_multidirectional_hillshade_matches_the_gdal_weights_on_a_cone():
     assert all(np.any(np.abs(aspects - a) < 10.0) for a in (45.0, 135.0, 225.0, 315.0))
 
 
-def test_multidirectional_hillshade_matches_gdaldem_where_it_is_installed():
-    """Against gdaldem itself, run a row band at a time, because the kernel
-    sizes every row's cells on the ellipsoid while gdaldem takes one scale
-    for a raster (GDAL 3.11 and later would even pick a mean-latitude one
-    on its own for a geographic file). Each three-row band is handed over
-    in metres with an explicit scale of 1, so no version scales it again.
-    gdaldem writes a byte, 1 + 254 times the shade rounded, from float32
-    arithmetic and an approximate square root, so the two agree to that
-    rounding and no more: half a grey level, and a hair for float32. The
-    single sun of the topographic map is checked the same way."""
-    gdal = pytest.importorskip("osgeo.gdal")
-    gdal.UseExceptions()
-    cfg = TerrainConfig()
+#: gdaldem's own shading of the cone _gdaldem_cone gives, written once by
+#: GDAL 3.13.3 (tests/webapp/fixtures/make_gdaldem_cone.py says how), so
+#: that the composite is held to GDAL where osgeo is not installed, which is
+#: everywhere the project configures.
+GDALDEM_CONE = Path(__file__).resolve().parent / "webapp" / "fixtures" / "gdaldem_cone.json"
+
+
+def _gdaldem_cone() -> tuple[np.ndarray, RowMetric]:
+    """The cone gdaldem is asked to shade, 13 by 15 cells on the 1
+    arc-second lattice, with heights GDAL reads as float32 without
+    rounding, and its row metric."""
     rows, cols = 13, 15
     _, _, metric = _lattice(rows, cols)
-    # heights GDAL reads as float32 without rounding
-    z = _cone(rows, cols, metric).astype(np.float32).astype(np.float64)
-    p, q, _ = horn_gradients(z, metric)
-    composite = multidirectional_hillshade(p, q, cfg.hillshade_azimuths_deg, cfg.hillshade_altitude_deg)
-    single = hillshade_layer(p, q, 315.0, cfg.hillshade_altitude_deg)
+    return _cone(rows, cols, metric).astype(np.float32).astype(np.float64), metric
+
+
+def _gdaldem_record(gdal) -> dict:
+    """What gdaldem makes of the cone: for each inner row, south first, the
+    bytes of its inner cells under -multidirectional and under the single
+    sun at 315 degrees, both at the default altitude with a z-factor of 1.
+
+    gdaldem is run a three-row band at a time, because the kernels size
+    every row's cells on the ellipsoid while gdaldem takes one scale for a
+    raster (GDAL 3.11 and later would even pick a mean-latitude one on its
+    own for a geographic file). Each band is handed over in metres, with
+    its row's cell size and an explicit scale of 1, so that no version
+    scales it again. The record also holds the heights and cell sizes it
+    was made from, so that a committed record can be told apart from a
+    cone that has changed since."""
+    z, metric = _gdaldem_cone()
+    rows, cols = z.shape
+    altitude = TerrainConfig().hillshade_altitude_deg
     driver = gdal.GetDriverByName("MEM")
+    greys: dict[str, list[list[int]]] = {"multidirectional": [], "azimuth_315": []}
     for r in range(1, rows - 1):
         band = driver.Create("", cols, 3, 1, gdal.GDT_Float32)
         band.SetGeoTransform((0.0, float(metric.dx[r]), 0.0, 0.0, 0.0, -float(metric.dy[r])))
         band.GetRasterBand(1).WriteArray(z[r - 1:r + 2][::-1].astype(np.float32))  # north first
-        for ours, options in ((composite, dict(multiDirectional=True)), (single, dict(azimuth=315.0))):
-            out = gdal.DEMProcessing("", band, "hillshade", format="MEM", altitude=cfg.hillshade_altitude_deg,
-                                     zFactor=1.0, scale=1.0, **options)
-            grey = out.GetRasterBand(1).ReadAsArray().astype(float)[1, 1:-1]
-            want = 1.0 + 254.0 * ours[r, 1:-1]
-            assert np.all(np.abs(grey - want) <= 0.51), (r, options, grey, want)
+        for key, options in (("multidirectional", {"multiDirectional": True}), ("azimuth_315", {"azimuth": 315.0})):
+            out = gdal.DEMProcessing("", band, "hillshade", format="MEM", altitude=altitude, zFactor=1.0,
+                                     scale=1.0, **options)
+            greys[key].append([int(v) for v in out.GetRasterBand(1).ReadAsArray()[1, 1:-1]])
+    return {"gdal": str(gdal.__version__), "altitude": float(altitude), "rows": rows, "cols": cols,
+            "z": z.tolist(), "dx": metric.dx.tolist(), "dy": metric.dy.tolist(), **greys}
+
+
+def _held_to_gdaldem(record: dict) -> float:
+    """Require the kernels' composite and single-sun shades of the cone to
+    give gdaldem's bytes in ``record``, and return the widest gap. gdaldem
+    writes 1 + 254 times the shade rounded, from float32 arithmetic and an
+    approximate square root, so the two agree to that rounding and no
+    more: half a grey level, and a hair for float32."""
+    z, metric = _gdaldem_cone()
+    p, q, _ = horn_gradients(z, metric)
+    azimuths = TerrainConfig().hillshade_azimuths_deg
+    shades = {"multidirectional": multidirectional_hillshade(p, q, azimuths, record["altitude"]),
+              "azimuth_315": hillshade_layer(p, q, 315.0, record["altitude"])}
+    widest = 0.0
+    for key, shade in shades.items():
+        grey = np.array(record[key], dtype=float)
+        want = 1.0 + 254.0 * shade[1:-1, 1:-1]
+        assert grey.shape == want.shape, key
+        gap = np.abs(grey - want)
+        assert gap.max() <= 0.51, (key, np.argwhere(gap > 0.51).tolist())
+        widest = max(widest, float(gap.max()))
+    return widest
+
+
+def test_multidirectional_hillshade_matches_the_committed_gdaldem_bytes():
+    """Against gdaldem's own bytes for the cone, committed because GDAL's
+    Python bindings are installed nowhere the tests run: the composite and
+    the topographic map's single sun at 315 degrees give gdaldem's grey to
+    within half a level on every inner cell. Prevents the shading drifting
+    from the "exactly gdaldem -multidirectional" the figures claim with
+    nothing to say so - Horn's 1-2-1 weights traded for Prewitt's 1-1-1,
+    as exact on a plane and caught by no closed form here, already miss by
+    more than half a level - and a committed record made from other
+    heights or other cell sizes than the cone's own."""
+    record = json.loads(GDALDEM_CONE.read_text(encoding="utf-8"))
+    z, metric = _gdaldem_cone()
+    assert (record["rows"], record["cols"]) == z.shape
+    assert np.array(record["z"], dtype=np.float64).tobytes() == z.tobytes(), "the record was made from another cone"
+    assert record["dx"] == metric.dx.tolist() and record["dy"] == metric.dy.tolist()
+    assert record["altitude"] == TerrainConfig().hillshade_altitude_deg
+    assert len(record["multidirectional"]) == len(record["azimuth_315"]) == z.shape[0] - 2
+    # not a flat grey: the cone shows every aspect, and its summit is level
+    assert len({v for row in record["multidirectional"] for v in row}) > 20
+    assert 0.3 < _held_to_gdaldem(record) <= 0.51
+
+
+def test_multidirectional_hillshade_matches_gdaldem_where_it_is_installed():
+    """Against gdaldem itself, where osgeo is installed: within half a grey
+    level of the kernels and, under the GDAL that wrote the committed
+    record, the very bytes it holds, so that this run is also how the
+    record is remade (tests/webapp/fixtures/make_gdaldem_cone.py). Prevents
+    a committed record that gdaldem would no longer write."""
+    gdal = pytest.importorskip("osgeo.gdal")
+    gdal.UseExceptions()
+    fresh = _gdaldem_record(gdal)
+    _held_to_gdaldem(fresh)
+    record = json.loads(GDALDEM_CONE.read_text(encoding="utf-8"))
+    if fresh["gdal"] == record["gdal"]:
+        assert fresh == {key: value for key, value in record.items() if key != "about"}
 
 
 def test_hillshade_of_a_void_window_is_nan_not_zero():

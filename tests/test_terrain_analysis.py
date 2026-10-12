@@ -49,6 +49,7 @@ from groundwater.mapping.terrain_analysis import (
     accumulate_flow,
     analyse_terrain,
     classify_cells,
+    contour_interval,
     display_range,
     drainage_geojson,
     drainage_links,
@@ -57,6 +58,7 @@ from groundwater.mapping.terrain_analysis import (
     horn_gradients,
     resolve_flats,
     terrain_captions,
+    wetness_index,
 )
 from groundwater.text import phrase
 
@@ -1520,6 +1522,49 @@ def test_the_shown_links_do_not_change_when_the_margin_grows():
     assert max(p.strahler for _, p, _ in sixteen) == 3
     assert shown_lines(32) == (sixteen, summary)
     assert shown_lines(0)[0] != sixteen
+
+
+def test_the_summary_is_taken_over_the_square_shown():
+    """Prevents the caption numbers counting the margin: the relief and its
+    contour interval, the deepest fill, the raised cells and their share,
+    and the cells whose slope the wetness index floored are all taken over
+    the square shown (spec 3.15), each held here to a count of its own over
+    that square. The margin holds a higher peak, a deeper filled hollow,
+    more raised cells and a level floor of floored cells than the square,
+    so a count over the whole window differs from each; and an infinite
+    height in the square is left out of the relief. On a real tile the
+    margin would have taken the raised share from 12% to 51%. Both engines
+    did this right, and agreed, but nothing held either to the rule."""
+    rows = cols = 40
+    shown = (10, 30, 10, 30)
+    view = (slice(10, 30), slice(10, 30))
+    r = np.arange(rows)[:, None]
+    c = np.arange(cols)[None, :]
+    z = 50.0 + 0.5 * r + 0.3 * c + np.zeros((rows, cols))   # a plane falling to the south-west corner
+    z[20, 20] -= 2.0                    # a hollow in the square, filled by 1.2 m
+    z[2:9, 2:9] -= 5.0                  # a deeper basin in the margin, filled by up to 4.2 m
+    z[35, 35] = 300.0                   # a peak in the margin
+    z[32:39, 12:19] = 70.0              # a level floor in the margin, whose middle the wetness index floors
+    z[25, 12] = np.inf                  # a height no reader passes on, in the square
+    cfg = TerrainConfig()
+    a = analyse_terrain(_elevation(z), cfg, shown=shown, precision="float64")
+    s = a.summary
+    land = a.core.cls == LAND
+    finite = np.isfinite(z)
+
+    heights = z[view][finite[view]]
+    relief = float(heights.max() - heights.min())
+    assert s["relief"] == relief != float(z[finite].max() - z[finite].min())
+    assert s["contour_interval"] == contour_interval(relief)
+    depth = np.where(land, a.filled - z, nan)
+    assert s["max_fill_m"] == float(depth[view][land[view]].max()) == depth[20, 20]
+    assert s["max_fill_m"] < float(depth[land].max())
+    raised = land & (depth >= cfg.fill_note_m)
+    assert s["raised"] == int(raised[view].sum()) == 1 < int(raised.sum())
+    assert s["raised_pct"] == (100.0 * s["raised"]) / int(land[view].sum())
+    floored = wetness_index(a.core.area_units, a.core.cls, a.tanb, a.metric, cfg.flat_tan_slope)[2]
+    assert s["floored"] == a.floored == int(floored[view].sum()) < int(floored.sum())
+    assert s["cells"] == 400 and s["land"] == 399 and s["implausible"] == 1
 
 
 def test_drainage_links_from_the_core_equal_those_of_the_full_analysis():

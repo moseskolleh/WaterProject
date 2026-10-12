@@ -3421,8 +3421,6 @@ await withPage(async (page, base, consoleErrors) => {
       const rows = kase.rows, cols = kase.cols, z = new Float64Array(rows * cols);
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) z[r * cols + c] = 10.0 + 0.5 * (r + c);
       const a = analyse(kase, z).a, core = C.terrainCore(a), clone = structuredClone(core);
-      const shared = Object.keys(core).filter((key) => ArrayBuffer.isView(core[key]) &&
-        core[key].buffer === clone[key].buffer);
       const at = kase.areas.map((area) => {
         const page = C.drainageLinks(clone, area), direct = C.drainageLinks(core, area);
         const text = [linesText(page.links), linesText(page.parts)];
@@ -3431,7 +3429,7 @@ await withPage(async (page, base, consoleErrors) => {
       });
       const again = C.drainageLinks(clone, kase.settings.drainage_area_km2);
       return {
-        corner: clone.areaUnits[0], count: clone.count[0], shared, at,
+        corner: clone.areaUnits[0], count: clone.count[0], at,
         own: [linesDigest(a.links), linesDigest(a.parts), a.links.length, a.parts.length],
         again: linesText(again.links) === linesText(a.links) && linesText(again.parts) === linesText(a.parts),
       };
@@ -3572,8 +3570,8 @@ await withPage(async (page, base, consoleErrors) => {
         got.corner === want.corner && got.count === want.count && want.corner > 2 ** 32,
         `js ${got.count} cells, ${got.corner} units`);
       check(`${name} - the analysis's own lines, and the same traced again from the clone`,
-        sameJson(got.own, want.own) && got.again && got.shared.length === 0,
-        `js ${JSON.stringify(got.own)}, py ${JSON.stringify(want.own)}; again ${got.again}; shared ${got.shared}`);
+        sameJson(got.own, want.own) && got.again,
+        `js ${JSON.stringify(got.own)}, py ${JSON.stringify(want.own)}; again ${got.again}`);
       kase.areas.forEach((area, k) => {
         const mine = got.at[k] || { got: null, same: false };
         check(`${name} - at ${area} km², ${counted(want.at[k][2], 'line', 'lines')} and ` +

@@ -4875,17 +4875,48 @@ function analysed(r) {
     heard, scalars: [a.unresolved, a.kCells, a.floored, a.zeroFill], shown: a.core.shown, ms,
   };
 }
+// Which arrays of a core cannot be handed over by transfer on their own:
+// one that is part of a larger buffer, one whose buffer another core array
+// or any other layer of the analysis or of its display copies also uses
+// (transferring it would take that layer away too).
+function aliased(a, core) {
+  const out = [], owner = new Map();
+  for (const key of Object.keys(core)) {
+    const v = core[key];
+    if (!ArrayBuffer.isView(v)) continue;
+    if (v.byteOffset !== 0 || v.byteLength !== v.buffer.byteLength) out.push(key + ' is part of a larger buffer');
+    if (owner.has(v.buffer)) out.push(key + ' shares a buffer with ' + owner.get(v.buffer));
+    owner.set(v.buffer, key);
+  }
+  const display = C.terrainDisplayLayers(a, null, 64);
+  const others = { filled: a.filled, fillDepth: a.fillDepth, stream: a.stream, p: a.p, q: a.q, tanb: a.tanb,
+                   hillshadeMulti: a.hillshadeMulti, twiArg: a.twiArg, twi: a.twi, profile: a.profile,
+                   tangential: a.tangential };
+  a.hillshades.forEach((layer, j) => { others['hillshade' + j] = layer; });
+  for (const [key, v] of Object.entries(display)) if (ArrayBuffer.isView(v)) others['display ' + key] = v;
+  display.hillshades.forEach((layer, j) => { others['display hillshade' + j] = layer; });
+  for (const [key, v] of Object.entries(others)) {
+    if (owner.has(v.buffer)) out.push(owner.get(v.buffer) + ' shares a buffer with ' + key);
+  }
+  return out;
+}
 // The page's re-threshold: the core crosses from the worker by structured
 // clone, and the lines are traced again from the clone alone.
 function rethreshold(r) {
   const a = C.analyseTerrain(windowOf(r), decoded(r.config), null, 'float64', r.shown);
   const core = C.terrainCore(a), clone = structuredClone(core);
-  const shared = Object.keys(core).filter((key) => ArrayBuffer.isView(core[key]) && core[key] === clone[key]);
   let corner = 0;
   for (const v of clone.areaUnits) if (v > corner) corner = v;
+  // what aliased() finds, here and on cores built to be found out: one
+  // that hands over the analysis's stream as its flag, and one whose
+  // areas are a view into a larger buffer
+  const sharing = { ...core, flag: a.stream };
+  const pieces = new F64(core.areaUnits.length + 1);
+  const offset = { ...core, areaUnits: new F64(pieces.buffer, 8, core.areaUnits.length) };
   return {
     core: Object.fromEntries(CORE.map((name) => [name, digest(clone[name])])),
-    keys: Object.keys(core), shared, corner: hex(corner),
+    keys: Object.keys(core), aliased: aliased(a, core), caught: [aliased(a, sharing), aliased(a, offset)],
+    corner: hex(corner),
     at: r.areas.map((tagged) => {
       const area = decoded(tagged), page = C.drainageLinks(clone, area), direct = C.drainageLinks(core, area);
       return {
@@ -5415,11 +5446,16 @@ def test_the_page_rethreshold_from_a_cloned_core_matches_the_analysis(assembly):
     stream cell to none. The lines from the clone equal those from the
     core itself and Python's drainage_links on Python's core, field for
     field, and so does their GeoJSON; the clone's layers equal Python's
-    core to the bit. Prevents the page drawing other lines than a full
+    core to the bit. Every array of the core is a whole buffer of its own,
+    shared with no other core array and no layer of the analysis or its
+    display copies. Prevents the page drawing other lines than a full
     analysis at the same threshold: a core that loses a layer or its
     precision crossing from the worker (an area wrapped by a 32-bit array,
     a field the page's copy lacks), or a trace that leans on something
-    besides the core."""
+    besides the core; and a core the worker cannot transfer without taking
+    a layer the figures still need. (That the clone's arrays were not the
+    core's own was once checked here, which structuredClone makes so for
+    any input; the check now made fails on cores built to share.)"""
     from groundwater.mapping import terrain_analysis as ta
 
     case, options = _ax_plane()
@@ -5431,7 +5467,11 @@ def test_the_page_rethreshold_from_a_cloned_core_matches_the_analysis(assembly):
     core = a.core
     assert js["keys"] == ["rows", "cols", "shown", "lons", "lats", "dx", "dy", "dg", "count", "areaUnits", "cls",
                           "code", "flag", "raised", "flatRouted"]
-    assert js["shared"] == []                    # the clone holds arrays of its own
+    # each core array is a whole buffer of its own, shared with no other
+    # core array and no other layer, so that the worker can transfer it;
+    # and the check finds a core that breaks either rule
+    assert js["aliased"] == []
+    assert js["caught"] == [["flag shares a buffer with stream"], ["areaUnits is part of a larger buffer"]]
     assert js["core"] == {name: py["layers"][name] for name in js["core"]}
     corner = int(core.area_units.max())
     assert corner == int(core.area_units[0, 0]) > 2**32 and int(core.count[0, 0]) == 65_536
