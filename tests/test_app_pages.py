@@ -76,6 +76,32 @@ def test_no_button_uploader_or_editor_key_is_carried():
     assert "run_cost" in seen and "upload_" in seen and "ho_committee" in seen
 
 
+def test_the_terrain_inputs_are_carried_between_pages():
+    """Streamlit drops a widget's value at the end of a run that does not
+    draw it, so the source declared for an elevation model would go each
+    time the Site maps page was off screen, and the next map would credit
+    the tiles as their names alone say. The declaration is carried as the
+    map window is, and still goes with the model when a project is loaded."""
+    import state
+    from groundwater.project_io import stale_on_load
+
+    inputs = {"number_input", "text_input", "text_area", "selectbox", "radio",
+              "checkbox", "toggle", "slider", "select_slider", "multiselect"}
+    terrain = set()
+    for path in _app_sources():
+        for name, call in _calls(ast.parse(path.read_text()), inputs):
+            key = _key_of(name, call)
+            if key is not None and key.startswith("terrain_"):
+                terrain.add(key)
+    assert {"terrain_source", "terrain_source_text"} <= terrain
+    assert all(state.carried(key) for key in terrain), terrain
+    session = {"terrain_source": "other", "terrain_source_text": "viewfinderpanoramas",
+               "dem_upload_kept": {"ids": [], "files": []}, "map_radius": 40}
+    assert set(state.carry_widget_values(session)) == {
+        "terrain_source", "terrain_source_text", "map_radius"}
+    assert {"terrain_source", "terrain_source_text"} <= set(stale_on_load(session))
+
+
 def test_a_fragment_holds_no_saved_input():
     """A fragment reruns without the sidebar, so its Save project button
     would carry a stale value of any input the project file saves."""
@@ -209,6 +235,80 @@ def test_an_uploaded_file_waits_for_its_page(sample_data):
     assert ranking() is None
     # the join is cached on the export's content, not in this session
     assert "_cov_join_memo" not in at.session_state
+
+
+def _kept_upload_page(app_dir):
+    """A page holding one uploader kept on disk, which a test can leave and
+    come back to; what the uploader hands the page goes in ``handed``."""
+    import sys
+
+    if app_dir not in sys.path:
+        sys.path.insert(0, app_dir)
+    import streamlit as st
+    from shared import kept_upload
+
+    if st.session_state.get("away"):
+        return
+    files = kept_upload("Elevation models", "dem_upload",
+                        accept_multiple_files=True, on_disk=True)
+    st.session_state["handed"] = [
+        (type(f).__name__, f.name, str(f.path), f.size, f.getvalue()) for f in files or []]
+
+
+def test_a_kept_upload_on_disk_holds_paths_not_bytes(tmp_path):
+    """An elevation tile runs to 50 MB. Kept as bytes in session it was held
+    twice while its uploader held it, and once more for the rest of the
+    session. On disk, the session holds names and paths, each upload is
+    written once, and the page reads a fresh upload and a kept one alike."""
+    at = AppTest.from_function(_kept_upload_page, args=(str(APP),), default_timeout=60)
+    at.session_state["workdir"] = tmp_path
+    at.run()
+    tile = b"II*\x00" + bytes(range(256)) * 16
+    at.file_uploader(key="dem_upload").set_value([
+        ("N08W013.hgt", b"\x00\x01" * 64, "application/octet-stream"),
+        ("../../escape.tif", tile, "image/tiff"),
+    ])
+    at.run()
+    assert not at.exception, at.exception
+
+    # the session holds where the files are, not what is in them, and a
+    # crafted name stays inside the upload's own folder
+    folder = tmp_path / "kept" / "dem_upload"
+    kept = at.session_state["dem_upload_kept"]["files"]
+    assert kept == [("N08W013.hgt", str(folder / "0_N08W013.hgt")),
+                    ("../../escape.tif", str(folder / "1_escape.tif"))]
+    assert sorted(p.name for p in tmp_path.rglob("*") if p.is_file()) == [
+        "0_N08W013.hgt", "1_escape.tif"]
+    # a fresh upload is handed over as the kept one will be
+    assert at.session_state["handed"] == [
+        ("KeptPath", "N08W013.hgt", str(folder / "0_N08W013.hgt"), 128, b"\x00\x01" * 64),
+        ("KeptPath", "../../escape.tif", str(folder / "1_escape.tif"), len(tile), tile),
+    ]
+
+    # written once: a rerun with the same files in the uploader reads the
+    # file on disk rather than writing it again
+    (folder / "1_escape.tif").write_bytes(b"read from disk")
+    at.run()
+    assert at.session_state["handed"][1][3:] == (14, b"read from disk")
+
+    # away from the page, the uploader forgets its files; back on it, the
+    # kept paths stand in for them, read from disk as before
+    at.session_state["away"] = True
+    at.run()
+    at.session_state["away"] = False
+    at.run()
+    assert not at.exception, at.exception
+    assert any("uploaded earlier" in str(c.value) for c in at.caption)
+    assert [h[:4] for h in at.session_state["handed"]] == [
+        ("KeptPath", "N08W013.hgt", str(folder / "0_N08W013.hgt"), 128),
+        ("KeptPath", "../../escape.tif", str(folder / "1_escape.tif"), 14)]
+    assert at.session_state["handed"][1][4] == b"read from disk"
+
+    # Remove forgets the files as well as the paths
+    at.button(key="dem_upload_forget").click()
+    at.run()
+    assert "dem_upload_kept" not in at.session_state
+    assert not folder.exists()
 
 
 @slow

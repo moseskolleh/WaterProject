@@ -27,7 +27,9 @@ Results (plain state, written by a page or by the recompute on load)
     ``programme_estimate``, ``field_checks``, ``handover_built``,
     ``wp_result``, ``spine_ledger``, the map paths (``map_paths``,
     ``subsurface_paths``, ``section_path``, ``pseudosection_path``,
-    ``profile_path``, ``topo_path``, ``traverse``, ``geolibre_*``),
+    ``profile_path``, ``topo_path``, ``traverse``, ``geolibre_*``), the
+    topographic map's source and read report (``topo_source``,
+    ``topo_report``),
     ``asset_record``, ``proc_contract_lines``, ``proc_measured``,
     ``proc_variations``, ``artifacts`` (built files, label -> path),
     ``project_summary``, ``inversion_cache`` and ``recompute_diagnostics``.
@@ -52,11 +54,19 @@ Invalidation markers
 
 Kept uploads
     ``<key>_kept``: the file in the uploader keyed ``<key>``, kept while its
-    page is not on screen (see ``shared.kept_upload``). A project load
-    clears the data uploaders' (``upload_<role>_kept``) with the uploaders
-    and their ``src_`` entries; the others (an elevation model, a scan, a
-    water point export, the files pooled on the Portfolio and the registry)
-    are not part of a project and outlive a load, as their uploaders did.
+    page is not on screen (see ``shared.kept_upload``), as bytes, or for the
+    elevation model's uploader (``dem_upload``) as names and paths of files
+    written to ``workdir/kept/dem_upload``. A project load clears the data
+    uploaders' (``upload_<role>_kept``) with the uploaders and their
+    ``src_`` entries. An elevation model, its kept files, the terrain
+    settings (``terrain_*``) and the figures drawn from it (``topo_path``,
+    ``topo_source``, ``topo_report``) are session-only and are dropped when
+    a project is loaded too, with the site's other maps (``map_paths``,
+    ``profile_path``): they belong to the outgoing site, and the project
+    file does not carry them. The other kept uploads (a scan, a water point
+    export, the files pooled on the Portfolio and the registry) are not part
+    of a project and outlive a load, as their uploaders did. The
+    ``terrain_`` inputs are carried between pages (below) until then.
 
 Carried widget values
     ``carried(key)`` below says which widget values survive while their
@@ -106,6 +116,10 @@ CARRIED_KEYS = frozenset({
     "ho_pump_type", "ho_tariff", "ho_committee_notes", "ho_works", "ho_recs",
     "ho_contractor_rep", "ho_client_rep", "ho_community_rep",
     "map_radius", "study_area_geology", "wp_radius",
+    # the elevation model's declared source, a picker with fixed options;
+    # a project load still clears them with the model (project_io's
+    # "terrain_" prefix)
+    "terrain_source", "terrain_source_text",
     "cov_source", "cov_resolution", "cov_year", "cov_rate",
     "asset_lookup",
     "proc_ref", "proc_retention", "proc_advance", "proc_number", "proc_date",

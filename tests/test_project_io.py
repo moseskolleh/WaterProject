@@ -134,6 +134,38 @@ def test_loading_clears_the_outgoing_project_including_the_uploaders():
     assert not ({"org_name", "nav"} & stale)
 
 
+def test_an_elevation_model_and_its_terrain_do_not_outlive_a_project_load():
+    """An elevation model is not saved in a project, and its uploader kept
+    its tiles through a load: the incoming site's topographic map was then
+    drawn from, and credited to, the outgoing site's tiles, and the
+    outgoing site's maps stayed on its Site maps page."""
+    session = {
+        # the outgoing site's elevation model, as kept_upload holds it
+        "dem_upload": object(),
+        "dem_upload_kept": {"ids": ["f1"], "files": [("N08W013.hgt", "/tmp/kept/0_N08W013.hgt")]},
+        "dem_upload_forget": False,
+        # what was declared about it, and the terrain settings
+        "terrain_source": "other",
+        "terrain_source_text": "viewfinderpanoramas",
+        "terrain_radius_km": 10.0,
+        # the maps drawn for that site
+        "topo_path": "/tmp/topographic_map.png",
+        "topo_source": "SRTM-format tile N08W013.hgt, source not stated",
+        "topo_report": {"notes": [], "notice": None},
+        "profile_path": "/tmp/ground_profile.png",
+        "map_paths": ["/tmp/study_area_map.png"],
+        # settings that belong to the user and the session, not the project
+        "map_radius": 40,
+        "org_name": "GeomentAqua",
+        "nav": "Site maps",
+    }
+    stale = set(stale_on_load(session))
+    assert {"dem_upload", "dem_upload_kept", "dem_upload_forget"} <= stale
+    assert {"terrain_source", "terrain_source_text", "terrain_radius_km"} <= stale
+    assert {"topo_path", "topo_source", "topo_report", "profile_path", "map_paths"} <= stale
+    assert not ({"map_radius", "org_name", "nav"} & stale)
+
+
 def test_bad_file_raises():
     with pytest.raises(ValueError):
         deserialize_project(b"not: [valid, project")

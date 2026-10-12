@@ -48,6 +48,8 @@ RESET_ON_LOAD_PREFIXES = (
     "rmkw_",
     "upload_",   # file_uploader widgets, which outlive their src_ entry
     "sample_",   # bundled-sample pickers, likewise
+    "dem_",      # the elevation model's uploader and the files it keeps
+    "terrain_",  # its declared source, the terrain settings and figures
 )
 # asset_record belongs to the outgoing borehole. Left behind, the incoming
 # project would inherit somebody else's identifier and maintenance history.
@@ -55,7 +57,13 @@ RESET_ON_LOAD_PREFIXES = (
 # incoming one's soundings, but they would be saved into its file.
 # The supervision photographs are the outgoing borehole's evidence, and left
 # behind they would vouch for the incoming one's seal.
-RESET_ON_LOAD_KEYS = ("design_swl", "asset_record", "inversion_cache", "sup_evidence")
+# The maps are the outgoing site's. An elevation model is not saved in a
+# project, so left behind it would draw the incoming site's topographic map
+# from tiles of somewhere else, credited as though they were its own.
+RESET_ON_LOAD_KEYS = (
+    "design_swl", "asset_record", "inversion_cache", "sup_evidence",
+    "topo_path", "topo_source", "topo_report", "profile_path", "map_paths",
+)
 
 
 def stale_on_load(session) -> list[str]:

@@ -28,21 +28,25 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import Normalize
 
 from ..config import HouseStyle
 from ..models import SiteMetadata
 from ..plotting import figure_context, save_figure
+from ..text import phrase
 from .elevation import (  # noqa: F401 - the moved names, re-exported
     _HGT_SIDES,
     _READERS,
     _SRTM_VOID,
     ElevationGrid,
+    ElevationRead,
     _bounds_text,
     grid_fill_probe,
     load_elevation,
     read_esri_ascii,
     read_srtm_hgt,
     read_xyz,
+    wgs84_cell_size,
 )
 from .regional import (
     ADMIN_CREDIT,
@@ -142,8 +146,70 @@ def _contour_interval(z: np.ndarray) -> float:
 # The map
 # ---------------------------------------------------------------------------
 
+def _square(grid: ElevationGrid, site: SiteMetadata | None, radius_km: float,
+            admin_path: str | Path | None = None
+            ) -> tuple[AreaWindow | None, float, float, tuple[float, float, float, float]]:
+    """The square a topographic map of ``grid`` is framed on: its centre
+    (the site's area window, else the middle of the grid) and its
+    ``(west, east, south, north)``, ``radius_km`` each way, worked out as
+    :meth:`ElevationGrid.window` cuts its window."""
+    window = area_window(site, radius_km, admin_path) if site is not None else None
+    if window is not None:
+        lon, lat = float(window.lon), float(window.lat)
+    else:
+        lon, lat = float(np.mean(grid.lons)), float(np.mean(grid.lats))
+    dlat = radius_km / 111.32
+    dlon = radius_km / (111.32 * max(math.cos(math.radians(lat)), 1e-6))
+    return window, lon, lat, (lon - dlon, lon + dlon, lat - dlat, lat + dlat)
+
+
+def _lattice_span(axis: np.ndarray, lo: float, hi: float) -> tuple[int, int]:
+    """How many points of the axis's lattice, carried on past its ends,
+    fall between ``lo`` and ``hi``, and how many of those the axis holds."""
+    n = len(axis)
+    step = (float(axis[-1]) - float(axis[0])) / (n - 1)
+    first = math.ceil((lo - float(axis[0])) / step - 1e-9)
+    last = math.floor((hi - float(axis[0])) / step + 1e-9)
+    if last < first:
+        return 0, 0
+    return last - first + 1, max(0, min(last, n - 1) - max(first, 0) + 1)
+
+
+def uncovered_percent(grid: ElevationGrid, site: SiteMetadata | None, radius_km: float,
+                      admin_path: str | Path | None = None) -> float:
+    """The share of the square a topographic map of ``grid`` is framed on
+    that the grid does not reach, in per cent of the cells the square holds
+    on the grid's own spacing.
+
+    It is what ``terrain.read_uncovered`` says of a window read from tiles,
+    said of a single ESRI ASCII or XYZ grid, whose map is cut from the
+    whole grid rather than read as a window.
+    """
+    _, _, _, (west, east, south, north) = _square(grid, site, radius_km, admin_path)
+    if len(grid.lons) < 2 or len(grid.lats) < 2:
+        return 100.0
+    across, covered_x = _lattice_span(grid.lons, west, east)
+    down, covered_y = _lattice_span(grid.lats, south, north)
+    if not across or not down:
+        return 100.0
+    return 100.0 * (1.0 - (covered_x * covered_y) / (across * down))
+
+
+def _grid_credit(grid: ElevationGrid) -> str:
+    """The credit line of a figure drawn from a grid that was not read as a
+    window: its label, the credit its licence asks for, and its cell size
+    in metres where it is."""
+    lat = float(np.mean(grid.lats))
+    step_lon = (float(grid.lons[-1]) - float(grid.lons[0])) / max(len(grid.lons) - 1, 1)
+    step_lat = (float(grid.lats[-1]) - float(grid.lats[0])) / max(len(grid.lats) - 1, 1)
+    dx, dy = wgs84_cell_size(lat, step_lon, step_lat)
+    if grid.credit:
+        return phrase("terrain.figure_credit", label=grid.source, credit=grid.credit, dx=dx, dy=dy)
+    return phrase("terrain.figure_credit_bare", label=grid.source, dx=dx, dy=dy)
+
+
 def plot_topographic_map(
-    grid: ElevationGrid,
+    data: ElevationRead | ElevationGrid,
     site: SiteMetadata | None = None,
     path: str | Path | None = None,
     style: HouseStyle | None = None,
@@ -156,11 +222,17 @@ def plot_topographic_map(
 ):
     """Topographic map of the study area: relief, contours and spot heights.
 
-    ``grid`` is the elevation model; ``radius_km`` cuts a local window
-    around the site out of it. The figure carries the model's own source
-    and sample spacing, because a contour drawn from 90 m SRTM through a
-    5 km window is a 90 m contour however finely it is plotted, and a
-    reader deciding where to put a borehole is entitled to know that.
+    ``data`` is a window read from GeoTIFF or ``.hgt`` tiles
+    (:func:`.elevation.read_elevation`), drawn as it is and framed on the
+    square it was read for, or a whole grid (an ESRI ASCII or XYZ file),
+    out of which ``radius_km`` cuts a window around the site, framed on the
+    square asked for even where the grid stops short of it: ground the
+    model does not cover is left blank inside the frame, not cut off the
+    map. Either way the figure carries the model's credit line and cell
+    size, because a contour drawn from 90 m SRTM through a 5 km window is
+    a 90 m contour however finely it is plotted, and a reader deciding
+    where to put a borehole is entitled to know that. ``site`` is marked;
+    for a whole grid it also centres the window.
 
     ``spot_heights`` are ``(lon, lat, label)`` triples - the survey's own
     levelled points. They are drawn as measured values on top of the
@@ -168,16 +240,36 @@ def plot_topographic_map(
     reader can see both and the survey is the one that was on the ground.
     """
     style = style or HouseStyle()
-    if radius_km is not None:
-        window = area_window(site, radius_km, admin_path) if site is not None else None
-        if window is not None:
-            grid = grid.window(window.lon, window.lat, radius_km)
-        else:
-            centre_lon = float(np.mean(grid.lons))
-            centre_lat = float(np.mean(grid.lats))
-            grid = grid.window(centre_lon, centre_lat, radius_km)
+    if isinstance(data, ElevationRead):
+        # the read is the square asked for, and the square shown is all of
+        # it when no margin was read around it
+        r0, r1, c0, c1 = data.shown
+        whole = data.grid
+        grid = ElevationGrid(
+            whole.lons[c0:c1], whole.lats[r0:r1], whole.z[r0:r1, c0:c1], source=whole.source,
+            resolution_note=whole.resolution_note, credit=whole.credit, source_id=whole.source_id,
+            files=whole.files, sea_clean=whole.sea_clean,
+        )
+        frame = (float(grid.lons[0]), float(grid.lons[-1]), float(grid.lats[0]), float(grid.lats[-1]))
+        where = data.centre.label
+        stride = data.plan.stride if data.plan is not None else 1
+        # a map wider than the cap on cells allows at the files' own spacing
+        # is read one cell in every few, which is not an average of them,
+        # and the figure says so
+        credit = data.figure_credit
+        if stride > 1:
+            credit += f" One cell in {stride} each way is drawn, without averaging."
     else:
-        window = area_window(site, None, admin_path) if site is not None else None
+        grid = data
+        if radius_km is not None:
+            window, lon, lat, frame = _square(grid, site, radius_km, admin_path)
+            grid = grid.window(lon, lat, radius_km)
+        else:
+            window = area_window(site, None, admin_path) if site is not None else None
+            frame = (float(grid.lons.min()), float(grid.lons.max()),
+                     float(grid.lats.min()), float(grid.lats.max()))
+        where = _where_label(site, window)
+        credit = _grid_credit(grid)
 
     finite = grid.z[np.isfinite(grid.z)]
     if finite.size == 0:
@@ -203,8 +295,11 @@ def plot_topographic_map(
             interpolation="bilinear", zorder=1, aspect="auto",
         )
         if show_hillshade:
+            # hillshade() shades a gap as flat ground at the mean height;
+            # left out here, a gap the files do not cover reads as a gap
+            shade = np.where(np.isfinite(grid.z), hillshade(grid), np.nan)
             ax.imshow(
-                hillshade(grid), extent=extent, origin="lower", cmap="gray",
+                shade, extent=extent, origin="lower", cmap="gray",
                 alpha=0.35, interpolation="bilinear", zorder=2, aspect="auto",
             )
         mesh_lon, mesh_lat = np.meshgrid(grid.lons, grid.lats)
@@ -213,10 +308,10 @@ def plot_topographic_map(
                 mesh_lon, mesh_lat, grid.z, levels=levels,
                 colors="#5A3A1E", linewidths=0.6, zorder=3,
             )
-            ax.clabel(cs, cs.levels[::2], fmt="%g", fontsize=6.5, inline=True)
+            ax.clabel(cs, np.asarray(cs.levels)[::2], fmt="%g", fontsize=6.5, inline=True)
         sm = plt.cm.ScalarMappable(
             cmap=land,
-            norm=plt.Normalize(vmin=float(finite.min()), vmax=float(finite.max())),
+            norm=Normalize(vmin=float(finite.min()), vmax=float(finite.max())),
         )
         cbar = fig.colorbar(sm, ax=ax, pad=0.02, shrink=0.85)
         cbar.set_label("Ground elevation (m)")
@@ -234,13 +329,10 @@ def plot_topographic_map(
             ax.plot(ring[:, 0], ring[:, 1], color="#333333", lw=1.0, zorder=5)
         if site is not None:
             _mark_site(ax, site, "#C1272D")
-        ax.set_xlim(extent[0], extent[1])
-        ax.set_ylim(extent[2], extent[3])
-        credit = grid.source
-        if grid.resolution_note:
-            credit += f", {grid.resolution_note} sampling"
-        _geo_axes_finish(ax, float(np.mean(ax.get_ylim())),
-                         f"Elevation: {credit}. {ADMIN_CREDIT}")
+        # the square asked for, whatever part of it the model covers
+        ax.set_xlim(frame[0], frame[1])
+        ax.set_ylim(frame[2], frame[3])
+        _geo_axes_finish(ax, float(np.mean(ax.get_ylim())), f"{credit} {ADMIN_CREDIT}")
         ax.text(
             0.01, 0.985,
             f"Contour interval {interval:g} m",
@@ -250,7 +342,6 @@ def plot_topographic_map(
                       alpha=0.9),
         )
         if title is None:
-            where = _where_label(site, window)
             title = f"Topographic map - {where}" if where else "Topographic map"
         ax.set_title(title)
         fig.tight_layout()
