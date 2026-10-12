@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import streamlit as st
@@ -24,19 +25,26 @@ from groundwater.mapping import (
     load_geology,
     load_hydrogeology,
     MapPoint,
+    analyse_terrain,
+    drainage_geojson,
     plot_admin_map,
+    plot_curvature,
     plot_geological_map,
+    plot_hillshade_directions,
     plot_hydrogeology_map,
     plot_study_area_map,
+    plot_terrain_relief,
     plot_topographic_map,
+    plot_wetness_index,
     protective_capacity_map,
     read_elevation,
     site_location_map,
+    terrain_captions,
     transverse_resistance_map,
     traverse_profile,
 )
 from groundwater.mapping.elevation import ElevationFile, file_notes, open_elevation_file
-from groundwater.mapping.terrain import uncovered_cells, uncovered_note
+from groundwater.mapping.terrain import geojson_meta, grid_analysis_window, uncovered_cells, uncovered_note
 from groundwater.siting import assess_siting
 from groundwater.text import phrase
 
@@ -69,6 +77,15 @@ _GRID_SUFFIXES = {".asc", ".grd", ".xyz", ".csv", ".txt"}
 #: read report, and the files and declared source it was drawn from
 _TOPO_KEYS = ("topo_path", "topo_source", "topo_report", "topo_inputs")
 
+#: The terrain figures: the key of each in the captions, which also names
+#: its title (``title_<key>``) and its file, and the function that draws it
+_TERRAIN_FIGURES = (
+    ("relief", plot_terrain_relief),
+    ("wetness", plot_wetness_index),
+    ("curvature", plot_curvature),
+    ("directions", plot_hillshade_directions),
+)
+
 
 def _open_tile(kept: KeptPath) -> ElevationFile:
     """A kept GeoTIFF or ``.hgt`` tile opened for its layout alone: only the
@@ -79,6 +96,68 @@ def _open_tile(kept: KeptPath) -> ElevationFile:
             return handle.read(length)
 
         return open_elevation_file(kept.name, kept.size, read_at)
+
+
+def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, declared, heard) -> dict:
+    """Read the window, analyse it, draw the four figures and write the
+    drainage lines, and return what the page keeps of it all.
+
+    ``tiles`` are GeoTIFF and ``.hgt`` files, read as one window with its
+    margin; ``grids`` one ESRI ASCII or XYZ grid, read whole and cut to the
+    same window, under the same cap. ``heard(start, width)`` gives the
+    progress callback for a part of the run, ``start`` to ``start + width``
+    of the bar. The analysis itself is dropped once the figures and the
+    GeoJSON are written: the session keeps only their paths, the summary,
+    the captions and the read report, so a new threshold is another run.
+    """
+    cfg = dataclasses.replace(app_config().terrain, drainage_area_km2=float(area_km2))
+    style = app_config().style
+    if grids:
+        # the grid readers name the file in what they say, so it is read
+        # under the name it was uploaded with
+        grid = load_elevation(save_upload(grids[0]))
+        window, shown, centre = grid_analysis_window(grid, site, radius_km, cfg)
+        uncovered = uncovered_note(*uncovered_cells(grid, site, radius_km))
+        read, notes, notice = None, [n for n in (centre.note, uncovered) if n], None
+        analysis = analyse_terrain(window, cfg, shown=shown, progress=heard(0.05, 0.75), precision="float32")
+    else:
+        read = read_elevation([(f.name, f.path) for f in tiles], site, radius_km, cfg, declared=declared,
+                              progress=heard(0.0, 0.1))
+        centre, notes, notice = read.centre, list(read.notes), read.notice
+        analysis = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown,
+                                   progress=heard(0.1, 0.7), precision="float32")
+    captions = terrain_captions(analysis, read, centre.label)
+    credit = read.figure_credit if read is not None else None
+    # each figure is announced by its title while it is drawn
+    drawing = heard(0.8, 0.2)
+    figures = []
+    for n, (key, draw) in enumerate(_TERRAIN_FIGURES):
+        drawing(n / len(_TERRAIN_FIGURES), captions[f"title_{key}"])
+        png = draw(analysis, captions, site, workdir() / f"terrain_{key}.png", style, svg=True, credit=credit)
+        figures.append((key, str(png), str(png.with_suffix(".svg"))))
+    geojson = workdir() / "drainage_lines.geojson"
+    geojson.write_text(drainage_geojson(analysis.core, analysis.parts, geojson_meta(analysis, read, centre)),
+                       encoding="utf-8")
+    return {"figures": figures, "geojson": str(geojson), "summary": dict(analysis.summary),
+            "captions": captions, "notes": notes, "notice": notice}
+
+
+def _show_terrain(result: dict) -> None:
+    """The terrain figures as the page keeps them: the read report, each
+    figure with the engine's captions under it and its PNG and SVG, the
+    drainage lines' GeoJSON, and the Copernicus liability sentence under
+    the downloads when the files hold a Copernicus tile."""
+    for note in result.get("notes", []):
+        st.caption(note)
+    captions = result["captions"]
+    for key, png, svg in result["figures"]:
+        st.image(png)
+        st.caption(captions[key])
+        offer_download(Path(png), f"Download {Path(png).name}")
+        offer_download(Path(svg), f"Download {Path(svg).name}")
+    offer_download(Path(result["geojson"]), "Download the drainage lines (GeoJSON)")
+    if result.get("notice"):
+        st.caption(result["notice"])
 
 
 def render() -> None:
@@ -201,7 +280,8 @@ def render() -> None:
             "void-filled compilations of several sources: declare them as "
             "Another source."
         )
-        st.caption(phrase("terrain.browser_reads_none"))
+        st.caption(phrase("terrain.python_only"))
+        st.caption(phrase("terrain.not_in_reports"))
         _dem_files = kept_upload(
             "Elevation models covering the site", "dem_upload",
             type=["tif", "tiff", "hgt", "asc", "grd", "xyz", "csv", "txt"],
@@ -316,6 +396,61 @@ def render() -> None:
                 st.caption(_note)
             if _report.get("notice"):
                 st.caption(_report["notice"])
+
+        # -- the terrain analysis of the same files: drainage lines, the
+        # wetness index, curvature, and the relief lit four ways
+        st.divider()
+        st.subheader("Terrain analysis")
+        _terrain = app_config().terrain
+        _radius_col, _area_col = st.columns(2)
+        _terrain_radius = _radius_col.number_input(
+            "Radius of the square shown (km)", min_value=1.0, max_value=50.0,
+            value=float(_terrain.analysis_radius_km), step=1.0, key="terrain_radius_km",
+        )
+        _terrain_area = _area_col.number_input(
+            "Drainage threshold (km²)", min_value=0.05, max_value=100.0,
+            value=float(_terrain.drainage_area_km2), step=0.05, format="%.2f",
+            key="terrain_area_km2",
+        )
+        if _dem_files and st.button(
+            "Analyse the terrain", key="run_terrain", type="primary",
+            disabled=_refused,
+        ):
+            _result, _failed = None, None
+            with st.status(phrase("terrain.stage_read")) as _status:
+                _bar = st.progress(0.0, text=phrase("terrain.stage_read"))
+
+                def _heard(start: float, width: float):
+                    def progress(fraction: float, label: str) -> None:
+                        _status.update(label=label)
+                        _bar.progress(min(1.0, start + width * fraction), text=label)
+                    return progress
+
+                try:
+                    _result = _analyse_terrain(
+                        _tiles, _grids, site, float(_terrain_radius),
+                        float(_terrain_area), _declared, _heard)
+                except ValueError as exc:
+                    _failed = str(exc)
+                    _status.update(state="error")
+                else:
+                    _bar.progress(1.0)
+                    _status.update(state="complete")
+            if _result is None:
+                # the figures shown before were of other files or another
+                # window, and a refusal is said in their place
+                st.session_state.pop("terrain_result", None)
+                st.error(_failed)
+            else:
+                _result["inputs"] = _drawn_from
+                st.session_state["terrain_result"] = _result
+        # shown, as the map is, only beside the files and the declared source
+        # it was worked out from
+        _kept_terrain = st.session_state.get("terrain_result")
+        if _kept_terrain and (_refused or _kept_terrain.get("inputs") != _drawn_from):
+            st.session_state.pop("terrain_result", None)
+        elif _kept_terrain:
+            _show_terrain(_kept_terrain)
 
         st.divider()
         st.subheader("Ground profile along the traverse")

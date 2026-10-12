@@ -71,20 +71,20 @@ await withPage(async (page, base, consoleErrors) => {
       `${info.html} chars, ${info.badText}`);
   }
 
-  // The topographic map is drawn from an elevation model only the Python
-  // app reads so far, and Site & maps and About say so in the catalogue's
-  // words, rather than leaving "every page" to imply it is here too.
+  // Part of the terrain work is in the Python app alone, and neither app's
+  // reports carry the terrain yet: Site & maps and About say both in the
+  // catalogue's words, rather than leaving "every page" to imply otherwise.
   const elevationNotice = await page.evaluate(() => {
     const app = window.GWT.app, C = window.GWT.core;
-    const notice = C.phrase('terrain.browser_reads_none');
-    const says = (selector) => Array.from(document.querySelectorAll('#page-host ' + selector))
-      .some((p) => p.textContent === notice);
+    const notices = [C.phrase('terrain.python_only'), C.phrase('terrain.not_in_reports')];
+    const says = (selector) => notices.every((notice) => Array.from(
+      document.querySelectorAll('#page-host ' + selector)).some((p) => p.textContent === notice));
     app.goto('site');
     const site = says('.callout.callout-info p');
     app.goto('about');
     return { site: site, about: says('p') };
   });
-  check('site and about: the browser says it does not read elevation models yet',
+  check('site and about: the browser says what of the terrain is in the Python app alone and not in reports',
     elevationNotice.site && elevationNotice.about, JSON.stringify(elevationNotice));
 
   // load the full sample and check the analyses appear

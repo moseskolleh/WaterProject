@@ -154,8 +154,10 @@ def test_an_elevation_model_and_its_terrain_do_not_outlive_a_project_load():
         "terrain_source": "other",
         "terrain_source_text": "viewfinderpanoramas",
         "terrain_radius_km": 10.0,
-        # the maps drawn for that site
+        "terrain_area_km2": 0.5,
+        # the maps drawn for that site, and the terrain worked out from it
         "topo_path": "/tmp/topographic_map.png",
+        "terrain_result": {"figures": [("relief", "/tmp/terrain_relief.png", "/tmp/terrain_relief.svg")]},
         "topo_source": "SRTM-format tile N08W013.hgt, source not stated",
         "topo_report": {"notes": [], "notice": None},
         "profile_path": "/tmp/ground_profile.png",
@@ -167,8 +169,8 @@ def test_an_elevation_model_and_its_terrain_do_not_outlive_a_project_load():
     }
     stale = set(stale_on_load(session))
     assert {"dem_upload", "dem_upload_kept", "dem_upload_forget"} <= stale
-    assert {"terrain_source", "terrain_source_text", "terrain_radius_km"} <= stale
-    assert {"topo_path", "topo_source", "topo_report", "profile_path", "map_paths"} <= stale
+    assert {"terrain_source", "terrain_source_text", "terrain_radius_km", "terrain_area_km2"} <= stale
+    assert {"topo_path", "topo_source", "topo_report", "terrain_result", "profile_path", "map_paths"} <= stale
     assert not ({"map_radius", "org_name", "nav"} & stale)
 
 

@@ -32,7 +32,11 @@ Results (plain state, written by a page or by the recompute on load)
     ``geolibre_portfolio``), the topographic map's source and read report
     (``topo_source``, ``topo_report``) and what it was drawn from
     (``topo_inputs``: the elevation files' upload ids and the source
-    declared for them; the map is shown only while they still hold),
+    declared for them; the map is shown only while they still hold), the
+    terrain analysis as the page keeps it (``terrain_result``: the paths of
+    its figures and its drainage lines' GeoJSON, its summary, captions and
+    read report, and the files and source it was worked out from, under
+    the same rule; the analysis's own layers are not kept),
     ``asset_record``, ``proc_contract_lines``, ``proc_measured``,
     ``proc_variations``, ``artifacts`` (built files, label -> path),
     ``project_summary``, ``inversion_cache`` and ``recompute_diagnostics``.
@@ -63,12 +67,13 @@ Kept uploads
     uploaders' (``upload_<role>_kept``) with the uploaders and their
     ``src_`` entries. An elevation model, its kept files, the terrain
     settings (``terrain_*``) and the figures drawn from it (``topo_path``,
-    ``topo_source``, ``topo_report``, ``topo_inputs``) are session-only and
-    are dropped when a project is loaded too, with every other map of the
-    site (``map_paths``, ``profile_path``, ``subsurface_paths``,
-    ``section_path``, ``pseudosection_path``, ``traverse``) and its GeoLibre
-    file (``geolibre_path``, ``geolibre_area``, ``geolibre_layers``): they
-    belong to the outgoing site, and the project file does not carry them.
+    ``topo_source``, ``topo_report``, ``topo_inputs``, ``terrain_result``)
+    are session-only and are dropped when a project is loaded too, with
+    every other map of the site (``map_paths``, ``profile_path``,
+    ``subsurface_paths``, ``section_path``, ``pseudosection_path``,
+    ``traverse``) and its GeoLibre file (``geolibre_path``,
+    ``geolibre_area``, ``geolibre_layers``): they belong to the outgoing
+    site, and the project file does not carry them.
     The Portfolio page's GeoLibre file is of the pooled sites and stays.
     The other kept uploads (a scan, a water point export, the files pooled
     on the Portfolio and the registry) are not part of a project and
@@ -123,10 +128,10 @@ CARRIED_KEYS = frozenset({
     "ho_pump_type", "ho_tariff", "ho_committee_notes", "ho_works", "ho_recs",
     "ho_contractor_rep", "ho_client_rep", "ho_community_rep",
     "map_radius", "study_area_geology", "wp_radius",
-    # the elevation model's declared source, a picker with fixed options;
-    # a project load still clears them with the model (project_io's
-    # "terrain_" prefix)
-    "terrain_source", "terrain_source_text",
+    # the elevation model's declared source, a picker with fixed options,
+    # and the terrain analysis's radius and drainage threshold; a project
+    # load still clears them with the model (project_io's "terrain_" prefix)
+    "terrain_source", "terrain_source_text", "terrain_radius_km", "terrain_area_km2",
     "cov_source", "cov_resolution", "cov_year", "cov_rate",
     "asset_lookup",
     "proc_ref", "proc_retention", "proc_advance", "proc_number", "proc_date",

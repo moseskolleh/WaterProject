@@ -893,9 +893,10 @@ def _load_project() -> None:
         # the outgoing site's maps, drawn around its position from its
         # elevation model and its soundings, and the GeoLibre file built
         # from them
-        "topo_path", "topo_source", "topo_report", "topo_inputs", "profile_path",
-        "map_paths", "subsurface_paths", "section_path", "pseudosection_path",
-        "traverse", "geolibre_path", "geolibre_area", "geolibre_layers",
+        "topo_path", "topo_source", "topo_report", "topo_inputs", "terrain_result",
+        "profile_path", "map_paths", "subsurface_paths", "section_path",
+        "pseudosection_path", "traverse", "geolibre_path", "geolibre_area",
+        "geolibre_layers",
     ):
         st.session_state.pop(result_key, None)
     overrides = updates.pop("rates_overrides", None)

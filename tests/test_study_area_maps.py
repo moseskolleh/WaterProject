@@ -615,6 +615,125 @@ def test_a_topographic_map_of_nothing_but_voids_is_refused(tmp_path):
         plot_topographic_map(grid, _site(), path=tmp_path / "topo.png")
 
 
+def _svg_text(path: Path) -> str:
+    """The text drawn in a matplotlib SVG, which writes each line of text as
+    glyph outlines after a comment holding the line, with its wrapping
+    undone."""
+    import re
+
+    lines = re.findall(r"<!-- (.*?) -->", path.read_text(encoding="utf-8"), re.S)
+    return " ".join(" ".join(lines).split())
+
+
+def test_the_four_terrain_figures_are_drawn_as_png_and_svg(tmp_path):
+    """The terrain figures were the browser's alone to draw, and a figure
+    saved as a PNG only cannot be scaled or edited for a report. Each of
+    the four is saved as a PNG and, beside it, an SVG, and each carries
+    its title, the model's credit line and the analysis's caveat inside
+    the figure, where both files keep them: the captions are printed under
+    the figure by the page, and a download leaves them behind."""
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import (
+        analyse_terrain,
+        plot_curvature,
+        plot_hillshade_directions,
+        plot_terrain_relief,
+        plot_wetness_index,
+        read_elevation,
+        terrain_captions,
+    )
+
+    read = read_elevation([(n, DEM / n) for n in COPERNICUS_PAIR], None, 0.4, margin_km=0.2)
+    a = analyse_terrain(read.grid, TerrainConfig(drainage_area_km2=0.01), assumed_sea=read.assumed_sea,
+                        shown=read.shown)
+    assert a.parts, "lines to draw"
+    caps = terrain_captions(a, read, "Kakua")
+    figures = {"relief": plot_terrain_relief, "wetness": plot_wetness_index, "curvature": plot_curvature,
+               "directions": plot_hillshade_directions}
+    for key, draw in figures.items():
+        path = tmp_path / f"terrain_{key}.png"
+        assert draw(a, caps, path=path, svg=True, credit=read.figure_credit) == path
+        svg = path.with_suffix(".svg")
+        assert path.stat().st_size > 20_000, key
+        assert svg.stat().st_size > 20_000, key
+        assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" and svg.read_text(encoding="utf-8").startswith("<?xml")
+        text = _svg_text(svg)
+        for line in (caps[f"title_{key}"], read.figure_credit, caps["figure_caveat"]):
+            assert " ".join(line.split()) in text, (key, line)
+        assert "Date" not in svg.read_text(encoding="utf-8").split("</metadata>")[0], "no date in the SVG"
+    # each panel of the directions is titled with its light
+    assert all(caps[f"panel_{n}"] in _svg_text(tmp_path / "terrain_directions.svg") for n in range(4))
+    # without a path the figure itself comes back, and nothing is written
+    import matplotlib.pyplot as plt
+
+    fig = plot_terrain_relief(a, caps)
+    try:
+        assert _figure_text(fig).count("Worked out from the elevation model alone") == 1
+    finally:
+        plt.close(fig)
+
+
+def test_a_grid_read_whole_is_analysed_in_a_window_held_to_the_same_cap():
+    """An ESRI ASCII or XYZ grid is held whole, so it is not planned and
+    read as tiles are, and its analysis had no cap: a grid of a whole
+    district went to the analysis as it was. Its window is cut around the
+    site with the margin, refused over the cap with the largest radius
+    that fits (which does fit), or with no radius when the margin alone is
+    over it, and the square shown sits inside it; the captions and the
+    drainage lines' GeoJSON measure the margin from the window, and the
+    figures carry the grid's own credit line."""
+    import json
+    import re
+
+    import matplotlib.pyplot as plt
+
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import analyse_terrain, drainage_geojson, plot_terrain_relief, terrain_captions
+    from groundwater.mapping.terrain import geojson_meta, grid_analysis_window
+    from groundwater.text import phrase
+
+    grid = _grid(n=300)                     # about 111 m cells over 12.2-11.9 W, 8.9-9.2 N
+    tight = TerrainConfig(max_cells=2500, analysis_buffer_km=1.0)
+    with pytest.raises(ValueError) as refused:
+        grid_analysis_window(grid, None, 5.0, tight)
+    said = re.fullmatch(r"A 5 km radius, with the 1 km margin analysed around it, needs more cells than the "
+                        r"2,500 the analysis takes; a radius of ([0-9.]+) km fits\.", str(refused.value))
+    assert said, str(refused.value)
+    fit = float(said.group(1))
+    window, _, _ = grid_analysis_window(grid, None, fit, tight)
+    assert window.z.size <= 2500
+    with pytest.raises(ValueError, match="needs more cells than"):
+        grid_analysis_window(grid, None, round(fit + 0.1, 1), tight)
+    with pytest.raises(ValueError) as margin:
+        grid_analysis_window(grid, None, 1.0, TerrainConfig(max_cells=100, analysis_buffer_km=2.0))
+    assert str(margin.value) == phrase("terrain.margin_too_many_cells", margin=2.0, cap=100)
+
+    cfg = TerrainConfig(analysis_buffer_km=1.0, drainage_area_km2=0.2)
+    window, shown, centre = grid_analysis_window(grid, None, 2.0, cfg)
+    assert centre.note == phrase("terrain.centre_no_site")
+    assert (centre.lon, centre.lat) == (float(np.mean(grid.lons)), float(np.mean(grid.lats)))
+    r0, r1, c0, c1 = shown
+    dlon = 2.0 / (111.32 * math.cos(math.radians(centre.lat)))
+    assert window.lons[c0] >= centre.lon - dlon > window.lons[c0 - 1]
+    assert window.lons[c1 - 1] <= centre.lon + dlon < window.lons[c1]
+    assert min(r0, c0, window.z.shape[0] - r1, window.z.shape[1] - c1) >= 9, "a margin of about 1 km"
+
+    a = analyse_terrain(window, cfg, shown=shown)
+    caps = terrain_captions(a, None, centre.label)
+    meta = geojson_meta(a, None, centre)
+    assert meta["notice"] is None and meta["label"] == "test grid"
+    assert meta["figure_credit"].startswith("Elevation: test grid. Cells about 110 by 111 m.")
+    lines = json.loads(drainage_geojson(a.core, a.parts, meta))
+    assert lines["description"] == caps["geojson_description"]
+    # the margin asked for, and the cell beyond it that the window keeps
+    assert 0.9 <= meta["margin"] <= 1.2 and phrase("terrain.caption_edge", margin=meta["margin"]) in caps["relief"]
+    fig = plot_terrain_relief(a, caps)
+    try:
+        assert meta["figure_credit"] in _figure_text(fig)
+    finally:
+        plt.close(fig)
+
+
 def test_ground_profile_needs_two_levelled_stations(tmp_path):
     with pytest.raises(ValueError, match="at least two levelled"):
         plot_ground_profile([0, 100, 200], [70.0, float("nan"), float("nan")],
