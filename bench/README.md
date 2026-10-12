@@ -374,6 +374,21 @@ the idle figure either; counting both as well, at their largest (85 MB),
 gives 523 MB. Both are under 690 MB, and the median at the cap is under
 6.0 s, so **2,000,000 cells is kept**.
 
+The synthetic tile looks like ground, which is the easy case. Surfaces
+built to be hard, each 1414 by 1414 cells (1,999,396, just under the cap),
+were measured the same way (a warm-up first, the peak RSS increase over
+the window held), on the same machine and day with the code as part b
+merged it, while another test run shared the machine: a channel winding
+through the whole window behind walls took 2.99 s and +304 MB; a plane
+tilted evenly to the south, nearly every cell of which is on a drainage
+line, 1.88 s and +308 MB; a channel in lanes that turns at every cell,
+2.51 s and +435 MB; and ground dead flat, 4.27 s and +320 MB. Before the
+part b review the first two took 27.2 s and 5.6 s, and raised the peak
+by 731 MB and 692 MB. The worst, +435 MB, plus the idle app's 159 MB is
+594 MB, and 679 MB with the scipy modules and the read's bytes counted
+as above: under 690 MB, with little to spare, so a surface harder still
+could pass it. The time is well under 6.0 s on every one.
+
 Not measured yet: the browser worker's time at the cap and the page-only
 fallback at 4x (`web.mjs` needs the page step 4.1c adds), and an ad hoc
 Pyodide run at the cap. The cap is one number for every runtime, so a
