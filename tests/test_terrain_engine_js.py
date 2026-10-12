@@ -3663,9 +3663,10 @@ def test_the_browser_curvature_of_a_dome_a_bowl_and_a_paraboloid_has_its_closed_
     of the edge are NaN; a cell that is not land is NaN while a sea sample
     with a height still counts; and a void sample blanks exactly the cells
     that sample it. Also kCells rounds the spacing over the middle row's
-    mean side. Prevents the legacy ESRI sign, samples taken one cell apart
-    instead of k, north and south swapped, and a curvature made up across a
-    gap."""
+    mean side, and a spacing of 0 or less is refused. Prevents the legacy
+    ESRI sign, samples taken one cell apart instead of k, north and south
+    swapped, a curvature made up across a gap, and a spacing Python
+    refuses taken as k = 1 in the browser."""
     import numpy as np
 
     side, n, mid = 30.0, 25, 12
@@ -3724,8 +3725,11 @@ def test_the_browser_curvature_of_a_dome_a_bowl_and_a_paraboloid_has_its_closed_
             assert math.isnan(profile[i]), i
         else:
             assert struct.pack("<d", profile[i]) == struct.pack("<d", whole[i]), i
-    for spacing, want in ((90.0, 3), (45.0, 2), (44.9, 1), (0.0, 1), (-5.0, 1), (300.0, 10)):
+    for spacing, want in ((90.0, 3), (45.0, 2), (44.9, 1), (1e-9, 1), (300.0, 10)):
         assert curv(z, spacing=spacing)[2] == want, spacing
+    for spacing in (0.0, -5.0):   # refused, as Python refuses them, rather than taken as k = 1
+        assert "error" in surface.ask("curv", zt=_sk_b64(z), cls=land, rows=n, cols=n, spacing=spacing,
+                                      floorTan=0.001, **metric), spacing
 
 
 def test_the_browser_wetness_index_on_a_plane_rises_downslope_and_uses_the_floor_on_flats(surface):
@@ -3872,10 +3876,11 @@ def test_the_browser_display_range_takes_ranked_finite_elements_as_they_are(surf
     NaN, both infinities, both zeros): the finite values sorted, the
     elements at floor(lo*(n-1)) and floor(hi*(n-1)) taken as they are
     (never interpolated, a zero as +0), NaN and NaN when nothing is
-    finite, and fractions outside 0..1 refused. Prevents a range that
-    moves with infinities or voids, an interpolated limit the other engine
-    cannot reproduce to the bit, and a -0 limit in one engine only (-0 and
-    +0 sort as equals, so which lands at the index is not fixed)."""
+    finite, and fractions outside 0..1 or out of order refused, as Python
+    refuses them. Prevents a range that moves with infinities or voids, an
+    interpolated limit the other engine cannot reproduce to the bit, a -0
+    limit in one engine only (-0 and +0 sort as equals, so which lands at
+    the index is not fixed), and a range upside down in one engine only."""
     rng = random.Random(41_316)
 
     def ask(values, lo, hi, plain=False):
@@ -3886,7 +3891,8 @@ def test_the_browser_display_range_takes_ranked_finite_elements_as_they_are(surf
         n = rng.choice([0, 1, 2, 3, 10, rng.randint(0, 400)])
         pool = [rng.uniform(-50, 50), round(rng.uniform(-5, 5)), 0.0, -0.0, math.nan, math.inf, -math.inf]
         values = [rng.choice(pool) if rng.random() < 0.3 else rng.uniform(-1e3, 1e3) for _ in range(n)]
-        lo, hi = rng.choice([0.0, 0.02, 0.5, 0.98, 1.0, rng.random()]), rng.choice([0.0, 0.98, 1.0, rng.random()])
+        lo, hi = sorted([rng.choice([0.0, 0.02, 0.5, 0.98, 1.0, rng.random()]),
+                         rng.choice([0.0, 0.98, 1.0, rng.random()])])
         got, want = ask(values, lo, hi, plain=trial % 5 == 0), _ref_display_range(values, lo, hi)
         assert not _sk_differ(got, want), (trial, values, lo, hi, got, want)
     assert ask([0.0, 10.0], 0.5, 0.5) == (0.0, 0.0), "the element at the rank, not a value between"
@@ -3894,7 +3900,7 @@ def test_the_browser_display_range_takes_ranked_finite_elements_as_they_are(surf
     assert struct.pack("<d", low) == struct.pack("<d", 0.0) and high == 3.0
     assert all(math.isnan(v) for v in ask([math.nan, math.inf], 0.02, 0.98))
     assert all(math.isnan(v) for v in ask([], 0.02, 0.98))
-    for lo, hi in ((-0.1, 0.5), (0.5, 1.5), (math.nan, 0.5)):
+    for lo, hi in ((-0.1, 0.5), (0.5, 1.5), (math.nan, 0.5), (0.98, 0.02)):
         assert "error" in ask([1.0, 2.0], lo, hi), (lo, hi)
 
 
@@ -4030,3 +4036,659 @@ def test_the_browser_surface_kernels_equal_the_spec_written_out_on_random_grids(
     assert seen["slopes"] > 5000 and seen["wetness"] > 2000 and seen["curvature"] > 300, seen
     assert seen["shadow"] > 100 and seen["flat"] > 50 and seen["floored"] > 50 and seen["overflow"] > 0, seen
     assert seen["k=1"] and seen["k=2"] and seen["k=3"], seen
+
+
+# ------------------------- terrain kernels: Python against the browser
+#
+# The two engines' phase-1 kernels, each run for real on the same grids:
+# groundwater.mapping.terrain_analysis in this process and gwt-core.js's
+# "Terrain analysis: routing" and "Terrain analysis: surface" in the Node
+# vm, chained as the analysis chains them (classes, fill, D8, flats,
+# totals; Horn, the hillshades, wetness, curvature; the relief's contour
+# interval and the display ranges). Every layer is compared by a digest of
+# its float64 bits that keeps the sign of a zero (every NaN made the one
+# NaN), every number by its bits, and the wetness index, whose log is a
+# library call in each engine, at a relative 1e-12. The blocks above hold
+# each engine to the spec written out in Python; this one holds them to
+# each other, which neither of those can.
+
+_KERNELS = r"""
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createInterface } from 'node:readline';
+import vm from 'node:vm';
+const sandbox = vm.createContext({ console, structuredClone });
+for (const f of ['gwt-data.js', 'gwt-core.js']) {
+  vm.runInContext(readFileSync(process.argv[2] + '/' + f, 'utf8'), sandbox, { filename: f });
+}
+const C = sandbox.GWT.core;
+const F64 = vm.runInContext('Float64Array', sandbox), U8 = vm.runInContext('Uint8Array', sandbox);
+function f64(text) {
+  const raw = Buffer.from(text, 'base64'), out = new F64(raw.length / 8);
+  new Uint8Array(out.buffer).set(raw);
+  return out;
+}
+function u8(text) {
+  const raw = Buffer.from(text, 'base64'), out = new U8(raw.length);
+  out.set(raw);
+  return out;
+}
+// a layer widened to float64 with every NaN the one NaN and the sign of a
+// zero kept: its SHA-256, or its bytes in base64 when the test asks for them
+function widened(values) {
+  const out = Float64Array.from(values), bits = new BigUint64Array(out.buffer);
+  for (let i = 0; i < out.length; i++) if (out[i] !== out[i]) bits[i] = 0x7FF8000000000000n;
+  return out;
+}
+const digest = (values) => createHash('sha256').update(new Uint8Array(widened(values).buffer)).digest('hex');
+const b64 = (values) => Buffer.from(widened(values).buffer).toString('base64');
+// a number's bits, big-endian hex, NaN as the one NaN
+function hex(v) {
+  if (v !== v) return '7ff8000000000000';
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, v);
+  return Buffer.from(view.buffer).toString('hex');
+}
+// a number sent as its bits in hex, since JSON carries no NaN, infinity or -0
+const num = (text) => Buffer.from(text, 'hex').readDoubleBE(0);
+function absolute(values) {
+  const out = new F64(values.length);
+  for (let i = 0; i < values.length; i++) out[i] = Math.abs(values[i]);
+  return out;
+}
+// the phase-1 kernels as the analysis chains them, every layer kept
+function chain(r) {
+  const rows = r.rows, cols = r.cols, started = performance.now();
+  const metric = C.rowMetric(f64(r.lons), f64(r.lats));
+  const sea = r.assumedSea === null ? null : u8(r.assumedSea);
+  const k = r.straightEdge === undefined ? C.classifyCells(f64(r.z), rows, cols, r.seaLevel, sea)
+    : C.classifyCells(f64(r.z), rows, cols, r.seaLevel, sea, r.straightEdge);
+  const filled = r.unfilled ? F64.from(k.zt) : C.fillDepressions(k.zt, k.cls, k.seed, rows, cols);
+  const d8 = C.flowDirections(k.zt, filled, k.cls, k.seed, rows, cols, metric, r.seaLevel);
+  const flats = C.resolveFlats(filled, k.cls, d8, rows, cols);
+  const acc = C.accumulateFlow(flats.code, k.cls, rows, cols, metric, r.seaClean);
+  const routed = performance.now();
+  const h = C.hornGradients(k.zt, rows, cols, metric);
+  const shades = r.suns.map(([az, alt, zf]) => C.hillshadeLayer(h.p, h.q, az, alt, zf));
+  const multi = r.composites.map(([azimuths, alt, zf]) => C.multidirectionalHillshade(h.p, h.q, azimuths, alt, zf));
+  const wet = r.floors.map((floor) => C.wetnessIndex(acc.areaUnits, k.cls, h.tanb, rows, cols, metric, floor));
+  const curv = r.curvatures.map(([spacing, floor]) => C.curvatures(k.zt, k.cls, rows, cols, metric, spacing, floor));
+  const surfaced = performance.now();
+  // the relief over the finite working heights, as the summary takes it
+  let lowest = Infinity, highest = -Infinity;
+  for (let i = 0; i < k.zt.length; i++) {
+    const v = k.zt[i];
+    if (v - v === 0) {
+      if (v < lowest) lowest = v;
+      if (v > highest) highest = v;
+    }
+  }
+  const relief = highest - lowest;
+  const contours = [relief, ...r.reliefs.map(num)].map((v) => C.contourInterval(v));
+  const layers = {
+    dx: metric.dx, dy: metric.dy, dg: metric.dg, auRow: metric.auRow,
+    cls: k.cls, seed: k.seed, zeroFill: k.zeroFill, zt: k.zt, filled, d8, code: flats.code,
+    count: acc.count, areaUnits: acc.areaUnits, flag: acc.flag, p: h.p, q: h.q, tanb: h.tanb,
+  };
+  shades.forEach((a, j) => { layers['shade' + j] = a; });
+  multi.forEach((a, j) => { layers['multi' + j] = a; });
+  wet.forEach((w, j) => { layers['arg' + j] = w.arg; layers['floored' + j] = w.floored; });
+  curv.forEach((c, j) => { layers['profile' + j] = c.profile; layers['tangential' + j] = c.tangential; });
+  const ranged = { ...layers };
+  curv.forEach((c, j) => {
+    ranged['absProfile' + j] = absolute(c.profile);
+    ranged['absTangential' + j] = absolute(c.tangential);
+  });
+  const ranges = r.ranges.map(([name, lo, hi]) => C.displayRange(ranged[name], lo, hi).map(hex));
+  // the wetness index's range: chosen on the exact argument, then one log each
+  const twiRange = C.displayRange(wet[0].arg, 0.02, 0.98).map((v) => Math.log(v));
+  const ended = performance.now();
+  return {
+    layers: Object.fromEntries(Object.entries(layers).map(([name, a]) => [name, r.full ? b64(a) : digest(a)])),
+    twi: wet.map((w) => b64(w.twi)), twiRange: twiRange.map(hex),
+    unresolved: flats.unresolved, kCells: curv.map((c) => c.kCells),
+    relief: hex(relief), contours: contours.map(hex), ranges,
+    ms: { routing: routed - started, surface: surfaced - routed, ranges: ended - surfaced },
+  };
+}
+// arguments as the test tags them: arrays as {f64} or {u8} base64, numbers
+// as {num} bits; anything else as it is
+function decoded(a) {
+  if (a === null || typeof a !== 'object') return a;
+  if (Array.isArray(a)) return a.map(decoded);
+  if ('f64' in a) return f64(a.f64);
+  if ('u8' in a) return u8(a.u8);
+  if ('num' in a) return num(a.num);
+  return Object.fromEntries(Object.entries(a).map(([key, v]) => [key, decoded(v)]));
+}
+// an answer as a list of strings in order: a digest for each array, the
+// bits of each number
+function flattened(x) {
+  if (typeof x === 'number') return [hex(x)];
+  if (ArrayBuffer.isView(x)) return [digest(x)];
+  return (Array.isArray(x) ? x : Object.values(x)).flatMap(flattened);
+}
+// one kernel called by name, less the parts named in `drop`, or the
+// sentence it refuses with (a plain Error is the engine refusing an
+// argument; any other error is a fault)
+function call({ name, args, drop }) {
+  try {
+    const answer = C[name](...args.map(decoded));
+    for (const key of drop) delete answer[key];
+    return { gave: flattened(answer) };
+  } catch (e) {
+    if (e && e.constructor && e.constructor.name === 'Error') return { refused: e.message };
+    throw e;
+  }
+}
+const ops = { chain, chains: ({ cases }) => cases.map(chain), calls: ({ calls }) => calls.map(call) };
+for await (const line of createInterface({ input: process.stdin })) {
+  const request = JSON.parse(line);
+  let answer;
+  try {
+    answer = { ok: ops[request.op](request) };
+  } catch (e) {
+    answer = { threw: String(e && e.stack || e) };
+  }
+  process.stdout.write(JSON.stringify(answer) + '\n');
+}
+"""
+
+
+@pytest.fixture
+def kernels(tmp_path):
+    """Both engines' phase-1 kernels in a Node vm, a batch of grids at a time."""
+    browser = _Reader(tmp_path, _KERNELS, "kernels.mjs")
+    yield browser
+    browser.close()
+
+
+def _kx_hex(value) -> str:
+    """A number's float64 bits as the driver writes them: big-endian hex, every NaN the one NaN."""
+    value = float(value)
+    return "7ff8000000000000" if math.isnan(value) else struct.pack(">d", value).hex()
+
+
+def _kx_float(text: str) -> float:
+    """The number whose bits ``_kx_hex`` wrote."""
+    return struct.unpack(">d", bytes.fromhex(text))[0]
+
+
+def _kx_python(case: dict, full: bool = False) -> dict:
+    """What groundwater.mapping.terrain_analysis gives for one grid, in the
+    shape the driver's ``chain`` gives the browser's answer."""
+    import time
+
+    import numpy as np
+
+    from groundwater.mapping import terrain_analysis as ta
+    from groundwater.mapping.elevation import row_metric
+
+    rows, cols = case["rows"], case["cols"]
+    started = time.perf_counter()
+    metric = row_metric(np.asarray(case["lons"]), np.asarray(case["lats"]))
+    z = np.asarray(case["z"], dtype=np.float64).reshape(rows, cols)
+    assumed = None if case["assumed"] is None else np.asarray(case["assumed"], dtype=bool).reshape(rows, cols)
+    edge = {} if case["edge"] is None else {"straight_edge_cells": case["edge"]}
+    cls, seed, zero_fill, zt = ta.classify_cells(z, case["sea_level"], assumed, **edge)
+    filled = zt.copy() if case["unfilled"] else ta.fill_depressions(zt, cls, seed)
+    d8 = ta.flow_directions(zt, filled, cls, seed, metric, case["sea_level"])
+    code, unresolved = ta.resolve_flats(filled, cls, d8)
+    count, area, flag = ta.accumulate_flow(code, cls, metric, case["sea_clean"])
+    routed = time.perf_counter()
+    p, q, tanb = ta.horn_gradients(zt, metric)
+    shades = [ta.hillshade_layer(p, q, az, alt, zf) for az, alt, zf in case["suns"]]
+    multi = [ta.multidirectional_hillshade(p, q, azimuths, alt, zf) for azimuths, alt, zf in case["composites"]]
+    wet = [ta.wetness_index(area, cls, tanb, metric, floor) for floor in case["floors"]]
+    curv = [ta.curvatures(zt, cls, metric, spacing, floor) for spacing, floor in case["curvatures"]]
+    surfaced = time.perf_counter()
+    finite = zt[np.isfinite(zt)]
+    relief = float(finite.max()) - float(finite.min()) if finite.size else -math.inf
+    contours = [ta.contour_interval(v) for v in [relief, *case["reliefs"]]]
+    layers = {
+        "dx": metric.dx, "dy": metric.dy, "dg": metric.dg, "auRow": metric.au_row,
+        "cls": cls, "seed": seed, "zeroFill": zero_fill, "zt": zt, "filled": filled, "d8": d8, "code": code,
+        "count": count, "areaUnits": area, "flag": flag, "p": p, "q": q, "tanb": tanb,
+    }
+    layers.update({f"shade{j}": a for j, a in enumerate(shades)})
+    layers.update({f"multi{j}": a for j, a in enumerate(multi)})
+    for j, (arg, _, floored) in enumerate(wet):
+        layers.update({f"arg{j}": arg, f"floored{j}": floored})
+    for j, (profile, tangential, _) in enumerate(curv):
+        layers.update({f"profile{j}": profile, f"tangential{j}": tangential})
+    ranged = dict(layers)
+    for j, (profile, tangential, _) in enumerate(curv):
+        ranged.update({f"absProfile{j}": np.abs(profile), f"absTangential{j}": np.abs(tangential)})
+    ranges = [[_kx_hex(v) for v in ta.display_range(ranged[name], lo, hi)] for name, lo, hi in case["ranges"]]
+    twi_range = [math.log(v) if v > 0 else (-math.inf if v == 0 else math.nan)
+                 for v in ta.display_range(wet[0][0], 0.02, 0.98)]
+    ended = time.perf_counter()
+    land = cls == ta.LAND
+    seen = {"land": int(land.sum()), "sea": int((cls == ta.SEA).sum()), "zero fill": int(zero_fill.sum()),
+            "assumed sea": 0 if assumed is None else int(assumed.sum()),
+            "negative zero": int(np.sum((z == 0.0) & np.signbit(z))), "infinite": int(np.isinf(z).sum()),
+            "raised": int((land & (filled > zt)).sum()), "level": int((land & (d8 == 0)).sum()),
+            "flows out": int((d8 == ta.FLOWS_OUT).sum()), "unresolved": unresolved,
+            "flagged": int(flag.sum()), "slopes": int(np.isfinite(p).sum()),
+            "shadow": sum(int((s == 0.0).sum()) for s in shades), "floored": int(wet[0][2].sum()),
+            "curvature": sum(int(np.isfinite(c[0]).sum()) for c in curv)}
+    seen.update({f"k={k}": 1 for _, _, k in curv})
+    return {
+        "layers": {name: (_sk_b64(np.asarray(a, dtype=np.float64).ravel()) if full else _digest(a))
+                   for name, a in layers.items()},
+        "twi": [np.asarray(twi, dtype=np.float64).ravel() for _, twi, _ in wet], "twiRange": twi_range,
+        "unresolved": unresolved, "kCells": [k for _, _, k in curv],
+        "relief": _kx_hex(relief), "contours": [_kx_hex(v) for v in contours], "ranges": ranges,
+        "ms": {"routing": 1000.0 * (routed - started), "surface": 1000.0 * (surfaced - routed),
+               "ranges": 1000.0 * (ended - surfaced)},
+        "seen": seen,
+    }
+
+
+def _kx_request(case: dict, full: bool = False) -> dict:
+    """One grid as the driver takes it."""
+    request = {
+        "rows": case["rows"], "cols": case["cols"], "z": _sk_b64(case["z"]),
+        "lons": _sk_b64(case["lons"]), "lats": _sk_b64(case["lats"]),
+        "assumedSea": None if case["assumed"] is None else _sk_b64(case["assumed"], "u1"),
+        "seaLevel": case["sea_level"], "seaClean": case["sea_clean"], "unfilled": case["unfilled"],
+        "suns": case["suns"], "composites": case["composites"], "floors": case["floors"],
+        "curvatures": case["curvatures"], "reliefs": [_kx_hex(v) for v in case["reliefs"]],
+        "ranges": case["ranges"], "full": full,
+    }
+    if case["edge"] is not None:
+        request["straightEdge"] = case["edge"]
+    return request
+
+
+def _kx_case(rng: random.Random) -> dict:
+    """One seeded grid, 3 to 60 cells a side, with the options both engines
+    are run with. Heights are whole centimetres over a few metres, so that
+    ties are everywhere: levels, a tilted plane, terraces, a plateau with
+    odd cells, a tilt with pits dug in it, or a random walk; then, by
+    chance, sea along one edge, -0 here and there, NaN voids, infinities,
+    a block of missing tile taken as sea (with no height), and a straight
+    strip of 0 m along an edge with a short straight-edge length, so that
+    it is voided as a mosaic's fill. Row metrics on 1 and 3 arc-second
+    lattices at several latitudes."""
+    size = rng.choice([12, 30, 60])
+    rows, cols = rng.randint(3, size), rng.randint(3, size)
+    kind = rng.choice(["levels", "tilt", "terraces", "plateau", "pits", "walk"])
+    levels = [-50, 0, 0, 25, 50, 100, 100, 150, 200, 300]
+    east, north, noise = rng.randint(-20, 20), rng.randint(-20, 20), rng.choice([0, 1, 5, 30])
+    cm: list[int] = []
+    for r in range(rows):
+        for c in range(cols):
+            tilt = 200 + east * c + north * r + rng.randint(-noise, noise)
+            if kind == "levels":
+                n = rng.choice(levels)
+            elif kind == "tilt":
+                n = tilt
+            elif kind == "terraces":
+                n = 100 * ((tilt + rng.randint(0, 150)) // 150)
+            elif kind == "plateau":
+                n = 300 if rng.random() < 0.8 else rng.choice(levels)
+            elif kind == "pits":
+                n = tilt - (rng.randint(10, 200) if rng.random() < 0.08 else 0)
+            else:
+                left = cm[-1] if c else 100
+                below = cm[-cols] if r else 100
+                n = (left + below) // 2 + 2 * c + 3 * r + rng.randint(-150, 150)
+            cm.append(n)
+    z = [n / 100.0 for n in cm]
+    edge = rng.choice([150, None, rng.randint(2, 20)])
+    if rng.random() < 0.4:   # sea along one edge, ragged
+        side, depth = rng.choice("SNWE"), rng.randint(1, max(1, min(rows, cols) // 3))
+        for i in range(rows * cols):
+            r, c = divmod(i, cols)
+            inward = {"S": r, "N": rows - 1 - r, "W": c, "E": cols - 1 - c}[side]
+            if inward < depth + rng.randint(-1, 1):
+                z[i] = rng.choice([-0.3, -0.05, 0.0, 0.0, -0.0])
+    if rng.random() < 0.25:   # a straight 0 m strip, as a mosaic fills a gap
+        side, width = rng.choice("SNWE"), rng.randint(1, 3)
+        for i in range(rows * cols):
+            r, c = divmod(i, cols)
+            if {"S": r, "N": rows - 1 - r, "W": c, "E": cols - 1 - c}[side] < width:
+                z[i] = rng.choice([0.0, 0.0, -0.0])
+        edge = rng.randint(2, 12)
+    for _ in range(rng.choice([0, 0, 2, 10])):
+        z[rng.randrange(rows * cols)] = -0.0
+    for _ in range(rng.choice([0, 0, 1, 3, 12])):
+        z[rng.randrange(rows * cols)] = math.nan
+    if rng.random() < 0.15:   # a void block
+        r0, c0 = rng.randrange(rows), rng.randrange(cols)
+        for r in range(r0, min(rows, r0 + rng.randint(1, 5))):
+            for c in range(c0, min(cols, c0 + rng.randint(1, 5))):
+                z[r * cols + c] = math.nan
+    for _ in range(rng.choice([0, 0, 0, 1, 2])):
+        z[rng.randrange(rows * cols)] = rng.choice([math.inf, -math.inf])
+    assumed = None
+    if rng.random() < 0.3:   # a missing tile taken as sea: a block on an edge or inland
+        assumed = [0] * (rows * cols)
+        r0 = rng.choice([0, rng.randrange(rows)])
+        c0 = rng.choice([0, rng.randrange(cols)])
+        r1, c1 = min(rows, r0 + rng.randint(1, 8)), min(cols, c0 + rng.randint(1, 8))
+        for r in range(r0, r1):
+            for c in range(c0, c1):
+                assumed[r * cols + c] = 1
+                z[r * cols + c] = math.nan if rng.random() < 0.9 else z[r * cols + c]
+    step = rng.choice([1 / 3600, 1 / 1200])
+    lat0 = rng.choice([8.0, 8.5, 9.5, 0.0, -33.9, 51.5])
+    lons = [-12.0 + j * step for j in range(cols)]
+    lats = [lat0 + j * step for j in range(rows)]
+    mean = 15.0 if step < 1 / 2000 else 45.0   # about half a cell side, so some spacings fall on whole cells
+
+    def sun() -> list:
+        return [rng.choice([315.0, 0.0, 225.0, float(rng.randint(-8, 8) * 45), rng.uniform(-400.0, 400.0)]),
+                rng.choice([45.0, 30.0, 0.0, 90.0, 12.5, rng.uniform(-10.0, 100.0)]),
+                rng.choice([1.0, 2.0, 0.5, rng.uniform(0.1, 5.0)])]
+
+    suns = [[az, 45.0, 1.0] for az in (270.0, 315.0, 0.0, 45.0)] + [sun() for _ in range(3)]
+    composites = [[[225.0, 270.0, 315.0, 360.0], 45.0, 1.0], [[270.0, 315.0, 0.0, 45.0], *sun()[1:]],
+                  [[sun()[0] for _ in range(rng.randint(0, 5))], *sun()[1:]]]
+    floors = [0.001, rng.choice([0.01, 0.05, rng.uniform(1e-4, 0.2)])]
+    if rng.random() < 0.3:
+        # now and then the second floor is one of the grid's own slopes
+        # exactly, where >= and > part
+        import numpy as np
+
+        from groundwater.mapping import terrain_analysis as ta
+        from groundwater.mapping.elevation import row_metric
+
+        zt = ta.classify_cells(np.reshape(z, (rows, cols)), 0.0, None if assumed is None else
+                               np.reshape(np.asarray(assumed, dtype=bool), (rows, cols)))[3]
+        slopes = ta.horn_gradients(zt, row_metric(np.asarray(lons), np.asarray(lats)))[2]
+        slopes = sorted({float(v) for v in slopes.ravel() if 0.0 < v < math.inf})
+        if slopes:
+            floors[1] = rng.choice(slopes)
+    curvatures = [[90.0, 0.001], [30.0, floors[1]], [rng.uniform(0.5, 300.0), 0.001],
+                  [rng.randint(1, 4) * 2.0 * mean, rng.choice(floors)]]
+    layers = ["zt", "filled", "tanb", "p", "shade1", "multi0", "arg1", "areaUnits", "profile1"]
+    ranges = [["arg0", 0.02, 0.98], ["absProfile0", 0.98, 0.98], ["absTangential0", 0.98, 0.98]]
+    for name in rng.sample(layers, 3):
+        lo = rng.choice([0.0, 0.02, rng.random()])
+        ranges.append([name, lo, rng.choice([lo, max(lo, 0.98), 1.0, rng.uniform(lo, 1.0)])])
+    reliefs = [rng.choice([6.0, 59.99999999999999, 60.0, 299.99999999999994, math.nan, -1.0, 1e30]),
+               rng.uniform(0.0, 5000.0)]
+    return {"rows": rows, "cols": cols, "z": z, "lons": lons, "lats": lats, "assumed": assumed,
+            "edge": edge, "sea_level": rng.choice([0.0, 0.0, 0.0, 0.0, 0.5, -0.25]),
+            "sea_clean": rng.random() < 0.5, "unfilled": rng.random() < 0.1, "suns": suns,
+            "composites": composites, "floors": floors, "curvatures": curvatures, "ranges": ranges,
+            "reliefs": reliefs}
+
+
+def _kx_differences(kernels, case: dict, js: dict, py: dict) -> list[str]:
+    """Where the browser's answer for one grid differs from Python's: for a
+    layer, the first cell whose bits differ, from both engines' layers in
+    full."""
+    out = []
+    layers = [name for name, digest in py["layers"].items() if js["layers"].get(name) != digest]
+    if layers:
+        whole_js = kernels.ask("chain", **_kx_request(case, full=True))["ok"]["layers"]
+        whole_py = _kx_python(case, full=True)["layers"]
+        for name in layers:
+            a, b = _sk_f64(whole_js[name]), _sk_f64(whole_py[name])
+            first = _sk_differ(a, b)[0] if a.size == b.size else None
+            out.append(f"{name}: lengths {a.size} and {b.size}" if first is None else
+                       f"{name} at row {first // case['cols']}, column {first % case['cols']}: "
+                       f"browser {a[first]!r}, python {b[first]!r}")
+    out += [f"{key}: browser {js[key]}, python {py[key]}"
+            for key in ("unresolved", "kCells", "relief", "contours", "ranges") if js[key] != py[key]]
+    for j, twi in enumerate(py["twi"]):
+        far = _sk_far(_sk_f64(js["twi"][j]), twi)
+        if far:
+            out.append(f"twi{j}: {len(far)} cells beyond 1e-12, first {far[0]}")
+    if _sk_far([_kx_float(v) for v in js["twiRange"]], py["twiRange"]):
+        out.append(f"twiRange: browser {js['twiRange']}, python {py['twiRange']}")
+    return out
+
+
+def test_browser_analysis_digests_match_python_on_seeded_grids(kernels):
+    """Both engines' phase-1 kernels, run for real on 300 seeded grids (3
+    to 60 cells a side, heights in whole centimetres so that ties are
+    everywhere, with plateaus, pits, NaN voids, infinities, -0, sea along
+    an edge, a block of missing tile taken as sea, a straight 0 m strip
+    with a short straight-edge length, and row metrics at six latitudes),
+    chained as the analysis chains them: every layer of the classes, the
+    fill, D8, the flats and the totals, Horn's gradients, seven hillshades
+    and three composites, the wetness index's argument and floored cells
+    at two floors, both curvatures at four spacings with their k, the
+    relief and its contour interval, and display ranges, all to the bit;
+    the wetness index itself at a relative 1e-12. Prevents the two engines
+    drifting apart on any rule each was held to separately (a tie, a sign
+    of zero, a NaN rule, an order of operations), where the figures and
+    summaries of the two apps would then differ."""
+    from collections import Counter
+
+    rng = random.Random(41_150)
+    cases = [_kx_case(rng) for _ in range(300)]
+    answers = kernels.ask("chains", cases=[_kx_request(case) for case in cases])["ok"]
+    differ, seen = [], Counter()
+    for trial, (case, js) in enumerate(zip(cases, answers, strict=True)):
+        py = _kx_python(case)
+        bad = _kx_differences(kernels, case, js, py)
+        if bad:
+            differ.append(f"trial {trial} ({case['rows']} x {case['cols']}): " + "; ".join(bad))
+        seen.update(py["seen"])
+        seen["grids with zero fill"] += py["seen"]["zero fill"] > 0
+    assert not differ, f"{len(differ)} of {len(cases)} grids differ:\n" + "\n".join(differ[:20])
+    # the grids reach every rule, not just the easy middle
+    assert seen["sea"] > 2000 and seen["assumed sea"] > 200 and seen["infinite"] > 20, seen
+    assert seen["zero fill"] > 500 and seen["grids with zero fill"] >= 10 and seen["negative zero"] > 500, seen
+    assert seen["raised"] > 1000 and seen["level"] > 2000 and seen["flows out"] > 500, seen
+    assert seen["unresolved"] > 0 and seen["flagged"] > 2000, seen
+    assert seen["shadow"] > 1000 and seen["floored"] > 500 and seen["curvature"] > 10000, seen
+    assert seen["k=1"] and seen["k=2"] and seen["k=3"] and seen["k=6"], seen
+
+
+def _kx_tagged(value):
+    """An argument as the driver's ``calls`` takes it: arrays as base64
+    (uint8 or float64), floats by their bits, so that NaN, the infinities
+    and -0 arrive as they left; whole numbers, flags and None as they are."""
+    import numpy as np
+
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return {"num": _kx_hex(value)}
+    if isinstance(value, np.ndarray):
+        if value.dtype in (np.uint8, np.bool_):
+            return {"u8": _sk_b64(value.ravel(), "u1")}
+        return {"f64": _sk_b64(value.ravel())}
+    if isinstance(value, dict):
+        return {key: _kx_tagged(v) for key, v in value.items()}
+    return [_kx_tagged(v) for v in value]
+
+
+def _kx_flattened(answer) -> list[str]:
+    """A Python answer as the driver flattens the browser's: a digest for
+    each array, the bits of each number, in order."""
+    import numpy as np
+
+    if isinstance(answer, np.ndarray):
+        return [_digest(answer)]
+    if isinstance(answer, (tuple, list)):
+        return [text for part in answer for text in _kx_flattened(part)]
+    return [_kx_hex(answer)]
+
+
+def _kx_metric(rows: int, side: float = 30.0, extra: int = 0, au=None) -> tuple:
+    """A metric of ``rows + extra`` rows of square cells ``side`` metres
+    across, for Python (a RowMetric) and for the browser (its arrays);
+    ``au`` replaces the areas."""
+    import numpy as np
+
+    from groundwater.mapping.elevation import RowMetric
+
+    n = rows + extra
+    dx, dy = np.full(n, side), np.full(n, side)
+    dg = np.sqrt(dx * dx + dy * dy)
+    area = np.floor(dx * dy * 100.0 + 0.5) if au is None else np.full(n, float(au))
+    return RowMetric(dx, dy, dg, area), {"dx": dx, "dy": dy, "dg": dg, "auRow": area}
+
+
+def _kx_calls() -> list[tuple]:
+    """``(label, refused, name, browser arguments, Python call)`` for each
+    case: the routing and surface kernels on grids with no cells and on
+    grids one and two cells across, step by step; and every argument the
+    two engines settled to refuse alike, with its accepted neighbours.
+    ``refused`` is what the rule expects: True, False, or None where only
+    agreement is asked."""
+    import numpy as np
+
+    from groundwater.mapping import terrain_analysis as ta
+
+    calls: list[tuple] = []
+    rng = np.random.default_rng(41_15)
+    for rows, cols in ((0, 0), (0, 5), (5, 0), (1, 1), (1, 7), (7, 1), (2, 2), (2, 9), (9, 2), (3, 3)):
+        z = rng.integers(-2, 5, (rows, cols)) / 2.0
+        pm, jm = _kx_metric(rows)
+        shape = f"{rows} x {cols}"
+        cls, seed, _, zt = ta.classify_cells(z, 0.0)
+        filled = ta.fill_depressions(zt, cls, seed)
+        d8 = ta.flow_directions(zt, filled, cls, seed, pm, 0.0)
+        code, _ = ta.resolve_flats(filled, cls, d8)
+        _, area, _ = ta.accumulate_flow(code, cls, pm, False)
+        p, q, tanb = ta.horn_gradients(zt, pm)
+        calls += [
+            (f"classes {shape}", False, "classifyCells", [z, rows, cols, 0.0], lambda z=z: ta.classify_cells(z, 0.0)),
+            (f"fill {shape}", False, "fillDepressions", [zt, cls, seed, rows, cols],
+             lambda zt=zt, cls=cls, seed=seed: ta.fill_depressions(zt, cls, seed)),
+            (f"D8 {shape}", False, "flowDirections", [zt, filled, cls, seed, rows, cols, jm, 0.0],
+             lambda zt=zt, f=filled, cls=cls, seed=seed, pm=pm: ta.flow_directions(zt, f, cls, seed, pm, 0.0)),
+            (f"flats {shape}", False, "resolveFlats", [filled, cls, d8, rows, cols],
+             lambda f=filled, cls=cls, d8=d8: ta.resolve_flats(f, cls, d8)),
+            (f"totals {shape}", False, "accumulateFlow", [code, cls, rows, cols, jm, False],
+             lambda code=code, cls=cls, pm=pm: ta.accumulate_flow(code, cls, pm, False)),
+            (f"Horn {shape}", False, "hornGradients", [zt, rows, cols, jm],
+             lambda zt=zt, pm=pm: ta.horn_gradients(zt, pm)),
+            (f"hillshade {shape}", False, "hillshadeLayer", [p, q, 315.0, 45.0],
+             lambda p=p, q=q: ta.hillshade_layer(p, q, 315.0, 45.0)),
+            # no rows: no middle row to measure the spacing on
+            (f"curvature {shape}", rows == 0, "curvatures", [zt, cls, rows, cols, jm, 90.0, 0.001],
+             lambda zt=zt, cls=cls, pm=pm: ta.curvatures(zt, cls, pm, 90.0, 0.001)),
+        ]
+        if rows < 3 or cols < 3:   # no slope anywhere, so no logarithm to compare at a tolerance
+            calls.append((f"wetness {shape}", False, "wetnessIndex", [area, cls, tanb, rows, cols, jm, 0.001],
+                          lambda a=area, cls=cls, t=tanb, pm=pm: ta.wetness_index(a, cls, t, pm, 0.001)))
+
+    rows, cols = 6, 5
+    z = rng.integers(0, 50, (rows, cols)) / 10.0
+    pm, jm = _kx_metric(rows)
+    cls, seed, _, zt = ta.classify_cells(z, 0.0)
+    filled = ta.fill_depressions(zt, cls, seed)
+    d8 = ta.flow_directions(zt, filled, cls, seed, pm, 0.0)
+    code, _ = ta.resolve_flats(filled, cls, d8)
+    _, area, _ = ta.accumulate_flow(code, cls, pm, True)
+    p, q, tanb = ta.horn_gradients(zt, pm)
+    for spacing, refused in ((0.0, True), (-0.0, True), (-5.0, True), (math.nan, True), (math.inf, True),
+                             (-math.inf, True), (1e-300, False), (7.5, False), (1e300, False)):
+        calls.append((f"curvature spacing {spacing}", refused, "curvatures", [zt, cls, rows, cols, jm, spacing, 0.001],
+                      lambda s=spacing: ta.curvatures(zt, cls, pm, s, 0.001)))
+    tiny, tiny_js = _kx_metric(rows, side=1e-300)   # a spacing of 1e10 m is then 1e310 cells: no finite k
+    calls.append(("curvature spacing past a finite k", True, "curvatures", [zt, cls, rows, cols, tiny_js, 1e10, 0.001],
+                  lambda: ta.curvatures(zt, cls, tiny, 1e10, 0.001)))
+    for floor, refused in ((0.0, True), (-0.0, True), (-1.0, True), (math.nan, True), (math.inf, True),
+                           (1e-300, False), (0.05, False)):
+        calls += [
+            (f"wetness floor {floor}", refused, "wetnessIndex", [area, cls, tanb, rows, cols, jm, floor],
+             lambda f=floor: ta.wetness_index(area, cls, tanb, pm, f)),
+            (f"curvature floor {floor}", refused, "curvatures", [zt, cls, rows, cols, jm, 90.0, floor],
+             lambda f=floor: ta.curvatures(zt, cls, pm, 90.0, f)),
+        ]
+    for extra in (-1, 1):   # a metric a row short or a row long
+        other, other_js = _kx_metric(rows, extra=extra)
+        calls += [
+            (f"Horn, metric {extra:+d} row", True, "hornGradients", [zt, rows, cols, other_js],
+             lambda m=other: ta.horn_gradients(zt, m)),
+            (f"D8, metric {extra:+d} row", True, "flowDirections", [zt, filled, cls, seed, rows, cols, other_js, 0.0],
+             lambda m=other: ta.flow_directions(zt, filled, cls, seed, m, 0.0)),
+            (f"totals, metric {extra:+d} row", True, "accumulateFlow", [code, cls, rows, cols, other_js, False],
+             lambda m=other: ta.accumulate_flow(code, cls, m, False)),
+            (f"wetness, metric {extra:+d} row", True, "wetnessIndex", [area, cls, tanb, rows, cols, other_js, 0.001],
+             lambda m=other: ta.wetness_index(area, cls, tanb, m, 0.001)),
+            (f"curvature, metric {extra:+d} row", True, "curvatures", [zt, cls, rows, cols, other_js, 90.0, 0.001],
+             lambda m=other: ta.curvatures(zt, cls, m, 90.0, 0.001)),
+        ]
+    # whole units only, and the largest times the 30 cells below 2**53, so
+    # that every total is exact in both engines
+    for au, refused in ((90000.5, True), (-1.0, True), (math.nan, True), (math.inf, True), (2.0**53 - 1.0, True),
+                        (float(2**53 // 30 + 1), True), (float(2**53 // 30), False), (0.0, False), (-0.0, False)):
+        whole, whole_js = _kx_metric(rows, au=au)
+        calls.append((f"totals, cell area {au}", refused, "accumulateFlow", [code, cls, rows, cols, whole_js, False],
+                      lambda m=whole: ta.accumulate_flow(code, cls, m, False)))
+    # left out and None (null) both mean the default; on a coast whose edge
+    # runs straight for 5 cells, so that the length decides
+    coast = z.copy()
+    coast[0, :] = 0.0
+    coast[1:, :] += 1.0
+    calls += [
+        ("classes, straight edge None", False, "classifyCells", [coast, rows, cols, 0.0, None, None],
+         lambda: ta.classify_cells(coast, 0.0, None, None)),
+        ("classes, straight edge left out", False, "classifyCells", [coast, rows, cols, 0.0],
+         lambda: ta.classify_cells(coast, 0.0)),
+        ("classes, straight edge 5", False, "classifyCells", [coast, rows, cols, 0.0, None, 5],
+         lambda: ta.classify_cells(coast, 0.0, None, 5)),
+        ("hillshade, z-factor None", False, "hillshadeLayer", [p, q, 315.0, 45.0, None],
+         lambda: ta.hillshade_layer(p, q, 315.0, 45.0, None)),
+        ("hillshade, z-factor left out", False, "hillshadeLayer", [p, q, 315.0, 45.0],
+         lambda: ta.hillshade_layer(p, q, 315.0, 45.0)),
+        ("composite, z-factor None", False, "multidirectionalHillshade", [p, q, [225.0, 270.0], 45.0, None],
+         lambda: ta.multidirectional_hillshade(p, q, [225.0, 270.0], 45.0, None)),
+        ("hillshade p and q of two lengths", True, "hillshadeLayer", [np.full(4, 0.1), np.full(5, 0.1), 0.0, 45.0],
+         lambda: ta.hillshade_layer(np.full(4, 0.1), np.full(5, 0.1), 0.0, 45.0)),
+    ]
+    values = np.array([3.0, -0.0, 0.0, math.nan, 1.0, math.inf, 2.0])
+    for lo, hi, refused in ((0.98, 0.02, True), (-0.1, 0.5, True), (0.5, 1.5, True), (math.nan, 0.5, True),
+                            (0.5, math.nan, True), (-0.0, 1.0, False), (0.0, 0.0, False), (1.0, 1.0, False),
+                            (0.02, 0.98, False)):
+        calls.append((f"display range {lo}, {hi}", refused, "displayRange", [values, lo, hi],
+                      lambda lo=lo, hi=hi: ta.display_range(values, lo, hi)))
+    calls.append(("display range of nothing", False, "displayRange", [np.array([]), 0.02, 0.98],
+                  lambda: ta.display_range(np.array([]), 0.02, 0.98)))
+    for relief in (0.0, -0.0, math.nan, math.inf, -math.inf, 5e-324, 6.0, 59.99999999999999, 3e22, 6e22, 1.2e23,
+                   1.7976931348623157e308):
+        calls.append((f"contour interval {relief}", False, "contourInterval", [relief],
+                      lambda r=relief: ta.contour_interval(r)))
+    return calls
+
+
+def test_both_engines_take_empty_and_thin_grids_alike_and_refuse_the_same_arguments(kernels):
+    """Each phase-1 kernel of both engines, called as it is named, on grids
+    with no cells and grids one and two cells across, and with every
+    argument the engines were settled to treat alike: a curvature spacing
+    that is not a finite positive number of metres or gives no finite k, a
+    grid with no middle row, a slope floor that is not a finite positive
+    tangent (in the wetness index and the curvatures), a metric a row short
+    or long, a cell area that is not a whole number of units below 2**53,
+    display fractions out of order or outside 0..1, None (null) for a
+    straight-edge length or a z-factor, and contour intervals at the knife
+    edges. Each answer is the same to the bit, or both engines refuse.
+    Prevents one engine refusing what the other answers (Python once
+    raised on an empty grid, a null z-factor shaded the browser's relief
+    flat, and a zero spacing gave k = 1 there and an error here), and a
+    fraction of a unit cut off the areas in Python alone."""
+    calls = _kx_calls()
+    # the wetness index itself is a library's log, held at 1e-12 in the
+    # seeded test above; its argument and floored cells are compared here
+    drop = {"wetnessIndex": ["twi"]}
+    answers = kernels.ask("calls", calls=[{"name": name, "args": _kx_tagged(args), "drop": drop.get(name, [])}
+                                          for _, _, name, args, _ in calls])["ok"]
+    differ = []
+    for (label, refused, name, _, python), js in zip(calls, answers, strict=True):
+        try:
+            answer = python()
+            py = {"gave": _kx_flattened((answer[0], answer[2]) if name in drop else answer)}
+        except ValueError as exc:
+            py = {"refused": str(exc)}
+        if ("refused" in js) != ("refused" in py) or js.get("gave") != py.get("gave"):
+            differ.append(f"{label}: browser {js}, python {py}")
+        elif refused is not None and ("refused" in py) != refused:
+            differ.append(f"{label}: both {'refused' if 'refused' in py else 'answered'}, against the rule")
+    assert not differ, f"{len(differ)} of {len(calls)} calls differ:\n" + "\n".join(differ)
+    # None (null) is the default, not a value of its own, and the coast's
+    # straight edge is long enough for the length to decide
+    gave = {label: js.get("gave") for (label, *_), js in zip(calls, answers, strict=True)}
+    assert gave["hillshade, z-factor None"] == gave["hillshade, z-factor left out"]
+    none, left_out, five = (gave[f"classes, straight edge {length}"] for length in ("None", "left out", "5"))
+    assert none == left_out != five

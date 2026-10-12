@@ -2260,6 +2260,8 @@
    */
   function hornGradients(zt, rows, cols, metric) {
     surfaceShape('the height grid', zt, rows, cols);
+    surfaceRows('cell widths', metric.dx, rows);
+    surfaceRows('cell heights', metric.dy, rows);
     var sqrt = Math.sqrt, n = rows * cols;
     var p = new Float64Array(n).fill(NaN), q = new Float64Array(n).fill(NaN);
     var tanb = new Float64Array(n).fill(NaN);
@@ -2282,6 +2284,25 @@
     return { p: p, q: q, tanb: tanb };
   }
 
+  /* A metric gives each row its own value, once (rowMetric's arrays for
+   * this grid). Both engines refuse one of any other length, which would be
+   * read past its end as NaN or belong to another grid. */
+  function surfaceRows(what, values, rows) {
+    if (values.length !== rows) {
+      throw new Error('the metric gives ' + values.length + ' ' + what + ', not one for each of ' + rows + ' rows');
+    }
+  }
+
+  /* Both engines refuse a least slope that is not a finite positive
+   * tangent (NaN included), in the wetness index and the curvatures alike:
+   * 0 would divide by 0 on level ground, and an infinite floor would set
+   * every wetness argument to 0. */
+  function surfaceFloor(floorTan) {
+    if (!(floorTan > 0 && floorTan < Infinity)) {
+      throw new Error('the least slope must be a finite positive tangent, not ' + floorTan);
+    }
+  }
+
   /* p and q must be one grid's, cell for cell */
   function surfacePair(p, q) {
     if (p.length !== q.length) {
@@ -2299,12 +2320,14 @@
    * @param {Float64Array} q rise per metre northward (hornGradients)
    * @param {number} az the sun's azimuth, degrees clockwise from north
    * @param {number} alt the sun's altitude, degrees above the horizon
-   * @param {number} [zf] the vertical exaggeration, 1 if not given
+   * @param {number|null} [zf] the vertical exaggeration, 1 if left out or null
    * @returns {Float64Array}
    */
   function hillshadeLayer(p, q, az, alt, zf) {
     surfacePair(p, q);
-    var sqrt = Math.sqrt, z = zf === undefined ? 1.0 : zf;
+    /* null means 1, as a value left out does and as None does in Python,
+     * rather than multiplying as 0 */
+    var sqrt = Math.sqrt, z = zf === undefined || zf === null ? 1.0 : zf;
     var sunZ = sinCosDeg(az), sZ = sunZ[0], cZ = sunZ[1];
     var sunA = sinCosDeg(alt), sA = sunA[0], cA = sunA[1];
     var out = new Float64Array(p.length).fill(NaN);
@@ -2331,12 +2354,12 @@
    * @param {Float64Array} q rise per metre northward (hornGradients)
    * @param {ArrayLike<number>} azimuths the suns' azimuths, degrees clockwise from north
    * @param {number} alt the suns' altitude, degrees above the horizon
-   * @param {number} [zf] the vertical exaggeration, 1 if not given
+   * @param {number|null} [zf] the vertical exaggeration, 1 if left out or null
    * @returns {Float64Array}
    */
   function multidirectionalHillshade(p, q, azimuths, alt, zf) {
     surfacePair(p, q);
-    var sqrt = Math.sqrt, z = zf === undefined ? 1.0 : zf;
+    var sqrt = Math.sqrt, z = zf === undefined || zf === null ? 1.0 : zf;   // null means 1, as in hillshadeLayer
     var m = azimuths.length, sZ = new Float64Array(m), cZ = new Float64Array(m), k;
     for (k = 0; k < m; k++) {
       var sun = sinCosDeg(azimuths[k]);
@@ -2380,13 +2403,16 @@
    * @param {number} rows
    * @param {number} cols
    * @param {{dx: ArrayLike<number>, dy: ArrayLike<number>}} metric each row's cell size in metres (rowMetric)
-   * @param {number} floorTan the least slope tangent used (terrain.flat_tan_slope)
+   * @param {number} floorTan the least slope tangent used (terrain.flat_tan_slope), finite and above 0
    * @returns {{arg: Float64Array, twi: Float64Array, floored: Uint8Array}}
    */
   function wetnessIndex(areaUnits, cls, tanb, rows, cols, metric, floorTan) {
     surfaceShape('the drainage areas', areaUnits, rows, cols);
     surfaceShape('the cell classes', cls, rows, cols);
     surfaceShape('the slopes', tanb, rows, cols);
+    surfaceRows('cell widths', metric.dx, rows);
+    surfaceRows('cell heights', metric.dy, rows);
+    surfaceFloor(floorTan);
     var log = Math.log, n = rows * cols;
     var arg = new Float64Array(n).fill(NaN), twi = new Float64Array(n).fill(NaN);
     var floored = new Uint8Array(n);
@@ -2427,18 +2453,28 @@
    * @param {number} rows
    * @param {number} cols
    * @param {{dx: ArrayLike<number>, dy: ArrayLike<number>}} metric each row's cell size in metres (rowMetric)
-   * @param {number} spacingM the spacing to sample at, metres (terrain.curvature_spacing_m)
-   * @param {number} floorTan the least slope tangent with a direction (terrain.flat_tan_slope)
+   * @param {number} spacingM the spacing to sample at, metres (terrain.curvature_spacing_m), finite and above 0
+   * @param {number} floorTan the least slope tangent with a direction (terrain.flat_tan_slope), finite and above 0
    * @returns {{profile: Float64Array, tangential: Float64Array, kCells: number}}
    */
   function curvatures(zt, cls, rows, cols, metric, spacingM, floorTan) {
     surfaceShape('the height grid', zt, rows, cols);
     surfaceShape('the cell classes', cls, rows, cols);
-    var h = Math.floor(rows / 2);
-    var k = Math.max(1, Math.floor(spacingM / ((metric.dx[h] + metric.dy[h]) / 2.0) + 0.5));
-    if (!isFinite(k)) {
-      throw new Error('a spacing of ' + spacingM + ' m is no whole number of cells');
+    surfaceRows('cell widths', metric.dx, rows);
+    surfaceRows('cell heights', metric.dy, rows);
+    /* Both engines refuse, rather than fall back to k = 1: a spacing that is
+     * not a finite positive number of metres, a grid with no middle row to
+     * measure it on, and a spacing so many cells long that k is not finite. */
+    if (!(spacingM > 0 && spacingM < Infinity)) {
+      throw new Error('the curvature spacing must be a positive number of metres, not ' + spacingM);
     }
+    if (!rows) throw new Error('a grid with no rows has no middle row to measure the curvature spacing on');
+    var h = Math.floor(rows / 2), cells = spacingM / ((metric.dx[h] + metric.dy[h]) / 2.0) + 0.5;
+    if (!surfaceFinite(cells)) {
+      throw new Error('a curvature spacing of ' + spacingM + ' m is no finite number of cells');
+    }
+    surfaceFloor(floorTan);
+    var k = Math.max(1, Math.floor(cells));
     var sqrt = Math.sqrt, n = rows * cols, flat = floorTan * floorTan;
     var profile = new Float64Array(n).fill(NaN), tangential = new Float64Array(n).fill(NaN);
     for (var r = k; r < rows - k; r++) {
@@ -2482,6 +2518,9 @@
   function contourInterval(relief) {
     if (!isFinite(relief) || relief <= 0) return 10.0;
     var limit = (relief / 12.0) * 2.0;
+    /* the rule in both engines: exact integer candidates (BigInt here, int
+     * in Python), each compared exactly with the double limit, and the
+     * answer the double nearest the one chosen */
     var steps = [BigInt(1), BigInt(2), BigInt(5)], ten = BigInt(10);
     var best = BigInt(1), decade = BigInt(1);
     for (;;) {
@@ -2503,13 +2542,15 @@
    * them lands at the index is not fixed. [NaN, NaN] when no value is
    * finite.
    * @param {ArrayLike<number>} values
-   * @param {number} lo a fraction from 0 to 1
-   * @param {number} hi a fraction from 0 to 1
+   * @param {number} lo a fraction from 0 to `hi`
+   * @param {number} hi a fraction from `lo` to 1
    * @returns {[number, number]}
    */
   function displayRange(values, lo, hi) {
-    if (!(lo >= 0 && lo <= 1 && hi >= 0 && hi <= 1)) {
-      throw new Error('a display range is taken between fractions 0 and 1, not ' + lo + ' and ' + hi);
+    /* Both engines refuse fractions out of order or outside 0..1 (NaN
+     * included) rather than hand back a range upside down. */
+    if (!(lo >= 0 && lo <= hi && hi <= 1)) {
+      throw new Error('a display range needs 0 <= lo <= hi <= 1, not ' + lo + ' and ' + hi);
     }
     var n = 0, i;
     for (i = 0; i < values.length; i++) if (typeof values[i] === 'number' && surfaceFinite(values[i])) n++;
@@ -2520,6 +2561,8 @@
       if (typeof values[i] === 'number' && surfaceFinite(values[i])) finite[n++] = values[i];
     }
     finite.sort();
+    /* a zero comes back as +0 in both engines: + 0.0 on the two elements
+     * chosen here, on every value before the choice in Python */
     return [finite[Math.floor(lo * (n - 1))] + 0.0, finite[Math.floor(hi * (n - 1))] + 0.0];
   }
 
@@ -4956,7 +4999,8 @@
   var ROUTE_VOID = 0, ROUTE_LAND = 1, ROUTE_SEA = 2;
 
   /* the number of cells in a rows by cols grid, after checking that each
-   * array given for it holds one value a cell */
+   * array given for it holds one value a cell (a grid with no cells routes
+   * to empty layers, in both engines) */
   function routeCells(rows, cols, arrays) {
     if (!(Number.isInteger(rows) && Number.isInteger(cols) && rows >= 0 && cols >= 0)) {
       throw new Error('a grid of ' + rows + ' by ' + cols + ' cells has no shape to route');
@@ -4968,6 +5012,15 @@
       }
     }
     return n;
+  }
+
+  /* A metric gives each row its own value, once (rowMetric's arrays for
+   * this grid). Both engines refuse one of any other length, which would be
+   * read past its end as NaN or belong to another grid. */
+  function routeRows(what, values, rows) {
+    if (values.length !== rows) {
+      throw new Error('the metric gives ' + values.length + ' ' + what + ', not one for each of ' + rows + ' rows');
+    }
   }
 
   /* Spread a code through the 8-connected cells holding another, from the
@@ -5015,7 +5068,7 @@
    */
   function classifyCells(z, rows, cols, seaLevel, assumedSea, straightEdge) {
     var n = routeCells(rows, cols, assumedSea ? [z, assumedSea] : [z]);
-    var longest = straightEdge === undefined || straightEdge === null ? 150 : straightEdge;
+    var longest = straightEdge === undefined || straightEdge === null ? 150 : straightEdge;   // as None in Python
     var cls = new Uint8Array(n), seed = new Uint8Array(n), zeroFill = new Uint8Array(n);
     var zt = new Float64Array(n), queue = new Int32Array(n);
     /* working codes besides the three classes: a sea candidate not (yet)
@@ -5259,6 +5312,9 @@
    */
   function flowDirections(zt, filled, cls, seed, rows, cols, metric, seaLevel) {
     var n = routeCells(rows, cols, [zt, filled, cls, seed]);
+    routeRows('cell widths', metric.dx, rows);
+    routeRows('cell heights', metric.dy, rows);
+    routeRows('cell diagonals', metric.dg, rows);
     var code = new Uint8Array(n), dist = new Float64Array(8);
     for (var r = 0; r < rows; r++) {
       dist[0] = dist[2] = metric.dx[r];
@@ -5398,12 +5454,30 @@
    * @param {ArrayLike<number>} cls the classes: 0 no data, 1 land, 2 sea
    * @param {number} rows the grid's rows
    * @param {number} cols the grid's columns
-   * @param {{auRow: ArrayLike<number>}} metric each row's cell area in 0.01 square metres, as rowMetric gives it
+   * @param {{auRow: ArrayLike<number>}} metric each row's cell area in whole units of 0.01 square metres,
+   *   as rowMetric gives it
    * @param {boolean} seaClean whether the source is known to write sea as 0 m, so sea flags nothing
    * @returns {{count: Float64Array, areaUnits: Float64Array, flag: Uint8Array}}
    */
   function accumulateFlow(code, cls, rows, cols, metric, seaClean) {
     var n = routeCells(rows, cols, [code, cls]);
+    routeRows('cell areas', metric.auRow, rows);
+    /* Both engines refuse a cell area that is not a whole number of units,
+     * or so large that the largest times the cells reaches 2^53: Python's
+     * int64 would cut off a fraction that a Float64Array keeps, and past
+     * 2^53 the totals here would round where Python's are exact. A -0 is
+     * taken as 0, as int64 takes it. */
+    var auRow = new Float64Array(rows), most = 0;
+    for (var a = 0; a < rows; a++) {
+      auRow[a] = metric.auRow[a] + 0;
+      if (!(Number.isInteger(auRow[a]) && auRow[a] >= 0)) {
+        throw new Error('a cell area of ' + auRow[a] + ' is not a whole number of 0.01 m^2 units');
+      }
+      if (auRow[a] > most) most = auRow[a];
+    }
+    if (!(most * n < 9007199254740992)) {
+      throw new Error('cell areas of up to ' + most + ' units over ' + n + ' cells could total 2^53 or more');
+    }
     var down = new Int32Array(n).fill(-1), inflow = new Uint8Array(n), queue = new Int32Array(n);
     var count = new Float64Array(n), areaUnits = new Float64Array(n), flag = new Uint8Array(n);
     var i, r, c, k, rr, cc, j;
@@ -5424,7 +5498,7 @@
           continue;
         }
         count[i] = 1;
-        areaUnits[i] = metric.auRow[r];
+        areaUnits[i] = auRow[r];
         if (r === 0 || r === rows - 1 || c === 0 || c === cols - 1) flag[i] = 1;
         k = ROUTE_K_OF_CODE[code[i]];
         if (!(k >= 0)) continue;
