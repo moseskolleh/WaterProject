@@ -2616,41 +2616,48 @@
   }
 
   /* The tags the reader reads, each with the name the bad_tag sentence
-   * gives it and what it holds: whole numbers, real numbers or text. */
+   * gives it, what it holds (whole numbers, real numbers, the GeoKey
+   * directory's shorts, or text) and how many values it may have: exactly
+   * one ('one', as libtiff reads them), at least one with the first read
+   * ('first', given per sample), or any number, none included ('any'). */
   var TIFF_TAGS = {
-    254: ['NewSubfileType', 'int'], 255: ['SubfileType', 'int'],
-    256: ['ImageWidth', 'int'], 257: ['ImageLength', 'int'], 258: ['BitsPerSample', 'int'],
-    259: ['Compression', 'int'], 266: ['FillOrder', 'int'], 273: ['StripOffsets', 'int'],
-    277: ['SamplesPerPixel', 'int'], 278: ['RowsPerStrip', 'int'], 279: ['StripByteCounts', 'int'],
-    284: ['PlanarConfiguration', 'int'], 317: ['Predictor', 'int'], 322: ['TileWidth', 'int'],
-    323: ['TileLength', 'int'], 324: ['TileOffsets', 'int'], 325: ['TileByteCounts', 'int'],
-    339: ['SampleFormat', 'int'], 33550: ['ModelPixelScale', 'real'],
-    33922: ['ModelTiepoint', 'real'], 34264: ['ModelTransformation', 'real'],
-    34735: ['GeoKeyDirectory', 'int'], 34736: ['GeoDoubleParams', 'real'],
-    34737: ['GeoAsciiParams', 'text'], 42112: ['GDAL_METADATA', 'text'],
-    42113: ['GDAL_NODATA', 'text'],
+    254: ['NewSubfileType', 'int', 'one'], 255: ['SubfileType', 'int', 'one'],
+    256: ['ImageWidth', 'int', 'one'], 257: ['ImageLength', 'int', 'one'],
+    258: ['BitsPerSample', 'int', 'first'], 259: ['Compression', 'int', 'one'],
+    266: ['FillOrder', 'int', 'one'], 273: ['StripOffsets', 'int', 'any'],
+    277: ['SamplesPerPixel', 'int', 'one'], 278: ['RowsPerStrip', 'int', 'one'],
+    279: ['StripByteCounts', 'int', 'any'], 284: ['PlanarConfiguration', 'int', 'one'],
+    317: ['Predictor', 'int', 'one'], 322: ['TileWidth', 'int', 'one'],
+    323: ['TileLength', 'int', 'one'], 324: ['TileOffsets', 'int', 'any'],
+    325: ['TileByteCounts', 'int', 'any'], 339: ['SampleFormat', 'int', 'first'],
+    33550: ['ModelPixelScale', 'real', 'any'], 33922: ['ModelTiepoint', 'real', 'any'],
+    34264: ['ModelTransformation', 'real', 'any'], 34735: ['GeoKeyDirectory', 'short', 'any'],
+    34736: ['GeoDoubleParams', 'real', 'any'], 34737: ['GeoAsciiParams', 'text', 'any'],
+    42112: ['GDAL_METADATA', 'text', 'any'], 42113: ['GDAL_NODATA', 'text', 'any'],
   };
   /* the image directory's tags, read in this order, so that the first
    * damaged one is the one named whichever engine reads it */
   var TIFF_READ = [256, 257, 258, 259, 266, 273, 277, 278, 279, 284, 317, 322, 323, 324, 325,
     339, 33550, 33922, 34264, 34735, 34736, 34737, 42112, 42113];
   /* bytes per value of each TIFF field type; 0 for a type the reader does
-   * not know (13, IFD, among them: no tag it reads is written so) */
+   * not know (13, IFD, among them), which TIFF 6.0 tells a reader to skip:
+   * an entry of such a type is passed over, unless the reader needs it */
   var TIFF_TYPE_SIZE = [0, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8, 0, 0, 0, 8, 8, 8];
-  /* the field types each kind of tag is read from: libtiff's integer
-   * readers take any integer type, its real-number readers any integer or
-   * floating type, and text is bytes of any 8-bit type */
-  var TIFF_KIND_TYPES = {
-    int: [1, 3, 4, 6, 8, 9, 16, 17, 18],
-    real: [1, 3, 4, 6, 8, 9, 11, 12, 16, 17, 18],
-    text: [1, 2, 6, 7],
-  };
+  /* The field types each kind of tag may have; any other is a damaged
+   * entry, in both engines. These are the types TIFF and GeoTIFF give each
+   * tag: an unsigned integer as BYTE, SHORT or LONG (TIFF 6.0 tells readers
+   * to take any of the three) or BigTIFF's LONG8, never a signed or IFD
+   * type; the GeoTIFF reals as DOUBLE; the GeoKey directory as SHORT; text
+   * as ASCII. libtiff converts more, but a file written otherwise is not
+   * one GDAL or any GeoTIFF writer makes, and refusing it is the simpler
+   * rule. */
+  var TIFF_KIND_TYPES = { int: [1, 3, 4, 16], real: [12], short: [3], text: [2] };
   /* the GeoKeys read: model type, raster type, geographic CRS, datum,
    * angular unit and projected CRS */
   var TIFF_GEOKEYS = [1024, 1025, 2048, 2050, 2054, 3072];
   var TIFF_SAMPLE_KINDS = { 1: 'unsigned integer', 2: 'signed integer', 3: 'floating-point' };
-  /* (SampleFormat, BitsPerSample) the reader takes, as format * 100 + bits */
-  var TIFF_SAMPLE_TYPES = [108, 208, 116, 216, 132, 232, 332, 364];
+  /* the (SampleFormat, BitsPerSample) pairs the reader takes */
+  var TIFF_SAMPLE_TYPES = [[1, 8], [2, 8], [1, 16], [2, 16], [1, 32], [2, 32], [3, 32], [3, 64]];
   var TIFF_COMPRESSIONS = [1, 5, 8, 32946, 32773];
   /* the largest block decoded whole: a block is held in memory at once */
   var TIFF_BLOCK_LIMIT = 64 * 1048576;
@@ -2668,23 +2675,13 @@
     return hi * 4294967296 + lo;
   }
 
-  /* A signed 64-bit field the same way: refused at 2^53 or more either side
-   * of zero. */
-  function tiffI64(view, at, little, name) {
-    var lo = view.getUint32(at + (little ? 0 : 4), little);
-    var hi = view.getInt32(at + (little ? 4 : 0), little);
-    if (hi >= 0x200000 || hi < -0x200000 || (hi === -0x200000 && lo === 0)) {
-      throw tiffError('terrain.too_large', { file: name });
-    }
-    return hi * 4294967296 + lo;
-  }
-
-  /* `count` values of field type `type` from `at`: numbers, or for text
-   * the bytes as one string, a character a byte (Latin-1, as Python reads
-   * them). */
-  function tiffFieldValues(view, at, type, count, little, name, kind) {
+  /* `count` values of field type `type` (one TIFF_KIND_TYPES allows) from
+   * `at`: numbers, or for ASCII the bytes as one string, a character a byte
+   * (Latin-1, as Python reads them). A LONG8 value of 2^53 or more is
+   * refused as it is read. */
+  function tiffFieldValues(view, at, type, count, little, name) {
     var i, p, size = TIFF_TYPE_SIZE[type];
-    if (kind === 'text') {
+    if (type === 2) {
       var text = '';
       for (i = 0; i < count; i++) text += String.fromCharCode(view.getUint8(at + i));
       return text;
@@ -2693,15 +2690,10 @@
     for (i = 0, p = at; i < count; i++, p += size) {
       switch (type) {
         case 1: out[i] = view.getUint8(p); break;
-        case 6: out[i] = view.getInt8(p); break;
         case 3: out[i] = view.getUint16(p, little); break;
-        case 8: out[i] = view.getInt16(p, little); break;
         case 4: out[i] = view.getUint32(p, little); break;
-        case 9: out[i] = view.getInt32(p, little); break;
-        case 11: out[i] = view.getFloat32(p, little); break;
         case 12: out[i] = view.getFloat64(p, little); break;
-        case 17: out[i] = tiffI64(view, p, little, name); break;
-        default: out[i] = tiffU64(view, p, little, name);   // 16 LONG8 and 18 IFD8
+        default: out[i] = tiffU64(view, p, little, name);   // 16, LONG8
       }
     }
     return out;
@@ -2808,37 +2800,45 @@
     }
     var countSize = big ? 8 : 2, entrySize = big ? 20 : 12, word = big ? 8 : 4;
 
-    /* the directory in hand: each tag's first entry, and its bytes */
+    /* the directory in hand: where each tag's first entry starts, its
+     * type, and the directory's bytes. Only the entries of the tags the
+     * reader reads are examined; any other is passed over, whatever its
+     * type or count, as libtiff passes over a tag it does not use. */
     var entries = {}, body = head, index = -1, seen = [], n, e;
 
-    /* One tag's values in the directory in hand: null when it is absent,
-     * false when they lie in bytes not yet read. An entry of a type the
-     * reader does not know is passed over for the subfile tags, which only
-     * choose the directory, and is damage in any tag the image needs. */
-    function values(tag, listed) {
-      if (!own(entries, tag)) return null;
-      var entry = entries[tag], spec = TIFF_TAGS[tag], type = entry.type;
-      var bytesEach = TIFF_TYPE_SIZE[type] || 0;
-      if (!bytesEach && !listed) return null;
-      if (!bytesEach || TIFF_KIND_TYPES[spec[1]].indexOf(type) < 0 || entry.count === 0) {
+    /* A tag's entry in the directory in hand, judged in this order in both
+     * engines: its type, then (BigTIFF) a count of 2^53 or more, then its
+     * count. Returns its type, count, byte length and where its value
+     * field lies in the directory. */
+    function checked(tag) {
+      var spec = TIFF_TAGS[tag], p = entries[tag].at, type = entries[tag].type;
+      if (TIFF_KIND_TYPES[spec[1]].indexOf(type) < 0) {
         throw tiffError('terrain.bad_tag', { file: name, tag: spec[0] });
       }
-      var length = entry.count * bytesEach, pos = entry.at;
-      var view = /** @type {DataView|null} */ (body);
-      if (length > word) {
-        view = at(big ? tiffU64(body, entry.at, little, name) : body.getUint32(entry.at, little),
-          length, 'values of ' + spec[0]);
-        if (!view) return false;
-        pos = 0;
-      }
-      var out = /** @type {any} */ (tiffFieldValues(view, pos, type, entry.count, little, name, spec[1]));
-      if (spec[1] === 'int' && out.some(function (v) { return v < 0; })) {
+      var count = big ? tiffU64(body, p + 4, little, name) : body.getUint32(p + 4, little);
+      if ((spec[2] === 'one' && count !== 1) || (spec[2] === 'first' && count < 1)) {
         throw tiffError('terrain.bad_tag', { file: name, tag: spec[0] });
       }
-      return out;
+      return { type: type, count: count, length: count * TIFF_TYPE_SIZE[type], field: p + (big ? 12 : 8) };
+    }
+
+    /* NewSubfileType or SubfileType, NewSubfileType judged first. One of a
+     * field type TIFF does not define is skipped, as TIFF 6.0 tells a reader
+     * to skip it, and counts as absent (null); one of a known type must be
+     * an unsigned integer type, one value, held in the entry itself (a
+     * LONG8 is not, in a classic TIFF), or the entry is damaged. */
+    function subfile(tag) {
+      if (!own(entries, tag) || !TIFF_TYPE_SIZE[entries[tag].type]) return null;
+      var entry = checked(tag);
+      if (entry.length > word) throw tiffError('terrain.bad_tag', { file: name, tag: TIFF_TAGS[tag][0] });
+      return tiffFieldValues(body, entry.field, entry.type, 1, little, name)[0];
     }
 
     for (;;) {
+      /* The next pointer is judged in this order in both engines: 0 ends
+       * the chain, then 2^53 or more is too large (refused by tiffU64 as it
+       * is read below, which cannot clash with 0), then a directory already
+       * walked is a loop, then a 65th directory is not walked. */
       if (ifd === 0) throw tiffError('terrain.no_full_image', { file: name });
       if (seen.indexOf(ifd) >= 0) throw tiffError('terrain.directory_loop', { file: name });
       if (seen.length === 64) throw tiffError('terrain.no_full_image', { file: name });
@@ -2854,30 +2854,45 @@
       for (e = 0; e < n; e++) {
         var p = e * entrySize, tag = body.getUint16(p, little);
         if (own(entries, tag)) continue;   // a repeated tag: the first counts, as libtiff has it
-        entries[tag] = {
-          type: body.getUint16(p + 2, little),
-          count: big ? tiffU64(body, p + 4, little, name) : body.getUint32(p + 4, little),
-          at: p + (big ? 12 : 8),
-        };
+        entries[tag] = { type: body.getUint16(p + 2, little), at: p };
       }
-      var subfile = values(254, false), old = values(255, false);
-      if (subfile === false || old === false) return needed();
+      var newer = subfile(254), older = subfile(255);
       /* full resolution: neither a reduced image (bit 0) nor a mask (bit 2)
-       * by NewSubfileType, nor a reduced image (2) by the old SubfileType */
-      if (!((subfile ? subfile[0] : 0) & 5) && !(old && old[0] === 2) &&
-          own(entries, 256) && own(entries, 257)) break;
+       * by NewSubfileType, nor a reduced image (2) by the old SubfileType;
+       * its own next pointer is never looked at */
+      if (!((newer || 0) & 5) && older !== 2 && own(entries, 256) && own(entries, 257)) break;
       ifd = big ? tiffU64(body, n * entrySize, little, name) : body.getUint32(n * entrySize, little);
     }
 
+    /* The chosen directory's entries, in ascending tag order, each judged
+     * in this order in both engines: its type, then (BigTIFF) a count of
+     * 2^53 or more, then its count, then an out-of-line offset of 2^53 or
+     * more, then values running past the end of the file. Values not yet
+     * read are asked for together once every entry has passed, since none
+     * depends on another, so the refusal a file earns does not depend on
+     * how it was read. */
+    /** @type {Array<[number, DataView, number, {type: number, count: number}]>} */
+    var held = [];
+    TIFF_READ.forEach(function (tag) {
+      if (!own(entries, tag)) return;
+      var entry = checked(tag), view = /** @type {DataView|null} */ (body), pos = entry.field;
+      if (entry.length > word) {
+        view = at(big ? tiffU64(body, pos, little, name) : body.getUint32(pos, little),
+          entry.length, 'values of ' + TIFF_TAGS[tag][0]);
+        pos = 0;
+      }
+      if (view) held.push([tag, view, pos, entry]);
+    });
+    if (need.length) return needed();
+    /* Then every value is decoded, tag by tag in ascending order, before any
+     * check reads one: a LONG8 value of 2^53 or more is refused here, ahead
+     * of every check on what the values mean. An absent tag is null. */
     /** @type {Record<number, any>} */
     var v = {};
-    var missing = false;
-    TIFF_READ.forEach(function (tag) {
-      var got = values(tag, true);
-      if (got === false) missing = true;
-      else v[tag] = got;
+    TIFF_READ.forEach(function (tag) { v[tag] = null; });
+    held.forEach(function (h) {
+      v[h[0]] = tiffFieldValues(h[1], h[2], h[3].type, h[3].count, little, name);
     });
-    if (missing) return needed();
     function first(tag, absent) {
       return v[tag] ? v[tag][0] : absent;
     }
@@ -2893,16 +2908,22 @@
       if (blockWidth < 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'TileWidth' });
       if (blockHeight < 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'TileLength' });
     } else {
-      /* absent, 2^32 - 1 or anything past the image: one strip */
-      rowsPerStrip = Math.min(first(278, height), height);
+      /* absent, 2^32 - 1 (libtiff's "the whole image") or past the image:
+       * one strip; 2^32 - 1 is named because a LONG8 height may pass it */
+      rowsPerStrip = first(278, height);
+      if (rowsPerStrip === 0xFFFFFFFF) rowsPerStrip = height;
+      rowsPerStrip = Math.min(rowsPerStrip, height);
       if (rowsPerStrip < 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'RowsPerStrip' });
       blockWidth = width;
       blockHeight = rowsPerStrip;
     }
     var samples = first(277, 1);
     if (samples !== 1) throw tiffError('terrain.bands', { file: name, n: samples });
+    /* an absent SampleFormat is unsigned, as the TIFF rule and GDAL have
+     * it; the pair is matched as a pair, since folded into one number
+     * SampleFormat 1 with 108 bits would pass for 2 with 8 */
     var bits = first(258, 1), format = first(339, 1);
-    if (TIFF_SAMPLE_TYPES.indexOf(format * 100 + bits) < 0) {
+    if (!TIFF_SAMPLE_TYPES.some(function (t) { return t[0] === format && t[1] === bits; })) {
       throw tiffError('terrain.sample_type', {
         file: name, bits: bits,
         kind: own(TIFF_SAMPLE_KINDS, format) ? TIFF_SAMPLE_KINDS[format] : 'SampleFormat ' + format,
@@ -2917,15 +2938,20 @@
           'TIFF method ' + compression,
       });
     }
-    /* libtiff sets a predictor up only inside its LZW and DEFLATE codecs;
-     * with no compression or PackBits the tag is never looked at, and GDAL
-     * reads the values as stored */
+    /* libtiff sets a predictor up only inside its LZW and DEFLATE codecs, so
+     * with no compression or PackBits the tag is ignored, its value
+     * unexamined, and GDAL reads the values as they are stored; with LZW or
+     * DEFLATE it must be 1, 2 or 3, and 3 needs floating-point samples */
     var predictor = first(317, 1);
     var coded = compression === 5 || compression === 8 || compression === 32946;
-    if (coded && (predictor > 3 || predictor < 1 || (predictor === 3 && format !== 3))) {
+    if (coded && ([1, 2, 3].indexOf(predictor) < 0 || (predictor === 3 && format !== 3))) {
       throw tiffError('terrain.predictor', { file: name, code: predictor });
     }
-    if (first(266, 1) === 2) throw tiffError('terrain.fill_order', { file: name });
+    /* FillOrder 2 is refused by name; any value but 1 or 2 is one libtiff
+     * rejects as a bad value, so a damaged entry */
+    var fillOrder = first(266, 1);
+    if (fillOrder === 2) throw tiffError('terrain.fill_order', { file: name });
+    if (fillOrder !== 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'FillOrder' });
     var blocks = (tiled ? Math.ceil(width / blockWidth) : 1) * Math.ceil(height / blockHeight);
     var offsets = v[tiled ? 324 : 273] || [], byteCounts = v[tiled ? 325 : 279] || [];
     if (offsets.length !== blocks) {
@@ -2941,7 +2967,10 @@
 
     /* GeoKeys. Every key read holds a SHORT, so only one stored in the
      * directory itself (location 0) is taken, as libgeotiff reads a SHORT
-     * key; the first of a repeated key counts. */
+     * key; the first of a repeated key counts. A directory of fewer than
+     * four values, of a version other than 1 (the only one GeoTIFF
+     * defines; libgeotiff refuses later ones) or shorter than its keys is
+     * damaged. */
     /** @type {Record<number, number>} */
     var keys = {};
     var directory = v[34735];
@@ -2959,15 +2988,21 @@
     function geokey(key) {
       return own(keys, key) ? keys[key] : null;
     }
-    var modelType = geokey(1024), rasterType = geokey(1025) || 1;   // absent or 0: area, as GDAL
+    /* PixelIsPoint only when the key says 2; absent, 0 or anything else is
+     * area, as GDAL reads it */
+    var modelType = geokey(1024), rasterType = geokey(1025) === 2 ? 2 : 1;
     var epsg = geokey(modelType === 1 ? 3072 : 2048);
 
-    /* scale and tiepoint first, as GDAL reads them; a transformation only
+    /* Scale and tiepoint first, as GDAL reads them; a transformation only
      * when there is no scale; several tiepoints alone place the grid by
-     * control points */
+     * control points. A scale, when there is one, is judged in this order
+     * in both engines: fewer than two values is a damaged entry, then no
+     * tiepoint places nothing, then a tiepoint of fewer than six values is
+     * damaged, then a scale that is not positive is a flipped grid. */
     var scale = v[33550], tie = v[33922], matrix = v[34264], sx, sy, col, row, x, y;
-    if (scale && tie) {
+    if (scale) {
       if (scale.length < 2) throw tiffError('terrain.bad_tag', { file: name, tag: 'ModelPixelScale' });
+      if (!tie) throw tiffError('terrain.no_georeference', { file: name });
       if (tie.length < 6) throw tiffError('terrain.bad_tag', { file: name, tag: 'ModelTiepoint' });
       sx = scale[0];
       sy = scale[1];
@@ -2976,7 +3011,7 @@
       x = tie[3];
       y = tie[4];
       if (!(sx > 0 && sy > 0)) throw tiffError('terrain.rotated', { file: name });
-    } else if (!scale && matrix) {
+    } else if (matrix) {
       if (matrix.length !== 16) {
         throw tiffError('terrain.bad_tag', { file: name, tag: 'ModelTransformation' });
       }
@@ -2989,7 +3024,7 @@
       row = 0;
       x = matrix[3];
       y = matrix[7];
-    } else if (!scale && tie && tie.length >= 12) {
+    } else if (tie && tie.length >= 12) {
       throw tiffError('terrain.control_points', { file: name });
     } else {
       throw tiffError('terrain.no_georeference', { file: name });
@@ -3001,6 +3036,8 @@
     var x0 = (x - col * sx) + (area ? 0.5 * sx : 0.0);
     var y0 = (y + row * sy) - (area ? 0.5 * sy : 0.0);
 
+    /* Float no-data keeps the sign of a zero (-0 still matches every zero);
+     * an integer one that no sample can equal is null */
     var nodata = null, nodataText = v[42113];
     if (nodataText !== null) {
       var number = tiffNumber(nodataText);
@@ -3011,6 +3048,8 @@
       }
       if (number !== null) nodata = tiffNodataCast(number, format, bits);
     }
+    /* a scale or offset that is empty, not a number or NaN is refused too:
+     * only an exact 1 and 0 (-0 included) are no scaling */
     var metadata = v[42112];
     if (metadata !== null) {
       var item = /<Item[^>]*role="(scale|offset)"[^>]*>([^<]*)<\/Item>/g, found;
@@ -3099,8 +3138,12 @@
         }
       }
     }
+    /* the block as stored must lie in the file even when only some of its
+     * rows are read, so a part is refused where the whole would be; a
+     * sparse block has no bytes to lie anywhere */
     out.forEach(function (range) {
-      if (range[1] + range[2] > layout.size) {
+      var offset = layout.offsets[range[0]], count = layout.byteCounts[range[0]];
+      if (!(offset === 0 && count === 0) && offset + count > layout.size) {
         throw tiffError('terrain.ends_early', { file: layout.name, part: 'data block ' + (range[0] + 1) });
       }
     });
@@ -3174,8 +3217,10 @@
     var expected = box.decoded * rowBytes, full = layout.blockHeight * rowBytes;
     var r0 = 0, r1 = box.rows, cols = box.cols;
     if (rows) {
-      if (layout.tiled || layout.compression !== 1) {
-        throw new Error('decodeTiffBlock: only an uncompressed strip is read in part');
+      /* rows only of an uncompressed strip, and within it, as blockRanges gives them */
+      if (layout.tiled || layout.compression !== 1 || !(rows[0] >= 0 && rows[0] < rows[1] && rows[1] <= box.rows)) {
+        throw new Error('decodeTiffBlock: rows ' + JSON.stringify(rows) + ' are not rows of uncompressed strip ' +
+          index);
       }
       r0 = rows[0];
       r1 = rows[1];
@@ -3190,9 +3235,10 @@
     var data;
     try {
       if (layout.compression === 1) {
-        /* the strip's own count is held to its rows even when only some
-         * are read, so a part fails where the whole would */
-        if (layout.byteCounts[index] < expected || bytes.length < (r1 - r0) * rowBytes) {
+        /* the stored count is held to the whole block even when part of it
+         * is read; the data given must hold the whole block (a tile's
+         * padding included) or the rows asked for */
+        if (layout.byteCounts[index] < expected || bytes.length < (rows ? (r1 - r0) * rowBytes : expected)) {
           throw codecError('damaged');
         }
         data = bytes;

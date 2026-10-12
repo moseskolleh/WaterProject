@@ -18,7 +18,10 @@ tests/webapp/parity.mjs), where DecompressionStream checks it a third way.
 The browser's GeoTIFF reader (C.geotiffLayout, C.blockRanges,
 C.decodeTiffBlock, C.readGeoTiff) is held here to the committed fixtures in
 tests/webapp/fixtures/dem, whose MANIFEST.json says what GDAL reads in each,
-and to files made in memory by the same builder for what no fixture holds.
+and to files made in memory by the same builder for what no fixture holds;
+and, answer for answer, to the Python reader itself, on every fixture and on
+several hundred files made to descriptions (make_dem_fixture.described_file)
+that reach each rule the two were settled to.
 """
 
 from __future__ import annotations
@@ -619,7 +622,87 @@ const ops = {
     }
     return { ranges, values: b64(values), reasons: b64(reasons) };
   },
+  // everything test_the_two_readers_agree_* compares, made as _agreed makes it
+  agree({ data, name, bounds }) {
+    const file = Buffer.from(data, 'base64');
+    const answer = (ranges) => refusal(() => {
+      const got = C.geotiffLayout(name, file.length,
+        ranges.map(([offset, length]) => [offset, copy(file.subarray(offset, offset + length))]));
+      return Array.isArray(got) ? { need: got } : { layout: layoutView(got) };
+    });
+    const rounds = [], ranges = [[0, 16]];
+    let final;
+    for (let k = 0; k < 200; k++) {
+      final = answer(ranges);
+      if (!final.need) break;
+      rounds.push(final.need);
+      ranges.push(...final.need);
+    }
+    const out = { rounds, final, whole: answer([[0, file.length]]) };
+    if (out.whole.layout) {
+      out.read = refusal(() => readAll(file, name, bounds));
+      out.window = refusal(() => readWindow(file, name, bounds));
+    }
+    return out;
+  },
 };
+// a refusal as [id, sentence, values]; anything else thrown is a fault
+function refusal(f) {
+  try {
+    return f();
+  } catch (e) {
+    if (e && e.ident) return { refused: [e.ident, e.message, e.values] };
+    throw e;
+  }
+}
+// the layout's numbers that are not whole as their float64 bits, so -0, NaN and infinities compare
+const FLOATS = new Set(['x0', 'y0', 'sx', 'sy', 'nodata']);
+function hex(v) { const b = Buffer.alloc(8); b.writeDoubleBE(v); return b.toString('hex'); }
+function layoutView(layout) {
+  return Object.fromEntries(Object.entries(layout).map(([k, v]) => [k, FLOATS.has(k) && v !== null ? hex(v) : v]));
+}
+// every NaN written as the one NaN, so that values compare by their bytes
+function canon(a) { for (let i = 0; i < a.length; i++) if (a[i] !== a[i]) a[i] = NaN; return a; }
+// the window's blocks as blockRanges lists them, each decoded and put where it lands
+function place(file, layout, j0, j1, i0, i1, judge) {
+  const across = layout.tiled ? Math.ceil(layout.width / layout.blockWidth) : 1;
+  const ranges = C.blockRanges(layout, j0, j1, i0, i1), w = i1 - i0;
+  const values = new Float64Array((j1 - j0) * w).fill(-1), reasons = new Uint8Array(values.length).fill(9);
+  for (const [index, offset, length, rows] of ranges) {
+    const block = C.decodeTiffBlock(layout, index, copy(file.subarray(offset, offset + length)), rows, judge);
+    const top = Math.floor(index / across) * layout.blockHeight + (rows ? rows[0] : 0);
+    const left = (index % across) * layout.blockWidth;
+    for (let r = 0; r < block.rows; r++) {
+      for (let c = 0; c < block.cols; c++) {
+        const j = top + r, i = left + c;
+        if (j < j0 || j >= j1 || i < i0 || i >= i1) continue;
+        values[(j - j0) * w + i - i0] = block.values[r * block.cols + c];
+        reasons[(j - j0) * w + i - i0] = block.reasons[r * block.cols + c];
+      }
+    }
+  }
+  return { ranges, values: b64(canon(values)), reasons: b64(reasons) };
+}
+function readAll(file, name, bounds) {
+  const read = C.readGeoTiff(copy(file), name), layout = read.layout, H = read.rows, W = read.cols;
+  const raw = place(file, layout, 0, H, 0, W, null), judged = place(file, layout, 0, H, 0, W, bounds);
+  return { rows: H, cols: W, z: b64(canon(read.z)), x: b64(read.x), y: b64(read.y), reasons: raw.reasons,
+           judged: judged.values, judgedReasons: judged.reasons };
+}
+// a window read on its own, and its first block decoded from one byte too few
+function readWindow(file, name, bounds) {
+  const layout = C.geotiffLayout(name, file.length, [[0, copy(file)]]), H = layout.height, W = layout.width;
+  const j0 = Math.floor(H / 3), j1 = Math.max(j0 + 1, H - Math.floor(H / 4));
+  const i0 = Math.floor(W / 5), i1 = Math.max(i0 + 1, W - Math.floor(W / 3));
+  const part = place(file, layout, j0, j1, i0, i1, bounds);
+  const first = part.ranges.find((range) => range[2] > 0);
+  const short = !first ? null : refusal(() => {
+    const block = C.decodeTiffBlock(layout, first[0], copy(file.subarray(first[1], first[1] + first[2] - 1)),
+      first[3], bounds);
+    return { values: b64(canon(block.values)), reasons: b64(block.reasons) };
+  });
+  return { at: [j0, j1, i0, i1], ranges: part.ranges, values: part.values, reasons: part.reasons, short };
+}
 for await (const line of createInterface({ input: process.stdin })) {
   const request = JSON.parse(line);
   let answer;
@@ -1172,3 +1255,384 @@ def test_the_browser_reader_refuses_each_damaged_or_unsupported_header_with_its_
                                                  make.TILE_LENGTH: (make.SHORT, [4096])})
     answer = reader.ask("layout", name="case.tif", size=len(data), chunks=_chunks(data, [(0, len(data))]))
     assert answer["ok"]["layout"]["blockWidth"] == 2048, answer
+
+
+# ------------------------------------------- the two readers, held together
+
+def _agreed_layout(layout) -> dict:
+    """A Python layout as the driver's layoutView writes the browser's: the
+    keys in camelCase, and the numbers that need not be whole (the centres,
+    the cell sizes and the no-data value) as their float64 bits, so that -0,
+    NaN and the infinities compare as they are."""
+    import dataclasses
+    import re
+
+    out = {}
+    for key, value in dataclasses.asdict(layout).items():
+        if key in ("x0", "y0", "sx", "sy", "nodata") and value is not None:
+            value = struct.pack(">d", value).hex()
+        out[re.sub(r"_([a-z])", lambda m: m.group(1).upper(), key)] = value
+    return out
+
+
+def _f64(values) -> str:
+    """Values as float64 bytes, little-endian, every NaN the one NaN, in base64."""
+    import numpy as np
+
+    a = np.array(values, dtype="<f8")
+    a[np.isnan(a)] = np.nan
+    return base64.b64encode(a.tobytes()).decode("ascii")
+
+
+def _u8(values) -> str:
+    import numpy as np
+
+    return base64.b64encode(np.ascontiguousarray(values, dtype=np.uint8).tobytes()).decode("ascii")
+
+
+def _agreed(name: str, data: bytes, bounds: list) -> dict:
+    """What the Python reader does with a file, as the driver's ``agree`` says
+    what the browser's does: the ranges the layout asks for round by round
+    from a 16-byte first chunk, given exactly what it asks for; where that
+    ends; and what the whole file gives at once. For a file whose layout
+    reads: the whole read (values south row first, and both axes) with the
+    reasons of the per-sample rule without and with the plausibility bounds;
+    and a window inside the image, read on its own whether or not the whole
+    file reads - the blocks listed for it, what they decode to, and the
+    first of them decoded from one byte too few. A refusal is its id, its
+    sentence and the words it was given."""
+    import numpy as np
+
+    from groundwater.geotiff import GeoTiffError, block_ranges, decode_block, geotiff_layout, read_geotiff
+
+    def refusal(work):
+        try:
+            return work()
+        except GeoTiffError as refused:
+            return {"refused": [refused.ident, str(refused), refused.values]}
+
+    def answer(ranges):
+        def layout():
+            found = geotiff_layout(name, len(data), [(o, data[o:o + n]) for o, n in ranges])
+            return {"need": [list(r) for r in found]} if isinstance(found, list) else {"layout": _agreed_layout(found)}
+        return refusal(layout)
+
+    def place(layout, j0, j1, i0, i1, judge):
+        """The window's blocks as block_ranges lists them, each decoded and put where it lands."""
+        ranges = block_ranges(layout, j0, j1, i0, i1)
+        values = np.full((j1 - j0, i1 - i0), -1.0)
+        reasons = np.full(values.shape, 9, dtype=np.uint8)
+        across = -(-layout.width // layout.block_width) if layout.tiled else 1
+        for index, offset, length, rows in ranges:
+            block, why = decode_block(layout, index, data[offset:offset + length], rows, judge)
+            top = index // across * layout.block_height + (rows[0] if rows else 0)
+            left = index % across * layout.block_width
+            down = (max(j0, top), min(j1, top + block.shape[0]))
+            over = (max(i0, left), min(i1, left + block.shape[1]))
+            at = slice(down[0] - j0, down[1] - j0), slice(over[0] - i0, over[1] - i0)
+            inside = slice(down[0] - top, down[1] - top), slice(over[0] - left, over[1] - left)
+            values[at], reasons[at] = block[inside], why[inside]
+        listed = [[index, offset, length, list(rows) if rows else None] for index, offset, length, rows in ranges]
+        return listed, _f64(values), _u8(reasons)
+
+    def read():
+        raster = read_geotiff(data, name)
+        layout = raster.layout
+        _, _, raw = place(layout, 0, layout.height, 0, layout.width, None)
+        _, judged, judged_reasons = place(layout, 0, layout.height, 0, layout.width, tuple(bounds))
+        return {"rows": layout.height, "cols": layout.width, "z": _f64(raster.z), "x": _f64(raster.x),
+                "y": _f64(raster.y), "reasons": raw, "judged": judged, "judgedReasons": judged_reasons}
+
+    def window():
+        layout = geotiff_layout(name, len(data), [(0, data)])
+        assert not isinstance(layout, list)
+        height, width = layout.height, layout.width
+        j0, i0 = height // 3, width // 5
+        j1, i1 = max(j0 + 1, height - height // 4), max(i0 + 1, width - width // 3)
+        ranges, values, reasons = place(layout, j0, j1, i0, i1, tuple(bounds))
+        short = None
+        for index, offset, length, rows in ranges:
+            if length:
+                def cut(index=index, offset=offset, length=length, rows=rows):
+                    block, why = decode_block(layout, index, data[offset:offset + length - 1], rows, tuple(bounds))
+                    return {"values": _f64(block), "reasons": _u8(why)}
+                short = refusal(cut)
+                break
+        return {"at": [j0, j1, i0, i1], "ranges": ranges, "values": values, "reasons": reasons, "short": short}
+
+    rounds, ranges = [], [(0, 16)]
+    final: dict = {}
+    for _ in range(200):
+        final = answer(ranges)
+        if "need" not in final:
+            break
+        rounds.append(final["need"])
+        ranges += [tuple(r) for r in final["need"]]
+    out = {"rounds": rounds, "final": final, "whole": answer([(0, len(data))])}
+    if "layout" in out["whole"]:
+        out["read"] = refusal(read)
+        out["window"] = refusal(window)
+    return json.loads(json.dumps(out))
+
+
+_ARRAYS = {"z": "<f8", "x": "<f8", "y": "<f8", "judged": "<f8", "values": "<f8",
+           "reasons": "u1", "judgedReasons": "u1"}
+
+
+def _difference(py, js, path: str = "") -> str | None:
+    """Where two answers first differ, and how; None when they are the same,
+    a bool never passing for a number."""
+    if isinstance(py, dict) and isinstance(js, dict):
+        for key in sorted(set(py) | set(js)):
+            if key not in py or key not in js:
+                return f"{path}.{key}: python {py.get(key, '<missing>')!r}, browser {js.get(key, '<missing>')!r}"
+            found = _difference(py[key], js[key], f"{path}.{key}")
+            if found:
+                return found
+        return None
+    if isinstance(py, list) and isinstance(js, list) and len(py) == len(js):
+        for i, (a, b) in enumerate(zip(py, js, strict=True)):
+            found = _difference(a, b, f"{path}[{i}]")
+            if found:
+                return found
+        return None
+    if py == js and isinstance(py, bool) == isinstance(js, bool):
+        return None
+    key = path.rsplit(".", 1)[-1]
+    if key in _ARRAYS and isinstance(py, str) and isinstance(js, str):
+        import numpy as np
+
+        a, b = (np.frombuffer(base64.b64decode(v), _ARRAYS[key]) for v in (py, js))
+        if a.size != b.size:
+            return f"{path}: python {a.size} values, browser {b.size}"
+        bits = np.uint8 if a.itemsize == 1 else np.uint64
+        k = int(np.flatnonzero(a.view(bits) != b.view(bits))[0])
+        return f"{path}[{k}]: python {a[k]!r}, browser {b[k]!r}"
+    return f"{path}: python {repr(py)[:300]}, browser {repr(js)[:300]}"
+
+
+def _terrain_bounds() -> list:
+    from groundwater.config import TerrainConfig
+
+    terrain = TerrainConfig()
+    return [terrain.implausible_below_m, terrain.implausible_above_m]
+
+
+def _readers_agree(reader, name: str, data: bytes, bounds: list, where: str = "") -> dict:
+    """Both readers on one file: the same answer to every question _agreed
+    asks, or a failure saying where they part."""
+    py = _agreed(name, data, bounds)
+    js = reader.ask("agree", data=base64.b64encode(data).decode("ascii"), name=name, bounds=bounds)
+    assert "ok" in js, f"{name} {where}: {js}"
+    found = _difference(py, js["ok"])
+    assert found is None, f"{name} {where}: {found}"
+    return py
+
+
+def _outcome(answer: dict) -> str:
+    """'read', or the refusal a file met, in its layout or in its blocks."""
+    refused = answer["whole"].get("refused") or answer.get("read", {}).get("refused")
+    return refused[0] if refused else "read"
+
+
+def test_the_two_readers_agree_on_every_committed_fixture(reader):
+    """Every file in tests/webapp/fixtures/dem through both readers, compared
+    whole: the layout (Python's field for field under the browser's
+    camelCase names, the centres, cell sizes and no-data value to the bit);
+    the ranges the layout asks for from a 16-byte first chunk and in each
+    round after it; the values to the bit, signs of zero and infinities
+    included, with both axes; the reasons of the per-sample rule without and
+    with the plausibility bounds; the blocks a window inside the image lists
+    and what they decode to; and a refusal's id, sentence and words. The
+    parity suite holds the same files in Chromium against reference.json;
+    this holds the two engines to each other in full, so that a rule settled
+    one way in one engine and another way in the other cannot pass on the
+    files both happen to read alike."""
+    bounds = _terrain_bounds()
+    outcomes: dict[str, int] = {}
+    for name in sorted(_FILES):
+        found = _outcome(_readers_agree(reader, name, (DEM / name).read_bytes(), bounds))
+        assert found == _FILES[name]["raw"], f"{name}: {found}"
+        outcomes[found] = outcomes.get(found, 0) + 1
+    assert len(_FILES) >= 60 and outcomes["read"] >= 40 and len(outcomes) >= 15, outcomes
+
+
+#: Field types for the odd-type cases: every TIFF type, and two TIFF does not define
+_ODD_TYPES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 18, 19]
+
+#: Tags written with a damaged value, a count or a form each reader has to
+#: settle one way, one list to a file, on files otherwise ordinary
+_ODD_TAGS = [
+    [[258, 3, [108]], [339, 3, [1]]],  # SampleFormat 1 with 108 bits, which 1 * 100 + 108 would read as 2, 8
+    [[258, 3, [8, 8]], [277, 3, [1]]], [[258, 3, []]], [[339, 3, []]], [[259, 3, [1, 1]]], [[256, 3, []]],
+    [[273, 4, []]], [[279, 4, []]], [[33550, 12, []]], [[33922, 12, []]], [[34735, 3, []]], [[34736, 12, []]],
+    [[34737, 2, ""]], [[42113, 2, ""]], [[42112, 2, ""]],
+    [[254, 13, "01000000"]], [[254, 4, [1, 0]]], [[254, 4, [4]]], [[255, 3, [2]]], [[255, 3, [1]]],
+    [[254, 16, [0]]], [[255, 9, [1]]],
+    [[266, 3, [2]]], [[266, 3, [3]]], [[266, 3, [0]]],
+    [[317, 3, [0]]], [[317, 3, [4]]], [[317, 3, [7]]], [[317, 3, [3]]],
+    [[278, 4, [0xFFFFFFFF]]], [[278, 4, [0]]], [[278, 3, [1000]]],
+    [[34735, 3, [0, 1, 0, 0]]], [[34735, 3, [2, 1, 0, 0]]], [[34735, 3, [1, 1, 0]]],
+    [[34735, 3, [1, 1, 0, 2, 1024, 0, 1, 2]]], [[34735, 3, [1, 1, 0, 2, 1024, 0, 1, 2, 1025, 0, 1, 3]]],
+    [[34735, 3, [1, 1, 0, 3, 1024, 34736, 1, 0, 1024, 0, 1, 1, 3072, 0, 1, 32629]]],
+    [[33550, 12, [1 / 1200]]], [[33550, 12, [1 / 1200, -1 / 1200, 0.0]]], [[33550, 12, [0.0, 1.0, 0.0]]],
+    [[33922, 12, [0.0, 0.0, 0.0, -12.0]]],
+    [[33922, 12, [0.0, 0.0, 0.0, -12.2, 7.2, 0.0, 7.0, 5.0, 0.0, -12.19, 7.19, 0.0]]],
+    [[42112, 2, '<Item name="SCALE" role="scale"></Item>']], [[42112, 2, '<Item role="scale">nan</Item>']],
+    [[42112, 2, '<Item role="offset">-0</Item><Item role="scale"> 1.0 </Item>']],
+    [[42112, 2, '<Item role="offset">1e-400</Item>']], [[42113, 2, "-0\x00\x00"]],
+]
+
+
+def _described_specs() -> list[dict]:
+    """A few hundred descriptions for make_dem_fixture.described_file: every
+    sample type in both byte orders under every compression, with each
+    predictor it can carry and an ignored one where it cannot, in strips and
+    in tiles, classic and BigTIFF, Area and Point, in degrees and in UTM, with
+    each form of no-data text, -0, the infinities, NaN and each type's
+    extremes among the samples; then the same files damaged or cut short,
+    with tags of other field types and counts, and with each georeferencing,
+    GeoKey, no-data, scale, subfile and block-table form a reader has to
+    settle one way."""
+    make = _builder()
+    rng = random.Random(4117)
+    places = [{"x": -12.0, "y": 9.0, "sx": 1 / 3600, "sy": 1 / 3600, "model": 2, "epsg": 4326},
+              {"x": 700000.0, "y": 950000.0, "sx": 30.0, "sy": 30.0, "model": 1, "epsg": 32629},
+              {"x": -11.7, "y": 7.9, "sx": 1 / 1200, "sy": 1 / 1200, "model": 2, "epsg": 4326,
+               "tie_col": 3, "tie_row": 2},
+              {"x": -12.2, "y": 8.4, "sx": 1 / 1200, "sy": 1 / 1200, "model": 2, "epsg": 4326, "transform": True}]
+    nodatas = [None, None, "", " ", "-9999", "nan", "-NaN", "-inf", "Infinity", "-0", "0", " 255 ", "65535",
+               "-32768", "-32767", "4294967295", "-3.40282346639e+038", "1e39", "1.5", ".5e1", "1e400",
+               "abc", "0x10", "5\x006", "--1"]
+    names = list(make.NAMED_SAMPLES)
+
+    def base(kind, order, compression, predictor) -> dict:
+        width, height = rng.randint(3, 40), rng.randint(3, 40)
+        spec = {"kind": kind, "width": width, "height": height, "seed": rng.randrange(1000), "order": order,
+                "bigtiff": rng.random() < 0.15, "compression": compression, "predictor": predictor,
+                "georef": {**rng.choice(places), "raster": rng.choice([1, 2, None])},
+                "nodata": rng.choice(nodatas),
+                "specials": [[rng.randrange(height), rng.randrange(width), rng.choice(names)]
+                             for _ in range(rng.randint(0, 4))]}
+        if rng.random() < 0.4:
+            spec["tile"] = [16 * rng.randint(1, 2), 16 * rng.randint(1, 2)]
+            if rng.random() < 0.2:
+                spec["sparse"] = [0]
+        else:
+            spec["rows_per_strip"] = rng.randint(1, height)
+        if rng.random() < 0.15:
+            spec["ifds_first"] = False
+        if rng.random() < 0.1:
+            spec["overviews"] = rng.randint(1, 3)
+        return spec
+
+    plain = []
+    for kind in make.KINDS:
+        for order in "<>":
+            for compression in (1, 5, 8, 32946, 32773):
+                if compression in (5, 8, 32946):
+                    predictors = [1, 2, 3] if kind[0] == "f" else [1, 2]
+                else:  # the tag libtiff and GDAL ignore, written anyway
+                    predictors = [1, rng.choice([2, 3, 0, 7])]
+                plain += [base(kind, order, compression, predictor) for predictor in predictors]
+    specs = list(plain)
+    # damaged and cut short anywhere, header and directories included
+    for spec in rng.sample(plain, 90):
+        how = rng.choice(["cut", "byte", "flip"])
+        extra = [rng.randrange(256)] if how == "byte" else [rng.randrange(8)] if how == "flip" else []
+        specs.append({**spec, "damage": [[how, rng.randrange(1000), *extra]]})
+    def pick(**want) -> dict:
+        return dict(rng.choice([s for s in plain if all(s.get(k) == v for k, v in want.items())
+                                and not s["georef"].get("transform")]))
+
+    # each tag the readers judge, its own values written as every field type and as two TIFF does not define
+    for tag in (254, 255, 256, 257, 258, 259, 266, 277, 278, 284, 317, 322, 323, 339, 33550, 33922, 34264,
+                34735, 34736, 34737, 42112, 42113):
+        for kind_of in _ODD_TYPES:
+            spec = {**pick(), "retype": [[tag, kind_of]]}
+            if tag in (322, 323):
+                spec["tile"] = [16, 16]
+            elif tag == 278:
+                spec["tile"] = None
+            if tag in (254, 255, 266, 317):
+                spec["tags"] = [[tag, 3, [0 if tag in (254, 255) else 1]]]
+            if tag == 34264:
+                spec["georef"] = {**spec["georef"], "transform": True}
+            if tag in (34736, 34737):
+                spec["georef"] = {**places[0], "raster": 2, "copernicus_keys": True}
+            if tag == 42112:
+                spec["metadata"] = [["scale", "1"], ["offset", "0"]]
+            if tag == 42113:
+                spec["nodata"] = "-9999"
+            specs.append(spec)
+    for tags in _ODD_TAGS:
+        specs += [{**pick(), "tags": tags} for _ in range(2)]
+    for drop in ([33550], [33922], [33550, 33922], [34735], [258, 339], [273], [259], [256]):
+        specs.append({**pick(), "drop": drop})
+    # a scale of one value is a damaged entry even with no tiepoint to go with it
+    specs.append({**pick(), "tags": [[33550, 12, [1 / 1200]]], "drop": [33922]})
+    # dimensions BigTIFF's eight-byte fields allow, the 2^53 limit, a LONG8 value refused before any check
+    # reads it, and blocks either side of 64 MiB
+    for tags, strips in [([[256, 16, [1 << 53]]], False), ([[256, 16, [(1 << 53) - 1]]], False),
+                         ([[257, 16, [1 << 33]], [278, 4, [0xFFFFFFFF]]], True),
+                         ([[257, 16, [1 << 33]], [278, 16, [(1 << 32) + 5]]], True),
+                         ([[266, 16, [1 << 53]], [259, 3, [50000]]], False),
+                         ([[322, 3, [2064]], [323, 3, [32768]]], False), ([[322, 3, [2048]], [323, 3, [32768]]], False),
+                         ([[322, 3, [4096]], [323, 3, [4097]]], False)]:
+        spec = {**pick(), "kind": "u8", "tags": tags, "bigtiff": True, "tile": [16, 16], "predictor": 1}
+        if strips:  # one strip, which a RowsPerStrip of 2^32 - 1 says
+            spec["tile"], spec["rows_per_strip"] = None, None
+        specs.append(spec)
+    # counts: 2^53 and past the file on a tag no reader reads, 2^53 on one each reads, one more than the values
+    for recount, bigtiff in [([[262, 1 << 53]], True), ([[262, (1 << 53) - 1]], True), ([[262, 1 << 31]], False),
+                             ([[33550, 1 << 53]], True), ([[256, 2]], False), ([[42113, 0]], False),
+                             ([[273, 1 << 40]], True), ([[34735, 3]], False)]:
+        specs.append({**pick(), "recount": recount, "bigtiff": bigtiff, "nodata": "-9999"})
+    # an uncompressed strip cut short past the window that reads part of it
+    for kind in ("u8", "i16", "f32", "f64"):
+        specs.append({**pick(kind=kind, compression=1), "tile": None, "rows_per_strip": None,
+                      "damage": [["cut", 960]]})
+    specs.append({**pick(), "count_type": 3})
+    specs += [{**plain[0], "overviews": overviews} for overviews in (63, 64)]
+
+    # and a file for each refusal, and each codec form, the draws above may miss
+    specs += [
+        {**pick(), "damage": [["byte", 0, 88]]},
+        {**pick(), "overviews": 2, "tags": [[254, 4, [1]]], "loop_to": 0},
+        {**pick(), "overviews": 1, "tags": [[255, 3, [2]]]},
+        {**pick(), "tags": [[277, 3, [2]]]},
+        {**pick(), "tags": [[259, 3, [50000]]]}, {**pick(), "tags": [[259, 3, [7]]]},
+        {**pick(), "tags": [[259, 4, [99]]]},
+        {**pick(kind="i16", compression=5), "encoder": {"old_lzw": True}},
+        {**pick(), "drop": [33550],
+         "tags": [[33922, 12, [0.0, 0.0, 0.0, -12.2, 7.2, 0.0, 7.0, 0.0, 0.0, -12.19, 7.2, 0.0]]]},
+        {**pick(kind="f32", compression=5), "width": 40, "height": 40, "encoder": {"lzw_deferred": 1024}},
+        {**pick(kind="f32", compression=5), "width": 40, "height": 40, "encoder": {"lzw_deferred": 1025}},
+        {**pick(compression=32773), "encoder": {"packbits_noop": True}},
+        {**pick(compression=8), "tile": None, "rows_per_strip": 3, "height": 10,
+         "encoder": {"full_last_strip": True}},
+    ]
+    return specs
+
+
+def test_the_two_readers_agree_on_files_made_in_memory_with_every_option(reader):
+    """The comparison of test_the_two_readers_agree_on_every_committed_fixture
+    on a few hundred files make_dem_fixture.described_file makes in memory
+    (_described_specs): every encoding the readers take, each rule a file can
+    meet one way or the other - a field type, a count, a predictor tag that
+    is ignored, a GeoKey or no-data form, a sample type a folded code would
+    mistake, a 2^53 value, a block either side of 64 MiB - and the same files
+    damaged or cut short anywhere. Prevents the two readers settling a rule
+    differently where no committed fixture looks; a failure names the first
+    answer that differs and the description that made the file."""
+    make = _builder()
+    bounds = _terrain_bounds()
+    specs = _described_specs()
+    outcomes: dict[str, int] = {}
+    for k, spec in enumerate(specs):
+        answer = _readers_agree(reader, f"made{k}.tif", make.described_file(spec), bounds, json.dumps(spec))
+        found = _outcome(answer)
+        outcomes[found] = outcomes.get(found, 0) + 1
+    assert len(specs) >= 300
+    # the sample reaches every outcome a reader has: read, and each of its nineteen refusals
+    assert outcomes["read"] >= 150 and len(outcomes) == 20, outcomes

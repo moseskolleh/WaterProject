@@ -1263,6 +1263,86 @@ def test_samples_the_reader_does_not_take_are_named_by_size_and_kind():
     assert _refused(data).values == {"file": "made.tif", "tag": "FillOrder"}
 
 
+#: A plain file for the settled-rule cases below: f32 strips, degrees, PixelIsArea
+_PLAIN = {"kind": "f32", "width": 9, "height": 7, "seed": 67, "rows_per_strip": 3,
+          "georef": {"x": -11.9, "y": 8.4, "sx": SX, "sy": SX, "raster": 1, "model": 2, "epsg": 4326}}
+
+
+@pytest.mark.parametrize("change, outcome", [
+    # a Predictor tag is not looked at without LZW or DEFLATE, whatever it says
+    ({"tags": [[317, 3, [7]]]}, {"predictor": 7, "predictor_applied": False}),
+    ({"compression": 5, "tags": [[317, 3, [7]]]}, ("terrain.predictor", {"code": 7})),
+    # field types: unsigned integers as BYTE, SHORT, LONG or LONG8; reals as DOUBLE; GeoKeys as SHORT; text as ASCII
+    ({"retype": [[256, 4]]}, {"width": 9}), ({"retype": [[256, 1]]}, {"width": 9}),
+    ({"retype": [[256, 8]]}, ("terrain.bad_tag", {"tag": "ImageWidth"})),
+    ({"retype": [[256, 18]]}, ("terrain.bad_tag", {"tag": "ImageWidth"})),
+    ({"retype": [[33550, 11]]}, ("terrain.bad_tag", {"tag": "ModelPixelScale"})),
+    ({"retype": [[34735, 4]]}, ("terrain.bad_tag", {"tag": "GeoKeyDirectory"})),
+    ({"nodata": "-9999", "retype": [[42113, 7]]}, ("terrain.bad_tag", {"tag": "GDAL_NODATA"})),
+    # counts: one for a single value, at least one per sample, any number (none included) for the rest
+    ({"tags": [[259, 3, [1, 1]]]}, ("terrain.bad_tag", {"tag": "Compression"})),
+    ({"tags": [[258, 3, [32, 8]]]}, {"bits": 32}),
+    ({"tags": [[42113, 2, ""]]}, {"nodata": None, "has_nodata_tag": True}),
+    ({"tags": [[34736, 12, []]]}, {"width": 9}),
+    # the subfile tags: a type TIFF does not define is skipped; a known one must hold one value in its entry
+    ({"tags": [[254, 13, "01000000"]]}, {"ifd_index": 0}),
+    ({"tags": [[254, 4, [0, 0]]]}, ("terrain.bad_tag", {"tag": "NewSubfileType"})),
+    ({"tags": [[254, 16, [0]]]}, ("terrain.bad_tag", {"tag": "NewSubfileType"})),
+    ({"tags": [[254, 16, [0]]], "bigtiff": True}, {"ifd_index": 0}),
+    # FillOrder other than 1 and 2, a GeoKey directory of another version, a raster type other than 2
+    ({"tags": [[266, 3, [3]]]}, ("terrain.bad_tag", {"tag": "FillOrder"})),
+    ({"tags": [[34735, 3, [2, 1, 0, 1, 1024, 0, 1, 2]]]}, ("terrain.bad_tag", {"tag": "GeoKeyDirectory"})),
+    ({"tags": [[34735, 3, [1, 1, 0, 2, 1024, 0, 1, 2, 1025, 0, 1, 3]]]}, {"raster_type": 1}),
+    # a scale of one value is damaged before the missing tiepoint is noticed
+    ({"tags": [[33550, 12, [SX]]], "drop": [33922]}, ("terrain.bad_tag", {"tag": "ModelPixelScale"})),
+    # SampleFormat and BitsPerSample are a pair: 1 and 108 are not 2 and 8
+    ({"tags": [[258, 3, [108]], [339, 3, [1]]]}, ("terrain.sample_type", {"bits": 108, "kind": "unsigned integer"})),
+    # a LONG8 value past 2^53 is refused before any check reads it, here the compression's
+    ({"bigtiff": True, "tags": [[266, 16, [1 << 53]], [259, 3, [50000]]]}, ("terrain.too_large", {})),
+    # a count no reader could hold, on a tag the reader does not read, is passed over
+    ({"bigtiff": True, "recount": [[262, 1 << 53]]}, {"width": 9}),
+    ({"bigtiff": True, "recount": [[33550, 1 << 53]]}, ("terrain.too_large", {})),
+    # RowsPerStrip 2^32 - 1 is the whole image even under a height past it
+    ({"bigtiff": True, "kind": "u8", "rows_per_strip": None,
+      "tags": [[257, 16, [1 << 33]], [278, 4, [0xFFFFFFFF]]]}, ("terrain.block_too_large", {"mb": 9 * 8192.0})),
+], ids=lambda value: json.dumps(value)[:60] if isinstance(value, dict) else None)
+def test_each_rule_settled_with_the_browser_reader_holds(change, outcome):
+    """The rules the two readers were settled to (see the comments at each in
+    geotiff.py and gwt-core.js): a predictor tag left unexamined without LZW
+    or DEFLATE; the field types and counts each tag may have; a subfile tag
+    of an unknown type skipped; FillOrder, GeoKey version and raster type;
+    the order of the scale's checks; the sample type matched as a pair; a
+    LONG8 value refused before any check; a count passed over on a tag
+    nobody reads; RowsPerStrip 2^32 - 1. Each is pinned here without a
+    browser, so a change to one rule in this engine fails by name rather
+    than only as a disagreement in the Node tests."""
+    data = MAKE.described_file({**_PLAIN, **change})
+    if isinstance(outcome, dict):
+        layout = geotiff_layout("made.tif", len(data), [(0, data)])
+        assert isinstance(layout, GeoTiffLayout), layout
+        for key, value in outcome.items():
+            assert getattr(layout, key) == value, key
+        return
+    ident, values = outcome
+    with pytest.raises(GeoTiffError) as refused:
+        geotiff_layout("made.tif", len(data), [(0, data)])
+    assert (refused.value.ident, refused.value.values) == (ident, {"file": "made.tif", **values})
+
+
+def test_part_of_an_uncompressed_strip_is_refused_where_the_whole_strip_would_be():
+    """A file cut short inside its one uncompressed strip: a window whose
+    rows all lie before the cut is refused as the whole read is, because the
+    strip as the file describes it runs past the end. The browser's reader
+    once checked only the rows it read, and so read a window of a file this
+    one refused."""
+    data = MAKE.described_file({**_PLAIN, "rows_per_strip": None})
+    layout = geotiff_layout("cut.tif", len(data) - 10, [(0, data[:-10])])
+    assert isinstance(layout, GeoTiffLayout) and len(layout.offsets) == 1
+    with pytest.raises(GeoTiffError) as refused:
+        block_ranges(layout, 0, 2, 0, 9)
+    assert refused.value.values == {"file": "cut.tif", "part": "data block 1"}
+
+
 def _recount(data: bytes, tag: int, change: int) -> bytes:
     """A little-endian classic file with one entry's value count changed, its values left where they are."""
     (ifd,) = struct.unpack_from("<I", data, 4)
