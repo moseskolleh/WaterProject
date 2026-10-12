@@ -11,8 +11,9 @@ the Python package and hands the same bytes to ``gwt-core.js`` in headless
 Chromium (``engines.py``, ``engine.mjs``); the two answers are compared with
 ``make_reference.py``'s comparison at the tolerances ``parity.mjs`` uses.
 ``rasters.py`` draws elevation models and their compressed blocks the same
-way, and the file both engines are handed is then the block or the raster
-itself rather than a workbook.
+way, and windows of heights for the terrain analysis, and the file both
+engines are handed is then the block, the raster or the window's numbers
+rather than a workbook.
 
 A disagreement is written to ``tests/fuzz/regressions/`` and printed in the
 log: on the nightly run shrunk by Hypothesis to the smallest sheet that still

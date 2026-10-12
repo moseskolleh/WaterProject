@@ -299,9 +299,10 @@ class TerrainConfig:
     analysis_buffer_km: float = _TERRAIN["analysis_buffer_km"]
     # One limit on the cells analysed, the margin included, in every
     # runtime, so that whether a window is refused does not depend on where
-    # the engine ran. Provisional until the bench confirms it in CPython
-    # (its time, and its memory against Community Cloud's 690 MB) and in the
-    # browser worker.
+    # the engine ran. Confirmed in CPython by the bench on 12 October 2026:
+    # 2.8 s at the cap and a peak about 280 MB above the Streamlit app's
+    # 159 MB idle, against Community Cloud's 690 MB (bench/README.md). Still
+    # provisional for the browser worker, which step 4.1c measures.
     max_cells: int = _TERRAIN["max_cells"]
     # One limit on the blocks a read decodes, each a decode of its own: a
     # file cut into tiles of a cell or two costs a decode a cell, and two

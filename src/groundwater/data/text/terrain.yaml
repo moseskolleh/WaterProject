@@ -3,14 +3,16 @@
 # the figures drawn from it say, in the words both engines write. The Python
 # package reads them in groundwater/geotiff.py (the GeoTIFF reader),
 # mapping/elevation.py (the elevation layer: windows, joins and credits),
-# mapping/terrain_analysis.py (the analysis) and mapping/terrain.py (the
-# figures), which the Streamlit Site maps page draws in
+# mapping/terrain_analysis.py (the analysis: its stage labels, the figures'
+# titles and captions, and the drainage lines' GeoJSON) and mapping/terrain.py
+# (the figures), which the Streamlit Site maps page draws in
 # app/views/site_maps.py; the browser reads them through the reader,
 # elevation and terrain functions of gwt-core.js (C.readGeoTiff,
-# C.readElevationWindow, C.terrainCredit, C.analyseTerrain and those beside
-# them). Every entry is read by its quoted id in both engines, never by an id
-# built from pieces. The template rules are in src/groundwater/text.py;
-# CONTRIBUTING.md says how to add an entry.
+# C.readElevationWindow, C.terrainCredit, C.analyseTerrain,
+# C.terrainCaptions, C.drainageGeoJson and those beside them). Every entry is
+# read by its quoted id in both engines, never by an id built from pieces.
+# The template rules are in src/groundwater/text.py; CONTRIBUTING.md says how
+# to add an entry.
 
 # Why a file, a join of files or a window is refused. Each is raised by its
 # full id - GeoTiffError("terrain.not_tiff", file=name) in Python,
@@ -74,6 +76,14 @@ predictor: "{file} uses TIFF predictor {code:g}, which this reader does not undo
 fill_order: >-
   {file} stores its bits in reverse order (FillOrder 2), which this reader
   does not read.
+
+# The analysis takes a grid whose axes increase, row 0 the southern edge,
+# as every reader in both engines gives it; anything else would route water
+# uphill.
+axes_descend: >-
+  The elevation grid's longitudes and latitudes must increase from the first
+  cell to the last, with row 0 the southern edge; this one runs the other way
+  or has no step between its cells.
 
 no_georeference: >-
   {file} carries no georeferencing, so where its cells lie is not known.
@@ -314,8 +324,147 @@ figure_credit: "Elevation: {label}, {credit}. Cells about {dx:.0f} by {dy:.0f} m
 
 figure_credit_bare: "Elevation: {label}. Cells about {dx:.0f} by {dy:.0f} m."
 
-# The progress label while the files are read.
+# The terrain figures' titles and captions, the line drawn inside every
+# figure under its credit, and the description the drainage lines' GeoJSON
+# carries, all built by the analysis (terrain_captions and drainage_geojson
+# in Python, C.terrainCaptions and C.drainageGeoJson in the browser) so that
+# both apps print the same. {where} names the place as the read report does;
+# {surface} is one of the surface_ sentences above; {azimuths} is a list of
+# azimuths written as 270°, joined by and_join.
+title_relief: "Shaded relief and drainage lines - {where}"
+
+title_wetness: "Topographic wetness index - {where}"
+
+title_curvature: "Curvature - {where}"
+
+title_directions: "Shaded relief from four directions - {where}"
+
+panel_azimuth: "Light from {az:g}°"
+
+figure_caveat: >-
+  Worked out from the elevation model alone: candidates to check on the
+  ground, not mapped features. {surface}
+
+caption_relief: >-
+  Shaded relief lit from four directions, with {interval:g} m contours and
+  drainage lines where more than {area:g} km² drains, drawn wider with
+  Strahler order.
+
+caption_fill: >-
+  Water was routed over a surface whose closed hollows were filled to their
+  spill level, and across flat ground by its distance from higher and lower
+  ground rather than by slope: {lines_pct:.0f}% of the drainage-line cells
+  were routed that way (drawn paler), and {pct:.1f}% of the land was raised
+  by {depth:g} m or more (tinted). A hollow or a flat may be real, or made by
+  tree canopy, buildings or an embankment that the model records as ground,
+  so the paler stretches are the least certain.
+
+caption_edge: >-
+  The drainage was worked out over a square {margin:g} km wider on every side
+  than the one shown, so that the edge of the analysis does not bend the
+  lines. Dashed lines drain ground beyond that square or behind a gap in the
+  model, so their upslope area and order may be larger or smaller than shown.
+
+# When nothing was analysed beyond the square shown.
+caption_edge_none: >-
+  The drainage was worked out over the square shown alone, so lines near its
+  edge may be bent by it. Dashed lines drain ground beyond that square or
+  behind a gap in the model, so their upslope area and order may be larger or
+  smaller than shown.
+
+# Only where the square shown holds sea, a zero-filled gap or a flat left
+# without a direction.
+caption_sea: >-
+  {pct:.0f}% of the square shown is taken as sea: ground at or below
+  {level:g} m joined to the edge of the analysed square, or a missing tile
+  taken as open sea (hatched, with no height).
+
+# For sea that is real but would round to 0%.
+caption_sea_little: >-
+  Less than 1% of the square shown ({count:num} {count:plural:cell|cells}) is
+  taken as sea: ground at or below {level:g} m joined to the edge of the
+  analysed square, or a missing tile taken as open sea (hatched, with no
+  height).
+
+caption_sea_unstated: >-
+  The source of this model is not stated, so ground at or below {level:g} m
+  may be a fill value rather than sea; lines ending there are dashed.
+
+caption_zero_fill: >-
+  {pct:.0f}% of the square shown is at or below {level:g} m but meets the land
+  along a straight line of grid cells, as the 0 m fill of a joined or clipped
+  file does, so it is treated as a gap rather than sea.
+
+caption_zero_fill_little: >-
+  Less than 1% of the square shown ({count:num} {count:plural:cell|cells}) is
+  at or below {level:g} m but meets the land along a straight line of grid
+  cells, as the 0 m fill of a joined or clipped file does, so it is treated as
+  a gap rather than sea.
+
+caption_candidates: >-
+  Drainage lines, wetness and curvature are worked out from the elevation
+  model alone: they are candidates to check on the ground, not mapped
+  streams, springs or wet ground.
+
+caption_twi: >-
+  Topographic wetness index, ln(a / tan β), with water routed to a single
+  neighbour (D8): high values mark ground where water gathers and lingers.
+  Slopes gentler than {floor:g} are taken as {floor:g} ({n:num} cells).
+  Lightened cells receive water from beyond the analysed square or from
+  behind a gap, so their values are uncertain.
+
+caption_curvature: >-
+  Curvature over {spacing:.0f} m, per km. Down the slope, positive is convex
+  (flow speeds up) and negative concave; across it, negative is converging
+  flow (hollows) and positive diverging (spurs). Ground flatter than
+  {floor:g} is not drawn.
+
+caption_directions: >-
+  Hillshade lit from {azimuths} at {altitude:g}° above the horizon. A straight
+  feature shows most strongly under light across it and fades under light
+  along it; anything seen here is inferred from terrain, not confirmed by
+  geophysics.
+
+caption_unresolved: >-
+  {n:num} cells on flats could not be given a direction and are drawn as
+  ending there.
+
+geojson_description: >-
+  Drainage lines worked out from {label} by single-neighbour (D8) routing
+  where more than {area:g} km² drains, within {radius:g} km each way of
+  {where}, analysed with a {margin:g} km margin. They are candidates to check
+  on the ground, not mapped streams. flat_routed_cells counts the cells routed
+  across flats or filled hollows rather than by slope, and filled_cells those
+  of them the fill raised by {depth:g} m or more; edge_contaminated marks
+  lines that drain ground beyond the analysed square or behind a gap, whose
+  area may be larger or smaller than given. {surface}
+
+# Added to the GeoJSON description when the source does not say that it
+# writes the sea as 0 m, so the sea may hide a fill value (caption_sea_unstated).
+geojson_sea_unstated: >-
+  The source of this model is not stated, so lines ending in ground at or
+  below {level:g} m may end in a fill value rather than the sea, and are
+  marked edge_contaminated.
+
+# The progress labels: while the files are read, then each stage of the
+# analysis in the order it runs.
 stage_read: Reading the elevation model
+
+stage_classes: Finding sea and gaps
+
+stage_fill: Filling closed hollows
+
+stage_flow: Routing water
+
+stage_flats: Resolving flats
+
+stage_accumulate: Adding up upslope area
+
+stage_drainage: Tracing drainage lines
+
+stage_shading: Shading the relief
+
+stage_curvature: Working out curvature and wetness
 
 # Said by both apps until the browser reads elevation models itself.
 browser_reads_none: >-

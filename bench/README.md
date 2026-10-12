@@ -13,6 +13,7 @@ is bundled) so that two commits are timed on the same work, and
 python bench/run.py                                  # the Python package, ~8 min
 python bench/run.py --quick --only inversion         # one group, 2 samples
 python bench/run.py --compare bench/baseline.json    # now, beside the baseline
+python bench/terrain_memory.py                       # the terrain analysis's memory, ~15 s
 
 node bench/web.mjs                                   # the browser app, ~2.5 min
 node bench/web.mjs --quick --out web.json
@@ -96,10 +97,10 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   illustrative discharges `run_kuntolo_step_test.py` carries in its
   comments (which reaches the Hantush-Bierschenk analysis), and the Dr
   Timbo constant-rate test with its recovery.
-- `terrain/*` - reading an operator's elevation model (PLAN.md step
-  4.1). No elevation model is bundled, so the setup writes a synthetic
-  3600 by 3600 float32 tile (a seeded fractal surface with a tilt and
-  centimetre steps) laid out as the Copernicus GLO-30 tile N08 W012 is:
+- `terrain/*` - reading an operator's elevation model and analysing it
+  (PLAN.md step 4.1). No elevation model is bundled, so the setup writes
+  a synthetic 3600 by 3600 float32 tile (a seeded fractal surface with a
+  tilt and centimetre steps) laid out as the Copernicus GLO-30 tile N08 W012 is:
   PixelIsPoint, EPSG 4326, 1/3600 degree. `read a window, DEFLATE GLO-30
   layout` reads the window the terrain analysis takes by default (the
   radius shown, 10 km, plus the 5 km margin analysed around it, centred
@@ -113,7 +114,31 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   reader's LZW decoder swapped for the 40-line loop it is tested against,
   which is the measure behind decoding a Clear segment at a time. `read a
   whole DEFLATE tile` is `read_geotiff` on the whole file, as the command
-  line and the tests read it. File writing is setup and is not timed.
+  line and the tests read it. `analyse the default window` is
+  `analyse_terrain` on the DEFLATE window, 983 by 979 cells at 1
+  arc-second, with the layers that are only drawn kept in float32 as the
+  Streamlit app keeps them. `analyse at the cap` is the same on the widest
+  window the cap on cells (`terrain.max_cells`) allows with the default
+  margin: its radius is the one the planner's refusal offers when asked
+  for more, so the measure follows the cap if the cap moves (16.5 km at
+  2,000,000 cells, 1407 by 1401 cells, 1,971,207). `trace drainage lines
+  from the core` is `drainage_links` at the default threshold (0.5 km²)
+  on the default window's core: the drainage lines alone, which the
+  browser traces again on the page each time the threshold is moved.
+  Writing the file, reading the window and, for the drainage lines, the
+  analysis they are traced from, are setup and are not timed.
+
+  The memory the analysis takes is not in `run.py`'s output, whose layout
+  has no field for it. `python bench/terrain_memory.py` writes the same
+  tile, then reads the window at the cap and analyses it once in a fresh
+  interpreter, after a warm-up analysis of a 1 km window, and prints JSON:
+  `increase_mb` is the peak resident set size after the analysis
+  (`ru_maxrss`) less the resident set size just before it, the window
+  already read; `read_mb` and `first_use_mb` are what the read and the
+  warm-up (the modules the analysis imports on first use) added before
+  that; and it gives the analysis's wall time, the window, the commit, the
+  date and the same `machine` block as `run.py`. MB there are 2^20 bytes,
+  `ps -o rss` divided by 1024. It reads `/proc`, so it runs on Linux only.
 - `reports/*` - each document the package builds, from inputs made
   beforehand, written with its figures into a temporary folder: the
   geophysical, pumping, completion, water quality, handover, cost
@@ -295,6 +320,80 @@ with the codecs, the GeoTIFF reader and the elevation layer, and time to
 interactive on the throttled profile went from 11.11 s to 11.84 s
 (median of three cold loads each, the commit before the step and the
 step's last commit), first contentful paint staying at 2.4 s.
+
+## The terrain analysis: why 2,000,000 cells
+
+PLAN.md step 4.1 caps the cells the terrain analysis takes, the margin
+included, at `terrain.max_cells`: one limit in every runtime, so that
+whether a window is refused does not depend on where the engine ran. At
+2,000,000 cells the widest window is 16.5 km shown with the 5 km margin,
+1407 by 1401 cells at 1 arc-second. The value was committed as
+provisional, to be confirmed here by this rule, on the bench machine:
+
+- `terrain/analyse at the cap` (`run.py --only terrain`) has a median of
+  at most 6.0 s;
+- the analysis's peak RSS increase at the cap (`increase_mb` from
+  `bench/terrain_memory.py`), plus the Streamlit app's idle RSS once
+  Site maps has loaded, is at most 690 MB, the least memory Streamlit
+  Community Cloud gives an app.
+
+If either fails, `max_cells` comes down in steps of 250,000 until both
+hold, and the changelog says so. Only `defaults.json`, `gwt-data.js` and
+the reason beside `max_cells` in `config.py` change: every parity case
+and test of the cap passes its own `max_cells`, so nothing in
+`reference.json` moves.
+
+The idle RSS is taken by hand, once: start the app with `streamlit run
+app/streamlit_app.py`, open Site maps in a browser and let it finish
+loading, then read `ps -o rss= -p PID` for the Streamlit process (in
+kilobytes; divide by 1024 for MB as `terrain_memory.py` counts them).
+
+Taken on 12 October 2026 on this repository's 4-CPU machine (Xeon at
+2.1 GHz, Python 3.13.16, numpy 2.4.6, scipy 1.17.1, load average 0.7 to
+0.9), `run.py --only terrain`, median of five:
+
+| measure | median | IQR |
+|---|---|---|
+| analyse the default window | 1.39 s | 44 ms |
+| analyse at the cap | 2.79 s | 540 ms |
+| trace drainage lines from the core | 53 ms | 3 ms |
+
+The spread at the cap comes from two slower samples (3.84 and 3.33 s);
+the other three lie between 2.60 and 2.79 s.
+
+`terrain_memory.py` at the cap (1,971,207 cells, 16.5 km shown), three
+runs: `increase_mb` 279, 270 and 272, with `read_mb` 14 to 33 and
+`first_use_mb` 52 to 70 beside it. The Streamlit app's idle RSS, with
+Site maps loaded in Chromium and the app left to settle, was 159 MB
+(163,276 kB by `/proc`'s VmRSS, which `ps -o rss` reads) the same day.
+
+So the worst peak increase plus the idle app is 279 + 159 = 438 MB.
+The idle app does not yet hold `scipy.ndimage` and `scipy.sparse.csgraph`,
+which the analysis loads on first use, and the read's bytes are not in
+the idle figure either; counting both as well, at their largest (85 MB),
+gives 523 MB. Both are under 690 MB, and the median at the cap is under
+6.0 s, so **2,000,000 cells is kept**.
+
+The synthetic tile looks like ground, which is the easy case. Surfaces
+built to be hard, each 1414 by 1414 cells (1,999,396, just under the cap),
+were measured the same way (a warm-up first, the peak RSS increase over
+the window held), on the same machine and day with the code as part b
+merged it, while another test run shared the machine: a channel winding
+through the whole window behind walls took 2.99 s and +304 MB; a plane
+tilted evenly to the south, nearly every cell of which is on a drainage
+line, 1.88 s and +308 MB; a channel in lanes that turns at every cell,
+2.51 s and +435 MB; and ground dead flat, 4.27 s and +320 MB. Before the
+part b review the first two took 27.2 s and 5.6 s, and raised the peak
+by 731 MB and 692 MB. The worst, +435 MB, plus the idle app's 159 MB is
+594 MB, and 679 MB with the scipy modules and the read's bytes counted
+as above: under 690 MB, with little to spare, so a surface harder still
+could pass it. The time is well under 6.0 s on every one.
+
+Not measured yet: the browser worker's time at the cap and the page-only
+fallback at 4x (`web.mjs` needs the page step 4.1c adds), and an ad hoc
+Pyodide run at the cap. The cap is one number for every runtime, so a
+slower runtime makes a long wait, not a different answer; part c measures
+the browser before the cap can be said to suit it.
 
 ## The committed baseline
 

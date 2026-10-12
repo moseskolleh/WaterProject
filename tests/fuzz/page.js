@@ -1,5 +1,5 @@
 /* What the browser engine makes of one generated workbook, or of one
- * generated raster or block of one.
+ * generated raster, block of one or window of heights.
  *
  * Loaded into the bare engine page by engine.mjs. Each summary here has a
  * twin in engines.py that builds the same keys from the Python objects; the
@@ -272,10 +272,72 @@
     return out;
   }
 
+  /* engines.py _terrain: PLAN.md step 4.1's whole terrain analysis on one
+   * window in float64, every exact quantity a string (each layer by
+   * digest, the links and parts by a digest of their JSON with each length
+   * by its bits, the GeoJSON by SHA-256 and length, the captions as text,
+   * the summary's values by their bits), the wetness index apart */
+  function terrain(bytes, name, options) {
+    var rows = options.rows, cols = options.cols, n = rows * cols;
+    var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var number = function (k) { return view.getFloat64(8 * k, true); };
+    var z = new Float64Array(n), lons = new Float64Array(cols), lats = new Float64Array(rows), k;
+    for (k = 0; k < n; k++) z[k] = number(k);
+    for (k = 0; k < cols; k++) lons[k] = number(n + k);
+    for (k = 0; k < rows; k++) lats[k] = number(n + cols + k);
+    var sea = bytes.slice(8 * (n + cols + rows), 8 * (n + cols + rows) + n);
+    var heard = [];
+    var a = C.analyseTerrain({ lons: lons, lats: lats, z: z, rows: rows, cols: cols, assumedSea: sea,
+      sourceId: options.source_id, seaClean: options.sea_clean, label: options.label },
+    { terrain: options.settings }, function (fraction, label) { heard.push([f64Hex(fraction), label]); },
+    'float64', options.shown);
+    var core = a.core;
+    var layers = { cls: core.cls, code: core.code, flag: core.flag, raised: core.raised, flatRouted: core.flatRouted,
+      stream: a.stream, count: core.count, areaUnits: core.areaUnits, filled: a.filled, fillDepth: a.fillDepth,
+      p: a.p, q: a.q, tanb: a.tanb };
+    a.hillshades.forEach(function (layer, j) { layers['hillshade' + j] = layer; });
+    Object.assign(layers, { hillshadeMulti: a.hillshadeMulti, twiArg: a.twiArg, profile: a.profile,
+      tangential: a.tangential, dx: core.dx, dy: core.dy, dg: core.dg });
+    var digests = {};
+    Object.keys(layers).forEach(function (key) { digests[key] = f64Digest(layers[key]); });
+    var lines = function (found) {
+      return C.sha256Hex(JSON.stringify(found.map(function (line) {
+        return Object.assign({}, line, { length_m: f64Hex(line.length_m) });
+      })));
+    };
+    var meta = Object.assign({}, options.meta);
+    var geojson = C.drainageGeoJson(C.terrainCore(a), a.parts, meta);
+    var summary = Object.keys(a.summary).filter(function (key) { return key !== 'twi_range'; });
+    var values = {};
+    summary.forEach(function (key) { values[key] = f64Hex(a.summary[key]); });
+    var twi = a.twi, finite = [];
+    for (k = 0; k < twi.length; k++) if (twi[k] - twi[k] === 0) finite.push(k);
+    var at = [];
+    if (finite.length) {
+      for (k = 0; k < 25; k++) {
+        var i = finite[Math.floor(k * (finite.length - 1) / 24)];
+        if (at.indexOf(i) < 0) at.push(i);
+      }
+      at.sort(function (x, y) { return x - y; });
+    }
+    var captions = C.terrainCaptions(a, options.read, options.where);
+    return {
+      layers: digests, links: lines(a.links), parts: lines(a.parts),
+      counts: a.links.length + ' links, ' + a.parts.length + ' parts',
+      geojson: C.sha256Hex(geojson) + ' ' + geojson.length,
+      captions: Object.keys(captions).map(function (key) { return [key, captions[key]]; }),
+      summary_keys: summary.join(' '), summary: values,
+      scalars: [a.unresolved, a.kCells, a.floored, a.zeroFill].concat(Array.from(core.shown)).join(' '),
+      heard: heard,
+      terrain_twi: { at: at.join(','), cells: nums(at.map(function (j) { return twi[j]; })),
+        range: nums(a.summary.twi_range) },
+    };
+  }
+
   var KINDS = { ves: ves, pumping: pumping, quality: quality, drilling: drilling };
   /* the kinds from rasters.py, handed the file's bytes rather than the
    * sheets of a workbook */
-  var FILES = { deflate: deflate, geotiff: geotiff };
+  var FILES = { deflate: deflate, geotiff: geotiff, terrain: terrain };
 
   global.FUZZ = {
     run: async function (kind, name, b64, options) {

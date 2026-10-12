@@ -5,10 +5,12 @@ analyses; ``BrowserEngine`` hands the same bytes to ``gwt-core.js`` through
 ``engine.mjs``, a Node process kept open for the whole run; ``divergences``
 compares the two with the comparison ``make_reference.py`` uses for the
 committed reference values, at the tolerances ``parity.mjs`` holds each kind
-of quantity to. The kinds from ``rasters.py`` are handed a raster or a block
-of one instead of a workbook, and their summaries carry every quantity that
-has to agree exactly as a string - a digest, or an integer written out -
-which the comparison holds to equality rather than to PARSE_TOL.
+of quantity to. The kinds from ``rasters.py`` are handed a raster, a block
+of one or a window of heights instead of a workbook, and their summaries
+carry every quantity that has to agree exactly as a string - a digest, an
+integer written out, or a float's bits - which the comparison holds to
+equality rather than to PARSE_TOL; the terrain wetness index alone is held
+to 1e-12 (``_TIGHTER``).
 
 The summaries here and in ``page.js`` carry the same keys in the same order.
 """
@@ -325,8 +327,95 @@ def _geotiff(path: Path, name: str, options: dict) -> dict:
     return out
 
 
+def _f64_hex(value) -> str:
+    """A number's float64 bits, big-endian, as 16 hex digits, NaN as the
+    one NaN: an exact quantity written as text, so that it is held to
+    agreeing exactly rather than to PARSE_TOL."""
+    import struct
+
+    value = float(value)
+    return "7ff8000000000000" if value != value else struct.pack(">d", value).hex()
+
+
+def _terrain(path: Path, name: str, options: dict) -> dict:
+    """PLAN.md step 4.1: one window through the whole terrain analysis, in
+    float64. The file holds the heights, the cell centres and the missing
+    tile taken as sea (rasters._terrain_file); the options the settings,
+    square shown, sea rule, names, read and GeoJSON details.
+
+    Every exact quantity travels as a string, so it is held to agreeing
+    exactly: each layer (classes, directions, masks, counts, areas, the
+    filled surface, the gradients, every hillshade, the wetness argument,
+    the curvatures and the cell sizes) by a digest that keeps signs of
+    zero; the links and parts by a digest of their JSON with each length by
+    its bits, and how many there are; the GeoJSON by its SHA-256 and
+    length; the captions as text; the summary's values by their float64
+    bits (a count as exactly as a share) and its keys in order; the
+    unresolved flats, curvature spacing, floored and zero-filled cells and
+    square shown; and the progress heard. The wetness index alone, the log
+    of a library in each engine, goes under ``terrain_twi``, at 1e-12
+    (_TIGHTER): up to 25 cells spread through those where it is defined,
+    and the display range."""
+    import dataclasses
+    from types import SimpleNamespace
+
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping.elevation import ElevationGrid, WindowCentre
+    from groundwater.mapping.terrain_analysis import analyse_terrain, drainage_geojson, terrain_captions
+
+    rows, cols = options["rows"], options["cols"]
+    n, data = rows * cols, path.read_bytes()
+    numbers = np.frombuffer(data, dtype="<f8", count=n + cols + rows)
+    sea = np.frombuffer(data, dtype=np.uint8, offset=8 * (n + cols + rows)).reshape(rows, cols)
+    grid = ElevationGrid(numbers[n:n + cols].copy(), numbers[n + cols:].copy(),
+                         numbers[:n].reshape(rows, cols).copy(), source=options["label"],
+                         source_id=options["source_id"], sea_clean=options["sea_clean"])
+    cfg = TerrainConfig(**{key: tuple(v) if isinstance(v, list) else v for key, v in options["settings"].items()})
+    heard: list = []
+    a = analyse_terrain(grid, cfg, assumed_sea=sea.astype(bool), shown=options["shown"],
+                        progress=lambda fraction, label: heard.append([_f64_hex(fraction), label]),
+                        precision="float64")
+    core = a.core
+    layers = {"cls": core.cls, "code": core.code, "flag": core.flag, "raised": core.raised,
+              "flatRouted": core.flat_routed, "stream": a.stream, "count": core.count, "areaUnits": core.area_units,
+              "filled": a.filled, "fillDepth": a.fill_depth, "p": a.p, "q": a.q, "tanb": a.tanb}
+    layers.update({f"hillshade{j}": layer for j, layer in enumerate(a.hillshades)})
+    layers.update({"hillshadeMulti": a.hillshade_multi, "twiArg": a.twi_arg, "profile": a.profile,
+                   "tangential": a.tangential, "dx": core.dx, "dy": core.dy, "dg": core.dg})
+
+    def lines(found) -> str:
+        text = json.dumps([{**dataclasses.asdict(line), "length_m": _f64_hex(line.length_m)} for line in found],
+                          separators=(",", ":"))
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    read = options["read"]
+    if read is not None:
+        plan = read["plan"]
+        read = SimpleNamespace(surface=read["surface"], plan=None if plan is None else SimpleNamespace(
+            radius_km=plan["radiusKm"], margin_km=plan["marginKm"]))
+    meta = dict(options["meta"])
+    meta["centre"] = WindowCentre(meta["centre"]["lon"], meta["centre"]["lat"], meta["centre"]["label"], True)
+    geojson = drainage_geojson(core, a.parts, meta)
+    summary = [(key, v) for key, v in a.summary.items() if key != "twi_range"]
+    twi = np.ravel(np.asarray(a.twi, dtype=np.float64))
+    finite = np.flatnonzero(np.isfinite(twi))
+    at = sorted({int(finite[k * (finite.size - 1) // 24]) for k in range(25)}) if finite.size else []
+    return {
+        "layers": {key: _f64_digest(np.asarray(v, dtype=np.float64)) for key, v in layers.items()},
+        "links": lines(a.links), "parts": lines(a.parts), "counts": f"{len(a.links)} links, {len(a.parts)} parts",
+        "geojson": f"{hashlib.sha256(geojson.encode('utf-8')).hexdigest()} {len(geojson)}",
+        "captions": [list(item) for item in terrain_captions(a, read, options["where"]).items()],
+        "summary_keys": " ".join(key for key, _ in summary),
+        "summary": {key: _f64_hex(v) for key, v in summary},
+        "scalars": " ".join(str(v) for v in (a.unresolved, a.k_cells, a.floored, a.zero_fill, *core.shown)),
+        "heard": heard,
+        "terrain_twi": {"at": ",".join(str(i) for i in at), "cells": nums(twi[at]),
+                        "range": nums(list(a.summary["twi_range"]))},
+    }
+
+
 _KINDS = {"ves": _ves, "pumping": _pumping, "quality": _quality, "drilling": _drilling,
-          "deflate": _deflate, "geotiff": _geotiff}
+          "deflate": _deflate, "geotiff": _geotiff, "terrain": _terrain}
 
 
 def python_summary(kind: str, path: Path, name: str, options: dict) -> dict:
@@ -404,6 +493,12 @@ class BrowserEngine:
 _LOOSER = {"analysis": ANALYSIS_TOL, "assessment": ANALYSIS_TOL,
            "design": ANALYSIS_TOL, "inversions": INVERSION_TOL}
 
+# Quantities held tighter than PARSE_TOL, consulted before _LOOSER: the
+# terrain wetness index, one library logarithm in each engine of arguments
+# both work out exactly, held as parity.mjs holds it. Every other terrain
+# quantity is a string, held exactly.
+_TIGHTER = {"terrain_twi": 1e-12}
+
 
 def divergences(js: dict, py: dict) -> list[tuple[str, object, object]]:
     """Every ``(path, browser, python)`` that differs beyond its tolerance."""
@@ -413,6 +508,6 @@ def divergences(js: dict, py: dict) -> list[tuple[str, object, object]]:
         if key not in js or key not in py:
             out.append((key, js.get(key, "<missing>"), py.get(key, "<missing>")))
             continue
-        tol = _LOOSER.get(key, PARSE_TOL)
+        tol = _TIGHTER[key] if key in _TIGHTER else _LOOSER.get(key, PARSE_TOL)
         out.extend(drifted(js[key], py[key], key, rtol=tol, atol=tol))
     return out

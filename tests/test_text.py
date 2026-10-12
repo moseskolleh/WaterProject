@@ -17,6 +17,7 @@ import math
 import random
 import re
 import shutil
+import struct
 import subprocess
 from pathlib import Path
 
@@ -357,6 +358,42 @@ def test_the_two_renderers_agree_on_generated_numbers(tmp_path):
     parted = [(t, v, py, js) for (t, v), js in zip(cases, browser, strict=True)
               if (py := python(t, v)) != js]
     assert not parted, f"{len(parted)} of {len(cases)} differ, e.g. {parted[:8]}"
+
+
+def _subnormals() -> list[float]:
+    """The doubles near the bottom of the range: fifty either side of each
+    power of ten from 1e-300 down to 1e-323, the subnormals the review
+    found apart, and random bit patterns across the subnormals and the
+    lowest normal binade; then a share of them negated."""
+    values = [1e-320, 1e-319, 1e-321, 1e-323, 1.000004e-318, 3e-321, 5e-324]
+    for e in range(300, 324):
+        low = high = float(f"1e-{e}")
+        values.append(low)
+        for _ in range(50):
+            low, high = math.nextafter(low, 0.0), math.nextafter(high, math.inf)
+            values += [low, high]
+    rng = random.Random(41_6)
+    for _ in range(3000):
+        values.append(struct.unpack("<d", struct.pack("<Q", rng.getrandbits(53)))[0])
+    return values + [-v for v in values[::5]]
+
+
+def test_the_browser_writes_the_smallest_numbers_as_pythons_g(tmp_path):
+    """{x:g} in both engines for some 6,500 doubles at the bottom of the
+    range. The browser once took the exponent from a subnormal's shortest
+    form and its digits from the six-digit one, which can lie a decade
+    apart: the double 1e-320 is 9.99988671826831e-321, and it wrote
+    9.99989e-320 where Python writes 9.99989e-321. Rounding 1.000004e-318
+    to six digits and back to a double then lands in the decade below as
+    well. The terrain captions and the drainage lines' GeoJSON pass
+    settings through {x:g}, so a subnormal setting printed differently in
+    the two apps. Prevents either slip coming back."""
+    values = _subnormals()
+    browser = _browser(tmp_path, [("{x:g}", {"x": v}) for v in values])["rendered"]
+    parted = [(v, py, js) for v, js in zip(values, browser, strict=True)
+              if (py := render_text("{x:g}", {"x": v})) != js]
+    assert not parted, f"{len(parted)} of {len(values)} differ, e.g. {parted[:8]}"
+    assert render_text("{x:g}", {"x": 1e-320}) == "9.99989e-321"
 
 
 # ----------------------------------------------------- the configuration defaults

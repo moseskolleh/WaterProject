@@ -46,6 +46,7 @@ from .elevation import (  # noqa: F401 - the moved names, re-exported
     read_esri_ascii,
     read_srtm_hgt,
     read_xyz,
+    row_metric,
     wgs84_cell_size,
 )
 from .regional import (
@@ -56,6 +57,7 @@ from .regional import (
     area_window,
     load_admin,
 )
+from .terrain_analysis import contour_interval, hillshade_layer, horn_gradients
 
 
 def _land_cmap():
@@ -85,44 +87,37 @@ def hillshade(
     altitude_deg: float = 45.0,
     vertical_exaggeration: float = 1.0,
 ) -> np.ndarray:
-    """Shaded relief from the grid, 0 (shadow) to 1 (lit).
+    """Shaded relief from the grid: the cosine of the angle between the sun
+    and the ground, 0 in shadow to 1 facing the sun.
 
     The standard north-west sun, because relief lit from any other
-    quarter reads as inverted to most people - valleys become ridges.
+    quarter reads as inverted to most people - valleys become ridges. The
+    azimuth is measured clockwise from north, as GDAL's is: this used to
+    light 315 from the north-east, a quarter turn out.
 
-    The cell size is computed in metres at the grid's own latitude, so
-    the slopes are real slopes and not a function of how far north the
-    tile happens to be.
+    It is GDAL's hillshade with Horn's gradients, worked out by the terrain
+    analysis's own kernels (:func:`.terrain_analysis.horn_gradients` and
+    :func:`.terrain_analysis.hillshade_layer`) on each row's cell size in
+    metres on the WGS 84 ellipsoid, so the slopes are real slopes and not a
+    function of how far north the tile happens to be. A cell on the edge of
+    the grid or beside a void is NaN: shading it from a stand-in height
+    drew a cliff around every gap.
     """
-    mean_lat = float(np.mean(grid.lats))
-    dx = float(np.mean(np.diff(grid.lons))) * 111320.0 * math.cos(math.radians(mean_lat))
-    dy = float(np.mean(np.diff(grid.lats))) * 110574.0
-    z = np.where(np.isfinite(grid.z), grid.z, np.nanmean(grid.z))
-    if not np.any(np.isfinite(z)):
-        return np.full(grid.z.shape, 0.5)
-    gy, gx = np.gradient(z * vertical_exaggeration, dy, dx)
-    slope = np.arctan(np.hypot(gx, gy))
-    aspect = np.arctan2(-gx, gy)
-    az = math.radians(360.0 - azimuth_deg + 90.0)
-    alt = math.radians(altitude_deg)
-    shaded = (
-        math.sin(alt) * np.cos(slope)
-        + math.cos(alt) * np.sin(slope) * np.cos(az - aspect)
-    )
-    return np.clip((shaded + 1.0) / 2.0, 0.0, 1.0)
+    p, q, _ = horn_gradients(grid.z, row_metric(grid.lons, grid.lats))
+    return hillshade_layer(p, q, azimuth_deg, altitude_deg, vertical_exaggeration)
 
 
 def slope_percent(grid: ElevationGrid) -> np.ndarray:
-    """Ground slope as a percentage, for siting and access notes."""
-    mean_lat = float(np.mean(grid.lats))
-    dx = float(np.mean(np.diff(grid.lons))) * 111320.0 * math.cos(math.radians(mean_lat))
-    dy = float(np.mean(np.diff(grid.lats))) * 110574.0
-    gy, gx = np.gradient(grid.z, dy, dx)
-    return np.hypot(gx, gy) * 100.0
+    """Ground slope as a percentage (100 times its tangent), for siting and
+    access notes: Horn's slope on each row's cell size in metres, NaN on
+    the edge of the grid and beside a void, where the slope is not known."""
+    _, _, tanb = horn_gradients(grid.z, row_metric(grid.lons, grid.lats))
+    return 100.0 * tanb
 
 
 def _contour_interval(z: np.ndarray) -> float:
-    """A round contour interval giving roughly a dozen lines.
+    """A round contour interval giving roughly a dozen lines over the
+    finite heights of ``z`` (:func:`.terrain_analysis.contour_interval`).
 
     Sierra Leone's basement plains and the Freetown peninsula differ by
     two orders of magnitude in relief, so a fixed interval draws either
@@ -130,16 +125,8 @@ def _contour_interval(z: np.ndarray) -> float:
     """
     finite = z[np.isfinite(z)]
     if finite.size == 0:
-        return 10.0
-    relief = float(finite.max() - finite.min())
-    if relief <= 0:
-        return 10.0
-    target = relief / 12.0
-    nice = 10 ** math.floor(math.log10(target))
-    for mult in (10, 5, 2, 1):
-        if nice * mult <= target * 2:
-            return max(nice * mult, 1.0)
-    return max(nice, 1.0)
+        return contour_interval(math.nan)
+    return contour_interval(float(finite.max() - finite.min()))
 
 
 # ---------------------------------------------------------------------------
@@ -321,12 +308,15 @@ def plot_topographic_map(
             interpolation="bilinear", zorder=1, aspect="auto",
         )
         if show_hillshade:
-            # hillshade() shades a gap as flat ground at the mean height;
-            # left out here, a gap the files do not cover reads as a gap
-            shade = np.where(np.isfinite(grid.z), hillshade(grid), np.nan)
+            # NaN on the edge and beside a gap, so a gap the files do not
+            # cover reads as a gap rather than as shaded ground; drawn on
+            # the fixed scale 0 to 1 rather than stretched to the window's
+            # own range, so a gentle plain is not shaded as deeply as a
+            # mountain range
             ax.imshow(
-                shade, extent=extent, origin="lower", cmap="gray",
-                alpha=0.35, interpolation="bilinear", zorder=2, aspect="auto",
+                hillshade(grid), extent=extent, origin="lower", cmap="gray",
+                vmin=0.0, vmax=1.0, alpha=0.35, interpolation="bilinear",
+                zorder=2, aspect="auto",
             )
         mesh_lon, mesh_lat = np.meshgrid(grid.lons, grid.lats)
         if len(levels) > 1:

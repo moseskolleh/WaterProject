@@ -191,8 +191,8 @@ def test_the_raster_oracle_is_declared_so_ci_installs_it():
 def test_the_geotiff_writer_needs_nothing_at_run_time():
     """The oracle must never become a dependency of the shipped code: not
     of the GeoTIFF writer and reader, nor of the elevation layer that reads
-    tiles through them."""
-    for module in ("geotiff.py", "mapping/elevation.py"):
+    tiles through them, nor of the terrain analysis that gdaldem checks."""
+    for module in ("geotiff.py", "mapping/elevation.py", "mapping/terrain_analysis.py"):
         source = (REPO / "src" / "groundwater" / module).read_text(encoding="utf-8")
         for forbidden in ("rasterio", "osgeo", "gdal"):
             assert f"import {forbidden}" not in source, (module, forbidden)
