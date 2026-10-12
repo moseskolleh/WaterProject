@@ -77,6 +77,14 @@ fill_order: >-
   {file} stores its bits in reverse order (FillOrder 2), which this reader
   does not read.
 
+# The analysis takes a grid whose axes increase, row 0 the southern edge,
+# as every reader in both engines gives it; anything else would route water
+# uphill.
+axes_descend: >-
+  The elevation grid's longitudes and latitudes must increase from the first
+  cell to the last, with row 0 the southern edge; this one runs the other way
+  or has no step between its cells.
+
 no_georeference: >-
   {file} carries no georeferencing, so where its cells lie is not known.
 
@@ -357,6 +365,13 @@ caption_edge: >-
   lines. Dashed lines drain ground beyond that square or behind a gap in the
   model, so their upslope area and order may be larger or smaller than shown.
 
+# When nothing was analysed beyond the square shown.
+caption_edge_none: >-
+  The drainage was worked out over the square shown alone, so lines near its
+  edge may be bent by it. Dashed lines drain ground beyond that square or
+  behind a gap in the model, so their upslope area and order may be larger or
+  smaller than shown.
+
 # Only where the square shown holds sea, a zero-filled gap or a flat left
 # without a direction.
 caption_sea: >-
@@ -364,14 +379,27 @@ caption_sea: >-
   {level:g} m joined to the edge of the analysed square, or a missing tile
   taken as open sea (hatched, with no height).
 
+# For sea that is real but would round to 0%.
+caption_sea_little: >-
+  Less than 1% of the square shown ({count:num} {count:plural:cell|cells}) is
+  taken as sea: ground at or below {level:g} m joined to the edge of the
+  analysed square, or a missing tile taken as open sea (hatched, with no
+  height).
+
 caption_sea_unstated: >-
   The source of this model is not stated, so ground at or below {level:g} m
   may be a fill value rather than sea; lines ending there are dashed.
 
 caption_zero_fill: >-
-  {pct:.1f}% of the square shown is at or below {level:g} m but meets the land
+  {pct:.0f}% of the square shown is at or below {level:g} m but meets the land
   along a straight line of grid cells, as the 0 m fill of a joined or clipped
   file does, so it is treated as a gap rather than sea.
+
+caption_zero_fill_little: >-
+  Less than 1% of the square shown ({count:num} {count:plural:cell|cells}) is
+  at or below {level:g} m but meets the land along a straight line of grid
+  cells, as the 0 m fill of a joined or clipped file does, so it is treated as
+  a gap rather than sea.
 
 caption_candidates: >-
   Drainage lines, wetness and curvature are worked out from the elevation
@@ -403,12 +431,20 @@ caption_unresolved: >-
 
 geojson_description: >-
   Drainage lines worked out from {label} by single-neighbour (D8) routing
-  where more than {area:g} km² drains, inside the {radius:g} km square around
+  where more than {area:g} km² drains, within {radius:g} km each way of
   {where}, analysed with a {margin:g} km margin. They are candidates to check
-  on the ground, not mapped streams. filled_cells and flat_routed_cells count
-  cells routed across filled hollows or flats rather than by slope;
-  edge_contaminated marks lines that drain ground beyond the analysed square
-  or behind a gap, whose area may be larger or smaller than given. {surface}
+  on the ground, not mapped streams. flat_routed_cells counts the cells routed
+  across flats or filled hollows rather than by slope, and filled_cells those
+  of them the fill raised by {depth:g} m or more; edge_contaminated marks
+  lines that drain ground beyond the analysed square or behind a gap, whose
+  area may be larger or smaller than given. {surface}
+
+# Added to the GeoJSON description when the source does not say that it
+# writes the sea as 0 m, so the sea may hide a fill value (caption_sea_unstated).
+geojson_sea_unstated: >-
+  The source of this model is not stated, so lines ending in ground at or
+  below {level:g} m may end in a fill value rather than the sea, and are
+  marked edge_contaminated.
 
 # The progress labels: while the files are read, then each stage of the
 # analysis in the order it runs.
