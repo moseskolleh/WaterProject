@@ -34,8 +34,8 @@ python bench/run.py --from py.json --from web.json --out bench/baseline.json \
 ```
 
 `--only GROUP` (repeatable) is one of `import`, `forward`,
-`inversion`, `range`, `cost`, `pumping`, `reports`, `recompute`,
-`streamlit`.
+`inversion`, `range`, `cost`, `pumping`, `terrain`, `reports`,
+`recompute`, `streamlit`.
 `--quick` takes 2 samples per measure instead of 5 (`web.mjs --quick`:
 1 run instead of 3), which is enough to see that something moved and
 not enough to quote.
@@ -95,6 +95,24 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   illustrative discharges `run_kuntolo_step_test.py` carries in its
   comments (which reaches the Hantush-Bierschenk analysis), and the Dr
   Timbo constant-rate test with its recovery.
+- `terrain/*` - reading an operator's elevation model (PLAN.md step
+  4.1). No elevation model is bundled, so the setup writes a synthetic
+  3600 by 3600 float32 tile (a seeded fractal surface with a tilt and
+  centimetre steps) laid out as the Copernicus GLO-30 tile N08 W012 is:
+  PixelIsPoint, EPSG 4326, 1/3600 degree. `read a window, DEFLATE GLO-30
+  layout` reads the window the terrain analysis takes by default (the
+  radius shown, 10 km, plus the 5 km margin analysed around it, centred
+  on the middle of the tile) from 1024 square tiles compressed with
+  DEFLATE and the floating-point predictor, as the published tiles are;
+  the window meets four of the sixteen. `read a window, LZW 512 tiles`
+  reads the same window from 512 square LZW tiles with no predictor, as
+  GDAL's COG driver writes by default; the file holds only the nine tiles
+  the window meets, because the pure-Python encoder that writes it takes
+  about a second a tile. `... loop decoder` is the same read with the
+  reader's LZW decoder swapped for the 40-line loop it is tested against,
+  which is the measure behind decoding a Clear segment at a time. `read a
+  whole DEFLATE tile` is `read_geotiff` on the whole file, as the command
+  line and the tests read it. File writing is setup and is not timed.
 - `reports/*` - each document the package builds, from inputs made
   beforehand, written with its figures into a temporary folder: the
   geophysical, pumping, completion, water quality, handover, cost

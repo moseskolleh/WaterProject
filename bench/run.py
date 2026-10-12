@@ -87,8 +87,8 @@ for _name in BLAS_THREADS:
 #: The output's own layout number; ``--from`` refuses a file in another.
 SCHEMA = 1
 TOOL = "bench/run.py"
-GROUPS = ("import", "forward", "inversion", "range", "cost", "pumping", "reports",
-          "recompute", "streamlit")
+GROUPS = ("import", "forward", "inversion", "range", "cost", "pumping", "terrain",
+          "reports", "recompute", "streamlit")
 MIN_SAMPLE_S = 0.2
 
 
@@ -394,6 +394,171 @@ def _pumping_measures() -> list[Measure]:
     ]
 
 
+#: Side of the synthetic elevation tile, in cells: a GLO-30 tile at Sierra
+#: Leone's latitude is 3600 by 3600.
+TERRAIN_SIDE = 3600
+_TERRAIN_CACHE: dict = {}
+
+
+def _dem_builder():
+    """The test fixtures' GeoTIFF writer, loaded from its file as make_reference loads it."""
+    if "builder" not in _TERRAIN_CACHE:
+        import importlib.util
+        path = REPO / "tests" / "webapp" / "fixtures" / "make_dem_fixture.py"
+        spec = importlib.util.spec_from_file_location("make_dem_fixture", path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module      # its dataclasses look themselves up here
+        spec.loader.exec_module(module)
+        _TERRAIN_CACHE["builder"] = module
+    return _TERRAIN_CACHE["builder"]
+
+
+def _terrain_surface():
+    """A fractal surface with a tilt and centimetre noise, north row first, float32.
+
+    No elevation model is bundled (PLAN.md step 4.1), so the bench makes one
+    of the size and texture of a 30 m tile of basement plain: a power-law
+    spectrum gives hills and valleys at every scale, the tilt gives the
+    water somewhere to go, and rounding to the centimetre gives the ties a
+    real tile has. Seeded, so every run reads the same surface.
+    """
+    if "surface" not in _TERRAIN_CACHE:
+        import numpy as np
+        n = TERRAIN_SIDE
+        rng = np.random.default_rng(1)
+        f = np.fft.fftfreq(n)
+        k = np.sqrt(f[None, :] ** 2 + f[:, None] ** 2)
+        k[0, 0] = 1.0
+        z = np.real(np.fft.ifft2(k ** -1.6 * np.exp(1j * rng.uniform(0, 2 * np.pi, (n, n)))))
+        z = (z - z.min()) / (z.max() - z.min()) * 60 + 50 + np.linspace(20, 0, n)[:, None]
+        z += rng.normal(0, 0.5, (n, n))
+        _TERRAIN_CACHE["surface"] = (np.round(z * 100) / 100).astype("<f4")
+    return _TERRAIN_CACHE["surface"]
+
+
+def _write_terrain_tile(path: Path, codec: str, tile: int, only=None) -> None:
+    """Write the surface as GLO-30 lays out N08 W012: PixelIsPoint, EPSG 4326, 1/3600 degree.
+
+    ``codec`` is "deflate" (with the floating-point predictor and GDAL's
+    ghost header, as the published tiles are) or "lzw" (no predictor, as
+    GDAL's COG driver writes by default). ``only`` lists the (row, column)
+    tiles to encode; the rest are written sparse, which a window that does
+    not meet them never reads. The pure-Python LZW encoder takes about a
+    second a tile, so the LZW file encodes only the tiles its window needs.
+    """
+    import zlib
+
+    import numpy as np
+    b = _dem_builder()
+    z = _terrain_surface()
+    h, w = z.shape
+    deflate = codec == "deflate"
+    blocks = []
+    for ty in range(-(-h // tile)):
+        for tx in range(-(-w // tile)):
+            if only is not None and (ty, tx) not in only:
+                blocks.append(None)
+                continue
+            block = np.zeros((tile, tile), "<f4")      # edge tiles padded, as GDAL pads them
+            part = z[ty * tile:(ty + 1) * tile, tx * tile:(tx + 1) * tile]
+            block[:part.shape[0], :part.shape[1]] = part
+            if deflate:
+                # predictor 3: byte planes most significant first, differenced along the row
+                planes = (block.astype(">f4").view(np.uint8).reshape(tile, tile, 4)
+                          .transpose(0, 2, 1).reshape(tile, 4 * tile))
+                diff = planes.copy()
+                diff[:, 1:] -= planes[:, :-1]
+                blocks.append(zlib.compress(diff.tobytes(), 6))
+            else:
+                blocks.append(b.lzw_encode(block.tobytes()))
+    tags = {b.IMAGE_WIDTH: (b.SHORT, [w]), b.IMAGE_LENGTH: (b.SHORT, [h]),
+            b.BITS_PER_SAMPLE: (b.SHORT, [32]), b.COMPRESSION: (b.SHORT, [8 if deflate else 5]),
+            b.PHOTOMETRIC: (b.SHORT, [1]), b.SAMPLES_PER_PIXEL: (b.SHORT, [1]),
+            b.PLANAR_CONFIG: (b.SHORT, [1]), b.SAMPLE_FORMAT: (b.SHORT, [3]),
+            b.TILE_WIDTH: (b.SHORT, [tile]), b.TILE_LENGTH: (b.SHORT, [tile])}
+    if deflate:
+        tags[b.PREDICTOR] = (b.SHORT, [3])
+    tags.update(b.Georef(-12.0, 9.0, b.ARCSEC, b.ARCSEC, raster=2, copernicus_keys=True).tags())
+    path.write_bytes(b.assemble("<", [b.Ifd(tags, blocks, True)], ghost=deflate))
+
+
+def _terrain_measures() -> list[Measure]:
+    # Reading an operator's elevation model (PLAN.md step 4.1), on the
+    # synthetic tile above. A window is the default the apps read for the
+    # terrain analysis: the radius shown plus the margin analysed around it,
+    # centred on the middle of the tile, which decodes the four DEFLATE tiles
+    # (1024 square) or nine LZW tiles (512 square) it meets. The LZW reads
+    # are the reader as shipped (decoded a Clear segment at a time) and the
+    # same read with the 40-line loop decoder put back, so the choice of the
+    # vectorised decoder rests on a number. The whole tile is what the
+    # command line and the tests read.
+    copernicus = "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif"
+
+    def window_read(name: str):
+        from groundwater.config import TerrainConfig
+        from groundwater.mapping.elevation import read_elevation
+        cfg = TerrainConfig()
+        return lambda path: read_elevation([(name, path)], radius_km=cfg.analysis_radius_km,
+                                           cfg=cfg)
+
+    def deflate_window(tmp):
+        path = tmp / copernicus
+        _write_terrain_tile(path, "deflate", 1024)
+        read = window_read(copernicus)
+        return lambda: read(path)
+
+    def lzw_file(tmp) -> Path:
+        # plan the window on an all-sparse file first, then encode only its tiles
+        from groundwater.config import TerrainConfig
+        from groundwater.mapping.elevation import open_elevation_file, plan_window, window_centre
+        path = tmp / "n08w012_lzw.tif"
+        _write_terrain_tile(path, "lzw", 512, only=())
+        cfg = TerrainConfig()
+        with path.open("rb") as handle:
+            def read_at(offset: int, length: int) -> bytes:
+                handle.seek(offset)
+                return handle.read(length)
+            found = open_elevation_file(path.name, path.stat().st_size, read_at)
+        plan = plan_window([found], window_centre(None, [found]), cfg.analysis_radius_km, cfg)
+        per_row = -(-TERRAIN_SIDE // 512)
+        needed = {(block.index // per_row, block.index % per_row) for block in plan.blocks}
+        _write_terrain_tile(path, "lzw", 512, only=needed)
+        return path
+
+    def lzw_window(tmp):
+        path = lzw_file(tmp)
+        read = window_read(path.name)
+        return lambda: read(path)
+
+    def lzw_window_loop(tmp):
+        from groundwater import geotiff
+        path = lzw_file(tmp)
+        read = window_read(path.name)
+
+        def run():
+            shipped = geotiff._lzw_decode
+            geotiff._lzw_decode = geotiff._lzw_decode_loop
+            try:
+                return read(path)
+            finally:
+                geotiff._lzw_decode = shipped
+        return run
+
+    def deflate_tile(tmp):
+        from groundwater.geotiff import read_geotiff
+        path = tmp / copernicus
+        _write_terrain_tile(path, "deflate", 1024)
+        return lambda: read_geotiff(path)
+
+    return [
+        Measure("terrain", "read a window, DEFLATE GLO-30 layout", deflate_window),
+        Measure("terrain", "read a window, LZW 512 tiles", lzw_window),
+        Measure("terrain", "read a window, LZW 512 tiles, loop decoder", lzw_window_loop),
+        Measure("terrain", "read a whole DEFLATE tile", deflate_tile),
+    ]
+
+
 def _report_measures() -> list[Measure]:
     # Each builds into its own scratch folder, figures included, as the
     # example scripts do into a project folder.
@@ -669,7 +834,7 @@ def all_measures(groups) -> list[Measure]:
     builders = {"import": _import_measures, "forward": _forward_measures,
                 "inversion": _inversion_measures, "range": _range_measures,
                 "cost": _cost_measures,
-                "pumping": _pumping_measures,
+                "pumping": _pumping_measures, "terrain": _terrain_measures,
                 "reports": _report_measures, "recompute": _recompute_measures,
                 "streamlit": _streamlit_measures}
     return [m for g in GROUPS if g in groups for m in builders[g]()]
