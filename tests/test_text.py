@@ -404,7 +404,7 @@ def test_no_engine_types_out_a_configuration_default():
     assert fields
     for name, _kind, default in fields:
         if name in {"style", "ves", "pumping", "design", "ves_range", "odds",
-                    "cost_range"}:
+                    "cost_range", "terrain"}:
             continue
         assert re.match(r"(tuple\()?_[A-Z]+\[\"" + name + r"\"\]", default), (
             f"config.py types out the default of {name}: {default}")

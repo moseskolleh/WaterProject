@@ -26,6 +26,7 @@ _STYLE, _VES, _PUMPING, _DESIGN = (
 _RANGE = _DEFAULTS["ves_range"]
 _ODDS = _DEFAULTS["odds"]
 _COSTS = _DEFAULTS["cost_range"]
+_TERRAIN = _DEFAULTS["terrain"]
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +278,72 @@ class CostRangeConfig:
 
 
 # ---------------------------------------------------------------------------
+# Terrain analysis on an elevation model the operator supplies (PLAN.md step
+# 4.1, mapping/elevation.py and the analysis built on it)
+#
+# A section of its own, and not in VESConfig: the inversion cache key carries
+# the whole VESConfig, and none of these changes what an inversion returns.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TerrainConfig:
+    # Half the side of the square shown around the site. With the margin
+    # below, the square analysed is about 0.96 million cells at 1
+    # arc-second. Provisional until the terrain bench has timed it.
+    analysis_radius_km: float = _TERRAIN["analysis_radius_km"]
+    # How far beyond the square shown the analysis also reads, so that the
+    # edge of the analysis does not bend the drainage lines. With no margin,
+    # 5 to 13 percent of the unflagged stream cells in a 10 km window drained
+    # the wrong area and up to 1,164 were missing; with 5 km, none were
+    # missing or spurious. Provisional: it wants a hydrogeologist.
+    analysis_buffer_km: float = _TERRAIN["analysis_buffer_km"]
+    # One limit on the cells analysed, the margin included, in every
+    # runtime, so that whether a window is refused does not depend on where
+    # the engine ran. Provisional until the bench confirms it in CPython
+    # (its time, and its memory against Community Cloud's 690 MB) and in the
+    # browser worker.
+    max_cells: int = _TERRAIN["max_cells"]
+    # Ground at or below this, joined to the edge, is sea. Copernicus writes
+    # sea and estuaries as exactly 0.0; 0.5 m would take in 26,352 land
+    # cells around Freetown.
+    sea_level_m: float = _TERRAIN["sea_level_m"]
+    # A sea area that meets the land along a straight grid line this many
+    # cells long is the 0 m fill of a joined or clipped file, not sea. Real
+    # coasts on three Sierra Leone tiles reach 45 cells; a zero-filled gap
+    # between tiles runs the window's full height. Provisional.
+    sea_straight_edge_cells: int = _TERRAIN["sea_straight_edge_cells"]
+    # Below any land surface: catches the -32767, -32768 and -3.4e38 that
+    # elevation models write for a missing value.
+    implausible_below_m: float = _TERRAIN["implausible_below_m"]
+    implausible_above_m: float = _TERRAIN["implausible_above_m"]  # above any land surface
+    # The upslope area at which a drainage line starts. Provisional: a value
+    # within the 0.1 to 1 km2 commonly used for first-order channels, with
+    # no source checked. It wants a hydrogeologist.
+    drainage_area_km2: float = _TERRAIN["drainage_area_km2"]
+    # Hollows raised by this much or more when filled are tinted as filled;
+    # shallower filling shows through the cells routed across flats instead.
+    # Provisional: it wants a hydrogeologist.
+    fill_note_m: float = _TERRAIN["fill_note_m"]
+    # A slope's tangent, about 0.06 degrees: the least slope the wetness
+    # index divides by, and the slope below which curvature is not drawn.
+    flat_tan_slope: float = _TERRAIN["flat_tan_slope"]
+    # Curvature is worked out over about 3 cells at 1 arc-second, where the
+    # noise (about 1.7e-4 per metre) sits well under signals near 6e-4 per
+    # metre.
+    curvature_spacing_m: float = _TERRAIN["curvature_spacing_m"]
+    # The suns of the composite hillshade: gdaldem -multidirectional exactly.
+    hillshade_azimuths_deg: tuple = tuple(_TERRAIN["hillshade_azimuths_deg"])
+    # The suns of the one-direction panels, and of the layers lineament
+    # work (PLAN.md step 4.2) starts from: the same strikes, all lit from
+    # above, so that every strike is within 22.5 degrees of across one panel.
+    hillshade_panel_azimuths_deg: tuple = tuple(_TERRAIN["hillshade_panel_azimuths_deg"])
+    # GDAL's default height of the sun; lineament work may want a lower one.
+    hillshade_altitude_deg: float = _TERRAIN["hillshade_altitude_deg"]
+    # No vertical exaggeration, so that relief on the plains is drawn as it is.
+    hillshade_z_factor: float = _TERRAIN["hillshade_z_factor"]
+
+
+# ---------------------------------------------------------------------------
 # Top level configuration
 # ---------------------------------------------------------------------------
 
@@ -309,6 +376,7 @@ class Config:
     ves_range: VESRangeConfig = field(default_factory=VESRangeConfig)
     odds: OddsConfig = field(default_factory=OddsConfig)
     cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
+    terrain: TerrainConfig = field(default_factory=TerrainConfig)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
@@ -329,6 +397,7 @@ class Config:
             ("ves_range", cfg.ves_range),
             ("odds", cfg.odds),
             ("cost_range", cfg.cost_range),
+            ("terrain", cfg.terrain),
         ):
             overrides = data.get(section_name, {}) or {}
             for key, value in overrides.items():
@@ -344,11 +413,11 @@ class Config:
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
             if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
-                           "cost_range"):
+                           "cost_range", "terrain"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
-                    "(expected style, ves, pumping, design, ves_range, odds or "
-                    "cost_range)",
+                    "(expected style, ves, pumping, design, ves_range, odds, "
+                    "cost_range or terrain)",
                     stacklevel=2,
                 )
         return cfg
