@@ -2,9 +2,10 @@
 
 A change that claims to make the toolkit faster quotes a before and an
 after from here (PLAN.md, "Efficiency claims are measured"). Two scripts
-take the numbers, both on the bundled examples so that two commits are
-timed on the same work, and `baseline.json` holds the last set taken on
-the machine named inside it.
+take the numbers, both on the bundled examples (except the terrain
+group, which reads a seeded synthetic tile, because no elevation model
+is bundled) so that two commits are timed on the same work, and
+`baseline.json` holds the last set taken on the machine named inside it.
 
 ## Running it
 

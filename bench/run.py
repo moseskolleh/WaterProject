@@ -2,10 +2,13 @@
 
 Each measure is a thing a user waits for: importing a subsystem, one call
 of the forward model, inverting a sample sounding, analysing a sample
-pumping test, building each report the package offers, recomputing a
-saved project the way ``groundwater recompute`` does, and one run of the
-Streamlit app's script. Every one is run on the bundled examples, so two
-commits are timed on the same work.
+pumping test, reading a window and a whole tile of an elevation model,
+building each report the package offers, recomputing a saved project the
+way ``groundwater recompute`` does, and one run of the Streamlit app's
+script. Every one is run on the bundled examples, except the terrain
+group: no elevation model is bundled, so it reads a seeded synthetic
+3600 by 3600 tile that its setup writes. Either way two commits are
+timed on the same work.
 
 The method is the same for every in-process measure, and is written into
 the output beside each number:

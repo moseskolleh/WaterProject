@@ -535,7 +535,7 @@ A desk study the day before anyone travels.
 - Read compressed GeoTIFF (DEFLATE with the floating-point predictor,
   as in Copernicus GLO-30 tiles, and LZW, as GDAL's COG driver and QGIS
   write by default) with a dependency-free reader that mirrors PR #54's
-  writer. Today `terrain.py` asks the user to run `gdal_translate` first.
+  writer, so no step asks the operator to run `gdal_translate` first.
 - Add D8 flow direction and accumulation, drainage lines, the
   topographic wetness index, curvature and multi-azimuth hillshade.
 
