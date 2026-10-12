@@ -57,12 +57,19 @@ RESET_ON_LOAD_PREFIXES = (
 # incoming one's soundings, but they would be saved into its file.
 # The supervision photographs are the outgoing borehole's evidence, and left
 # behind they would vouch for the incoming one's seal.
-# The maps are the outgoing site's. An elevation model is not saved in a
-# project, so left behind it would draw the incoming site's topographic map
-# from tiles of somewhere else, credited as though they were its own.
+# The maps are the outgoing site's: every figure on its Site maps page, the
+# traverse they follow and the GeoLibre file built for it. The page shows them
+# and offers their downloads from session state alone, so left behind they
+# would pass as the incoming site's. The Portfolio page's GeoLibre file
+# (geolibre_portfolio) is of the pooled sites rather than of one, and stays.
+# An elevation model is not saved in a project, so left behind it would draw
+# the incoming site's topographic map from tiles of somewhere else, credited
+# as though they were its own.
 RESET_ON_LOAD_KEYS = (
     "design_swl", "asset_record", "inversion_cache", "sup_evidence",
-    "topo_path", "topo_source", "topo_report", "profile_path", "map_paths",
+    "topo_path", "topo_source", "topo_report", "topo_inputs", "profile_path",
+    "map_paths", "subsurface_paths", "section_path", "pseudosection_path",
+    "traverse", "geolibre_path", "geolibre_area", "geolibre_layers",
 )
 
 
