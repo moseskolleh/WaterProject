@@ -36,7 +36,7 @@ from groundwater.mapping import (
     traverse_profile,
 )
 from groundwater.mapping.elevation import ElevationFile, file_notes, open_elevation_file
-from groundwater.mapping.terrain import uncovered_percent
+from groundwater.mapping.terrain import uncovered_cells, uncovered_note
 from groundwater.siting import assess_siting
 from groundwater.text import phrase
 
@@ -264,9 +264,8 @@ def render() -> None:
                     plot_topographic_map(
                         grid, site, path=topo_path, style=app_config().style,
                         radius_km=float(radius), spot_heights=_spots)
-                    pct = uncovered_percent(grid, site, float(radius))
-                    report = {"notes": [phrase("terrain.read_uncovered", pct=pct)]
-                              if pct > 0 else [], "notice": None}
+                    note = uncovered_note(*uncovered_cells(grid, site, float(radius)))
+                    report = {"notes": [note] if note else [], "notice": None}
                     source = grid.source
                 else:
                     # every tile read at once for the square asked for, one
