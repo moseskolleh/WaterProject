@@ -294,14 +294,36 @@ def test_a_grid_with_a_hole_in_it_is_still_a_grid(tmp_path):
     assert np.isnan(grid.z).sum() == 1
 
 
-def test_load_elevation_names_the_formats_it_reads(tmp_path):
-    path = tmp_path / "dem.tif"
+def test_load_elevation_reads_a_geotiff_and_names_the_formats_it_reads(tmp_path):
+    """A GeoTIFF tile reads as it is published, with no GDAL to convert it
+    first: the heights the raw reader gives, its source credited only when
+    its name says so, and a file of another kind refused with the list of
+    what is read rather than with advice to install GDAL."""
+    from pathlib import Path
+
+    from groundwater.geotiff import read_geotiff
+    from groundwater.text import phrase
+
+    dem = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+    name = "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    path = tmp_path / name
+    path.write_bytes((dem / name).read_bytes())
+    grid = load_elevation(path)
+    raster = read_geotiff(dem / name)
+    assert np.array_equal(grid.z, raster.z) and np.array_equal(grid.lons, raster.x)
+    assert np.array_equal(grid.lats, raster.y) and grid.lats[0] < grid.lats[-1]
+    assert grid.source == phrase("terrain.label_copernicus", n=1, tiles="N08 W011")
+    assert grid.credit == phrase("terrain.credit_copernicus_modified") and grid.sea_clean
+    renamed = tmp_path / "clip.TIFF"
+    renamed.write_bytes((dem / name).read_bytes())
+    assert load_elevation(renamed).source == phrase("terrain.label_unidentified", files="clip.TIFF")
+    path = tmp_path / "dem.dat"
     path.write_bytes(b"II*\x00")
     with pytest.raises(ValueError) as excinfo:
         load_elevation(path)
     message = str(excinfo.value)
-    assert ".hgt" in message and ".asc" in message
-    assert "gdal_translate" in message, "say how to convert a GeoTIFF"
+    assert ".hgt" in message and ".asc" in message and ".tif" in message
+    assert "gdal_translate" not in message
 
 
 # ---------------------------------------------------------------------------
