@@ -35,6 +35,7 @@ import base64
 import copy
 import csv
 import dataclasses
+import hashlib
 import json
 import math
 import re
@@ -73,6 +74,7 @@ from groundwater.portfolio import (
     site_one_pager,
 )
 from groundwater.geo import geodesic_distance_m, geographic_to_utm
+from groundwater.geotiff import _CodecError, _inflate_block
 from groundwater.ingestion.waterquality import quality_from_grid
 from groundwater.quality import assess_sample
 from groundwater.quality.assess import unquantified_text
@@ -2366,6 +2368,33 @@ def build() -> dict:
     out["pumping_spread"] = pumping_spread_reference()
     out["ves_forward"] = ves_forward_reference()
     out["ves_bessel"] = ves_bessel_reference()
+    out["inflate"] = inflate_reference()
+    return out
+
+
+# ------------------------------------------ DEFLATE blocks (PLAN.md step 4.1)
+
+#: The DEFLATE blocks both engines inflate, each with the bytes it has to
+#: give and the most it may (tests/webapp/fixtures/make_zlib_streams.py).
+#: The committed file is read, never a fresh build: zlib builds differ in the
+#: bytes they write, and the reference must not move with them.
+ZLIB_STREAMS = OUT.parent / "fixtures" / "zlib_streams.json"
+
+
+def inflate_reference() -> list:
+    """What geotiff._inflate_block makes of each committed block: whether it
+    reads, and the SHA-256 and length of what it gives when it does.
+    parity.mjs serves the blocks themselves to the page through the
+    harness's overlay, so only the answers are kept here."""
+    out = []
+    for stream in json.loads(ZLIB_STREAMS.read_text(encoding="utf-8")):
+        try:
+            block = _inflate_block(base64.b64decode(stream["b64"]), stream["expected"], stream["full"])
+        except _CodecError as exc:
+            out.append({"name": stream["name"], "verdict": exc.code, "sha256": None, "length": None})
+            continue
+        out.append({"name": stream["name"], "verdict": "accepted",
+                    "sha256": hashlib.sha256(block).hexdigest(), "length": len(block)})
     return out
 
 

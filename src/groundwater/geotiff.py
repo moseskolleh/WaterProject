@@ -34,6 +34,7 @@ this toolkit would have to keep correct.
 from __future__ import annotations
 
 import struct
+import zlib
 from pathlib import Path
 
 __all__ = ["utm_epsg", "write_geotiff"]
@@ -210,3 +211,145 @@ def write_geotiff(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(bytes(body))
     return path
+
+
+# ------------------------------------------------------------------ codecs
+#
+# The three compressions an elevation model arrives in: DEFLATE (Copernicus
+# GLO-30 tiles, FABDEM), LZW (what GDAL's COG driver and QGIS write by
+# default) and PackBits (QGIS's "low compression"). gwt-core.js carries the
+# same three as C.inflateZlib, C.lzwDecode and C.packbitsDecode, and both are
+# held to one rule per codec rather than to whatever each library happens to
+# do with a damaged block, so the two engines refuse the same blocks.
+
+
+class _CodecError(ValueError):
+    """A block that does not decode. ``code`` says why, in the reader's
+    terms: ``"damaged"`` for any stream that is not what it claims to be,
+    ``"old_lzw"`` for the pre-1992 form of LZW, which is refused by name
+    rather than read as damage. The reader turns each into its sentence."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def _inflate_block(data: bytes, expected: int, full: int) -> bytes:
+    """The first ``expected`` bytes of a zlib-wrapped DEFLATE block.
+
+    The block is accepted only when the whole stream is valid to its end,
+    its Adler-32 included, and holds between ``expected`` bytes and one
+    ``full`` block. That is a rule the browser's own inflate can be held to
+    exactly: where zlib stops inside a stream that runs on past what was
+    asked for is zlib's business, but whether the stream is valid is not.
+    It also bounds the memory a block can take, so a stream that inflates
+    to gigabytes stops one byte past a full block. Bytes after the
+    checksum - a writer's padding to a word boundary - are ignored, as
+    libtiff ignores them; output beyond ``expected`` is a padded last
+    strip, and is dropped.
+    """
+    d = zlib.decompressobj()  # wbits 15: the zlib wrapper is required
+    try:
+        out = d.decompress(data, full + 1)
+    except zlib.error:
+        raise _CodecError("damaged") from None
+    if len(out) > full or not d.eof or len(out) < expected:
+        raise _CodecError("damaged")
+    return out[:expected]
+
+
+#: libtiff's table bound: 4,096 twelve-bit codes plus 1,023 entries no code
+#: can name (MAXCODE(12) + 1024, tif_lzw.c). An encoder that defers its
+#: Clear may keep adding to the table that far, and libtiff and GDAL read
+#: what it wrote; a table of 4,096 would refuse files they open.
+_LZW_TABLE = 5119
+
+
+def _lzw_decode_loop(data: bytes, expected: int) -> bytes:
+    """The first ``expected`` bytes of a TIFF LZW strip or tile, one code
+    at a time.
+
+    This is the reference the faster decoder and the browser's
+    C.lzwDecode are both held to, kept as a loop because a loop can be read
+    against the TIFF specification line by line. Codes are read most
+    significant bit first and widen one code early, at 511, 1023 and 2047,
+    as every TIFF writer since 1992 does. Decoding stops once ``expected``
+    bytes are out, so whatever follows - an end code or not, padding, or
+    codes no valid table could hold - is never looked at; a stream that ends
+    before then, or names a code the table does not have, is damaged.
+    """
+    if len(data) >= 2 and data[0] == 0 and data[1] & 1:
+        # the pre-1992 form, least significant bit first: libtiff's own test
+        raise _CodecError("old_lzw")
+    table: list[bytes] = [bytes([i]) for i in range(256)] + [b""] * (_LZW_TABLE - 256)
+    bits = len(data) * 8
+    padded = bytes(data) + b"\0\0\0"
+    pos, width, nxt = 0, 9, 258
+    prev: bytes | None = None
+    out = bytearray()
+    while len(out) < expected:
+        if bits - pos < width:
+            break  # no end code: stop where the data stops
+        p = pos >> 3
+        window = (padded[p] << 16) | (padded[p + 1] << 8) | padded[p + 2]
+        code = (window >> (24 - (pos & 7) - width)) & ((1 << width) - 1)
+        pos += width
+        if code == 257:
+            break
+        if code == 256:
+            nxt, width, prev = 258, 9, None
+            continue
+        if prev is None:
+            if code > 255:
+                raise _CodecError("damaged")
+            prev = table[code]
+            out += prev
+            continue
+        if code < nxt:
+            entry = table[code]
+            added = prev + entry[:1]
+        elif code == nxt:
+            entry = added = prev + prev[:1]
+        else:
+            raise _CodecError("damaged")
+        if nxt == _LZW_TABLE:
+            raise _CodecError("damaged")
+        table[nxt] = added
+        nxt += 1
+        if nxt + 1 >= (1 << width) and width < 12:
+            width += 1
+        out += entry
+        prev = entry
+    if len(out) < expected:
+        raise _CodecError("damaged")
+    return bytes(out[:expected])
+
+
+def _packbits_decode(data: bytes, expected: int) -> bytes:
+    """The first ``expected`` bytes of a PackBits strip or tile.
+
+    Each header byte ``n``, read as signed, is followed by ``n + 1`` bytes
+    to copy (0 to 127), one byte to repeat ``1 - n`` times (-127 to -1), or
+    nothing (-128, a no-op). A run that reaches past ``expected`` is cut
+    there and needs only the bytes it uses, as libtiff reads it; running out
+    of data before ``expected`` bytes is damage.
+    """
+    out = bytearray()
+    pos, size = 0, len(data)
+    while len(out) < expected:
+        if pos >= size:
+            raise _CodecError("damaged")
+        header = data[pos]
+        pos += 1
+        if header < 128:
+            take = min(header + 1, expected - len(out))
+            if pos + take > size:
+                raise _CodecError("damaged")
+            out += data[pos:pos + take]
+            pos += header + 1
+        elif header > 128:
+            if pos >= size:
+                raise _CodecError("damaged")
+            out += data[pos:pos + 1] * min(257 - header, expected - len(out))
+            pos += 1
+    return bytes(out)
