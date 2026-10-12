@@ -28,12 +28,25 @@ Both readers must give the same layout, the same refusal word for word, or
 the same values, reasons and axes. A case stores the description, not the
 file: its DEFLATE blocks are zlib's, so on another zlib build a damaged one
 is damaged in other bytes, though both readers must still agree on it.
+
+``terrain`` draws a window of heights for the terrain analysis: 3 to 48
+cells a side in whole centimetres over small ranges, so that ties are
+everywhere, with plateaus, pits, voids, -0, now and then the infinities,
+sea along one edge (at times a straight strip of 0 m, a zero-filled gap),
+holes no file covers, a missing tile taken as sea, small drainage
+thresholds, other settings and a square shown inside the window. The
+window is handed to both engines as its numbers (``_terrain_file``), and
+both must give every layer, drainage line, part, caption, summary value
+and the GeoJSON exactly, and the wetness index to 1e-12. A case stores the
+heights as a table of centimetres, south row first, readable in a
+regression file a row to a line.
 """
 
 from __future__ import annotations
 
 import base64
 import importlib.util
+import math
 import random
 import struct
 import sys
@@ -211,8 +224,158 @@ def _geotiff_file(case: dict) -> tuple[bytes, str]:
     return _builder().described_file(case["raster"]), ".tif"
 
 
-CASES = {"deflate": deflate_case, "geotiff": geotiff_case}
+#: Where a drawn window lies: the 1-arc-second lattice at 8.5 N (GLO-30's
+#: over Sierra Leone), the 3-arc-second one at 7.9 N, and cells kilometres
+#: wide far north, where a row is metres wider than the next and the
+#: curvature spacing rounds to one cell.
+_TERRAIN_LATTICES = [(-12.0, 8.5, 1 / 3600)] * 4 + [(-12.0, 7.9, 1 / 1200), (-12.0, 55.0, 0.05)]
+
+#: Names and places as an operator gives them: some need escaping in the
+#: GeoJSON (quotes, a backslash, letters outside ASCII and outside the
+#: Basic Multilingual Plane).
+_TERRAIN_NAMES = ["n08w012.tif", "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif", 'Mɔyamba "coast" – N08°.tif',
+                  "tile\\one 🌊.tif"]
+_TERRAIN_PLACES = ["Kakua", "Sɛwa \\ Mɔyamba", 'the "middle" of the model', "Bo"]
+
+#: A height that is not a number of centimetres, as the grid writes it.
+_SPECIAL = {"nan": math.nan, "inf": math.inf, "-inf": -math.inf, "-0": -0.0}
+
+
+def _surface(coin: random.Random, rows: int, cols: int) -> list[list]:
+    """Whole centimetres over a small range, so that ties are everywhere a
+    real model has them: a tilt, a valley, a bowl, terraces or noise, with
+    plateaus, pits and a little roughness, south row first."""
+    form = coin.choice(["tilt", "valley", "bowl", "terraces", "noise"])
+    a, b = coin.randint(-60, 60), coin.randint(-60, 60)
+    rough, base = coin.choice([0, 0, 3, 20, 100]), coin.choice([0, 150, 800, 3000])
+    mid_r, mid_c = coin.randrange(rows), coin.randrange(cols)
+    step = coin.choice([10, 50, 100])
+    cm = []
+    for r in range(rows):
+        row = []
+        for c in range(cols):
+            if form == "tilt":
+                v = a * c + b * r
+            elif form == "valley":
+                v = abs(a) * abs(c - mid_c) + b * r
+            elif form == "bowl":
+                v = abs(a) * (abs(r - mid_r) + abs(c - mid_c))
+            elif form == "terraces":
+                v = step * ((a * c + b * r) // step)
+            else:
+                v = coin.randint(0, 400)
+            row.append(base + v + (coin.randint(0, rough) if rough else 0))
+        cm.append(row)
+    for _ in range(coin.choice([0, 0, 1, 2])):  # plateaus: rectangles of one height
+        r0, c0 = coin.randrange(rows), coin.randrange(cols)
+        r1, c1 = min(rows, r0 + coin.randint(1, 8)), min(cols, c0 + coin.randint(1, 8))
+        level = cm[r0][c0]
+        for r in range(r0, r1):
+            for c in range(c0, c1):
+                cm[r][c] = level
+    for _ in range(coin.choice([0, 0, 1, 3])):  # pits, now and then below sea level
+        cm[coin.randrange(rows)][coin.randrange(cols)] = coin.choice([-50, 0, base - 200, base])
+    return cm
+
+
+@st.composite
+def terrain_case(draw) -> dict:
+    """One window of heights as the analysis is handed it, and how it is
+    analysed: whole centimetres over small ranges (ties), plateaus and pits,
+    voids, -0, now and then the infinities, sea along one edge (straight
+    and zero-filled at times), holes no file covers, a missing tile taken
+    as sea, small drainage thresholds, other settings, and a square shown
+    inside the window."""
+    rows, cols = draw(st.integers(3, 48)), draw(st.integers(3, 48))
+    # What happens at a stated rate comes from a generator seeded by a draw,
+    # as in geotiff_case: Hypothesis picks from a list nowhere near uniformly.
+    coin = random.Random(f"{draw(st.integers(0, 2**32 - 1))} {rows} {cols}")
+    cm: list[list] = _surface(coin, rows, cols)
+    if coin.random() < 0.4:  # sea along one edge, low ground or a straight strip of 0 m
+        width, edge, level = coin.randint(1, 4), coin.choice("SNWE"), coin.choice([0, 0, -30, -200])
+        for r in range(rows):
+            for c in range(cols):
+                depth = {"S": r, "N": rows - 1 - r, "W": c, "E": cols - 1 - c}[edge]
+                if depth < width and (level == 0 or coin.random() < 0.8):
+                    cm[r][c] = level
+    for _ in range(coin.choice([0, 0, 1, 4, 12])):  # voids, a cell at a time
+        cm[coin.randrange(rows)][coin.randrange(cols)] = "nan"
+    if coin.random() < 0.2:  # a hole no file covers, at the edge
+        r0, c0 = coin.choice([0, rows - 2]), coin.randrange(cols)
+        for r in range(max(0, r0), min(rows, r0 + 2)):
+            for c in range(c0, min(cols, c0 + coin.randint(1, 6))):
+                cm[r][c] = "nan"
+    for _ in range(coin.choice([0, 1, 3])):  # -0, which must give the bits of +0
+        cm[coin.randrange(rows)][coin.randrange(cols)] = "-0"
+    if coin.random() < 0.08:
+        for _ in range(coin.randint(1, 3)):
+            cm[coin.randrange(rows)][coin.randrange(cols)] = coin.choice(["inf", "-inf"])
+    assumed = []
+    if coin.random() < 0.15:  # a missing tile taken as open sea, at a corner, with no height
+        h, w = coin.randint(1, max(1, rows // 2)), coin.randint(1, max(1, cols // 2))
+        r0, c0 = coin.choice([0, rows - h]), coin.choice([0, cols - w])
+        assumed.append([r0, r0 + h, c0, c0 + w])
+        for r in range(r0, r0 + h):
+            for c in range(c0, c0 + w):
+                cm[r][c] = "nan"
+    lon0, lat0, step = coin.choice(_TERRAIN_LATTICES)
+    settings: dict = {
+        "drainage_area_km2": coin.choice([0.0, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.05]),
+        "sea_level_m": coin.choice([0.0] * 4 + [-1.0, 0.5]),
+        "fill_note_m": coin.choice([1.0, 1.0, 0.25, 0.05, 0.0]),
+        "flat_tan_slope": coin.choice([0.001, 0.001, 0.01, 0.05]),
+        "curvature_spacing_m": coin.choice([90.0, 90.0, 30.0, 60.0, 250.0]),
+    }
+    if coin.random() < 0.3:
+        settings["sea_straight_edge_cells"] = coin.choice([2, 3, 5, 8, 12])
+    if coin.random() < 0.2:
+        settings["hillshade_altitude_deg"] = coin.choice([30.0, 60.0])
+        settings["hillshade_panel_azimuths_deg"] = coin.sample([270.0, 315.0, 0.0, 45.0, 135.0], coin.randint(1, 4))
+    shown = None
+    if coin.random() < 0.7:
+        r0, c0 = coin.randrange(rows), coin.randrange(cols)
+        shown = [r0, coin.randint(r0 + 1, rows), c0, coin.randint(c0 + 1, cols)]
+    label, where = coin.choice(_TERRAIN_NAMES), coin.choice(_TERRAIN_PLACES)
+    read = None
+    if coin.random() < 0.5:
+        read = {"surface": coin.choice(["", "Heights of the ground."]),
+                "plan": None if coin.random() < 0.3 else {"radiusKm": coin.choice([0.4, 3.0]),
+                                                          "marginKm": coin.choice([0.0, 0.25])}}
+    meta = {"label": label, "credit": coin.choice(["", "© DLR e.V. 2014-2018"]),
+            "notice": coin.choice([None, "", 'No liability "at all".']), "surface": "Heights of the ground.",
+            "area": settings["drainage_area_km2"], "radius": coin.choice([10.0, 0.4]),
+            "margin": coin.choice([5.0, 0.0, 0.25]),
+            "centre": {"lon": lon0 + (cols // 2) * step, "lat": lat0 + (rows // 2) * step, "label": where}}
+    return {"kind": "terrain",
+            "grid": {"rows": rows, "cols": cols, "lon0": lon0, "lat0": lat0, "step": step, "assumed": assumed,
+                     "cm": cm},
+            "options": {"rows": rows, "cols": cols, "settings": settings, "shown": shown,
+                        "sea_clean": coin.random() < 0.5,
+                        "source_id": coin.choice(["copernicus_glo30", "srtm", "hgt", "unidentified"]),
+                        "label": label, "where": where, "read": read, "meta": meta}}
+
+
+def _terrain_file(case: dict) -> tuple[bytes, str]:
+    """The window both engines analyse, as bytes: its heights (centimetres
+    in metres, south row first), then the longitudes of its columns and the
+    latitudes of its rows, all float64 little-endian, then one byte a cell
+    marking the missing tile taken as sea. Python makes every number, so
+    the browser reads the same bits rather than working them out again."""
+    grid = case["grid"]
+    rows, cols, step = grid["rows"], grid["cols"], grid["step"]
+    z = [_SPECIAL[v] if isinstance(v, str) else v / 100.0 for row in grid["cm"] for v in row]
+    lons = [grid["lon0"] + j * step for j in range(cols)]
+    lats = [grid["lat0"] + j * step for j in range(rows)]
+    sea = bytearray(rows * cols)
+    for r0, r1, c0, c1 in grid["assumed"]:
+        for r in range(r0, r1):
+            sea[r * cols + c0:r * cols + c1] = b"\x01" * (c1 - c0)
+    return struct.pack(f"<{len(z) + cols + rows}d", *z, *lons, *lats) + bytes(sea), ".grid"
+
+
+CASES = {"deflate": deflate_case, "geotiff": geotiff_case, "terrain": terrain_case}
 
 #: The file both engines are handed for a case of each kind here, and its
-#: suffix: the block itself for ``deflate``, the file for ``geotiff``.
-FILES = {"deflate": _deflate_file, "geotiff": _geotiff_file}
+#: suffix: the block itself for ``deflate``, the file for ``geotiff``, and
+#: for ``terrain`` the window's numbers (_terrain_file).
+FILES = {"deflate": _deflate_file, "geotiff": _geotiff_file, "terrain": _terrain_file}

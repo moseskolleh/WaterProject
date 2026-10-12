@@ -3220,6 +3220,370 @@ await withPage(async (page, base, consoleErrors) => {
       misses.slice(0, 4).map((k) => `[${k}] js ${got[k]}, py ${want[k]}`).join('; '));
   });
 
+  // --- Terrain analysis (PLAN.md step 4.1) ---
+  // The browser's whole analysis (C.analyseTerrain, C.terrainCore,
+  // C.drainageLinks, C.drainageGeoJson, C.terrainCaptions), the twin of
+  // groundwater/mapping/terrain_analysis.py, on the windows of spec 7.5,
+  // each built here from the heights, lattice and settings reference.json
+  // gives, as make_reference.py built it. T1-T3 are held cell by cell:
+  // every layer of whole numbers (classes, directions, masks, counts and
+  // areas) as text, every float layer by a digest that keeps signs of zero
+  // and three cells by Object.is, the links and their parts field by field
+  // (lengths by Object.is), the GeoJSON to the character, the summary, the
+  // counts, and T1's captions and progress word for word. The degenerate
+  // windows of T5 (a single row, which both refuse, 3 x 3, all flat, all
+  // void, all sea, the infinities and the four signed-zero cases) are held
+  // by short digests of the same answers. T4, generated here from
+  // C.rangeStream(41, 0) as Python generates it from Stream(41, 0), is held
+  // by digests, the first 20 links and parts, and the GeoJSON's SHA-256,
+  // length and first 4,000 characters; T6, a plane whose one catchment
+  // passes 2^32 units of area, by the area at its outlet and by its lines
+  // traced again from a core put through structuredClone, as the worker
+  // hands it to the page, which must equal those from the core itself and
+  // Python's. Only the wetness index has a tolerance, 1e-12 relative (floor
+  // 1): it is the one value that passes through a library's logarithm.
+  // Measured, the worst gap is 1.2e-16 relative, one unit in the last place
+  // (Math.log against numpy's log), and the run prints it each time.
+  const TA = R.terrain;
+  const taJs = await page.evaluate((TA) => {
+    const C = GWT.core;
+    /* numbers as reference.json carries them: NaN as null, the
+     * infinities and -0 as strings, which JSON cannot hold */
+    const number = (v) => (v !== v ? null : v === Infinity ? 'Infinity' : v === -Infinity ? '-Infinity'
+      : Object.is(v, -0) ? '-0' : v);
+    const unfold = (v) => (v === null ? NaN : v === 'Infinity' ? Infinity : v === '-Infinity' ? -Infinity
+      : v === '-0' ? -0 : v);
+    /* float64 little-endian, every NaN the one NaN, signs of zero kept */
+    const bytesOf = (values) => {
+      const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] !== values[i]) {
+          view.setUint32(8 * i, 0, true);
+          view.setUint32(8 * i + 4, 0x7FF80000, true);
+        } else {
+          view.setFloat64(8 * i, values[i], true);
+        }
+      }
+      return bytes;
+    };
+    const digest = (values) => C.sha256Hex(bytesOf(values));
+    const short = (data) => C.sha256Hex(data).slice(0, 16);
+    /* a number's float64 bits, big-endian, as 16 hex digits */
+    const hex = (v) => {
+      const view = new DataView(new ArrayBuffer(8));
+      view.setFloat64(0, v);
+      let out = '';
+      for (let i = 0; i < 8; i++) out += (view.getUint8(i) + 256).toString(16).slice(1);
+      return out;
+    };
+    const spots = (values, n = 3) =>
+      Array.from({ length: n }, (_, k) => number(values[Math.floor(k * (values.length - 1) / (n - 1))]));
+    /* classes and masks as digits, the rest as numbers joined by commas */
+    const DIGITS = ['cls', 'flag', 'raised', 'flatRouted', 'stream'];
+    const whole = (name, values) => Array.prototype.join.call(values, DIGITS.includes(name) ? '' : ',');
+    /* links or parts as one line of JSON with each length by its bits, the
+     * text make_reference.py's _ta_lines_digest hashes */
+    const linesText = (list) => JSON.stringify(list.map((line) => ({ ...line, length_m: hex(line.length_m) })));
+    const linesDigest = (list) => C.sha256Hex(linesText(list));
+    const valuesOf = (list) => list.map((line) => Object.values(line));
+    const keysOf = (list) => [...new Set(list.map((line) => JSON.stringify(Object.keys(line))))];
+    const layersOf = (a) => {
+      const core = a.core;
+      const ints = { cls: core.cls, code: core.code, flag: core.flag, raised: core.raised,
+        flatRouted: core.flatRouted, stream: a.stream, count: core.count, areaUnits: core.areaUnits };
+      const floats = { filled: a.filled, fillDepth: a.fillDepth, p: a.p, q: a.q, tanb: a.tanb };
+      a.hillshades.forEach((layer, j) => { floats['hillshade' + j] = layer; });
+      Object.assign(floats, { hillshadeMulti: a.hillshadeMulti, twiArg: a.twiArg, profile: a.profile,
+        tangential: a.tangential, dx: core.dx, dy: core.dy, dg: core.dg });
+      return { ints, floats };
+    };
+    /* the window as make_reference.py's _ta_analysis builds it */
+    const analyse = (kase, z) => {
+      const lons = Float64Array.from({ length: kase.cols }, (_, j) => kase.lon0 + j * kase.step);
+      const lats = Float64Array.from({ length: kase.rows }, (_, j) => kase.lat0 + j * kase.step);
+      let assumedSea = null;
+      if (kase.assumed) {
+        assumedSea = new Uint8Array(kase.rows * kase.cols);
+        for (const [r0, r1, c0, c1] of kase.assumed) {
+          for (let r = r0; r < r1; r++) for (let c = c0; c < c1; c++) assumedSea[r * kase.cols + c] = 1;
+        }
+      }
+      const grid = { lons, lats, z, rows: kase.rows, cols: kase.cols, assumedSea, sourceId: kase.sourceId,
+        seaClean: kase.seaClean, label: kase.label };
+      const heard = [];
+      const a = C.analyseTerrain(grid, { terrain: kase.settings },
+        (fraction, label) => heard.push([fraction, label]), 'float64', kase.shown);
+      return { a, heard, lons, lats };
+    };
+    /* the GeoJSON, told what make_reference.py's _ta_geojson tells it */
+    const geojsonOf = (kase, run) => {
+      const plan = kase.read ? kase.read.plan : null;
+      return C.drainageGeoJson(C.terrainCore(run.a), run.a.parts, {
+        label: kase.label, credit: kase.credit, notice: kase.notice, surface: TA.surface,
+        area: kase.settings.drainage_area_km2, radius: plan ? plan.radiusKm : 0.3,
+        margin: plan ? plan.marginKm : 0.05,
+        centre: { lon: run.lons[Math.floor(kase.cols / 2)], lat: run.lats[Math.floor(kase.rows / 2)],
+          label: kase.where },
+      });
+    };
+    const captionsOf = (kase, a) => Object.entries(C.terrainCaptions(a, kase.read, kase.where));
+    const captionsText = (captions) => captions.map(([key, text]) => key + '\t' + text).join('\n');
+    /* what every window holds beside its layers and lines, with the keys
+     * the summary came in and those of the links and parts */
+    const told = (a) => {
+      const summary = Object.entries(a.summary).filter(([key]) => key !== 'twi_range');
+      return {
+        exact: { summary: summary.map(([, v]) => number(v)), scalars: [a.unresolved, a.kCells, a.floored, a.zeroFill],
+          shown: Array.from(a.core.shown) },
+        keys: { summary: summary.map(([key]) => key), links: keysOf(a.links), parts: keysOf(a.parts) },
+      };
+    };
+    const wetness = (twi, a) => {
+      const at = twi.at ? twi.at.split(',').map(Number) : [];
+      return { values: at.map((i) => number(a.twi[i])), range: a.summary.twi_range.map(number) };
+    };
+
+    const small = (kase) => {
+      let run;
+      try {
+        run = analyse(kase, Float64Array.from(JSON.parse(kase.z), unfold));
+      } catch (e) {
+        return { exact: { refused: String(e && e.message !== undefined ? e.message : e) } };
+      }
+      const a = run.a, { ints, floats } = layersOf(a), geojson = geojsonOf(kase, run);
+      const captions = captionsOf(kase, a), seen = told(a), exact = {};
+      if (kase.held !== 'digests') {
+        exact.ints = Object.fromEntries(Object.entries(ints).map(([name, v]) => [name, whole(name, v)]));
+        exact.floats = Object.fromEntries(Object.entries(floats).map(([name, v]) => [name, [digest(v), spots(v)]]));
+        exact.links = valuesOf(a.links);
+        exact.parts = valuesOf(a.parts);
+        exact.captions = kase.held === 'words' ? captions : C.sha256Hex(captionsText(captions));
+        if (kase.held === 'words') exact.heard = run.heard;
+      } else {
+        exact.ints = short(Object.entries(ints).map(([name, v]) => whole(name, v)).join('\n'));
+        const all = Object.values(floats).map(bytesOf);
+        const joined = new Uint8Array(all.reduce((n, b) => n + b.length, 0));
+        all.reduce((at, b) => { joined.set(b, at); return at + b.length; }, 0);
+        exact.floats = short(joined);
+        exact.links = [linesDigest(a.links).slice(0, 16), a.links.length];
+        exact.parts = [linesDigest(a.parts).slice(0, 16), a.parts.length];
+        exact.captions = C.sha256Hex(captionsText(captions)).slice(0, 16);
+      }
+      Object.assign(exact, seen.exact);
+      return { exact, keys: seen.keys, wetness: wetness(kase.twi, a),
+        geojson: kase.held === 'digests' ? [short(geojson), geojson.length] : geojson };
+    };
+
+    /* T4: the heights drawn as make_reference.py's _ta_generated_heights
+     * draws them, from the range-of-models generator */
+    const generated = (kase) => {
+      const rows = kase.rows, cols = kase.cols, draw = C.rangeStream(kase.seed, kase.stream);
+      const z = new Float64Array(rows * cols);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const left = c ? z[r * cols + c - 1] : 0.0, below = r ? z[(r - 1) * cols + c] : 0.0;
+          const v = 0.5 * left + 0.5 * below + 0.02 * c + 0.03 * r + 3.0 * (draw.uniform() - 0.5);
+          z[r * cols + c] = Math.floor(v * 10.0 + 0.5) / 10.0;
+        }
+      }
+      for (let r = 0; r < rows; r++) {
+        for (let c = kase.strip[0]; c < kase.strip[1]; c++) z[r * cols + c] = z[r * cols + c] - 30.0;
+      }
+      const [r0, r1, c0, c1] = kase.void;
+      for (let r = r0; r < r1; r++) for (let c = c0; c < c1; c++) z[r * cols + c] = NaN;
+      const zDigest = [digest(z), spots(z)];
+      const run = analyse(kase, z), a = run.a, { ints, floats } = layersOf(a), geojson = geojsonOf(kase, run);
+      const layers = {};
+      for (const [name, v] of Object.entries({ ...ints, ...floats })) layers[name] = digest(v);
+      const seen = told(a);
+      let count = 0, least = Infinity, most = -Infinity;
+      for (const v of a.twi) {
+        if (v - v !== 0) continue;
+        count += 1;
+        if (v < least) least = v;
+        if (v > most) most = v;
+      }
+      return {
+        exact: { z: zDigest, layers,
+          links: [linesDigest(a.links), a.links.length, valuesOf(a.links.slice(0, 20))],
+          parts: [linesDigest(a.parts), a.parts.length, valuesOf(a.parts.slice(0, 20))],
+          geojson: [C.sha256Hex(geojson), geojson.length], captions: C.sha256Hex(captionsText(captionsOf(kase, a))),
+          ...seen.exact },
+        keys: seen.keys, head: geojson.slice(0, 4000),
+        wetness: { ...wetness(kase.twi, a), count, min: number(least), max: number(most) },
+      };
+    };
+
+    /* T6: the plane, its core cloned as a worker's reply is, and the lines
+     * traced again from the clone alone at each threshold */
+    const plane = (kase) => {
+      const rows = kase.rows, cols = kase.cols, z = new Float64Array(rows * cols);
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) z[r * cols + c] = 10.0 + 0.5 * (r + c);
+      const a = analyse(kase, z).a, core = C.terrainCore(a), clone = structuredClone(core);
+      const shared = Object.keys(core).filter((key) => ArrayBuffer.isView(core[key]) &&
+        core[key].buffer === clone[key].buffer);
+      const at = kase.areas.map((area) => {
+        const page = C.drainageLinks(clone, area), direct = C.drainageLinks(core, area);
+        const text = [linesText(page.links), linesText(page.parts)];
+        return { got: [C.sha256Hex(text[0]), C.sha256Hex(text[1]), page.links.length, page.parts.length],
+          same: text[0] === linesText(direct.links) && text[1] === linesText(direct.parts) };
+      });
+      const again = C.drainageLinks(clone, kase.settings.drainage_area_km2);
+      return {
+        corner: clone.areaUnits[0], count: clone.count[0], shared, at,
+        own: [linesDigest(a.links), linesDigest(a.parts), a.links.length, a.parts.length],
+        again: linesText(again.links) === linesText(a.links) && linesText(again.parts) === linesText(a.parts),
+      };
+    };
+
+    const tried = (f, kase) => {
+      try {
+        return f(kase);
+      } catch (e) {
+        return { threw: String(e && e.stack || e) };
+      }
+    };
+    return { cases: TA.cases.map((kase) => tried(small, kase)), generated: tried(generated, TA.generated),
+      plane: tried(plane, TA.plane) };
+  }, TA);
+
+  /* the wetness index, the one value held to a tolerance: 1e-12 relative,
+   * floor 1, as every other parity check of a library's function is */
+  let twiWorst = 0;
+  const twiClose = (got, want) => {
+    if (got === null || want === null) return got === want;
+    const gap = Math.abs(got - want) / Math.max(1, Math.abs(want));
+    twiWorst = Math.max(twiWorst, gap);
+    return gap <= 1e-12;
+  };
+  const twiMisses = (got, want) => {
+    const misses = [];
+    if (!got || got.values.length !== want.values.length) return ['cells: ' + JSON.stringify(got && got.values)];
+    got.values.forEach((v, k) => {
+      if (!twiClose(v, want.values[k])) misses.push(`cell ${k}: js ${v}, py ${want.values[k]}`);
+    });
+    want.range.forEach((v, k) => {
+      if (!twiClose(got.range[k], v)) misses.push(`range[${k}]: js ${got.range[k]}, py ${v}`);
+    });
+    for (const key of ['min', 'max']) {
+      if (key in want && !twiClose(got[key], want[key])) misses.push(`${key}: js ${got[key]}, py ${want[key]}`);
+    }
+    if ('count' in want && got.count !== want.count) misses.push(`count: js ${got.count}, py ${want.count}`);
+    return misses;
+  };
+  /* the keys the browser's summary, links and parts came in, against
+   * Python's field order, which the values are compared in */
+  const keysDiffer = (got) => {
+    const want = { summary: JSON.stringify(TA.summary), links: JSON.stringify(TA.fields.links),
+      parts: JSON.stringify(TA.fields.parts) };
+    const out = [];
+    if (JSON.stringify(got.summary) !== want.summary) out.push(`summary keys ${JSON.stringify(got.summary)}`);
+    for (const kind of ['links', 'parts']) {
+      if (got[kind].some((keys) => keys !== want[kind])) out.push(`${kind} keys ${got[kind].join(' | ')}`);
+    }
+    return out.join('; ');
+  };
+  const pick = (object, keys) =>
+    Object.fromEntries(keys.filter((key) => key in object).map((key) => [key, object[key]]));
+  const counted = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  /* where two texts first differ, and a little of each from there */
+  const textDifference = (got, want) => {
+    if (typeof got !== 'string') return `js ${JSON.stringify(got)}`;
+    let at = 0;
+    while (at < got.length && at < want.length && got[at] === want[at]) at += 1;
+    return `${got.length} characters, expected ${want.length}; from character ${at}: ` +
+      `js ${JSON.stringify(got.slice(at, at + 80))}, py ${JSON.stringify(want.slice(at, at + 80))}`;
+  };
+
+  check(`terrain: the page analysed every window (${TA.cases.length})`, taJs.cases.length === TA.cases.length,
+    `${taJs.cases.length} answers`);
+  TA.cases.forEach((kase, i) => {
+    const got = taJs.cases[i] || { threw: 'no answer' }, want = JSON.parse(kase.expect);
+    const name = `terrain: ${kase.case}`;
+    if (got.threw) {
+      check(name, false, `threw ${got.threw}`);
+      return;
+    }
+    if ('refused' in want) {
+      check(`${name} - refused`, got.exact.refused === want.refused,
+        `js ${JSON.stringify(got.exact.refused)}\n     py ${JSON.stringify(want.refused)}`);
+      return;
+    }
+    if (got.exact.refused !== undefined) {
+      check(name, false, `the browser refused: ${got.exact.refused}`);
+      return;
+    }
+    const groups = [
+      ['the layers', ['ints', 'floats']],
+      ['the drainage lines and their parts', ['links', 'parts']],
+      ['the summary and counts', ['summary', 'scalars', 'shown']],
+      [kase.held === 'words' ? 'the captions and progress, word for word' : 'the captions', ['captions', 'heard']],
+    ];
+    const keys = keysDiffer(got.keys);
+    for (const [label, members] of groups) {
+      const found = firstDifference(pick(got.exact, members), pick(want, members));
+      const extra = label.startsWith('the drainage') || label.startsWith('the summary') ? keys : '';
+      check(`${name} - ${label}`, !found && !extra, found || extra);
+    }
+    check(`${name} - the GeoJSON${kase.held === 'digests' ? ', by digest' : ', to the character'}`,
+      sameJson(got.geojson, kase.geojson), kase.held === 'digests'
+        ? `js ${JSON.stringify(got.geojson)}, py ${JSON.stringify(kase.geojson)}`
+        : textDifference(got.geojson, kase.geojson));
+    const misses = twiMisses(got.wetness, kase.twi);
+    check(`${name} - the wetness index at ${counted(kase.twi.values.length, 'cell', 'cells')} and its ` +
+      'range, to 1e-12', misses.length === 0, misses.slice(0, 4).join('; '));
+  });
+
+  {
+    const kase = TA.generated, got = taJs.generated, want = JSON.parse(kase.expect), name = `terrain: ${kase.case}`;
+    if (got.threw) {
+      check(name, false, `threw ${got.threw}`);
+    } else {
+      const keys = keysDiffer(got.keys);
+      const lines = `the ${counted(want.links[1], 'drainage line', 'drainage lines')} and ` +
+        `${counted(want.parts[1], 'part', 'parts')}, the first 20 of each in full`;
+      for (const [label, members] of [
+        ['the heights drawn from C.rangeStream(41, 0)', ['z']],
+        ['every layer, by digest', ['layers']],
+        [lines, ['links', 'parts']],
+        ['the summary, counts and captions', ['summary', 'scalars', 'shown', 'captions']],
+      ]) {
+        const found = firstDifference(pick(got.exact, members), pick(want, members));
+        const extra = members.includes('links') || members.includes('summary') ? keys : '';
+        check(`${name} - ${label}`, !found && !extra, found || extra);
+      }
+      check(`${name} - the GeoJSON's SHA-256 and length, and its first 4,000 characters`,
+        sameJson(got.exact.geojson, want.geojson) && got.head === kase.geojson,
+        `js ${JSON.stringify(got.exact.geojson)}, py ${JSON.stringify(want.geojson)}; ` +
+          `the first 4,000: ${got.head === kase.geojson ? 'alike' : textDifference(got.head, kase.geojson)}`);
+      const misses = twiMisses(got.wetness, kase.twi);
+      check(`${name} - the wetness index: its count, least and greatest, ${kase.twi.values.length} cells and ` +
+        'its range, to 1e-12', misses.length === 0, misses.slice(0, 4).join('; '));
+    }
+  }
+
+  {
+    const kase = TA.plane, got = taJs.plane, want = JSON.parse(kase.expect), name = `terrain: ${kase.case}`;
+    if (got.threw) {
+      check(name, false, `threw ${got.threw}`);
+    } else {
+      check(`${name} - the ${want.count} cells and ${want.corner} units of area at the outlet, past 2^32`,
+        got.corner === want.corner && got.count === want.count && want.corner > 2 ** 32,
+        `js ${got.count} cells, ${got.corner} units`);
+      check(`${name} - the analysis's own lines, and the same traced again from the clone`,
+        sameJson(got.own, want.own) && got.again && got.shared.length === 0,
+        `js ${JSON.stringify(got.own)}, py ${JSON.stringify(want.own)}; again ${got.again}; shared ${got.shared}`);
+      kase.areas.forEach((area, k) => {
+        const mine = got.at[k] || { got: null, same: false };
+        check(`${name} - at ${area} km², ${counted(want.at[k][2], 'line', 'lines')} and ` +
+          `${counted(want.at[k][3], 'part', 'parts')} from the clone, as from the core and in Python`,
+        sameJson(mine.got, want.at[k]) && mine.same,
+        `js ${JSON.stringify(mine.got)}, py ${JSON.stringify(want.at[k])}; clone and core alike: ${mine.same}`);
+      });
+    }
+  }
+  console.log(`     terrain: the worst wetness-index gap is ${twiWorst.toExponential(2)} relative`);
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 
