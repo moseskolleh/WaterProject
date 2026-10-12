@@ -2613,3 +2613,785 @@ def test_the_browser_reads_a_plans_blocks_in_the_ranges_python_reads(elevation):
             name, offset, length, _ = holding[0]
             assert name == names[block.file] and offset <= block.offset
             assert block.offset + block.length <= offset + length, f"trial {trial}: block {b} spills out"
+
+
+# ------------------------------------- terrain surface kernels (browser engine)
+#
+# C.hornGradients, C.hillshadeLayer, C.multidirectionalHillshade,
+# C.wetnessIndex, C.curvatures, C.contourInterval and C.displayRange (spec
+# 3.11-3.15). Each is held first to what it should be on ground whose answer
+# is known in closed form (planar facets, a cone, a dome, a bowl, a
+# paraboloid, a plane), then, bit for bit, to the spec's pseudo-code written
+# out below in scalar Python, in the stated order of operations, on several
+# hundred small random grids with voids, sea and signed zeros. Python's own
+# kernels (terrain_analysis.py) are written from the same pseudo-code, so
+# the two engines meet through it; the wetness index alone, whose log is a
+# libm call, is held to 1e-12.
+
+_SURFACE_DRIVER = r"""
+import { readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+import vm from 'node:vm';
+const sandbox = vm.createContext({ console, structuredClone });
+for (const f of ['gwt-data.js', 'gwt-core.js']) {
+  vm.runInContext(readFileSync(process.argv[2] + '/' + f, 'utf8'), sandbox, { filename: f });
+}
+const C = sandbox.GWT.core;
+const F64 = vm.runInContext('Float64Array', sandbox), U8 = vm.runInContext('Uint8Array', sandbox);
+// arrays travel as base64 of their little-endian bytes, so that NaN, the
+// infinities and -0 arrive as they left
+function f64(text) {
+  const raw = Buffer.from(text, 'base64'), out = new F64(raw.length / 8);
+  new Uint8Array(out.buffer).set(raw);
+  return out;
+}
+function u8(text) {
+  const raw = Buffer.from(text, 'base64'), out = new U8(raw.length);
+  out.set(raw);
+  return out;
+}
+const b64 = (typed) => Buffer.from(typed.buffer, typed.byteOffset, typed.byteLength).toString('base64');
+const metricOf = (r) => ({ dx: f64(r.dx), dy: f64(r.dy) });
+// a vertical exaggeration sent as null is left out of the call, to reach the default
+const zfOf = (zf) => (zf === null ? undefined : zf);
+function horn(r) {
+  const h = C.hornGradients(f64(r.zt), r.rows, r.cols, metricOf(r));
+  return { p: b64(h.p), q: b64(h.q), tanb: b64(h.tanb) };
+}
+function wet(r, tanb) {
+  const w = C.wetnessIndex(f64(r.au), u8(r.cls), tanb, r.rows, r.cols, metricOf(r), r.floorTan);
+  return { arg: b64(w.arg), twi: b64(w.twi), floored: b64(w.floored) };
+}
+function curv(r) {
+  // the spacing may come as text ('Infinity', 'NaN'), which JSON cannot carry as a number
+  const k = C.curvatures(f64(r.zt), u8(r.cls), r.rows, r.cols, metricOf(r), Number(r.spacing), r.floorTan);
+  return { profile: b64(k.profile), tangential: b64(k.tangential), kCells: k.kCells };
+}
+const ops = {
+  horn,
+  shade: (r) => b64(C.hillshadeLayer(f64(r.p), f64(r.q), r.az, r.alt, zfOf(r.zf))),
+  multi: (r) => b64(C.multidirectionalHillshade(f64(r.p), f64(r.q), r.azimuths, r.alt, zfOf(r.zf))),
+  wet: (r) => wet(r, f64(r.tanb)),
+  curv,
+  contour(r) {
+    const reliefs = f64(r.reliefs), out = new F64(reliefs.length);
+    for (let i = 0; i < reliefs.length; i++) out[i] = C.contourInterval(reliefs[i]);
+    return b64(out);
+  },
+  // lo and hi go as float64 too, so that NaN can be sent
+  range(r) {
+    const [lo, hi] = f64(r.fractions), values = f64(r.values);
+    return b64(F64.from(C.displayRange(r.plain ? Array.from(values) : values, lo, hi)));
+  },
+  // every kernel on each grid, as the analysis chains them: Horn's slope
+  // feeds the hillshades and the wetness index
+  kernels: ({ cases }) => cases.map((r) => {
+    const h = C.hornGradients(f64(r.zt), r.rows, r.cols, metricOf(r));
+    return {
+      p: b64(h.p), q: b64(h.q), tanb: b64(h.tanb),
+      shades: r.panels.map((az) => b64(C.hillshadeLayer(h.p, h.q, az, r.alt, zfOf(r.zf)))),
+      multi: b64(C.multidirectionalHillshade(h.p, h.q, r.azimuths, r.alt, zfOf(r.zf))),
+      ...wet(r, h.tanb), ...curv(r),
+    };
+  }),
+};
+for await (const line of createInterface({ input: process.stdin })) {
+  const request = JSON.parse(line);
+  let answer;
+  try {
+    answer = { ok: ops[request.op](request) };
+  } catch (e) {
+    // a plain Error is the engine refusing a bad argument; anything else is a fault
+    answer = e && e.constructor && e.constructor.name === 'Error' ? { error: e.message }
+      : { threw: String(e && e.stack || e) };
+  }
+  process.stdout.write(JSON.stringify(answer) + '\n');
+}
+"""
+
+
+@pytest.fixture
+def surface(tmp_path):
+    """The browser's surface kernels in a Node vm, asked one question at a time."""
+    browser = _Reader(tmp_path, _SURFACE_DRIVER, "surface.mjs")
+    yield browser
+    browser.close()
+
+
+def _sk_b64(values, dtype: str = "<f8") -> str:
+    """Values as little-endian bytes in base64, NaN and -0 kept as they are."""
+    import numpy as np
+
+    return base64.b64encode(np.asarray(values, dtype=dtype).tobytes()).decode("ascii")
+
+
+def _sk_f64(text: str):
+    import numpy as np
+
+    return np.frombuffer(base64.b64decode(text), dtype="<f8")
+
+
+def _sk_u8(text: str):
+    import numpy as np
+
+    return np.frombuffer(base64.b64decode(text), dtype=np.uint8)
+
+
+def _sk_differ(js, py) -> list[int]:
+    """The cells whose float64 bits differ (any NaN equals any NaN; -0 is not +0)."""
+    import numpy as np
+
+    a, b = np.asarray(js, dtype="<f8"), np.asarray(py, dtype="<f8")
+    assert a.shape == b.shape, (a.shape, b.shape)
+    same = (a.view("<u8") == b.view("<u8")) | (np.isnan(a) & np.isnan(b))
+    return np.flatnonzero(~same).tolist()
+
+
+def _sk_far(js, py, rel: float = 1e-12) -> list[int]:
+    """The cells further apart than ``rel`` of max(1, |python|), or NaN in one engine only."""
+    import numpy as np
+
+    a, b = np.asarray(js, dtype="<f8"), np.asarray(py, dtype="<f8")
+    with np.errstate(invalid="ignore"):
+        close = (a == b) | (np.abs(a - b) <= rel * np.maximum(1.0, np.abs(b)))
+    ok = (np.isnan(a) & np.isnan(b)) | (~np.isnan(a) & ~np.isnan(b) & close)
+    return np.flatnonzero(~ok).tolist()
+
+
+def _sk_metric(rows: int, side: float = 30.0) -> dict:
+    """The same cell size on every row, so that a closed form in metres holds on every row."""
+    return {"dx": _sk_b64([side] * rows), "dy": _sk_b64([side] * rows)}
+
+
+# The spec's pseudo-code (3.11-3.15), written out in scalar Python. Python
+# floats are IEEE doubles with no fused multiply-add, as V8's are, so each
+# line gives the browser's bits when the browser computes the same
+# expression in the same order; a reordered sum or a hoisted product that
+# rounds differently shows here as a difference in the last bit.
+
+
+def _ref_horn(z, rows, cols, dx, dy):
+    """Spec 3.11: p, q and tanb, NaN unless the cell and its eight neighbours are in the grid and finite."""
+    nan = math.nan
+    p, q, tanb = [nan] * (rows * cols), [nan] * (rows * cols), [nan] * (rows * cols)
+    for r in range(1, rows - 1):
+        for c in range(1, cols - 1):
+            i = r * cols + c
+            z_sw, z_s, z_se = z[i - cols - 1], z[i - cols], z[i - cols + 1]
+            z_w, z_c, z_e = z[i - 1], z[i], z[i + 1]
+            z_nw, z_n, z_ne = z[i + cols - 1], z[i + cols], z[i + cols + 1]
+            if not all(math.isfinite(v) for v in (z_sw, z_s, z_se, z_w, z_c, z_e, z_nw, z_n, z_ne)):
+                continue
+            pc = (((z_ne + 2.0 * z_e) + z_se) - ((z_nw + 2.0 * z_w) + z_sw)) / (8.0 * dx[r])
+            qc = (((z_nw + 2.0 * z_n) + z_ne) - ((z_sw + 2.0 * z_s) + z_se)) / (8.0 * dy[r])
+            p[i], q[i], tanb[i] = pc, qc, math.sqrt(pc * pc + qc * qc)
+    return p, q, tanb
+
+
+def _ref_hillshade(p, q, az, alt, zf=1.0):
+    """Spec 3.12, one sun: GDAL's Horn hillshade, clamped as ``v > 0 ? v : 0``."""
+    from groundwater.mapping.elevation import sin_cos_deg
+
+    s_z, c_z = sin_cos_deg(az)
+    s_a, c_a = sin_cos_deg(alt)
+    out = []
+    for p_i, q_i in zip(p, q, strict=True):
+        big_p = p_i * zf
+        if math.isnan(big_p):
+            out.append(math.nan)
+            continue
+        big_q = q_i * zf
+        g = (big_p * s_z) + (big_q * c_z)
+        v = (s_a - c_a * g) / math.sqrt((1.0 + big_p * big_p) + big_q * big_q)
+        out.append(v if v > 0 else 0.0)
+    return out
+
+
+def _ref_multidirectional(p, q, azimuths, alt, zf=1.0):
+    """Spec 3.12, several suns weighted by (P sin az + Q cos az)^2, summed in list order."""
+    from groundwater.mapping.elevation import sin_cos_deg
+
+    suns = [sin_cos_deg(az) for az in azimuths]
+    s_a, c_a = sin_cos_deg(alt)
+    out = []
+    for p_i, q_i in zip(p, q, strict=True):
+        big_p = p_i * zf
+        if math.isnan(big_p):
+            out.append(math.nan)
+            continue
+        big_q = q_i * zf
+        num = 0.0
+        den = 0.0
+        for s_z, c_z in suns:
+            g = (big_p * s_z) + (big_q * c_z)
+            s = s_a - c_a * g
+            s = s if s > 0 else 0.0
+            w = g * g
+            num = num + w * s
+            den = den + w
+        out.append((num / den) / math.sqrt((1.0 + big_p * big_p) + big_q * big_q) if den > 0 else s_a)
+    return out
+
+
+def _ref_log(x: float) -> float:
+    """IEEE's log where math.log raises (0 gives -inf)."""
+    if x == 0.0:
+        return -math.inf
+    if math.isnan(x) or x == math.inf:
+        return x
+    return math.log(x)
+
+
+def _ref_wetness(au, cls, tanb, rows, cols, dx, dy, floor_tan):
+    """Spec 3.13: arg exactly, twi = log(arg), and the cells whose slope was raised to the floor."""
+    nan = math.nan
+    arg, twi, floored = [nan] * (rows * cols), [nan] * (rows * cols), [0] * (rows * cols)
+    for r in range(rows):
+        for c in range(cols):
+            i = r * cols + c
+            if cls[i] != 1 or math.isnan(tanb[i]):
+                continue
+            a = (au[i] / 100.0) / ((dx[r] + dy[r]) / 2.0)
+            if tanb[i] >= floor_tan:
+                tb = tanb[i]
+            else:
+                tb = floor_tan
+                floored[i] = 1
+            arg[i] = a / tb
+            twi[i] = _ref_log(arg[i])
+    return arg, twi, floored
+
+
+def _ref_curvatures(z, cls, rows, cols, dx, dy, spacing, floor_tan, slopes=None):
+    """Spec 3.14: Evans-Young at k cells, NaN off land, beside a missing sample and on flats;
+    each cell's squared slope p*p + q*q goes into ``slopes`` when one is given."""
+    nan = math.nan
+    h = rows // 2
+    k = max(1, math.floor(spacing / ((dx[h] + dy[h]) / 2.0) + 0.5))
+    profile, tangential = [nan] * (rows * cols), [nan] * (rows * cols)
+    for r in range(k, rows - k):
+        x_k, y_k = k * dx[r], k * dy[r]
+        for c in range(k, cols - k):
+            if cls[r * cols + c] != 1:
+                continue
+            north, here, south = (r + k) * cols, r * cols, (r - k) * cols
+            z1, z2, z3 = z[north + c - k], z[north + c], z[north + c + k]
+            z4, z5, z6 = z[here + c - k], z[here + c], z[here + c + k]
+            z7, z8, z9 = z[south + c - k], z[south + c], z[south + c + k]
+            if not all(math.isfinite(v) for v in (z1, z2, z3, z4, z5, z6, z7, z8, z9)):
+                continue
+            p = (((((z3 + z6) + z9) - z1) - z4) - z7) / (6.0 * x_k)
+            q = (((((z1 + z2) + z3) - z7) - z8) - z9) / (6.0 * y_k)
+            rr = ((((((z1 + z3) + z4) + z6) + z7) + z9) - 2.0 * ((z2 + z5) + z8)) / ((3.0 * x_k) * x_k)
+            t = ((((((z1 + z2) + z3) + z7) + z8) + z9) - 2.0 * ((z4 + z5) + z6)) / ((3.0 * y_k) * y_k)
+            s = (((z3 + z7) - z1) - z9) / ((4.0 * x_k) * y_k)
+            g2 = p * p + q * q
+            if slopes is not None:
+                slopes.append(g2)
+            if not (g2 >= floor_tan * floor_tan):
+                continue
+            w = 1.0 + g2
+            profile[here + c] = -(((p * p) * rr + ((2.0 * p) * q) * s) + (q * q) * t) / (g2 * (w * math.sqrt(w)))
+            tangential[here + c] = -(((q * q) * rr - ((2.0 * p) * q) * s) + (p * p) * t) / (g2 * math.sqrt(w))
+    return profile, tangential, k
+
+
+def _ref_contour_interval(relief: float) -> float:
+    """Spec 3.15: the largest of 1, 2, 5, 10, ... (Python ints, compared with the float limit exactly)."""
+    if not math.isfinite(relief) or relief <= 0:
+        return 10.0
+    limit = (relief / 12.0) * 2.0
+    best, decade = 1, 1
+    while True:
+        for m in (1, 2, 5):
+            if not m * decade <= limit:
+                return float(best)
+            best = m * decade
+        decade *= 10
+
+
+def _ref_display_range(values, lo: float, hi: float) -> tuple[float, float]:
+    """Spec 3.15: ranked elements of the sorted finite values, a zero as +0."""
+    finite = sorted(v for v in values if math.isfinite(v))
+    if not finite:
+        return math.nan, math.nan
+    n = len(finite)
+    return finite[math.floor(lo * (n - 1))] + 0.0, finite[math.floor(hi * (n - 1))] + 0.0
+
+
+def test_the_browser_hillshade_lights_each_planar_facet_from_the_azimuth_it_faces(surface):
+    """Eight planar facets, each facing one of the eight compass points, at
+    two steepnesses, under the four panel suns (270, 315, 0 and 45 at 45
+    degrees): Horn's gradient is the facet's own, every inner cell takes
+    the closed form cos i = (sin alt + cos alt * m * cos(facing - az)) /
+    sqrt(1 + m^2) (clamped at 0), the facet facing the sun is the brightest
+    and the one facing away the darkest, exactly +0 once it is in shadow.
+    Prevents the 90-degree error the old hillshade had (a north-west sun
+    lighting north-east slopes), a sign slip in p or q (south-first rows,
+    north at r + 1), and a clamp that writes -0."""
+    import numpy as np
+
+    side, rows, cols = 30.0, 5, 6
+    inner = [r * cols + c for r in range(1, rows - 1) for c in range(1, cols - 1)]
+    edge = [i for i in range(rows * cols) if i not in inner]
+    sin_alt, cos_alt = math.sin(math.radians(45.0)), math.cos(math.radians(45.0))
+    for m in (0.3, 1.5):
+        lit: dict[tuple[int, float], float] = {}
+        for facing in range(0, 360, 45):
+            east, north = math.sin(math.radians(facing)), math.cos(math.radians(facing))
+            z = [-m * ((c * side) * east + (r * side) * north) for r in range(rows) for c in range(cols)]
+            horn = surface.ask("horn", rows=rows, cols=cols, zt=_sk_b64(z), **_sk_metric(rows, side))["ok"]
+            p, q = _sk_f64(horn["p"]), _sk_f64(horn["q"])
+            assert np.isnan(p[edge]).all() and np.isnan(q[edge]).all()
+            assert np.allclose(p[inner], -m * east, rtol=0, atol=1e-12), facing
+            assert np.allclose(q[inner], -m * north, rtol=0, atol=1e-12), facing
+            for az in (270.0, 315.0, 0.0, 45.0):
+                shade = _sk_f64(surface.ask("shade", p=horn["p"], q=horn["q"], az=az, alt=45.0, zf=None)["ok"])
+                want = max(0.0, (sin_alt + cos_alt * m * math.cos(math.radians(facing - az))) / math.sqrt(1 + m * m))
+                assert np.isnan(shade[edge]).all(), (facing, az)
+                assert np.allclose(shade[inner], want, rtol=0, atol=1e-12), (m, facing, az, shade[inner], want)
+                lit[(facing, az)] = float(shade[inner[0]])
+        for az in (270.0, 315.0, 0.0, 45.0):
+            row = {facing: lit[(facing, az)] for facing in range(0, 360, 45)}
+            assert max(row, key=row.__getitem__) == int(az) % 360, (m, az, row)
+            away = (int(az) + 180) % 360
+            assert row[away] == min(row.values()), (m, az, row)
+            if m == 1.5:
+                assert struct.pack("<d", row[away]) == struct.pack("<d", 0.0), "shadow is +0, never -0"
+    # a sun overhead lights every facet alike, with the flat-ground value sin(90) = 1 scaled by the slope
+    z = [-0.3 * (c * side) for r in range(rows) for c in range(cols)]
+    horn = surface.ask("horn", rows=rows, cols=cols, zt=_sk_b64(z), **_sk_metric(rows, side))["ok"]
+    top = _sk_f64(surface.ask("shade", p=horn["p"], q=horn["q"], az=123.0, alt=90.0, zf=None)["ok"])
+    assert np.allclose(top[inner], 1.0 / math.sqrt(1.09), rtol=0, atol=1e-12)
+    # the vertical exaggeration multiplies p and q, and an absent one is 1
+    one = surface.ask("shade", p=horn["p"], q=horn["q"], az=315.0, alt=30.0, zf=1.0)["ok"]
+    assert surface.ask("shade", p=horn["p"], q=horn["q"], az=315.0, alt=30.0, zf=None)["ok"] == one
+    doubled = _sk_b64(2.0 * _sk_f64(horn["p"])), _sk_b64(2.0 * _sk_f64(horn["q"]))
+    assert surface.ask("shade", p=horn["p"], q=horn["q"], az=315.0, alt=30.0, zf=2.0)["ok"] == \
+        surface.ask("shade", p=doubled[0], q=doubled[1], az=315.0, alt=30.0, zf=1.0)["ok"]
+
+
+def test_the_browser_multidirectional_hillshade_is_gdals_weighted_composite_on_a_cone(surface):
+    """A cone, which faces every azimuth, shaded by C.multidirectionalHillshade
+    with gdaldem's four suns (225, 270, 315, 360 at 45 degrees): every cell
+    equals GDAL's composite written with its own fixed weights,
+    w225 = (p^2 + q^2)/2 + pq, w270 = p^2, w315 = (p^2 + q^2)/2 - pq and
+    w360 = q^2, over their sum 2(p^2 + q^2), and the apex, where every
+    weight is 0, is exactly sin(45 degrees) as GDAL gives flat ground.
+    Prevents weights taken from the wrong azimuth (225 is south-west, not
+    north-east), a composite that is a plain mean of the four, and a flat
+    cell divided by zero."""
+    import numpy as np
+
+    from groundwater.mapping.elevation import sin_cos_deg
+
+    side, n, mid = 30.0, 41, 20
+    z = [500.0 - 0.4 * math.hypot((c - mid) * side, (r - mid) * side) for r in range(n) for c in range(n)]
+    horn = surface.ask("horn", rows=n, cols=n, zt=_sk_b64(z), **_sk_metric(n, side))["ok"]
+    p, q = _sk_f64(horn["p"]), _sk_f64(horn["q"])
+    multi = _sk_f64(surface.ask("multi", p=horn["p"], q=horn["q"], azimuths=[225.0, 270.0, 315.0, 360.0],
+                                alt=45.0, zf=None)["ok"])
+    sin_alt, cos_alt = math.sin(math.radians(45.0)), math.cos(math.radians(45.0))
+    half = math.sqrt(0.5)
+    plain_mean_apart = 0
+    for i in range(n * n):
+        if math.isnan(p[i]):
+            assert math.isnan(multi[i]), i
+            continue
+        pp, qq = float(p[i]), float(q[i])
+        if pp == 0.0 and qq == 0.0:
+            assert multi[i] == sin_cos_deg(45.0)[0], "flat ground is lit as sin(alt), to the bit"
+            continue
+        # each sun's cos i (unnormalised), GDAL's val225 ... val360
+        lit = {225: max(0.0, sin_alt - cos_alt * (-(pp + qq) * half)), 270: max(0.0, sin_alt + cos_alt * pp),
+               315: max(0.0, sin_alt - cos_alt * ((qq - pp) * half)), 360: max(0.0, sin_alt - cos_alt * qq)}
+        both = pp * pp + qq * qq
+        weight = {225: 0.5 * both + pp * qq, 270: pp * pp, 315: 0.5 * both - pp * qq, 360: qq * qq}
+        want = sum(weight[az] * lit[az] for az in lit) / (2.0 * both) / math.sqrt(1.0 + both)
+        assert abs(multi[i] - want) <= 1e-12, (i, multi[i], want)
+        mean = sum(lit.values()) / 4.0 / math.sqrt(1.0 + both)
+        plain_mean_apart += abs(mean - want) > 0.01
+    assert multi[mid * n + mid] == sin_cos_deg(45.0)[0]
+    assert plain_mean_apart > 100, "the weights must matter on a cone"
+    # with no sun at all every cell is flat ground's
+    none = _sk_f64(surface.ask("multi", p=horn["p"], q=horn["q"], azimuths=[], alt=30.0, zf=None)["ok"])
+    assert all(v == sin_cos_deg(30.0)[0] for v in none[~np.isnan(p)])
+
+
+def test_the_browser_curvature_of_a_dome_a_bowl_and_a_paraboloid_has_its_closed_form_and_signs(surface):
+    """C.curvatures on quadratic surfaces, which Evans and Young's
+    nine-point fit recovers exactly, at 90 m on a 30 m grid (k = 3 cells):
+    a paraboloid with every term matches the closed-form profile and
+    tangential curvature cell for cell; a dome is convex and diverging (+
+    and +, Florinsky's and Minar's signs) and a bowl concave and converging
+    (- and -); the summit, flatter than the floor, is NaN; cells within k
+    of the edge are NaN; a cell that is not land is NaN while a sea sample
+    with a height still counts; and a void sample blanks exactly the cells
+    that sample it. Also kCells rounds the spacing over the middle row's
+    mean side. Prevents the legacy ESRI sign, samples taken one cell apart
+    instead of k, north and south swapped, and a curvature made up across a
+    gap."""
+    import numpy as np
+
+    side, n, mid = 30.0, 25, 12
+    metric = _sk_metric(n, side)
+    land = _sk_b64([1] * (n * n), "u1")
+
+    def at(f):
+        return [f((c - mid) * side, (r - mid) * side) for r in range(n) for c in range(n)]
+
+    def curv(z, cls=land, spacing=90.0, floor_tan=0.001):
+        got = surface.ask("curv", zt=_sk_b64(z), cls=cls, rows=n, cols=n, spacing=spacing, floorTan=floor_tan,
+                          **metric)["ok"]
+        return _sk_f64(got["profile"]), _sk_f64(got["tangential"]), got["kCells"]
+
+    a, b, cxy, d, e = 1e-3, -4e-4, 6e-4, 0.05, -0.03
+    profile, tangential, k = curv(at(lambda x, y: a * x * x + b * y * y + cxy * x * y + d * x + e * y + 200.0))
+    assert k == 3
+    for r in range(n):
+        for c in range(n):
+            i = r * n + c
+            if not (3 <= r < n - 3 and 3 <= c < n - 3):
+                assert math.isnan(profile[i]) and math.isnan(tangential[i]), (r, c)
+                continue
+            x, y = (c - mid) * side, (r - mid) * side
+            p, q, rr, t, s = 2 * a * x + cxy * y + d, 2 * b * y + cxy * x + e, 2 * a, 2 * b, cxy
+            g2 = p * p + q * q
+            if g2 < 1e-6:
+                assert math.isnan(profile[i]) and math.isnan(tangential[i]), (r, c)
+                continue
+            terms = (abs(p * p * rr) + abs(2 * p * q * s) + abs(q * q * t)) / g2
+            kv = -(p * p * rr + 2 * p * q * s + q * q * t) / (g2 * (1 + g2) ** 1.5)
+            kh = -(q * q * rr - 2 * p * q * s + p * p * t) / (g2 * (1 + g2) ** 0.5)
+            assert abs(profile[i] - kv) <= 1e-9 * terms, (r, c, profile[i], kv)
+            assert abs(tangential[i] - kh) <= 1e-9 * terms, (r, c, tangential[i], kh)
+
+    dome = at(lambda x, y: 300.0 - (x * x + y * y) / 1200.0)
+    for sign, z in ((1, dome), (-1, [-v for v in dome])):
+        profile, tangential, _ = curv(z)
+        summit = mid * n + mid
+        assert math.isnan(profile[summit]) and math.isnan(tangential[summit]), "a summit has no slope direction"
+        defined = ~np.isnan(profile)
+        assert defined.sum() == (n - 6) ** 2 - 1
+        assert (np.sign(profile[defined]) == sign).all() and (np.sign(tangential[defined]) == sign).all()
+
+    z = at(lambda x, y: 300.0 - (x * x + y * y) / 1200.0 + 0.02 * x)
+    whole, _, _ = curv(z)
+    cls = [1] * (n * n)
+    cls[10 * n + 10] = 2                       # sea with a height: its own cell is not land
+    z_void = list(z)
+    z_void[14 * n + 15] = math.nan             # a void: no height
+    cls[14 * n + 15] = 0
+    profile, _, _ = curv(z_void, _sk_b64(cls, "u1"))
+    blanked = {(14 + dr) * n + 15 + dc for dr in (-3, 0, 3) for dc in (-3, 0, 3)} | {10 * n + 10}
+    for i in range(n * n):
+        if i in blanked:
+            assert math.isnan(profile[i]), i
+        else:
+            assert struct.pack("<d", profile[i]) == struct.pack("<d", whole[i]), i
+    for spacing, want in ((90.0, 3), (45.0, 2), (44.9, 1), (0.0, 1), (-5.0, 1), (300.0, 10)):
+        assert curv(z, spacing=spacing)[2] == want, spacing
+
+
+def test_the_browser_wetness_index_on_a_plane_rises_downslope_and_uses_the_floor_on_flats(surface):
+    """C.wetnessIndex on a plane falling 5% to the east whose drainage
+    area grows by one cell a column: arg = a / tan(beta) with
+    a = area / mean cell side is (c + 1) * 600 m and rises downslope; on a
+    flat the slope is raised to the floor (flat_tan_slope) and the cell is
+    marked floored, so a swamp floor gets a high value instead of no
+    value; sea, voids and cells without a slope (the edge) are NaN and
+    never floored. Prevents the floor applied on sloping ground or not at
+    all (a division by zero on a flat), the width taken as one side
+    rather than the mean of the two, and an index drawn on the sea."""
+    import numpy as np
+
+    side, rows, cols, unit = 30.0, 6, 10, 90000.0         # a 30 m cell is 90,000 units of 0.01 m^2
+    metric = _sk_metric(rows, side)
+    area = [(c + 1) * unit for r in range(rows) for c in range(cols)]
+    z = [100.0 - 0.05 * (c * side) for r in range(rows) for c in range(cols)]
+    horn = surface.ask("horn", rows=rows, cols=cols, zt=_sk_b64(z), **metric)["ok"]
+    cls = [1] * (rows * cols)
+    cls[2 * cols + 4], cls[3 * cols + 6] = 2, 0
+    got = surface.ask("wet", au=_sk_b64(area), cls=_sk_b64(cls, "u1"), tanb=horn["tanb"], rows=rows, cols=cols,
+                      floorTan=0.001, **metric)["ok"]
+    arg, twi, floored = _sk_f64(got["arg"]), _sk_f64(got["twi"]), _sk_u8(got["floored"])
+    assert not floored.any()
+    for r in range(rows):
+        for c in range(cols):
+            i = r * cols + c
+            if r in (0, rows - 1) or c in (0, cols - 1) or cls[i] != 1:
+                assert math.isnan(arg[i]) and math.isnan(twi[i]), (r, c)
+                continue
+            assert abs(arg[i] - (c + 1) * 600.0) <= 1e-12 * (c + 1) * 600.0, (r, c, arg[i])
+            assert abs(twi[i] - math.log((c + 1) * 600.0)) <= 1e-12 * twi[i], (r, c)
+    for r in range(1, rows - 1):
+        downslope = [float(twi[r * cols + c]) for c in range(1, cols - 1) if cls[r * cols + c] == 1]
+        assert all(a < b for a, b in zip(downslope, downslope[1:], strict=False)), "wetness rises downslope"
+
+    flat = [50.0] * (rows * cols)
+    flat[2 * cols + 2] = 50.0002                          # a bump of 0.2 mm: still flatter than the floor
+    horn = surface.ask("horn", rows=rows, cols=cols, zt=_sk_b64(flat), **metric)["ok"]
+    tanb = _sk_f64(horn["tanb"])
+    got = surface.ask("wet", au=_sk_b64(area), cls=_sk_b64(cls, "u1"), tanb=horn["tanb"], rows=rows, cols=cols,
+                      floorTan=0.001, **metric)["ok"]
+    arg, floored = _sk_f64(got["arg"]), _sk_u8(got["floored"])
+    for i in range(rows * cols):
+        if math.isnan(tanb[i]) or cls[i] != 1:
+            assert math.isnan(arg[i]) and not floored[i], i
+            continue
+        assert floored[i] == 1 and tanb[i] < 0.001
+        want = (area[i] / 100.0) / ((side + side) / 2.0) / 0.001
+        assert struct.pack("<d", arg[i]) == struct.pack("<d", want), i
+    assert int(floored.sum()) == int((~np.isnan(tanb)).sum()) - 2
+
+
+def test_the_browser_surface_kernels_are_nan_at_the_edge_beside_voids_and_on_bad_shapes(surface):
+    """Horn's gradients, both hillshades and the slope are NaN on the
+    grid's edge and on every cell whose 3 by 3 window meets a void, and
+    finite everywhere else, so a gap is drawn as a gap and never as a
+    cliff (the old hillshade filled voids with the mean height) or as a
+    shadow (a hillshade of 0); a grid one or two cells across has no
+    gradient at all; and arrays of the wrong length are refused rather
+    than read past their end."""
+    import numpy as np
+
+    rows, cols = 7, 8
+    metric = _sk_metric(rows)
+    z = [100.0 + 3.0 * math.sin(r * 0.7) + 2.0 * math.cos(c * 0.9) for r in range(rows) for c in range(cols)]
+    z[3 * cols + 4] = math.nan
+    horn = surface.ask("horn", rows=rows, cols=cols, zt=_sk_b64(z), **metric)["ok"]
+    p, q, tanb = (_sk_f64(horn[key]) for key in ("p", "q", "tanb"))
+    shade = _sk_f64(surface.ask("shade", p=horn["p"], q=horn["q"], az=315.0, alt=45.0, zf=None)["ok"])
+    multi = _sk_f64(surface.ask("multi", p=horn["p"], q=horn["q"], azimuths=[225.0, 270.0, 315.0, 360.0],
+                                alt=45.0, zf=None)["ok"])
+    for r in range(rows):
+        for c in range(cols):
+            i = r * cols + c
+            missing = r in (0, rows - 1) or c in (0, cols - 1) or (abs(r - 3) <= 1 and abs(c - 4) <= 1)
+            for layer in (p, q, tanb, shade, multi):
+                assert math.isnan(layer[i]) == missing, (r, c)
+    assert (shade[~np.isnan(shade)] > 0).all()
+    for rows_, cols_ in ((1, 1), (1, 9), (2, 5), (5, 2), (3, 3)):
+        got = surface.ask("horn", rows=rows_, cols=cols_, zt=_sk_b64([1.0] * (rows_ * cols_)),
+                          **_sk_metric(rows_))["ok"]
+        finite = (~np.isnan(_sk_f64(got["p"]))).sum()
+        assert finite == (1 if (rows_, cols_) == (3, 3) else 0), (rows_, cols_)
+    assert "error" in surface.ask("horn", rows=3, cols=4, zt=_sk_b64([1.0] * 11), **_sk_metric(3))
+    assert "error" in surface.ask("shade", p=_sk_b64([0.1] * 4), q=_sk_b64([0.1] * 5), az=0.0, alt=45.0, zf=None)
+    assert "error" in surface.ask("curv", zt=_sk_b64([1.0] * 12), cls=_sk_b64([1] * 11, "u1"), rows=3, cols=4,
+                                  spacing=90.0, floorTan=0.001, **_sk_metric(3))
+    assert "error" in surface.ask("curv", zt=_sk_b64([1.0] * 12), cls=_sk_b64([1] * 12, "u1"), rows=3, cols=4,
+                                  spacing="Infinity", floorTan=0.001, **_sk_metric(3))
+    assert "error" in surface.ask("curv", zt=_sk_b64([1.0] * 12), cls=_sk_b64([1] * 12, "u1"), rows=3, cols=4,
+                                  spacing="NaN", floorTan=0.001, **_sk_metric(3))
+
+
+def test_the_browser_contour_interval_walks_exact_integers_across_every_knife_edge(surface):
+    """C.contourInterval against the walk written with Python's exact
+    integers: at each step 1, 2, 5, ... 5e30 the relief that puts the limit
+    (relief/12)*2 on it, and the reliefs a few doubles either side, where
+    log10 and a double's rounding (past 2e22 a step is no longer a double)
+    can each pick the neighbouring step; ordinary reliefs, where the old
+    log10 rule is kept; and no relief, a negative one, NaN, the infinities
+    and the largest double, which must end. Prevents an interval one step
+    off at a knife edge in one engine only, a walk that never ends, and a
+    change from the intervals the maps have drawn."""
+    import numpy as np
+
+    rng = random.Random(41_315)
+    fixed = [(0.0, 10.0), (-0.0, 10.0), (-1.0, 10.0), (math.nan, 10.0), (math.inf, 10.0), (-math.inf, 10.0),
+             (5e-324, 1.0), (0.5, 1.0), (5.999999999999999, 1.0), (6.0, 1.0), (12.0, 2.0), (59.99999999999999, 5.0),
+             (60.0, 10.0), (100.0, 10.0), (300.0, 50.0), (1000.0, 100.0), (9000.0, 1000.0), (10000.0, 1000.0),
+             (1.7976931348623157e308, float(2 * 10**307))]
+    reliefs = [relief for relief, _ in fixed]
+    for e in range(31):
+        for m in (1, 2, 5):
+            relief = float(m * 10**e) * 6.0
+            reliefs.append(relief)
+            up = down = relief
+            for _ in range(3):
+                up, down = math.nextafter(up, math.inf), math.nextafter(down, 0.0)
+                reliefs += [up, down]
+    reliefs += [10 ** rng.uniform(-3, 30) for _ in range(2000)]
+    got = _sk_f64(surface.ask("contour", reliefs=_sk_b64(reliefs))["ok"])
+    want = [_ref_contour_interval(v) for v in reliefs]
+    differ = _sk_differ(got, want)
+    assert not differ, [(reliefs[i], got[i], want[i]) for i in differ[:10]]
+    assert [float(v) for v in got[:len(fixed)]] == [want for _, want in fixed]
+    # the old rule (log10 of relief/12) on ordinary reliefs, away from a power of ten
+    kept = 0
+    for relief, interval in zip(reliefs[-2000:], got[-2000:], strict=True):
+        target = relief / 12.0
+        exponent = math.log10(target)
+        if abs(exponent - round(exponent)) < 1e-12:
+            continue
+        nice = 10 ** math.floor(exponent)
+        old = next((max(nice * mult, 1.0) for mult in (10, 5, 2, 1) if nice * mult <= target * 2), max(nice, 1.0))
+        assert interval == np.float64(old), (relief, interval, old)
+        kept += 1
+    assert kept > 1990
+
+
+def test_the_browser_display_range_takes_ranked_finite_elements_as_they_are(surface):
+    """C.displayRange against the spec's rule on random lists (duplicates,
+    NaN, both infinities, both zeros): the finite values sorted, the
+    elements at floor(lo*(n-1)) and floor(hi*(n-1)) taken as they are
+    (never interpolated, a zero as +0), NaN and NaN when nothing is
+    finite, and fractions outside 0..1 refused. Prevents a range that
+    moves with infinities or voids, an interpolated limit the other engine
+    cannot reproduce to the bit, and a -0 limit in one engine only (-0 and
+    +0 sort as equals, so which lands at the index is not fixed)."""
+    rng = random.Random(41_316)
+
+    def ask(values, lo, hi, plain=False):
+        answer = surface.ask("range", values=_sk_b64(values), fractions=_sk_b64([lo, hi]), plain=plain)
+        return answer if "error" in answer else tuple(_sk_f64(answer["ok"]))
+
+    for trial in range(400):
+        n = rng.choice([0, 1, 2, 3, 10, rng.randint(0, 400)])
+        pool = [rng.uniform(-50, 50), round(rng.uniform(-5, 5)), 0.0, -0.0, math.nan, math.inf, -math.inf]
+        values = [rng.choice(pool) if rng.random() < 0.3 else rng.uniform(-1e3, 1e3) for _ in range(n)]
+        lo, hi = rng.choice([0.0, 0.02, 0.5, 0.98, 1.0, rng.random()]), rng.choice([0.0, 0.98, 1.0, rng.random()])
+        got, want = ask(values, lo, hi, plain=trial % 5 == 0), _ref_display_range(values, lo, hi)
+        assert not _sk_differ(got, want), (trial, values, lo, hi, got, want)
+    assert ask([0.0, 10.0], 0.5, 0.5) == (0.0, 0.0), "the element at the rank, not a value between"
+    low, high = ask([3.0, math.nan, 1.0, math.inf, 2.0, -0.0, -math.inf], 0.0, 1.0)
+    assert struct.pack("<d", low) == struct.pack("<d", 0.0) and high == 3.0
+    assert all(math.isnan(v) for v in ask([math.nan, math.inf], 0.02, 0.98))
+    assert all(math.isnan(v) for v in ask([], 0.02, 0.98))
+    for lo, hi in ((-0.1, 0.5), (0.5, 1.5), (math.nan, 0.5)):
+        assert "error" in ask([1.0, 2.0], lo, hi), (lo, hi)
+
+
+def _surface_case(rng: random.Random, trial: int) -> dict:
+    """One small random grid as the analysis hands it to the surface
+    kernels: heights of one of several kinds (smooth, decimetre and metre
+    ties, terraces, a few -0, now and then so large that squares
+    overflow), voids and sea with and without a height, a per-row metric
+    (a real one or made up), drainage areas past 2^32 units, and sun,
+    floor and spacing settings drawn round the defaults."""
+    import numpy as np
+
+    from groundwater.mapping.elevation import row_metric
+
+    rows, cols = rng.randint(1, 16), rng.randint(1, 16)
+    if trial % 2:
+        step = rng.choice([1 / 3600, 1 / 1200, rng.uniform(1e-4, 1e-2)])
+        lat0 = rng.uniform(-60.0, 60.0)
+        metric = row_metric(np.array([-12.0, -12.0 + step]), np.array([lat0 + j * step for j in range(max(rows, 2))]))
+        dx, dy = metric.dx[:rows].tolist(), metric.dy[:rows].tolist()
+    else:
+        dx, dy = [rng.uniform(5.0, 200.0) for _ in range(rows)], [rng.uniform(5.0, 200.0) for _ in range(rows)]
+    kind = rng.choices(["smooth", "decimetres", "metres", "terraces", "flat", "huge"], [4, 3, 3, 2, 1, 1])[0]
+    base, east, north = rng.uniform(-20.0, 400.0), rng.uniform(-3.0, 3.0), rng.uniform(-3.0, 3.0)
+    noise = rng.choice([0.0, 0.01, 0.5, 5.0])
+    p_void, p_sea = rng.choice([0.0, 0.0, 0.05, 0.2]), rng.choice([0.0, 0.0, 0.1, 0.3])
+    z, cls, au = [], [], []
+    for r in range(rows):
+        for c in range(cols):
+            v = base + east * c + north * r + rng.gauss(0.0, noise)
+            v = {"decimetres": round(v * 10.0) / 10.0, "metres": float(round(v)), "terraces": math.floor(v / 5.0) * 5.0,
+                 "flat": base, "huge": v * 1e160}.get(kind, v)
+            if rng.random() < 0.03:
+                v = -0.0
+            u = rng.random()
+            if u < p_void:
+                z.append(math.nan)
+                cls.append(0)
+            elif u < p_void + p_sea:
+                z.append(rng.choice([math.nan, min(v, 0.0), -0.0]))
+                cls.append(2)
+            else:
+                z.append(v)
+                cls.append(1)
+            au.append(float(rng.choice([rng.randint(1, 10**6), rng.randint(1, 2**45), 93962 * rng.randint(1, 5000)])))
+    case = {
+        "rows": rows, "cols": cols, "z": z, "cls": cls, "au": au, "dx": dx, "dy": dy,
+        "azimuths": rng.choice([[225.0, 270.0, 315.0, 360.0], [270.0, 315.0, 0.0, 45.0], [],
+                                [rng.uniform(-720.0, 720.0) for _ in range(rng.randint(1, 6))],
+                                [float(rng.randint(-8, 8) * 45) for _ in range(rng.randint(1, 5))]]),
+        "panels": [270.0, 315.0, 0.0, 45.0, rng.uniform(-400.0, 400.0)],
+        "alt": rng.choice([45.0, 45.0, 30.0, 0.0, 90.0, 12.5, rng.uniform(-10.0, 100.0)]),
+        "zf": rng.choice([None, 1.0, 2.0, 0.5, rng.uniform(0.1, 5.0)]),
+        "floor": rng.choice([0.001, 0.001, 0.01, 0.05, rng.uniform(1e-4, 0.2)]),
+        "spacing": rng.choice([90.0, rng.uniform(0.0, 300.0),
+                               rng.randint(1, 4) * (dx[rows // 2] + dy[rows // 2]) / 2.0]),
+    }
+    # now and then the floor is one of the grid's own slopes exactly, where
+    # >= and > part: a wetness slope, or a curvature slope whose square is exact
+    tie = rng.random()
+    if tie < 0.3:
+        slopes = [v for v in _ref_horn(z, rows, cols, dx, dy)[2] if 0.0 < v < math.inf]
+        if slopes:
+            case["floor"] = rng.choice(slopes)
+    elif tie < 0.6:
+        squares: list[float] = []
+        _ref_curvatures(z, cls, rows, cols, dx, dy, case["spacing"], 0.001, squares)
+        exact = [math.sqrt(g2) for g2 in squares if 0.0 < g2 < math.inf and math.sqrt(g2) * math.sqrt(g2) == g2]
+        if exact:
+            case["floor"] = rng.choice(exact)
+    case["js"] = {
+        "rows": rows, "cols": cols, "zt": _sk_b64(z), "cls": _sk_b64(cls, "u1"), "au": _sk_b64(au),
+        "dx": _sk_b64(dx), "dy": _sk_b64(dy), "azimuths": case["azimuths"], "panels": case["panels"],
+        "alt": case["alt"], "zf": case["zf"], "floorTan": case["floor"], "spacing": case["spacing"],
+    }
+    return case
+
+
+def test_the_browser_surface_kernels_equal_the_spec_written_out_on_random_grids(surface):
+    """Every surface kernel of the browser engine against the spec's
+    pseudo-code written out above in scalar Python, on 300 seeded random
+    grids (voids, sea with and without a height, signed zeros, ties,
+    overflowing squares, real and made-up row metrics, odd suns, floors
+    and spacings): Horn's p, q and tanb, a hillshade per panel sun, the
+    multidirectional composite, the wetness index's arg and floored cells,
+    and both curvatures with their k, all to the bit; twi = log(arg) to
+    1e-12. Prevents any reordering, regrouping or hoisting in gwt-core.js
+    that changes a last bit, which would set the two engines' figures and
+    summaries apart where parity cannot see (parity runs a few grids, this
+    runs every edge of the rules)."""
+    from collections import Counter
+
+    rng = random.Random(41_311)
+    cases = [_surface_case(rng, trial) for trial in range(300)]
+    answers = surface.ask("kernels", cases=[case["js"] for case in cases])["ok"]
+    differ, seen = [], Counter()
+    for trial, (case, js) in enumerate(zip(cases, answers, strict=True)):
+        rows, cols, z, dx, dy = case["rows"], case["cols"], case["z"], case["dx"], case["dy"]
+        zf = 1.0 if case["zf"] is None else case["zf"]
+        p, q, tanb = _ref_horn(z, rows, cols, dx, dy)
+        expect = {"p": p, "q": q, "tanb": tanb,
+                  "multi": _ref_multidirectional(p, q, case["azimuths"], case["alt"], zf)}
+        arg, twi, floored = _ref_wetness(case["au"], case["cls"], tanb, rows, cols, dx, dy, case["floor"])
+        profile, tangential, k = _ref_curvatures(z, case["cls"], rows, cols, dx, dy, case["spacing"], case["floor"])
+        expect.update(arg=arg, profile=profile, tangential=tangential)
+        for name, want in expect.items():
+            bad = _sk_differ(_sk_f64(js[name]), want)
+            if bad:
+                differ.append(f"trial {trial} {name}: {len(bad)} cells, first {bad[0]}: "
+                              f"browser {_sk_f64(js[name])[bad[0]]!r}, spec {want[bad[0]]!r}")
+        for az, layer in zip(case["panels"], js["shades"], strict=True):
+            want = _ref_hillshade(p, q, az, case["alt"], zf)
+            bad = _sk_differ(_sk_f64(layer), want)
+            if bad:
+                differ.append(f"trial {trial} hillshade {az}: {len(bad)} cells")
+            seen["shadow"] += sum(1 for v in want if v == 0.0)
+        if _sk_u8(js["floored"]).tolist() != floored:
+            differ.append(f"trial {trial} floored")
+        if js["kCells"] != k:
+            differ.append(f"trial {trial} kCells {js['kCells']} != {k}")
+        far = _sk_far(_sk_f64(js["twi"]), twi)
+        if far:
+            differ.append(f"trial {trial} twi: {len(far)} cells beyond 1e-12")
+        seen["slopes"] += sum(1 for v in p if not math.isnan(v))
+        seen["flat"] += sum(1 for v in tanb if v == 0.0)
+        seen["floored"] += sum(floored)
+        seen["wetness"] += sum(1 for v in arg if not math.isnan(v))
+        seen["curvature"] += sum(1 for v in profile if not math.isnan(v))
+        seen["overflow"] += sum(1 for v in tanb if v == math.inf)
+        seen[f"k={k}"] += 1
+    assert not differ, f"{len(differ)} differences:\n" + "\n".join(differ[:20])
+    # the cases reach every rule, not just the easy middle
+    assert seen["slopes"] > 5000 and seen["wetness"] > 2000 and seen["curvature"] > 300, seen
+    assert seen["shadow"] > 100 and seen["flat"] > 50 and seen["floored"] > 50 and seen["overflow"] > 0, seen
+    assert seen["k=1"] and seen["k=2"] and seen["k=3"], seen
