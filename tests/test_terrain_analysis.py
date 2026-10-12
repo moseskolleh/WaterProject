@@ -30,6 +30,7 @@ import math
 import re
 import subprocess
 import sys
+import tracemalloc
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
@@ -790,6 +791,34 @@ def test_a_flat_drains_away_from_higher_ground_as_barnes_describes():
     assert out.code.tobytes() == _barnes_flats(out.filled, out.cls, out.code_d8)[0].tobytes()
 
 
+def test_a_large_flat_is_resolved_without_a_table_per_cell_and_as_before():
+    """Prevents resolve_flats from holding tables of eight neighbours for
+    every flat cell beside its search graph, about 270 bytes a cell: a
+    constant fill makes a flat of the whole window easily, and at the cap
+    that took the analysis past the app's memory. The flat keeps under 200
+    bytes a cell, and its directions, ties and all, are those the tables
+    gave (the digest of the codes the version with tables wrote)."""
+    n = 400
+    z = np.full((n, n), 50.0)
+    z[180:220, 150:230] = 60.0                   # higher ground the flat drains away from
+    z[300:310, 40:45] = 55.0
+    cls, seed, _, zt = classify_cells(z, 0.0)
+    filled = fill_depressions(zt, cls, seed)
+    code_d8 = flow_directions(zt, filled, cls, seed, _metric(n, n), 0.0)
+    flats = int(np.count_nonzero((cls == LAND) & (code_d8 == 0)))
+    assert flats > 0.98 * n * n - 2000
+    tracemalloc.start()
+    try:
+        code, unresolved = resolve_flats(filled, cls, code_d8)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert unresolved == 0 and (code[cls == LAND] != 0).all()
+    assert peak < 200 * flats, f"{peak / flats:.0f} bytes a flat cell"
+    assert hashlib.sha256(code.tobytes()).hexdigest() == \
+        "3f7be2d3afb5d38540d0546e93e641fb485de402936ae71dd8737d43c5efe800"
+
+
 # ---------------------------------------------------------------------------
 # Accumulation and contamination
 # ---------------------------------------------------------------------------
@@ -898,6 +927,41 @@ def test_flow_directions_that_go_round_in_a_loop_are_refused():
     assert area[1, 0] == 2 * metric.au_row[0] + 2 * metric.au_row[1] + metric.au_row[2]
 
 
+def test_a_valley_winding_through_the_window_accumulates_as_kahn_does_one_cell_at_a_time():
+    """Prevents accumulate_flow from taking a round of numpy calls for every
+    cell of a long winding path (a valley snaking across a window at the
+    cap took 25 s), and from losing or counting twice any area where its
+    waves hand over to the loop over single cells: 298 parallel lines, a
+    front wider than the 256 cells the waves need, run into one channel
+    that winds through the rest of the grid past sea and a void, and every
+    count, area and flag is what Kahn's algorithm gives one cell at a
+    time."""
+    rows, cols = 300, 300
+    cls = np.full((rows, cols), LAND, dtype=np.uint8)
+    cls[0, :] = cls[:, 0] = cls[:, -1] = SEA
+    cls[150:250, -1] = VOID
+    code = np.zeros((rows, cols), dtype=np.uint8)
+    code[1:100, 1:-1] = N                        # parallel lines north, into the channel's first row
+    path = []
+    for r in range(100, rows):                   # the channel: east, north, west, north, ...
+        path.extend((r, c) for c in (range(1, cols - 1) if r % 2 == 0 else range(cols - 2, 0, -1)))
+    steps = list(zip(DR, DC, strict=True))
+    for (r, c), (rr, cc) in zip(path, path[1:], strict=False):
+        code[r, c] = ESRI[steps.index((rr - r, cc - c))]
+    code[path[-1]] = 255                         # out of the analysis at the north edge
+    metric = _metric(rows, cols)
+    land = cls == LAND
+    for sea_clean in (True, False):
+        count, area, flag = accumulate_flow(code, cls, metric, sea_clean)
+        assert count[path[-1]] == land.sum() == (rows - 1) * (cols - 2)
+        assert area[path[-1]] == np.broadcast_to(metric.au_row[:, None], land.shape)[land].sum()
+        assert count[path[1000]] == 100 * (cols - 2) + 1000 - (cols - 3)
+        assert flag[path[-1]] and flag[200, cols - 2] and (sea_clean != flag[120, 5])
+        for order in ("newest", "random") if sea_clean else ("newest",):
+            expected = _accumulate_in_order(code, cls, metric, sea_clean, order)
+            assert [a.tobytes() for a in (count, area, flag)] == [a.tobytes() for a in expected]
+
+
 def test_importing_the_analysis_does_not_import_pyplot():
     """Prevents the terrain analysis pulling in matplotlib, or scipy at
     import, which the browser's Pyodide build and the import bench would
@@ -974,7 +1038,7 @@ def _drawn(rows: int, cols: int, paths, sea=(), flat=(), raised=(), shown=None) 
 def _links_as_written(core: TerrainCore, area_km2: float):
     """The drainage lines and their parts as the design writes them out,
     one cell at a time on plain lists: an oracle for drainage_links, which
-    walks the stream cells alone on arrays of its own."""
+    puts the stream cells in order along their lines in arrays, all at once."""
     rows, cols = core.rows, core.cols
     size = rows * cols
     threshold = math.floor(area_km2 * 1e8 + 0.5)
@@ -1455,35 +1519,6 @@ def test_links_are_cut_where_they_leave_the_shown_square():
     assert cut > 10
 
 
-def test_the_vertices_of_a_piece_are_found_by_binary_search_as_the_rule_writes_them():
-    """Prevents the binary search over a line's turns, which spares a line
-    cut into many pieces a scan of every turn for each piece, from keeping
-    other vertices than spec 3.10's rule: both ends, and every turn
-    strictly between them. Held on random sorted turn lists, with turns at
-    either end of the piece, none at all, and pieces of one and two
-    positions."""
-    from groundwater.mapping.terrain_analysis import _vertex_positions
-
-    def written(turns, a, b):
-        return [a] if b - a == 1 else [a] + [m for m in turns if a < m < b - 1] + [b - 1]
-
-    rng = np.random.default_rng(41_15)
-    cases = [([], 0, 1), ([], 3, 5), ([1, 2, 3], 0, 2), ([4], 4, 6), ([5], 4, 6), ([4, 5, 6], 4, 7)]
-    for _ in range(3000):
-        turns = sorted({int(m) for m in rng.integers(1, 60, int(rng.integers(0, 30)))})
-        a = int(rng.integers(0, 58))
-        b = a + int(rng.integers(1, 12))
-        if turns and rng.random() < 0.3:
-            a = int(rng.choice(turns))
-            b = a + int(rng.integers(1, 12))
-        if turns and rng.random() < 0.3:
-            b = int(rng.choice(turns)) + 1
-            a = max(0, b - int(rng.integers(1, 12)))
-        cases.append((turns, a, b))
-    for turns, a, b in cases:
-        assert _vertex_positions(turns, a, b) == written(turns, a, b), (turns, a, b)
-
-
 #: A threshold of about two and a half cells at 8.5 degrees north: above
 #: what a wall of _serpentine gathers, below what its channel's head does.
 SERPENTINE_KM2 = 0.0025
@@ -1679,6 +1714,36 @@ def test_the_hillshade_panels_need_an_azimuth_to_name():
     assert a.hillshades == ()
     with pytest.raises(ValueError, match="^the hillshade panels need at least one azimuth$"):
         terrain_captions(a, None, "here")
+
+
+def test_a_tilted_plane_of_stream_cells_is_traced_without_an_object_per_cell_and_as_before():
+    """Prevents drainage_links from making Python objects for every stream
+    cell, which on an evenly tilted plane, where every cell a few rows below
+    the top is on a line, took over 400 bytes a cell and put a tilted
+    GeoTIFF at the cap past the app's memory: the trace keeps under 150
+    bytes a stream cell, and its lines and parts are those the walk over
+    cells it replaced gave, to the last bit of every length (the digest of
+    their JSON)."""
+    n = 300
+    z = 100.0 + 0.01 * np.arange(n)[:, None] + np.zeros((n, n))    # rising to the north
+    a = analyse_terrain(_elevation(z), TerrainConfig(drainage_area_km2=SMALL_KM2), shown=(30, n - 30, 30, n - 30),
+                        precision="float64")
+    stream = int(np.count_nonzero(a.stream))
+    assert stream > 0.98 * n * n
+    tracemalloc.start()
+    try:
+        links, parts = drainage_links(a.core, SMALL_KM2)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert peak < 150 * stream, f"{peak / stream:.0f} bytes a stream cell"
+    # One line down each column to the south edge, cut to the square shown.
+    assert len(links) == n and {link.outlet for link in links} == {"edge"}
+    assert all(link.vertices == ((n - 4, c), (0, c)) for c, link in enumerate(links))
+    assert len(parts) == n - 60 and all(p.vertices == ((n - 31, p.id), (30, p.id)) for p in parts)
+    text = json.dumps([[dataclasses.asdict(x) for x in links], [dataclasses.asdict(x) for x in parts]])
+    assert hashlib.sha256(text.encode()).hexdigest() == \
+        "6d2aa348a4727b7cefac801085d42334acbfe94f6a9a145664b280270565c2a9"
 
 
 def test_the_drainage_geojson_escapes_names_and_rounds_as_python_does():

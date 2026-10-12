@@ -55,7 +55,6 @@ holds the two engines to the bit.
 
 from __future__ import annotations
 
-import bisect
 import json
 import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -477,37 +476,84 @@ def _padded(a: np.ndarray, fill) -> np.ndarray:
     return out.ravel()
 
 
-def _flat_levels(table: np.ndarray, onto: np.ndarray, from_higher: np.ndarray, from_outlets: np.ndarray
-                 ) -> tuple[np.ndarray, np.ndarray]:
-    """The two breadth-first levels of the flats: 1 at the seeds, one more
-    for each step, 0 where no seed reaches. Node ``i`` steps to
-    ``table[i, k]`` wherever ``onto[i, k]``; the steps from higher ground
-    start at the nodes ``from_higher``, those towards the outlets at
-    ``from_outlets``.
+def _flat_steps(k: int, cells: np.ndarray, level: np.ndarray, node: np.ndarray, height: np.ndarray,
+                is_flat: np.ndarray, offset: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
+    """The neighbour in direction ``k`` of each node at padded index
+    ``cells``, as a node number (-1 where it is none), and whether a search
+    steps onto it: a flat cell at the node's own height ``level``."""
+    j = cells + offset[k]
+    there = node[j]
+    with np.errstate(invalid="ignore"):
+        onto = (there >= 0) & (height[j] == level) & is_flat[j]
+    return there, onto
+
+
+def _flat_graph(node: np.ndarray, height: np.ndarray, is_flat: np.ndarray, offset: Sequence[int],
+                from_higher: np.ndarray, from_outlets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The graph the flats are searched on, in compressed rows (``indptr``
+    and ``indices``, int32): row ``i`` lists the nodes node ``i`` steps
+    to, in the order K, and two more rows are the virtual nodes the
+    searches start from, joined to ``from_higher`` and to the outlets.
+
+    It is written in place, a direction at a time, so that no table of
+    eight neighbours per node is held: a 2-million-cell flat would hold
+    several of them, at once, beside the graph itself.
+    """
+    cells = np.flatnonzero(node >= 0)            # the nodes, in their order
+    level = height[cells]
+    nodes = cells.size
+    indptr = np.zeros(nodes + 3, dtype=np.int32)
+    degree = indptr[1:nodes + 1]
+    for k in range(8):
+        degree += _flat_steps(k, cells, level, node, height, is_flat, offset)[1]
+    np.cumsum(degree, out=degree)
+    indptr[nodes + 1] = indptr[nodes] + from_higher.size
+    indptr[nodes + 2] = indptr[nodes + 1] + from_outlets.size
+    indices = np.empty(int(indptr[nodes + 2]), dtype=np.int32)
+    fill = indptr[:nodes].copy()                 # where each row's next step goes
+    for k in range(8):
+        there, onto = _flat_steps(k, cells, level, node, height, is_flat, offset)
+        at = np.flatnonzero(onto)
+        indices[fill[at]] = there[at]
+        fill[at] += 1
+    indices[indptr[nodes]:indptr[nodes + 1]] = from_higher
+    indices[indptr[nodes + 1]:] = from_outlets
+    return indptr, indices
+
+
+def _flat_levels(node: np.ndarray, height: np.ndarray, is_flat: np.ndarray, offset: Sequence[int],
+                 from_higher: np.ndarray, from_outlets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The two breadth-first levels of the flats on the graph
+    :func:`_flat_graph` writes (int32, by node): 1 at the seeds, one more
+    for each step, 0 where no seed reaches; the first from higher ground,
+    the second towards the outlets.
 
     One graph serves both searches, each from a virtual node of its own
     joined to its seeds. No step leads onto an outlet, so the search from
     higher ground never sets foot on one and never uses the steps out of
     one, which only the other search needs. csgraph's search builds a tree
     holding each node at its least number of steps from a seed, and the
-    level is that depth, counted by pointer doubling up the tree.
+    level is that depth, counted by pointer doubling up the tree once the
+    graph has been let go.
     """
     from scipy.sparse import csr_matrix
     from scipy.sparse.csgraph import breadth_first_order
 
-    nodes = table.shape[0]
-    indptr = np.zeros(nodes + 3, dtype=np.int32)
-    np.cumsum(onto.sum(axis=1), out=indptr[1:nodes + 1])
-    indptr[nodes + 1] = indptr[nodes] + from_higher.size
-    indptr[nodes + 2] = indptr[nodes + 1] + from_outlets.size
-    indices = np.concatenate([table[onto], from_higher, from_outlets]).astype(np.int32, copy=False)
+    indptr, indices = _flat_graph(node, height, is_flat, offset, from_higher, from_outlets)
+    nodes = indptr.size - 3
+    # csgraph searches a float64 matrix and would copy any other data into
+    # one; the values themselves are never read.
     graph = csr_matrix((np.ones(indices.size), indices, indptr), shape=(nodes + 2, nodes + 2))
+    del indptr, indices
+    sources = (nodes, nodes + 1)
+    parents = [breadth_first_order(graph, source, directed=True, return_predecessors=True)[1] for source in sources]
+    del graph
     levels = []
-    for source in (nodes, nodes + 1):
-        _, parent = breadth_first_order(graph, source, directed=True, return_predecessors=True)
+    for source, parent in zip(sources, parents, strict=True):
         reached = parent >= 0
-        depth = reached.astype(np.int64)          # steps from a node up to anc
+        depth = reached.astype(np.int32)          # steps from a node up to anc
         anc = np.where(reached, parent, source)
+        del reached
         while True:
             depth += depth[anc]
             nxt = anc[anc]
@@ -570,37 +616,63 @@ def resolve_flats(filled, cls, code_d8) -> tuple[np.ndarray, int]:
     node = np.full(is_node.size, -1, dtype=np.int32)
     node[cells] = np.arange(nodes, dtype=np.int32)
     outlets = node[cells[~is_flat[cells]]]
+    from_higher = node[flat[high]]
+    del is_land, flowing, flat, at, high, is_node, cells
 
     # Each node's neighbours at its own height (all of them flat cells or
     # outlets); a search steps only onto a flat cell.
-    level = height[cells]
-    table = np.empty((nodes, 8), dtype=np.int32)
-    same = np.empty((nodes, 8), dtype=bool)
-    onto = np.empty((nodes, 8), dtype=bool)
+    away, towards = _flat_levels(node, height, is_flat, offset, from_higher, outlets)
+    top = int(away.max())
+    towards = 2 * towards.astype(np.int64)
+    mask = np.where(away > 0, (top - away) + towards, towards)
+    del away, towards
+
+    # Each flat cell takes the neighbour at its height with the smallest
+    # mask below its own.
+    flat = np.flatnonzero(is_flat)
+    here = height[flat]
+    best = mask[node[flat]]
+    step = np.full(flat.size, -1, dtype=np.int8)
     with np.errstate(invalid="ignore"):
         for k in range(8):
-            j = cells + offset[k]
-            table[:, k] = node[j]
-            same[:, k] = (node[j] >= 0) & (height[j] == level)
-            onto[:, k] = same[:, k] & is_flat[j]
-    on_flat = is_flat[cells]
-    away, towards = _flat_levels(table, onto, node[flat[high]], outlets)
-    top = int(away.max())
-    mask = np.where(away > 0, (top - away) + 2 * towards, 2 * towards)
-
-    mine = np.flatnonzero(on_flat)
-    best = mask[mine]
-    step = np.full(mine.size, -1, dtype=np.int64)
-    for k in range(8):
-        there = table[mine, k]
-        better = same[mine, k] & (mask[there] < best)
-        best = np.where(better, mask[there], best)
-        step = np.where(better, k, step)
-    where = cells[mine]
-    grid_index = (where // wide - 1) * cols + (where % wide - 1)
+            j = flat + offset[k]
+            there = node[j]
+            better = (there >= 0) & (height[j] == here) & (mask[there] < best)
+            best = np.where(better, mask[there], best)
+            step = np.where(better, k, step)
+    grid_index = (flat // wide - 1) * cols + (flat % wide - 1)
     done = step >= 0
     np.put(code, grid_index[done], np.asarray(_ESRI, dtype=np.uint8)[step[done]])
     return code, int(np.count_nonzero(~done))
+
+
+#: The width under which accumulate_flow's waves hand the rest over to a
+#: loop over cells. A wave costs about 25 microseconds however narrow it
+#: is, so a path winding through the whole window would cost one wave per
+#: cell; the loop costs under a microsecond a cell however the cells lie.
+_SCALAR_FRONT = 256
+
+
+def _kahn_tail(front: np.ndarray, down: np.ndarray, inflow: np.ndarray, count: np.ndarray, area: np.ndarray,
+               flag: np.ndarray) -> None:
+    """Kahn's algorithm carried on one cell at a time from the cells
+    ``front``, in place on accumulate_flow's flattened layers: the way the
+    browser runs all of it, from a stack rather than a queue, which changes
+    no sum. The layers are read and written through memoryviews, so no
+    Python object is held per cell: a tail of a million cells adds no
+    memory and takes about half a second."""
+    to, waiting, cells, units, flagged = (a.data for a in (down, inflow, count, area, flag))
+    ready = front.tolist()
+    while ready:
+        i = ready.pop()
+        d = to[i]
+        cells[d] += cells[i]
+        units[d] += units[i]
+        if flagged[i]:
+            flagged[d] = True
+        waiting[d] -= 1
+        if waiting[d] == 0 and to[d] >= 0:
+            ready.append(d)
 
 
 def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
@@ -660,11 +732,17 @@ def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
     flag = (land & risky).ravel()
 
     # Kahn's order in waves: every cell with nothing left to receive passes
-    # its totals on at once, grouped by the cell they go to.
+    # its totals on at once, grouped by the cell they go to. A wave costs
+    # the same dozen numpy calls however few cells it holds, so a channel
+    # winding through the whole window would take one wave per cell. A
+    # front never widens (each of its cells has a cell of the last front
+    # upstream), so once it is narrower than _SCALAR_FRONT the rest goes
+    # one cell at a time (_kahn_tail). The sums are integers and the flag
+    # an or, so the order changes nothing.
     has = down >= 0
     inflow = np.bincount(down[has], minlength=size)
     front = np.flatnonzero(has & (inflow == 0) & land.ravel())
-    while front.size:
+    while front.size >= _SCALAR_FRONT:
         to = down[front]
         order = np.argsort(to)
         to = to[order]
@@ -676,6 +754,7 @@ def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
         flag[u] |= np.logical_or.reduceat(flag[front], first)
         inflow[u] -= np.diff(np.r_[first, to.size])
         front = u[(inflow[u] == 0) & has[u]]
+    _kahn_tail(front, down, inflow, count, area, flag)
     # A cell still waiting for inflow lies on a loop of directions, which
     # Kahn's order never reaches: its totals, and those of everything that
     # drains into the loop, would come back short without a word.
@@ -871,30 +950,67 @@ def _threshold_units(area_km2: float) -> int:
     return math.floor(units)
 
 
-def _vertex_positions(turns: Sequence[int], a: int, b: int) -> list[int]:
-    """The positions ``a`` to ``b - 1`` of a line kept as vertices: both
-    ends, and every position between them in ``turns`` (where the line
-    turns or changes how it was routed). One position is one vertex.
-
-    ``turns`` is in ascending order, so the turns inside are found by two
-    binary searches rather than a scan of the whole list: a line that
-    leaves the square shown and comes back is cut into many parts, and a
-    scan per part would cost the parts times the turns."""
-    if b - a == 1:
-        return [a]
-    lo = bisect.bisect_right(turns, a)
-    hi = bisect.bisect_left(turns, b - 1)
-    return [a, *turns[lo:hi], b - 1]
+#: Runs of up to this many steps are added together, a step of every run
+#: at a time; a longer run carries on alone (:func:`_run_sums`).
+_COLUMN_STEPS = 64
 
 
-def _summed(steps: Sequence[float]) -> float:
-    """``steps`` added one after another, as the browser adds them. Python's
-    ``sum`` of floats compensates for rounding (3.12 on), so it can give
-    other bits than a plain loop."""
-    total = 0.0
-    for step in steps:
-        total += step
-    return total
+def _run_sums(steps: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+    """The sum of ``steps[lo[i]:hi[i]]`` for every run ``i``, the steps added
+    one after another from 0.0, as the browser adds a line's steps: numpy's
+    sum adds pairwise and Python's (3.12 on) compensates for rounding, and
+    either can give other bits than a plain loop.
+
+    The runs are sorted by length, so that the runs with more than ``j``
+    steps are the last ones, and step ``j`` of all of them is added at
+    once. Past :data:`_COLUMN_STEPS` steps, each run left carries on alone
+    with an accumulation, which also adds in order.
+    """
+    by = np.argsort(hi - lo, kind="stable")
+    size = (hi - lo)[by]
+    begin = lo[by]
+    total = np.zeros(by.size)
+    longest = int(size[-1]) if size.size else 0
+    for j in range(min(longest, _COLUMN_STEPS)):
+        going = int(np.searchsorted(size, j, side="right"))
+        total[going:] += steps[begin[going:] + j]
+    for i in range(int(np.searchsorted(size, _COLUMN_STEPS, side="right")), size.size):
+        rest = steps[begin[i] + _COLUMN_STEPS:begin[i] + size[i]]
+        total[i] = np.add.accumulate(np.concatenate(([total[i]], rest)))[-1]
+    out = np.empty_like(total)
+    out[by] = total
+    return out
+
+
+def _along_lines(down: np.ndarray, is_start: np.ndarray, starts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """For every stream cell, the line it is on (its start's place in
+    ``starts``) and how many steps along that line it lies.
+
+    A cell that starts no line continues the line of the one stream cell
+    draining to it, so each such cell points up to that cell, and pointer
+    doubling follows the pointers to the start, counting the steps: about
+    log2 of the longest line in passes over the cells, where walking the
+    lines would take a Python step, and Python objects, for every cell. A
+    cell on a loop that no line runs into (only a core whose directions
+    loop has one) is on no line, as in a walk from the starts, and gets -1.
+    """
+    n = down.size
+    up = np.arange(n)
+    carry = down >= 0
+    carry[carry] = ~is_start[down[carry]]
+    up[down[carry]] = np.flatnonzero(carry)
+    del carry
+    steps = (~is_start).astype(np.intp)
+    for _ in range(n.bit_length()):
+        further = steps[up]
+        if not further.any():
+            break
+        steps += further
+        up = up[up]
+    del further
+    line = np.searchsorted(starts, up)
+    line[~is_start[up]] = -1
+    return line, steps
 
 
 def drainage_links(core: TerrainCore, area_km2: float
@@ -918,6 +1034,11 @@ def drainage_links(core: TerrainCore, area_km2: float
     analysed square. Only integers and comparisons decide the lines, and
     lengths are added in order along them, so both engines trace the same
     lines to the bit; a new threshold needs nothing but the core.
+
+    The stream cells can be most of the window (a plane tilted evenly has
+    every cell a few rows down from its top edge on a line), so they are
+    handled in arrays throughout; Python objects are made for the lines,
+    their parts and their vertices alone.
     """
     rows, cols = int(core.rows), int(core.cols)
     r0, r1, c0, c1 = (int(v) for v in core.shown)
@@ -932,132 +1053,226 @@ def drainage_links(core: TerrainCore, area_km2: float
     # Every stream cell's neighbour along its direction. A stream cell's
     # area only grows downstream, so a land neighbour is a stream cell too;
     # anything else means the core's layers do not belong together.
-    row = cells // cols
-    col = cells - row * cols
-    k = _K_OF_CODE[code_flat[cells]]
+    code = code_flat[cells]
+    row, col = np.divmod(cells, cols)
+    inside = (row >= r0) & (row < r1) & (col >= c0) & (col < c1)
+    k = _K_OF_CODE[code]
     steps = k >= 0
-    kk = np.where(steps, k, 0)
-    next_row = row + np.asarray(_DR)[kk]
-    next_col = col + np.asarray(_DC)[kk]
-    in_grid = (next_row >= 0) & (next_row < rows) & (next_col >= 0) & (next_col < cols)
+    k[~steps] = 0
+    row += np.asarray(_DR)[k]
+    col += np.asarray(_DC)[k]
+    del k
+    in_grid = (row >= 0) & (row < rows) & (col >= 0) & (col < cols)
     if (steps & ~in_grid).any():
         raise ValueError("a direction in the core points out of the grid")
-    after = np.where(steps, next_row * cols + next_col, 0)
+    del in_grid
+    after = row * cols
+    after += col
+    after[~steps] = 0
+    del row, col
     onto_land = steps & land[after]
+    del steps
     down = np.searchsorted(cells, after)
-    down = np.minimum(down, cells.size - 1)
+    np.minimum(down, cells.size - 1, out=down)
     if (onto_land & (cells[down] != after)).any():
         raise ValueError("a stream cell drains to land below the threshold; the core's layers disagree")
-    down = np.where(onto_land, down, -1)
+    down[~onto_land] = -1
+    del after, onto_land
     feeds = np.bincount(down[down >= 0], minlength=cells.size)
+    is_start = (feeds == 0) | (feeds >= 2)
+    del feeds
+    starts = np.flatnonzero(is_start)
+    lines = starts.size
 
-    dist = np.zeros(cells.size)
-    for step, sizes in enumerate((core.dx, core.dy, core.dg)):
-        which = steps & (np.asarray(_STEP)[kk] == step)
-        dist[which] = np.asarray(sizes, dtype=np.float64)[row[which]]
-    edge = (row == 0) | (row == rows - 1) | (col == 0) | (col == cols - 1)
+    # A cell whose next is no stream cell, or starts a line, ends the line
+    # it is on. What lies beyond is kept for those cells alone, so that
+    # ``down`` can go before the lines are put in order.
+    is_end = down < 0
+    is_end |= is_start[down]
+    ends = np.flatnonzero(is_end)
+    del is_end
+    beyond = down[ends]
+    line, along = _along_lines(down, is_start, starts)
+    del down, is_start
 
-    # The loop below walks the stream cells alone, by their position in
-    # ``cells``, on plain lists: a few per cent of the grid.
-    down_l = down.tolist()
-    feeds_l = feeds.tolist()
-    code_l = code_flat[cells].tolist()
-    row_l, col_l = row.tolist(), col.tolist()
-    next_l = list(zip(next_row.tolist(), next_col.tolist(), strict=True))
-    dist_l = dist.tolist()
-    edge_l = edge.tolist()
-    flat_l = np.asarray(core.flat_routed, dtype=bool).ravel()[cells].tolist()
-    raised_l = np.asarray(core.raised, dtype=bool).ravel()[cells].tolist()
-    flag_l = np.asarray(core.flag, dtype=bool).ravel()[cells].tolist()
-    area_l = area_flat[cells].tolist()
-    count_l = np.asarray(core.count, dtype=np.int64).ravel()[cells].tolist()
-    starts = np.flatnonzero((feeds == 0) | (feeds >= 2)).tolist()
-    link_of = {s: n for n, s in enumerate(starts)}
+    # The lines, numbered in grid order by the cell they start at, and
+    # every cell of each in the order the line runs (``order``, an index
+    # into ``cells``): line n holds order[first[n]:first[n + 1]].
+    member = None
+    if (line < 0).any():
+        member = np.flatnonzero(line >= 0)
+        line, along = line[member], along[member]
+    first = np.zeros(lines + 1, dtype=np.intp)
+    np.cumsum(np.bincount(line, minlength=lines), out=first[1:])
+    along += first[line]
+    del line
+    order = np.empty(along.size, dtype=np.intp)
+    order[along] = np.arange(cells.size) if member is None else member
+    del along, member
 
-    traced = []
-    for s in starts:
-        own = [s]
-        cur = s
-        joins = -1
-        end = None
-        while True:
-            d = down_l[cur]
-            if d >= 0:
-                if feeds_l[d] >= 2:
-                    outlet, joins, end = "confluence", link_of[d], (row_l[d], col_l[d])
-                    break
-                own.append(d)
-                cur = d
-            elif code_l[cur] == FLOWS_OUT:
-                outlet = "edge" if edge_l[cur] else "void"
-                break
-            elif code_l[cur] == 0:
-                outlet = "sink"          # a flat left without a direction: never expected
-                break
-            else:
-                outlet, end = "sea", next_l[cur]
-                break
-        traced.append((own, outlet, joins, end))
+    # Where each line ends: at the next confluence, whose cell it runs into
+    # and whose line it joins, in the sea, which it runs into, or out of
+    # the analysis at the edge or at a void. (A code that is no direction,
+    # which no analysis writes, ends a line as the sea does, at the east
+    # neighbour.)
+    last = order[first[1:] - 1]
+    beyond = beyond[np.searchsorted(ends, last)]
+    del ends
+    meets = beyond >= 0
+    joins = np.where(meets, np.searchsorted(starts, beyond), -1)
+    end_code = code[last]
+    last_row, last_col = np.divmod(cells[last], cols)
+    on_edge = (last_row == 0) | (last_row == rows - 1) | (last_col == 0) | (last_col == cols - 1)
+    kind = np.where(meets, 0, np.where(end_code == FLOWS_OUT, np.where(on_edge, 1, 2),
+                                       np.where(end_code == 0, 3, 4)))
+    has_end = kind == 4
+    has_end |= meets
+    k = np.maximum(_K_OF_CODE[end_code], 0)
+    end_row, end_col = np.divmod(cells[np.where(meets, beyond, 0)], cols)
+    end_row = np.where(meets, end_row, last_row + np.asarray(_DR)[k])
+    end_col = np.where(meets, end_col, last_col + np.asarray(_DC)[k])
+    end_inside = has_end & (end_row >= r0) & (end_row < r1) & (end_col >= c0) & (end_col < c1)
+    # The last position of a line is the cell it runs into, or its own last.
+    end_row = np.where(has_end, end_row, last_row)
+    end_col = np.where(has_end, end_col, last_col)
+    del last, beyond, end_code, last_row, last_col, on_edge, k
 
     # Strahler orders, upstream first: a line's first cell gathers more
     # cells than any cell upstream of it, so ordering by that count, then
-    # by the cell (``starts`` is in grid order), puts every line after the
-    # lines that join it.
-    joining: dict[int, list[int]] = {}
-    for n, (_, _, joins, _) in enumerate(traced):
-        if joins >= 0:
-            joining.setdefault(joins, []).append(n)
-    order = [0] * len(traced)
-    for n in sorted(range(len(traced)), key=lambda n: (count_l[starts[n]], starts[n])):
-        incoming = [order[m] for m in joining.get(n, ())]
+    # by the cell (the lines are numbered in grid order), puts every line
+    # after the lines that join it.
+    count_at = np.asarray(core.count, dtype=np.int64).ravel()[cells[starts]]
+    upstream_first = np.argsort(count_at, kind="stable").tolist()
+    joining = np.argsort(joins, kind="stable")[int(np.count_nonzero(joins < 0)):].tolist()
+    joined = np.zeros(lines + 1, dtype=np.intp)
+    np.cumsum(np.bincount(joins[joins >= 0], minlength=lines), out=joined[1:])
+    bounds = joined.tolist()
+    strahler = [0] * lines
+    for n in upstream_first:
+        incoming = [strahler[m] for m in joining[bounds[n]:bounds[n + 1]]]
         if not incoming:
-            order[n] = 1
+            strahler[n] = 1
         else:
             top = max(incoming)
-            order[n] = top + 1 if incoming.count(top) >= 2 else top
+            strahler[n] = top + 1 if incoming.count(top) >= 2 else top
+    del count_at, upstream_first, joining, joined, bounds
+
+    # The positions kept as vertices between a line's ends: each cell
+    # where the line turns or changes how it was routed, as an index into
+    # ``order``. A line's or a part's own are a slice of them.
+    flat_cells = np.asarray(core.flat_routed, dtype=bool).ravel()[cells]
+    flat_along = flat_cells[order]
+    code_along = code[order]
+    del code
+    turn = np.zeros(order.size, dtype=bool)
+    turn[1:] = (code_along[1:] != code_along[:-1]) | (flat_along[1:] != flat_along[:-1])
+    turn[first[:-1]] = False
+    turns = np.flatnonzero(turn)
+    del turn
+
+    # Each step's length: the cell's own row's size in its direction (0
+    # for a cell that takes no step).
+    k = _K_OF_CODE[code_along]
+    del code_along
+    steps = k >= 0
+    k[~steps] = 0
+    row_along = cells[order] // cols
+    dist_along = np.zeros(order.size)
+    for step, sizes in enumerate((core.dx, core.dy, core.dg)):
+        which = steps & (np.asarray(_STEP)[k] == step)
+        dist_along[which] = np.asarray(sizes, dtype=np.float64)[row_along[which]]
+    del k, steps, row_along, which
+
+    # The runs of positions inside the square shown, found over each
+    # line's own cells: a run reaching the line's last cell takes in the
+    # cell the line runs into when that is inside too. A run of one
+    # position is not drawn.
+    held = inside[order]
+    del inside
+    rising = held.copy()
+    rising[1:] &= ~held[:-1]
+    rising[first[:-1]] = held[first[:-1]]
+    falling = held.copy()
+    falling[:-1] &= ~held[1:]
+    falling[first[1:] - 1] = held[first[1:] - 1]
+    a = np.flatnonzero(rising)
+    m = np.flatnonzero(falling) + 1
+    del held, rising, falling
+    owner = np.searchsorted(first, a, side="right") - 1
+    whole_end = m == first[owner + 1]
+    extended = whole_end & end_inside[owner]
+    drawn = (m - a) + extended >= 2
+    a, m, owner, whole_end, extended = a[drawn], m[drawn], owner[drawn], whole_end[drawn], extended[drawn]
+    del drawn, end_inside
+    piece = np.arange(a.size) - np.searchsorted(owner, owner, side="left")
+    reaches = np.where(has_end[owner], extended, whole_end)
+
+    # Lengths (the steps between a line's positions, the step into the cell
+    # it runs into included), counts and the values at the last own cell.
+    lengths = _run_sums(dist_along, first[:-1], first[1:] - 1 + has_end)
+    part_lengths = _run_sums(dist_along, a, m - 1 + extended)
+    del dist_along
+    raised_cells = np.asarray(core.raised, dtype=bool).ravel()[cells]
+    totals = []
+    for mark in (raised_cells[order], flat_along):
+        running = np.zeros(order.size + 1, dtype=np.int64)
+        np.cumsum(mark, out=running[1:])
+        totals.append((running[first[1:]] - running[first[:-1]], running[m] - running[a]))
+        del running
+    del raised_cells
+    flag_flat = np.asarray(core.flag, dtype=bool).ravel()
+
+    def place(own: np.ndarray) -> tuple[list[int], list[int]]:
+        """The rows and columns of the line cells ``own`` (into ``order``)."""
+        r, c = np.divmod(cells[order[own]], cols)
+        return r.tolist(), c.tolist()
+
+    def last_values(own: np.ndarray) -> tuple[list[int], list[bool]]:
+        """The area and the flag of the line cells ``own``."""
+        where = cells[order[own]]
+        return area_flat[where].tolist(), flag_flat[where].tolist()
+
+    turn_row, turn_col = place(turns)
+    turn_flat = flat_along[turns].tolist()
+    head_row, head_col = place(first[:-1])
+    line_area, line_flag = last_values(first[1:] - 1)
+    single = ((np.diff(first) == 1) & ~has_end).tolist()
+    line_lo = np.searchsorted(turns, first[:-1], side="right").tolist()
+    line_hi = np.searchsorted(turns, first[1:] - 1 + has_end).tolist()
+    a_row, a_col = place(a)
+    a_flat = flat_along[a].tolist()
+    z_row, z_col = place(m - 1)
+    part_area, part_flag = last_values(m - 1)
+    # A part's last position is the cell its line runs into where the part
+    # takes that cell in.
+    z_row = np.where(extended, end_row[owner], z_row).tolist()
+    z_col = np.where(extended, end_col[owner], z_col).tolist()
+    part_lo = np.searchsorted(turns, a, side="right").tolist()
+    part_hi = np.searchsorted(turns, m - 1 + extended).tolist()
+    outlets = [("confluence", "edge", "void", "sink", "sea")[kind_n] for kind_n in kind.tolist()]
+    downstream = joins.tolist()
 
     links = []
-    parts = []
-    for n, (own, outlet, joins, end) in enumerate(traced):
-        places = [(row_l[x], col_l[x]) for x in own]
-        if end is not None:
-            places.append(end)
-        keys = [(code_l[x], flat_l[x]) for x in own]
-        turns = [m for m in range(1, len(own)) if keys[m] != keys[m - 1]]
-        last = own[-1]
-        whole = _vertex_positions(turns, 0, len(places))
+    for n, (start, size, area_n, length_n, flag_n, raised_n, flat_n, lo, hi, fr, fc, lr, lc, alone) in enumerate(
+            zip(cells[order[first[:-1]]].tolist(), np.diff(first).tolist(), line_area, lengths.tolist(), line_flag,
+                totals[0][0].tolist(), totals[1][0].tolist(), line_lo, line_hi, head_row, head_col,
+                end_row.tolist(), end_col.tolist(), single, strict=True)):
+        vertices = ((fr, fc),) if alone else ((fr, fc), *zip(turn_row[lo:hi], turn_col[lo:hi], strict=True), (lr, lc))
         links.append(DrainageLink(
-            id=n, start=int(cells[own[0]]), vertices=tuple(places[m] for m in whole), cells=len(own),
-            outlet=outlet, downstream=joins, strahler=order[n], area_units=area_l[last],
-            length_m=_summed([dist_l[x] for x in own[:len(places) - 1]]),
-            edge_contaminated=flag_l[last], filled_cells=sum(raised_l[x] for x in own),
-            flat_routed_cells=sum(flat_l[x] for x in own),
+            id=n, start=start, vertices=vertices, cells=size, outlet=outlets[n], downstream=downstream[n],
+            strahler=strahler[n], area_units=area_n, length_m=length_n, edge_contaminated=flag_n,
+            filled_cells=raised_n, flat_routed_cells=flat_n,
         ))
-
-        # The runs of positions inside the square shown.
-        inside = [r0 <= r < r1 and c0 <= c < c1 for r, c in places]
-        piece = 0
-        m = 0
-        while m < len(places):
-            if not inside[m]:
-                m += 1
-                continue
-            a = m
-            while m < len(places) and inside[m]:
-                m += 1
-            if m - a < 2:
-                continue
-            mine = own[a:min(m, len(own))]
-            kept = _vertex_positions(turns, a, m)
-            parts.append(DrainagePart(
-                id=n, part=piece, vertices=tuple(places[v] for v in kept),
-                stretch_flat=tuple(flat_l[own[v]] for v in kept[:-1]),
-                outlet=outlet if m == len(places) else "beyond_view", strahler=order[n], downstream=joins,
-                area_units=area_l[mine[-1]], length_m=_summed([dist_l[x] for x in own[a:m - 1]]),
-                edge_contaminated=flag_l[mine[-1]], filled_cells=sum(raised_l[x] for x in mine),
-                flat_routed_cells=sum(flat_l[x] for x in mine),
-            ))
-            piece += 1
+    parts = []
+    for n, part, lo, hi, ar, ac, af, zr, zc, ends_here, area_n, length_n, flag_n, raised_n, flat_n in zip(
+            owner.tolist(), piece.tolist(), part_lo, part_hi, a_row, a_col, a_flat, z_row, z_col, reaches.tolist(),
+            part_area, part_lengths.tolist(), part_flag, totals[0][1].tolist(), totals[1][1].tolist(), strict=True):
+        parts.append(DrainagePart(
+            id=n, part=part, vertices=((ar, ac), *zip(turn_row[lo:hi], turn_col[lo:hi], strict=True), (zr, zc)),
+            stretch_flat=(af, *turn_flat[lo:hi]), outlet=outlets[n] if ends_here else "beyond_view",
+            strahler=strahler[n], downstream=downstream[n], area_units=area_n, length_m=length_n,
+            edge_contaminated=flag_n, filled_cells=raised_n, flat_routed_cells=flat_n,
+        ))
     return tuple(links), tuple(parts)
 
 
