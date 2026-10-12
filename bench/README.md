@@ -263,6 +263,39 @@ five), and 90 to 103 ms and 113 to 119 ms with the CPU slowed four
 times, over two runs. `run.py --only cost` times the default on the Dr
 Timbo design (`cost/*` above).
 
+## Reading an elevation model: what a window costs
+
+PLAN.md step 4.1 reads an operator's GeoTIFF a window at a time. On 12
+October 2026, on this repository's 4-CPU machine (Xeon at 2.1 GHz, load
+average 1.3 to 1.5, numpy 2.4.6), `run.py --only terrain` gave, median
+of five:
+
+| measure | median | IQR |
+|---|---|---|
+| read a window, DEFLATE GLO-30 layout | 202 ms | 21 ms |
+| read a window, LZW 512 tiles | 403 ms | 62 ms |
+| read a window, LZW 512 tiles, loop decoder | 2.22 s | 91 ms |
+| read a whole DEFLATE tile | 672 ms | 34 ms |
+
+The window is the default the terrain analysis reads: a 10 km radius
+shown and the 5 km margin around it, 983 by 979 cells at 1 arc-second.
+The DEFLATE window decodes four 1024-square tiles (4.2 million samples)
+and the LZW window nine 512-square tiles (2.4 million), so the two do
+not decode the same number of cells: per sample, LZW costs about three
+and a half times what DEFLATE with the floating-point predictor does,
+because zlib inflates in C and the LZW decoder is numpy. Decoding LZW a
+Clear segment at a time, rather than one code at a time as the 40-line
+loop it is tested against does, makes the LZW read 5.5 times quicker.
+The browser engine's reads are not timed here: `web.mjs` drives the app,
+and the app has no elevation model page until step 4.1c.
+
+On the same day `web.mjs` measured what the reader costs the browser
+app before anyone uses it: `gwt-core.js` grew from 1.06 MB to 1.18 MB
+with the codecs, the GeoTIFF reader and the elevation layer, and time to
+interactive on the throttled profile went from 11.11 s to 11.84 s
+(median of three cold loads each, the commit before the step and the
+step's last commit), first contentful paint staying at 2.4 s.
+
 ## The committed baseline
 
 `bench/baseline.json` is committed with each release (PLAN.md step
