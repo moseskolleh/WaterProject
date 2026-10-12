@@ -28,6 +28,12 @@ The routing runs in this order:
   because part of what might drain to it lies beyond the window, in a
   void, or in a sea that may be a fill.
 
+:func:`analyse_terrain` runs these on a window together with the surface
+kernels (slope, shading, the wetness index and curvature), traces the
+drainage lines (:func:`drainage_links`), cuts them to the square shown and
+sums that square up; :func:`terrain_captions` and :func:`drainage_geojson`
+write what the figures and the drainage lines' download say.
+
 What it is not. It traces how water would run over the surface the model
 describes, and nothing more. Copernicus GLO-30 is a surface model, with
 the tree canopy and the buildings in it, so a line can run along the top
@@ -49,12 +55,17 @@ holds the two engines to the bit.
 
 from __future__ import annotations
 
+import json
 import math
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 
 import numpy as np
 
-from .elevation import RowMetric, sin_cos_deg
+from ..config import TerrainConfig
+from ..text import phrase
+from ..utils import and_join
+from .elevation import ElevationGrid, ElevationRead, RowMetric, row_metric, sin_cos_deg
 
 # --- routing (spec 3.5-3.9)
 #
@@ -626,6 +637,705 @@ def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
         inflow[u] -= np.diff(np.r_[first, to.size])
         front = u[(inflow[u] == 0) & has[u]]
     return count.reshape(shape), area.reshape(shape), flag.reshape(shape)
+
+
+# --- analysis (spec 3.10, 3.15, 4.1)
+#
+# The routing and the surface run together on one window: the drainage
+# lines traced from the routing, cut to the square shown, the summary of
+# that square, the captions and the drainage lines' GeoJSON. Every count,
+# threshold, line and limit is taken from integers or from float64 layers;
+# the float32 copies that precision="float32" keeps are pictures, narrowed
+# after everything has been read from them. The browser's engine assembles
+# the same pieces in the same order, and drainage_links runs there again on
+# the page, from the core alone, whenever the threshold changes.
+
+#: The ESRI direction codes as an index into the neighbour order K: -1 for
+#: a code that is not a direction (0, a flat; 255, out of the analysis).
+_K_OF_CODE = np.full(256, -1, dtype=np.int64)
+_K_OF_CODE[list(_ESRI)] = np.arange(8)
+
+
+@dataclass(frozen=True, eq=False)
+class TerrainCore:
+    """The layers a drainage line is traced from, and nothing more.
+
+    The browser's worker hands this much to the page, so that a new
+    drainage threshold re-traces the lines without running the analysis
+    again; :func:`drainage_links` takes the same here, so both apps trace
+    from the same inputs with the same function.
+
+    ``rows`` and ``cols`` are the size of the analysed grid and ``shown``
+    the square shown, as rows ``r0:r1`` and columns ``c0:c1`` of it.
+    ``lons`` and ``lats`` are the cell centres (``lats`` from the south),
+    ``dx``, ``dy`` and ``dg`` each row's cell sizes in metres. ``cls`` and
+    ``code`` are the classes and the directions after the flats (uint8).
+    ``flag``, ``raised`` and ``flat_routed`` are masks: the upslope area is
+    uncertain, the fill raised the cell by ``fill_note_m`` or more, and the
+    cell was routed across a flat or a filled hollow rather than by its
+    slope. ``count`` and ``area_units`` are the cells and the area, in whole
+    0.01 m² units, draining through each cell (int64).
+    """
+
+    rows: int
+    cols: int
+    shown: tuple[int, int, int, int]
+    lons: np.ndarray = field(repr=False)
+    lats: np.ndarray = field(repr=False)
+    dx: np.ndarray = field(repr=False)
+    dy: np.ndarray = field(repr=False)
+    dg: np.ndarray = field(repr=False)
+    cls: np.ndarray = field(repr=False)
+    code: np.ndarray = field(repr=False)
+    flag: np.ndarray = field(repr=False)
+    raised: np.ndarray = field(repr=False)
+    flat_routed: np.ndarray = field(repr=False)
+    count: np.ndarray = field(repr=False)
+    area_units: np.ndarray = field(repr=False)
+
+
+@dataclass(frozen=True)
+class DrainageLink:
+    """One drainage line over the whole analysed square, from where it
+    starts (a headwater, or the cell where two lines meet) to where it
+    ends: where it meets another line, the sea, a void or the edge.
+
+    ``start`` is the flat index of its first cell. ``vertices`` are
+    ``(row, column)`` cells of the analysed grid: the first, every cell
+    where the line turns or changes how it was routed, and the last
+    position, which is the cell the line runs into (the first cell of the
+    line it joins, or the sea cell) where it runs into one. Nothing between
+    two vertices is lost: the cells between them run straight, routed one
+    way. ``cells`` counts the line's own cells; ``length_m`` is the length
+    along them, the step into that last position included.
+
+    ``area_units`` and ``edge_contaminated`` are those of the line's last
+    own cell. ``filled_cells`` and ``flat_routed_cells`` count its own
+    cells raised by ``fill_note_m`` or more by the fill, and routed across
+    a flat or a filled hollow rather than by slope. ``downstream`` is the
+    id of the line it joins, or -1; ``strahler`` its Strahler order.
+    """
+
+    id: int
+    start: int
+    vertices: tuple[tuple[int, int], ...]
+    cells: int
+    outlet: str
+    downstream: int
+    strahler: int
+    area_units: int
+    length_m: float
+    edge_contaminated: bool
+    filled_cells: int
+    flat_routed_cells: int
+
+
+@dataclass(frozen=True)
+class DrainagePart:
+    """The piece of a drainage line inside the square shown: what both apps
+    draw and the GeoJSON exports.
+
+    A line that leaves the square and comes back is cut into parts,
+    numbered from 0 along it (``part``); a piece of a single cell is not
+    drawn and takes no number. ``vertices`` follow the rule of
+    :class:`DrainageLink` over the piece, and ``stretch_flat[v]`` says
+    whether the stretch from vertex ``v`` to the next was routed across a
+    flat or a filled hollow, so that it can be drawn paler. ``outlet`` is
+    the line's own where the piece holds the line's end, else
+    ``"beyond_view"``. ``area_units``, ``edge_contaminated``,
+    ``filled_cells`` and ``flat_routed_cells`` are taken over the piece's
+    own cells as :class:`DrainageLink` takes them over the line's.
+    """
+
+    id: int
+    part: int
+    vertices: tuple[tuple[int, int], ...]
+    stretch_flat: tuple[bool, ...]
+    outlet: str
+    strahler: int
+    downstream: int
+    area_units: int
+    length_m: float
+    edge_contaminated: bool
+    filled_cells: int
+    flat_routed_cells: int
+
+
+@dataclass(frozen=True, eq=False)
+class TerrainAnalysis:
+    """Everything worked out from one window, for the figures, the
+    downloads and the hand-over to lineament work (PLAN.md step 4.2).
+
+    ``grid`` is the window analysed and ``metric`` its row metric; ``core``
+    the layers the drainage lines are traced from (:class:`TerrainCore`).
+    ``filled`` is the filled surface and ``fill_depth`` how far the fill
+    raised each land cell (NaN elsewhere); ``unresolved`` counts the flat
+    cells left without a direction, which is always 0. ``stream`` marks the
+    cells at or above the drainage threshold, ``links`` the drainage lines
+    over the analysed square and ``parts`` their pieces in the square shown.
+
+    ``p`` and ``q`` are the Horn gradients, always in float64, and ``tanb``
+    the slope. ``hillshades`` are lit from the panel azimuths, in their
+    order, and ``hillshade_multi`` is the composite. ``twi_arg`` is the
+    wetness index's exact argument, always in float64, and ``twi`` its
+    logarithm. ``profile`` and ``tangential`` are the curvatures, sampled
+    ``k_cells`` apart. ``floored`` and ``zero_fill`` count, over the square
+    shown as the summary does, the cells whose slope the wetness index
+    floored and the cells of zero-filled gaps. ``summary`` holds the counts,
+    shares and display limits of the square shown, and ``settings`` the
+    configuration the window was analysed with.
+    """
+
+    grid: ElevationGrid = field(repr=False)
+    metric: RowMetric = field(repr=False)
+    core: TerrainCore
+    filled: np.ndarray = field(repr=False)
+    fill_depth: np.ndarray = field(repr=False)
+    unresolved: int
+    stream: np.ndarray = field(repr=False)
+    links: tuple[DrainageLink, ...] = field(repr=False)
+    parts: tuple[DrainagePart, ...] = field(repr=False)
+    p: np.ndarray = field(repr=False)
+    q: np.ndarray = field(repr=False)
+    tanb: np.ndarray = field(repr=False)
+    hillshades: tuple[np.ndarray, ...] = field(repr=False)
+    hillshade_multi: np.ndarray = field(repr=False)
+    twi_arg: np.ndarray = field(repr=False)
+    twi: np.ndarray = field(repr=False)
+    profile: np.ndarray = field(repr=False)
+    tangential: np.ndarray = field(repr=False)
+    k_cells: int
+    floored: int
+    zero_fill: int
+    summary: dict
+    settings: TerrainConfig
+
+
+def _threshold_units(area_km2: float) -> int:
+    """The drainage threshold in whole 0.01 m² units, rounded half up: 0.5
+    km² is 5e7 units, about 532 cells at 8.5 degrees north and 1
+    arc-second. Areas are compared as integers, so a cell is a stream cell
+    in both engines or in neither."""
+    area = float(area_km2)
+    if not (math.isfinite(area) and area >= 0.0):
+        raise ValueError(f"the drainage area must be a number of square kilometres, not {area_km2!r}")
+    return math.floor(area * 1e8 + 0.5)
+
+
+def _vertex_positions(turns: Sequence[int], a: int, b: int) -> list[int]:
+    """The positions ``a`` to ``b - 1`` of a line kept as vertices: both
+    ends, and every position between them in ``turns`` (where the line
+    turns or changes how it was routed). One position is one vertex."""
+    if b - a == 1:
+        return [a]
+    return [a, *(m for m in turns if a < m < b - 1), b - 1]
+
+
+def _summed(steps: Sequence[float]) -> float:
+    """``steps`` added one after another, as the browser adds them. Python's
+    ``sum`` of floats compensates for rounding (3.12 on), so it can give
+    other bits than a plain loop."""
+    total = 0.0
+    for step in steps:
+        total += step
+    return total
+
+
+def drainage_links(core: TerrainCore, area_km2: float
+                   ) -> tuple[tuple[DrainageLink, ...], tuple[DrainagePart, ...]]:
+    """The drainage lines where more than ``area_km2`` drains, over the
+    analysed square, and their parts in the square shown.
+
+    A stream cell is a land cell with at least the threshold's area. A line
+    starts at every stream cell no other stream cell drains to (a
+    headwater) and at every one that two or more drain to (a confluence),
+    numbered in grid order, and follows the directions until it meets the
+    next confluence, which starts another line, or leaves the land: into
+    the sea, which it runs into, or out of the analysis at the edge or at
+    a void. Strahler orders are worked out upstream first: a line no other
+    line joins is of order 1, and a line is one order higher than the
+    highest that joins it only where two or more of that order meet.
+
+    Each line is then cut to the square shown, so that what is drawn and
+    exported ends at the edge of the map rather than in the margin, while
+    its area, flag and order are still those worked out over the whole
+    analysed square. Only integers and comparisons decide the lines, and
+    lengths are added in order along them, so both engines trace the same
+    lines to the bit; a new threshold needs nothing but the core.
+    """
+    rows, cols = int(core.rows), int(core.cols)
+    r0, r1, c0, c1 = (int(v) for v in core.shown)
+    threshold = _threshold_units(area_km2)
+    code_flat = np.asarray(core.code, dtype=np.uint8).ravel()
+    land = np.asarray(core.cls).ravel() == LAND
+    area_flat = np.asarray(core.area_units, dtype=np.int64).ravel()
+    cells = np.flatnonzero(land & (area_flat >= threshold))
+    if cells.size == 0:
+        return (), ()
+
+    # Every stream cell's neighbour along its direction. A stream cell's
+    # area only grows downstream, so a land neighbour is a stream cell too;
+    # anything else means the core's layers do not belong together.
+    row = cells // cols
+    col = cells - row * cols
+    k = _K_OF_CODE[code_flat[cells]]
+    steps = k >= 0
+    kk = np.where(steps, k, 0)
+    next_row = row + np.asarray(_DR)[kk]
+    next_col = col + np.asarray(_DC)[kk]
+    in_grid = (next_row >= 0) & (next_row < rows) & (next_col >= 0) & (next_col < cols)
+    if (steps & ~in_grid).any():
+        raise ValueError("a direction in the core points out of the grid")
+    after = np.where(steps, next_row * cols + next_col, 0)
+    onto_land = steps & land[after]
+    down = np.searchsorted(cells, after)
+    down = np.minimum(down, cells.size - 1)
+    if (onto_land & (cells[down] != after)).any():
+        raise ValueError("a stream cell drains to land below the threshold; the core's layers disagree")
+    down = np.where(onto_land, down, -1)
+    feeds = np.bincount(down[down >= 0], minlength=cells.size)
+
+    dist = np.zeros(cells.size)
+    for step, sizes in enumerate((core.dx, core.dy, core.dg)):
+        which = steps & (np.asarray(_STEP)[kk] == step)
+        dist[which] = np.asarray(sizes, dtype=np.float64)[row[which]]
+    edge = (row == 0) | (row == rows - 1) | (col == 0) | (col == cols - 1)
+
+    # The loop below walks the stream cells alone, by their position in
+    # ``cells``, on plain lists: a few per cent of the grid.
+    down_l = down.tolist()
+    feeds_l = feeds.tolist()
+    code_l = code_flat[cells].tolist()
+    row_l, col_l = row.tolist(), col.tolist()
+    next_l = list(zip(next_row.tolist(), next_col.tolist(), strict=True))
+    dist_l = dist.tolist()
+    edge_l = edge.tolist()
+    flat_l = np.asarray(core.flat_routed, dtype=bool).ravel()[cells].tolist()
+    raised_l = np.asarray(core.raised, dtype=bool).ravel()[cells].tolist()
+    flag_l = np.asarray(core.flag, dtype=bool).ravel()[cells].tolist()
+    area_l = area_flat[cells].tolist()
+    count_l = np.asarray(core.count, dtype=np.int64).ravel()[cells].tolist()
+    starts = np.flatnonzero((feeds == 0) | (feeds >= 2)).tolist()
+    link_of = {s: n for n, s in enumerate(starts)}
+
+    traced = []
+    for s in starts:
+        own = [s]
+        cur = s
+        joins = -1
+        end = None
+        while True:
+            d = down_l[cur]
+            if d >= 0:
+                if feeds_l[d] >= 2:
+                    outlet, joins, end = "confluence", link_of[d], (row_l[d], col_l[d])
+                    break
+                own.append(d)
+                cur = d
+            elif code_l[cur] == FLOWS_OUT:
+                outlet = "edge" if edge_l[cur] else "void"
+                break
+            elif code_l[cur] == 0:
+                outlet = "sink"          # a flat left without a direction: never expected
+                break
+            else:
+                outlet, end = "sea", next_l[cur]
+                break
+        traced.append((own, outlet, joins, end))
+
+    # Strahler orders, upstream first: a line's first cell gathers more
+    # cells than any cell upstream of it, so ordering by that count, then
+    # by the cell (``starts`` is in grid order), puts every line after the
+    # lines that join it.
+    joining: dict[int, list[int]] = {}
+    for n, (_, _, joins, _) in enumerate(traced):
+        if joins >= 0:
+            joining.setdefault(joins, []).append(n)
+    order = [0] * len(traced)
+    for n in sorted(range(len(traced)), key=lambda n: (count_l[starts[n]], starts[n])):
+        incoming = [order[m] for m in joining.get(n, ())]
+        if not incoming:
+            order[n] = 1
+        else:
+            top = max(incoming)
+            order[n] = top + 1 if incoming.count(top) >= 2 else top
+
+    links = []
+    parts = []
+    for n, (own, outlet, joins, end) in enumerate(traced):
+        places = [(row_l[x], col_l[x]) for x in own]
+        if end is not None:
+            places.append(end)
+        keys = [(code_l[x], flat_l[x]) for x in own]
+        turns = [m for m in range(1, len(own)) if keys[m] != keys[m - 1]]
+        last = own[-1]
+        whole = _vertex_positions(turns, 0, len(places))
+        links.append(DrainageLink(
+            id=n, start=int(cells[own[0]]), vertices=tuple(places[m] for m in whole), cells=len(own),
+            outlet=outlet, downstream=joins, strahler=order[n], area_units=area_l[last],
+            length_m=_summed([dist_l[x] for x in own[:len(places) - 1]]),
+            edge_contaminated=flag_l[last], filled_cells=sum(raised_l[x] for x in own),
+            flat_routed_cells=sum(flat_l[x] for x in own),
+        ))
+
+        # The runs of positions inside the square shown.
+        inside = [r0 <= r < r1 and c0 <= c < c1 for r, c in places]
+        piece = 0
+        m = 0
+        while m < len(places):
+            if not inside[m]:
+                m += 1
+                continue
+            a = m
+            while m < len(places) and inside[m]:
+                m += 1
+            if m - a < 2:
+                continue
+            mine = own[a:min(m, len(own))]
+            kept = _vertex_positions(turns, a, m)
+            parts.append(DrainagePart(
+                id=n, part=piece, vertices=tuple(places[v] for v in kept),
+                stretch_flat=tuple(flat_l[own[v]] for v in kept[:-1]),
+                outlet=outlet if m == len(places) else "beyond_view", strahler=order[n], downstream=joins,
+                area_units=area_l[mine[-1]], length_m=_summed([dist_l[x] for x in own[a:m - 1]]),
+                edge_contaminated=flag_l[mine[-1]], filled_cells=sum(raised_l[x] for x in mine),
+                flat_routed_cells=sum(flat_l[x] for x in mine),
+            ))
+            piece += 1
+    return tuple(links), tuple(parts)
+
+
+def _json_text(text: str) -> str:
+    """A string as JSON writes it with every character outside ASCII
+    escaped, as the browser's ``jsonAscii`` writes it: a file name in any
+    script then gives the same bytes in both engines."""
+    return json.dumps(str(text), ensure_ascii=True)
+
+
+def drainage_geojson(core: TerrainCore, parts: Sequence[DrainagePart], meta: Mapping) -> str:
+    """The drainage lines shown, as GeoJSON text written by hand, without
+    whitespace, in a fixed key order, so that both engines write the same
+    bytes.
+
+    ``meta`` holds ``label`` (what the files are), ``credit`` (what their
+    licence asks a product to carry, "" where none), ``notice`` (the
+    Copernicus liability sentence, or None), ``surface`` (what the heights
+    are heights of), ``area`` (the drainage threshold in km²), ``radius``
+    and ``margin`` (km) and ``centre``, the window's centre with its
+    ``lon``, ``lat`` and ``label``. The description says what the lines
+    are and are not, in the catalogue's words; the notice is written only
+    for a set holding a Copernicus file, as its licence asks. Coordinates
+    have six decimals (about 0.1 m) and areas six in km², lengths one in
+    metres, all rounded as Python rounds; parts are written in the order
+    given, which :func:`drainage_links` makes ``(id, part)``.
+    """
+    centre = meta["centre"]
+    description = phrase("terrain.geojson_description", label=meta["label"], area=meta["area"],
+                         radius=meta["radius"], where=centre.label, margin=meta["margin"],
+                         surface=meta["surface"])
+    out = ['{"type":"FeatureCollection","description":', _json_text(description),
+           ',"attribution":', _json_text(meta["credit"])]
+    if meta.get("notice"):
+        out += [',"notice":', _json_text(meta["notice"])]
+    out += [f',"drainage_area_km2":{float(meta["area"]):g}', f',"radius_km":{float(meta["radius"]):g}',
+            f',"margin_km":{float(meta["margin"]):g}',
+            f',"centre":[{float(centre.lon):.6f},{float(centre.lat):.6f}],"features":[']
+    lons = np.asarray(core.lons, dtype=np.float64)
+    lats = np.asarray(core.lats, dtype=np.float64)
+    for n, part in enumerate(parts):
+        line = ",".join(f"[{float(lons[c]):.6f},{float(lats[r]):.6f}]" for r, c in part.vertices)
+        out.append(
+            ("," if n else "")
+            + f'{{"type":"Feature","properties":{{"id":{part.id},"part":{part.part},'
+            + f'"strahler":{part.strahler},"outlet":{_json_text(part.outlet)},'
+            + f'"area_km2":{part.area_units / 1e8:.6f},"length_m":{part.length_m:.1f},'
+            + f'"edge_contaminated":{"true" if part.edge_contaminated else "false"},'
+            + f'"filled_cells":{part.filled_cells},"flat_routed_cells":{part.flat_routed_cells},'
+            + f'"downstream":{part.downstream}}},"geometry":{{"type":"LineString","coordinates":[{line}]}}}}'
+        )
+    out.append("]}")
+    return "".join(out)
+
+
+def _square(shown: Sequence[int] | None, rows: int, cols: int) -> tuple[int, int, int, int]:
+    """The square shown as rows ``r0:r1`` and columns ``c0:c1`` of the grid,
+    the whole grid when None, refused unless it lies inside the grid."""
+    if shown is None:
+        return 0, rows, 0, cols
+    r0, r1, c0, c1 = (int(v) for v in shown)
+    if not (0 <= r0 < r1 <= rows and 0 <= c0 < c1 <= cols):
+        raise ValueError(f"the square shown, rows {r0}:{r1} and columns {c0}:{c1}, "
+                         f"is not inside the {rows} by {cols} grid")
+    return r0, r1, c0, c1
+
+
+def _share(count: int, total: int) -> float:
+    """``count`` as a percentage of ``total``, written as the browser
+    writes it; 0 of nothing is 0."""
+    return (100.0 * count) / total if total else 0.0
+
+
+def _window_counts(z: np.ndarray, assumed: np.ndarray, cls: np.ndarray, zero_fill: np.ndarray,
+                   view: tuple[slice, slice]) -> dict:
+    """What each cell of the square shown is. Together they count every
+    cell once: land, sea with a height, assumed sea, a zero-filled gap, or
+    no height in the window at all (``uncovered``), which is either no
+    value (``voids``) or an infinite one (``implausible``). The analysis
+    cannot tell a reader's no-data cell from one it voided as implausible
+    or one no file supplies, since all three arrive as NaN; the read report
+    counts those apart over the whole window."""
+    kind = cls[view]
+    assumed = assumed[view]
+    z = z[view]
+    sea = kind == SEA
+    missing = ~np.isfinite(z) & ~assumed
+    infinite = np.isinf(z) & ~assumed
+    uncovered = int(np.count_nonzero(missing))
+    implausible = int(np.count_nonzero(infinite))
+    return {
+        "cells": int(kind.size),
+        "land": int(np.count_nonzero(kind == LAND)),
+        "sea": int(np.count_nonzero(sea & ~assumed)),
+        "assumed_sea": int(np.count_nonzero(sea & assumed)),
+        "voids": uncovered - implausible,
+        "uncovered": uncovered,
+        "implausible": implausible,
+        "zero_fill": int(np.count_nonzero(zero_fill[view])),
+    }
+
+
+def analyse_terrain(grid: ElevationGrid, cfg: TerrainConfig | None = None, *, assumed_sea=None,
+                    shown: Sequence[int] | None = None, progress: Callable[[float, str], None] | None = None,
+                    precision: str = "float32") -> TerrainAnalysis:
+    """Analyse a window of an elevation model: where water would run, the
+    drainage lines, the shading, the wetness index and the curvature.
+
+    ``assumed_sea`` marks a missing tile taken as open sea, which has no
+    height (an :class:`.elevation.ElevationRead` gives it); ``shown`` is
+    the square shown, as rows ``r0:r1`` and columns ``c0:c1`` of the grid
+    (the whole grid when None). The window beyond it is the margin: it is
+    analysed so that the edge of the analysis does not bend the lines, but
+    the lines are cut and the summary counted where the map ends. The
+    source's sea rule comes from ``grid.sea_clean``. ``progress(fraction,
+    label)``, when given, hears each stage start, in the catalogue's words.
+
+    Every count, threshold, drainage line and display limit is taken in
+    float64 or from integers. With ``precision="float32"`` the layers that
+    are only drawn - the slope, the hillshades, the wetness index, the
+    curvatures and the fill depth - are then kept in float32, which halves
+    the memory those layers take at the cap; a threshold taken after
+    narrowing would move (57 of a million cells changed their fill verdict
+    in a test of float64 heights). ``p``, ``q``, ``twi_arg``, the filled
+    surface, the core and the lines keep full precision whatever is asked.
+    """
+    cfg = TerrainConfig() if cfg is None else cfg
+    if precision not in ("float32", "float64"):
+        raise ValueError(f"precision must be 'float32' or 'float64', not {precision!r}")
+    narrow = precision == "float32"
+
+    def keep(layer: np.ndarray) -> np.ndarray:
+        return layer.astype(np.float32) if narrow else layer
+
+    # Each stage is announced with the share of the whole that has gone
+    # before it, as measured at the default window (the fill takes about a
+    # third of the time).
+    def stage(fraction: float, label: str) -> None:
+        if progress is not None:
+            progress(fraction, label)
+
+    z = np.add(np.asarray(grid.z, dtype=np.float64), 0.0)          # -0 becomes +0
+    rows, cols = z.shape
+    square = _square(shown, rows, cols)
+    view = (slice(square[0], square[1]), slice(square[2], square[3]))
+    if assumed_sea is None:
+        assumed = np.zeros((rows, cols), dtype=bool)
+    else:
+        assumed = _grid("assumed_sea", assumed_sea, (rows, cols)).astype(bool)
+    metric = row_metric(grid.lons, grid.lats)
+    threshold = _threshold_units(cfg.drainage_area_km2)
+
+    stage(0.0, phrase("terrain.stage_classes"))
+    cls, seed, zero_fill, zt = classify_cells(z, cfg.sea_level_m, assumed, cfg.sea_straight_edge_cells)
+    summary = _window_counts(z, assumed, cls, zero_fill, view)
+    del z, zero_fill
+
+    stage(0.15, phrase("terrain.stage_fill"))
+    filled = fill_depressions(zt, cls, seed)
+    stage(0.45, phrase("terrain.stage_flow"))
+    code_d8 = flow_directions(zt, filled, cls, seed, metric, cfg.sea_level_m)
+    del seed
+    stage(0.5, phrase("terrain.stage_flats"))
+    code, unresolved = resolve_flats(filled, cls, code_d8)
+    land = cls == LAND
+    fill_depth = np.where(land, filled - zt, np.nan)
+    raised = land & (fill_depth >= cfg.fill_note_m)
+    flat_routed = land & ((code_d8 == 0) | (fill_depth > 0.0))
+    del code_d8
+    depth_shown = fill_depth[view][land[view]]
+    max_fill = float(depth_shown.max()) if depth_shown.size else 0.0
+    del depth_shown
+    fill_depth = keep(fill_depth)
+
+    stage(0.6, phrase("terrain.stage_accumulate"))
+    count, area_units, flag = accumulate_flow(code, cls, metric, grid.sea_clean)
+    core = TerrainCore(
+        rows=rows, cols=cols, shown=square, lons=np.asarray(grid.lons, dtype=np.float64),
+        lats=np.asarray(grid.lats, dtype=np.float64), dx=metric.dx, dy=metric.dy, dg=metric.dg,
+        cls=cls, code=code, flag=flag, raised=raised, flat_routed=flat_routed, count=count,
+        area_units=area_units,
+    )
+
+    stage(0.7, phrase("terrain.stage_drainage"))
+    links, parts = drainage_links(core, cfg.drainage_area_km2)
+    stream = land & (area_units >= threshold)
+
+    stage(0.75, phrase("terrain.stage_shading"))
+    p, q, tanb = horn_gradients(zt, metric)
+    altitude, z_factor = cfg.hillshade_altitude_deg, cfg.hillshade_z_factor
+    hillshades = tuple(keep(hillshade_layer(p, q, azimuth, altitude, z_factor))
+                       for azimuth in cfg.hillshade_panel_azimuths_deg)
+    hillshade_multi = keep(multidirectional_hillshade(p, q, cfg.hillshade_azimuths_deg, altitude, z_factor))
+
+    label_curvature = phrase("terrain.stage_curvature")
+    stage(0.85, label_curvature)
+    twi_arg, twi, floored = wetness_index(area_units, cls, tanb, metric, cfg.flat_tan_slope)
+    twi = keep(twi)
+    tanb = keep(tanb)
+    profile, tangential, k_cells = curvatures(zt, cls, metric, cfg.curvature_spacing_m, cfg.flat_tan_slope)
+    bend = np.abs(np.concatenate([profile[view].ravel(), tangential[view].ravel()]))
+    curvature_limit = display_range(bend, 0.98, 0.98)[0]
+    del bend
+    profile = keep(profile)
+    tangential = keep(tangential)
+
+    # The relief counts every finite height of the square shown, sea with a
+    # height included; the wetness range is chosen on the exact argument and
+    # only the two chosen values pass through a logarithm.
+    heights = zt[view]
+    heights = heights[np.isfinite(heights)]
+    relief = float(heights.max() - heights.min()) if heights.size else math.nan
+    del heights, zt
+    low, high = display_range(twi_arg[view], 0.02, 0.98)
+    with np.errstate(invalid="ignore"):
+        twi_range = (float(np.log(low)), float(np.log(high)))
+    floored_shown = int(np.count_nonzero(floored[view]))
+    del floored
+    stream_shown = stream[view]
+    n_stream = int(np.count_nonzero(stream_shown))
+    n_flat = int(np.count_nonzero(stream_shown & flat_routed[view]))
+    n_flagged = int(np.count_nonzero(stream_shown & flag[view]))
+    n_raised = int(np.count_nonzero(raised[view]))
+    summary.update(
+        raised=n_raised, flat_routed_stream=n_flat, stream=n_stream, contaminated_stream=n_flagged,
+        unresolved=int(unresolved), floored=floored_shown,
+        raised_pct=_share(n_raised, summary["land"]), flat_routed_lines_pct=_share(n_flat, n_stream),
+        contaminated_pct=_share(n_flagged, n_stream),
+        sea_pct=_share(summary["sea"] + summary["assumed_sea"], summary["cells"]),
+        zero_fill_pct=_share(summary["zero_fill"], summary["cells"]),
+        max_fill_m=max_fill, k_cells=int(k_cells), threshold_units=threshold, relief=relief,
+        contour_interval=contour_interval(relief), twi_range=twi_range, curvature_limit=curvature_limit,
+    )
+    stage(1.0, label_curvature)
+    return TerrainAnalysis(
+        grid=grid, metric=metric, core=core, filled=filled, fill_depth=fill_depth, unresolved=int(unresolved),
+        stream=stream, links=links, parts=parts, p=p, q=q, tanb=tanb, hillshades=hillshades,
+        hillshade_multi=hillshade_multi, twi_arg=twi_arg, twi=twi, profile=profile, tangential=tangential,
+        k_cells=int(k_cells), floored=floored_shown, zero_fill=summary["zero_fill"], summary=summary,
+        settings=cfg,
+    )
+
+
+def _surface_note(source_id: str) -> str:
+    """What the heights are heights of, by the product a grid was read as,
+    for a grid that came without a read report (an ``.asc`` or ``.xyz``
+    file)."""
+    if source_id == "copernicus_glo30":
+        return phrase("terrain.surface_copernicus")
+    if source_id in ("srtm", "hgt"):
+        return phrase("terrain.surface_srtm")
+    return phrase("terrain.surface_unknown")
+
+
+def terrain_captions(analysis: TerrainAnalysis, read: ElevationRead | None, where: str) -> dict[str, str]:
+    """Every sentence the terrain figures and the drainage lines carry, in
+    the catalogue's words, so that both apps print the same.
+
+    ``read`` is the read the window came from, or None for a grid read
+    whole (an ``.asc`` or ``.xyz`` file): it says what the heights are
+    heights of, and the radius and margin of the window. ``where`` names
+    the place, as the read report does.
+
+    The keys are ``title_relief``, ``title_wetness``, ``title_curvature``
+    and ``title_directions``; ``panel_0`` onwards, the title of each panel
+    lit from one direction, in the panel azimuths' order; ``relief``,
+    ``wetness``, ``curvature`` and ``directions``, each figure's captions
+    as one paragraph in the order they are printed under it, which says
+    what the figure can be trusted for (the sea, a zero-filled gap and an
+    unresolved flat are mentioned only where the square shows one);
+    ``figure_caveat``, the line drawn inside every figure under its credit;
+    ``geojson_description``; and the analysis's stage labels, under their
+    own ids (``stage_classes`` to ``stage_curvature``).
+    """
+    cfg = analysis.settings
+    summary = analysis.summary
+    surface = read.surface if read is not None and read.surface else _surface_note(analysis.grid.source_id)
+    radius, margin = cfg.analysis_radius_km, cfg.analysis_buffer_km
+    if read is not None and read.plan is not None:
+        radius, margin = read.plan.radius_km, read.plan.margin_km
+    level = cfg.sea_level_m
+    candidates = phrase("terrain.caption_candidates")
+
+    relief = [
+        phrase("terrain.caption_relief", interval=summary["contour_interval"], area=cfg.drainage_area_km2),
+        phrase("terrain.caption_fill", lines_pct=summary["flat_routed_lines_pct"], pct=summary["raised_pct"],
+               depth=cfg.fill_note_m),
+        phrase("terrain.caption_edge", margin=margin),
+    ]
+    if summary["sea_pct"] > 0:
+        relief.append(phrase("terrain.caption_sea", pct=summary["sea_pct"], level=level))
+    if not analysis.grid.sea_clean and summary["sea"] + summary["assumed_sea"] > 0:
+        relief.append(phrase("terrain.caption_sea_unstated", level=level))
+    if summary["zero_fill"] > 0:
+        relief.append(phrase("terrain.caption_zero_fill", pct=summary["zero_fill_pct"], level=level))
+    if summary["unresolved"] > 0:
+        relief.append(phrase("terrain.caption_unresolved", n=summary["unresolved"]))
+    relief.append(candidates)
+    # the spacing the curvature was taken over, in metres of the middle row
+    mid = analysis.core.rows // 2
+    spacing = analysis.k_cells * ((float(analysis.core.dx[mid]) + float(analysis.core.dy[mid])) / 2.0)
+    azimuths = cfg.hillshade_panel_azimuths_deg
+
+    out = {
+        "title_relief": phrase("terrain.title_relief", where=where),
+        "title_wetness": phrase("terrain.title_wetness", where=where),
+        "title_curvature": phrase("terrain.title_curvature", where=where),
+        "title_directions": phrase("terrain.title_directions", where=where),
+    }
+    for n, azimuth in enumerate(azimuths):
+        out[f"panel_{n}"] = phrase("terrain.panel_azimuth", az=azimuth)
+    out.update(
+        relief=" ".join(relief),
+        wetness=" ".join([phrase("terrain.caption_twi", floor=cfg.flat_tan_slope, n=summary["floored"]),
+                          candidates, surface]),
+        curvature=" ".join([phrase("terrain.caption_curvature", spacing=spacing, floor=cfg.flat_tan_slope),
+                            candidates, surface]),
+        directions=phrase("terrain.caption_directions",
+                          azimuths=and_join([f"{float(azimuth):g}°" for azimuth in azimuths]),
+                          altitude=cfg.hillshade_altitude_deg),
+        figure_caveat=phrase("terrain.figure_caveat", surface=surface),
+        geojson_description=phrase("terrain.geojson_description", label=analysis.grid.source,
+                                   area=cfg.drainage_area_km2, radius=radius, where=where, margin=margin,
+                                   surface=surface),
+        stage_classes=phrase("terrain.stage_classes"),
+        stage_fill=phrase("terrain.stage_fill"),
+        stage_flow=phrase("terrain.stage_flow"),
+        stage_flats=phrase("terrain.stage_flats"),
+        stage_accumulate=phrase("terrain.stage_accumulate"),
+        stage_drainage=phrase("terrain.stage_drainage"),
+        stage_shading=phrase("terrain.stage_shading"),
+        stage_curvature=phrase("terrain.stage_curvature"),
+    )
+    return out
 
 
 # --- surface (spec 3.11-3.15)
