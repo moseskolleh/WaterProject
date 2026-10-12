@@ -17,19 +17,27 @@ water quality guidelines.
 1. VES sounding curves, layered earth models and drilling preference tables
 2. Maps of the study area at four scales, and a section through the
    ground beneath it: the study area itself with a national locator
-   inset; the regional geological and aquifer settings; a topographic
-   map with hillshade and contours, drawn from an elevation model the
-   operator supplies because none is bundled and none is downloaded;
-   and the survey's own subsurface - depth to bedrock, aquifer
-   thickness, bedrock surface elevation, aquifer protective capacity,
-   iso-resistivity at a measured electrode spacing, the interpreted
-   geoelectric section at the soundings' surveyed spacing and the
-   apparent-resistivity pseudo-section, which is the readings
-   themselves before any inversion has been believed. Plus GIS layers,
-   and each continuous surface and the drill-target score written as a
-   georeferenced GeoTIFF beside its picture, so it can be sampled,
-   contoured or laid under imagery in any GIS rather than only looked
-   at (the Python app; the browser app draws the surfaces only as
+   inset; the regional geological and aquifer settings; the terrain,
+   worked out from an elevation model the operator supplies because none
+   is bundled and none is downloaded - both apps read GeoTIFF and `.hgt`
+   tiles such as Copernicus GLO-30 and SRTM, several joined into one
+   model and read a window at a time without GDAL, and analyse the
+   ground around the site into drainage lines with Strahler order, a
+   wetness index, curvature and the relief lit from four directions,
+   every figure carrying inside the image the reminder that these are
+   candidates to check on the ground, and the drainage lines
+   downloadable as GeoJSON (the Python app also reads one ESRI ASCII or
+   XYZ grid, and draws a topographic map with hillshade and contours
+   over the wider map window); and the survey's own subsurface - depth
+   to bedrock, aquifer thickness, bedrock surface elevation, aquifer
+   protective capacity, iso-resistivity at a measured electrode spacing,
+   the interpreted geoelectric section at the soundings' surveyed
+   spacing and the apparent-resistivity pseudo-section, which is the
+   readings themselves before any inversion has been believed. Plus GIS
+   layers, and each continuous surface and the drill-target score
+   written as a georeferenced GeoTIFF beside its picture, so it can be
+   sampled, contoured or laid under imagery in any GIS rather than only
+   looked at (the Python app; the browser app draws the surfaces only as
    pictures). A surface gets a raster only where the soundings enclose
    ground to clip it to and none of them is a lower bound; otherwise it
    stays a picture, as the protective-capacity map, drawn in classes,
@@ -306,7 +314,9 @@ groundwater/
     supervision/  stage checklists, separation distances and numeric
                   field acceptance checks
     mapping/      site maps, iso-resistivity and overburden maps, GIS export,
-                  GeoLibre project files
+                  GeoLibre project files, elevation models read a window
+                  at a time (elevation.py) and the terrain analysis
+                  worked out from them (terrain_analysis.py)
     reporting/    house-styled .docx builders, one per document
     extraction/   scanned sheet extraction with review flagging
     readiness.py  the certification gate: per-report requirements, overrides
