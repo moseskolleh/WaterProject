@@ -532,9 +532,10 @@ A desk study the day before anyone travels.
 
 **4.1 Terrain analysis on an elevation model the operator supplies.** (M, both engines)
 - The rule that no DEM is bundled stays.
-- Read compressed GeoTIFF (DEFLATE and LZW, as in Copernicus GLO-30
-  tiles) with a dependency-free reader that mirrors PR #54's writer.
-  Today `terrain.py` asks the user to run `gdal_translate` first.
+- Read compressed GeoTIFF (DEFLATE with the floating-point predictor,
+  as in Copernicus GLO-30 tiles, and LZW, as GDAL's COG driver and QGIS
+  write by default) with a dependency-free reader that mirrors PR #54's
+  writer. Today `terrain.py` asks the user to run `gdal_translate` first.
 - Add D8 flow direction and accumulation, drainage lines, the
   topographic wetness index, curvature and multi-azimuth hillshade.
 

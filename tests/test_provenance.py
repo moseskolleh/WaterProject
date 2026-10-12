@@ -130,3 +130,31 @@ def test_every_bundled_table_is_in_the_record(provenance):
     }
     assert bundled, "no bundled tables were found; has the data moved?"
     assert not bundled - recorded, sorted(bundled - recorded)
+
+
+def test_the_copernicus_notices_in_the_catalogue_match_the_provenance_record_and_the_notices_file(
+    provenance,
+):
+    """The Copernicus notices are written once and repeated word for word.
+
+    The licence (Art. 6) prescribes its notices verbatim: a figure made from a
+    modified tile must carry the "produced using" notice and anything shown
+    or handed on must carry the liability sentence. Both apps print them from
+    the text catalogue, the record keeps them as the evidence, and the
+    notices file tells a reader what they are. Credits typed into two places
+    have drifted apart before (the WPdx credit reads differently in each
+    engine), so the three copies are held to one another here.
+    """
+    import textwrap
+
+    from groundwater.text import phrase
+
+    record = next(d for d in provenance["datasets"] if d["id"] == "copernicus_dem_glo30")
+    notices = " ".join((REPO / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8").split())
+    modified = phrase("terrain.credit_copernicus_modified")
+    liability = phrase("terrain.copernicus_liability")
+    assert modified == " ".join(record["attribution_modified"].split())
+    assert liability == " ".join(record["liability_notice"].split())
+    for sentence in (modified, liability, " ".join(record["attribution"].split())):
+        assert sentence in notices, textwrap.shorten(sentence, 60)
+    assert record["files"] == [], "no elevation model may be bundled (PLAN.md step 4.1)"
