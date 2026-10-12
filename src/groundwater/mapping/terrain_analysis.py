@@ -110,6 +110,10 @@ def _pair(dr: int, dc: int, rows: int, cols: int) -> tuple[tuple[slice, slice], 
 def _perimeter(rows: int, cols: int) -> np.ndarray:
     """The cells on the edge of the analysed window."""
     edge = np.zeros((rows, cols), dtype=bool)
+    if not (rows and cols):
+        # A grid with no cells has no edge. Both engines route it to empty
+        # layers rather than refusing it.
+        return edge
     edge[0, :] = True
     edge[-1, :] = True
     edge[:, 0] = True
@@ -159,7 +163,7 @@ def _long_runs(mask: np.ndarray, n: int) -> np.ndarray:
     return inside.reshape(rows, cols + 2)[:, 1:-1]
 
 
-def classify_cells(z, sea_level_m: float, assumed_sea=None, straight_edge_cells: int = 150
+def classify_cells(z, sea_level_m: float, assumed_sea=None, straight_edge_cells: int | None = 150
                    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Sort every cell into land, sea or void, and find the land cells
     water can leave the land from.
@@ -187,13 +191,17 @@ def classify_cells(z, sea_level_m: float, assumed_sea=None, straight_edge_cells:
     with 0.0, which would read as a sea about a hundred kilometres inland.
     Real coasts are ragged; the edge of a filled tile is a grid line. So a
     sea area that meets land along a straight row or column for
-    ``straight_edge_cells`` cells or more is taken as a gap: every cell of
-    it becomes a void, and the cells are returned in ``zero_fill`` so that
-    they can be counted. The edges of assumed sea are not counted, because
-    a missing tile's edge is straight by nature.
+    ``straight_edge_cells`` cells or more (150 when None) is taken as a
+    gap: every cell of it becomes a void, and the cells are returned in
+    ``zero_fill`` so that they can be counted. The edges of assumed sea
+    are not counted, because a missing tile's edge is straight by nature.
     """
     from scipy import ndimage
 
+    if straight_edge_cells is None:
+        # None means the default, as null or a value left out does in the
+        # browser's classifyCells
+        straight_edge_cells = 150
     zt = np.add(np.asarray(_grid("z", z), dtype=np.float64), 0.0)   # -0 becomes +0
     rows, cols = zt.shape
     if assumed_sea is None:
@@ -422,7 +430,7 @@ def flow_directions(zt, filled, cls, seed, metric: RowMetric, sea_level_m: float
     offer = np.where(land, filled, np.where(np.isfinite(zt), zt, sea_level_m))
     dist = (np.asarray(metric.dx, dtype=np.float64), np.asarray(metric.dy, dtype=np.float64),
             np.asarray(metric.dg, dtype=np.float64))
-    if any(d.shape != (rows,) for d in dist):
+    if any(d.shape != (rows,) for d in dist):     # refused in both engines, as in every kernel with a metric
         raise ValueError(f"the metric must have one distance per row ({rows})")
     best = np.zeros(shape)
     code = np.zeros(shape, dtype=np.uint8)
@@ -601,9 +609,19 @@ def accumulate_flow(code, cls, metric: RowMetric, sea_clean: bool
     cls = _grid("cls", cls, shape)
     rows, cols = shape
     size = rows * cols
-    au_row = np.asarray(metric.au_row, dtype=np.int64)
-    if au_row.shape != (rows,):
+    given = np.asarray(metric.au_row)
+    if given.shape != (rows,):
         raise ValueError(f"the metric must have one area per row ({rows})")
+    # Both engines refuse a cell area that is not a whole number of units,
+    # or so large that the largest times the cells reaches 2**53: cast to
+    # int64 here a fraction would be cut off that the browser's Float64Array
+    # keeps, and past 2**53 its totals would round where these are exact.
+    whole = given.astype(np.float64)
+    if not (np.all(np.isfinite(whole) & (whole >= 0.0) & (whole == np.floor(whole)))
+            and float(whole.max(initial=0.0)) * size < 2.0**53):
+        raise ValueError("the metric's cell areas must be whole units of 0.01 m2, "
+                         "the largest times the number of cells below 2**53")
+    au_row = given.astype(np.int64)
     land = cls == LAND
     index = np.arange(size, dtype=np.int64).reshape(shape)
     down = np.full(shape, -1, dtype=np.int64)
@@ -1378,7 +1396,9 @@ def _surface_grid(name: str, a, dtype: type | None = np.float64) -> np.ndarray:
 
 
 def _rows_of(metric: RowMetric, rows: int) -> tuple[np.ndarray, np.ndarray]:
-    """The metric's east-west and north-south cell sizes, one per row."""
+    """The metric's east-west and north-south cell sizes, one per row.
+    Both engines refuse a metric of any other length, which would be read
+    past its end (NaN in the browser) or belong to another grid."""
     dx = np.asarray(metric.dx, dtype=np.float64)
     dy = np.asarray(metric.dy, dtype=np.float64)
     if dx.shape != (rows,) or dy.shape != (rows,):
@@ -1463,19 +1483,21 @@ def _flat_pair(p, q) -> tuple[np.ndarray, np.ndarray, tuple[int, ...]]:
     return p.reshape(-1), q.reshape(-1), p.shape
 
 
-def hillshade_layer(p, q, azimuth_deg: float, altitude_deg: float, z_factor: float = 1.0) -> np.ndarray:
+def hillshade_layer(p, q, azimuth_deg: float, altitude_deg: float, z_factor: float | None = 1.0) -> np.ndarray:
     """The ground lit by a sun at ``azimuth_deg`` (clockwise from north)
     and ``altitude_deg`` above the horizon: the cosine of the angle between
     the sun and the ground's normal, 0 in shadow to 1 facing the sun.
 
     This is GDAL's hillshade with Horn's gradients (``gdaldem hillshade``),
     written from ``p`` and ``q`` of :func:`horn_gradients`, scaled by
-    ``z_factor``. A slope turned away from the sun is 0, not negative, and
-    NaN stays NaN where the gradient is not defined, rather than reading as
-    flat ground in shadow.
+    ``z_factor`` (1 when None). A slope turned away from the sun is 0, not
+    negative, and NaN stays NaN where the gradient is not defined, rather
+    than reading as flat ground in shadow.
     """
     flat_p, flat_q, shape = _flat_pair(p, q)
-    zf = float(z_factor)
+    # None means 1, as null or a value left out does in the browser's
+    # hillshades (where null once multiplied as 0)
+    zf = 1.0 if z_factor is None else float(z_factor)
     s_az, c_az = sin_cos_deg(azimuth_deg)
     s_alt, c_alt = sin_cos_deg(altitude_deg)
     shade = np.empty(flat_p.size)
@@ -1494,7 +1516,7 @@ def hillshade_layer(p, q, azimuth_deg: float, altitude_deg: float, z_factor: flo
 
 
 def multidirectional_hillshade(p, q, azimuths: Sequence[float], altitude_deg: float,
-                               z_factor: float = 1.0) -> np.ndarray:
+                               z_factor: float | None = 1.0) -> np.ndarray:
     """The ground lit from several azimuths at once, each sun weighted by
     how squarely it lights the local slope: ``gdaldem hillshade
     -multidirectional`` exactly when ``azimuths`` is 225, 270, 315 and 360.
@@ -1505,10 +1527,10 @@ def multidirectional_hillshade(p, q, azimuths: Sequence[float], altitude_deg: fl
     by the suns that light it across. That is GDAL's local-aspect rule, not
     Mark (1992), who weights by an aspect smoothed over a kilometre. Flat
     ground, where every weight is 0, is lit at the sine of the altitude.
-    The azimuths are taken in the order given.
+    The azimuths are taken in the order given; ``z_factor`` is 1 when None.
     """
     flat_p, flat_q, shape = _flat_pair(p, q)
-    zf = float(z_factor)
+    zf = 1.0 if z_factor is None else float(z_factor)   # None means 1, as in hillshade_layer
     s_alt, c_alt = sin_cos_deg(altitude_deg)
     suns = [sin_cos_deg(azimuth) for azimuth in azimuths]
     shade = np.empty(flat_p.size)
@@ -1560,8 +1582,11 @@ def wetness_index(area_units, cls, tanb, metric: RowMetric, flat_tan_slope: floa
         raise ValueError("area_units, cls and tanb must be grids of one shape")
     dx, dy = _rows_of(metric, rows)
     floor = float(flat_tan_slope)
-    if not floor > 0.0:
-        raise ValueError(f"flat_tan_slope must be a positive slope, not {flat_tan_slope!r}")
+    # Both engines refuse a floor that is not a finite positive slope (NaN
+    # included), here and in the curvatures: 0 would divide by 0 on level
+    # ground and an infinite one would set every argument to 0.
+    if not 0.0 < floor < math.inf:
+        raise ValueError(f"flat_tan_slope must be a finite positive slope, not {flat_tan_slope!r}")
     width = (dx + dy) / 2.0
     arg = np.full((rows, cols), np.nan)
     twi = np.full((rows, cols), np.nan)
@@ -1577,7 +1602,8 @@ def wetness_index(area_units, cls, tanb, metric: RowMetric, flat_tan_slope: floa
         defined = (cls[r0:r1] == LAND) & ~np.isnan(band_tanb)
         band_arg[~defined] = np.nan
         arg[r0:r1] = band_arg
-        twi[r0:r1][defined] = np.log(band_arg[defined])
+        with np.errstate(divide="ignore"):    # an argument of 0 (no area, or an infinite slope) is -inf
+            twi[r0:r1][defined] = np.log(band_arg[defined])
         floored[r0:r1] = defined & ~(band_tanb >= floor)
     return arg, twi, floored
 
@@ -1588,11 +1614,19 @@ def _curvature_cells(metric: RowMetric, spacing_m: float) -> int:
     arc-second and 1 at 3 for the default 90 m)."""
     dx = np.asarray(metric.dx, dtype=np.float64)
     dy = np.asarray(metric.dy, dtype=np.float64)
+    # Both engines refuse, rather than fall back to k = 1: a spacing that is
+    # not a finite positive number of metres, a grid with no middle row to
+    # measure it on, and a spacing so many cells long that k is not finite.
     spacing = float(spacing_m)
     if not (math.isfinite(spacing) and spacing > 0.0):
         raise ValueError(f"the curvature spacing must be a positive number of metres, not {spacing_m!r}")
+    if dx.size == 0:
+        raise ValueError("a grid with no rows has no middle row to measure the curvature spacing on")
     mid = dx.size // 2
-    return max(1, math.floor(spacing / ((float(dx[mid]) + float(dy[mid])) / 2.0) + 0.5))
+    cells = spacing / ((float(dx[mid]) + float(dy[mid])) / 2.0) + 0.5
+    if not math.isfinite(cells):
+        raise ValueError(f"a curvature spacing of {spacing_m!r} m is no finite number of cells")
+    return max(1, math.floor(cells))
 
 
 def curvatures(zt, cls, metric: RowMetric, spacing_m: float, flat_tan_slope: float
@@ -1623,6 +1657,8 @@ def curvatures(zt, cls, metric: RowMetric, spacing_m: float, flat_tan_slope: flo
     dx, dy = _rows_of(metric, rows)
     k = _curvature_cells(metric, spacing_m)
     floor = float(flat_tan_slope)
+    if not 0.0 < floor < math.inf:            # the wetness index's rule, in both engines
+        raise ValueError(f"flat_tan_slope must be a finite positive slope, not {flat_tan_slope!r}")
     profile = np.full((rows, cols), np.nan)
     tangential = np.full((rows, cols), np.nan)
     if rows <= 2 * k or cols <= 2 * k:
@@ -1672,6 +1708,10 @@ def contour_interval(relief: float) -> float:
     if not math.isfinite(relief) or relief <= 0.0:
         return 10.0
     limit = (relief / 12.0) * 2.0
+    # The rule in both engines: the candidates are exact integers (int here,
+    # BigInt in the browser), each compared exactly with the float limit,
+    # and the answer is the float nearest the one chosen. A float walk
+    # would round a candidate past 10**22 and could stop a step early.
     best = 1
     decade = 1
     while True:
@@ -1696,9 +1736,14 @@ def display_range(values, lo: float, hi: float) -> tuple[float, float]:
     """
     lo = float(lo)
     hi = float(hi)
+    # Both engines refuse fractions out of order or outside 0..1 (NaN
+    # included) rather than hand back a range upside down.
     if not 0.0 <= lo <= hi <= 1.0:
         raise ValueError(f"a display range needs 0 <= lo <= hi <= 1, not lo={lo!r} and hi={hi!r}")
     v = np.asarray(values, dtype=np.float64).ravel()
+    # A zero comes back as +0 in both engines: +0.0 is added here before the
+    # choice and in the browser to the two elements chosen, which gives the
+    # same bits whichever zero a sort put at the index.
     v = v[np.isfinite(v)] + 0.0
     n = int(v.size)
     if n == 0:
