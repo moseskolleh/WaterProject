@@ -3834,6 +3834,194 @@ await withPage(async (page, base, consoleErrors) => {
   check('a dense survey map ties a moved label to its peg, and keeps it in full',
     dense.grid.leaders > 0 && dense.grid.full, JSON.stringify(dense.grid));
 
+  // The four terrain figures of PLAN.md step 4.1, drawn before the card that
+  // will show them exists. An analysis is made here, in the page, on a
+  // generated window with a coast, a missing tile taken as sea, a gap, a
+  // flat shelf and a closed hollow, and each figure is drawn from what the
+  // worker will hand the page: C.terrainDisplayLayers, the parts and the
+  // captions. Each has to paint the layers it names and the furniture of a
+  // map, carry the credit and the caveat inside the SVG, where a downloaded
+  // copy keeps them, and rasterise through toPng to a PNG whose maps are
+  // painted rather than left blank: the layers are embedded as PNG images,
+  // and an image the rasteriser dropped would leave only the furniture.
+  const terrain = await page.evaluate(async () => {
+    await window.GWT.load('charts');
+    const C = window.GWT.core, charts = window.GWT.charts;
+    const rows = 90, cols = 90, step = 1 / 3600, n = rows * cols;
+    const lons = new Float64Array(cols), lats = new Float64Array(rows);
+    for (let c = 0; c < cols; c++) lons[c] = -12.0 + c * step;
+    for (let r = 0; r < rows; r++) lats[r] = 8.4 + r * step;
+    /* a hill with spurs, falling west to the sea */
+    const z = new Float64Array(n), assumedSea = new Uint8Array(n);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const dr = r - 45, dc = c - 60, d = Math.sqrt(dr * dr + dc * dc);
+        z[r * cols + c] = 55 * Math.exp(-(d * d) / 800) + 0.45 * (c - 26) + 2 * Math.sin(r / 7) +
+          3 * Math.cos(6 * Math.atan2(dr, dc)) * Math.min(d / 20, 1);
+      }
+    }
+    const block = (r0, r1, c0, c1, fn) => {
+      for (let r = r0; r < r1; r++) for (let c = c0; c < c1; c++) fn(r * cols + c);
+    };
+    block(0, 25, 0, 20, (k) => { assumedSea[k] = 1; z[k] = NaN; });     // a missing tile taken as sea
+    block(52, 58, 40, 46, (k) => { z[k] = NaN; });                        // a gap
+    let shelf = Infinity;
+    block(30, 39, 36, 47, (k) => { shelf = Math.min(shelf, z[k]); });
+    block(30, 39, 36, 47, (k) => { z[k] = shelf; });                      // a flat shelf
+    block(60, 63, 30, 33, (k) => { z[k] -= 4; });                         // a closed hollow
+    const grid = { lons, lats, z, rows, cols, shown: [15, 75, 15, 75], assumedSea,
+      sourceId: 'copernicus_glo30', seaClean: true, label: 'a generated window' };
+    const cfg = { terrain: { drainage_area_km2: 0.05 } };
+    const analysis = C.analyseTerrain(grid, cfg, null, 'float32', grid.shown);
+    const display = C.terrainDisplayLayers(analysis, grid, 1024);
+    const captions = C.terrainCaptions(analysis, null, 'Testville');
+    const credit = 'Elevation: a generated window. Cells about 30 by 31 m.';
+    const settings = C.withConfig(cfg).terrain;
+    const opts = { parts: analysis.parts, summary: analysis.summary, captions, figureCredit: credit,
+      site: { lon: lons[50], lat: lats[45], label: 'Testville' }, cfg: settings };
+    const flat = (s) => String(s).replace(/\s+/g, ' ').trim();
+    const decode = async (src) => {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const g = canvas.getContext('2d');
+      g.drawImage(img, 0, 0);
+      return { w: img.width, h: img.height, at: (x, y) => Array.from(g.getImageData(x, y, 1, 1).data),
+        region: (x, y, w, h) => g.getImageData(x, y, w, h).data };
+    };
+    const builders = {
+      terrainRelief: { title: 'title_relief', layers: ['relief'] },
+      wetnessMap: { title: 'title_wetness', layers: ['wetness'] },
+      curvatureMaps: { title: 'title_curvature', layers: ['profile', 'tangential'] },
+      hillshadeDirections: { title: 'title_directions',
+        layers: settings.hillshade_panel_azimuths_deg.map((a) => 'hillshade-' + a) },
+    };
+    const out = { summary: analysis.summary, display: [display.rows, display.cols, display.stride], figures: {} };
+    const svgs = {};
+    for (const [name, want] of Object.entries(builders)) {
+      const svg = charts[name](display, opts);
+      svgs[name] = svg;
+      const texts = Array.from(svg.querySelectorAll('text')).map((t) => t.textContent);
+      const note = (kind) => Array.from(svg.querySelectorAll(`text[data-note="${kind}"]`))
+        .map((t) => t.textContent).join(' ');
+      const images = Array.from(svg.querySelectorAll('image'));
+      const sizes = [];
+      for (const image of images) {
+        const raster = await decode(image.getAttribute('href'));
+        sizes.push([raster.w, raster.h]);
+      }
+      /* the rasterised figure: in each map, the share of pixels not of the
+       * figure's own ground, which is what a dropped image would leave */
+      const png = await charts.toPng(svg, { scale: 2 });
+      const picture = await decode(png.dataUrl);
+      const ground = picture.at(4, 4);
+      const painted = images.map((image) => {
+        const x = Math.round(Number(image.getAttribute('x')) * 2) + 2;
+        const y = Math.round(Number(image.getAttribute('y')) * 2) + 2;
+        const data = picture.region(x, y, Math.round(Number(image.getAttribute('width')) * 2) - 4,
+          Math.round(Number(image.getAttribute('height')) * 2) - 4);
+        let count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (Math.abs(data[i] - ground[0]) + Math.abs(data[i + 1] - ground[1]) +
+              Math.abs(data[i + 2] - ground[2]) > 24) count++;
+        }
+        return Math.round(1000 * count / (data.length / 4)) / 1000;
+      });
+      const viewBox = svg.getAttribute('viewBox').split(' ').map(Number);
+      out.figures[name] = {
+        layers: images.map((image) => image.getAttribute('data-layer')), want: want.layers,
+        sizes: sizes, title: flat(texts.join(' ')).includes(flat(captions[want.title])),
+        panelTitles: name !== 'hillshadeDirections' ||
+          settings.hillshade_panel_azimuths_deg.every((a, t) => texts.includes(captions['panel_' + t])),
+        credit: note('credit') === credit, caveat: note('caveat') === flat(captions.figure_caveat),
+        stars: svg.querySelectorAll('[data-site]').length,
+        north: texts.filter((t) => t === 'N').length,
+        scale: texts.filter((t) => /^\d+(\.\d+)? k?m$/.test(t)).length,
+        png: [png.width, png.height, viewBox[2] * 2, viewBox[3] * 2], painted: painted,
+      };
+    }
+
+    /* the relief, read cell by cell off its own raster: assumed sea hatched
+     * where ((x + y) mod 6) < 2, sea and gaps in their fills, and on the
+     * wetness map land with no index left transparent */
+    const pixel = async (svg, find) => {
+      const raster = await decode(svg.querySelector('image').getAttribute('href'));
+      for (let k = 0; k < display.cls.length; k++) {
+        const x = k % display.cols, y = display.rows - 1 - Math.floor(k / display.cols);
+        if (find(k, x, y)) return raster.at(x, y);
+      }
+      return null;
+    };
+    const cls = display.cls, sea = display.assumedSea;
+    out.cells = {
+      hatched: await pixel(svgs.terrainRelief, (k, x, y) => cls[k] === 2 && sea[k] && (x + y) % 6 < 2),
+      assumed: await pixel(svgs.terrainRelief, (k, x, y) => cls[k] === 2 && sea[k] && (x + y) % 6 >= 2),
+      sea: await pixel(svgs.terrainRelief, (k) => cls[k] === 2 && !sea[k]),
+      gap: await pixel(svgs.terrainRelief, (k) => cls[k] === 0),
+      blank: await pixel(svgs.wetnessMap, (k) => cls[k] === 1 && Number.isNaN(display.twi[k])),
+    };
+
+    /* the drainage lines: one path per run of stretches routed alike, each
+     * as wide as its Strahler order makes it, the flat-routed runs paler
+     * and every run of a line flagged as draining beyond the square dashed */
+    const runs = [];
+    analysis.parts.forEach((part) => {
+      let start = 0;
+      const flats = part.stretch_flat;
+      for (let s = 1; s <= flats.length; s++) {
+        if (s < flats.length && flats[s] === flats[start]) continue;
+        runs.push({ id: part.id, width: 0.6 + 0.5 * (part.strahler - 1), flat: flats[start],
+          dashed: part.edge_contaminated });
+        start = s;
+      }
+    });
+    const paths = Array.from(svgs.terrainRelief.querySelectorAll('path[data-link]')).map((p) => ({
+      id: Number(p.getAttribute('data-link')), width: Number(p.getAttribute('stroke-width')),
+      flat: p.getAttribute('stroke-opacity') === '0.45', dashed: p.hasAttribute('stroke-dasharray') }));
+    out.lines = {
+      parts: analysis.parts.length, runs: runs.length, paths: paths.length,
+      same: JSON.stringify(paths) === JSON.stringify(runs.map((r) => ({ id: r.id, width: r.width,
+        flat: r.flat, dashed: r.dashed }))),
+      flat: paths.filter((p) => p.flat).length, dashed: paths.filter((p) => p.dashed).length,
+      solid: paths.filter((p) => !p.dashed).length,
+      contours: svgs.terrainRelief.querySelectorAll('path[data-contour]').length,
+      elsewhere: ['wetnessMap', 'curvatureMaps', 'hillshadeDirections']
+        .map((name) => svgs[name].querySelectorAll('path[data-link], path[data-contour]').length),
+    };
+    return out;
+  });
+  const terrainFigures = Object.entries(terrain.figures);
+  check('terrain figures: an analysis made in the page has a coast, assumed sea, a gap and a flat',
+    terrain.summary.sea > 0 && terrain.summary.assumed_sea > 0 && terrain.summary.voids > 0 &&
+    terrain.summary.flat_routed_stream > 0 && terrain.summary.raised > 0 &&
+    terrain.display.join() === '60,60,1', JSON.stringify({ summary: terrain.summary, display: terrain.display }));
+  check('terrain figures: each paints its layers at the size of the square shown',
+    terrainFigures.every(([, f]) => f.layers.join() === f.want.join() &&
+      f.sizes.every((s) => s.join() === '60,60')),
+    JSON.stringify(terrainFigures.map(([name, f]) => [name, f.layers, f.sizes])));
+  check('terrain figures: each carries its title, the credit and the caveat inside the SVG',
+    terrainFigures.every(([, f]) => f.title && f.panelTitles && f.credit && f.caveat),
+    JSON.stringify(terrainFigures.map(([name, f]) => [name, f.title, f.panelTitles, f.credit, f.caveat])));
+  check('terrain figures: every map has the site star, a scale bar and a north arrow',
+    terrainFigures.every(([, f]) => f.stars === f.want.length && f.north === f.want.length &&
+      f.scale === f.want.length),
+    JSON.stringify(terrainFigures.map(([name, f]) => [name, f.stars, f.north, f.scale])));
+  check('terrain figures: the relief hatches assumed sea and fills sea and gaps; no index is left blank',
+    JSON.stringify(terrain.cells) === JSON.stringify({ hatched: [157, 189, 216, 255],
+      assumed: [207, 227, 242, 255], sea: [207, 227, 242, 255], gap: [230, 230, 230, 255],
+      blank: [0, 0, 0, 0] }), JSON.stringify(terrain.cells));
+  check('terrain figures: the drainage lines are drawn by order, paler where flat-routed, dashed where flagged',
+    terrain.lines.same && terrain.lines.paths > 0 && terrain.lines.flat > 0 && terrain.lines.dashed > 0 &&
+    terrain.lines.solid > 0 && terrain.lines.contours > 0 && terrain.lines.elsewhere.every((count) => count === 0),
+    JSON.stringify(terrain.lines));
+  check('terrain figures: toPng of each gives a PNG whose maps are painted',
+    terrainFigures.every(([, f]) => f.png[0] === f.png[2] && f.png[1] === f.png[3] &&
+      f.painted.length === f.want.length && f.painted.every((share) => share > 0.6)),
+    JSON.stringify(terrainFigures.map(([name, f]) => [name, f.png, f.painted])));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });
