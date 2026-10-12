@@ -217,7 +217,7 @@ read_uncovered: >-
 
 # For a gap that is real but would round to 0%.
 read_uncovered_little: >-
-  Less than 1% of the window read ({count:num} cells) lies outside the files
+  Less than 1% of the window read ({count:num} {count:plural:cell|cells}) lies outside the files
   supplied and is treated as a gap.
 
 read_assumed_sea: >-
@@ -227,7 +227,7 @@ read_assumed_sea: >-
   for open sea).
 
 read_assumed_sea_little: >-
-  Less than 1% of the window read ({count:num} cells) lies in {n:plural:a
+  Less than 1% of the window read ({count:num} {count:plural:cell|cells}) lies in {n:plural:a
   tile|tiles} not supplied ({tiles}) whose whole edge with the tiles supplied
   is at or below {level:g} m, so it is taken as open sea with no height
   ({product} publishes no tiles for open sea).
