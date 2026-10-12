@@ -13,6 +13,7 @@ is bundled) so that two commits are timed on the same work, and
 python bench/run.py                                  # the Python package, ~8 min
 python bench/run.py --quick --only inversion         # one group, 2 samples
 python bench/run.py --compare bench/baseline.json    # now, beside the baseline
+python bench/terrain_memory.py                       # the terrain analysis's memory, ~15 s
 
 node bench/web.mjs                                   # the browser app, ~2.5 min
 node bench/web.mjs --quick --out web.json
@@ -96,10 +97,10 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   illustrative discharges `run_kuntolo_step_test.py` carries in its
   comments (which reaches the Hantush-Bierschenk analysis), and the Dr
   Timbo constant-rate test with its recovery.
-- `terrain/*` - reading an operator's elevation model (PLAN.md step
-  4.1). No elevation model is bundled, so the setup writes a synthetic
-  3600 by 3600 float32 tile (a seeded fractal surface with a tilt and
-  centimetre steps) laid out as the Copernicus GLO-30 tile N08 W012 is:
+- `terrain/*` - reading an operator's elevation model and analysing it
+  (PLAN.md step 4.1). No elevation model is bundled, so the setup writes
+  a synthetic 3600 by 3600 float32 tile (a seeded fractal surface with a
+  tilt and centimetre steps) laid out as the Copernicus GLO-30 tile N08 W012 is:
   PixelIsPoint, EPSG 4326, 1/3600 degree. `read a window, DEFLATE GLO-30
   layout` reads the window the terrain analysis takes by default (the
   radius shown, 10 km, plus the 5 km margin analysed around it, centred
@@ -113,7 +114,31 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   reader's LZW decoder swapped for the 40-line loop it is tested against,
   which is the measure behind decoding a Clear segment at a time. `read a
   whole DEFLATE tile` is `read_geotiff` on the whole file, as the command
-  line and the tests read it. File writing is setup and is not timed.
+  line and the tests read it. `analyse the default window` is
+  `analyse_terrain` on the DEFLATE window, 983 by 979 cells at 1
+  arc-second, with the layers that are only drawn kept in float32 as the
+  Streamlit app keeps them. `analyse at the cap` is the same on the widest
+  window the cap on cells (`terrain.max_cells`) allows with the default
+  margin: its radius is the one the planner's refusal offers when asked
+  for more, so the measure follows the cap if the cap moves (16.5 km at
+  2,000,000 cells, 1407 by 1401 cells, 1,971,207). `trace drainage lines
+  from the core` is `drainage_links` at the default threshold (0.5 km²)
+  on the default window's core: the drainage lines alone, which the
+  browser traces again on the page each time the threshold is moved.
+  Writing the file, reading the window and, for the drainage lines, the
+  analysis they are traced from, are setup and are not timed.
+
+  The memory the analysis takes is not in `run.py`'s output, whose layout
+  has no field for it. `python bench/terrain_memory.py` writes the same
+  tile, then reads the window at the cap and analyses it once in a fresh
+  interpreter, after a warm-up analysis of a 1 km window, and prints JSON:
+  `increase_mb` is the peak resident set size after the analysis
+  (`ru_maxrss`) less the resident set size just before it, the window
+  already read; `read_mb` and `first_use_mb` are what the read and the
+  warm-up (the modules the analysis imports on first use) added before
+  that; and it gives the analysis's wall time, the window, the commit, the
+  date and the same `machine` block as `run.py`. MB there are 2^20 bytes,
+  `ps -o rss` divided by 1024. It reads `/proc`, so it runs on Linux only.
 - `reports/*` - each document the package builds, from inputs made
   beforehand, written with its figures into a temporary folder: the
   geophysical, pumping, completion, water quality, handover, cost
@@ -295,6 +320,53 @@ with the codecs, the GeoTIFF reader and the elevation layer, and time to
 interactive on the throttled profile went from 11.11 s to 11.84 s
 (median of three cold loads each, the commit before the step and the
 step's last commit), first contentful paint staying at 2.4 s.
+
+## The terrain analysis: why 2,000,000 cells
+
+PLAN.md step 4.1 caps the cells the terrain analysis takes, the margin
+included, at `terrain.max_cells`: one limit in every runtime, so that
+whether a window is refused does not depend on where the engine ran. At
+2,000,000 cells the widest window is 16.5 km shown with the 5 km margin,
+1407 by 1401 cells at 1 arc-second. The value was committed as
+provisional, to be confirmed here by this rule, on the bench machine:
+
+- `terrain/analyse at the cap` (`run.py --only terrain`) has a median of
+  at most 6.0 s;
+- the analysis's peak RSS increase at the cap (`increase_mb` from
+  `bench/terrain_memory.py`), plus the Streamlit app's idle RSS once
+  Site maps has loaded, is at most 690 MB, the least memory Streamlit
+  Community Cloud gives an app.
+
+If either fails, `max_cells` comes down in steps of 250,000 until both
+hold, and the changelog says so. Only `defaults.json`, `gwt-data.js` and
+the reason beside `max_cells` in `config.py` change: every parity case
+and test of the cap passes its own `max_cells`, so nothing in
+`reference.json` moves.
+
+The idle RSS is taken by hand, once: start the app with `streamlit run
+app/streamlit_app.py`, open Site maps in a browser and let it finish
+loading, then read `ps -o rss= -p PID` for the Streamlit process (in
+kilobytes; divide by 1024 for MB as `terrain_memory.py` counts them).
+
+TODO: the date, the machine (CPU, CPU count, Python, numpy and scipy, from the runs' `machine` blocks) and the load average.
+
+| measure | median | IQR |
+|---|---|---|
+| analyse the default window | TODO | TODO |
+| analyse at the cap | TODO | TODO |
+| trace drainage lines from the core | TODO | TODO |
+
+TODO: `terrain_memory.py` at the cap: `increase_mb`, with `read_mb` and `first_use_mb` beside it, and its date.
+
+TODO: the Streamlit app's idle RSS after loading Site maps, by `ps`, and the date it was taken.
+
+TODO: the sum against 690 MB, and whether the app's idle RSS already holds what `read_mb` and `first_use_mb` count.
+
+TODO: the verdict on both limits: 2,000,000 kept, or lowered to what.
+
+TODO: the browser worker's time at the cap (`bench/web.mjs`, `terrain-worker`), and the page-only fallback at 4x.
+
+TODO: the ad hoc Pyodide run at the cap, labelled as ad hoc, on the `spikes/pyodide-engine/measure.mjs` pattern.
 
 ## The committed baseline
 

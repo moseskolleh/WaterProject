@@ -3,12 +3,17 @@
 Each measure is a thing a user waits for: importing a subsystem, one call
 of the forward model, inverting a sample sounding, analysing a sample
 pumping test, reading a window and a whole tile of an elevation model,
-building each report the package offers, recomputing a saved project the
-way ``groundwater recompute`` does, and one run of the Streamlit app's
+analysing that window (at the default size and at the cap on cells) and
+tracing its drainage lines again at the default threshold, building each
+report the package offers, recomputing a saved project the way
+``groundwater recompute`` does, and one run of the Streamlit app's
 script. Every one is run on the bundled examples, except the terrain
-group: no elevation model is bundled, so it reads a seeded synthetic
-3600 by 3600 tile that its setup writes. Either way two commits are
-timed on the same work.
+group: no elevation model is bundled, so it reads and analyses a seeded
+synthetic 3600 by 3600 tile that its setup writes. Either way two commits
+are timed on the same work. Only time is measured here, as the output's
+layout has no field for memory: what the terrain analysis takes at the
+cap is measured by ``bench/terrain_memory.py``, in a fresh interpreter of
+its own.
 
 The method is the same for every in-process measure, and is written into
 the output beside each number:
@@ -400,6 +405,9 @@ def _pumping_measures() -> list[Measure]:
 #: Side of the synthetic elevation tile, in cells: a GLO-30 tile at Sierra
 #: Leone's latitude is 3600 by 3600.
 TERRAIN_SIDE = 3600
+#: The synthetic DEFLATE tile's file name: the published name of the tile it
+#: is laid out as, so the reader takes it for Copernicus as it would the real one.
+TERRAIN_TILE = "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif"
 _TERRAIN_CACHE: dict = {}
 
 
@@ -486,6 +494,50 @@ def _write_terrain_tile(path: Path, codec: str, tile: int, only=None) -> None:
     path.write_bytes(b.assemble("<", [b.Ifd(tags, blocks, True)], ghost=deflate))
 
 
+def _terrain_window(path: Path, radius_km: float | None = None):
+    """The default settings and the window the apps read from the DEFLATE
+    tile at ``path`` before they analyse it: centred on the middle of the
+    tile (no site is given), the radius shown (the configured one unless
+    ``radius_km`` says otherwise) and the default margin analysed around it.
+    """
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping.elevation import read_elevation
+    cfg = TerrainConfig()
+    return cfg, read_elevation([(TERRAIN_TILE, path)], radius_km=radius_km, cfg=cfg)
+
+
+def _terrain_cap_radius(path: Path) -> float:
+    """The widest radius shown whose analysed square, the default margin
+    included, fits under ``terrain.max_cells`` in the middle of the DEFLATE
+    tile at ``path``: 16.5 km at 2,000,000 cells, an analysed square of
+    1407 by 1401 cells (1,971,207).
+
+    It is the radius the refusal offers an operator who asks for more, taken
+    from the planner rather than written here, so that a measure at the cap
+    stays at the cap if the cap is lowered: the rule in bench/README.md
+    ("The terrain analysis: why 2,000,000 cells") lowers it in steps of
+    250,000 until the analysis there meets its time and memory budget. A
+    plan is refused before any block is read, so this decodes nothing.
+    """
+    from groundwater.geotiff import GeoTiffError
+    try:
+        _terrain_window(path, 1000.0)
+    except GeoTiffError as refusal:
+        if refusal.ident == "terrain.too_many_cells":
+            return float(refusal.values["fit"])
+        raise
+    raise RuntimeError("a 1000 km window fitted under the cap on cells")
+
+
+def _analyse_window(cfg, read):
+    """``analyse_terrain`` on a window read by :func:`_terrain_window`, as
+    the Streamlit app calls it: the layers that are only drawn are kept in
+    float32, which halves the memory they take at the cap."""
+    from groundwater.mapping.terrain_analysis import analyse_terrain
+    return analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown,
+                           precision="float32")
+
+
 def _terrain_measures() -> list[Measure]:
     # Reading an operator's elevation model (PLAN.md step 4.1), on the
     # synthetic tile above. A window is the default the apps read for the
@@ -496,8 +548,14 @@ def _terrain_measures() -> list[Measure]:
     # same read with the 40-line loop decoder put back, so the choice of the
     # vectorised decoder rests on a number. The whole tile is what the
     # command line and the tests read.
-    copernicus = "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif"
-
+    #
+    # Then the analysis, of the default window read from the DEFLATE tile
+    # and of the widest window the cap on cells allows, each read in setup
+    # as the apps read it before they analyse; and the drainage lines traced
+    # again from the default window's core, which is what the browser does
+    # on the page each time the operator moves the drainage threshold. The
+    # memory the analysis takes at the cap is bench/terrain_memory.py's, as
+    # this file's layout has no field for it.
     def window_read(name: str):
         from groundwater.config import TerrainConfig
         from groundwater.mapping.elevation import read_elevation
@@ -506,9 +564,9 @@ def _terrain_measures() -> list[Measure]:
                                            cfg=cfg)
 
     def deflate_window(tmp):
-        path = tmp / copernicus
+        path = tmp / TERRAIN_TILE
         _write_terrain_tile(path, "deflate", 1024)
-        read = window_read(copernicus)
+        read = window_read(TERRAIN_TILE)
         return lambda: read(path)
 
     def lzw_file(tmp) -> Path:
@@ -550,15 +608,34 @@ def _terrain_measures() -> list[Measure]:
 
     def deflate_tile(tmp):
         from groundwater.geotiff import read_geotiff
-        path = tmp / copernicus
+        path = tmp / TERRAIN_TILE
         _write_terrain_tile(path, "deflate", 1024)
         return lambda: read_geotiff(path)
+
+    def analysed(at_cap: bool):
+        def setup(tmp):
+            path = tmp / TERRAIN_TILE
+            _write_terrain_tile(path, "deflate", 1024)
+            cfg, read = _terrain_window(path, _terrain_cap_radius(path) if at_cap else None)
+            return lambda: _analyse_window(cfg, read)
+        return setup
+
+    def drainage(tmp):
+        from groundwater.mapping.terrain_analysis import drainage_links
+        path = tmp / TERRAIN_TILE
+        _write_terrain_tile(path, "deflate", 1024)
+        cfg, read = _terrain_window(path)
+        core = _analyse_window(cfg, read).core
+        return lambda: drainage_links(core, cfg.drainage_area_km2)
 
     return [
         Measure("terrain", "read a window, DEFLATE GLO-30 layout", deflate_window),
         Measure("terrain", "read a window, LZW 512 tiles", lzw_window),
         Measure("terrain", "read a window, LZW 512 tiles, loop decoder", lzw_window_loop),
         Measure("terrain", "read a whole DEFLATE tile", deflate_tile),
+        Measure("terrain", "analyse the default window", analysed(at_cap=False)),
+        Measure("terrain", "analyse at the cap", analysed(at_cap=True)),
+        Measure("terrain", "trace drainage lines from the core", drainage),
     ]
 
 
