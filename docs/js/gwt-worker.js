@@ -11,15 +11,17 @@
  *
  *   - started as a Web Worker, it imports the engine and its tables and
  *     answers its requests - invert (and the VES co-pilot's previewInvert),
- *     sampleRange, analysePumping, recompute and the pumping test co-pilot's
- *     cooperJacob - reporting progress on the way;
+ *     sampleRange, analysePumping, recompute, the pumping test co-pilot's
+ *     cooperJacob, and readElevation and analyseTerrain for the terrain
+ *     maps - reporting progress on the way;
  *   - loaded by the page, it is GWT.engine: a promise per request, the
  *     progress passed on, cancel, and the same tasks run on the page
  *     itself where no worker can start - a copy opened from file://, which
  *     browsers refuse a worker, or a browser that fails to load one.
  *
  * Both run TASKS below on a structured clone of the request, so the answer
- * does not depend on which of them ran it.
+ * does not depend on which of them ran it. A request is always copied; an
+ * answer holding large typed arrays hands their buffers over (TRANSFERS).
  */
 (function (global) {
   'use strict';
@@ -156,6 +158,65 @@
         }
       });
     },
+
+    /* The window of elevation models a plan covers, read from its blocks'
+     * bytes (PLAN.md step 4.1): C.readElevationWindow. The page plans the
+     * window and reads the blocks out of the files, which only it can open;
+     * each block comes as a Uint8Array with a buffer of its own, so copying
+     * the request copies the blocks and nothing around them. */
+    readElevation: function (payload, progress) {
+      return GWT.core.readElevationWindow(payload.plan, payload.blocks, payload.cfg, progress);
+    },
+
+    /* The analysis of a window read, as the page draws it: the layers
+     * cropped to the square shown and thinned to at most 1,024 cells a
+     * side, the core at full size so that the page traces the lines again
+     * for a new drainage threshold, the lines, the summary and the
+     * captions. The rest of the analysis (the filled surface, the
+     * gradients, the layers at full size) stays here. The read comes with
+     * its grid set to null: the grid is sent once, as payload.grid. */
+    analyseTerrain: function (payload, progress) {
+      var C = GWT.core, grid = payload.grid;
+      var analysis = C.analyseTerrain(grid, payload.cfg, progress, 'float32', grid.shown);
+      return {
+        display: C.terrainDisplayLayers(analysis, grid, 1024),
+        core: C.terrainCore(analysis),
+        links: analysis.links,
+        parts: analysis.parts,
+        summary: analysis.summary,
+        captions: C.terrainCaptions(analysis, payload.read, payload.where),
+        kCells: analysis.kCells,
+      };
+    },
+  };
+
+  /* The distinct buffers under the typed arrays these objects hold, one
+   * level down, a list of arrays included. Each buffer is named once: a
+   * transfer list that names one twice does not clone at all. */
+  function buffersIn(objects) {
+    /** @type {ArrayBufferLike[]} */
+    var buffers = [];
+    objects.forEach(function (object) {
+      Object.keys(object).forEach(function (key) {
+        var value = object[key];
+        (Array.isArray(value) ? value : [value]).forEach(function (item) {
+          if (ArrayBuffer.isView(item) && buffers.indexOf(item.buffer) < 0) buffers.push(item.buffer);
+        });
+      });
+    });
+    return buffers;
+  }
+
+  /* The buffers an answer hands over to the page rather than copies, by
+   * task. A terrain answer is mostly typed arrays, the grid read or the
+   * display layers and the core, with a value or more for every cell of
+   * the window, and a copy would hold each one twice while it is made;
+   * handed over, they move, and the worker drops the answer once it is
+   * sent. A request is never handed over, only copied, so the page still
+   * has what it sent when it has to run the task itself. */
+  var TRANSFERS = {
+    readElevation: function (read) { return buffersIn([read.grid, read]); },
+    analyseTerrain: function (answer) { return buffersIn([answer.display, answer.core]); },
   };
 
   /* A time any thread of this page can read the same way: a worker's clock
@@ -206,10 +267,13 @@
       /* when the task itself ran, for the page's history */
       /** @type {Record<string, any>} */ (reply).ran = [began, wallClock()];
       try {
-        global.postMessage(reply);
+        /* only an answer has buffers to hand over; an error has none */
+        global.postMessage(reply, own(TRANSFERS, request.type) && !reply.error
+          ? TRANSFERS[request.type](reply.result) : []);
       } catch (e2) {
         /* An answer that will not clone. Say so rather than lose it: the page
-         * runs the request itself and has the answer that way. */
+         * runs the request itself and has the answer that way, or, for a
+         * job it may not run again, fails it. */
         global.postMessage({ id: request.id, error: errorOf(e2), uncloneable: true });
       }
     };
@@ -290,12 +354,15 @@
     else job.resolve(result);
   }
 
+  /* options: onProgress(fraction, label), and rerunOnPage, which is false
+   * for a job the page must not run again itself once the worker that had
+   * it has stopped (see rerun). */
   function request(type, payload, options) {
     var opts = options || {};
     return new Promise(function (resolve, reject) {
       var job = { id: engine.nextId++, type: type, payload: payload,
-        onProgress: opts.onProgress || null, resolve: resolve, reject: reject,
-        mode: '', start: now() };
+        onProgress: opts.onProgress || null, rerunOnPage: opts.rerunOnPage !== false,
+        resolve: resolve, reject: reject, mode: '', start: now() };
       if (mode() === 'page') {
         runOnPage(job);
       } else {
@@ -380,8 +447,9 @@
     }
     if (data.uncloneable) {
       console.warn('The engine worker could not send back its answer to ' +
-        job.type + ' (' + data.error.message + '); working it out on the page.');
-      runOnPage(job);
+        job.type + ' (' + data.error.message + ')' +
+        (job.rerunOnPage ? '; working it out on the page.' : '.'));
+      rerun(job);
     } else if (data.error) {
       settle(job, 'failed', rebuilt(data.error));
     } else {
@@ -390,12 +458,35 @@
     next();
   }
 
+  /* What a job that may not be run again on the page fails with when the
+   * worker that had it stops. Only the terrain jobs ask for that, so the
+   * sentence is theirs; it is the browser's own, not in the catalogue. */
+  var STOPPED = 'The background engine stopped while working out the terrain, ' +
+    'most likely for lack of memory; try a smaller radius.';
+
+  function workerStopped() {
+    var e = new Error(STOPPED);
+    e.name = 'WorkerStopped';
+    return e;
+  }
+
+  /* A job the worker had and did not answer: run it on the page, unless
+   * it was asked with rerunOnPage: false, when it fails with an error
+   * named WorkerStopped. A terrain job that stops a worker most likely
+   * ran it out of memory, and the same job on the page would then take
+   * the tab with it. */
+  function rerun(job) {
+    if (job.rerunOnPage) runOnPage(job);
+    else settle(job, 'failed', workerStopped());
+  }
+
   /* The worker's own failure rather than a task's: a task's errors come back
    * as answers. Before the worker has said it is ready, this is the script or
    * what it imports failing to load, and nothing will ever run there, so
-   * every request from now on runs on the page. After, it is one request lost
-   * with a broken worker; that one is run on the page, and the next request
-   * gets a fresh worker. */
+   * every request from now on runs on the page, the one it had included,
+   * which the worker never started. After, it is one request lost with a
+   * broken worker; that one is run on the page (or fails, see rerun), and
+   * the next request gets a fresh worker. */
   function crashed(event) {
     if (event && event.preventDefault) event.preventDefault();
     var job = engine.running;
@@ -403,15 +494,17 @@
     engine.running = null;
     stopWorker();
     if (!loaded) giveUp('it did not start: ' + ((event && event.message) || 'it failed to load'));
-    if (job) runOnPage(job);
+    if (job && loaded) rerun(job);
+    else if (job) runOnPage(job);
     next();
   }
 
-  /* An answer that arrived and could not be read: run the request here. */
+  /* An answer that arrived and could not be read: run the request here (or
+   * fail it, see rerun). */
   function unreadable() {
     var job = engine.running;
     engine.running = null;
-    if (job) runOnPage(job);
+    if (job) rerun(job);
     next();
   }
 
@@ -521,6 +614,20 @@
     /* fits: [{time, drawdown, discharge}]; each answer is {fit} or {refused} */
     cooperJacob: function (fits, config, options) {
       return request('cooperJacob', { fits: fits, config: config }, options);
+    },
+    /* readElevationWindow for a plan and its blocks' bytes, each block a
+     * Uint8Array with a buffer of its own; never run again on the page once
+     * the worker has it (rerunOnPage: false) */
+    readElevation: function (plan, blocks, cfg, options) {
+      return request('readElevation', { plan: plan, blocks: blocks, cfg: cfg },
+        Object.assign({}, options, { rerunOnPage: false }));
+    },
+    /* analyseTerrain on a grid read, with the read (its grid set to null)
+     * and the place for the captions; {display, core, links, parts,
+     * summary, captions, kCells}. Never run again on the page either. */
+    analyseTerrain: function (grid, cfg, read, where, options) {
+      return request('analyseTerrain', { grid: grid, cfg: cfg, read: read, where: where },
+        Object.assign({}, options, { rerunOnPage: false }));
     },
     cancel: cancel,
     isCancelled: isCancelled,
