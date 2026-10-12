@@ -96211,5 +96211,223 @@
    125664.49153877099,
    188496.34461156157
   ]
- }
+ },
+ "inflate": [
+  {
+   "name": "stored, heights",
+   "verdict": "accepted",
+   "sha256": "c1446ac70cf2a3decc5cf65e91894ee5e08c076802fe25e648438d43583dcde2",
+   "length": 3000
+  },
+  {
+   "name": "stored, random bytes",
+   "verdict": "accepted",
+   "sha256": "ff767bacb7f93a3b3661545a70a018cde00f7e55e7e9ff3053c69fd65524d8be",
+   "length": 1500
+  },
+  {
+   "name": "fixed codes, text",
+   "verdict": "accepted",
+   "sha256": "78855266f27ac63d755ea3fb5faf6d564292bc77f44d9abde7b1bfc36ed90e59",
+   "length": 2000
+  },
+  {
+   "name": "fixed codes, a short row",
+   "verdict": "accepted",
+   "sha256": "6804b8472b724066d66fc2d9c745aa7989596ddce198f32341708084443b5f1c",
+   "length": 64
+  },
+  {
+   "name": "fixed codes, long runs",
+   "verdict": "accepted",
+   "sha256": "3e382cdf4b3c8a2c0280437a41b50a46a958672dc500a2e317a95185e72bf695",
+   "length": 3000
+  },
+  {
+   "name": "dynamic codes, heights",
+   "verdict": "accepted",
+   "sha256": "41da47e543aee97dcd7d70a2cfd840d3351163807877f5f1966f29f3d65c5c1c",
+   "length": 6000
+  },
+  {
+   "name": "dynamic codes, floats at level 9",
+   "verdict": "accepted",
+   "sha256": "281ef585d4a6941a5613083ecdd9210acbfd97229d8a0eb0457c189aca2f5da0",
+   "length": 6000
+  },
+  {
+   "name": "dynamic codes, level 1",
+   "verdict": "accepted",
+   "sha256": "91a109b553147888b124e9e193dc6a9de212c9d7990dd9da57575c11a8aa1355",
+   "length": 4000
+  },
+  {
+   "name": "dynamic codes, floats, filtered",
+   "verdict": "accepted",
+   "sha256": "c2ae75c299f46be062fc328fe227dafda3ff5cc384c6d38466c61be0b8dcc32a",
+   "length": 4000
+  },
+  {
+   "name": "dynamic codes, text and floats at level 4",
+   "verdict": "accepted",
+   "sha256": "1b8787a987b9a59478175afcbb098eab1b7d9af0b74c7a32c62c34cf75bde353",
+   "length": 4000
+  },
+  {
+   "name": "run-length, runs",
+   "verdict": "accepted",
+   "sha256": "c6beda2871d614407be65370ae5eb9cd95a5a9780246c3a38c0675f20bc34524",
+   "length": 5000
+  },
+  {
+   "name": "run-length, heights",
+   "verdict": "accepted",
+   "sha256": "386f40895c8c14e0858ce2ec9cc21bd01eeb3097a88d0b82d0b43a27aabc2a13",
+   "length": 4000
+  },
+  {
+   "name": "Huffman only, text",
+   "verdict": "accepted",
+   "sha256": "64bbb42e6030cc8170876d8beac17eadaf8f4642dc77267bb0629ea59bb8d31d",
+   "length": 3000
+  },
+  {
+   "name": "Huffman only, floats",
+   "verdict": "accepted",
+   "sha256": "094a4c4498f56c5e2fd9dc8eabb5362f2496befefb87898f0aa9eb26e653c7dd",
+   "length": 3000
+  },
+  {
+   "name": "a 512-byte window",
+   "verdict": "accepted",
+   "sha256": "b893c72d81cc74c6612110b1def1ffa46e2bc97f0347719a809cd344cf821457",
+   "length": 3000
+  },
+  {
+   "name": "memLevel 1",
+   "verdict": "accepted",
+   "sha256": "785d86563a393a95ad942f5dc44599ea5d3a204d22f86e6047148671e6eaf5fa",
+   "length": 3000
+  },
+  {
+   "name": "memLevel 9, level 9, repeats",
+   "verdict": "accepted",
+   "sha256": "ddcc4cb209193ac45e5bfa971ec97b1ea4b41d051bb503adf523dbc91a77665b",
+   "length": 4000
+  },
+  {
+   "name": "zeros",
+   "verdict": "accepted",
+   "sha256": "668946bab9868b28489bb906205ee1026045c8bcd3ca62a1bdf733c65491351b",
+   "length": 8000
+  },
+  {
+   "name": "stored and Huffman pieces, flushed and joined 1",
+   "verdict": "accepted",
+   "sha256": "ecceb3768c1d27aa37fe10089191410afd41fd2752fb933cab697783d1a26fc8",
+   "length": 4800
+  },
+  {
+   "name": "stored and Huffman pieces, flushed and joined 2",
+   "verdict": "accepted",
+   "sha256": "c2cf8fcc7cd0ae5a008bfe6f140016fe26277d3579c5e0296b806a046de3db80",
+   "length": 4800
+  },
+  {
+   "name": "stored and Huffman pieces, flushed and joined 3",
+   "verdict": "accepted",
+   "sha256": "074540ac55c18d6a85ef4f5f726ab82b9b781a62f5949a495a12c1d57af11db0",
+   "length": 4800
+  },
+  {
+   "name": "one compressor, sync and full flushes",
+   "verdict": "accepted",
+   "sha256": "d27bb9010cccdd2718abc8c7281195c161b9fc8685f74bae4bd856903120e764",
+   "length": 3600
+  },
+  {
+   "name": "empty, level 6",
+   "verdict": "accepted",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "length": 0
+  },
+  {
+   "name": "empty, stored",
+   "verdict": "accepted",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "length": 0
+  },
+  {
+   "name": "empty, asked for nothing of a full block",
+   "verdict": "accepted",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "length": 0
+  },
+  {
+   "name": "a last strip stored exactly",
+   "verdict": "accepted",
+   "sha256": "fc904bdd8d3636faf438b4b28979f35003620610a380feebcd0a77de5b36fd86",
+   "length": 300
+  },
+  {
+   "name": "a last strip padded to a full block",
+   "verdict": "accepted",
+   "sha256": "fc904bdd8d3636faf438b4b28979f35003620610a380feebcd0a77de5b36fd86",
+   "length": 300
+  },
+  {
+   "name": "a last strip padded part of the way",
+   "verdict": "accepted",
+   "sha256": "fc904bdd8d3636faf438b4b28979f35003620610a380feebcd0a77de5b36fd86",
+   "length": 300
+  },
+  {
+   "name": "junk after the checksum",
+   "verdict": "accepted",
+   "sha256": "88586e2883e700d1e84ca8951d304118dced616eb91e0abc4a04b434925ad516",
+   "length": 2000
+  },
+  {
+   "name": "a writer's padding after the checksum",
+   "verdict": "accepted",
+   "sha256": "88586e2883e700d1e84ca8951d304118dced616eb91e0abc4a04b434925ad516",
+   "length": 2000
+  },
+  {
+   "name": "cut short",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "a bad Adler-32",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "a bit flipped in a Huffman block",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "raw DEFLATE with no zlib wrapper",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "more than one full block",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  },
+  {
+   "name": "fewer bytes than the block needs",
+   "verdict": "damaged",
+   "sha256": null,
+   "length": null
+  }
+ ]
 }

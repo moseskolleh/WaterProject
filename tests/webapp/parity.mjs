@@ -20,6 +20,16 @@ function close(a, b, tol = 1e-6) {
 
 const reference = JSON.parse(await readFile(REF, 'utf8'));
 
+/* Committed fixture files the page fetches, served by the harness at these
+ * paths for the life of the run (its overlay): they live under tests/, not
+ * docs/, and reference.json carries only what Python made of them. */
+const FIXTURES = {
+  '/__fixtures/zlib_streams.json': {
+    body: await readFile(new URL('fixtures/zlib_streams.json', import.meta.url)),
+    type: 'application/json',
+  },
+};
+
 await withPage(async (page, base, consoleErrors) => {
   await page.goto(base + '/__engine.html', { waitUntil: 'load' });
   await page.waitForFunction(() => window.GWT && window.GWT.core && window.GWT.data &&
@@ -2792,8 +2802,64 @@ await withPage(async (page, base, consoleErrors) => {
       sameJson(decisionJs.gate[i], c.req), JSON.stringify(decisionJs.gate[i]));
   });
 
+  // --- The browser's inflate (PLAN.md step 4.1) ---
+  // A DEFLATE-compressed elevation model is decoded in the browser by
+  // gwt-core.js's own inflate, because the worker's tasks are synchronous.
+  // Each committed block (tests/webapp/fixtures/zlib_streams.json, served
+  // through the harness's overlay rather than copied into reference.json)
+  // has to get the Python reader's verdict under the bounded rule - read
+  // only when the whole stream is valid and holds between the bytes the
+  // block needs and one full block - and, where it is read, the same bytes.
+  // Chromium's own DecompressionStream inflates every block that is read a
+  // third way, given the stream without what a writer left after it.
+  const INF = R.inflate;
+  const inflateJs = await page.evaluate(async () => {
+    const C = GWT.core, S = GWT.support;
+    const streams = await (await fetch('/__fixtures/zlib_streams.json')).json();
+    const out = [];
+    for (const s of streams) {
+      const bytes = S.base64ToBytes(s.b64);
+      let mine, platform = null;
+      try {
+        const block = C.inflateZlib(bytes, s.expected, s.full);
+        mine = { verdict: 'accepted', sha256: C.sha256Hex(block), length: block.length };
+      } catch (e) {
+        mine = { verdict: e && e.code ? e.code : 'threw ' + String(e), sha256: null, length: null };
+      }
+      if (mine.verdict === 'accepted') {
+        try {
+          const inflated = new Blob([bytes.subarray(0, bytes.length - s.junk)]).stream()
+            .pipeThrough(new DecompressionStream('deflate'));
+          const all = new Uint8Array(await new Response(inflated).arrayBuffer());
+          platform = all.length >= s.expected && all.length <= s.full
+            ? C.sha256Hex(all.subarray(0, s.expected)) : `${all.length} bytes`;
+        } catch (e) {
+          platform = 'refused: ' + String(e);
+        }
+      }
+      out.push({ name: s.name, mine, platform });
+    }
+    return out;
+  });
+  check(`inflate: the page fetched the ${INF.length} committed blocks the reference describes`,
+    inflateJs.length === INF.length && inflateJs.every((r, i) => r.name === INF[i].name),
+    `${inflateJs.length} blocks`);
+  INF.forEach((ref, i) => {
+    const got = inflateJs[i] || { mine: null };
+    check(`inflate: ${ref.name} - ${ref.verdict === 'accepted' ? `read, ${ref.length} bytes` : ref.verdict}`,
+      sameJson(got.mine, { verdict: ref.verdict, sha256: ref.sha256, length: ref.length }),
+      JSON.stringify(got.mine));
+  });
+  {
+    const read = inflateJs.filter((r) => r.mine.verdict === 'accepted');
+    const unlike = read.filter((r) => r.platform !== r.mine.sha256);
+    check(`inflate: DecompressionStream gives the same bytes for all ${read.length} blocks read`,
+      read.length > 0 && unlike.length === 0,
+      unlike.map((r) => `${r.name}: ${r.platform}`).join('; '));
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
-}, {});
+}, { overlay: FIXTURES });
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);

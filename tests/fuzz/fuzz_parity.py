@@ -10,6 +10,9 @@ and drilling logs (``sheets.py``), writes each as a real .xlsx, reads it with
 the Python package and hands the same bytes to ``gwt-core.js`` in headless
 Chromium (``engines.py``, ``engine.mjs``); the two answers are compared with
 ``make_reference.py``'s comparison at the tolerances ``parity.mjs`` uses.
+``rasters.py`` draws elevation models and their compressed blocks the same
+way, and the file both engines are handed is then the block or the raster
+itself rather than a workbook.
 
 A disagreement is written to ``tests/fuzz/regressions/`` and printed in the
 log: on the nightly run shrunk by Hypothesis to the smallest sheet that still
@@ -34,19 +37,32 @@ from pathlib import Path
 import pytest
 from hypothesis import HealthCheck, Phase, given, seed, settings
 
+import rasters
+import sheets
 from engines import BrowserEngine, divergences, python_summary
-from sheets import CASES, ves_case, workbook_bytes
+from sheets import ves_case, workbook_bytes
 
 HERE = Path(__file__).resolve().parent
 REGRESSIONS = HERE / "regressions"
 
+# Every generator, each seeded by its own name, so adding one draws nothing
+# new for the others.
+CASES = {**sheets.CASES, **rasters.CASES}
+
+# What a case hands both engines: its sheets, or for the kinds in rasters.py
+# its raster (a grid, for a kind that takes one). The regression files are
+# written with the same key.
+INPUTS = ("sheets", "raster", "grid")
+
 # Cases per generator. A pull request runs the same few hundred every time,
-# on any machine, and draws new ones when sheets.py, the Hypothesis version,
-# a generator's name (its seed) or the number of cases changes, or a value
-# sheets.py computes with the package or scipy: each VES reading comes from
-# groundwater.ves.forward and each drawdown from scipy's exp1, and typed()
-# draws once more for a reading that rounds to a whole number, so a change
-# that carries one reading across a rounding draws every later case anew.
+# on any machine, and draws new ones when sheets.py or rasters.py, the
+# Hypothesis version, a generator's name (its seed) or the number of cases
+# changes, or a value a generator computes with the package, scipy or zlib:
+# each VES reading comes from groundwater.ves.forward and each drawdown from
+# scipy's exp1, and typed() draws once more for a reading that rounds to a
+# whole number, so a change that carries one reading across a rounding draws
+# every later case anew; and where a deflate case damages its stream is drawn
+# within the stream zlib wrote, which another zlib build may write otherwise.
 # The nightly run draws new ones each night. Inversions cost about a second
 # each in Python, so they get a small share of either budget.
 PROFILES = {
@@ -141,8 +157,8 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
     """
     from groundwater.ves.interpret import POORLY_RESOLVED_FACTOR
 
-    data = workbook_bytes(case["sheets"])
-    path = workdir / "case.xlsx"
+    data, suffix = case_file(case)
+    path = workdir / f"case{suffix}"
     path.write_bytes(data)
     py = python_summary(case["kind"], path, str(path), case["options"])
     js = engine.summary(case["kind"], data, str(path), case["options"])
@@ -169,6 +185,14 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
     return found
 
 
+def case_file(case: dict) -> tuple[bytes, str]:
+    """The file both engines read for ``case``, and its suffix: the workbook
+    of a field sheet, or for a kind in rasters.py what that kind is handed."""
+    if case["kind"] in rasters.FILES:
+        return rasters.FILES[case["kind"]](case)
+    return workbook_bytes(case["sheets"]), ".xlsx"
+
+
 def report(found: list) -> str:
     lines = [f"the engines disagree in {len(found)} place(s):"]
     for where, js, py in found[:12]:
@@ -182,8 +206,8 @@ def save_regression(case: dict, found: list) -> Path:
     nightly run, as drawn on a pull request."""
     where = found[0][0]
     slug = re.sub(r"[^a-z0-9]+", "-", re.sub(r"\[\d+\]", "", where).lower()).strip("-")
-    body = json.dumps({"kind": case["kind"], "sheets": case["sheets"],
-                       "options": case["options"]}, sort_keys=True)
+    body = json.dumps({key: case[key] for key in ("kind", *INPUTS, "options") if key in case},
+                      sort_keys=True)
     digest = hashlib.sha1(body.encode()).hexdigest()[:8]
     REGRESSIONS.mkdir(exist_ok=True)
     path = REGRESSIONS / f"{case['kind']}-{slug[:40]}-{digest}.json"
@@ -197,7 +221,9 @@ def save_regression(case: dict, found: list) -> Path:
 
 
 def regression_text(case: dict) -> str:
-    """A regression file a reviewer can read: one sheet row to a line."""
+    """A regression file a reviewer can read: one sheet row to a line, or
+    for a raster or a grid one member to a line, and one row of any table
+    in it."""
     def one(value):
         return json.dumps(value, ensure_ascii=False)
 
@@ -205,12 +231,25 @@ def regression_text(case: dict) -> str:
     for key in ("note", "open", "as_generated", "first_divergence", "kind", "options"):
         if key in case:
             lines.append(f" {one(key)}: {one(case[key])},")
-    lines.append(' "sheets": [')
-    for i, sheet in enumerate(case["sheets"]):
-        lines.append(f'  {{"name": {one(sheet["name"])}, "rows": [')
-        lines.append(",\n".join(f"   {one(row)}" for row in sheet["rows"]))
-        lines.append("  ]}" + ("," if i + 1 < len(case["sheets"]) else ""))
-    lines.append(" ]")
+    if "sheets" in case:
+        lines.append(' "sheets": [')
+        for i, sheet in enumerate(case["sheets"]):
+            lines.append(f'  {{"name": {one(sheet["name"])}, "rows": [')
+            lines.append(",\n".join(f"   {one(row)}" for row in sheet["rows"]))
+            lines.append("  ]}" + ("," if i + 1 < len(case["sheets"]) else ""))
+        lines.append(" ]")
+    else:
+        key = next(k for k in INPUTS if k in case)
+        members = []
+        for name, value in case[key].items():
+            if isinstance(value, list) and value and all(isinstance(row, list) for row in value):
+                rows = ",\n".join(f"   {one(row)}" for row in value)
+                members.append(f"  {one(name)}: [\n{rows}\n  ]")
+            else:
+                members.append(f"  {one(name)}: {one(value)}")
+        lines.append(f" {one(key)}: {{")
+        lines.append(",\n".join(members))
+        lines.append(" }")
     lines.append("}")
     return "\n".join(lines) + "\n"
 

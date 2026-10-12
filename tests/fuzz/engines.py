@@ -5,7 +5,10 @@ analyses; ``BrowserEngine`` hands the same bytes to ``gwt-core.js`` through
 ``engine.mjs``, a Node process kept open for the whole run; ``divergences``
 compares the two with the comparison ``make_reference.py`` uses for the
 committed reference values, at the tolerances ``parity.mjs`` holds each kind
-of quantity to.
+of quantity to. The kinds from ``rasters.py`` are handed a raster or a block
+of one instead of a workbook, and their summaries carry every quantity that
+has to agree exactly as a string - a digest, or an integer written out -
+which the comparison holds to equality rather than to PARSE_TOL.
 
 The summaries here and in ``page.js`` carry the same keys in the same order.
 """
@@ -13,6 +16,7 @@ The summaries here and in ``page.js`` carry the same keys in the same order.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import math
 import select
@@ -253,7 +257,22 @@ def _drilling(path: Path, name: str, options: dict) -> dict:
     return out
 
 
-_KINDS = {"ves": _ves, "pumping": _pumping, "quality": _quality, "drilling": _drilling}
+def _deflate(path: Path, name: str, options: dict) -> dict:
+    """PLAN.md step 4.1: one DEFLATE block, inflated under the bounded rule.
+    Whether it reads and what it gives travel as strings, so they are held
+    to agreeing exactly."""
+    from groundwater.geotiff import _CodecError, _inflate_block
+
+    try:
+        block = _inflate_block(path.read_bytes(), options["expected"], options["full"])
+    except _CodecError as exc:
+        return {"verdict": exc.code, "sha256": None, "length": None}
+    return {"verdict": "accepted", "sha256": hashlib.sha256(block).hexdigest(),
+            "length": str(len(block))}
+
+
+_KINDS = {"ves": _ves, "pumping": _pumping, "quality": _quality, "drilling": _drilling,
+          "deflate": _deflate}
 
 
 def python_summary(kind: str, path: Path, name: str, options: dict) -> dict:

@@ -1,4 +1,5 @@
-/* What the browser engine makes of one generated workbook.
+/* What the browser engine makes of one generated workbook, or of one
+ * generated raster or block of one.
  *
  * Loaded into the bare engine page by engine.mjs. Each summary here has a
  * twin in engines.py that builds the same keys from the Python objects; the
@@ -186,10 +187,29 @@
     return out;
   }
 
+  /* engines.py _deflate: PLAN.md step 4.1's DEFLATE block under the
+   * bounded rule, whether it reads and what it gives as strings */
+  function deflate(bytes, name, options) {
+    var block;
+    try {
+      block = C.inflateZlib(bytes, options.expected, options.full);
+    } catch (e) {
+      if (e && e.code) return { verdict: e.code, sha256: null, length: null };
+      throw e;
+    }
+    return { verdict: 'accepted', sha256: C.sha256Hex(block), length: String(block.length) };
+  }
+
   var KINDS = { ves: ves, pumping: pumping, quality: quality, drilling: drilling };
+  /* the kinds from rasters.py, handed the file's bytes rather than the
+   * sheets of a workbook */
+  var FILES = { deflate: deflate };
 
   global.FUZZ = {
     run: async function (kind, name, b64, options) {
+      if (FILES[kind]) {
+        try { return FILES[kind](S.base64ToBytes(b64), name, options || {}); } catch (e) { return failure(e); }
+      }
       var sheets;
       try { sheets = await S.readXlsx(S.base64ToBytes(b64)); } catch (e) { return failure(e); }
       try { return KINDS[kind](sheets, name, options || {}); } catch (e) { return failure(e); }
