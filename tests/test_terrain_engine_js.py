@@ -22,6 +22,13 @@ and to files made in memory by the same builder for what no fixture holds;
 and, answer for answer, to the Python reader itself, on every fixture and on
 several hundred files made to descriptions (make_dem_fixture.described_file)
 that reach each rule the two were settled to.
+
+The browser's elevation layer (C.elevationFile, C.windowCentre,
+C.planElevationWindow, C.elevationBlockRanges, C.readElevationWindow,
+C.terrainCredit and the degree trigonometry under them) is held to
+groundwater/mapping/elevation.py the same way, answer for answer: every set
+in the fixture manifest and every fixture alone, .hgt tiles made here, and
+each refusal, run through both engines as the page runs them.
 """
 
 from __future__ import annotations
@@ -718,14 +725,15 @@ for await (const line of createInterface({ input: process.stdin })) {
 
 
 class _Reader:
-    """The browser's GeoTIFF reader in a Node vm, asked one question at a time."""
+    """The browser's GeoTIFF reader in a Node vm (or another driver of the
+    engine's), asked one question at a time."""
 
-    def __init__(self, tmp_path: Path):
+    def __init__(self, tmp_path: Path, script: str = _READER, filename: str = "reader.mjs"):
         node = shutil.which("node")
         if node is None:
             pytest.skip("node is not installed; run `node --version` to check")
-        driver = tmp_path / "reader.mjs"
-        driver.write_text(_READER, encoding="utf-8")
+        driver = tmp_path / filename
+        driver.write_text(script, encoding="utf-8")
         self._node = subprocess.Popen([node, str(driver), str(JS)], stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, text=True, encoding="utf-8")
 
@@ -1636,3 +1644,824 @@ def test_the_two_readers_agree_on_files_made_in_memory_with_every_option(reader)
     assert len(specs) >= 300
     # the sample reaches every outcome a reader has: read, and each of its nineteen refusals
     assert outcomes["read"] >= 150 and len(outcomes) == 20, outcomes
+
+
+# ------------------------------------------------------------ the elevation layer
+
+_ELEVATION = r"""
+import { readFileSync, openSync, readSync, fstatSync, closeSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createInterface } from 'node:readline';
+import vm from 'node:vm';
+const sandbox = vm.createContext({ console, structuredClone });
+for (const f of ['gwt-data.js', 'gwt-geo.js', 'gwt-core.js']) {
+  vm.runInContext(readFileSync(process.argv[2] + '/' + f, 'utf8'), sandbox, { filename: f });
+}
+const C = sandbox.GWT.core;
+const Bytes = vm.runInContext('Uint8Array', sandbox);
+// the page reads a GeoTIFF's directories as Python's open_geotiff does: the
+// first 64 KiB, then each range asked for rounded up to 64 KiB, 16 rounds
+const UNIT = 65536, ROUNDS = 16;
+const bits = (v) => { const b = Buffer.alloc(8); b.writeDoubleBE(v); return b.toString('hex'); };
+const sha = (buffer) => createHash('sha256').update(buffer).digest('hex');
+// float64 little-endian, every NaN the one NaN, signs of zero kept
+function digest(values) {
+  const out = Buffer.alloc(values.length * 8);
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] !== values[i]) {
+      out.writeUInt32LE(0, 8 * i);
+      out.writeUInt32LE(0x7FF80000, 8 * i + 4);
+    } else {
+      out.writeDoubleLE(values[i], 8 * i);
+    }
+  }
+  return sha(out);
+}
+// codes 0-9 a cell, as digits, or their digest when there are many
+const codes = (u8) => (u8.length <= 2000 ? Array.from(u8).join('')
+  : sha(Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength)));
+const valuesView = (values) => Object.fromEntries(Object.entries(values).map(
+  ([k, v]) => [k, typeof v === 'number' ? bits(v) : v]));
+// a refusal as {refused: [id, sentence, values]}; an Error the engine throws
+// for a bad argument (Python's ValueError) as {error: true}
+function guard(f) {
+  try {
+    return f();
+  } catch (e) {
+    if (e && e.ident) return { refused: [e.ident, e.message, valuesView(e.values)] };
+    if (e && e.constructor && e.constructor.name === 'Error') return { error: true };
+    throw e;
+  }
+}
+const FLOATS = new Set(['x0', 'y0', 'sx', 'sy', 'nodata']);
+const layoutView = (layout) => Object.fromEntries(Object.entries(layout).map(
+  ([k, v]) => [k, FLOATS.has(k) && v !== null ? bits(v) : v]));
+function file(path) {
+  const fd = openSync(path, 'r'), size = fstatSync(fd).size;
+  return {
+    size,
+    at(offset, length) {
+      const buffer = Buffer.alloc(Math.max(0, Math.min(length, size - offset)));
+      readSync(fd, buffer, 0, buffer.length, offset);
+      const out = new Bytes(buffer.length);
+      out.set(buffer);
+      return out;
+    },
+    close() { closeSync(fd); },
+  };
+}
+function open(name, source) {
+  // an .hgt is laid out from its name and length, with nothing read
+  let found = C.elevationFile(name, source.size, []);
+  if (!Array.isArray(found)) return found;
+  const chunks = [[0, source.at(0, Math.min(source.size, UNIT))]];
+  for (let round = 0; round <= ROUNDS; round++) {
+    found = C.elevationFile(name, source.size, chunks);
+    if (!Array.isArray(found) || round === ROUNDS) break;
+    for (const [offset, length] of found) {
+      chunks.push([offset, source.at(offset, Math.min(Math.ceil(length / UNIT) * UNIT, source.size - offset))]);
+    }
+  }
+  if (!Array.isArray(found)) return found;
+  const values = { file: name, part: 'image directory' };
+  return { refused: ['terrain.ends_early', C.phrase('terrain.ends_early', values), values] };
+}
+const centreView = (c) => ({ lon: bits(c.lon), lat: bits(c.lat), label: c.label, exact: c.exact, note: c.note });
+const fileView = (f) => ({ name: f.name, kind: f.kind, sourceId: f.sourceId, notes: f.notes,
+  layout: layoutView(f.layout) });
+function planView(plan) {
+  return {
+    files: plan.files.map((f) => f.name), sources: plan.sources, declared: plan.declared, offsets: plan.offsets,
+    x0: bits(plan.x0), y0: bits(plan.y0), sx: bits(plan.sx), sy: bits(plan.sy), centre: centreView(plan.centre),
+    ci: plan.ci, cj: plan.cj, stride: plan.stride, hx: plan.hx, hy: plan.hy, hxs: plan.hxs, hys: plan.hys,
+    width: plan.width, height: plan.height, cells: plan.cells, shown: plan.shown,
+    radiusKm: bits(plan.radiusKm), marginKm: bits(plan.marginKm), dx: bits(plan.dx), dy: bits(plan.dy),
+    lons: digest(plan.lons), lats: digest(plan.lats), tile: plan.tile, missing: plan.missing,
+    edges: plan.edges.map((e) => [e.missing, e.file, e.row, e.column]),
+    blocks: plan.blocks.map((b) => [b.file, b.index, b.offset, b.length, b.rows, b.window, b.edges]),
+  };
+}
+function readView(read) {
+  const g = read.grid;
+  return {
+    grid: { lons: digest(g.lons), lats: digest(g.lats), z: digest(g.z), rows: g.rows, cols: g.cols,
+      shown: g.shown, assumedSea: codes(g.assumedSea), sourceId: g.sourceId, seaClean: g.seaClean,
+      label: g.label, credit: g.credit, notice: g.notice, surface: g.surface, files: g.files,
+      cellNote: g.cellNote },
+    assumedSea: codes(read.assumedSea), reasons: codes(read.reasons), shown: read.shown, cells: read.cells,
+    voids: read.voids, uncovered: read.uncovered, implausible: read.implausible, assumed: read.assumed,
+    coverage: bits(read.coverage), centre: centreView(read.centre), notes: read.notes, prompts: read.prompts,
+    surface: read.surface, notice: read.notice, figureCredit: read.figureCredit,
+  };
+}
+const ops = {
+  // the page's whole path through one set of files: open each, credit the
+  // set, centre, plan, read the planned ranges and read the window
+  window(request) {
+    const out = { files: [] }, files = [], paths = {};
+    for (const { name, path } of request.files) {
+      paths[name] = path;
+      const source = file(path);
+      try {
+        const found = guard(() => open(name, source));
+        out.files.push(found.refused || found.error ? found : fileView(found));
+        if (!found.refused && !found.error) files.push(found);
+      } finally {
+        source.close();
+      }
+    }
+    if (files.length < request.files.length) return out;
+    const declared = request.declared;
+    out.credit = guard(() => {
+      const c = C.terrainCredit(files, declared);
+      return [c.label, c.credit, c.notice, c.surface, c.seaClean];
+    });
+    out.notes = guard(() => files.map((f) => C.fileNotes(f, declared)));
+    const centre = request.centre ? { ...request.centre, note: null }
+      : C.windowCentre(request.site, request.latlon, files);
+    out.centre = centreView(centre);
+    const plan = guard(() => C.planElevationWindow(files, centre, request.radius, request.config,
+      request.margin, declared));
+    if (plan.refused || plan.error) {
+      out.plan = plan;
+      return out;
+    }
+    out.plan = planView(plan);
+    const reads = C.elevationBlockRanges(plan), blocks = new Array(plan.blocks.length);
+    for (const r of reads) {
+      const source = file(paths[r.name]), data = source.at(r.offset, r.length);
+      source.close();
+      for (const b of r.blocks) {
+        const block = plan.blocks[b];
+        blocks[b] = data.subarray(block.offset - r.offset, block.offset - r.offset + block.length);
+      }
+    }
+    const progress = [];
+    out.read = guard(() => readView(C.readElevationWindow(plan, blocks, request.config,
+      (fraction, label) => progress.push([bits(fraction), label]))));
+    out.reads = reads.map((r) => [r.name, r.offset, r.length]);
+    out.progress = progress;
+    return out;
+  },
+  // the degree sine and cosine of the float64 values in a file, as float64 pairs
+  trig({ input }) {
+    const raw = readFileSync(input), values = new Float64Array(raw.buffer, raw.byteOffset, raw.length / 8);
+    const out = new Float64Array(2 * values.length);
+    for (let i = 0; i < values.length; i++) {
+      const sc = C.sinCosDeg(values[i]);
+      out[2 * i] = sc[0];
+      out[2 * i + 1] = sc[1];
+    }
+    return Buffer.from(out.buffer).toString('base64');
+  },
+  metric({ lons, lats }) {
+    const m = C.rowMetric(lons.map(Number), lats.map(Number));
+    return { dx: Array.from(m.dx, bits), dy: Array.from(m.dy, bits), dg: Array.from(m.dg, bits),
+             au: Array.from(m.auRow, bits) };
+  },
+  cell({ cases }) {
+    return cases.map(([lat, stepLon, stepLat]) => C.wgs84CellSize(lat, stepLon, stepLat).map(bits));
+  },
+  // the reads that bring in a plan's blocks, for a plan of [file, offset, length] blocks
+  reads({ blocks, names }) {
+    const plan = { files: names.map((name) => ({ name })), blocks: blocks.map(([file, offset, length], index) =>
+      ({ file, index, offset, length, rows: null, window: true, edges: [] })) };
+    return C.elevationBlockRanges(plan).map((r) => [r.name, r.offset, r.length, r.blocks]);
+  },
+};
+for await (const line of createInterface({ input: process.stdin })) {
+  const request = JSON.parse(line);
+  let answer;
+  try {
+    answer = { ok: ops[request.op](request) };
+  } catch (e) {
+    answer = { threw: String(e && e.stack || e) };
+  }
+  process.stdout.write(JSON.stringify(answer) + '\n');
+}
+"""
+
+
+@pytest.fixture
+def elevation(tmp_path):
+    """The browser's elevation layer in a Node vm, with the map layers its
+    area window reads, asked one question at a time."""
+    browser = _Reader(tmp_path, _ELEVATION, "elevation.mjs")
+    yield browser
+    browser.close()
+
+
+def _hex(value) -> str:
+    return struct.pack(">d", float(value)).hex()
+
+
+def _digest(values) -> str:
+    """SHA-256 of float64 little-endian values, every NaN the one NaN, signs of zero kept."""
+    import numpy as np
+
+    a = np.array(values, dtype="<f8").ravel()
+    a[np.isnan(a)] = np.nan
+    return hashlib.sha256(a.tobytes()).hexdigest()
+
+
+def _codes(values) -> str:
+    """Codes 0-9 a cell as digits, or their digest when there are many, as the driver writes them."""
+    import numpy as np
+
+    a = np.ascontiguousarray(values, dtype=np.uint8).ravel()
+    return "".join(str(int(v)) for v in a) if a.size <= 2000 else hashlib.sha256(a.tobytes()).hexdigest()
+
+
+def _values_view(values: dict) -> dict:
+    return {k: _hex(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
+            for k, v in values.items()}
+
+
+@cache
+def _bytes_of(path: str) -> bytes:
+    return Path(path).read_bytes()
+
+
+def _python_window(request: dict, site=None) -> dict:
+    """What groundwater.mapping.elevation does with one request, in the shape
+    the driver's ``window`` gives the browser's answer: each file opened (as
+    open_elevation_file reads it) or refused; the set's label and credit and
+    each file's notes under the declaration; the centre; the plan or its
+    refusal; the read or its refusal; the ranges read, in order; and every
+    progress report. A refusal is its id, its sentence and its words, the
+    numbers as their float64 bits."""
+    import dataclasses
+
+    from groundwater.config import TerrainConfig
+    from groundwater.geotiff import GeoTiffError
+    from groundwater.mapping.elevation import (
+        WindowCentre,
+        elevation_label_and_credit,
+        file_notes,
+        open_elevation_file,
+        plan_window,
+        read_window,
+        window_centre,
+    )
+
+    def guard(work):
+        try:
+            return work()
+        except GeoTiffError as refused:
+            return {"refused": [refused.ident, str(refused), _values_view(refused.values)]}
+        except ValueError:
+            return {"error": True}
+
+    def centre_view(c):
+        return {"lon": _hex(c.lon), "lat": _hex(c.lat), "label": c.label, "exact": c.exact, "note": c.note}
+
+    data = {f["name"]: _bytes_of(f["path"]) for f in request["files"]}
+    recorded: list = []
+
+    def reader_of(name: str, blob: bytes):
+        def read_at(offset: int, length: int) -> bytes:
+            recorded.append([name, offset, length])
+            return blob[offset:offset + length]
+        return read_at
+
+    readers = {name: reader_of(name, blob) for name, blob in data.items()}
+    out: dict = {"files": []}
+    files = []
+    for f in request["files"]:
+        name = f["name"]
+        found = guard(lambda name=name: open_elevation_file(name, len(data[name]), readers[name]))
+        if isinstance(found, dict):
+            out["files"].append(found)
+            continue
+        files.append(found)
+        out["files"].append({"name": found.name, "kind": found.kind, "sourceId": found.source_id,
+                             "notes": list(found.notes), "layout": _agreed_layout(found.layout)})
+    if len(files) < len(request["files"]):
+        return json.loads(json.dumps(out))
+    declared = tuple(request["declared"])
+    out["credit"] = guard(lambda: list(elevation_label_and_credit(files, declared)))
+    out["notes"] = guard(lambda: [list(file_notes(f, declared)) for f in files])
+    if request["centre"]:
+        c = request["centre"]
+        centre = WindowCentre(c["lon"], c["lat"], c["label"], c["exact"])
+    else:
+        centre = window_centre(site, files)
+    out["centre"] = centre_view(centre)
+    max_cells = ((request["config"] or {}).get("terrain") or {}).get("max_cells")
+    cfg = TerrainConfig() if max_cells is None else dataclasses.replace(TerrainConfig(), max_cells=max_cells)
+    plan = guard(lambda: plan_window(files, centre, request["radius"], cfg, 1, request["margin"], declared))
+    if isinstance(plan, dict):
+        out["plan"] = plan
+        return json.loads(json.dumps(out))
+    out["plan"] = {
+        "files": [f.name for f in plan.files], "sources": list(plan.sources), "declared": list(plan.declared),
+        "offsets": [list(o) for o in plan.offsets], "x0": _hex(plan.x0), "y0": _hex(plan.y0),
+        "sx": _hex(plan.sx), "sy": _hex(plan.sy), "centre": centre_view(plan.centre), "ci": plan.ci,
+        "cj": plan.cj, "stride": plan.stride, "hx": plan.hx, "hy": plan.hy, "hxs": plan.hxs, "hys": plan.hys,
+        "width": plan.width, "height": plan.height, "cells": plan.cells, "shown": list(plan.shown),
+        "radiusKm": _hex(plan.radius_km), "marginKm": _hex(plan.margin_km), "dx": _hex(plan.dx),
+        "dy": _hex(plan.dy), "lons": _digest(plan.lons), "lats": _digest(plan.lats), "tile": plan.tile,
+        "missing": [list(t) for t in plan.missing],
+        "edges": [[e.missing, e.file, e.row, e.column] for e in plan.edges],
+        "blocks": [[b.file, b.index, b.offset, b.length, list(b.rows) if b.rows else None, b.window,
+                    list(b.edges)] for b in plan.blocks],
+    }
+    recorded.clear()
+    progress: list = []
+
+    def read():
+        got = read_window(plan, readers, cfg, lambda fraction, label: progress.append([_hex(fraction), label]))
+        grid = got.grid
+        return {
+            "grid": {"lons": _digest(grid.lons), "lats": _digest(grid.lats), "z": _digest(grid.z),
+                     "rows": grid.z.shape[0], "cols": grid.z.shape[1], "shown": list(got.shown),
+                     "assumedSea": _codes(got.assumed_sea), "sourceId": grid.source_id,
+                     "seaClean": grid.sea_clean, "label": grid.source, "credit": grid.credit,
+                     "notice": got.notice, "surface": got.surface, "files": list(grid.files),
+                     "cellNote": grid.resolution_note},
+            "assumedSea": _codes(got.assumed_sea), "reasons": _codes(got.reasons), "shown": list(got.shown),
+            "cells": got.cells, "voids": got.voids, "uncovered": got.uncovered,
+            "implausible": got.implausible, "assumed": got.assumed, "coverage": _hex(got.coverage),
+            "centre": centre_view(got.centre), "notes": list(got.notes), "prompts": list(got.prompts),
+            "surface": got.surface, "notice": got.notice, "figureCredit": got.figure_credit,
+        }
+
+    out["read"] = guard(read)
+    out["reads"] = list(recorded)
+    out["progress"] = progress
+    return json.loads(json.dumps(out))
+
+
+def _window(files, radius, margin=0.0, centre=None, cap=None, declared=("detect", ""), site=None, latlon=None):
+    """One request of the driver's ``window``: files as (name, path), the
+    radius and margin in km (a margin of None is the configured one), a
+    GPS-like centre or none (then the site's, or the files' middle), an
+    explicit cap on cells, and the operator's declaration."""
+    return {"files": [{"name": name, "path": str(path)} for name, path in files], "centre": centre,
+            "site": site, "latlon": latlon, "radius": radius, "margin": margin,
+            "config": {"terrain": {"max_cells": cap}} if cap is not None else None, "declared": list(declared)}
+
+
+def _point(lon: float, lat: float, label: str = "the test point") -> dict:
+    return {"lon": lon, "lat": lat, "label": label, "exact": True}
+
+
+def _hgt_tile(side: int, lon0: int, lat0: int, sea=None, rows=None):
+    """An .hgt tile's heights, north row first, from integer arithmetic on
+    each cell's place in the world, so that neighbouring tiles agree where
+    they overlap (tests/test_elevation.py builds them so too); ``rows``
+    limits the heights to a band of rows, the rest 0, for a tile too large
+    to fill."""
+    import numpy as np
+
+    step = side - 1
+    band = range(side) if rows is None else rows
+    gj = ((90 - lat0 - 1) * step + np.arange(band.start, band.stop, dtype=np.int64))[:, None]
+    gi = ((lon0 + 180) * step + np.arange(side, dtype=np.int64))[None, :]
+    heights = (17 * gi + 29 * gj) % 400 + 10
+    if sea is not None:
+        heights = np.where(sea(gi, gj), 0, heights)
+    z = np.zeros((side, side), dtype=np.int64)
+    z[band.start:band.stop] = heights
+    return z
+
+
+def _elevation_cases(tmp_path: Path):
+    """Every request the two elevation layers are compared on, as (request,
+    the Python site or None, what it is): every set in the fixture
+    manifest at several centres, radii, margins and declarations; every
+    fixture alone; .hgt tiles made here (a pair across 9 N, a pair across
+    12 W, a set with tiles missing beside sea and beside land, a 1
+    arc-second tile, names at 0 degrees and in the south and east, names
+    that refuse); windows at and one cell over an explicit cap; windows
+    centred on a chiefdom, a district and a GPS fix; and each refusal the
+    elevation layer has."""
+    import numpy as np
+
+    from groundwater.geo import geographic_to_utm
+    from groundwater.mapping.elevation import WindowCentre, open_elevation_file, plan_window
+    from groundwater.mapping.regional import area_window
+    from groundwater.models import SiteMetadata
+
+    make = _builder()
+    arcsec = 1 / 3600
+    made_count = [0]
+
+    def made(name: str, data: bytes):
+        made_count[0] += 1
+        path = tmp_path / f"made{made_count[0]}.bin"
+        path.write_bytes(data)
+        return name, path
+
+    def tif(rows, georef, kind="f32", **options) -> bytes:
+        return make.single("made.tif", "", rows, kind, georef, **options).data
+
+    def hgt(z) -> bytes:
+        return np.asarray(z, dtype=">i2").tobytes()
+
+    def opened(files):
+        return [open_elevation_file(name, len(_bytes_of(str(path))),
+                                    lambda o, n, path=path: _bytes_of(str(path))[o:o + n]) for name, path in files]
+
+    # every set in the manifest
+    specific = {
+        "copernicus_pair": [(-11.0, 9.0 - 20 * arcsec, 0.5, 0.0)],
+        "renamed": [(-11.0, 8.995, 0.3, 0.0)],
+        "overlap_agree": [(-12.5 + 12 * arcsec, 8.75 - 19 * arcsec, 0.45, 0.0)],
+        "overlap_disagree": [(-12.5 + 12 * arcsec, 8.75 - 19 * arcsec, 0.45, 0.0)],
+        "overlap_fill_edge": [(-12.5 + 12 * arcsec, 8.75 - 19 * arcsec, 0.45, 0.0)],
+        "products": [(-11.0, 8.995, 0.3, 0.0)],
+        "phase": [(-12.495, 8.745, 0.2, 0.0)],
+        "spacing": [(-12.495, 8.745, 0.2, 0.0)],
+        "holes_sea": [(-12.0, 8.0, 30.0, 0.0), (-12.0, 8.0, 15.0, 10.0)],
+        "holes_land": [(-12.0, 8.0, 30.0, 0.0)],
+        "holes_edge": [(-12.0, 8.0, 15.0, 0.0)],
+        "hole_fill_margin": [(-12.02, 8.5, 8.0, 0.0)],
+    }
+    for set_name, entry in _MANIFEST["sets"].items():
+        rename = entry.get("rename", {})
+        files = [(rename.get(name, name), DEM / name) for name in entry["files"]]
+        base = (entry.get("declare", "detect"), "")
+        found = opened(files)
+        sx = found[0].layout.sx
+        km = sx * 111.0
+        west = min(f.layout.x0 for f in found)
+        east = max(f.layout.x0 + (f.layout.width - 1) * f.layout.sx for f in found)
+        south = min(f.layout.y0 - (f.layout.height - 1) * f.layout.sy for f in found)
+        north = max(f.layout.y0 for f in found)
+        centres = [_point((west + east) / 2, (south + north) / 2), _point(west + 2.5 * sx, north - 1.5 * sx),
+                   _point(east - 0.3 * sx, south + 0.7 * sx), _point(east + 10 * sx, (south + north) / 2, "Bo")]
+        for centre in centres:
+            for cells, margin in ((1.2, 0.0), (3.5, 2.0), (9.0, 0.0)):
+                yield _window(files, cells * km, margin * km, centre, declared=base), None, f"{set_name} {centre}"
+        yield _window(files, 4 * km, None, None, declared=base), None, f"{set_name} with no site"
+        for lon, lat, radius, margin in specific.get(set_name, []):
+            yield _window(files, radius, margin, _point(lon, lat), declared=base), None, f"{set_name} at {lon}, {lat}"
+            for declared in (("copernicus_glo30", ""), ("srtm", ""), ("other", "  a mosaic\x85"),
+                             ("other", " \t"), ("other", "\ufeffQGIS")):
+                yield (_window(files, radius, margin, _point(lon, lat), declared=declared), None,
+                       f"{set_name} declared {declared}")
+
+    # every fixture alone, centred on its middle and near its corner
+    for name in sorted(_FILES):
+        sx = _FILES[name].get("sx") or 1 / 1200
+        km = sx * 111.0
+        yield _window([(name, DEM / name)], 2.5 * km), None, f"{name} alone"
+        x0, y0 = _FILES[name].get("x0"), _FILES[name].get("y0")
+        if x0 is not None and y0 is not None:
+            yield (_window([(name, DEM / name)], 1.2 * km, 1.0 * km, _point(x0 + sx, y0 - sx)), None,
+                   f"{name} near its corner")
+
+    # .hgt tiles, made here: a real one is 2.9 MB
+    voided = _hgt_tile(1201, -13, 8)
+    voided[600, 595:600] = -32768
+    voided[610, 598:601] = 9500
+    voided[590, 601] = -1500
+    n08w013 = made("N08W013.hgt", hgt(voided))
+    n09w013 = made("N09W013.hgt", hgt(_hgt_tile(1201, -13, 9)))
+    n08w012 = made("N08W012.hgt", hgt(_hgt_tile(1201, -12, 8)))
+    n07w012 = made("N07W012.hgt", hgt(_hgt_tile(1201, -12, 7)))
+    corner_i, corner_j = (180 - 12) * 1200, (90 - 8) * 1200
+
+    def sea(gi, gj):
+        return (gi <= corner_i + 30) & (gj >= corner_j - 30)
+
+    sea_north = _hgt_tile(1201, -13, 8, sea)
+    sea_set = [made("N08W013.hgt", hgt(sea_north)), made("N07W012.hgt", hgt(_hgt_tile(1201, -12, 7, sea)))]
+    sea_north[-1, 10] = 1
+    land_set = [made("N08W013.hgt", hgt(sea_north)), sea_set[1]]
+    yield _window([n08w013], 2.0, 0.0, _point(-12.5, 8.5)), None, "an .hgt with voids"
+    yield _window([n08w013], 0.5, 0.3, _point(-12.5, 8.5)), None, "an .hgt with a margin"
+    yield _window([n08w013], 1.0, 0.0), None, "an .hgt with no site"
+    yield _window([n08w013], 0.2, None, _point(-12.9, 8.9)), None, "an .hgt with the configured margin"
+    yield _window([n09w013, n08w013], 0.2, 0.0, _point(-12.5, 9.0)), None, "an .hgt pair across 9 N"
+    yield _window([n08w013, n09w013], 1.0, 0.3, _point(-12.5, 9.0 + 0.5 / 1200)), None, "across 9 N, a margin"
+    yield _window([n08w013, n08w012], 0.5, 0.0, _point(-12.0, 8.5)), None, "an .hgt pair across 12 W"
+    yield (_window([n08w013, n08w012, n07w012], 3.0, 1.0, _point(-12.01, 7.99)), None,
+           "an .hgt set missing a land tile")
+    for declared in (("detect", ""), ("srtm", ""), ("other", "a mosaic")):
+        yield (_window(sea_set, 5.0, 0.0, _point(-12.02, 8.02), declared=declared), None,
+               f"an .hgt set missing tiles beside sea, declared {declared}")
+    yield _window(sea_set, 2.0, 1.0, _point(-12.02, 8.02)), None, "beside sea, a margin"
+    yield _window(land_set, 5.0, 0.0, _point(-12.02, 8.02)), None, "an .hgt set missing tiles beside land"
+    yield _window([("N00W000.hgt", n08w013[1])], 0.3, 0.0, _point(0.5, 0.5)), None, "an .hgt at 0 degrees"
+    yield _window([("N00W000.hgt", n08w013[1])], 0.5, 0.0, _point(0.0, 0.0)), None, "the corner at 0, 0"
+    yield _window([("N00W000.hgt", n08w013[1])], 0.4), None, "at 0 degrees, no site"
+    yield _window([("s01e010.hgt", n08w013[1])], 0.3, 0.0, _point(10.5, -0.5)), None, "an .hgt south and east"
+    fine = made("n08w012.hgt", hgt(_hgt_tile(3601, -12, 8, rows=range(1750, 1851))))
+    yield _window([fine], 0.3, 0.1, _point(-11.5, 8.5)), None, "a 1 arc-second .hgt"
+    yield _window([("tile.hgt", n08w013[1])], 0.3, 0.0, _point(-12.5, 8.5)), None, "an .hgt named for no corner"
+    odd = made("N08W013.hgt", bytes(2 * 1000 * 1000 + 1))
+    yield _window([odd], 0.3, 0.0, _point(-12.5, 8.5)), None, "an .hgt of neither size"
+    yield _window([("N89W000.hgt", n08w013[1])], 0.3, 0.0, _point(0.5, 89.5)), None, "an .hgt at a pole"
+    yield (_window([n08w013, ("n08w011.tif", DEM / "n08w011.tif")], 0.3, 0.0, _point(-12.5, 8.5)), None,
+           "an .hgt beside a GeoTIFF")
+    yield _window([n08w013, n08w013], 0.3, 0.0, _point(-12.5, 8.5)), None, "one .hgt twice"
+    # two tiles at one corner: the first in UTF-16 code units (the
+    # supplementary-plane name, which code points put second) is the one kept
+    bumped = _hgt_tile(1201, -13, 8)
+    bumped[600, 600] += 1
+    plain = made("plain.hgt", hgt(_hgt_tile(1201, -13, 8)))[1]
+    emoji, fullwidth = "N08W013\U0001F600.hgt", "N08W013\uff21.hgt"
+    for other, what in ((n08w013[1], "one with voids"), (made("bumped.hgt", hgt(bumped))[1], "one a metre out")):
+        yield (_window([(fullwidth, other), (emoji, plain)], 0.3, 0.0, _point(-12.5, 8.5)), None,
+               f"two tiles at one corner, {what}")
+    # by code unit "B" comes before "a", where a locale's order has it after
+    yield (_window([("N08W013a.hgt", plain), ("N08W013B.hgt", made("bumped.hgt", hgt(bumped))[1])], 0.3, 0.0,
+                   _point(-12.5, 8.5)), None, "two tiles at one corner named in either case")
+    # three tiles at one corner: the refusal names the first cell that
+    # clashes, in the first block that has one, and the file already
+    # holding it, which need not be the first file
+    other = _hgt_tile(1201, -13, 8)
+    other[602, 598] += 2
+    holed = _hgt_tile(1201, -13, 8)
+    holed[600, 600] = -32768
+    others = made("other.hgt", hgt(other))[1]
+    for first, what in ((plain, "the first file holding the cell"), (made("holed.hgt", hgt(holed))[1],
+                                                                     "the second file holding the cell")):
+        yield (_window([("N08W013a.hgt", first), ("N08W013b.hgt", plain if first != plain else others),
+                        ("N08W013c.hgt", made("bumped.hgt", hgt(bumped))[1])], 0.3, 0.0, _point(-12.5, 8.5)),
+               None, f"three tiles at one corner, {what}")
+    yield (_window([("N08W013a.hgt", plain), ("N08W013b.hgt", made("bumped.hgt", hgt(bumped))[1]),
+                    ("N08W013c.hgt", others)], 0.3, 0.0, _point(-12.5, 8.5)), None,
+           "three tiles at one corner, clashing in two blocks")
+
+    # one Copernicus tile beside one of unstated source; the same tiles under
+    # EarthExplorer SRTM names; an SRTM name at 3 arc-seconds
+    yield (_window([(COPERNICUS_W012, DEM / COPERNICUS_W012), ("n08w011.tif", DEM / "n08w011.tif")], 0.3, 0.0,
+                   _point(-11.0, 8.995)), None, "a Copernicus tile beside one of unstated source")
+    yield (_window([("n08_w012_1arc_v3.tif", DEM / COPERNICUS_W012), ("N08_W011_1ARC_V3.TIF", DEM / COPERNICUS_W011)],
+                   0.3, 0.0, _point(-11.0, 8.995)), None, "tiles under SRTM names")
+    srtm3 = tif(make.metres(make.patch(6, 5, 7)), make.Georef(-11.9, 7.9, 1 / 1200, 1 / 1200, raster=2))
+    yield (_window([made("n07_w012_3arc_v2.tif", srtm3)], 0.1, 0.0, _point(-11.9 + 2 / 1200, 7.9 - 2 / 1200)),
+           None, "an SRTM name at 3 arc-seconds")
+    yield (_window([made("n07_w011_3arc_v2.tif", srtm3)], 0.1, 0.0, _point(-11.9 + 2 / 1200, 7.9 - 2 / 1200)),
+           None, "an SRTM name for another square")
+
+    # a middle that is a tie at five decimals in binary, which Python's
+    # "%.5f" rounds to even and toFixed rounds up
+    tie = tif(make.metres(make.patch(3, 3, 9)), make.Georef(10.0, 0.03125, 0.015625, 0.015625, raster=2))
+    yield _window([made("tie.tif", tie)], 2.0), None, "a middle on a binary tie"
+
+    # the cap: over it, at the radius it says fits, exactly at it and one cell over
+    pair = [(COPERNICUS_W012, DEM / COPERNICUS_W012), (COPERNICUS_W011, DEM / COPERNICUS_W011)]
+    at = _point(-11.0, 8.995)
+    yield _window(pair, 1.1, 0.5, at, cap=10_000), None, "over the cap"
+    yield _window(pair, 0.9, 0.5, at, cap=10_000), None, "at the radius that fits"
+    yield _window(pair, 0.5, 2.0, at, cap=10_000), None, "a margin wider than any window under the cap"
+    plan = plan_window(opened(pair), WindowCentre(at["lon"], at["lat"], at["label"], True), 0.4, margin_km=0.1)
+    yield _window(pair, 0.4, 0.1, at, cap=plan.cells), None, "a window of exactly the cap"
+    yield _window(pair, 0.4, 0.1, at, cap=plan.cells - 1), None, "a window one cell over the cap"
+    yield _window(pair, 0.0, 0.0, at), None, "a window of one cell"
+    yield _window(pair, 0.3, 0.0, at, declared=("nonsense", "")), None, "a declaration of no kind"
+
+    # centred on a chiefdom, a district, a GPS fix and a site with no location
+    def around(lon: float, lat: float, step: float = 1 / 120, side: int = 61) -> bytes:
+        x0 = math.floor(lon / step) * step - (side // 2) * step
+        y0 = math.floor(lat / step) * step + (side // 2) * step
+        return tif(make.metres(make.patch(side, side, 5)), make.Georef(x0, y0, step, step, raster=2))
+
+    utm = geographic_to_utm(8.42, -12.95)
+    sites = [
+        (SiteMetadata(community="T", chiefdom="Koya", district="Port Loko"),
+         {"community": "T", "chiefdom": "Koya", "district": "Port Loko"}, None),
+        (SiteMetadata(community="T", district="Bo"), {"community": "T", "chiefdom": "", "district": "Bo"}, None),
+        (SiteMetadata(community="T", district="Western Area"),
+         {"community": "T", "chiefdom": "", "district": "Western Area"}, None),
+        (SiteMetadata(community="Rogbere", easting=utm.easting, northing=utm.northing, utm_zone=utm.zone),
+         {"community": "Rogbere", "chiefdom": "", "district": ""}, "latlon"),
+    ]
+    for site, js_site, fix in sites:
+        area = area_window(site)
+        assert area is not None
+        model = made("site.tif", around(area.lon, area.lat))
+        latlon = None
+        if fix:
+            lat, lon = site.latlon
+            latlon = {"lat": lat, "lon": lon}
+        yield _window([model], 2.0, 0.0, site=js_site, latlon=latlon), site, f"centred on {area.label}"
+        yield _window([model], 1.0, 0.5, site=js_site, latlon=latlon), site, f"centred on {area.label}, a margin"
+    nowhere = SiteMetadata(community="T")
+    yield (_window([n08w013], 0.4, 0.0, site={"community": "T", "chiefdom": "", "district": ""}), nowhere,
+           "a site with no location")
+
+    # the coordinate systems refused, and what each is called
+    rows = make.metres(make.patch(6, 5, 3))
+
+    def keyed(keys, georef=None) -> bytes:
+        directory = [1, 1, 0, len(keys)] + [v for key in sorted(keys) for v in key]
+        return tif(rows, georef or make.Georef(-11.5, 8.5, arcsec, arcsec, raster=2),
+                   tags={make.GEO_KEY_DIRECTORY: (3, directory)})
+
+    point = _point(-11.5 + 2 * arcsec, 8.5 - 2 * arcsec)
+    for label, data in (
+        ("NAD83", tif(rows, make.Georef(-11.5, 8.5, arcsec, arcsec, raster=2, epsg=4269))),
+        ("UTM 29N", tif(rows, make.Georef(200000.0, 900000.0, 30.0, 30.0, raster=1, model=1, epsg=32629))),
+        ("UTM 28S", tif(rows, make.Georef(200000.0, 900000.0, 30.0, 30.0, raster=1, model=1, epsg=32728))),
+        ("SL 1968 29N", tif(rows, make.Georef(200000.0, 900000.0, 30.0, 30.0, raster=1, model=1, epsg=2162))),
+        ("user projected", tif(rows, make.Georef(200000.0, 900000.0, 30.0, 30.0, raster=1, model=1,
+                                                 epsg=32767))),
+        ("geocentric", keyed([(1024, 0, 1, 3)])),
+        ("WGS 84 datum", keyed([(1024, 0, 1, 2), (1025, 0, 1, 2), (2048, 0, 1, 32767), (2050, 0, 1, 6326)])),
+        ("another datum", keyed([(1024, 0, 1, 2), (1025, 0, 1, 2), (2048, 0, 1, 32767), (2050, 0, 1, 6267)])),
+        ("no datum", keyed([(1024, 0, 1, 2), (1025, 0, 1, 2)])),
+        ("grads", keyed([(1024, 0, 1, 2), (1025, 0, 1, 2), (2048, 0, 1, 4326), (2054, 0, 1, 9105)])),
+        ("degrees", keyed([(1024, 0, 1, 2), (1025, 0, 1, 2), (2048, 0, 1, 4326), (2054, 0, 1, 9102)])),
+        ("at 89 N", tif(rows, make.Georef(20.0, 89.0, 0.01, 0.01, raster=2))),
+        ("at 88.99 N", tif(rows, make.Georef(20.0, 88.99, 0.01, 0.01, raster=2))),
+        ("void", tif([[-32767.0] * 6] * 5, make.Georef(-11.5, 8.5, arcsec, arcsec, raster=2))),
+    ):
+        yield _window([made(f"{label}.tif", data)], 0.05, 0.0, point), None, label
+    yield _window([("n08w011.tif", DEM / "n08w011.tif")], 0.3, 0.0, _point(-10.0, 8.0, "Bo")), None, "outside"
+    yield _window([made("Copernicus_DSM_COG_10_N07_00_W012_00_DEM.tif", _bytes_of(str(DEM / COPERNICUS_W012)))],
+                  0.2, 0.0, _point(-11.005, 8.995)), None, "a Copernicus name in the wrong square"
+    yield _window([made("N08W011_FABDEM_V1-2.tif", _bytes_of(str(DEM / "n08w011.tif")))], 0.2, 0.0,
+                  _point(-10.995, 8.995), declared=("copernicus_glo30", "")), None, "a FABDEM name, declared"
+
+
+def _hold_area_centre(py: dict, js: dict, where: str) -> None:
+    """A chiefdom's or district's label point to 1e-9 degrees, then taken
+    as Python's for the exact comparison of the rest.
+
+    area_window sums a ring's shoelace terms with numpy's pairwise sum and
+    the browser sums them in order, so the two label points differ by some
+    tens of units in the last place; the regional parity holds them to
+    1e-9. The window is planned on whole cells from the centre, so the plan
+    and the read are still compared exactly."""
+    for answer_py, answer_js in ((py, js), (py.get("plan"), js.get("plan")), (py.get("read"), js.get("read"))):
+        if not answer_py or "centre" not in answer_py:
+            continue
+        for key in ("lon", "lat"):
+            a, b = (struct.unpack(">d", bytes.fromhex(answer["centre"][key]))[0] for answer in (answer_py, answer_js))
+            assert abs(a - b) <= 1e-9, f"{where}: the centre's {key}: python {a!r}, browser {b!r}"
+            answer_js["centre"][key] = answer_py["centre"][key]
+
+
+def _window_outcome(answer: dict) -> str:
+    """'read', or the first refusal (or error) the request met."""
+    for part in answer["files"] + [answer.get("plan") or {}, answer.get("read") or {}]:
+        if "refused" in part:
+            return part["refused"][0]
+        if "error" in part:
+            return "error"
+    return "read"
+
+
+COPERNICUS_W012 = "Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif"
+COPERNICUS_W011 = "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+
+
+def test_the_two_elevation_layers_agree_on_every_fixture_set_and_window(elevation, tmp_path):
+    """Both elevation layers, Python's and the browser's, on several hundred
+    requests (_elevation_cases), each run as the page runs it: the files
+    opened, the set credited, the window centred, planned, its ranges read
+    and the window read. Compared whole and exactly: each file's layout,
+    source and notes or refusal; the label, credit, notice, surface note and
+    sea rule of the set and each file's prompts under the declaration; the
+    centre to the bit; the plan (order, offsets, half sizes, cap, shown
+    square, axes by digest, missing tiles, edges, and every block with its
+    bytes, edge blocks included); the reads made, in order; the grid by a
+    digest that keeps signs of zero, the reasons and the assumed-sea mask
+    cell by cell, the counts, coverage, notes, prompts and credit line; the
+    progress reports; and every refusal's id, sentence and words. Prevents
+    the two engines planning or reading a different window from the same
+    files, or wording any of it differently; a failure names the request
+    and the first answer that differs."""
+    outcomes: dict[str, int] = {}
+    assumed = missing_land = prompts = 0
+    for request, site, where in _elevation_cases(tmp_path):
+        py = _python_window(request, site)
+        js = elevation.ask("window", **request)
+        assert "ok" in js, f"{where}: {js}"
+        if site is not None and py.get("centre") and not py["centre"]["exact"]:
+            _hold_area_centre(py, js["ok"], where)
+        found = _difference(py, js["ok"])
+        assert found is None, f"{where}: {found}"
+        outcome = _window_outcome(py)
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+        read = py.get("read") or {}
+        assumed += bool(read.get("assumed"))
+        missing_land += bool(py.get("plan", {}).get("missing")) and not read.get("assumed")
+        prompts += bool(read.get("prompts"))
+    refusals = {"terrain.projected", "terrain.no_crs", "terrain.not_wgs84", "terrain.polar", "terrain.hgt_name",
+                "terrain.hgt_size", "terrain.duplicate_name", "terrain.mixed_formats", "terrain.join_spacing",
+                "terrain.join_phase", "terrain.join_products", "terrain.join_disagree", "terrain.site_outside",
+                "terrain.too_many_cells", "terrain.too_small", "terrain.no_elevations"}
+    assert refusals <= set(outcomes) and "error" in outcomes, sorted(refusals - set(outcomes))
+    assert outcomes["read"] >= 200 and assumed >= 3 and missing_land >= 3 and prompts >= 3, (
+        outcomes, assumed, missing_land, prompts)
+
+
+def test_the_browser_degree_sine_cosine_and_row_metric_are_pythons_to_the_bit(elevation, tmp_path):
+    """C.sinCosDeg against elevation.sin_cos_deg on 120,000 inputs, among
+    them every 15 degrees from -720 to 720, every row centre from 11 N to
+    7 N at 1 arc-second as a window's axis computes them, quarter degrees,
+    random angles near and far, and the edge cases (signed zeros, the
+    smallest and largest doubles, infinities, NaN); then C.wgs84CellSize and
+    C.rowMetric against their Python twins. Every row's cell size, and so
+    every slope, area and cap, comes from these; a last bit apart in one
+    engine moves a window's half size or a drainage area across a
+    threshold in one engine only."""
+    import numpy as np
+
+    from groundwater.mapping.elevation import row_metric, sin_cos_deg, wgs84_cell_size
+
+    rng = random.Random(4101)
+    arcsec = 1.0 / 3600.0
+    inputs = [15.0 * k for k in range(-48, 49)]
+    inputs += [11.0 - j * arcsec for j in range(4 * 3600 + 1)]
+    inputs += [0.25 * k for k in range(-2880, 2881)]
+    inputs += [rng.uniform(-720.0, 720.0) for _ in range(50_000)]
+    inputs += [rng.uniform(7.0, 11.0) for _ in range(30_000)]
+    inputs += [rng.uniform(-1e6, 1e6) for _ in range(10_000)]
+    inputs += [90.0 * rng.randint(-40, 40) + rng.choice([-1, 1]) * rng.random() * 1e-9 for _ in range(5_000)]
+    inputs += [0.0, -0.0, 5e-324, -5e-324, 1e-300, 1e-7, -1e-7, 45.0, 89.99999999999999, 90.00000000000001,
+               1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, math.inf, -math.inf, math.nan]
+    assert len(inputs) >= 100_000
+    path = tmp_path / "angles.f64"
+    path.write_bytes(np.array(inputs, dtype="<f8").tobytes())
+    js = elevation.ask("trig", input=str(path))
+    assert "ok" in js, js
+    browser = np.frombuffer(base64.b64decode(js["ok"]), dtype="<f8").reshape(-1, 2)
+    python = np.array([sin_cos_deg(d) for d in inputs], dtype="<f8")
+    differ = np.flatnonzero((browser.view(np.uint64) != python.view(np.uint64)).any(axis=1))
+    assert differ.size == 0, [(inputs[k], tuple(python[k]), tuple(browser[k])) for k in differ[:10]]
+
+    cases = [[lat, step_lon, step_lat] for lat in (-30.0, 0.0, 7.0, 8.5, 9.75, 12.0, 60.0, 88.9)
+             for step_lon, step_lat in ((arcsec, arcsec), (1 / 1200, 1 / 1200), (1 / 40, 1 / 30))]
+    cases += [[rng.uniform(-88.0, 88.0), rng.uniform(1e-5, 0.1), rng.uniform(1e-5, 0.1)] for _ in range(300)]
+    js = elevation.ask("cell", cases=cases)
+    assert "ok" in js, js
+    assert js["ok"] == [[_hex(v) for v in wgs84_cell_size(*case)] for case in cases]
+
+    def axis(start, step, n, ascending=True):
+        return [start + k * step if ascending else start - (n - 1 - k) * step for k in range(n)]
+
+    for lons, lats in (
+        (axis(-11.5, arcsec, 5), axis(8.0, arcsec, 3600)),
+        (axis(-13.0, 1 / 1200, 1201), axis(9.0, 1 / 1200, 1201, ascending=False)),
+        (axis(-12.0, 1 / 40, 23), axis(7.725, 1 / 40, 23)),
+        ([20.0, 20.01], [60.0, 60.01]),
+        ([-0.0, 1e-9], [-0.0, -1e-9]),
+    ):
+        metric = row_metric(np.array(lons), np.array(lats))
+        js = elevation.ask("metric", lons=lons, lats=lats)
+        assert "ok" in js, js
+        assert js["ok"] == {"dx": [_hex(v) for v in metric.dx], "dy": [_hex(v) for v in metric.dy],
+                            "dg": [_hex(v) for v in metric.dg], "au": [_hex(v) for v in metric.au_row]}
+
+
+def test_the_browser_reads_a_plans_blocks_in_the_ranges_python_reads(elevation):
+    """C.elevationBlockRanges against elevation._read_blocks on plans made
+    up for the purpose: blocks 64 KiB less one, exactly 64 KiB and a byte
+    more apart, reads reaching 16 MiB exactly and a byte past it, blocks out
+    of offset order, overlapping and with nothing to read, over one to three
+    files. Both engines must read the same ranges in the same order, and
+    every block with bytes must lie in the one read that names it. Prevents
+    the browser reading other ranges than Python, which no committed
+    fixture, all of them small, can show."""
+    from types import SimpleNamespace
+
+    from groundwater.mapping.elevation import PlanBlock, _read_blocks
+
+    rng = random.Random(4102)
+    gap, cap = 65536, 16 * 1048576
+    for trial in range(400):
+        names = [f"f{k}.tif" for k in range(rng.randint(1, 3))]
+        blocks = []
+        for k in range(len(names)):
+            end = rng.choice([0, 8, 1000])
+            for _ in range(rng.randint(1, 25)):
+                if rng.random() < 0.1:
+                    blocks.append(PlanBlock(k, len(blocks), 0, 0, None, True, ()))
+                    continue
+                offset = max(0, end + rng.choice([0, gap - 1, gap, gap + 1, rng.randint(1, 200_000),
+                                                  -rng.randint(1, 50_000)]))
+                length = rng.choice([1, 2402, 7202, rng.randint(1, 300_000), 1 << 20, cap - offset % 7, cap])
+                blocks.append(PlanBlock(k, len(blocks), offset, length, None, True, ()))
+                end = offset + length
+        if trial % 3 == 0:
+            rng.shuffle(blocks)
+            blocks.sort(key=lambda b: b.file)
+        recorded: list = []
+
+        def reader(name: str):
+            def read_at(offset: int, length: int) -> bytes:
+                recorded.append([name, offset, length])
+                return b""
+            return read_at
+
+        plan = SimpleNamespace(blocks=blocks, files=[SimpleNamespace(name=name) for name in names])
+        _read_blocks(plan, {name: reader(name) for name in names})
+        js = elevation.ask("reads", blocks=[[b.file, b.offset, b.length] for b in blocks], names=names)
+        assert "ok" in js, js
+        assert [r[:3] for r in js["ok"]] == recorded, f"trial {trial}"
+        for b, block in enumerate(blocks):
+            holding = [r for r in js["ok"] if b in r[3]]
+            if not block.length:
+                assert not holding, f"trial {trial}: block {b} has nothing to read"
+                continue
+            assert len(holding) == 1, f"trial {trial}: block {b} is in {len(holding)} reads"
+            name, offset, length, _ = holding[0]
+            assert name == names[block.file] and offset <= block.offset
+            assert block.offset + block.length <= offset + length, f"trial {trial}: block {b} spills out"

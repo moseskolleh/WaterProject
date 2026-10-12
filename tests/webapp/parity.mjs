@@ -2992,6 +2992,225 @@ await withPage(async (page, base, consoleErrors) => {
         `${k}: js ${JSON.stringify(got[k])}, py ${JSON.stringify(ref[k])}`).join('\n     '));
   });
 
+  // --- Elevation models (PLAN.md step 4.1) ---
+  // The browser's elevation layer (C.elevationFile, C.terrainCredit,
+  // C.fileNotes, C.windowCentre, C.planElevationWindow,
+  // C.elevationBlockRanges, C.readElevationWindow), the twin of
+  // groundwater/mapping/elevation.py, on the windows of ELEVATION_WINDOWS in
+  // make_reference.py, each run as the page runs it: the files opened for
+  // their layouts, the set credited, the window centred and planned, only
+  // the ranges the plan names read, and the window read. The committed
+  // fixtures come through the harness's overlay; an .hgt tile is made here
+  // by the integer arithmetic the reference made it with, for the ranges
+  // the plan reads and no others. Held exactly: each file's source and
+  // notes or its refusal; the label, credit, notice, surface note and sea
+  // rule; the prompts; the plan (half sizes, offsets, missing tiles, edges,
+  // every block, edge blocks included, and every read); the grid by a digest
+  // that keeps signs of zero and ten cells by Object.is, the reason codes
+  // and the assumed-sea mask cell by cell, the counts, coverage, read report
+  // and credit line; and every refusal word for word. The degree sine and
+  // cosine of 200 angles and the row metrics of three grids are held by
+  // Object.is. Only a chiefdom's label point is held to 1e-9, as the
+  // regional section holds it: Python sums the ring's shoelace terms with
+  // numpy's pairwise sum and the browser in order, some tens of units in the
+  // last place apart, and the window is planned on whole cells from it.
+  const EW = R.elevation_window;
+  const ewJs = await page.evaluate(async (EW) => {
+    const C = GWT.core;
+    const number = (v) => (v !== v ? null : v === Infinity ? 'Infinity' : v === -Infinity ? '-Infinity'
+      : Object.is(v, -0) ? '-0' : v);
+    const compact = (values) => JSON.stringify(Array.prototype.map.call(values, number));
+    const digest = (values) => {
+      const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] !== values[i]) {
+          view.setUint32(8 * i, 0, true);
+          view.setUint32(8 * i + 4, 0x7FF80000, true);
+        } else {
+          view.setFloat64(8 * i, values[i], true);
+        }
+      }
+      return C.sha256Hex(bytes);
+    };
+    const codes = (u8) => {
+      const digits = Array.prototype.join.call(u8, '');
+      return digits.length <= 400 ? digits : C.sha256Hex(digits);
+    };
+    const f64 = (b64) => {
+      const text = atob(b64), view = new DataView(new ArrayBuffer(text.length));
+      for (let i = 0; i < text.length; i++) view.setUint8(i, text.charCodeAt(i));
+      return Array.from({ length: text.length / 8 }, (_, i) => view.getFloat64(8 * i, true));
+    };
+    const refused = (e) => {
+      if (e && e.ident) return ['refused', e.ident, e.message];
+      throw e;
+    };
+    // an .hgt tile's bytes [offset, offset + length), big-endian int16
+    // heights from each cell's place in the world, as _hgt_bytes makes them
+    const hgtRange = (spec, offset, length) => {
+      const [lon0, lat0, side, bump] = spec, step = side - 1;
+      const out = new Uint8Array(length), view = new DataView(out.buffer);
+      for (let p = 0; p < length; p += 2) {
+        const s = (offset + p) / 2, j = Math.floor(s / side), i = s % side;
+        let z = (17 * ((lon0 + 180) * step + i) + 29 * ((90 - lat0 - 1) * step + j)) % 400 + 10;
+        if (bump && j === bump[0] && i === bump[1]) z += bump[2];
+        view.setInt16(p, z, false);
+      }
+      return out;
+    };
+    const cases = [];
+    for (const kase of EW.cases) {
+      const sources = {}, names = [];
+      for (const entry of kase.files) {
+        const [source, name] = typeof entry === 'string' ? [entry, entry] : entry;
+        names.push(name);
+        if (typeof source === 'string') {
+          const bytes = new Uint8Array(await (await fetch('/__fixtures/dem/' + source)).arrayBuffer());
+          sources[name] = { size: bytes.length, chunks: [[0, bytes]], at: (o, n) => bytes.subarray(o, o + n) };
+        } else {
+          sources[name] = { size: 2 * source[2] * source[2], chunks: [], at: (o, n) => hgtRange(source, o, n) };
+        }
+      }
+      const answer = { files: [] }, files = [];
+      try {
+        for (const name of names) {
+          try {
+            const found = C.elevationFile(name, sources[name].size, sources[name].chunks);
+            files.push(found);
+            answer.files.push([found.sourceId, found.notes]);
+          } catch (e) {
+            answer.files.push(refused(e));
+          }
+        }
+        if (files.length < names.length) {
+          cases.push(answer);
+          continue;
+        }
+        const declared = kase.declared || ['detect', ''];
+        const credit = C.terrainCredit(files, declared);
+        answer.credit = [credit.label, credit.credit, credit.notice, credit.surface, credit.seaClean];
+        answer.prompts = files.map((f) => C.fileNotes(f, declared));
+        const centre = kase.centre
+          ? { lon: kase.centre[0], lat: kase.centre[1], label: kase.centre[2], exact: true, note: null }
+          : C.windowCentre(kase.site || null, null, files);
+        answer.centre = [number(centre.lon), number(centre.lat), centre.label, centre.exact, centre.note];
+        const config = kase.cap ? { terrain: { max_cells: kase.cap } } : null;
+        let plan;
+        try {
+          plan = C.planElevationWindow(files, centre, kase.radius, config, kase.margin, declared);
+        } catch (e) {
+          answer.plan = refused(e);
+          cases.push(answer);
+          continue;
+        }
+        answer.plan = {
+          order: plan.files.map((f) => f.name), sources: plan.sources, offsets: plan.offsets,
+          at: [plan.ci, plan.cj, plan.hx, plan.hy, plan.hxs, plan.hys, plan.width, plan.height, plan.tile],
+          dx: number(plan.dx), dy: number(plan.dy),
+          lons: [digest(plan.lons), number(plan.lons[0]), number(plan.lons[plan.lons.length - 1])],
+          lats: [digest(plan.lats), number(plan.lats[0]), number(plan.lats[plan.lats.length - 1])],
+          missing: plan.missing, edges: plan.edges.map((e) => [e.missing, e.file, e.row, e.column]),
+          blocks: JSON.stringify(plan.blocks.map((b) => [b.file, b.index, b.offset, b.length, b.rows, b.window,
+            b.edges])),
+        };
+        const reads = C.elevationBlockRanges(plan), blocks = new Array(plan.blocks.length);
+        for (const r of reads) {
+          const data = sources[r.name].at(r.offset, r.length);
+          for (const b of r.blocks) {
+            const block = plan.blocks[b];
+            blocks[b] = data.subarray(block.offset - r.offset, block.offset - r.offset + block.length);
+          }
+        }
+        try {
+          const read = C.readElevationWindow(plan, blocks, config, null), z = read.grid.z, n = z.length;
+          const spots = Array.from({ length: 10 }, (_, k) => z[Math.floor(k * (n - 1) / 9)]);
+          answer.read = {
+            z: [digest(z), spots.map(number)], reasons: codes(read.reasons), sea: codes(read.assumedSea),
+            counts: [read.cells, read.voids, read.uncovered, read.implausible, read.assumed],
+            coverage: number(read.coverage), shown: read.shown, notes: read.notes, prompts: read.prompts,
+            figure: read.figureCredit, cell: read.grid.cellNote, source: read.grid.sourceId,
+          };
+          const g = read.grid;
+          answer.credited = g.label === credit.label && g.credit === credit.credit && g.notice === credit.notice &&
+            g.surface === credit.surface && g.seaClean === credit.seaClean && read.notice === credit.notice &&
+            read.surface === credit.surface && g.assumedSea === read.assumedSea &&
+            JSON.stringify(g.shown) === JSON.stringify(read.shown) && g.rows * g.cols === read.cells;
+        } catch (e) {
+          answer.read = refused(e);
+        }
+        answer.reads = reads.map((r) => [r.name, r.offset, r.length]);
+      } catch (e) {
+        answer.threw = String(e && e.stack || e);
+      }
+      cases.push(answer);
+    }
+    const angles = f64(EW.angles);
+    const trig = angles.map((d) => C.sinCosDeg(d));
+    const metrics = EW.metrics.map((m) => {
+      const lons = JSON.parse(m.lons), lats = JSON.parse(m.lats), metric = C.rowMetric(lons, lats), rows = [];
+      for (let r = 0; r < lats.length; r++) rows.push(metric.dx[r], metric.dy[r], metric.dg[r], metric.auRow[r]);
+      return compact(rows);
+    });
+    return { cases, sin: trig.map((t) => number(t[0])), cos: trig.map((t) => number(t[1])), metrics };
+  }, EW);
+  // where two answers first differ: numbers by Object.is, the rest exactly
+  const firstDifference = (a, b, path = '') => {
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return `${path}: ${a.length} items, expected ${b.length}`;
+      for (let i = 0; i < a.length; i++) {
+        const found = firstDifference(a[i], b[i], `${path}[${i}]`);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+      const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+      for (const key of keys) {
+        const found = firstDifference(a[key], b[key], `${path}.${key}`);
+        if (found) return found;
+      }
+      return null;
+    }
+    return Object.is(a, b) ? null : `${path}: js ${JSON.stringify(a)}, py ${JSON.stringify(b)}`;
+  };
+  check(`elevation_window: the page ran every case (${EW.cases.length})`, ewJs.cases.length === EW.cases.length,
+    `${ewJs.cases.length} answers`);
+  EW.cases.forEach((kase, i) => {
+    const got = ewJs.cases[i] || { threw: 'no answer' }, want = JSON.parse(kase.expect);
+    if (kase.site && got.centre && want.centre) {
+      const near = [0, 1].every((k) => Math.abs(got.centre[k] - want.centre[k]) <= 1e-9);
+      check(`elevation_window: ${kase.case} - the area window's label point to 1e-9`, near,
+        `js ${JSON.stringify(got.centre)}\n     py ${JSON.stringify(want.centre)}`);
+      got.centre[0] = want.centre[0];
+      got.centre[1] = want.centre[1];
+    }
+    const credited = got.credited;
+    delete got.credited;
+    const found = got.threw ? `threw ${got.threw}` : firstDifference(got, want);
+    check(`elevation_window: ${kase.case}`, !found && (credited === undefined || credited === true),
+      found || 'the read credits the set otherwise than terrainCredit');
+  });
+  const doubles = (b64) => {
+    const bytes = Buffer.from(b64, 'base64');
+    return Array.from({ length: bytes.length / 8 }, (_, i) => bytes.readDoubleLE(8 * i));
+  };
+  const angleCount = doubles(EW.angles).length, sinWant = doubles(EW.sin), cosWant = doubles(EW.cos);
+  const unfold = (v) => (v === null ? NaN : v === 'Infinity' ? Infinity : v === '-Infinity' ? -Infinity
+    : v === '-0' ? -0 : v);
+  const trigMisses = sinWant.map((s, i) => i).filter((i) =>
+    !Object.is(unfold(ewJs.sin[i]), sinWant[i]) || !Object.is(unfold(ewJs.cos[i]), cosWant[i]));
+  check(`elevation_window: the degree sine and cosine of ${angleCount} angles, to the bit`,
+    angleCount === 200 && trigMisses.length === 0,
+    trigMisses.slice(0, 5).map((i) => `#${i}: js ${ewJs.sin[i]}, ${ewJs.cos[i]}; py ${sinWant[i]}, ${cosWant[i]}`)
+      .join('; '));
+  EW.metrics.forEach((m, i) => {
+    const got = JSON.parse(ewJs.metrics[i]), want = JSON.parse(m.rows);
+    const misses = want.map((v, k) => k).filter((k) => !Object.is(got[k], want[k]));
+    check(`elevation_window: the row metric of grid ${i + 1} (${JSON.parse(m.lats).length} rows), to the bit`,
+      got.length === want.length && misses.length === 0,
+      misses.slice(0, 4).map((k) => `[${k}] js ${got[k]}, py ${want[k]}`).join('; '));
+  });
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 
