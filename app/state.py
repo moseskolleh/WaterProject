@@ -27,9 +27,12 @@ Results (plain state, written by a page or by the recompute on load)
     ``programme_estimate``, ``field_checks``, ``handover_built``,
     ``wp_result``, ``spine_ledger``, the map paths (``map_paths``,
     ``subsurface_paths``, ``section_path``, ``pseudosection_path``,
-    ``profile_path``, ``topo_path``, ``traverse``, ``geolibre_*``), the
-    topographic map's source and read report (``topo_source``,
-    ``topo_report``),
+    ``profile_path``, ``topo_path``, ``traverse``, ``geolibre_path``,
+    ``geolibre_area``, ``geolibre_layers``; the Portfolio page's own
+    ``geolibre_portfolio``), the topographic map's source and read report
+    (``topo_source``, ``topo_report``) and what it was drawn from
+    (``topo_inputs``: the elevation files' upload ids and the source
+    declared for them; the map is shown only while they still hold),
     ``asset_record``, ``proc_contract_lines``, ``proc_measured``,
     ``proc_variations``, ``artifacts`` (built files, label -> path),
     ``project_summary``, ``inversion_cache`` and ``recompute_diagnostics``.
@@ -60,13 +63,17 @@ Kept uploads
     uploaders' (``upload_<role>_kept``) with the uploaders and their
     ``src_`` entries. An elevation model, its kept files, the terrain
     settings (``terrain_*``) and the figures drawn from it (``topo_path``,
-    ``topo_source``, ``topo_report``) are session-only and are dropped when
-    a project is loaded too, with the site's other maps (``map_paths``,
-    ``profile_path``): they belong to the outgoing site, and the project
-    file does not carry them. The other kept uploads (a scan, a water point
-    export, the files pooled on the Portfolio and the registry) are not part
-    of a project and outlive a load, as their uploaders did. The
-    ``terrain_`` inputs are carried between pages (below) until then.
+    ``topo_source``, ``topo_report``, ``topo_inputs``) are session-only and
+    are dropped when a project is loaded too, with every other map of the
+    site (``map_paths``, ``profile_path``, ``subsurface_paths``,
+    ``section_path``, ``pseudosection_path``, ``traverse``) and its GeoLibre
+    file (``geolibre_path``, ``geolibre_area``, ``geolibre_layers``): they
+    belong to the outgoing site, and the project file does not carry them.
+    The Portfolio page's GeoLibre file is of the pooled sites and stays.
+    The other kept uploads (a scan, a water point export, the files pooled
+    on the Portfolio and the registry) are not part of a project and
+    outlive a load, as their uploaders did. The ``terrain_`` inputs are
+    carried between pages (below) until then.
 
 Carried widget values
     ``carried(key)`` below says which widget values survive while their

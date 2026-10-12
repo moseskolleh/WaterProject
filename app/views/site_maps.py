@@ -36,7 +36,7 @@ from groundwater.mapping import (
     traverse_profile,
 )
 from groundwater.mapping.elevation import ElevationFile, file_notes, open_elevation_file
-from groundwater.mapping.terrain import uncovered_percent
+from groundwater.mapping.terrain import uncovered_cells, uncovered_note
 from groundwater.siting import assess_siting
 from groundwater.text import phrase
 
@@ -64,6 +64,10 @@ _SOURCES = {
 #: Grids read whole, one file at a time, by the Python app alone; every
 #: other file is a tile, read a window at a time and joined to the others
 _GRID_SUFFIXES = {".asc", ".grd", ".xyz", ".csv", ".txt"}
+
+#: The topographic map and what was said of it: the figure, its credit, its
+#: read report, and the files and declared source it was drawn from
+_TOPO_KEYS = ("topo_path", "topo_source", "topo_report", "topo_inputs")
 
 
 def _open_tile(kept: KeptPath) -> ElevationFile:
@@ -223,6 +227,10 @@ def render() -> None:
                 help="Named in the figure's credit line as you write it.",
             )
         _declared = (_source, _source_text)
+        # what a map drawn now would be drawn from: the files in the
+        # uploader, by the ids kept_upload gives them (the same ids when it
+        # hands them back after a visit to another page), and their source
+        _drawn_from = ((st.session_state.get("dem_upload_kept") or {}).get("ids"), _declared)
         _grids = [f for f in _dem_files if Path(f.name).suffix.lower() in _GRID_SUFFIXES]
         _tiles = [f for f in _dem_files if f not in _grids]
         # each tile is opened for its layout alone as soon as it is
@@ -264,9 +272,8 @@ def render() -> None:
                     plot_topographic_map(
                         grid, site, path=topo_path, style=app_config().style,
                         radius_km=float(radius), spot_heights=_spots)
-                    pct = uncovered_percent(grid, site, float(radius))
-                    report = {"notes": [phrase("terrain.read_uncovered", pct=pct)]
-                              if pct > 0 else [], "notice": None}
+                    note = uncovered_note(*uncovered_cells(grid, site, float(radius)))
+                    report = {"notes": [note] if note else [], "notice": None}
                     source = grid.source
                 else:
                     # every tile read at once for the square asked for, one
@@ -283,13 +290,22 @@ def render() -> None:
                     source = read.grid.source
             except ValueError as exc:
                 # the previous map was of other files, or of another window
-                for stale in ("topo_path", "topo_source", "topo_report"):
+                for stale in _TOPO_KEYS:
                     st.session_state.pop(stale, None)
                 st.error(str(exc))
             else:
                 st.session_state["topo_path"] = str(topo_path)
                 st.session_state["topo_source"] = source
                 st.session_state["topo_report"] = report
+                st.session_state["topo_inputs"] = _drawn_from
+        # a map is shown only beside the files it was drawn from, under the
+        # source declared for them: once they are refused, replaced or
+        # removed, or another source is declared, its figure, credit and read
+        # report no longer describe what the page holds. A refusal at upload
+        # never reaches the except branch above, as it disables the button.
+        if _refused or st.session_state.get("topo_inputs") != _drawn_from:
+            for stale in _TOPO_KEYS:
+                st.session_state.pop(stale, None)
         if st.session_state.get("topo_path"):
             st.image(st.session_state["topo_path"])
             offer_download(Path(st.session_state["topo_path"]),

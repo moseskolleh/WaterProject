@@ -533,6 +533,74 @@ def test_the_topography_tab_draws_a_map_from_geotiff_tiles(sample_data):
     assert all(Path(path).is_file() for _, path in kept)
 
 
+def test_a_topographic_map_is_not_shown_beside_files_it_was_not_drawn_from(sample_data):
+    """The topographic map was cleared only when a draw failed, so the map
+    of earlier files stayed on the page, with their credit, read report and
+    Copernicus notice, under a refusal of the files uploaded since, after
+    another source was declared, and after the uploader was cleared. It is
+    shown only beside the files and the declared source it was drawn from,
+    and it still outlives a rerun and a visit to another page, where the
+    uploader hands its files back under the same ids."""
+    from groundwater.text import phrase
+
+    dem = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+    pair = [(n, (dem / n).read_bytes(), "image/tiff")
+            for n in ("Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+                      "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif")]
+    notice = phrase("terrain.copernicus_liability")
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Site maps"
+    # a GPS fix on the two tiles' shared edge, 8.995 N, 11.0 W
+    at.session_state["meta_easting"] = 280126.0
+    at.session_state["meta_northing"] = 994900.0
+    at.session_state["meta_zone"] = "29N"
+    at.run()
+    at.slider(key="map_radius").set_value(5)
+
+    def draw():
+        at.file_uploader(key="dem_upload").set_value(pair)
+        at.run()
+        at.button(key="run_topo").click()
+        at.run()
+        assert not at.exception, at.exception
+        assert not at.error, [e.value for e in at.error]
+
+    def shown() -> bool:
+        """Whether the map is on the page, its credit and notice with it."""
+        assert not at.exception, at.exception
+        captions = [str(c.value) for c in at.caption]
+        credited = any(c.startswith("Elevation from") for c in captions)
+        assert credited == (notice in captions) == ("topo_path" in at.session_state)
+        return credited
+
+    draw()
+    assert shown()
+    at.run()
+    assert shown(), "nothing changed"
+    goto(at, "Overview")
+    goto(at, "Site maps")
+    assert any("uploaded earlier" in str(c.value) for c in at.caption)
+    assert shown(), "the same files, handed back by the uploader"
+
+    at.file_uploader(key="dem_upload").set_value(
+        [("refuse_epsg_3857.tif", (dem / "refuse_epsg_3857.tif").read_bytes(), "image/tiff")])
+    at.run()
+    assert any("refuse_epsg_3857.tif" in str(e.value) for e in at.error)
+    assert not shown(), "other files, refused as they arrived"
+
+    draw()
+    at.selectbox(key="terrain_source").select("other")
+    at.run()
+    assert not shown(), "the same files, declared as from another source"
+
+    at.selectbox(key="terrain_source").select("detect")
+    at.run()
+    draw()
+    at.file_uploader(key="dem_upload").set_value([])
+    at.run()
+    assert not shown(), "no files at all"
+
+
 def test_project_state_tracked(app):
     """The state the project file persists is maintained by the app."""
     assert "rates_overrides" in app.session_state

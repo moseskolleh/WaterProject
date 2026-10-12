@@ -175,24 +175,50 @@ def _lattice_span(axis: np.ndarray, lo: float, hi: float) -> tuple[int, int]:
     return last - first + 1, max(0, min(last, n - 1) - max(first, 0) + 1)
 
 
-def uncovered_percent(grid: ElevationGrid, site: SiteMetadata | None, radius_km: float,
-                      admin_path: str | Path | None = None) -> float:
-    """The share of the square a topographic map of ``grid`` is framed on
-    that the grid does not reach, in per cent of the cells the square holds
-    on the grid's own spacing.
+def uncovered_cells(grid: ElevationGrid, site: SiteMetadata | None, radius_km: float,
+                    admin_path: str | Path | None = None) -> tuple[int, int]:
+    """How many cells of the square a topographic map of ``grid`` is framed
+    on the grid does not reach, and how many cells the square holds, both
+    counted on the grid's own spacing: ``(count, cells)``.
 
-    It is what ``terrain.read_uncovered`` says of a window read from tiles,
-    said of a single ESRI ASCII or XYZ grid, whose map is cut from the
-    whole grid rather than read as a window.
+    It is what a window read from tiles counts as uncovered, counted for a
+    single ESRI ASCII or XYZ grid, whose map is cut from the whole grid
+    rather than read as a window. Counts rather than a share, so that
+    :func:`uncovered_note` can choose its sentence in whole numbers, as
+    the read report of tiles does: a share in floating point rounds a gap
+    of a few cells to "0%". A grid with no spacing along an axis, or a
+    square narrower than one of its cells, holds no cells to count, and
+    gives ``(0, 0)``.
     """
     _, _, _, (west, east, south, north) = _square(grid, site, radius_km, admin_path)
     if len(grid.lons) < 2 or len(grid.lats) < 2:
-        return 100.0
+        return 0, 0
     across, covered_x = _lattice_span(grid.lons, west, east)
     down, covered_y = _lattice_span(grid.lats, south, north)
-    if not across or not down:
-        return 100.0
-    return 100.0 * (1.0 - (covered_x * covered_y) / (across * down))
+    cells = across * down
+    return cells - covered_x * covered_y, cells
+
+
+def uncovered_note(count: int, cells: int) -> str | None:
+    """What the read report says of ``count`` cells of the ``cells`` in a
+    map's square that the elevation model does not reach, or None when it
+    reaches them all.
+
+    The share is rounded to a whole per cent in integers, half up, by the
+    rule the read report of tiles follows in both engines. A gap of under
+    half a per cent would round to "0%", which says no ground is missing in
+    the one sentence printed because some is, so its cells are counted
+    instead; and a square the model reaches at all is not called 100%
+    uncovered, so a share that rounds up to the whole is given as 99%.
+    """
+    if count <= 0 or cells <= 0:
+        return None
+    if 200 * count < cells:
+        return phrase("terrain.read_uncovered_little", count=count)
+    pct = (200 * count + cells) // (2 * cells)
+    if count < cells and pct == 100:
+        pct = 99
+    return phrase("terrain.read_uncovered", pct=pct)
 
 
 def _grid_credit(grid: ElevationGrid) -> str:

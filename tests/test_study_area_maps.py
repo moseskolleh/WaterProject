@@ -409,7 +409,7 @@ def test_a_topographic_map_is_framed_on_the_square_asked_for_beyond_the_grid_edg
 
     from groundwater.mapping import area_window
     from groundwater.mapping.regional import ADMIN_CREDIT
-    from groundwater.mapping.terrain import uncovered_percent
+    from groundwater.mapping.terrain import uncovered_cells
 
     grid = _grid(n=300)                     # 12.2-11.9 W, 8.9-9.2 N
     site = _site()
@@ -433,9 +433,69 @@ def test_a_topographic_map_is_framed_on_the_square_asked_for_beyond_the_grid_edg
         plt.close(fig)
 
     # the share beyond the edge, counted in the grid's own cells
-    share = uncovered_percent(grid, site, 5.0)
-    assert share == pytest.approx(100.0 * beyond / (2 * dlon), abs=2.0)
-    assert uncovered_percent(grid, None, 5.0) == 0.0, "the middle of the grid is covered"
+    count, cells = uncovered_cells(grid, site, 5.0)
+    assert 100.0 * count / cells == pytest.approx(100.0 * beyond / (2 * dlon), abs=2.0)
+    assert uncovered_cells(grid, None, 5.0)[0] == 0, "the middle of the grid is covered"
+
+
+@pytest.mark.parametrize("count, cells, said", [
+    (0, 400, None),
+    (2, 401, "Less than 1% of the window read (2 cells)"),
+    (1, 200, "1% of the window read"),
+    (5, 200, "3% of the window read"),
+    (199, 200, "99% of the window read"),
+    (200, 200, "100% of the window read"),
+])
+def test_the_gap_in_a_grid_map_is_said_in_whole_per_cents_worked_out_in_integers(count, cells, said):
+    """The share of a grid map's square the grid did not reach was a float
+    formatted with no decimals: a real gap of a few cells read "0% of the
+    window read lies outside the files supplied", and half a per cent
+    rounded to even, not up as the read report of tiles rounds it. The
+    share is now worked out in integers, half up; a gap under half a per
+    cent is counted in cells, and a share short of the whole is not called
+    100%."""
+    from groundwater.mapping.terrain import uncovered_note
+
+    note = uncovered_note(count, cells)
+    if said is None:
+        assert note is None
+    else:
+        assert note is not None and note.startswith(said), note
+
+
+def test_a_sliver_of_gap_or_a_corner_of_cover_in_a_grid_map_is_not_rounded_away():
+    """The two ends a float share got wrong, on real grids: a 3-arc-second
+    grid read 27.6 km around its middle misses about a third of a per cent
+    of the square, which was reported as 0%, and a square that reaches two
+    rows and two columns into a grid's corner was reported as 100% outside
+    it beside a map drawn from those cells."""
+    from groundwater.mapping import area_window
+    from groundwater.mapping.terrain import uncovered_cells, uncovered_note
+
+    step = 3 / 3600
+    lons, lats = -12.0 + step * np.arange(601), 8.5 + step * np.arange(601)
+    grid = ElevationGrid(lons, lats, np.full((601, 601), 50.0), source="test grid")
+    count, cells = uncovered_cells(grid, None, 27.6)
+    assert (count, cells) == (1190, 358785)
+    assert uncovered_note(count, cells) == (
+        "Less than 1% of the window read (1,190 cells) lies outside the files "
+        "supplied and is treated as a gap.")
+
+    # a one-arc-second grid whose south-west corner lies a cell and a half
+    # inside the north-east corner of Kuntolo's 10 km square
+    site = _site()
+    centre = area_window(site, 10.0)
+    assert centre is not None
+    step = 1 / 3600
+    west = centre.lon + 10.0 / (111.32 * math.cos(math.radians(centre.lat))) - 1.5 * step
+    south = centre.lat + 10.0 / 111.32 - 1.5 * step
+    grid = ElevationGrid(west + step * np.arange(400), south + step * np.arange(400),
+                         np.full((400, 400), 50.0), source="test grid")
+    assert grid.window(centre.lon, centre.lat, 10.0).z.shape == (3, 3), "a map can be drawn"
+    count, cells = uncovered_cells(grid, site, 10.0)
+    assert cells - count == 4
+    assert uncovered_note(count, cells) == (
+        "99% of the window read lies outside the files supplied and is treated as a gap.")
 
 
 def test_a_topographic_map_of_tiles_is_drawn_from_the_window_read_and_framed_on_it():
