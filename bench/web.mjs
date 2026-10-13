@@ -68,8 +68,8 @@
  *     the page makes to show the four figures, and the longest main-thread
  *     task in that interval. Each press is in a browser of its own, with no
  *     site entered, so the window is centred on the middle of the tile as
- *     run.py's is: the default window, and the widest the cap on cells
- *     allows, at the radius the card offers when asked for 50 km. Taken
+ *     run.py's is: the default window, and one near the cap on cells, at
+ *     the radius the card offers when asked for 50 km. Taken
  *     with the analysis in the engine worker at full speed, Chromium
  *     slowing no worker (above), and on the page with the CPU slowed 4x,
  *     as a copy opened as a file runs it (GWT.engine.forcePage, the
@@ -523,8 +523,8 @@ async function analyseTerrain(page) {
 
 /* One press of "Analyse the terrain" on the tile, in a fresh browser: in the
  * engine worker at full speed, or on the page with the CPU slowed 4x when
- * `onPage`; at the default window, or at the widest the cap allows when
- * `atCap`. */
+ * `onPage`; at the default window, or at the radius the card offers when
+ * asked for 50 km, near the cap on cells, when `atCap`. */
 async function terrainRun(tile, { onPage = false, atCap = false } = {}) {
   return withPage(async (page, base, consoleErrors) => {
     const cdp = await page.context().newCDPSession(page);
@@ -578,7 +578,7 @@ async function terrainRuns(tile) {
     pageCap: await terrainRun(tile, { onPage: true, atCap: true }),
   };
   const s = (ms) => `${(ms / 1000).toFixed(2)} s`;
-  const mb = (bytes) => (bytes === null ? '' : `, +${Math.round(bytes / 2 ** 20)} MB`);
+  const mb = (bytes) => (bytes === null ? '' : `, +${Math.round(bytes / 1e6)} MB`);
   const errors = Object.values(out).flatMap((r) => r.errors);
   console.error(`  terrain: in the worker ${s(out.worker.wall)} at ${out.worker.radius} km ` +
     `(longest task ${s(out.worker.longest)}${mb(out.worker.memory)}), ` +
@@ -642,8 +642,7 @@ const terrainProfile = (onPage) => (onPage ? `CPU ${CPU_SLOWDOWN}x slower, analy
   'each press, no network in play';
 const pressed = 'click on "Analyse the terrain" to the last change the page makes showing the ' +
   'four figures';
-const atCap = 'at the radius the card offers when asked for 50 km, the widest the cap on cells ' +
-  'allows';
+const atCap = 'at the radius the card offers when asked for 50 km, near the cap on cells';
 const MEASURES = {
   load: [
     ['first paint', 'ms', (r) => r.fp, 'Paint Timing first-paint'],
