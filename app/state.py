@@ -33,12 +33,14 @@ Results (plain state, written by a page or by the recompute on load)
     (``topo_source``, ``topo_report``) and what it was drawn from
     (``topo_inputs``: the elevation files' upload ids and the source
     declared for them; the map is shown only while they still hold), the
-    terrain analysis as the page keeps it (``terrain_result``: the paths of
-    its figures and its drainage lines' GeoJSON, its summary, captions and
-    read report, and the files and source it was worked out from, under
-    the same rule; the analysis's own layers are not kept),
+    terrain analysis as the page keeps it (``terrain_result``: the folder
+    its run wrote its figures and its drainage lines' GeoJSON to, deleted
+    when the result is, and their paths, its summary, captions and read
+    report, and the files and source it was worked out from, under the
+    same rule; the analysis's own layers are not kept),
     ``asset_record``, ``proc_contract_lines``, ``proc_measured``,
-    ``proc_variations``, ``artifacts`` (built files, label -> path),
+    ``proc_variations``, ``artifacts`` (built files, label -> path; a
+    project load takes the outgoing site's maps off it),
     ``project_summary``, ``inversion_cache`` and ``recompute_diagnostics``.
 
 Project inputs (saved in the project file)
