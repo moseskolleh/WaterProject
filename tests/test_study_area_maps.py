@@ -711,6 +711,50 @@ def _commonest(png: np.ndarray, at: tuple[int, int], half: int = 2) -> tuple[int
     return tuple(int(v) for v in colours[counts.argmax()])
 
 
+def _drainage_runs(ax, parts, lons, lats, dpi):
+    """Check a relief's drainage lines, drawn at ``dpi``, run by run as
+    gwt-charts.js draws them, and return the runs that end square, as
+    (width, points along the part before the run, or None for a solid run),
+    and the widths of those that end round.
+
+    Each run of stretches routed alike is a line in the browser's blue. A
+    dashed run, or one routed by slope, ends square, and a dashed run takes
+    up its pattern where the run before it on its part left off; a solid
+    run routed across a flat ends round, at the opacity of a flat."""
+    from matplotlib.collections import LineCollection
+    from matplotlib.colors import to_rgb
+
+    square, rounded = [], []
+    for part in parts:
+        xy = ax.transData.transform([(lons[c], lats[r]) for r, c in part.vertices])
+        along = np.concatenate(([0.0], np.cumsum(np.hypot(*np.diff(xy, axis=0).T)))) * 72 / dpi
+        width, start, last = 0.6 + 0.5 * (part.strahler - 1), 0, len(part.vertices) - 1
+        for s in range(1, last + 1):
+            if s < last and part.stretch_flat[s] == part.stretch_flat[start]:
+                continue
+            if part.edge_contaminated or not part.stretch_flat[start]:
+                square.append((width, along[start] if part.edge_contaminated else None))
+            else:
+                rounded.append(width)
+            start = s
+    lines = {line.get_capstyle(): line for line in ax.collections if isinstance(line, LineCollection)}
+    assert sorted(lines) == [kind for kind, runs in (("butt", square), ("round", rounded)) if runs]
+    assert all(np.allclose(line.get_colors()[:, :3], to_rgb("#1F5C99")) for line in lines.values())
+    if square:
+        assert list(lines["butt"].get_linewidths()) == pytest.approx([width for width, _ in square])
+        for (width, before), (offset, dashes) in zip(square, lines["butt"].get_linestyles(), strict=True):
+            if before is None:
+                assert dashes is None
+            else:
+                assert dashes == pytest.approx([2.6 * width + 1.4, 1.6 * width + 0.9])
+                assert offset == pytest.approx(before % sum(dashes), abs=1e-6)
+    if rounded:
+        assert list(lines["round"].get_linewidths()) == pytest.approx(rounded)
+        assert all(dashes is None for _, dashes in lines["round"].get_linestyles())
+        assert np.allclose(lines["round"].get_colors()[:, 3], 0.45)
+    return square, rounded
+
+
 def test_the_terrain_figures_paint_their_layers_as_the_browser_does(tmp_path):
     """A blank terrain figure passed every test, which read only its text
     and its size. Each figure's PNG is read here at cells of a coast whose
@@ -724,8 +768,7 @@ def test_the_terrain_figures_paint_their_layers_as_the_browser_does(tmp_path):
     Each map holds its picture in bytes, not in floats eight times the
     size."""
     import matplotlib.pyplot as plt
-    from matplotlib.collections import LineCollection
-    from matplotlib.colors import Normalize, to_rgb
+    from matplotlib.colors import Normalize
     from matplotlib.contour import ContourSet
 
     from groundwater.config import HouseStyle
@@ -784,13 +827,9 @@ def test_the_terrain_figures_paint_their_layers_as_the_browser_does(tmp_path):
                      for ax in maps]
             if key == "relief":
                 ax = maps[0]
-                lines = {line.get_capstyle(): line for line in ax.collections if type(line) is LineCollection}
-                assert sorted(lines) == ["butt", "round"]
-                assert all(np.allclose(line.get_colors()[:, :3], to_rgb("#1F5C99")) for line in lines.values())
-                dashed = lines["butt"]
-                for width, (_, dashes) in zip(dashed.get_linewidths(), dashed.get_linestyles(), strict=True):
-                    assert dashes == pytest.approx([2.6 * width + 1.4, 1.6 * width + 0.9])
-                assert all(dashes is None for _, dashes in lines["round"].get_linestyles())
+                # the coast's lines are each one run, routed by slope
+                square, rounded = _drainage_runs(ax, a.parts, lons, lats, dpi)
+                assert square and not rounded
                 contours = [c for c in ax.collections if isinstance(c, ContourSet)]
                 assert len(contours) == 1 and contours[0].get_alpha() == 0.7
         finally:
@@ -818,6 +857,67 @@ def test_the_terrain_figures_paint_their_layers_as_the_browser_does(tmp_path):
             row, col = spots[0][(24, 36.5)]
             near = png[row - 3:row + 4, col - 3:col + 4].reshape(-1, 3)
             assert (np.abs(near - (31, 92, 153)).max(axis=1) <= 1).any(), "the valley's line"
+
+
+def test_a_drainage_line_is_drawn_run_by_run_as_the_browser_draws_it(tmp_path):
+    """Each run of stretches routed alike is a line of its own. A dashed
+    run started its pattern again, so a dashed part of runs each shorter
+    than a dash was drawn solid; and a run routed by slope ended round, its
+    ends covering a flat-routed stretch beside it shorter than the line is
+    wide, which was then drawn in the line's full colour. As gwt-charts.js
+    now draws them, a dashed run takes up the pattern where the run before
+    it left off, and a run routed by slope ends square, so that stretch is
+    drawn paler: 45% of the line over the ground."""
+    import dataclasses
+
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgb
+
+    from groundwater.config import HouseStyle
+    from groundwater.mapping import plot_terrain_relief, terrain_captions
+
+    a = _coast_analysis()
+    caps = terrain_captions(a, None, "the coast")
+    lons, lats = a.core.lons, a.core.lats
+    # on the land, clear of the graticule on every tenth row and column: a
+    # line wider than a cell, routed by slope but for one stretch, and a
+    # dashed one turning from slope to flat at every stretch
+    wide = dataclasses.replace(a.parts[2], id=900, vertices=tuple((15, c) for c in range(30, 36)),
+                               stretch_flat=(False, False, True, False, False), strahler=16,
+                               edge_contaminated=False)
+    dashed = dataclasses.replace(a.parts[2], id=901, vertices=tuple((33, c) for c in range(12, 19)),
+                                 stretch_flat=(False, True, False, True, False, True), strahler=3,
+                                 edge_contaminated=True)
+    drawn = dataclasses.replace(a, parts=(wide, dashed))
+    style = HouseStyle()
+    dpi = style.figure_dpi
+    fig = plot_terrain_relief(drawn, caps, style=style)
+    try:
+        ax = fig.axes[0]
+        fig.set_dpi(dpi)
+        fig.canvas.draw()
+        square, rounded = _drainage_runs(ax, drawn.parts, lons, lats, dpi)
+        assert rounded == [8.1] and sum(before is not None and before > 0 for _, before in square) == 5
+        box = fig.get_tightbbox(fig.canvas.get_renderer()).padded(plt.rcParams["savefig.pad_inches"])
+        x0, y0 = ax.transData.transform((lons[30], lats[15]))
+        x1, _ = ax.transData.transform((lons[31], lats[15]))
+        assert (x1 - x0) * 72 / dpi < wide.strahler * 0.5 + 0.1, "the flat stretch is shorter than the line is wide"
+
+        def pixel(col: float) -> tuple[int, int]:
+            x = x0 + (x1 - x0) * (col - 30)
+            return int(box.y1 * dpi - y0), int(x - box.x0 * dpi)
+    finally:
+        plt.close(fig)
+
+    def png(analysis, name: str) -> np.ndarray:
+        path = plot_terrain_relief(analysis, caps, path=tmp_path / name, style=style)
+        return np.round(plt.imread(path)[..., :3] * 255).astype(int)
+
+    lines, ground = png(drawn, "lines.png"), png(dataclasses.replace(a, parts=()), "ground.png")
+    line = 255 * np.asarray(to_rgb("#1F5C99"))
+    flat, slopes = pixel(32.5), (pixel(31.0), pixel(34.0))
+    assert np.abs(lines[flat] - (0.45 * line + 0.55 * ground[flat])).max() <= 2, (lines[flat], ground[flat])
+    assert all(np.abs(lines[at] - line).max() <= 1 for at in slopes), [lines[at] for at in slopes]
 
 
 def test_a_terrain_press_hands_the_memory_it_freed_back_where_glibc_can(monkeypatch):

@@ -621,6 +621,39 @@ def _draw_raster(ax, rgba: np.ndarray, frame: tuple[float, float, float, float])
     ax.set_ylim(frame[2], frame[3])
 
 
+class _RunsOn(LineCollection):
+    """Runs of the drainage lines with flat ends, each dashed run taking up
+    its pattern where the run before it on its part left off.
+
+    matplotlib starts each line's pattern again, and lays it out in points,
+    which are known only once the axes are placed; so each dashed run's
+    offset is worked out as it is drawn: the length in points of its part
+    before it, divided by the run's width, by which matplotlib scales a
+    pattern (``lines.scale_dashes``). ``dashes`` holds for each run None, if
+    it is solid, or its pattern, the part's points and the number of the
+    run's first point among them."""
+
+    def __init__(self, runs, widths, dashes, **kwargs):
+        super().__init__(runs, linewidths=widths, **kwargs)
+        self._widths, self._dashes = widths, dashes
+
+    def draw(self, renderer):
+        pixels = renderer.points_to_pixels(1.0)
+        along: dict[int, np.ndarray] = {}
+        styles = []
+        for width, dash in zip(self._widths, self._dashes, strict=True):
+            if dash is None:
+                styles.append("solid")
+                continue
+            pattern, points, first = dash
+            if id(points) not in along:
+                steps = np.diff(self.get_transform().transform(points), axis=0)
+                along[id(points)] = np.concatenate(([0.0], np.cumsum(np.hypot(steps[:, 0], steps[:, 1])))) / pixels
+            styles.append((float(along[id(points)][first]) / width, pattern))
+        self.set_linestyle(styles)
+        super().draw(renderer)
+
+
 def _draw_parts(ax, parts: Sequence[DrainagePart], lons: np.ndarray, lats: np.ndarray) -> None:
     """The drainage lines shown, wider with Strahler order, dashed where the
     upslope area is uncertain, and paler where a stretch was routed across
@@ -628,32 +661,41 @@ def _draw_parts(ax, parts: Sequence[DrainagePart], lons: np.ndarray, lats: np.nd
     are the analysed grid's, which the vertices index.
 
     A line ``w`` points wide is dashed ``2.6w + 1.4`` on and ``1.6w + 0.9``
-    off, with flat ends, and a solid one has round ends, as the browser
-    draws them."""
+    off, as the browser draws it. Each run of stretches routed alike is a
+    line of its own: a dashed run takes up the pattern where the run before
+    it left off (:class:`_RunsOn`), so a short run is not drawn solid by
+    starting it again. A dashed run and one routed by slope end square, so
+    their ends do not cover a flat-routed run beside them; a flat-routed run
+    keeps round ends, which fall on the darker run and fill the outside of
+    the corner between them."""
     base = to_rgb(_LINE_COLOUR)
-    # the solid lines and the dashed ones, each with its own ends
-    drawn = {False: ([], [], [], []), True: ([], [], [], [])}
+    # the runs that end square, each with its dash, and the flat-routed
+    # solid ones, which end round
+    square, square_colours, square_widths, dashes = [], [], [], []
+    rounded, rounded_widths = [], []
     for part in parts:
-        points = [(float(lons[c]), float(lats[r])) for r, c in part.vertices]
+        points = np.array([(float(lons[c]), float(lats[r])) for r, c in part.vertices])
         width = 0.6 + 0.5 * (part.strahler - 1)
         # matplotlib draws a dash pattern this many times the line's width
-        style = (0, (2.6 + 1.4 / width, 1.6 + 0.9 / width)) if part.edge_contaminated else "solid"
-        lines, colours, widths, styles = drawn[part.edge_contaminated]
-        # each run of stretches routed one way is one line, so that a dash
-        # pattern runs on through the vertices where the line only turns
+        pattern = (2.6 + 1.4 / width, 1.6 + 0.9 / width) if part.edge_contaminated else None
         start = 0
         for v in range(1, len(points)):
             if v == len(points) - 1 or part.stretch_flat[v] != part.stretch_flat[start]:
-                lines.append(points[start:v + 1])
-                colours.append((*base, _FLAT_OPACITY if part.stretch_flat[start] else 1.0))
-                widths.append(width)
-                styles.append(style)
+                if pattern is None and part.stretch_flat[start]:
+                    rounded.append(points[start:v + 1])
+                    rounded_widths.append(width)
+                else:
+                    square.append(points[start:v + 1])
+                    square_colours.append((*base, _FLAT_OPACITY if part.stretch_flat[start] else 1.0))
+                    square_widths.append(width)
+                    dashes.append(None if pattern is None else (pattern, points, start))
                 start = v
-    for dashed, (lines, colours, widths, styles) in drawn.items():
-        if lines:
-            ax.add_collection(LineCollection(lines, colors=colours, linewidths=widths, linestyles=styles,
-                                             capstyle="butt" if dashed else "round", joinstyle="round",
-                                             zorder=4))
+    if rounded:
+        ax.add_collection(LineCollection(rounded, colors=[(*base, _FLAT_OPACITY)], linewidths=rounded_widths,
+                                         capstyle="round", joinstyle="round", zorder=4))
+    if square:
+        ax.add_collection(_RunsOn(square, square_widths, dashes, colors=square_colours, capstyle="butt",
+                                  joinstyle="round", zorder=4))
 
 
 def _draw_contours(ax, analysis: TerrainAnalysis, view: tuple[slice, slice], lons: np.ndarray,
