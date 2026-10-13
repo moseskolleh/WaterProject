@@ -71,6 +71,29 @@ await withPage(async (page, base, consoleErrors) => {
       `${info.html} chars, ${info.badText}`);
   }
 
+  // Part of the terrain work is in the Python app alone, and neither app's
+  // reports carry the terrain yet: the Topography and terrain card on Site &
+  // maps says both in the catalogue's words, once, above its drop zone, and
+  // About says them too, rather than leaving "every page" to imply otherwise.
+  const elevationNotice = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const notices = [C.phrase('terrain.python_only'), C.phrase('terrain.not_in_reports')];
+    const saying = (selector) => notices.map((notice) => Array.from(
+      document.querySelectorAll('#page-host ' + selector)).filter((p) => p.textContent === notice).length);
+    app.goto('site');
+    const callout = document.querySelector('[data-item="terrain"] .callout.callout-info');
+    const zone = document.querySelector('[data-item="terrain"] .upload-zone');
+    const site = { card: saying('[data-item="terrain"] .callout.callout-info p'), page: saying('p'),
+      aboveDrop: !!callout && !!zone &&
+        !!(callout.compareDocumentPosition(zone) & Node.DOCUMENT_POSITION_FOLLOWING) };
+    app.goto('about');
+    return { site, about: saying('p') };
+  });
+  check('site and about: the terrain card, above its drop zone, and About say what of the terrain is in the ' +
+    'Python app alone and not in reports',
+    elevationNotice.site.card.join() === '1,1' && elevationNotice.site.page.join() === '1,1' &&
+    elevationNotice.site.aboveDrop && elevationNotice.about.every((n) => n > 0), JSON.stringify(elevationNotice));
+
   // load the full sample and check the analyses appear
   await page.evaluate(() => window.GWT.app.goto('overview'));
   await page.evaluate(async () => {
@@ -3817,6 +3840,1432 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(dense));
   check('a dense survey map ties a moved label to its peg, and keeps it in full',
     dense.grid.leaders > 0 && dense.grid.full, JSON.stringify(dense.grid));
+
+  // The four terrain figures of PLAN.md step 4.1, drawn before the card that
+  // will show them exists. An analysis is made here, in the page, on a
+  // generated window with a coast, a missing tile taken as sea, a gap, a
+  // flat shelf and a closed hollow, and each figure is drawn from what the
+  // worker will hand the page: C.terrainDisplayLayers, the parts and the
+  // captions. Each has to paint the layers it names and the furniture of a
+  // map, carry the credit and the caveat inside the SVG, where a downloaded
+  // copy keeps them, and rasterise through toPng to a PNG whose maps are
+  // painted rather than left blank: the layers are embedded as PNG images,
+  // and an image the rasteriser dropped would leave only the furniture.
+  const terrain = await page.evaluate(async () => {
+    await window.GWT.load('charts');
+    const C = window.GWT.core, charts = window.GWT.charts;
+    const rows = 90, cols = 90, step = 1 / 3600, n = rows * cols;
+    const lons = new Float64Array(cols), lats = new Float64Array(rows);
+    for (let c = 0; c < cols; c++) lons[c] = -12.0 + c * step;
+    for (let r = 0; r < rows; r++) lats[r] = 8.4 + r * step;
+    /* a hill with spurs, falling west to the sea */
+    const z = new Float64Array(n), assumedSea = new Uint8Array(n);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const dr = r - 45, dc = c - 60, d = Math.sqrt(dr * dr + dc * dc);
+        z[r * cols + c] = 55 * Math.exp(-(d * d) / 800) + 0.45 * (c - 26) + 2 * Math.sin(r / 7) +
+          3 * Math.cos(6 * Math.atan2(dr, dc)) * Math.min(d / 20, 1);
+      }
+    }
+    const block = (r0, r1, c0, c1, fn) => {
+      for (let r = r0; r < r1; r++) for (let c = c0; c < c1; c++) fn(r * cols + c);
+    };
+    block(0, 25, 0, 20, (k) => { assumedSea[k] = 1; z[k] = NaN; });     // a missing tile taken as sea
+    block(52, 58, 40, 46, (k) => { z[k] = NaN; });                        // a gap
+    let shelf = Infinity;
+    block(30, 39, 36, 47, (k) => { shelf = Math.min(shelf, z[k]); });
+    block(30, 39, 36, 47, (k) => { z[k] = shelf; });                      // a flat shelf
+    block(60, 63, 30, 33, (k) => { z[k] -= 4; });                         // a closed hollow
+    const grid = { lons, lats, z, rows, cols, shown: [15, 75, 15, 75], assumedSea,
+      sourceId: 'copernicus_glo30', seaClean: true, label: 'a generated window' };
+    const cfg = { terrain: { drainage_area_km2: 0.05 } };
+    const analysis = C.analyseTerrain(grid, cfg, null, 'float32', grid.shown);
+    const display = C.terrainDisplayLayers(analysis, grid, 1024);
+    const captions = C.terrainCaptions(analysis, null, 'Testville');
+    const credit = 'Elevation: a generated window. Cells about 30 by 31 m.';
+    const settings = C.withConfig(cfg).terrain;
+    const opts = { parts: analysis.parts, summary: analysis.summary, captions, figureCredit: credit,
+      site: { lon: lons[50], lat: lats[45], label: 'Testville' }, cfg: settings };
+    const flat = (s) => String(s).replace(/\s+/g, ' ').trim();
+    const decode = async (src) => {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const g = canvas.getContext('2d');
+      g.drawImage(img, 0, 0);
+      return { w: img.width, h: img.height, at: (x, y) => Array.from(g.getImageData(x, y, 1, 1).data),
+        region: (x, y, w, h) => g.getImageData(x, y, w, h).data };
+    };
+    const builders = {
+      terrainRelief: { title: 'title_relief', layers: ['relief'] },
+      wetnessMap: { title: 'title_wetness', layers: ['wetness'] },
+      curvatureMaps: { title: 'title_curvature', layers: ['profile', 'tangential'] },
+      hillshadeDirections: { title: 'title_directions',
+        layers: settings.hillshade_panel_azimuths_deg.map((a) => 'hillshade-' + a) },
+    };
+    const out = { summary: analysis.summary, display: [display.rows, display.cols, display.stride], figures: {} };
+    const svgs = {};
+    for (const [name, want] of Object.entries(builders)) {
+      const svg = charts[name](display, opts);
+      svgs[name] = svg;
+      const texts = Array.from(svg.querySelectorAll('text')).map((t) => t.textContent);
+      const note = (kind) => Array.from(svg.querySelectorAll(`text[data-note="${kind}"]`))
+        .map((t) => t.textContent).join(' ');
+      const images = Array.from(svg.querySelectorAll('image'));
+      const sizes = [];
+      for (const image of images) {
+        const raster = await decode(image.getAttribute('href'));
+        sizes.push([raster.w, raster.h]);
+      }
+      /* the rasterised figure: in each map, the share of pixels not of the
+       * figure's own ground, which is what a dropped image would leave */
+      const png = await charts.toPng(svg, { scale: 2 });
+      const picture = await decode(png.dataUrl);
+      const ground = picture.at(4, 4);
+      const painted = images.map((image) => {
+        const x = Math.round(Number(image.getAttribute('x')) * 2) + 2;
+        const y = Math.round(Number(image.getAttribute('y')) * 2) + 2;
+        const data = picture.region(x, y, Math.round(Number(image.getAttribute('width')) * 2) - 4,
+          Math.round(Number(image.getAttribute('height')) * 2) - 4);
+        let count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (Math.abs(data[i] - ground[0]) + Math.abs(data[i + 1] - ground[1]) +
+              Math.abs(data[i + 2] - ground[2]) > 24) count++;
+        }
+        return Math.round(1000 * count / (data.length / 4)) / 1000;
+      });
+      const viewBox = svg.getAttribute('viewBox').split(' ').map(Number);
+      out.figures[name] = {
+        layers: images.map((image) => image.getAttribute('data-layer')), want: want.layers,
+        sizes: sizes, title: flat(texts.join(' ')).includes(flat(captions[want.title])),
+        panelTitles: name !== 'hillshadeDirections' ||
+          settings.hillshade_panel_azimuths_deg.every((a, t) => texts.includes(captions['panel_' + t])),
+        credit: note('credit') === credit, caveat: note('caveat') === flat(captions.figure_caveat),
+        stars: svg.querySelectorAll('[data-site]').length,
+        north: texts.filter((t) => t === 'N').length,
+        scale: texts.filter((t) => /^\d+(\.\d+)? k?m$/.test(t)).length,
+        png: [png.width, png.height, viewBox[2] * 2, viewBox[3] * 2], painted: painted,
+      };
+    }
+
+    /* the relief, read cell by cell off its own raster: assumed sea hatched
+     * where ((x + y) mod 6) < 2, sea and gaps in their fills, and on the
+     * wetness map land with no index left transparent */
+    const pixel = async (svg, find) => {
+      const raster = await decode(svg.querySelector('image').getAttribute('href'));
+      for (let k = 0; k < display.cls.length; k++) {
+        const x = k % display.cols, y = display.rows - 1 - Math.floor(k / display.cols);
+        if (find(k, x, y)) return raster.at(x, y);
+      }
+      return null;
+    };
+    const cls = display.cls, sea = display.assumedSea;
+    out.cells = {
+      hatched: await pixel(svgs.terrainRelief, (k, x, y) => cls[k] === 2 && sea[k] && (x + y) % 6 < 2),
+      assumed: await pixel(svgs.terrainRelief, (k, x, y) => cls[k] === 2 && sea[k] && (x + y) % 6 >= 2),
+      sea: await pixel(svgs.terrainRelief, (k) => cls[k] === 2 && !sea[k]),
+      gap: await pixel(svgs.terrainRelief, (k) => cls[k] === 0),
+      blank: await pixel(svgs.wetnessMap, (k) => cls[k] === 1 && Number.isNaN(display.twi[k])),
+    };
+
+    /* the drainage lines: one path per run of stretches routed alike, each
+     * as wide as its Strahler order makes it, the flat-routed runs paler
+     * and every run of a line flagged as draining beyond the square dashed */
+    const runs = [];
+    analysis.parts.forEach((part) => {
+      let start = 0;
+      const flats = part.stretch_flat;
+      for (let s = 1; s <= flats.length; s++) {
+        if (s < flats.length && flats[s] === flats[start]) continue;
+        runs.push({ id: part.id, width: 0.6 + 0.5 * (part.strahler - 1), flat: flats[start],
+          dashed: part.edge_contaminated, first: start === 0 });
+        start = s;
+      }
+    });
+    const drawn = Array.from(svgs.terrainRelief.querySelectorAll('path[data-link]'));
+    const paths = drawn.map((p) => ({
+      id: Number(p.getAttribute('data-link')), width: Number(p.getAttribute('stroke-width')),
+      flat: p.getAttribute('stroke-opacity') === '0.45', dashed: p.hasAttribute('stroke-dasharray') }));
+    /* each run of a dashed line takes the pattern up as far along the line
+     * as the runs before it were drawn, so a run shorter than a dash is not
+     * drawn solid by starting the pattern again */
+    let along = 0;
+    const offsets = drawn.map((p, i) => {
+      if (runs[i] && runs[i].first) along = 0;
+      const at = { id: runs[i] && runs[i].id, dashed: runs[i] && runs[i].dashed, along,
+        offset: Number(p.getAttribute('stroke-dashoffset')) };
+      along += p.getTotalLength();
+      return at;
+    }).filter((at) => at.dashed);
+    out.dashes = { runs: offsets.length, later: offsets.filter((at) => at.along > 0).length,
+      off: offsets.filter((at) => !(Math.abs(at.offset - at.along) < 0.1)) };
+    out.lines = {
+      parts: analysis.parts.length, runs: runs.length, paths: paths.length,
+      same: JSON.stringify(paths) === JSON.stringify(runs.map((r) => ({ id: r.id, width: r.width,
+        flat: r.flat, dashed: r.dashed }))),
+      flat: paths.filter((p) => p.flat).length, dashed: paths.filter((p) => p.dashed).length,
+      solid: paths.filter((p) => !p.dashed).length,
+      contours: svgs.terrainRelief.querySelectorAll('path[data-contour]').length,
+      elsewhere: ['wetnessMap', 'curvatureMaps', 'hillshadeDirections']
+        .map((name) => svgs[name].querySelectorAll('path[data-link], path[data-contour]').length),
+    };
+
+    /* a line of order 5, 2.6 units wide, on a relief 218 units wide, whose
+     * map is 60 units across for the 60 cells shown, so a cell is drawn one
+     * unit across, as a window's cells are at the cap: two stretches routed
+     * by slope, one across a flat and two more by slope. The map alone,
+     * without the graticule, scale bar and north arrow drawn over it, and
+     * rasterised at 8 times: the flat stretch keeps its 45% at its middle,
+     * which round ends on the stretches beside it would cover, and those
+     * stretches are drawn in the line's full colour. */
+    const line = { id: 1, part: 0, strahler: 5, edge_contaminated: false, outlet: 'edge',
+      vertices: [30, 31, 32, 33, 34, 35].map((c) => [45, c]), stretch_flat: [false, false, true, false, false] };
+    const narrow = (parts) => {
+      const svg = charts.terrainRelief(display, Object.assign({}, opts,
+        { parts, summary: {}, site: null, width: 218 }));
+      Array.from(svg.children).forEach((node) => {
+        if (node.tagName !== 'defs' && !node.querySelector('[data-layer]')) node.setAttribute('data-export', 'skip');
+      });
+      return svg;
+    };
+    const lined = narrow([line]);
+    const runsOf = Array.from(lined.querySelectorAll('path[data-link]'));
+    const [withLine, ground] = await Promise.all([lined, narrow([])].map(async (svg) =>
+      decode((await charts.toPng(svg, { scale: 8 })).dataUrl)));
+    const middle = (p) => {
+      const at = p.getPointAtLength(p.getTotalLength() / 2);
+      return [Math.floor(at.x * 8), Math.floor(at.y * 8)];
+    };
+    out.caps = runsOf.length !== 3 ? { runs: runsOf.length } : {
+      runs: runsOf.length, unit: Number(runsOf[1].getTotalLength().toFixed(2)),
+      flat: withLine.at(...middle(runsOf[1])).slice(0, 3),
+      pale: ground.at(...middle(runsOf[1])).slice(0, 3)
+        .map((g, i) => Math.round(0.45 * [31, 92, 153][i] + 0.55 * g)),
+      solid: [runsOf[0], runsOf[2]].map((p) => withLine.at(...middle(p)).slice(0, 3)),
+    };
+    return out;
+  });
+  const terrainFigures = Object.entries(terrain.figures);
+  check('terrain figures: an analysis made in the page has a coast, assumed sea, a gap and a flat',
+    terrain.summary.sea > 0 && terrain.summary.assumed_sea > 0 && terrain.summary.voids > 0 &&
+    terrain.summary.flat_routed_stream > 0 && terrain.summary.raised > 0 &&
+    terrain.display.join() === '60,60,1', JSON.stringify({ summary: terrain.summary, display: terrain.display }));
+  check('terrain figures: each paints its layers at the size of the square shown',
+    terrainFigures.every(([, f]) => f.layers.join() === f.want.join() &&
+      f.sizes.every((s) => s.join() === '60,60')),
+    JSON.stringify(terrainFigures.map(([name, f]) => [name, f.layers, f.sizes])));
+  check('terrain figures: each carries its title, the credit and the caveat inside the SVG',
+    terrainFigures.every(([, f]) => f.title && f.panelTitles && f.credit && f.caveat),
+    JSON.stringify(terrainFigures.map(([name, f]) => [name, f.title, f.panelTitles, f.credit, f.caveat])));
+  check('terrain figures: every map has the site star, a scale bar and a north arrow',
+    terrainFigures.every(([, f]) => f.stars === f.want.length && f.north === f.want.length &&
+      f.scale === f.want.length),
+    JSON.stringify(terrainFigures.map(([name, f]) => [name, f.stars, f.north, f.scale])));
+  check('terrain figures: the relief hatches assumed sea and fills sea and gaps; no index is left blank',
+    JSON.stringify(terrain.cells) === JSON.stringify({ hatched: [157, 189, 216, 255],
+      assumed: [207, 227, 242, 255], sea: [207, 227, 242, 255], gap: [230, 230, 230, 255],
+      blank: [0, 0, 0, 0] }), JSON.stringify(terrain.cells));
+  check('terrain figures: the drainage lines are drawn by order, paler where flat-routed, dashed where flagged',
+    terrain.lines.same && terrain.lines.paths > 0 && terrain.lines.flat > 0 && terrain.lines.dashed > 0 &&
+    terrain.lines.solid > 0 && terrain.lines.contours > 0 && terrain.lines.elsewhere.every((count) => count === 0),
+    JSON.stringify(terrain.lines));
+  check('terrain figures: a dashed line\'s pattern runs on from one run to the next, not starting again',
+    terrain.dashes.later > 0 && terrain.dashes.off.length === 0, JSON.stringify(terrain.dashes));
+  const apart = (a, b) => a.reduce((sum, v, i) => sum + Math.abs(v - b[i]), 0);
+  check('terrain figures: a flat-routed stretch shorter than the line is wide is still drawn paler',
+    terrain.caps.runs === 3 && terrain.caps.unit < 2 && apart(terrain.caps.flat, terrain.caps.pale) <= 9 &&
+    terrain.caps.solid.every((c) => apart(c, [31, 92, 153]) <= 6), JSON.stringify(terrain.caps));
+  check('terrain figures: toPng of each gives a PNG whose maps are painted',
+    terrainFigures.every(([, f]) => f.png[0] === f.png[2] && f.png[1] === f.png[3] &&
+      f.painted.length === f.want.length && f.painted.every((share) => share > 0.6)),
+    JSON.stringify(terrainFigures.map(([name, f]) => [name, f.png, f.painted])));
+
+  // The Topography and terrain card on Site & maps (PLAN.md step 4.1), at
+  // #/site/terrain. Files dropped on it or picked are opened for their
+  // layout at once, so a refusal or a question about a file's source shows
+  // beside its name in the engine's words. "Analyse the terrain" plans the
+  // window on the page, reads the blocks it meets in the reads
+  // C.elevationBlockRanges gives, the edge blocks of a missing tile
+  // included, each block cut out with a buffer of its own, and has the
+  // worker read the window: the read report on the card is the one the
+  // engine writes for the same files read whole with the same settings. The
+  // site is put on the shared edge of the committed Copernicus pair, 8.995 N,
+  // 11.0 W, and then on the corner of the holes_sea tiles, 8 N, 12 W, where
+  // the fourth tile is missing and taken as sea.
+  const dem = async (name) => ({ name, mimeType: 'image/tiff',
+    buffer: await readFile(new URL('./fixtures/dem/' + name, import.meta.url)) });
+  const demSet = (names) => Promise.all(names.map(dem));
+  const pair = await demSet(['Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif',
+    'Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif']);
+  const odd = await demSet(['refuse_jpeg.tif', 'n08w011.tif']);
+  const holes = await demSet(['holes_N08W012.tif', 'holes_sea_N08W013.tif', 'holes_sea_N07W012.tif']);
+  const overlap = await demSet(['overlap_north.tif', 'overlap_south_disagrees.tif']);
+  /* the files as page.evaluate can carry them */
+  const carried = (files) => files.map((f) => ({ name: f.name, bytes: Array.from(f.buffer) }));
+  const keptSite = await page.evaluate(() => {
+    const store = window.GWT.app.store;
+    const kept = { easting: store.get('site.easting'), northing: store.get('site.northing'),
+      utm_zone: store.get('site.utm_zone') };
+    store.set('site.easting', 280126.0);
+    store.set('site.northing', 994900.0);
+    store.set('site.utm_zone', 29);
+    /* what the page reads of the files, and the blocks it hands the worker */
+    window.__slices = [];
+    window.__slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (start, end, type) {
+      if (this instanceof File) window.__slices.push([this.name, start, end]);
+      return window.__slice.call(this, start, end, type);
+    };
+    const engine = window.GWT.engine;
+    window.__readElevation = engine.readElevation;
+    engine.readElevation = function (plan, blocks, cfg, options) {
+      window.__sent = blocks.map((b) => (b ? [b.byteOffset, b.byteLength, b.buffer.byteLength] : null));
+      return window.__readElevation.call(this, plan, blocks, cfg, options);
+    };
+    location.hash = '#/site/terrain';
+    return kept;
+  });
+  await page.waitForFunction(() => {
+    const node = document.querySelector('#page-host .item-target');
+    return node && node.getAttribute('data-item') === 'terrain';
+  });
+  const terrainCard = await page.evaluate(async () => {
+    const arrived = () => {
+      const node = document.querySelector('#page-host .item-target');
+      const top = node ? node.getBoundingClientRect().top : Infinity;
+      return top >= 0 && top < window.innerHeight / 2;
+    };
+    for (let waited = 0; waited < 5000 && !arrived(); waited += 100) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const titles = Array.from(document.querySelectorAll('#page-host .card-title'))
+      .map((t) => t.textContent);
+    const at = titles.indexOf('Topography and terrain');
+    return { nav: window.GWT.app.store.get('nav'), hash: location.hash, inView: arrived(),
+      title: document.querySelector('#page-host .item-target .card-title').textContent,
+      before: titles[at - 1], after: titles[at + 1] };
+  });
+  check('terrain card: #/site/terrain opens Site & maps on the Topography and terrain card',
+    terrainCard.nav === 'site' && terrainCard.hash === '#/site/terrain' &&
+    terrainCard.title === 'Topography and terrain' && terrainCard.inView, JSON.stringify(terrainCard));
+  check('terrain card: it sits between Geology and aquifers and the Interactive map',
+    terrainCard.before === 'Geology and aquifers' && terrainCard.after === 'Interactive map',
+    JSON.stringify(terrainCard));
+
+  /* the card's list as it stands: each file's details and its callouts */
+  const listed = () => page.evaluate(() => Array.from(
+    document.querySelectorAll('[data-item="terrain"] .terrain-file')).map((node) => ({
+    name: node.getAttribute('data-file'),
+    details: node.querySelector('.muted').textContent,
+    refusals: Array.from(node.querySelectorAll('.callout-bad p')).map((p) => p.textContent),
+    prompts: Array.from(node.querySelectorAll('.callout-warn p')).map((p) => p.textContent),
+  })));
+  const opened = (n) => page.waitForFunction((count) => {
+    const files = document.querySelectorAll('[data-item="terrain"] .terrain-file');
+    return files.length === count && Array.from(files).every((f) => !f.textContent.includes('opening…'));
+  }, n);
+  /* files dropped on the card, as a drag from the desktop delivers them */
+  const drop = (files, extra) => page.evaluate(([list, hgt]) => {
+    const transfer = new DataTransfer();
+    list.forEach((f) => transfer.items.add(new File([new Uint8Array(f.bytes)], f.name)));
+    /* an SRTM-format tile, placed by its name and sized by its length */
+    if (hgt) transfer.items.add(new File([new Uint8Array(2 * 1201 * 1201)], hgt));
+    document.querySelector('[data-item="terrain"] .upload-zone').dispatchEvent(
+      new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+  }, [carried(files), extra || null]);
+  /* a field of the card by its label */
+  const setField = (label, value) => page.evaluate(([text, v]) => {
+    const host = Array.from(document.querySelectorAll('[data-item="terrain"] label.field'))
+      .find((f) => f.querySelector('.field-label').textContent === text);
+    const input = host.querySelector('input, select');
+    input.value = v;
+    input.dispatchEvent(new Event('change'));
+  }, [label, value]);
+  /* the Analyse button: pressed, or whether it can be */
+  const analyse = (press) => page.evaluate((click) => {
+    const node = Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain');
+    if (click) node.click();
+    return node.disabled;
+  }, press);
+  const removeAll = () => page.evaluate(() => {
+    const names = Array.from(document.querySelectorAll('[data-item="terrain"] .terrain-file'))
+      .map((node) => node.getAttribute('data-file'));
+    for (const name of names) {
+      Array.from(document.querySelectorAll(`[data-item="terrain"] .terrain-file[data-file="${name}"] button`))
+        .find((b) => b.textContent === 'Remove').click();
+    }
+  });
+  /* "Analyse the terrain" pressed, what the page read and handed the
+   * worker, and the read the engine makes of the same files read whole,
+   * at the radius and with the source the card was given */
+  const readOnCard = async (files, radius, declared) => {
+    await page.evaluate(() => { window.__slices = []; window.__sent = null; });
+    await analyse(true);
+    await page.waitForFunction(() => document.querySelector('[data-item="terrain"] .terrain-read'),
+      null, { timeout: 60000 });
+    return page.evaluate(([list, r, d]) => {
+      const C = window.GWT.core, app = window.GWT.app, cfg = app.config();
+      const whole = {};
+      list.forEach((f) => { whole[f.name] = new Uint8Array(f.bytes); });
+      const found = list.map((f) => C.elevationFile(f.name, whole[f.name].length, [[0, whole[f.name]]]));
+      const centre = C.windowCentre(app.store.get('site'), app.siteLatLon(), found);
+      const plan = C.planElevationWindow(found, centre, r, cfg, null, d);
+      const blocks = plan.blocks.map((b) => (b.length
+        ? whole[plan.files[b.file].name].slice(b.offset, b.offset + b.length) : null));
+      const read = C.readElevationWindow(plan, blocks, cfg, null);
+      const shown = document.querySelector('[data-item="terrain"] .terrain-read');
+      const last = window.GWT.engine.history().filter((h) => h.type === 'readElevation').pop();
+      return {
+        notes: Array.from(shown.querySelectorAll(':scope > p')).map((p) => p.textContent),
+        /* under the read report, or under the downloads once the analysis
+         * that follows the read has drawn its figures */
+        notice: document.querySelector('[data-item="terrain"] .terrain-notice small')?.textContent || null,
+        want: { notes: read.notes, notice: read.notice },
+        liability: C.phrase('terrain.copernicus_liability'),
+        slices: window.__slices.splice(0),
+        reads: C.elevationBlockRanges(plan).map((x) => [x.name, x.offset, x.offset + x.length]),
+        blocks: plan.blocks.filter((b) => b.length).length,
+        edgeOnly: plan.blocks.filter((b) => !b.window).length,
+        sent: window.__sent,
+        lengths: plan.blocks.map((b) => (b.length ? b.length : null)),
+        ran: last ? [last.mode, last.outcome] : null,
+      };
+    }, [carried(files), radius, declared]);
+  };
+  /* the blocks went to the worker each with a buffer of its own, and the
+   * worker read them */
+  const ownBuffers = (read) => read.sent.length === read.lengths.length &&
+    read.sent.every((b, i) => (b === null ? read.lengths[i] === null
+      : b[0] === 0 && b[1] === read.lengths[i] && b[2] === b[1])) &&
+    JSON.stringify(read.ran) === '["worker","done"]';
+
+  await drop(odd, 'N08W012.hgt');
+  await opened(3);
+  const dropped = {
+    list: await listed(),
+    read: await page.evaluate(() => window.__slices.splice(0)),
+    engine: await page.evaluate((files) => files.map((f) => {
+      const C = window.GWT.core, bytes = new Uint8Array(f.bytes);
+      try {
+        const found = C.elevationFile(f.name, bytes.length, [[0, bytes]]);
+        return { refusals: [], prompts: C.fileNotes(found, ['detect', '']) };
+      } catch (e) {
+        return { refusals: [e.message], prompts: [] };
+      }
+    }), carried(odd)),
+    disabled: await analyse(false),
+  };
+  await setField('Source of the elevation model', 'copernicus_glo30');
+  dropped.declared = await listed();
+  await setField('Source of the elevation model', 'detect');
+  check('terrain card: a dropped file\'s refusal and a question about its source show at once, in the ' +
+    'engine\'s words',
+    dropped.list.map((f) => f.name).join() === 'refuse_jpeg.tif,n08w011.tif,N08W012.hgt' &&
+    dropped.list.slice(0, 2).every((f, i) => JSON.stringify([f.refusals, f.prompts]) ===
+      JSON.stringify([dropped.engine[i].refusals, dropped.engine[i].prompts])) &&
+    dropped.list[0].refusals.length === 1 && dropped.list[1].prompts.length === 1 &&
+    dropped.list[1].details === '5.4 kB · source not recognised' && dropped.disabled,
+    JSON.stringify(dropped));
+  /* a cloud-optimised file's directories are all in its first 64 KiB */
+  check('terrain card: a GeoTIFF is opened from its first 64 KiB alone and an .hgt tile from its name, ' +
+    'as the Python app opens them',
+    JSON.stringify(dropped.read) === JSON.stringify(odd.map((f) => [f.name, 0, f.buffer.length])) &&
+    JSON.stringify(dropped.list[2]) === JSON.stringify({ name: 'N08W012.hgt',
+      details: '2.9 MB · SRTM format, source not stated', refusals: [], prompts: [] }),
+    JSON.stringify([dropped.read, dropped.list[2]]));
+  check('terrain card: declaring the source answers the question about it',
+    dropped.declared[1].prompts.length === 0 && dropped.declared[0].refusals.length === 1,
+    JSON.stringify(dropped.declared));
+  await removeAll();
+  const removed = await listed();
+  check('terrain card: Remove takes a file off the list', removed.length === 0, JSON.stringify(removed));
+
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'),
+    page.click('[data-item="terrain"] .upload-zone')]);
+  await chooser.setFiles(pair);
+  await opened(2);
+  const picked = await listed();
+  const opening = await page.evaluate(() => window.__slices.splice(0));
+  check('terrain card: the Copernicus pair picked is listed with its sizes and recognised',
+    JSON.stringify(picked.map((f) => [f.name, f.details, f.refusals, f.prompts])) === JSON.stringify([
+      [pair[0].name, '5.5 kB · recognised as Copernicus GLO-30', [], []],
+      [pair[1].name, '5.4 kB · recognised as Copernicus GLO-30', [], []]]), JSON.stringify(picked));
+  check('terrain card: the pair picked is opened from its first 64 KiB, as a dropped file is',
+    JSON.stringify(opening) === JSON.stringify(pair.map((f) => [f.name, 0, f.buffer.length])),
+    JSON.stringify(opening));
+
+  /* the widest radius asked for is over the cap on cells at 1 arc-second */
+  await setField('Radius of the square shown (km)', '50');
+  await analyse(true);
+  await page.waitForFunction(() => document.querySelector('[data-item="terrain"] .btn-row ~ .callout-bad'));
+  const overCap = await page.evaluate((files) => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const found = files.map((f) => C.elevationFile(f.name, f.bytes.length, [[0, new Uint8Array(f.bytes)]]));
+    let want = '';
+    try {
+      C.planElevationWindow(found, C.windowCentre(app.store.get('site'), app.siteLatLon(), found), 50,
+        app.config(), null, ['detect', '']);
+    } catch (e) {
+      want = e.message;
+    }
+    return { shown: document.querySelector('[data-item="terrain"] .btn-row ~ .callout-bad').textContent,
+      want, read: !!document.querySelector('[data-item="terrain"] .terrain-read'),
+      reads: window.__slices.splice(0) };
+  }, carried(pair));
+  check('terrain card: a window over the cap is refused on the card in the engine\'s words, with the ' +
+    'radius that fits, and nothing is read',
+    overCap.shown === overCap.want && overCap.want.includes('km fits') && !overCap.read &&
+    overCap.reads.length === 0, JSON.stringify(overCap));
+
+  await setField('Radius of the square shown (km)', '1');
+  const pairRead = await readOnCard(pair, 1, ['detect', '']);
+  check('terrain card: the read report is the engine\'s for the same files read whole, with the ' +
+    'Copernicus notice in small print',
+    pairRead.notes.length > 1 && JSON.stringify(pairRead.notes) === JSON.stringify(pairRead.want.notes) &&
+    pairRead.notes[0].startsWith('Read 2 files (') && pairRead.notes[0].includes(', 1 km each way.') &&
+    pairRead.notice === pairRead.want.notice && pairRead.notice === pairRead.liability,
+    JSON.stringify(pairRead));
+  check('terrain card: the blocks are read in merged reads, one a file here, and nothing else is read',
+    JSON.stringify(pairRead.slices) === JSON.stringify(pairRead.reads) &&
+    pairRead.reads.length === 2 && pairRead.blocks > pairRead.reads.length,
+    JSON.stringify([pairRead.slices, pairRead.reads, pairRead.blocks]));
+  check('terrain card: each block goes to the worker with a buffer of its own, and the worker reads them',
+    ownBuffers(pairRead), JSON.stringify([pairRead.sent, pairRead.ran]));
+
+  /* three tiles around a missing fourth, declared Copernicus GLO-30 since
+   * their names are not Copernicus's */
+  await removeAll();
+  await page.evaluate(() => {
+    const store = window.GWT.app.store;
+    store.set('site.easting', -12.0);
+    store.set('site.northing', 8.0);
+    store.set('site.utm_zone', null);
+  });
+  await drop(holes);
+  await opened(3);
+  await setField('Source of the elevation model', 'copernicus_glo30');
+  await setField('Radius of the square shown (km)', '15');
+  const holesRead = await readOnCard(holes, 15, ['copernicus_glo30', '']);
+  await page.evaluate((kept) => {
+    Blob.prototype.slice = window.__slice;
+    window.GWT.engine.readElevation = window.__readElevation;
+    const store = window.GWT.app.store;
+    Object.keys(kept).forEach((key) => store.set('site.' + key, kept[key]));
+  }, keptSite);
+  check('terrain card: a missing tile beside sea-level edges is read as sea, as the engine reads it under ' +
+    'the source declared',
+    JSON.stringify(holesRead.notes) === JSON.stringify(holesRead.want.notes) &&
+    holesRead.notes.some((note) => note.includes('a tile not supplied (N07 W013)')) &&
+    holesRead.notice === holesRead.liability, JSON.stringify(holesRead));
+  check('terrain card: the edge blocks beside the missing tile are read too, outside the window',
+    JSON.stringify(holesRead.slices) === JSON.stringify(holesRead.reads) && holesRead.edgeOnly > 0 &&
+    ownBuffers(holesRead), JSON.stringify([holesRead.slices, holesRead.reads, holesRead.edgeOnly,
+      holesRead.sent, holesRead.ran]));
+
+  // "Analyse the terrain" goes on from the read to the analysis, in the
+  // engine worker, with each stage the engine names shown in the work bar
+  // and its Cancel there, which stops the worker and keeps nothing. The
+  // answer is the engine's at the card's drainage threshold. A new
+  // threshold is worked out on the page from the core the worker handed
+  // over, with no request to the engine: the lines, the captions, the
+  // summary and the GeoJSON are those of an analysis at that threshold, and
+  // of the figures only the relief is drawn again, with the new lines. An
+  // answer to a run since dropped is not shown. With no worker the card
+  // says, before a run, that the page will be held, and a Cancel read
+  // between the read and the analysis stops it there. A device that says it
+  // has 2 GB of memory or less is asked before a window of more than a
+  // million cells. The tile is an SRTM-format .hgt made here: ridges and
+  // hollows falling to the south-west, at 3 arc-seconds, around a site at
+  // 8.5 N, 11.5 W.
+  await removeAll();
+  const keptTerrain = await page.evaluate(() => {
+    const app = window.GWT.app, engine = window.GWT.engine, store = app.store;
+    const kept = { easting: store.get('site.easting'), northing: store.get('site.northing'),
+      utm_zone: store.get('site.utm_zone') };
+    store.set('site.easting', -11.5);
+    store.set('site.northing', 8.5);
+    store.set('site.utm_zone', null);
+    const n = 1201, view = new DataView(new ArrayBuffer(2 * n * n));
+    for (let row = 0; row < n; row++) {
+      for (let col = 0; col < n; col++) {
+        const x = col, y = n - 1 - row;
+        const z = 300 - 0.1 * (x + y) + 35 * Math.sin(x / 31) * Math.sin(y / 23) + 20 * Math.cos((x - y) / 47);
+        view.setInt16(2 * (row * n + col), Math.round(z), false);
+      }
+    }
+    window.__hgt = new File([view.buffer], 'N08W012.hgt');
+    /* what the page reads of the tile */
+    window.__slices = [];
+    window.__slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (start, end, type) {
+      if (this instanceof File) window.__slices.push([this.name, start, end]);
+      return window.__slice.call(this, start, end, type);
+    };
+    /* what the card asks the engine to analyse, the stages it hears, and,
+     * when the test says so, the request held back until released, or a
+     * Cancel pressed the moment the analysis is asked for */
+    window.__analyseTerrain = engine.analyseTerrain;
+    engine.analyseTerrain = function (grid, cfg, read, where, options) {
+      const heard = window.__heard = [];
+      /* the grid as the card hands it over: the card lets go of its cells
+       * once the analysis has answered */
+      window.__grid = Object.assign({}, grid);
+      window.__asked = { area: cfg.terrain.drainage_area_km2, where, label: read.centre.label,
+        stripped: [read.grid, read.assumedSea, read.reasons].every((v) => v === null),
+        captions: [!!read.plan, !!read.surface], grid: grid.rows * grid.cols };
+      const opts = Object.assign({}, options, { onProgress: (fraction, label) => {
+        heard.push([fraction, label]);
+        options.onProgress(fraction, label);
+      } });
+      const go = () => window.__analyseTerrain.call(engine, grid, cfg, read, where, opts);
+      if (window.__hold) return new Promise((resolve) => { window.__release = resolve; }).then(go);
+      const answer = go();
+      if (window.__cancelNow) app.cancelWork('terrain');
+      return answer;
+    };
+    /* the session's answer, and the engine's own analysis of the grid the
+     * card read and handed over, at a threshold, with the GeoJSON the
+     * Python app writes */
+    window.__terrainGot = () => {
+      const r = app.terrainSession().result;
+      return JSON.stringify({ links: r.links, parts: r.parts, summary: r.summary, captions: r.captions,
+        geojson: r.geojson });
+    };
+    window.__terrainWant = (areaKm2) => {
+      const C = window.GWT.core, read = app.terrainSession().read, grid = window.__grid, cfg = app.config();
+      cfg.terrain.drainage_area_km2 = areaKm2;
+      const a = C.analyseTerrain(grid, cfg, null, 'float32', grid.shown);
+      let sea = 0;
+      for (const v of a.core.cls) sea += v === 2 ? 1 : 0;
+      const geojson = C.drainageGeoJson(a.core, a.parts, { label: read.grid.label,
+        figure_credit: read.figureCredit, notice: read.notice, surface: read.surface, area: areaKm2,
+        radius: read.plan.radiusKm, margin: read.plan.marginKm, centre: read.centre,
+        fill_note_m: a.settings.fill_note_m, sea_clean: read.grid.seaClean, sea_cells: sea,
+        sea_level_m: a.settings.sea_level_m });
+      return JSON.stringify({ links: a.links, parts: a.parts, summary: a.summary,
+        captions: C.terrainCaptions(a, read, read.centre.label), geojson });
+    };
+    window.__until = async (test, ms) => {
+      const began = performance.now();
+      while (!test()) {
+        if (performance.now() - began > (ms || 60000)) return false;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return true;
+    };
+    window.__settled = () => !app.terrainSession().running && !app.working('terrain');
+    window.__lastTerrain = () => engine.history().filter((h) => h.type === 'readElevation' ||
+      h.type === 'analyseTerrain').slice(-2).map((h) => [h.type, h.mode, h.outcome, !!h.ran]);
+    window.__card = () => {
+      const host = document.querySelector('[data-item="terrain"]');
+      const button = Array.from(host.querySelectorAll('button'))
+        .find((b) => b.textContent === 'Analyse the terrain');
+      return { read: !!host.querySelector('.terrain-read'),
+        refusals: Array.from(host.querySelectorAll('.btn-row ~ .callout-bad')).map((c) => c.textContent),
+        pageOnly: host.querySelector('.terrain-page-only')?.textContent || null,
+        running: Array.from(host.querySelectorAll('p.muted'))
+          .some((p) => p.textContent.startsWith('Analysing the terrain.')),
+        disabled: button.disabled, bar: !!document.querySelector('#work-status .work-bar') };
+    };
+    window.__toasts = () => Array.from(document.querySelectorAll('.toast')).map((t) => t.textContent);
+    const transfer = new DataTransfer();
+    transfer.items.add(window.__hgt);
+    document.querySelector('[data-item="terrain"] .upload-zone').dispatchEvent(
+      new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+    return kept;
+  });
+  await opened(1);
+  /* the tile as found, whatever was declared for the files before it */
+  await setField('Source of the elevation model', 'detect');
+  const stages = await page.evaluate(() => ['classes', 'fill', 'flow', 'flats', 'accumulate', 'drainage',
+    'shading', 'curvature'].map((s) => window.GWT.core.phrase('terrain.stage_' + s)));
+  /* labels in the order the engine names its stages, none twice */
+  const inOrder = (labels) => labels.every((label, i) => stages.indexOf(label) >= 0 &&
+    (i === 0 || stages.indexOf(label) > stages.indexOf(labels[i - 1])));
+
+  /* a run to the end in the worker, the work bar watched as it goes */
+  await setField('Radius of the square shown (km)', '30');
+  await setField('Drainage threshold (km²)', '0.25');
+  const worked = await page.evaluate(async () => {
+    const seen = [];
+    const watch = new MutationObserver(() => {
+      const bar = document.querySelector('#work-status .work-bar[data-work="terrain"]');
+      if (bar) {
+        seen.push([bar.querySelector('.work-label').textContent,
+          bar.querySelector('.work-detail').textContent,
+          parseFloat(bar.querySelector('.progress-fill').style.width) || 0, bar.textContent.includes('Cancel')]);
+      }
+    });
+    watch.observe(document.querySelector('#work-status'), { subtree: true, childList: true,
+      characterData: true, attributes: true });
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const during = window.__card();
+    const done = await window.__until(window.__settled);
+    watch.disconnect();
+    const s = window.GWT.app.terrainSession();
+    return { during, done, seen, after: window.__card(), ran: window.__lastTerrain(), asked: window.__asked,
+      heard: window.__heard, centre: s.read.centre.label, cells: s.read.grid.rows * s.read.grid.cols,
+      areaKm2: s.result.areaKm2, lines: s.result.parts.length, got: window.__terrainGot(),
+      want: window.__terrainWant(0.25), stage: window.GWT.core.phrase('terrain.stage_read'),
+      kept: { z: s.read.grid.z, assumedSea: s.read.grid.assumedSea, readSea: s.read.assumedSea,
+        reasons: s.read.reasons, lons: s.read.grid.lons.length, notes: s.read.notes.length } };
+  });
+  const barDetails = worked.seen.map((b) => b[1]).filter((d, i, all) => d !== all[i - 1]);
+  check('terrain analysis: the read goes on to the analysis in the worker, the grid sent once and the read ' +
+    'without its cells',
+    worked.done && JSON.stringify(worked.ran) ===
+      '[["readElevation","worker","done",true],["analyseTerrain","worker","done",true]]' &&
+    worked.asked.stripped && worked.asked.captions.every(Boolean) && worked.asked.where === worked.centre &&
+    worked.asked.grid === worked.cells && worked.cells > 500000 && worked.cells < 1000000,
+    JSON.stringify([worked.done, worked.ran, worked.asked, worked.cells]));
+  check('terrain analysis: the work bar names each stage as the engine does, and holds Cancel while it runs',
+    worked.during.running && worked.during.disabled && worked.seen.length > 0 &&
+    worked.seen.every((b) => b[0] === 'Analysing the terrain' && b[3]) &&
+    worked.seen.every((b, i) => i === 0 || b[2] >= worked.seen[i - 1][2]) &&
+    inOrder(barDetails.filter((d) => d !== worked.stage)) && barDetails.some((d) => d !== worked.stage) &&
+    worked.heard.length > 0 && worked.heard[0][1] === stages[0] &&
+    inOrder(worked.heard.map((h) => h[1]).filter((label, i, all) => label !== all[i - 1])) &&
+    !worked.after.bar && !worked.after.running && !worked.after.disabled,
+    JSON.stringify([worked.during, barDetails, worked.seen.slice(0, 3), worked.heard, worked.after]));
+  check('terrain analysis: the lines, summary, captions and GeoJSON are the engine\'s at the card\'s threshold',
+    worked.asked.area === 0.25 && worked.areaKm2 === 0.25 && worked.lines > 10 && worked.got === worked.want,
+    JSON.stringify([worked.asked.area, worked.areaKm2, worked.lines, worked.got.slice(0, 300),
+      worked.want.slice(0, 300)]));
+  check('terrain analysis: once it has answered, the page keeps none of the read\'s layers of a value a cell',
+    worked.kept.z === null && worked.kept.assumedSea === null && worked.kept.readSea === null &&
+    worked.kept.reasons === null && worked.kept.lons > 0 && worked.kept.notes > 0,
+    JSON.stringify(Object.fromEntries(Object.entries(worked.kept).map(([key, v]) =>
+      [key, v === null || typeof v === 'number' ? v : 'kept']))));
+
+  /* a new threshold, and back */
+  const retraced = { first: worked.got };
+  await page.evaluate(() => {
+    const s = window.GWT.app.terrainSession();
+    window.__mark = window.GWT.engine.history().length;
+    /* the figures the card drew from the first answer */
+    window.__figures = Object.assign({}, s.figures);
+  });
+  await setField('Drainage threshold (km²)', '2');
+  Object.assign(retraced, await page.evaluate(() => {
+    const s = window.GWT.app.terrainSession(), was = window.__figures || {}, now = s.figures || {};
+    const figures = Object.keys(was).filter((key) => was[key] && now[key] === was[key]);
+    /* the lines a relief draws, by link, and those of the parts it was given */
+    const links = (svg) => (svg ? Array.from(new Set(Array.from(svg.querySelectorAll('path[data-link]'))
+      .map((p) => Number(p.getAttribute('data-link'))))).sort((a, b) => a - b).join() : null);
+    const shown = Array.from(document.querySelectorAll('[data-item="terrain"] figure.figure'));
+    return { asked: window.GWT.engine.history().length - window.__mark, areaKm2: s.result.areaKm2,
+      figures, drawn: Object.keys(was).filter((key) => was[key]),
+      relief: !!now.relief && now.relief !== was.relief && links(now.relief) === Array.from(new Set(
+        s.result.parts.filter((p) => p.vertices.length > 1).map((p) => p.id))).sort((a, b) => a - b).join() &&
+        links(now.relief) !== links(was.relief),
+      shown: shown.map((f) => Object.keys(now).find((key) => now[key] === f.querySelector('svg'))),
+      shownCaption: shown.length ? (shown[0].querySelector('figcaption span') || {}).textContent : null,
+      got: window.__terrainGot(), want: window.__terrainWant(2), caption: s.result.captions.relief };
+  }));
+  await setField('Drainage threshold (km²)', '0.25');
+  Object.assign(retraced, await page.evaluate(() => ({ back: window.__terrainGot(),
+    askedBack: window.GWT.engine.history().length - window.__mark })));
+  check('terrain threshold: a new one traces the lines again on the page, with no request to the engine',
+    retraced.asked === 0 && retraced.askedBack === 0 && retraced.areaKm2 === 2 &&
+    retraced.got !== retraced.first && JSON.parse(retraced.got).parts.length <
+      JSON.parse(retraced.first).parts.length,
+    JSON.stringify([retraced.asked, retraced.askedBack, retraced.areaKm2]));
+  check('terrain threshold: the lines, summary, captions and GeoJSON are those of an analysis at the new ' +
+    'threshold, and back again those of the first',
+    retraced.got === retraced.want && retraced.back === retraced.first &&
+    retraced.caption.includes('where more than 2 km² drains'),
+    JSON.stringify([retraced.caption, retraced.got.slice(0, 300), retraced.want.slice(0, 300)]));
+  check('terrain threshold: of the figures, only the relief is drawn again, with the lines and the caption ' +
+    'at the new threshold',
+    retraced.drawn.join() === 'relief,wetness,curvature,directions' && retraced.relief &&
+    retraced.figures.join() === 'wetness,curvature,directions' &&
+    retraced.shown.join() === 'relief,wetness,curvature,directions' && retraced.shownCaption === retraced.caption,
+    JSON.stringify([retraced.drawn, retraced.relief, retraced.figures, retraced.shown]));
+
+  /* a threshold changed while the analysis runs is traced from its answer */
+  await setField('Radius of the square shown (km)', '3');
+  await page.evaluate(() => {
+    window.__hold = true;
+    window.__release = null;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    return window.__until(() => window.__release);
+  });
+  /* the engine's workers, which the page started from gwt-worker.js, the
+   * one that read the window now waiting for the analysis */
+  const engineWorkers = () => page.workers().filter((w) => w.url().endsWith('/gwt-worker.js'));
+  const waitingWorkers = engineWorkers().length;
+  await setField('Drainage threshold (km²)', '1');
+  const during = await page.evaluate(async () => {
+    window.__hold = false;
+    window.__release();
+    const done = await window.__until(window.__settled);
+    const s = window.GWT.app.terrainSession();
+    return { done, asked: window.__asked.area, areaKm2: s.result.areaKm2, got: window.__terrainGot(),
+      want: window.__terrainWant(1), ran: window.__lastTerrain() };
+  });
+  check('terrain threshold: one changed while the analysis runs is traced again from its answer',
+    during.done && during.asked === 0.25 && during.areaKm2 === 1 && during.got === during.want &&
+    JSON.stringify(during.ran) ===
+      '[["readElevation","worker","done",true],["analyseTerrain","worker","done",true]]',
+    JSON.stringify([during.done, during.asked, during.areaKm2, during.ran]));
+  /* the worker that answered the analysis is stopped, and with it the
+   * rest of the analysis, which an idle worker would keep */
+  let answeredWorkers = engineWorkers().length;
+  for (let waited = 0; waited < 3000 && answeredWorkers; waited += 50) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    answeredWorkers = engineWorkers().length;
+  }
+  check('terrain analysis: the worker that read and analysed the window is stopped once it has answered',
+    waitingWorkers === 1 && answeredWorkers === 0, JSON.stringify({ waitingWorkers, answeredWorkers }));
+
+  /* an answer to a run dropped while it was out is not shown */
+  const heldBack = await page.evaluate(async () => {
+    window.__hold = true;
+    window.__release = null;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    await window.__until(() => window.__release);
+    return true;
+  });
+  await setField('Source of the elevation model', 'srtm');
+  const stale = await page.evaluate(async () => {
+    window.__hold = false;
+    const mark = window.GWT.engine.history().length;
+    window.__release();
+    await window.__until(() => window.GWT.engine.history().length > mark);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const s = window.GWT.app.terrainSession();
+    return { ran: window.__lastTerrain(), read: s.read, result: s.result, card: window.__card() };
+  });
+  check('terrain analysis: an answer to a run dropped since, by another source declared, is not shown',
+    heldBack && stale.ran[1].join() === 'analyseTerrain,worker,done,true' && stale.read === null &&
+    stale.result === null && !stale.card.read && !stale.card.running && !stale.card.bar &&
+    !stale.card.disabled, JSON.stringify(stale));
+  await setField('Source of the elevation model', 'detect');
+
+  /* Cancel in the work bar, part way through a large window's analysis */
+  await setField('Radius of the square shown (km)', '40');
+  const halted = await page.evaluate(async () => {
+    const app = window.GWT.app, stages = ['classes', 'fill', 'flow', 'flats', 'accumulate', 'drainage',
+      'shading', 'curvature'].map((s) => window.GWT.core.phrase('terrain.stage_' + s));
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    let bar = null;
+    await window.__until(() => {
+      bar = document.querySelector('#work-status .work-bar[data-work="terrain"]');
+      return bar && stages.indexOf(bar.querySelector('.work-detail').textContent) >= 0;
+    });
+    const shown = bar ? bar.querySelector('.work-detail').textContent : '';
+    const pressed = performance.now();
+    bar.querySelector('button').click();
+    await window.__until(window.__settled, 5000);
+    const stoppedIn = Math.round(performance.now() - pressed);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const s = app.terrainSession();
+    return { shown, stoppedIn, ran: window.__lastTerrain(), read: s.read, result: s.result,
+      card: window.__card(), toasts: window.__toasts() };
+  });
+  check('terrain cancel: Cancel stops the analysis in the worker at once, and nothing of the run is kept',
+    halted.shown !== '' && halted.stoppedIn < 1000 &&
+    JSON.stringify(halted.ran) ===
+      '[["readElevation","worker","done",true],["analyseTerrain","worker","cancelled",false]]' &&
+    halted.read === null && halted.result === null && !halted.card.read && !halted.card.running &&
+    !halted.card.bar && !halted.card.disabled && halted.card.refusals.length === 0 &&
+    halted.toasts.some((t) => t.startsWith('The terrain analysis was stopped, and nothing of it is kept.')),
+    JSON.stringify(halted));
+
+  /* with no worker: the line before a run, the same answer from the page,
+   * and a Cancel read between the read and the analysis */
+  await setField('Radius of the square shown (km)', '3');
+  const pageRun = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine;
+    const inWorker = { card: window.__card(), mode: engine.mode() };
+    engine.forcePage(true);
+    app.render();
+    const before = window.__card();
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const running = window.__card();
+    const done = await window.__until(window.__settled);
+    const answer = { ran: window.__lastTerrain(), got: window.__terrainGot(), want: window.__terrainWant(1) };
+    window.__cancelNow = true;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const cancelled = await window.__until(window.__settled);
+    window.__cancelNow = false;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const s = app.terrainSession();
+    const after = { ran: window.__lastTerrain(), read: s.read, result: s.result, card: window.__card(),
+      toasts: window.__toasts() };
+    engine.forcePage(false);
+    app.render();
+    return { inWorker, before, reason: engine.unavailable(), running, done, answer, cancelled, after,
+      back: window.__card() };
+  });
+  check('terrain page-only: with no worker the card says, before a run, that the page will be held',
+    pageRun.inWorker.mode === 'worker' && pageRun.inWorker.card.pageOnly === null &&
+    pageRun.before.pageOnly === 'This copy of the app has no background worker (forced), so the analysis ' +
+      'will hold the page until it finishes.' && pageRun.running.pageOnly === null &&
+    pageRun.back.pageOnly === null,
+    JSON.stringify([pageRun.inWorker, pageRun.before, pageRun.running, pageRun.back]));
+  check('terrain page-only: the page reads and analyses the window itself, to the same answer',
+    pageRun.done && JSON.stringify(pageRun.answer.ran) ===
+      '[["readElevation","page","done",true],["analyseTerrain","page","done",true]]' &&
+    pageRun.answer.got === pageRun.answer.want && pageRun.answer.got === during.got,
+    JSON.stringify([pageRun.answer.ran, pageRun.answer.got === pageRun.answer.want,
+      pageRun.answer.got === during.got]));
+  check('terrain page-only: a Cancel read between the read and the analysis stops it there, keeping nothing',
+    pageRun.cancelled && JSON.stringify(pageRun.after.ran) ===
+      '[["readElevation","page","done",true],["analyseTerrain","page","cancelled",false]]' &&
+    pageRun.after.read === null && pageRun.after.result === null && !pageRun.after.card.read &&
+    !pageRun.after.card.bar &&
+    pageRun.after.toasts.some((t) => t.startsWith('The terrain analysis was stopped')),
+    JSON.stringify(pageRun.after));
+
+  /* a device that says it has little memory, asked before a large window */
+  const memory = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const press = () => Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const modal = () => {
+      const box = document.querySelector('.modal-overlay .modal');
+      return box ? { title: box.querySelector('h3').textContent,
+        text: box.querySelector('.modal-body').textContent,
+        buttons: Array.from(box.querySelectorAll('button')).map((b) => b.textContent) } : null;
+    };
+    const tap = (label) => Array.from(document.querySelectorAll('.modal-overlay button'))
+      .find((b) => b.textContent === label).click();
+    const setRadius = (km) => {
+      const host = Array.from(document.querySelectorAll('[data-item="terrain"] label.field'))
+        .find((f) => f.querySelector('.field-label').textContent === 'Radius of the square shown (km)');
+      const input = host.querySelector('input');
+      input.value = String(km);
+      input.dispatchEvent(new Event('change'));
+    };
+    const marks = () => window.GWT.engine.history().length;
+    const out = {};
+    Object.defineProperty(navigator, 'deviceMemory', { value: 2, configurable: true });
+    setRadius(45);
+    const mark = marks();
+    window.__slices = [];
+    press();
+    out.asked = modal();
+    out.asking = { card: window.__card(), working: app.working('terrain'), slices: window.__slices.length };
+    tap('Close');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    out.closed = { modal: modal(), card: window.__card(), requests: marks() - mark,
+      slices: window.__slices.length };
+    press();
+    tap('Run it anyway');
+    out.anyway = { modal: modal(), running: app.terrainSession().running };
+    await window.__until(() => window.GWT.engine.history().length > mark || window.__settled());
+    out.anyway.cells = app.terrainSession().read ? app.terrainSession().read.grid.rows *
+      app.terrainSession().read.grid.cols : null;
+    app.cancelWork('terrain');
+    await window.__until(window.__settled);
+    setRadius(3);
+    press();
+    out.small = { modal: modal(), running: app.terrainSession().running };
+    await window.__until(window.__settled);
+    out.small.result = !!app.terrainSession().result;
+    Object.defineProperty(navigator, 'deviceMemory', { value: 4, configurable: true });
+    setRadius(45);
+    press();
+    out.ample = { modal: modal(), running: app.terrainSession().running };
+    app.cancelWork('terrain');
+    await window.__until(window.__settled);
+    delete navigator.deviceMemory;
+    return out;
+  });
+  check('terrain memory: a device that says it has 2 GB or less is asked before a window of over a ' +
+    'million cells, and nothing is read until it says to go on',
+    JSON.stringify(memory.asked) === JSON.stringify({ title: 'This device may run short of memory',
+      text: 'This device reports 2 GB of memory or less; a window this size may close the tab. Run it anyway?',
+      buttons: ['×', 'Run it anyway', 'Close'] }) &&
+    !memory.asking.working && !memory.asking.card.running && memory.asking.slices === 0 &&
+    memory.closed.modal === null && memory.closed.requests === 0 && memory.closed.slices === 0 &&
+    !memory.closed.card.read && !memory.closed.card.disabled,
+    JSON.stringify([memory.asked, memory.asking, memory.closed]));
+  check('terrain memory: told to go on it runs; a smaller window, or a device with more memory, is not asked',
+    memory.anyway.modal === null && memory.anyway.running && memory.anyway.cells > 1000000 &&
+    memory.small.modal === null && memory.small.running && memory.small.result &&
+    memory.ample.modal === null && memory.ample.running,
+    JSON.stringify([memory.anyway, memory.small, memory.ample]));
+
+  // The figures on the card: each of the four drawn from the worker's
+  // display layers by its builder in gwt-charts.js, with the engine's
+  // captions under it, and PNG and SVG buttons that save it under the name
+  // the Python app gives its files; and the drainage lines saved as the
+  // GeoJSON the engine writes, told what the Python app tells it. The
+  // Copernicus licence's liability sentence is in small print under the
+  // downloads when the files hold a Copernicus tile, and only then. Loading
+  // a project, with a run still going, opening a sample and resetting the
+  // workspace each drop the tiles, the card's settings and all made of
+  // them, as loading a project drops them in the Python app.
+  await setField('Radius of the square shown (km)', '3');
+  await setField('Drainage threshold (km²)', '0.5');
+  const drawn = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const done = await window.__until(window.__settled);
+    const s = app.terrainSession(), want = JSON.parse(window.__terrainWant(0.5));
+    const layers = { relief: ['relief'], wetness: ['wetness'], curvature: ['profile', 'tangential'],
+      directions: s.result.cfg.terrain.hillshade_panel_azimuths_deg.map((a) => 'hillshade-' + a) };
+    const flat = (text) => String(text).replace(/\s+/g, ' ').trim();
+    const label = app.store.get('site.community') || 'Site';
+    const figures = Array.from(document.querySelectorAll('[data-item="terrain"] figure.figure')).map((node) => {
+      const svg = node.querySelector('svg');
+      const name = Object.keys(s.figures || {}).find((key) => s.figures[key] === svg) || null;
+      const texts = Array.from(svg.querySelectorAll('text')).map((t) => t.textContent);
+      const note = (kind) => flat(Array.from(svg.querySelectorAll(`text[data-note="${kind}"]`))
+        .map((t) => t.textContent).join(' '));
+      return { name, caption: (node.querySelector('figcaption span') || {}).textContent,
+        want: want.captions[name], layers: Array.from(svg.querySelectorAll('image'))
+          .map((image) => image.getAttribute('data-layer')).join() === (layers[name] || []).join(),
+        title: flat(texts.join(' ')).includes(flat(want.captions['title_' + name])),
+        credit: note('credit') === flat(s.read.figureCredit),
+        caveat: note('caveat') === flat(want.captions.figure_caveat),
+        stars: svg.querySelectorAll('[data-site]').length === (layers[name] || []).length && texts.includes(label),
+        buttons: Array.from(node.querySelectorAll('.figure-actions button')).map((b) => b.textContent).join() };
+    });
+    return { done, figures, ran: window.__lastTerrain(), readNotice: s.read.notice,
+      notices: document.querySelectorAll('[data-item="terrain"] .terrain-notice').length,
+      geojson: Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+        .filter((b) => b.textContent === 'Drainage lines (GeoJSON)').length };
+  });
+  check('terrain figures on the card: the four, each drawn from the worker\'s answer with its layers, title, ' +
+    'credit, caveat and the site starred, and the engine\'s captions under it',
+    drawn.done && JSON.stringify(drawn.ran) ===
+      '[["readElevation","worker","done",true],["analyseTerrain","worker","done",true]]' &&
+    drawn.figures.map((f) => f.name).join() === 'relief,wetness,curvature,directions' &&
+    drawn.figures.every((f) => f.caption === f.want && f.layers && f.title && f.credit && f.caveat && f.stars),
+    JSON.stringify([drawn.done, drawn.ran, drawn.figures]));
+  check('terrain figures on the card: each with its PNG and SVG buttons, the lines\' GeoJSON after them, and ' +
+    'no liability sentence for a set holding no Copernicus tile',
+    drawn.figures.every((f) => f.buttons === 'PNG,SVG') && drawn.geojson === 1 && drawn.readNotice === null &&
+    drawn.notices === 0, JSON.stringify([drawn.figures.map((f) => f.buttons), drawn.geojson, drawn.readNotice,
+      drawn.notices]));
+
+  /* the theme changed to light and back: the figures are drawn again in
+   * the page's new colours each time, as every other figure is */
+  const themed = await page.evaluate(() => {
+    const app = window.GWT.app, s = app.terrainSession(), was = app.store.get('theme', 'dark');
+    const svgs = () => Array.from(document.querySelectorAll('[data-item="terrain"] figure.figure > svg'));
+    const grounds = () => svgs().map((svg) => svg.querySelector('rect').getAttribute('fill')).join();
+    const toggle = (to) => {
+      for (let n = 0; n < 3 && app.store.get('theme') !== to; n++) {
+        document.querySelector('button[title="Switch theme"]').click();
+      }
+    };
+    const dark = { svgs: svgs(), grounds: grounds() };
+    toggle('light');
+    const light = { svgs: svgs(), grounds: grounds(), surface: window.GWT.charts.palette().surface };
+    toggle(was);
+    const back = { svgs: svgs(), grounds: grounds() };
+    const kept = (shown) => shown.map((svg) => Object.keys(s.figures || {}).find((key) => s.figures[key] === svg))
+      .join();
+    return { was, light: light.grounds, dark: dark.grounds, back: back.grounds,
+      redrawn: [light.svgs.length, light.svgs.filter((svg, i) => svg !== dark.svgs[i]).length,
+        back.svgs.filter((svg, i) => svg !== light.svgs[i]).length].join(), kept: kept(back.svgs),
+      painted: light.grounds === Array(4).fill(light.surface).join() && light.grounds !== dark.grounds &&
+        back.grounds === dark.grounds };
+  });
+  check('terrain figures on the card: a new theme draws them again in its colours',
+    themed.was === 'dark' && themed.redrawn === '4,4,4' && themed.kept === 'relief,wetness,curvature,directions' &&
+    themed.painted, JSON.stringify(themed));
+
+  /* what each button saves, kept instead of handed to the browser */
+  const saved = await page.evaluate(async () => {
+    const support = window.GWT.support, s = window.GWT.app.terrainSession();
+    const want = JSON.parse(window.__terrainWant(0.5));
+    const got = [];
+    window.__download = support.download;
+    support.download = (name, data, mime) => { got.push({ name, data, mime }); };
+    const host = document.querySelector('[data-item="terrain"]');
+    const figures = Array.from(host.querySelectorAll('figure.figure'));
+    for (const node of figures) {
+      for (const label of ['PNG', 'SVG']) {
+        const count = got.length;
+        Array.from(node.querySelectorAll('.figure-actions button')).find((b) => b.textContent === label).click();
+        await window.__until(() => got.length > count, 20000);
+      }
+    }
+    const lineButton = Array.from(host.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Drainage lines (GeoJSON)');
+    if (lineButton) lineButton.click();
+    support.download = window.__download;
+    const out = { names: got.map((g) => g.name), figures: [] };
+    for (let i = 0; i < figures.length; i++) {
+      const svg = figures[i].querySelector('svg'), png = got[2 * i].data, text = got[2 * i + 1].data;
+      /* the PNG at twice the figure's size, its maps painted, not the
+       * figure's ground alone */
+      const bitmap = await createImageBitmap(png);
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const g = canvas.getContext('2d');
+      g.drawImage(bitmap, 0, 0);
+      const ground = Array.from(g.getImageData(4, 4, 1, 1).data);
+      const painted = Array.from(svg.querySelectorAll('image')).map((image) => {
+        const box = ['x', 'y', 'width', 'height'].map((key) => Number(image.getAttribute(key)) * 2);
+        const data = g.getImageData(Math.round(box[0]) + 2, Math.round(box[1]) + 2,
+          Math.round(box[2]) - 4, Math.round(box[3]) - 4).data;
+        let count = 0;
+        for (let k = 0; k < data.length; k += 4) {
+          if (Math.abs(data[k] - ground[0]) + Math.abs(data[k + 1] - ground[1]) +
+              Math.abs(data[k + 2] - ground[2]) > 24) count++;
+        }
+        return Math.round(1000 * count / (data.length / 4)) / 1000;
+      });
+      const viewBox = svg.getAttribute('viewBox').split(' ').map(Number);
+      /* the SVG as the page draws it: the same rasters and the same words */
+      const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+      const hrefs = (root) => Array.from(root.querySelectorAll('image')).map((image) => image.getAttribute('href'));
+      const words = (root) => Array.from(root.querySelectorAll('text')).map((t) => t.textContent).join('|');
+      out.figures.push({
+        png: [png.type, bitmap.width, bitmap.height, viewBox[2] * 2, viewBox[3] * 2], painted,
+        svg: [got[2 * i + 1].mime, doc.documentElement.nodeName, !doc.querySelector('parsererror'),
+          hrefs(doc).length > 0 && hrefs(doc).join() === hrefs(svg).join(), words(doc) === words(svg)],
+      });
+    }
+    const lines = got.slice(2 * figures.length)[0] || {}, parsed = JSON.parse(lines.data || '{"features":[]}');
+    out.geojson = { mime: lines.mime, same: lines.data === s.result.geojson && lines.data === want.geojson,
+      features: parsed.features.length === s.result.parts.length && parsed.features.length > 0,
+      attribution: parsed.attribution === s.read.figureCredit, notice: 'notice' in parsed,
+      description: parsed.description === want.captions.geojson_description };
+    return out;
+  });
+  check('terrain downloads: each figure saves as a PNG with its maps painted and an SVG of what the page ' +
+    'draws, under the Python app\'s names',
+    saved.names.join() === ['relief', 'wetness', 'curvature', 'directions']
+      .map((n) => `terrain_${n}.png,terrain_${n}.svg`).join() + ',drainage_lines.geojson' &&
+    saved.figures.every((f) => f.png[0] === 'image/png' && f.png[1] === f.png[3] && f.png[2] === f.png[4] &&
+      f.painted.length > 0 && f.painted.every((share) => share > 0.6) &&
+      JSON.stringify(f.svg) === '["image/svg+xml;charset=utf-8","svg",true,true,true]'),
+    JSON.stringify([saved.names, saved.figures]));
+  check('terrain downloads: the drainage lines save as the GeoJSON the engine writes, credited and described ' +
+    'as the Python app has it',
+    JSON.stringify(saved.geojson) === JSON.stringify({ mime: 'application/geo+json', same: true, features: true,
+      attribution: true, notice: false, description: true }), JSON.stringify(saved.geojson));
+
+  /* a Copernicus set: the three tiles around a missing fourth, declared
+   * Copernicus GLO-30, at 8 N, 12 W */
+  const holesSite = () => page.evaluate(() => {
+    const store = window.GWT.app.store;
+    store.set('site.easting', -12.0);
+    store.set('site.northing', 8.0);
+    store.set('site.utm_zone', null);
+  });
+  const holesOnCard = async () => {
+    await holesSite();
+    await drop(holes);
+    await opened(3);
+    await setField('Source of the elevation model', 'copernicus_glo30');
+    await setField('Radius of the square shown (km)', '15');
+  };
+  /* the card's state, and whether the session is a fresh one */
+  const cleared = () => page.evaluate(() => {
+    const app = window.GWT.app, s = app.terrainSession(), cfg = app.config().terrain;
+    const host = document.querySelector('[data-item="terrain"]');
+    const value = (label) => Array.from(host.querySelectorAll('label.field'))
+      .find((f) => f.querySelector('.field-label').textContent === label).querySelector('input, select').value;
+    return {
+      session: s.files.length === 0 && s.opened.size === 0 && s.read === null && s.result === null &&
+        s.figures === null && s.radiusKm === null && s.areaKm2 === null && s.declared === 'detect' &&
+        !s.running && s.refusal === '',
+      card: [host.querySelectorAll('.terrain-file').length, host.querySelectorAll('figure.figure').length,
+        !!host.querySelector('.terrain-read'), !!host.querySelector('.terrain-notice'),
+        !!document.querySelector('#work-status .work-bar[data-work="terrain"]')].join(),
+      fields: [value('Radius of the square shown (km)') === String(cfg.analysis_radius_km),
+        value('Drainage threshold (km²)') === String(cfg.drainage_area_km2),
+        value('Source of the elevation model') === 'detect'].join(),
+    };
+  });
+  const runToEnd = () => page.evaluate(async () => {
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    await window.__until(window.__settled);
+    return !!window.GWT.app.terrainSession().result;
+  });
+  await removeAll();
+  await holesOnCard();
+  const licensed = await page.evaluate(async () => {
+    const C = window.GWT.core, s = () => window.GWT.app.terrainSession();
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    await window.__until(window.__settled);
+    const host = document.querySelector('[data-item="terrain"]');
+    const notices = Array.from(host.querySelectorAll('.terrain-notice'));
+    const lines = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Drainage lines (GeoJSON)');
+    const figures = Array.from(host.querySelectorAll('figure.figure'));
+    const flat = (text) => String(text).replace(/\s+/g, ' ').trim();
+    return {
+      figures: figures.length, liability: C.phrase('terrain.copernicus_liability'),
+      notices: notices.map((n) => (n.querySelector('small') || {}).textContent || null),
+      underDownloads: !!lines && notices.length === 1 &&
+        !!(lines.compareDocumentPosition(notices[0]) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+        figures.every((f) => !!(f.compareDocumentPosition(notices[0]) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      credit: s().read.figureCredit.includes(C.phrase('terrain.credit_copernicus_modified')) &&
+        figures.every((f) => flat(Array.from(f.querySelectorAll('text[data-note="credit"]'))
+          .map((t) => t.textContent).join(' ')) === flat(s().read.figureCredit)),
+      geojson: JSON.parse(s().result.geojson).notice,
+    };
+  });
+  check('terrain figures on the card: a Copernicus set\'s liability sentence is in small print under the ' +
+    'downloads, once, and its credit inside every figure and in the GeoJSON',
+    licensed.figures === 4 && JSON.stringify(licensed.notices) === JSON.stringify([licensed.liability]) &&
+    licensed.underDownloads && licensed.credit && licensed.geojson === licensed.liability,
+    JSON.stringify(licensed));
+
+  /* A file removed or added, or the source put in other words, after a
+   * run: what was read and drawn from the files as they were is taken
+   * away at once, before anything is pressed again. */
+  const takenAway = () => page.evaluate(() => {
+    const s = window.GWT.app.terrainSession(), host = document.querySelector('[data-item="terrain"]');
+    return [s.read === null, s.result === null, s.figures === null, !host.querySelector('.terrain-read'),
+      host.querySelectorAll('figure.figure').length === 0, !host.querySelector('.terrain-notice'),
+      !document.querySelector('#work-status .work-bar[data-work="terrain"]')].join();
+  });
+  const removeOne = (name) => page.evaluate((file) => Array.from(document.querySelectorAll(
+    `[data-item="terrain"] .terrain-file[data-file="${file}"] button`)).find((b) => b.textContent === 'Remove')
+    .click(), name);
+  const changed = {};
+  await removeOne(holes[2].name);
+  changed.removed = { files: (await listed()).length, card: await takenAway() };
+  await drop([holes[2]]);
+  await opened(3);
+  changed.ranBeforeAdding = await runToEnd();
+  await drop([holes[2]]);
+  changed.added = await takenAway();
+  await opened(3);
+  await setField('Source of the elevation model', 'other');
+  await setField('The source, in your own words', 'a survey of our own');
+  changed.ranBeforeWords = await runToEnd();
+  await setField('The source, in your own words', 'a survey of the district');
+  changed.words = await takenAway();
+  const gone = 'true,true,true,true,true,true,true';
+  check('terrain clearing: a file removed, a file added, or the source put in other words takes the read ' +
+    'and the figures away at once',
+    changed.removed.files === 2 && changed.removed.card === gone && changed.ranBeforeAdding &&
+    changed.added === gone && changed.ranBeforeWords && changed.words === gone, JSON.stringify(changed));
+
+  /* the same tiles left undeclared: some of the window is sea in a file of
+   * unstated source, which the GeoJSON's description says, as the engine
+   * writes it with the sea it counts itself */
+  await setField('Source of the elevation model', 'detect');
+  const undeclared = await page.evaluate(async () => {
+    const C = window.GWT.core, s = () => window.GWT.app.terrainSession();
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const done = await window.__until(window.__settled);
+    const result = s().result, want = JSON.parse(window.__terrainWant(result.areaKm2)).geojson;
+    return { done, seaClean: s().read.grid.seaClean, seaCells: result.seaCells, same: result.geojson === want,
+      unstated: JSON.parse(result.geojson).description.endsWith(C.phrase('terrain.geojson_sea_unstated',
+        { level: result.cfg.terrain.sea_level_m })) };
+  });
+  check('terrain downloads: the GeoJSON of a set of unstated source with sea in its window says so, as the ' +
+    'engine writes it',
+    undeclared.done && undeclared.seaClean === false && undeclared.seaCells > 0 && undeclared.same &&
+    undeclared.unstated, JSON.stringify(undeclared));
+
+  /* Cancel while the page is still reading the blocks out of the files,
+   * each read made slow: the card says at once that nothing is running,
+   * and no read is started after the one under way */
+  const midRead = await page.evaluate(async () => {
+    const C = window.GWT.core, app = window.GWT.app, s = app.terrainSession();
+    const found = s.files.map((file) => s.opened.get(file).found);
+    const plan = C.planElevationWindow(found, C.windowCentre(app.store.get('site'), app.siteLatLon(), found),
+      15, app.config(), null, ['detect', '']);
+    const reads = [], arrayBuffer = Blob.prototype.arrayBuffer;
+    Blob.prototype.arrayBuffer = function () {
+      reads.push(performance.now());
+      const bytes = arrayBuffer.call(this);
+      return new Promise((resolve) => setTimeout(resolve, 1500)).then(() => bytes);
+    };
+    try {
+      Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+        .find((b) => b.textContent === 'Analyse the terrain').click();
+      let bar = null;
+      await window.__until(() => (bar = document.querySelector('#work-status .work-bar[data-work="terrain"]')));
+      const pressed = reads.length;
+      bar.querySelector('button').click();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const card = window.__card(), started = reads.length;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return { reads: C.elevationBlockRanges(plan).length, pressed, started, after: reads.length, card,
+        later: window.__card(), read: s.read, result: s.result, running: s.running,
+        toasts: window.__toasts().filter((t) => t.startsWith('The terrain analysis was stopped')).length };
+    } finally {
+      Blob.prototype.arrayBuffer = arrayBuffer;
+    }
+  });
+  check('terrain cancel: Cancel while the page reads the files clears the card at once, and no further read ' +
+    'is made',
+    midRead.reads > 1 && midRead.pressed === 1 && midRead.started === 1 && midRead.after === 1 &&
+    !midRead.card.running && !midRead.card.disabled && !midRead.card.bar && !midRead.card.read &&
+    !midRead.later.running && !midRead.later.disabled && midRead.read === null && midRead.result === null &&
+    !midRead.running && midRead.toasts > 0, JSON.stringify(midRead));
+
+  /* the worker finds no memory for the analysis: the error Chromium
+   * throws then, thrown in the real worker as the analysis starts, is
+   * taken as the worker stopping, which the card says in its sentence
+   * under the read report, and the worker is let go */
+  await page.evaluate(() => {
+    window.__hold = true;
+    window.__release = null;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    return window.__until(() => window.__release);
+  });
+  await engineWorkers().pop().evaluate(() => {
+    self.GWT.core.analyseTerrain = () => {
+      throw new RangeError('Array buffer allocation failed');
+    };
+  });
+  const starved = await page.evaluate(async () => {
+    window.__hold = false;
+    window.__release();
+    const done = await window.__until(window.__settled);
+    /* the bar goes at the next frame */
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const s = window.GWT.app.terrainSession();
+    return { done, card: window.__card(), ran: window.__lastTerrain(), read: !!s.read, result: s.result };
+  });
+  let starvedWorkers = engineWorkers().length;
+  for (let waited = 0; waited < 3000 && starvedWorkers; waited += 50) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    starvedWorkers = engineWorkers().length;
+  }
+  check('terrain analysis: a worker short of memory for it is stopped, and the card says so in its sentence, ' +
+    'under the read report',
+    starved.done && JSON.stringify(starved.card.refusals) === JSON.stringify(['The background engine stopped ' +
+      'while working out the terrain, most likely for lack of memory; try a smaller radius.']) &&
+    starved.card.read && starved.read && starved.result === null && !starved.card.bar && !starved.card.running &&
+    !starved.card.disabled && JSON.stringify(starved.ran) ===
+      '[["readElevation","worker","done",true],["analyseTerrain","worker","failed",true]]' &&
+    starvedWorkers === 0, JSON.stringify({ ...starved, starvedWorkers }));
+
+  /* two tiles that disagree where they overlap: the worker's read refuses
+   * them, in the engine's words for the same files read whole */
+  await removeAll();
+  await page.evaluate(() => {
+    const store = window.GWT.app.store;
+    store.set('site.easting', -12.4967);
+    store.set('site.northing', 8.7447);
+    store.set('site.utm_zone', null);
+  });
+  await drop(overlap);
+  await opened(2);
+  await setField('Radius of the square shown (km)', '1');
+  const disagree = await page.evaluate(async (list) => {
+    const C = window.GWT.core, app = window.GWT.app, cfg = app.config();
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const done = await window.__until(window.__settled);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const whole = {};
+    list.forEach((f) => { whole[f.name] = new Uint8Array(f.bytes); });
+    const found = list.map((f) => C.elevationFile(f.name, whole[f.name].length, [[0, whole[f.name]]]));
+    const plan = C.planElevationWindow(found, C.windowCentre(app.store.get('site'), app.siteLatLon(), found), 1,
+      cfg, null, ['detect', '']);
+    const blocks = plan.blocks.map((b) => (b.length
+      ? whole[plan.files[b.file].name].slice(b.offset, b.offset + b.length) : null));
+    let want = '';
+    try {
+      C.readElevationWindow(plan, blocks, cfg, null);
+    } catch (e) {
+      want = e.message;
+    }
+    return { done, want, card: window.__card(), ran: window.__lastTerrain().pop() };
+  }, carried(overlap));
+  check('terrain card: a read the worker refuses is said on the card in the engine\'s words',
+    disagree.done && disagree.want.includes('at 3 shared cells, by up to 1.20 m') &&
+    JSON.stringify(disagree.card.refusals) === JSON.stringify([disagree.want]) && !disagree.card.read &&
+    !disagree.card.bar && !disagree.card.running && !disagree.card.disabled &&
+    disagree.ran.join() === 'readElevation,worker,failed,true', JSON.stringify(disagree));
+  await removeAll();
+  await holesOnCard();
+
+  /* a project loaded while a run is out: the run is stopped and its answer
+   * dropped; then a sample opened, and the workspace reset, each with an
+   * analysis on show */
+  const onLoad = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine, before = app.terrainSession();
+    window.__hold = true;
+    window.__release = null;
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    await window.__until(() => window.__release);
+    const running = before.running && app.working('terrain');
+    await app.loadProject(JSON.stringify(app.projectPayload()));
+    window.__hold = false;
+    const mark = engine.history().length;
+    window.__release();
+    await window.__until(() => engine.history().length > mark);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return { running, replaced: app.terrainSession() !== before, stopped: !before.running,
+      ran: window.__lastTerrain()[1], nav: app.store.get('nav') };
+  });
+  const afterLoad = await cleared();
+  await holesOnCard();
+  const sampled = { ran: await runToEnd() };
+  await page.evaluate(() => window.GWT.app.loadSample('dr_timbo'));
+  const afterSample = await cleared();
+  await holesOnCard();
+  const continued = { ran: await runToEnd() };
+  Object.assign(continued, await page.evaluate(async () => {
+    const app = window.GWT.app, before = app.terrainSession();
+    await app.continueHere();
+    if (app.store.get('nav') !== 'site') app.goto('site');
+    return { replaced: app.terrainSession() !== before };
+  }));
+  const afterContinue = await cleared();
+  await holesOnCard();
+  await setField('Drainage threshold (km²)', '2');
+  const reset = { ran: await runToEnd() };
+  Object.assign(reset, await page.evaluate(async () => {
+    const app = window.GWT.app, before = app.terrainSession();
+    app.goto('settings');
+    Array.from(document.querySelectorAll('#page-host button')).find((b) => b.textContent === 'Reset everything')
+      .click();
+    Array.from(document.querySelectorAll('.modal-overlay button')).find((b) => b.textContent === 'Reset').click();
+    const replaced = await window.__until(() => app.terrainSession() !== before, 10000);
+    app.goto('site');
+    return { replaced, nav: app.store.get('nav') };
+  }));
+  const afterReset = await cleared();
+  check('terrain clearing: loading a project drops the tiles, the card\'s settings and the analysis, and ' +
+    'stops a run going, whose answer is not shown',
+    onLoad.running && onLoad.replaced && onLoad.stopped && onLoad.nav === 'site' &&
+    JSON.stringify(onLoad.ran) === '["analyseTerrain","worker","done",true]' && afterLoad.session &&
+    afterLoad.card === '0,0,false,false,false' && afterLoad.fields === 'true,true,true',
+    JSON.stringify([onLoad, afterLoad]));
+  check('terrain clearing: opening a sample, and resetting the workspace, drop the tiles, the settings and the ' +
+    'analysis on show',
+    sampled.ran && afterSample.session && afterSample.card === '0,0,false,false,false' &&
+    afterSample.fields === 'true,true,true' && reset.ran && reset.replaced && afterReset.session &&
+    afterReset.card === '0,0,false,false,false' && afterReset.fields === 'true,true,true',
+    JSON.stringify([sampled, afterSample, reset, afterReset]));
+  check('terrain clearing: taking the saving over from another tab drops the tiles, the settings and the ' +
+    'analysis on show, as opening another project does',
+    continued.ran && continued.replaced && afterContinue.session &&
+    afterContinue.card === '0,0,false,false,false' && afterContinue.fields === 'true,true,true',
+    JSON.stringify([continued, afterContinue]));
+
+  await removeAll();
+  await page.evaluate((kept) => {
+    Blob.prototype.slice = window.__slice;
+    window.GWT.engine.analyseTerrain = window.__analyseTerrain;
+    const store = window.GWT.app.store;
+    Object.keys(kept).forEach((key) => store.set('site.' + key, kept[key]));
+  }, keptTerrain);
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

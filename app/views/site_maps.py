@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import ctypes
+import dataclasses
+import gc
+import shutil
+import tempfile
 from pathlib import Path
 
+import numpy as np
 import streamlit as st
 
 from groundwater.geo import infer_zone_for_sierra_leone
@@ -24,28 +30,200 @@ from groundwater.mapping import (
     load_geology,
     load_hydrogeology,
     MapPoint,
+    analyse_terrain,
+    drainage_geojson,
     plot_admin_map,
+    plot_curvature,
     plot_geological_map,
+    plot_hillshade_directions,
     plot_hydrogeology_map,
     plot_study_area_map,
+    plot_terrain_relief,
     plot_topographic_map,
+    plot_wetness_index,
     protective_capacity_map,
+    read_elevation,
     site_location_map,
+    terrain_captions,
     transverse_resistance_map,
     traverse_profile,
 )
+from groundwater.mapping.elevation import ElevationFile, file_notes, open_elevation_file, wgs84_cell_size
+from groundwater.mapping.terrain import geojson_meta, grid_analysis_window, uncovered_cells, uncovered_note
 from groundwater.siting import assess_siting
+from groundwater.text import phrase
 
 from shared import (
     app_config,
+    discard_terrain_result,
     _file_stem,
     kept_upload,
+    KeptPath,
     offer_download,
     _offer_raster,
     save_upload,
     site_from_state,
     workdir,
 )
+
+#: What the operator may say an elevation model is, as the elevation layer
+#: names it, and as the picker shows it
+_SOURCES = {
+    "detect": "Detect from the file names",
+    "copernicus_glo30": "Copernicus GLO-30",
+    "srtm": "SRTM",
+    "other": "Another source",
+}
+
+#: Grids read whole, one file at a time, by the Python app alone; every
+#: other file is a tile, read a window at a time and joined to the others
+_GRID_SUFFIXES = {".asc", ".grd", ".xyz", ".csv", ".txt"}
+
+#: The topographic map and what was said of it: the figure, its credit, its
+#: read report, and the files and declared source it was drawn from
+_TOPO_KEYS = ("topo_path", "topo_source", "topo_report", "topo_inputs")
+
+#: The terrain figures: the key of each in the captions, which also names
+#: its title (``title_<key>``) and its file, and the function that draws it
+_TERRAIN_FIGURES = (
+    ("relief", plot_terrain_relief),
+    ("wetness", plot_wetness_index),
+    ("curvature", plot_curvature),
+    ("directions", plot_hillshade_directions),
+)
+
+
+def _open_tile(kept: KeptPath) -> ElevationFile:
+    """A kept GeoTIFF or ``.hgt`` tile opened for its layout alone: only the
+    bytes that describe it are read, not its heights."""
+    with kept.path.open("rb") as handle:
+        def read_at(offset: int, length: int) -> bytes:
+            handle.seek(offset)
+            return handle.read(length)
+
+        return open_elevation_file(kept.name, kept.size, read_at)
+
+
+def _grid_notes(name: str, analysis, centre, meta: dict) -> list[str]:
+    """The read report of a grid read whole (an ESRI ASCII or XYZ file), in
+    the sentences the read of tiles gives: the file, the cells of the square
+    shown, their size and its radius, where the window is centred, and the
+    margin.
+
+    The window is cut to the grid, so none of it lies outside the file to
+    be counted as a gap. Where the grid does not reach as far as the radius
+    asked for, the square shown is cut with it, and the radius and the
+    margin are those measured from the window, as the captions and the
+    GeoJSON give them (``meta``, from :func:`geojson_meta`).
+    """
+    window = analysis.grid
+    r0, r1, c0, c1 = analysis.core.shown
+    # the cells' size as the figures' credit line works it out for a grid
+    step_lon = (float(window.lons[-1]) - float(window.lons[0])) / max(len(window.lons) - 1, 1)
+    step_lat = (float(window.lats[-1]) - float(window.lats[0])) / max(len(window.lats) - 1, 1)
+    dx, dy = wgs84_cell_size(float(np.mean(window.lats)), step_lon, step_lat)
+    notes = [phrase("terrain.read_summary", n=1, names=name, cells=(r1 - r0) * (c1 - c0), dx=dx, dy=dy,
+                    where=centre.label, radius=meta["radius"])]
+    if centre.note:
+        notes.append(centre.note)
+    if meta["margin"] > 0:
+        notes.append(phrase("terrain.read_margin", margin=meta["margin"]))
+    return notes
+
+
+def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, declared, heard) -> dict:
+    """Read the window, analyse it, draw the four figures and write the
+    drainage lines, and return what the page keeps of it all.
+
+    ``tiles`` are GeoTIFF and ``.hgt`` files, read as one window with its
+    margin; ``grids`` one ESRI ASCII or XYZ grid, read whole and cut to the
+    same window, under the same cap. ``heard(start, width)`` gives the
+    progress callback for a part of the run, ``start`` to ``start + width``
+    of the bar. The analysis itself is dropped once the figures and the
+    GeoJSON are written: the session keeps only their paths, the summary,
+    the captions and the read report, so a new threshold is another run.
+
+    The files are written to a folder of this run's own in ``workdir()``,
+    so the files of the result on show are never written over. A click
+    anywhere on the page stops a run at its next progress update; a run
+    stopped part-way leaves that result whole, and its own folder is
+    removed.
+    """
+    cfg = dataclasses.replace(app_config().terrain, drainage_area_km2=float(area_km2))
+    style = app_config().style
+    if grids:
+        # the grid readers name the file in what they say, so it is read
+        # under the name it was uploaded with
+        grid = load_elevation(save_upload(grids[0]))
+        window, shown, centre = grid_analysis_window(grid, site, radius_km, cfg)
+        read, notice = None, None
+        analysis = analyse_terrain(window, cfg, shown=shown, progress=heard(0.05, 0.75), precision="float32")
+    else:
+        read = read_elevation([(f.name, f.path) for f in tiles], site, radius_km, cfg, declared=declared,
+                              progress=heard(0.0, 0.1))
+        centre, notice = read.centre, read.notice
+        analysis = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown,
+                                   progress=heard(0.1, 0.7), precision="float32")
+    meta = geojson_meta(analysis, read, centre)
+    notes = list(read.notes) if read is not None else _grid_notes(Path(grids[0].name).name, analysis, centre, meta)
+    captions = terrain_captions(analysis, read, centre.label)
+    credit = read.figure_credit if read is not None else None
+    folder = Path(tempfile.mkdtemp(prefix="terrain_", dir=workdir()))
+    try:
+        # each figure is announced by its title while it is drawn
+        drawing = heard(0.8, 0.2)
+        figures = []
+        for n, (key, draw) in enumerate(_TERRAIN_FIGURES):
+            drawing(n / len(_TERRAIN_FIGURES), captions[f"title_{key}"])
+            png = draw(analysis, captions, site, folder / f"terrain_{key}.png", style, svg=True, credit=credit)
+            figures.append((key, str(png), str(png.with_suffix(".svg"))))
+        geojson = folder / "drainage_lines.geojson"
+        geojson.write_text(drainage_geojson(analysis.core, analysis.parts, meta), encoding="utf-8")
+    except BaseException:
+        # stopped or failed part-way: nothing of this run is kept
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    return {"figures": figures, "geojson": str(geojson), "folder": str(folder), "summary": dict(analysis.summary),
+            "captions": captions, "notes": notes, "notice": notice}
+
+
+def _give_back_memory() -> None:
+    """Hand the system back the memory a terrain press freed.
+
+    The analysis and the figures are dropped when the press ends, but glibc
+    keeps most of the pages they held, and a later press does not reuse
+    them all. In the running app on the bench's tile, a press at the
+    default left the server at 377 and 404 MiB, and a press at the cap
+    after it, in another session, reached 817 and 867 MiB; with this, 245
+    and 248 MiB, then 714 and 717. ``malloc_trim(0)`` hands the free pages
+    back once the figures, which matplotlib holds in reference cycles, are
+    collected. Where the C library is not glibc there is no
+    ``malloc_trim``, and this only collects."""
+    gc.collect()
+    try:
+        trim = ctypes.CDLL("libc.so.6").malloc_trim
+    except (OSError, AttributeError):
+        return
+    trim(0)
+
+
+def _show_terrain(result: dict) -> None:
+    """The terrain figures as the page keeps them: the read report, each
+    figure with the engine's captions under it and its PNG and SVG, the
+    drainage lines' GeoJSON, and the Copernicus liability sentence under
+    the downloads when the files hold a Copernicus tile."""
+    for note in result.get("notes", []):
+        st.caption(note)
+    captions = result["captions"]
+    for key, png, svg in result["figures"]:
+        st.image(png)
+        st.caption(captions[key])
+        offer_download(Path(png), f"Download {Path(png).name}")
+        offer_download(Path(svg), f"Download {Path(svg).name}")
+    offer_download(Path(result["geojson"]), "Download the drainage lines (GeoJSON)")
+    if result.get("notice"):
+        st.caption(result["notice"])
+
 
 def render() -> None:
     st.header("Maps of the study area")
@@ -152,54 +330,198 @@ def render() -> None:
     with tab_topo:
         st.caption(
             "No elevation model is bundled with this toolkit and none is "
-            "downloaded, so a topographic map is drawn from a file you "
-            "supply and the figure names its source. An SRTM tile "
-            "(`.hgt`, free from NASA Earthdata or viewfinderpanoramas), an "
-            "ESRI ASCII grid (`.asc`, what any GIS exports) or "
-            "longitude/latitude/elevation columns (`.xyz`, `.csv`) are all "
-            "read here, without GDAL. A GeoTIFF converts with "
-            "`gdal_translate -of AAIGrid`."
+            "downloaded, so a topographic map is drawn from files you supply, "
+            "and the figure names their source. GeoTIFF tiles (`.tif`) in "
+            "longitude and latitude, as Copernicus GLO-30 and USGS "
+            "EarthExplorer SRTM tiles are published and as QGIS saves a "
+            "clip, and SRTM-format tiles (`.hgt`) are read a window at a "
+            "time, several tiles joined into one model. An ESRI ASCII grid "
+            "(`.asc`, what any GIS exports) or longitude/latitude/elevation "
+            "columns (`.xyz`, `.csv`) are read one file at a time. None of "
+            "it needs GDAL. Copernicus GLO-30 tiles can be downloaded by hand "
+            "from the copernicus-dem-30m bucket of the Registry of Open Data "
+            "on AWS, and NASA SRTM and NASADEM tiles from NASA Earthdata or "
+            "USGS EarthExplorer. The tiles on viewfinderpanoramas are "
+            "void-filled compilations of several sources: declare them as "
+            "Another source."
         )
-        _dem_file = kept_upload(
-            "Elevation model covering the site", "dem_upload",
-            type=["hgt", "asc", "grd", "xyz", "csv", "txt"],
-            help="One tile or grid. SRTM tiles are named for their "
-            "south-west corner, as in N08W013.hgt; keep the name, because "
-            "the file itself carries no header saying where on Earth it is.",
+        st.caption(phrase("terrain.python_only"))
+        st.caption(phrase("terrain.not_in_reports"))
+        _dem_files = kept_upload(
+            "Elevation models covering the site", "dem_upload",
+            type=["tif", "tiff", "hgt", "asc", "grd", "xyz", "csv", "txt"],
+            accept_multiple_files=True, on_disk=True,
+            help="One or more GeoTIFF or .hgt tiles, or one grid. Keep the "
+            "names the tiles came with: an SRTM .hgt tile is placed by its "
+            "name alone (N08W013.hgt is the one whose south-west corner is "
+            "8 N, 13 W), and a Copernicus tile is credited as one only when "
+            "its name and its georeferencing agree.",
+        ) or []
+        _source = st.selectbox(
+            "Source of the elevation model", list(_SOURCES),
+            format_func=_SOURCES.__getitem__, key="terrain_source",
+            help="What the figure credits for GeoTIFF and .hgt tiles. "
+            "Detected, a tile is credited as Copernicus GLO-30 or SRTM only "
+            "when its name and its georeferencing agree; a source stated "
+            "here wins over what the names say.",
         )
-        if _dem_file is not None and st.button(
-            "Draw the topographic map", key="run_topo", type="primary"
-        ):
-            # the tile's own name, without any folder a crafted name carries
-            dem_path = save_upload(_dem_file)
+        _source_text = ""
+        if _source == "other":
+            _source_text = st.text_input(
+                "The source, in your own words", key="terrain_source_text",
+                help="Named in the figure's credit line as you write it.",
+            )
+        _declared = (_source, _source_text)
+        # what a map drawn now would be drawn from: the files in the
+        # uploader, by the ids kept_upload gives them (the same ids when it
+        # hands them back after a visit to another page), and their source
+        _drawn_from = ((st.session_state.get("dem_upload_kept") or {}).get("ids"), _declared)
+        _grids = [f for f in _dem_files if Path(f.name).suffix.lower() in _GRID_SUFFIXES]
+        _tiles = [f for f in _dem_files if f not in _grids]
+        # each tile is opened for its layout alone as soon as it is
+        # uploaded, so a file that cannot be read says so beside its name
+        # rather than when the map is asked for
+        _refused = False
+        for _tile in _tiles:
             try:
-                grid = load_elevation(dem_path)
+                _found = _open_tile(_tile)
             except ValueError as exc:
                 st.error(str(exc))
+                _refused = True
             else:
-                try:
-                    topo_path = workdir() / "topographic_map.png"
+                for _note in file_notes(_found, _declared):
+                    st.warning(_note)
+        if _grids and len(_dem_files) > 1:
+            st.error(
+                f"{', '.join(f.name for f in _grids)}: an ESRI ASCII or XYZ "
+                "grid is read on its own and is not joined to other files. "
+                "Upload one grid alone, or GeoTIFF and .hgt tiles only."
+            )
+            _refused = True
+        if _dem_files and st.button(
+            "Draw the topographic map", key="run_topo", type="primary",
+            disabled=_refused,
+        ):
+            topo_path = workdir() / "topographic_map.png"
+            _spots = [
+                (s.site.latlon[1], s.site.latlon[0],
+                 f"{s.sounding_id} {s.site.elevation_m:.0f} m")
+                for s in _soundings
+                if s.site.latlon is not None and s.site.elevation_m is not None
+            ]
+            try:
+                if _grids:
+                    # the grid readers name the file in what they say, so
+                    # it is read under the name it was uploaded with
+                    grid = load_elevation(save_upload(_grids[0]))
                     plot_topographic_map(
-                        grid, site if site.latlon is not None else None,
-                        path=topo_path, style=app_config().style,
-                        radius_km=float(radius),
-                        spot_heights=[
-                            (s.site.latlon[1], s.site.latlon[0],
-                             f"{s.sounding_id} {s.site.elevation_m:.0f} m")
-                            for s in _soundings
-                            if s.site.latlon is not None
-                            and s.site.elevation_m is not None
-                        ],
-                    )
-                    st.session_state["topo_path"] = str(topo_path)
-                    st.session_state["topo_source"] = grid.source
-                except ValueError as exc:
-                    st.error(str(exc))
+                        grid, site, path=topo_path, style=app_config().style,
+                        radius_km=float(radius), spot_heights=_spots)
+                    note = uncovered_note(*uncovered_cells(grid, site, float(radius)))
+                    report = {"notes": [note] if note else [], "notice": None}
+                    source = grid.source
+                else:
+                    # every tile read at once for the square asked for, one
+                    # cell in every few where the files are finer than the
+                    # cap on cells allows at this width
+                    read = read_elevation(
+                        [(f.name, f.path) for f in _tiles], site, float(radius),
+                        app_config().terrain, stride=0, margin_km=0,
+                        declared=_declared)
+                    plot_topographic_map(
+                        read, site, path=topo_path, style=app_config().style,
+                        spot_heights=_spots)
+                    report = {"notes": list(read.notes), "notice": read.notice}
+                    source = read.grid.source
+            except ValueError as exc:
+                # the previous map was of other files, or of another window
+                for stale in _TOPO_KEYS:
+                    st.session_state.pop(stale, None)
+                st.error(str(exc))
+            else:
+                st.session_state["topo_path"] = str(topo_path)
+                st.session_state["topo_source"] = source
+                st.session_state["topo_report"] = report
+                st.session_state["topo_inputs"] = _drawn_from
+        # a map is shown only beside the files it was drawn from, under the
+        # source declared for them: once they are refused, replaced or
+        # removed, or another source is declared, its figure, credit and read
+        # report no longer describe what the page holds. A refusal at upload
+        # never reaches the except branch above, as it disables the button.
+        if _refused or st.session_state.get("topo_inputs") != _drawn_from:
+            for stale in _TOPO_KEYS:
+                st.session_state.pop(stale, None)
         if st.session_state.get("topo_path"):
             st.image(st.session_state["topo_path"])
             offer_download(Path(st.session_state["topo_path"]),
                            "Download topographic map")
             st.caption(f"Elevation from {st.session_state.get('topo_source', '')}.")
+            _report = st.session_state.get("topo_report") or {}
+            for _note in _report.get("notes", []):
+                st.caption(_note)
+            if _report.get("notice"):
+                st.caption(_report["notice"])
+
+        # -- the terrain analysis of the same files: drainage lines, the
+        # wetness index, curvature, and the relief lit four ways
+        st.divider()
+        st.subheader("Terrain analysis")
+        _terrain = app_config().terrain
+        _radius_col, _area_col = st.columns(2)
+        _terrain_radius = _radius_col.number_input(
+            "Radius of the square shown (km)", min_value=1.0, max_value=50.0,
+            value=float(_terrain.analysis_radius_km), step=1.0, key="terrain_radius_km",
+        )
+        _terrain_area = _area_col.number_input(
+            "Drainage threshold (km²)", min_value=0.05, max_value=100.0,
+            value=float(_terrain.drainage_area_km2), step=0.05, format="%.2f",
+            key="terrain_area_km2",
+        )
+        if _dem_files and st.button(
+            "Analyse the terrain", key="run_terrain", type="primary",
+            disabled=_refused,
+        ):
+            _result, _failed = None, None
+            # open while the run lasts, so the bar in it is seen, and cleared
+            # once the figures are drawn below it
+            _working_slot = st.empty()
+            with _working_slot.status(phrase("terrain.stage_read"), expanded=True) as _status:
+                _bar = st.progress(0.0, text=phrase("terrain.stage_read"))
+
+                def _heard(start: float, width: float):
+                    def progress(fraction: float, label: str) -> None:
+                        _status.update(label=label)
+                        _bar.progress(min(1.0, start + width * fraction), text=label)
+                    return progress
+
+                try:
+                    _result = _analyse_terrain(
+                        _tiles, _grids, site, float(_terrain_radius),
+                        float(_terrain_area), _declared, _heard)
+                except ValueError as exc:
+                    _failed = str(exc)
+                    _status.update(state="error")
+            _give_back_memory()
+            if _result is None:
+                # the figures shown before were of other files or another
+                # window, and a refusal is said in their place
+                discard_terrain_result(st.session_state.pop("terrain_result", None))
+                st.error(_failed)
+            else:
+                _working_slot.empty()
+                _result["inputs"] = _drawn_from
+                # the figures shown before are deleted once these are kept
+                _previous = st.session_state.get("terrain_result")
+                st.session_state["terrain_result"] = _result
+                discard_terrain_result(_previous)
+        # shown, as the map is, only beside the files and the declared source
+        # it was worked out from
+        _kept_terrain = st.session_state.get("terrain_result")
+        if _kept_terrain and (_refused or _kept_terrain.get("inputs") != _drawn_from):
+            st.session_state.pop("terrain_result", None)
+            discard_terrain_result(_kept_terrain)
+        elif _kept_terrain:
+            _show_terrain(_kept_terrain)
 
         st.divider()
         st.subheader("Ground profile along the traverse")

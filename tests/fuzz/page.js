@@ -1,4 +1,5 @@
-/* What the browser engine makes of one generated workbook.
+/* What the browser engine makes of one generated workbook, or of one
+ * generated raster, block of one or window of heights.
  *
  * Loaded into the bare engine page by engine.mjs. Each summary here has a
  * twin in engines.py that builds the same keys from the Python objects; the
@@ -186,10 +187,163 @@
     return out;
   }
 
+  /* engines.py _deflate: PLAN.md step 4.1's DEFLATE block under the
+   * bounded rule, whether it reads and what it gives as strings */
+  function deflate(bytes, name, options) {
+    var block;
+    try {
+      block = C.inflateZlib(bytes, options.expected, options.full);
+    } catch (e) {
+      if (e && e.code) return { verdict: e.code, sha256: null, length: null };
+      throw e;
+    }
+    return { verdict: 'accepted', sha256: C.sha256Hex(block), length: String(block.length) };
+  }
+
+  /* SHA-256 of float64 values, little-endian, every NaN 0x7FF8000000000000
+   * and the signs of zeros kept */
+  function f64Digest(values) {
+    var bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+    for (var i = 0; i < values.length; i++) {
+      if (values[i] !== values[i]) {
+        view.setUint32(8 * i, 0, true);
+        view.setUint32(8 * i + 4, 0x7FF80000, true);
+      } else {
+        view.setFloat64(8 * i, values[i], true);
+      }
+    }
+    return C.sha256Hex(bytes);
+  }
+  /* a number's float64 bits, big-endian, as hex */
+  function f64Hex(v) {
+    if (v !== v) return '7ff8000000000000';
+    var view = new DataView(new ArrayBuffer(8)), out = '';
+    view.setFloat64(0, v, false);
+    for (var i = 0; i < 8; i++) out += (view.getUint8(i) + 256).toString(16).slice(1);
+    return out;
+  }
+  var LAYOUT_FLOATS = ['x0', 'y0', 'sx', 'sy', 'nodata'];
+
+  /* engines.py _geotiff: PLAN.md step 4.1's whole GeoTIFF through the raw
+   * reader, the ranges, the layout or refusal, and the read, every one a
+   * string */
+  function geotiff(bytes, name, options) {
+    var out = { need: null, layout: null, refused: null, values: null, reasons: null, axes: null };
+    try {
+      var need = C.geotiffLayout(name, bytes.length, [[0, bytes.subarray(0, 16)]]);
+      out.need = Array.isArray(need) ? JSON.stringify(need) : 'layout';
+    } catch (e) {
+      if (!e || !e.ident) throw e;
+      out.need = e.ident;
+    }
+    var layout, read;
+    try {
+      layout = C.geotiffLayout(name, bytes.length, [[0, bytes]]);
+      var fields = {};
+      Object.keys(layout).sort().forEach(function (key) {
+        var value = layout[key];
+        fields[key] = LAYOUT_FLOATS.indexOf(key) >= 0 && value !== null ? f64Hex(value) : value;
+      });
+      out.layout = JSON.stringify(fields);
+      read = C.readGeoTiff(bytes, name);
+    } catch (e) {
+      if (!e || !e.ident) throw e;
+      out.refused = e.ident + ': ' + e.message;
+      return out;
+    }
+    var reasons = new Array(layout.width * layout.height);
+    var across = layout.tiled ? Math.ceil(layout.width / layout.blockWidth) : 1;
+    C.blockRanges(layout, 0, layout.height, 0, layout.width).forEach(function (range) {
+      var block = C.decodeTiffBlock(layout, range[0], bytes.subarray(range[1], range[1] + range[2]), range[3],
+        options.bounds);
+      var top = Math.floor(range[0] / across) * layout.blockHeight, left = (range[0] % across) * layout.blockWidth;
+      for (var r = 0; r < block.rows; r++) {
+        for (var c = 0; c < block.cols; c++) {
+          reasons[(top + r) * layout.width + left + c] = block.reasons[r * block.cols + c];
+        }
+      }
+    });
+    var axes = new Float64Array(read.x.length + read.y.length);
+    axes.set(read.x);
+    axes.set(read.y, read.x.length);
+    out.values = f64Digest(read.z);
+    out.reasons = reasons.join('');
+    out.axes = f64Digest(axes);
+    return out;
+  }
+
+  /* engines.py _terrain: PLAN.md step 4.1's whole terrain analysis on one
+   * window in float64, every exact quantity a string (each layer by
+   * digest, the links and parts by a digest of their JSON with each length
+   * by its bits, the GeoJSON by SHA-256 and length, the captions as text,
+   * the summary's values by their bits), the wetness index apart */
+  function terrain(bytes, name, options) {
+    var rows = options.rows, cols = options.cols, n = rows * cols;
+    var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var number = function (k) { return view.getFloat64(8 * k, true); };
+    var z = new Float64Array(n), lons = new Float64Array(cols), lats = new Float64Array(rows), k;
+    for (k = 0; k < n; k++) z[k] = number(k);
+    for (k = 0; k < cols; k++) lons[k] = number(n + k);
+    for (k = 0; k < rows; k++) lats[k] = number(n + cols + k);
+    var sea = bytes.slice(8 * (n + cols + rows), 8 * (n + cols + rows) + n);
+    var heard = [];
+    var a = C.analyseTerrain({ lons: lons, lats: lats, z: z, rows: rows, cols: cols, assumedSea: sea,
+      sourceId: options.source_id, seaClean: options.sea_clean, label: options.label },
+    { terrain: options.settings }, function (fraction, label) { heard.push([f64Hex(fraction), label]); },
+    'float64', options.shown);
+    var core = a.core;
+    var layers = { cls: core.cls, code: core.code, flag: core.flag, raised: core.raised, flatRouted: core.flatRouted,
+      stream: a.stream, count: core.count, areaUnits: core.areaUnits, filled: a.filled, fillDepth: a.fillDepth,
+      p: a.p, q: a.q, tanb: a.tanb };
+    a.hillshades.forEach(function (layer, j) { layers['hillshade' + j] = layer; });
+    Object.assign(layers, { hillshadeMulti: a.hillshadeMulti, twiArg: a.twiArg, profile: a.profile,
+      tangential: a.tangential, dx: core.dx, dy: core.dy, dg: core.dg });
+    var digests = {};
+    Object.keys(layers).forEach(function (key) { digests[key] = f64Digest(layers[key]); });
+    var lines = function (found) {
+      return C.sha256Hex(JSON.stringify(found.map(function (line) {
+        return Object.assign({}, line, { length_m: f64Hex(line.length_m) });
+      })));
+    };
+    var meta = Object.assign({}, options.meta);
+    var geojson = C.drainageGeoJson(C.terrainCore(a), a.parts, meta);
+    var summary = Object.keys(a.summary).filter(function (key) { return key !== 'twi_range'; });
+    var values = {};
+    summary.forEach(function (key) { values[key] = f64Hex(a.summary[key]); });
+    var twi = a.twi, finite = [];
+    for (k = 0; k < twi.length; k++) if (twi[k] - twi[k] === 0) finite.push(k);
+    var at = [];
+    if (finite.length) {
+      for (k = 0; k < 25; k++) {
+        var i = finite[Math.floor(k * (finite.length - 1) / 24)];
+        if (at.indexOf(i) < 0) at.push(i);
+      }
+      at.sort(function (x, y) { return x - y; });
+    }
+    var captions = C.terrainCaptions(a, options.read, options.where);
+    return {
+      layers: digests, links: lines(a.links), parts: lines(a.parts),
+      counts: a.links.length + ' links, ' + a.parts.length + ' parts',
+      geojson: C.sha256Hex(geojson) + ' ' + geojson.length,
+      captions: Object.keys(captions).map(function (key) { return [key, captions[key]]; }),
+      summary_keys: summary.join(' '), summary: values,
+      scalars: [a.unresolved, a.kCells, a.floored, a.zeroFill].concat(Array.from(core.shown)).join(' '),
+      heard: heard,
+      terrain_twi: { at: at.join(','), cells: nums(at.map(function (j) { return twi[j]; })),
+        range: nums(a.summary.twi_range) },
+    };
+  }
+
   var KINDS = { ves: ves, pumping: pumping, quality: quality, drilling: drilling };
+  /* the kinds from rasters.py, handed the file's bytes rather than the
+   * sheets of a workbook */
+  var FILES = { deflate: deflate, geotiff: geotiff, terrain: terrain };
 
   global.FUZZ = {
     run: async function (kind, name, b64, options) {
+      if (FILES[kind]) {
+        try { return FILES[kind](S.base64ToBytes(b64), name, options || {}); } catch (e) { return failure(e); }
+      }
       var sheets;
       try { sheets = await S.readXlsx(S.base64ToBytes(b64)); } catch (e) { return failure(e); }
       try { return KINDS[kind](sheets, name, options || {}); } catch (e) { return failure(e); }

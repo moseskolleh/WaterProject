@@ -3,7 +3,9 @@
 Three groups of assertions, and they are not the same kind of assertion.
 The figures are checked for having been drawn at all - a PNG a report can
 embed - because asserting on the contents of a raster is asserting on
-matplotlib. What is checked properly is everything around the figure: the
+matplotlib. The terrain figures are the exception: the browser draws the
+same four, so their PNGs are read at cells whose colours the two apps
+share. What is checked properly is everything around the figure: the
 readers, which parse real file formats byte for byte and must not quietly
 mis-place a tile by a degree; the geometry, which decides whether a
 cross-section through these soundings means anything; and the refusals,
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import math
 import struct
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -40,6 +43,7 @@ from groundwater.mapping import (
     transverse_resistance_map,
     traverse_profile,
 )
+from groundwater.mapping.elevation import row_metric
 from groundwater.mapping.subsurface import PROTECTIVE_CLASSES
 from groundwater.mapping.terrain import hillshade, slope_percent
 from groundwater.models import LayeredModel, SiteMetadata, VESSounding
@@ -183,6 +187,30 @@ def test_srtm_hgt_is_read_the_right_way_up_and_in_the_right_degree_square(tmp_pa
     assert grid.z[0, -1] > grid.z[0, 0]
 
 
+def test_load_elevation_credits_an_undeclared_hgt_as_source_not_stated(tmp_path):
+    """An .hgt tile read whole is labelled as the windowed read labels it:
+    an SRTM-format tile of unstated source, with no product credit, since
+    NASA's SRTM, NASADEM and void-filled compilations all come in this
+    format and the file says nothing of whose it is. Prevents the whole-file
+    reader crediting NASA/USGS for heights that may be someone else's."""
+    from groundwater.mapping.elevation import read_elevation
+    from groundwater.text import phrase
+
+    path = tmp_path / "N08W013.hgt"
+    _write_hgt(path)
+    grid = load_elevation(path)
+    assert grid.source == phrase("terrain.label_hgt", n=1, files="N08W013.hgt")
+    assert "NASA" not in grid.source
+    assert (grid.credit, grid.source_id, grid.sea_clean, grid.files) == ("", "hgt", True, ("N08W013.hgt",))
+    windowed = read_elevation([("N08W013.hgt", path)], None, 1.0, margin_km=0.0)
+    assert (windowed.grid.source, windowed.grid.credit) == (grid.source, grid.credit)
+    # a tile within a degree of a pole is still read whole, as it always was;
+    # only the windowed read, which divides by a cell's width, refuses it
+    polar = tmp_path / "N89W013.hgt"
+    _write_hgt(polar)
+    assert load_elevation(polar).source == phrase("terrain.label_hgt", n=1, files="N89W013.hgt")
+
+
 def test_an_srtm_tile_that_does_not_name_its_corner_is_refused(tmp_path):
     path = tmp_path / "elevation.hgt"
     _write_hgt(path)
@@ -294,14 +322,36 @@ def test_a_grid_with_a_hole_in_it_is_still_a_grid(tmp_path):
     assert np.isnan(grid.z).sum() == 1
 
 
-def test_load_elevation_names_the_formats_it_reads(tmp_path):
-    path = tmp_path / "dem.tif"
+def test_load_elevation_reads_a_geotiff_and_names_the_formats_it_reads(tmp_path):
+    """A GeoTIFF tile reads as it is published, with no GDAL to convert it
+    first: the heights the raw reader gives, its source credited only when
+    its name says so, and a file of another kind refused with the list of
+    what is read rather than with advice to install GDAL."""
+    from pathlib import Path
+
+    from groundwater.geotiff import read_geotiff
+    from groundwater.text import phrase
+
+    dem = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+    name = "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif"
+    path = tmp_path / name
+    path.write_bytes((dem / name).read_bytes())
+    grid = load_elevation(path)
+    raster = read_geotiff(dem / name)
+    assert np.array_equal(grid.z, raster.z) and np.array_equal(grid.lons, raster.x)
+    assert np.array_equal(grid.lats, raster.y) and grid.lats[0] < grid.lats[-1]
+    assert grid.source == phrase("terrain.label_copernicus", n=1, tiles="N08 W011")
+    assert grid.credit == phrase("terrain.credit_copernicus_modified") and grid.sea_clean
+    renamed = tmp_path / "clip.TIFF"
+    renamed.write_bytes((dem / name).read_bytes())
+    assert load_elevation(renamed).source == phrase("terrain.label_unidentified", files="clip.TIFF")
+    path = tmp_path / "dem.dat"
     path.write_bytes(b"II*\x00")
     with pytest.raises(ValueError) as excinfo:
         load_elevation(path)
     message = str(excinfo.value)
-    assert ".hgt" in message and ".asc" in message
-    assert "gdal_translate" in message, "say how to convert a GeoTIFF"
+    assert ".hgt" in message and ".asc" in message and ".tif" in message
+    assert "gdal_translate" not in message
 
 
 # ---------------------------------------------------------------------------
@@ -338,21 +388,64 @@ def test_a_window_that_the_model_does_not_cover_says_so():
         _grid().window(-5.0, 5.0, 10.0)
 
 
-def test_hillshade_lights_the_north_west_and_stays_in_range():
+def test_hillshade_lights_the_north_west_by_default():
+    """The default sun is in the north-west, so on a ridge running north and
+    south the slope facing west is the brighter. The shading used to
+    measure its azimuth a quarter turn out and lit 315 from the north-east,
+    where the east-facing slope was brighter and the relief read inverted;
+    the old test asked only that the two slopes differ. The values are the
+    cosine of incidence, 0 to 1, with no value on the edge of the grid."""
     grid = _grid()
     shade = hillshade(grid)
     assert shade.shape == grid.z.shape
-    assert shade.min() >= 0.0 and shade.max() <= 1.0
-    # a slope facing the sun is brighter than the one facing away
-    west_facing = shade[:, 10].mean()
-    east_facing = shade[:, -10].mean()
-    assert not math.isclose(west_facing, east_facing, rel_tol=1e-3)
+    assert np.nanmin(shade) >= 0.0 and np.nanmax(shade) <= 1.0
+    assert np.isnan(shade[0]).all() and np.isnan(shade[:, -1]).all()
+    west_facing = float(np.nanmean(shade[:, 10]))
+    east_facing = float(np.nanmean(shade[:, -10]))
+    assert west_facing > east_facing + 0.01
 
 
 def test_slope_is_reported_as_a_percentage_of_real_ground():
+    """A slope is a hundred times its tangent, measured on each row's cell
+    size in metres: a plane rising 3 m in every 100 m eastwards is 3%
+    wherever it is measured. The edge has no slope, so the largest is
+    taken over the cells that have one."""
     flat = _grid(relief=0.0)
-    assert slope_percent(flat).max() == pytest.approx(0.0, abs=1e-9)
-    assert slope_percent(_grid(relief=400.0)).max() > slope_percent(_grid()).max()
+    assert np.nanmax(slope_percent(flat)) == pytest.approx(0.0, abs=1e-9)
+    assert np.nanmax(slope_percent(_grid(relief=400.0))) > np.nanmax(slope_percent(_grid()))
+    grid = _grid()
+    dx = row_metric(grid.lons, grid.lats).dx
+    columns = np.arange(len(grid.lons), dtype=float)[None, :]
+    plane = ElevationGrid(grid.lons, grid.lats, 50.0 + 0.03 * columns * dx[:, None])
+    slope = slope_percent(plane)
+    assert np.isnan(slope[0]).all() and np.isnan(slope[:, 0]).all()
+    assert np.nanmin(slope) == pytest.approx(3.0, rel=1e-4)
+    assert np.nanmax(slope) == pytest.approx(3.0, rel=1e-4)
+
+
+def test_slope_is_nan_beside_a_void_rather_than_a_cliff():
+    """A void has no height, so the eight cells round it have no slope and
+    neither does the edge of the grid: they are NaN. The shading used to
+    stand the grid's mean height in for a void and drew a cliff round it,
+    and the slope took one-sided differences at the edge. Every other cell
+    keeps the slope it has without the void."""
+    grid = _grid()
+    clean = slope_percent(grid)
+    holed = _grid()
+    holed.z[30, 30] = np.nan
+    slope = slope_percent(holed)
+    shade = hillshade(holed)
+    beside = np.zeros(slope.shape, dtype=bool)
+    beside[29:32, 29:32] = True
+    edge = np.zeros(slope.shape, dtype=bool)
+    edge[[0, -1], :] = True
+    edge[:, [0, -1]] = True
+    for layer in (slope, shade):
+        assert np.isnan(layer[beside]).all()
+        assert np.isnan(layer[edge]).all()
+        assert np.isfinite(layer[~beside & ~edge]).all()
+    assert np.array_equal(slope[~beside & ~edge], clean[~beside & ~edge])
+    assert np.nanmax(slope) <= np.nanmax(clean)
 
 
 def test_topographic_map_renders_with_contours_and_spot_heights(tmp_path):
@@ -363,11 +456,562 @@ def test_topographic_map_renders_with_contours_and_spot_heights(tmp_path):
     assert path.stat().st_size > 30_000
 
 
+#: Two abutting GLO-30-style tiles, 40 cells square, named as Copernicus
+#: names them (tests/webapp/fixtures/dem/MANIFEST.json)
+DEM = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+COPERNICUS_PAIR = ("Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+                   "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif")
+
+
+def _figure_text(fig) -> str:
+    """Every piece of text drawn in a figure, with its wrapping undone."""
+    texts = list(fig.texts) + [t for ax in fig.axes for t in ax.texts]
+    return " ".join(" ".join(t.get_text().split()) for t in texts)
+
+
+def test_a_topographic_map_is_framed_on_the_square_asked_for_beyond_the_grid_edge():
+    """A window running off the edge of a grid used to be cut to the grid,
+    so the map came out narrower than the square asked for and off centre,
+    with nothing on it to say that ground was missing. The frame is the
+    square, the part the grid does not reach is left blank inside it, and
+    the share of it is worked out for the page to say."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping import area_window
+    from groundwater.mapping.regional import ADMIN_CREDIT
+    from groundwater.mapping.terrain import uncovered_cells
+
+    grid = _grid(n=300)                     # 12.2-11.9 W, 8.9-9.2 N
+    site = _site()
+    centre = area_window(site, 5.0)
+    assert centre is not None
+    dlon = 5.0 / (111.32 * math.cos(math.radians(centre.lat)))
+    dlat = 5.0 / 111.32
+    beyond = centre.lon + dlon - float(grid.lons.max())
+    assert 0.0 < beyond < dlon, "Kuntolo's square runs off the grid's east edge"
+
+    fig = plot_topographic_map(grid, site, radius_km=5.0)
+    try:
+        ax = fig.axes[0]
+        assert ax.get_xlim() == pytest.approx((centre.lon - dlon, centre.lon + dlon))
+        assert ax.get_ylim() == pytest.approx((centre.lat - dlat, centre.lat + dlat))
+        # the catalogue's credit line, with the cell size worked out on the
+        # ellipsoid, then the boundaries' credit
+        text = _figure_text(fig)
+        assert "Elevation: test grid. Cells about 110 by 111 m. " + ADMIN_CREDIT in text
+    finally:
+        plt.close(fig)
+
+    # the share beyond the edge, counted in the grid's own cells
+    count, cells = uncovered_cells(grid, site, 5.0)
+    assert 100.0 * count / cells == pytest.approx(100.0 * beyond / (2 * dlon), abs=2.0)
+    assert uncovered_cells(grid, None, 5.0)[0] == 0, "the middle of the grid is covered"
+
+
+@pytest.mark.parametrize("count, cells, said", [
+    (0, 400, None),
+    (2, 401, "Less than 1% of the window read (2 cells)"),
+    (1, 200, "1% of the window read"),
+    (5, 200, "3% of the window read"),
+    (199, 200, "99% of the window read"),
+    (200, 200, "100% of the window read"),
+])
+def test_the_gap_in_a_grid_map_is_said_in_whole_per_cents_worked_out_in_integers(count, cells, said):
+    """The share of a grid map's square the grid did not reach was a float
+    formatted with no decimals: a real gap of a few cells read "0% of the
+    window read lies outside the files supplied", and half a per cent
+    rounded to even, not up as the read report of tiles rounds it. The
+    share is now worked out in integers, half up; a gap under half a per
+    cent is counted in cells, and a share short of the whole is not called
+    100%."""
+    from groundwater.mapping.terrain import uncovered_note
+
+    note = uncovered_note(count, cells)
+    if said is None:
+        assert note is None
+    else:
+        assert note is not None and note.startswith(said), note
+
+
+def test_a_sliver_of_gap_or_a_corner_of_cover_in_a_grid_map_is_not_rounded_away():
+    """The two ends a float share got wrong, on real grids: a 3-arc-second
+    grid read 27.6 km around its middle misses about a third of a per cent
+    of the square, which was reported as 0%, and a square that reaches two
+    rows and two columns into a grid's corner was reported as 100% outside
+    it beside a map drawn from those cells."""
+    from groundwater.mapping import area_window
+    from groundwater.mapping.terrain import uncovered_cells, uncovered_note
+
+    step = 3 / 3600
+    lons, lats = -12.0 + step * np.arange(601), 8.5 + step * np.arange(601)
+    grid = ElevationGrid(lons, lats, np.full((601, 601), 50.0), source="test grid")
+    count, cells = uncovered_cells(grid, None, 27.6)
+    assert (count, cells) == (1190, 358785)
+    assert uncovered_note(count, cells) == (
+        "Less than 1% of the window read (1,190 cells) lies outside the files "
+        "supplied and is treated as a gap.")
+
+    # a one-arc-second grid whose south-west corner lies a cell and a half
+    # inside the north-east corner of Kuntolo's 10 km square
+    site = _site()
+    centre = area_window(site, 10.0)
+    assert centre is not None
+    step = 1 / 3600
+    west = centre.lon + 10.0 / (111.32 * math.cos(math.radians(centre.lat))) - 1.5 * step
+    south = centre.lat + 10.0 / 111.32 - 1.5 * step
+    grid = ElevationGrid(west + step * np.arange(400), south + step * np.arange(400),
+                         np.full((400, 400), 50.0), source="test grid")
+    assert grid.window(centre.lon, centre.lat, 10.0).z.shape == (3, 3), "a map can be drawn"
+    count, cells = uncovered_cells(grid, site, 10.0)
+    assert cells - count == 4
+    assert uncovered_note(count, cells) == (
+        "99% of the window read lies outside the files supplied and is treated as a gap.")
+
+
+def test_a_topographic_map_of_tiles_is_drawn_from_the_window_read_and_framed_on_it():
+    """The map of GeoTIFF tiles is drawn from the window read for it, framed
+    on the whole of that window even where the tiles stop short of it, and
+    credited with the read's own credit line, Copernicus notice included."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping import read_elevation
+    from groundwater.mapping.regional import ADMIN_CREDIT
+
+    read = read_elevation([(n, DEM / n) for n in COPERNICUS_PAIR], None, 1.0, margin_km=0.0)
+    assert read.uncovered > 0, "the 1 km window runs off the 40-row tiles"
+    fig = plot_topographic_map(read)
+    try:
+        ax = fig.axes[0]
+        assert ax.get_xlim() == (read.grid.lons[0], read.grid.lons[-1])
+        assert ax.get_ylim() == (read.grid.lats[0], read.grid.lats[-1])
+        text = _figure_text(fig)
+        assert " ".join(f"{read.figure_credit} {ADMIN_CREDIT}".split()) in text
+        assert "Copernicus WorldDEM-30" in read.figure_credit
+        assert "One cell in" not in text, "read at the files' own spacing"
+    finally:
+        plt.close(fig)
+
+
+def test_a_topographic_map_wider_than_the_cap_says_it_draws_one_cell_in_several():
+    """A wide map reads every few cells rather than refusing, and the figure
+    says it is not an average of them."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import read_elevation
+
+    read = read_elevation([(n, DEM / n) for n in COPERNICUS_PAIR], None, 1.0, TerrainConfig(max_cells=1000),
+                          stride=0, margin_km=0.0)
+    assert read.plan is not None and read.plan.stride > 1
+    fig = plot_topographic_map(read)
+    try:
+        assert f"One cell in {read.plan.stride} each way is drawn, without averaging." in _figure_text(fig)
+    finally:
+        plt.close(fig)
+
+
 def test_a_topographic_map_of_nothing_but_voids_is_refused(tmp_path):
     grid = _grid()
     grid.z[:] = np.nan
     with pytest.raises(ValueError, match="every sample is a void"):
         plot_topographic_map(grid, _site(), path=tmp_path / "topo.png")
+
+
+def _svg_text(path: Path) -> str:
+    """The text drawn in a matplotlib SVG, which writes each line of text as
+    glyph outlines after a comment holding the line, with its wrapping
+    undone."""
+    import re
+
+    lines = re.findall(r"<!-- (.*?) -->", path.read_text(encoding="utf-8"), re.S)
+    return " ".join(" ".join(lines).split())
+
+
+def test_the_four_terrain_figures_are_drawn_as_png_and_svg(tmp_path):
+    """The terrain figures were the browser's alone to draw, and a figure
+    saved as a PNG only cannot be scaled or edited for a report. Each of
+    the four is saved as a PNG and, beside it, an SVG, and each carries
+    its title, the model's credit line and the analysis's caveat inside
+    the figure, where both files keep them: the captions are printed under
+    the figure by the page, and a download leaves them behind."""
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import (
+        analyse_terrain,
+        plot_curvature,
+        plot_hillshade_directions,
+        plot_terrain_relief,
+        plot_wetness_index,
+        read_elevation,
+        terrain_captions,
+    )
+
+    read = read_elevation([(n, DEM / n) for n in COPERNICUS_PAIR], None, 0.4, margin_km=0.2)
+    a = analyse_terrain(read.grid, TerrainConfig(drainage_area_km2=0.01), assumed_sea=read.assumed_sea,
+                        shown=read.shown)
+    assert a.parts, "lines to draw"
+    caps = terrain_captions(a, read, "Kakua")
+    figures = {"relief": plot_terrain_relief, "wetness": plot_wetness_index, "curvature": plot_curvature,
+               "directions": plot_hillshade_directions}
+    for key, draw in figures.items():
+        path = tmp_path / f"terrain_{key}.png"
+        assert draw(a, caps, path=path, svg=True, credit=read.figure_credit) == path
+        svg = path.with_suffix(".svg")
+        assert path.stat().st_size > 20_000, key
+        assert svg.stat().st_size > 20_000, key
+        assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" and svg.read_text(encoding="utf-8").startswith("<?xml")
+        text = _svg_text(svg)
+        for line in (caps[f"title_{key}"], read.figure_credit, caps["figure_caveat"]):
+            assert " ".join(line.split()) in text, (key, line)
+        # matplotlib writes the date as <dc:date> and names itself with its
+        # version in the SVG's metadata unless save_figure says otherwise
+        head = svg.read_text(encoding="utf-8").split("</metadata>")[0]
+        assert "<dc:date>" not in head and "Matplotlib v" not in head, "no date or version in the SVG"
+    # each panel of the directions is titled with its light
+    assert all(caps[f"panel_{n}"] in _svg_text(tmp_path / "terrain_directions.svg") for n in range(4))
+    # without a path the figure itself comes back, and nothing is written
+    import matplotlib.pyplot as plt
+
+    fig = plot_terrain_relief(a, caps)
+    try:
+        assert _figure_text(fig).count("Worked out from the elevation model alone") == 1
+    finally:
+        plt.close(fig)
+
+
+def _coast_analysis():
+    """A coast to draw the terrain figures over, 48 cells of about 110 m
+    square: sea along the west edge, deepening seawards; a missing tile
+    taken as open sea in the north-west corner; a gap on the north slope;
+    and between two ridges a valley running west to the sea, which a line
+    down each slope joins. The lines below the gap, and the valley below
+    them, drain the gap's edge."""
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import analyse_terrain
+
+    n = 48
+    r, c = np.arange(n)[:, None], np.arange(n)[None, :]
+    across = np.where(abs(r - 24) <= 18, abs(r - 24), 36 - abs(r - 24))   # ridges on rows 6 and 42
+    along = np.where(c <= 40, c - 7, 73 - c)                              # and on column 40
+    z = np.where(c <= 7, 6.0 * (c - 7) + 0.0 * r, 2.0 * along + 6.0 * across + 1.0)
+    z[36:39, 30:34] = np.nan
+    assumed = np.zeros((n, n), dtype=bool)
+    assumed[42:, :12] = True
+    z[assumed] = np.nan
+    grid = ElevationGrid(-12.2 + 0.001 * np.arange(n), 8.9 + 0.001 * np.arange(n), z, source="test grid",
+                         resolution_note="110 m cell", sea_clean=True)
+    return analyse_terrain(grid, TerrainConfig(drainage_area_km2=0.15), assumed_sea=assumed)
+
+
+def _commonest(png: np.ndarray, at: tuple[int, int], half: int = 2) -> tuple[int, ...]:
+    """The colour most of the pixels round ``at`` have: the cell's own where
+    a graticule line crosses a few of them."""
+    row, col = at
+    patch = png[row - half:row + half + 1, col - half:col + half + 1].reshape(-1, 3)
+    colours, counts = np.unique(patch, axis=0, return_counts=True)
+    return tuple(int(v) for v in colours[counts.argmax()])
+
+
+def _drainage_runs(ax, parts, lons, lats, dpi):
+    """Check a relief's drainage lines, drawn at ``dpi``, run by run as
+    gwt-charts.js draws them, and return the runs that end square, as
+    (width, points along the part before the run, or None for a solid run),
+    and the widths of those that end round.
+
+    Each run of stretches routed alike is a line in the browser's blue. A
+    dashed run, or one routed by slope, ends square, and a dashed run takes
+    up its pattern where the run before it on its part left off; a solid
+    run routed across a flat ends round, at the opacity of a flat."""
+    from matplotlib.collections import LineCollection
+    from matplotlib.colors import to_rgb
+
+    square, rounded = [], []
+    for part in parts:
+        xy = ax.transData.transform([(lons[c], lats[r]) for r, c in part.vertices])
+        along = np.concatenate(([0.0], np.cumsum(np.hypot(*np.diff(xy, axis=0).T)))) * 72 / dpi
+        width, start, last = 0.6 + 0.5 * (part.strahler - 1), 0, len(part.vertices) - 1
+        for s in range(1, last + 1):
+            if s < last and part.stretch_flat[s] == part.stretch_flat[start]:
+                continue
+            if part.edge_contaminated or not part.stretch_flat[start]:
+                square.append((width, along[start] if part.edge_contaminated else None))
+            else:
+                rounded.append(width)
+            start = s
+    lines = {line.get_capstyle(): line for line in ax.collections if isinstance(line, LineCollection)}
+    assert sorted(lines) == [kind for kind, runs in (("butt", square), ("round", rounded)) if runs]
+    assert all(np.allclose(line.get_colors()[:, :3], to_rgb("#1F5C99")) for line in lines.values())
+    if square:
+        assert list(lines["butt"].get_linewidths()) == pytest.approx([width for width, _ in square])
+        for (width, before), (offset, dashes) in zip(square, lines["butt"].get_linestyles(), strict=True):
+            if before is None:
+                assert dashes is None
+            else:
+                assert dashes == pytest.approx([2.6 * width + 1.4, 1.6 * width + 0.9])
+                assert offset == pytest.approx(before % sum(dashes), abs=1e-6)
+    if rounded:
+        assert list(lines["round"].get_linewidths()) == pytest.approx(rounded)
+        assert all(dashes is None for _, dashes in lines["round"].get_linestyles())
+        assert np.allclose(lines["round"].get_colors()[:, 3], 0.45)
+    return square, rounded
+
+
+def test_the_terrain_figures_paint_their_layers_as_the_browser_does(tmp_path):
+    """A blank terrain figure passed every test, which read only its text
+    and its size. Each figure's PNG is read here at cells of a coast whose
+    analysis says what they are: in every map the sea, the assumed sea
+    hatched in its darker blue and the gap take the browser's colours
+    (gwt-charts.js, as smoke.mjs reads them off its figures); on the
+    wetness map a cell receiving water from beyond the square is lightened
+    35% towards white, stream or not, and no other cell is; the contours
+    stop at the coast; and the relief's drainage lines are the browser's
+    blue, dashed as the browser dashes them where their area is uncertain.
+    Each map holds its picture in bytes, not in floats eight times the
+    size."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import Normalize
+    from matplotlib.contour import ContourSet
+
+    from groundwater.config import HouseStyle
+    from groundwater.mapping import (
+        plot_curvature,
+        plot_hillshade_directions,
+        plot_terrain_relief,
+        plot_wetness_index,
+        terrain_captions,
+    )
+    from groundwater.mapping.terrain_analysis import LAND, SEA, VOID
+
+    a = _coast_analysis()
+    caps = terrain_captions(a, None, "the coast")
+    cls, flag, z = a.core.cls, a.core.flag.astype(bool), a.grid.z
+    # cells clear of the graticule, which crosses the centres of every tenth
+    # row and column, and of the scale bar and the north arrow
+    sea, hatched, assumed, gap = (23, 3), (44, 3), (44, 6), (37, 31)
+    assert cls[sea] == cls[hatched] == cls[assumed] == SEA and cls[gap] == VOID
+    assert np.isfinite(z[sea]) and np.isnan(z[hatched]) and np.isnan(z[assumed])
+    # hatched where the column plus the row from the top leaves 0 or 1 in 6
+    assert (3 + 47 - 44) % 6 < 2 <= (6 + 47 - 44) % 6
+    painted = {sea: (207, 227, 242), hatched: (157, 189, 216), assumed: (207, 227, 242), gap: (230, 230, 230)}
+    beyond, within = (33, 31), (33, 21)
+    assert cls[beyond] == cls[within] == LAND and flag[beyond] and not flag[within]
+    assert not (a.stream[beyond] or a.stream[within])
+    valley = next(p for p in a.parts if p.vertices == ((24, 37), (24, 36)))
+    assert valley.strahler == 2 and not valley.edge_contaminated and not any(valley.stretch_flat)
+    lons, lats = a.core.lons, a.core.lats
+    style = HouseStyle()
+    labels = {"relief": ["Ground elevation (m)"], "wetness": ["Wetness index"],
+              "curvature": ["Curvature (per km)"] * 2, "directions": []}
+    figures = {"relief": (plot_terrain_relief, 1), "wetness": (plot_wetness_index, 1),
+               "curvature": (plot_curvature, 2), "directions": (plot_hillshade_directions, 4)}
+    for key, (draw, count) in figures.items():
+        fig = draw(a, caps, style=style)
+        try:
+            maps = [ax for ax in fig.axes if ax.images]
+            assert len(maps) == count, key
+            assert all(ax.images[0].get_array().dtype == np.uint8 for ax in maps), key
+            bars = [ax for ax in fig.axes if ax.get_label() == "<colorbar>"]
+            assert [bar.get_ylabel() or bar.get_xlabel() for bar in bars] == labels[key]
+            # where each cell's centre falls in the PNG save_figure writes at
+            # the figure's dpi, cropped to the drawing (bbox_inches="tight")
+            dpi = style.figure_dpi
+            fig.set_dpi(dpi)
+            fig.canvas.draw()
+            box = fig.get_tightbbox(fig.canvas.get_renderer()).padded(plt.rcParams["savefig.pad_inches"])
+
+            def pixel(ax, row: float, col: float) -> tuple[int, int]:
+                x, y = ax.transData.transform((np.interp(col, np.arange(lons.size), lons),
+                                               np.interp(row, np.arange(lats.size), lats)))
+                return int(box.y1 * dpi - y), int(x - box.x0 * dpi)
+
+            spots = [{cell: pixel(ax, *cell) for cell in (*painted, beyond, within, (24, 36.5), (38, 1), (10, 5))}
+                     for ax in maps]
+            if key == "relief":
+                ax = maps[0]
+                # the coast's lines are each one run, routed by slope
+                square, rounded = _drainage_runs(ax, a.parts, lons, lats, dpi)
+                assert square and not rounded
+                contours = [c for c in ax.collections if isinstance(c, ContourSet)]
+                assert len(contours) == 1 and contours[0].get_alpha() == 0.7
+        finally:
+            plt.close(fig)
+
+        png = np.round(plt.imread(draw(a, caps, path=tmp_path / f"{key}.png", style=style))[..., :3] * 255)
+        png = png.astype(int)
+        for spot in spots:
+            for cell, colour in painted.items():
+                assert _commonest(png, spot[cell]) == colour, (key, cell)
+        if key == "wetness":
+            lo, hi = a.summary["twi_range"]
+            for cell, lighten in ((beyond, 0.35), (within, 0.0)):
+                ramp = np.asarray(plt.get_cmap("GnBu")(Normalize(lo, hi, clip=True)(float(a.twi[cell])))[:3])
+                want = 255 * ((1.0 - lighten) * ramp + lighten)
+                assert np.abs(np.asarray(_commonest(png, spots[0][cell])) - want).max() <= 1, (cell, want)
+        if key == "relief":
+            # the sea three cells and more from the coast has no contour
+            # on it, whose brown is redder than it is blue
+            (top, left), (bottom, right) = spots[0][(38, 1)], spots[0][(10, 5)]
+            sea_area = png[top:bottom, left:right]
+            assert not (sea_area[..., 0] > sea_area[..., 2]).any(), "a contour over the sea"
+            # half way along a stretch of the valley, three pixels wide,
+            # some pixel takes the line's colour whole
+            row, col = spots[0][(24, 36.5)]
+            near = png[row - 3:row + 4, col - 3:col + 4].reshape(-1, 3)
+            assert (np.abs(near - (31, 92, 153)).max(axis=1) <= 1).any(), "the valley's line"
+
+
+def test_a_drainage_line_is_drawn_run_by_run_as_the_browser_draws_it(tmp_path):
+    """Each run of stretches routed alike is a line of its own. A dashed
+    run started its pattern again, so a dashed part of runs each shorter
+    than a dash was drawn solid; and a run routed by slope ended round, its
+    ends covering a flat-routed stretch beside it shorter than the line is
+    wide, which was then drawn in the line's full colour. As gwt-charts.js
+    now draws them, a dashed run takes up the pattern where the run before
+    it left off, and a run routed by slope ends square, so that stretch is
+    drawn paler: 45% of the line over the ground."""
+    import dataclasses
+
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgb
+
+    from groundwater.config import HouseStyle
+    from groundwater.mapping import plot_terrain_relief, terrain_captions
+
+    a = _coast_analysis()
+    caps = terrain_captions(a, None, "the coast")
+    lons, lats = a.core.lons, a.core.lats
+    # on the land, clear of the graticule on every tenth row and column: a
+    # line wider than a cell, routed by slope but for one stretch, and a
+    # dashed one turning from slope to flat at every stretch
+    wide = dataclasses.replace(a.parts[2], id=900, vertices=tuple((15, c) for c in range(30, 36)),
+                               stretch_flat=(False, False, True, False, False), strahler=16,
+                               edge_contaminated=False)
+    dashed = dataclasses.replace(a.parts[2], id=901, vertices=tuple((33, c) for c in range(12, 19)),
+                                 stretch_flat=(False, True, False, True, False, True), strahler=3,
+                                 edge_contaminated=True)
+    drawn = dataclasses.replace(a, parts=(wide, dashed))
+    style = HouseStyle()
+    dpi = style.figure_dpi
+    fig = plot_terrain_relief(drawn, caps, style=style)
+    try:
+        ax = fig.axes[0]
+        fig.set_dpi(dpi)
+        fig.canvas.draw()
+        square, rounded = _drainage_runs(ax, drawn.parts, lons, lats, dpi)
+        assert rounded == [8.1] and sum(before is not None and before > 0 for _, before in square) == 5
+        box = fig.get_tightbbox(fig.canvas.get_renderer()).padded(plt.rcParams["savefig.pad_inches"])
+        x0, y0 = ax.transData.transform((lons[30], lats[15]))
+        x1, _ = ax.transData.transform((lons[31], lats[15]))
+        assert (x1 - x0) * 72 / dpi < wide.strahler * 0.5 + 0.1, "the flat stretch is shorter than the line is wide"
+
+        def pixel(col: float) -> tuple[int, int]:
+            x = x0 + (x1 - x0) * (col - 30)
+            return int(box.y1 * dpi - y0), int(x - box.x0 * dpi)
+    finally:
+        plt.close(fig)
+
+    def png(analysis, name: str) -> np.ndarray:
+        path = plot_terrain_relief(analysis, caps, path=tmp_path / name, style=style)
+        return np.round(plt.imread(path)[..., :3] * 255).astype(int)
+
+    lines, ground = png(drawn, "lines.png"), png(dataclasses.replace(a, parts=()), "ground.png")
+    line = 255 * np.asarray(to_rgb("#1F5C99"))
+    flat, slopes = pixel(32.5), (pixel(31.0), pixel(34.0))
+    assert np.abs(lines[flat] - (0.45 * line + 0.55 * ground[flat])).max() <= 2, (lines[flat], ground[flat])
+    assert all(np.abs(lines[at] - line).max() <= 1 for at in slopes), [lines[at] for at in slopes]
+
+
+def test_a_terrain_press_hands_the_memory_it_freed_back_where_glibc_can(monkeypatch):
+    """The Streamlit app's terrain press ends with glibc's malloc_trim(0),
+    which hands the system back the pages the analysis and the figures
+    held (app/views/site_maps.py). Where the C library cannot be loaded as
+    glibc, or has no malloc_trim, as on macOS, Windows and musl, the press
+    still ends quietly."""
+    import ctypes
+    import sys
+
+    app_dir = str(Path(__file__).resolve().parents[1] / "app")
+    if app_dir not in sys.path:
+        sys.path.insert(0, app_dir)
+    from views import site_maps
+
+    trimmed = []
+
+    class Glibc:
+        def malloc_trim(self, pad: int) -> int:
+            trimmed.append(pad)
+            return 1
+
+    class Other:
+        """A C library with no malloc_trim."""
+
+    def missing(name):
+        raise OSError(f"{name}: cannot open shared object file")
+
+    for library in (lambda name: Glibc(), lambda name: Other(), missing):
+        monkeypatch.setattr(ctypes, "CDLL", library)
+        site_maps._give_back_memory()
+    assert trimmed == [0]
+
+
+def test_a_grid_read_whole_is_analysed_in_a_window_held_to_the_same_cap():
+    """An ESRI ASCII or XYZ grid is held whole, so it is not planned and
+    read as tiles are, and its analysis had no cap: a grid of a whole
+    district went to the analysis as it was. Its window is cut around the
+    site with the margin, refused over the cap with the largest radius
+    that fits (which does fit), or with no radius when the margin alone is
+    over it, and the square shown sits inside it; the captions and the
+    drainage lines' GeoJSON measure the margin from the window, and the
+    figures carry the grid's own credit line."""
+    import json
+    import re
+
+    import matplotlib.pyplot as plt
+
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import analyse_terrain, drainage_geojson, plot_terrain_relief, terrain_captions
+    from groundwater.mapping.terrain import geojson_meta, grid_analysis_window
+    from groundwater.text import phrase
+
+    grid = _grid(n=300)                     # about 111 m cells over 12.2-11.9 W, 8.9-9.2 N
+    tight = TerrainConfig(max_cells=2500, analysis_buffer_km=1.0)
+    with pytest.raises(ValueError) as refused:
+        grid_analysis_window(grid, None, 5.0, tight)
+    said = re.fullmatch(r"A 5 km radius, with the 1 km margin analysed around it, needs more cells than the "
+                        r"2,500 the analysis takes; a radius of ([0-9.]+) km fits\.", str(refused.value))
+    assert said, str(refused.value)
+    fit = float(said.group(1))
+    window, _, _ = grid_analysis_window(grid, None, fit, tight)
+    assert window.z.size <= 2500
+    with pytest.raises(ValueError, match="needs more cells than"):
+        grid_analysis_window(grid, None, round(fit + 0.1, 1), tight)
+    with pytest.raises(ValueError) as margin:
+        grid_analysis_window(grid, None, 1.0, TerrainConfig(max_cells=100, analysis_buffer_km=2.0))
+    assert str(margin.value) == phrase("terrain.margin_too_many_cells", margin=2.0, cap=100)
+
+    cfg = TerrainConfig(analysis_buffer_km=1.0, drainage_area_km2=0.2)
+    window, shown, centre = grid_analysis_window(grid, None, 2.0, cfg)
+    assert centre.note == phrase("terrain.centre_no_site")
+    assert (centre.lon, centre.lat) == (float(np.mean(grid.lons)), float(np.mean(grid.lats)))
+    r0, r1, c0, c1 = shown
+    dlon = 2.0 / (111.32 * math.cos(math.radians(centre.lat)))
+    assert window.lons[c0] >= centre.lon - dlon > window.lons[c0 - 1]
+    assert window.lons[c1 - 1] <= centre.lon + dlon < window.lons[c1]
+    assert min(r0, c0, window.z.shape[0] - r1, window.z.shape[1] - c1) >= 9, "a margin of about 1 km"
+
+    a = analyse_terrain(window, cfg, shown=shown)
+    caps = terrain_captions(a, None, centre.label)
+    meta = geojson_meta(a, None, centre)
+    assert meta["notice"] is None and meta["label"] == "test grid"
+    assert meta["figure_credit"].startswith("Elevation: test grid. Cells about 110 by 111 m.")
+    lines = json.loads(drainage_geojson(a.core, a.parts, meta))
+    assert lines["description"] == caps["geojson_description"]
+    # the margin asked for, and the cell beyond it that the window keeps
+    assert 0.9 <= meta["margin"] <= 1.2 and phrase("terrain.caption_edge", margin=meta["margin"]) in caps["relief"]
+    fig = plot_terrain_relief(a, caps)
+    try:
+        assert meta["figure_credit"] in _figure_text(fig)
+    finally:
+        plt.close(fig)
 
 
 def test_ground_profile_needs_two_levelled_stations(tmp_path):

@@ -207,7 +207,6 @@ exclude = [
     "src/groundwater/mapping/maps.py",
     "src/groundwater/mapping/regional.py",
     "src/groundwater/mapping/subsurface.py",
-    "src/groundwater/mapping/terrain.py",
     "src/groundwater/planning.py",
     "src/groundwater/plotting.py",
     "src/groundwater/procurement.py",

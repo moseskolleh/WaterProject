@@ -79,6 +79,25 @@ committed file so a silent substitution is detectable.
 | **Required attribution** | "Water Point Data Exchange (WPdx+), CC BY 4.0, https://www.waterpointdata.org" |
 | **Notes** | Nothing is redistributed, so there is no obligation on this repository; the notice is for downstream users of exported data. |
 
+### Copernicus DEM – GLO-30 Public · **Copernicus WorldDEM-30 licence (operator supplied, nothing committed)**
+
+| | |
+|---|---|
+| **Files** | none — the operator supplies the tiles; no elevation model is bundled or downloaded |
+| **Licence** | The licence each GLO-30 tile folder carries as `INFO/eula_F.pdf` ("Licence for the use of the Copernicus WorldDEM-30", 117,522 bytes, MD5 `cbe4c15f0b316b4ba78addc2eee88022`), read for PLAN.md step 4.1. |
+| **Notice for the data shown unchanged** (Art. 6(a)) | "© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved." |
+| **Notice for data adapted or modified** (Art. 6(b)) | "produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved" |
+| **Liability notice** (Art. 6(c)) | "The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30" |
+| **Notes** | Every figure the toolkit draws from an elevation model is a modified product (cropped, shaded, contoured, filled), so the figures carry the 6(b) notice, and the 6(c) sentence goes wherever a set holding a Copernicus tile is shown or downloaded. Art. 6(d) forbids implying endorsement: the toolkit uses the wording only, never a logo. Art. 6(e) passes these obligations on to anyone the outputs are given to. A tile is recognised by its published file name together with its georeferencing; a renamed tile is credited only when the operator says what it is. GLO-90 and FABDEM carry other licences and are not recognised. |
+
+### SRTM elevation tiles · **public domain, unverified (operator supplied, nothing committed)**
+
+| | |
+|---|---|
+| **Files** | none — the operator supplies the tiles |
+| **Licence** | **Unverified.** USGS states that SRTM products are in the public domain; the terms of any particular distribution have not been checked. |
+| **Credit used** | "NASA/USGS, public domain", only when an EarthExplorer SRTM file name is recognised or the operator states the source. A `.hgt` tile is otherwise credited as an SRTM-format tile of unstated source, because NASADEM and void-filled compilations use the same format. |
+
 ### Geology of Sierra Leone lithology crosswalk
 
 `src/groundwater/data/sl_lithology_usgs_crosswalk.csv` carries the formation

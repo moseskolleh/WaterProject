@@ -106,7 +106,7 @@
   function withConfig(overrides) {
     var cfg = defaultConfig();
     if (!overrides) return cfg;
-    ['style', 'ves', 'pumping', 'design', 'ves_range', 'odds', 'cost_range']
+    ['style', 'ves', 'pumping', 'design', 'ves_range', 'odds', 'cost_range', 'terrain']
       .forEach(function (section) {
       var over = overrides[section];
       if (!over) return;
@@ -2203,6 +2203,4224 @@
     return Object.assign(model, extra || {});
   }
 
+  /* ============================================ Terrain analysis: surface
+   * groundwater/mapping/terrain_analysis.py's surface kernels: the slope
+   * and shading of the ground (Horn's gradients, one sun, and gdaldem's
+   * multidirectional composite), the topographic wetness index, profile
+   * and tangential curvature at a stated spacing, and the two numbers the
+   * figures are drawn with, the contour interval and a display range.
+   *
+   * Every value is worked out with + - * / and sqrt alone, written in the
+   * order and grouping Python writes it, and every angle goes through
+   * sinCosDeg, so that the two engines give the same bits; the wetness
+   * index's one log is the only exception, and its display range is chosen
+   * on the exact argument for that reason. A clamp writes the literal 0, so
+   * no -0 appears and a NaN goes where the rule sends it. Grids are
+   * south-first and row-major, as everywhere in the terrain engine (cell
+   * i = r*cols + c, north is r + 1), and each row has its own cell size
+   * (rowMetric). Everything is synchronous and touches no DOM, for the
+   * worker and the Node sandboxes alike. */
+
+  /* the class classifyCells gives a cell of land (0 is a void, 2 sea) */
+  var SURFACE_LAND = 1;
+
+  /* x - x is 0 for a finite number alone (NaN and the infinities give
+   * NaN). Written out rather than as isFinite because a Node vm sandbox
+   * looks a global up through its context at each use, which made these
+   * loops some fifty times slower there; Math is fetched once a call for
+   * the same reason. */
+  function surfaceFinite(x) {
+    return x - x === 0;
+  }
+
+  /* a grid that is not rows by cols is a caller's mistake, refused here
+   * rather than read past its end as NaN */
+  function surfaceShape(what, values, rows, cols) {
+    if (!(Number.isInteger(rows) && Number.isInteger(cols) && rows >= 0 && cols >= 0) ||
+        values.length !== rows * cols) {
+      throw new Error(what + ' holds ' + values.length + ' values, not ' + rows + ' by ' + cols);
+    }
+  }
+
+  /** The slope of the ground at each cell from its eight neighbours, by
+   * Horn's (1981) weights: terrain_analysis.horn_gradients. `p` is the rise
+   * per metre eastward, `q` the rise per metre northward and `tanb` the
+   * tangent of the slope, sqrt(p*p + q*q), all on the heights as they are
+   * (not filled), at the cell size of the cell's own row. A cell has them
+   * only where it and all eight neighbours lie in the grid and have a
+   * finite height, which is GDAL's rule for its edge; anywhere else they
+   * are NaN, rather than a slope made up across a gap or beyond the edge,
+   * which drew cliffs. A sea cell with a height counts as ground here;
+   * assumed sea and voids have no height.
+   * @param {Float64Array} zt the working heights in metres, south-first, NaN where there are none
+   * @param {number} rows
+   * @param {number} cols
+   * @param {{dx: ArrayLike<number>, dy: ArrayLike<number>}} metric each row's cell size in metres (rowMetric)
+   * @returns {{p: Float64Array, q: Float64Array, tanb: Float64Array}}
+   */
+  function hornGradients(zt, rows, cols, metric) {
+    surfaceShape('the height grid', zt, rows, cols);
+    surfaceRows('cell widths', metric.dx, rows);
+    surfaceRows('cell heights', metric.dy, rows);
+    var sqrt = Math.sqrt, n = rows * cols;
+    var p = new Float64Array(n).fill(NaN), q = new Float64Array(n).fill(NaN);
+    var tanb = new Float64Array(n).fill(NaN);
+    for (var r = 1; r < rows - 1; r++) {
+      var ex = 8.0 * metric.dx[r], ey = 8.0 * metric.dy[r];
+      var south = (r - 1) * cols, here = r * cols, north = (r + 1) * cols;
+      for (var c = 1; c < cols - 1; c++) {
+        var zSW = zt[south + c - 1], zS = zt[south + c], zSE = zt[south + c + 1];
+        var zW = zt[here + c - 1], zC = zt[here + c], zE = zt[here + c + 1];
+        var zNW = zt[north + c - 1], zN = zt[north + c], zNE = zt[north + c + 1];
+        if (!(surfaceFinite(zC) && surfaceFinite(zE) && surfaceFinite(zW) && surfaceFinite(zN) && surfaceFinite(zS) &&
+              surfaceFinite(zNE) && surfaceFinite(zNW) && surfaceFinite(zSE) && surfaceFinite(zSW))) continue;
+        var pc = (((zNE + 2.0 * zE) + zSE) - ((zNW + 2.0 * zW) + zSW)) / ex;
+        var qc = (((zNW + 2.0 * zN) + zNE) - ((zSW + 2.0 * zS) + zSE)) / ey;
+        p[here + c] = pc;
+        q[here + c] = qc;
+        tanb[here + c] = sqrt(pc * pc + qc * qc);
+      }
+    }
+    return { p: p, q: q, tanb: tanb };
+  }
+
+  /* A metric gives each row its own value, once (rowMetric's arrays for
+   * this grid). Both engines refuse one of any other length, which would be
+   * read past its end as NaN or belong to another grid. */
+  function surfaceRows(what, values, rows) {
+    if (values.length !== rows) {
+      throw new Error('the metric gives ' + values.length + ' ' + what + ', not one for each of ' + rows + ' rows');
+    }
+  }
+
+  /* Both engines refuse a least slope that is not a finite positive
+   * tangent (NaN included), in the wetness index and the curvatures alike:
+   * 0 would divide by 0 on level ground, and an infinite floor would set
+   * every wetness argument to 0. */
+  function surfaceFloor(floorTan) {
+    if (!(floorTan > 0 && floorTan < Infinity)) {
+      throw new Error('the least slope must be a finite positive tangent, not ' + floorTan);
+    }
+  }
+
+  /* p and q must be one grid's, cell for cell */
+  function surfacePair(p, q) {
+    if (p.length !== q.length) {
+      throw new Error('the east slope holds ' + p.length + ' values and the north slope ' + q.length);
+    }
+  }
+
+  /** Shaded relief under one sun, from 0 (turned away from it) to 1
+   * (square to it): terrain_analysis.hillshade_layer, GDAL's Horn
+   * hillshade, cos i = (sin alt - cos alt * (P sin az + Q cos az)) /
+   * sqrt(1 + P*P + Q*Q) with P = p*zf and Q = q*zf, clamped at 0. A slope
+   * facing the sun's azimuth is the brightest. NaN where `p` is NaN (the
+   * edge, and beside a gap), never 0, which would draw a gap as shadow.
+   * @param {Float64Array} p rise per metre eastward (hornGradients)
+   * @param {Float64Array} q rise per metre northward (hornGradients)
+   * @param {number} az the sun's azimuth, degrees clockwise from north
+   * @param {number} alt the sun's altitude, degrees above the horizon
+   * @param {number|null} [zf] the vertical exaggeration, 1 if left out or null
+   * @returns {Float64Array}
+   */
+  function hillshadeLayer(p, q, az, alt, zf) {
+    surfacePair(p, q);
+    /* null means 1, as a value left out does and as None does in Python,
+     * rather than multiplying as 0 */
+    var sqrt = Math.sqrt, z = zf === undefined || zf === null ? 1.0 : zf;
+    var sunZ = sinCosDeg(az), sZ = sunZ[0], cZ = sunZ[1];
+    var sunA = sinCosDeg(alt), sA = sunA[0], cA = sunA[1];
+    var out = new Float64Array(p.length).fill(NaN);
+    for (var i = 0; i < p.length; i++) {
+      var P = p[i] * z;
+      if (P !== P) continue;
+      var Q = q[i] * z;
+      var g = (P * sZ) + (Q * cZ);
+      var v = (sA - cA * g) / sqrt((1.0 + P * P) + Q * Q);
+      out[i] = v > 0 ? v : 0;
+    }
+    return out;
+  }
+
+  /** Shaded relief lit from several azimuths at once, each sun weighted by
+   * how squarely the slope faces across it:
+   * terrain_analysis.multidirectional_hillshade. With the azimuths 225,
+   * 270, 315 and 360 this is exactly `gdaldem hillshade -multidirectional`,
+   * whose fixed weights (p sin az + q cos az)^2 sum to 2(p*p + q*q), so no
+   * slope is left dark for facing away from one sun. Flat ground, where
+   * every weight is 0, gets sin(alt), as GDAL gives it. The suns are summed
+   * in the order given. NaN where `p` is NaN.
+   * @param {Float64Array} p rise per metre eastward (hornGradients)
+   * @param {Float64Array} q rise per metre northward (hornGradients)
+   * @param {ArrayLike<number>} azimuths the suns' azimuths, degrees clockwise from north
+   * @param {number} alt the suns' altitude, degrees above the horizon
+   * @param {number|null} [zf] the vertical exaggeration, 1 if left out or null
+   * @returns {Float64Array}
+   */
+  function multidirectionalHillshade(p, q, azimuths, alt, zf) {
+    surfacePair(p, q);
+    var sqrt = Math.sqrt, z = zf === undefined || zf === null ? 1.0 : zf;   // null means 1, as in hillshadeLayer
+    var m = azimuths.length, sZ = new Float64Array(m), cZ = new Float64Array(m), k;
+    for (k = 0; k < m; k++) {
+      var sun = sinCosDeg(azimuths[k]);
+      sZ[k] = sun[0];
+      cZ[k] = sun[1];
+    }
+    var sunA = sinCosDeg(alt), sA = sunA[0], cA = sunA[1];
+    var out = new Float64Array(p.length).fill(NaN);
+    for (var i = 0; i < p.length; i++) {
+      var P = p[i] * z;
+      if (P !== P) continue;
+      var Q = q[i] * z, num = 0.0, den = 0.0;
+      for (k = 0; k < m; k++) {
+        var g = (P * sZ[k]) + (Q * cZ[k]);
+        var s = sA - cA * g;
+        s = s > 0 ? s : 0;
+        var w = g * g;
+        num = num + w * s;
+        den = den + w;
+      }
+      out[i] = den > 0 ? (num / den) / sqrt((1.0 + P * P) + Q * Q) : sA;
+    }
+    return out;
+  }
+
+  /** The topographic wetness index by single-neighbour (D8) routing:
+   * terrain_analysis.wetness_index. On each land cell with a slope,
+   * arg = a / tan(beta), where a is the specific catchment area in metres
+   * (the drainage area over the mean of the row's two cell sides, the
+   * width WhiteboxTools takes) and tan(beta) the local slope of the
+   * unfilled surface, raised to `floorTan` where it is less, so that the
+   * floor of an inland-valley swamp is shown rather than blanked; and
+   * twi = log(arg). `arg` is exact in both engines and only the log may
+   * differ in its last bit, which is why a display range is chosen on
+   * `arg`. `floored` marks the cells whose slope was raised to the floor,
+   * so that a summary can count them over any square. NaN on sea, on
+   * voids and where `tanb` is NaN.
+   * @param {Float64Array} areaUnits each cell's drainage area in 0.01 m^2 (accumulateFlow)
+   * @param {Uint8Array} cls each cell's class (classifyCells): 0 void, 1 land, 2 sea
+   * @param {Float64Array} tanb the slope's tangent (hornGradients)
+   * @param {number} rows
+   * @param {number} cols
+   * @param {{dx: ArrayLike<number>, dy: ArrayLike<number>}} metric each row's cell size in metres (rowMetric)
+   * @param {number} floorTan the least slope tangent used (terrain.flat_tan_slope), finite and above 0
+   * @returns {{arg: Float64Array, twi: Float64Array, floored: Uint8Array}}
+   */
+  function wetnessIndex(areaUnits, cls, tanb, rows, cols, metric, floorTan) {
+    surfaceShape('the drainage areas', areaUnits, rows, cols);
+    surfaceShape('the cell classes', cls, rows, cols);
+    surfaceShape('the slopes', tanb, rows, cols);
+    surfaceRows('cell widths', metric.dx, rows);
+    surfaceRows('cell heights', metric.dy, rows);
+    surfaceFloor(floorTan);
+    var log = Math.log, n = rows * cols;
+    var arg = new Float64Array(n).fill(NaN), twi = new Float64Array(n).fill(NaN);
+    var floored = new Uint8Array(n);
+    for (var r = 0; r < rows; r++) {
+      var width = (metric.dx[r] + metric.dy[r]) / 2.0;
+      for (var i = r * cols; i < (r + 1) * cols; i++) {
+        var t = tanb[i];
+        if (cls[i] !== SURFACE_LAND || t !== t) continue;
+        var a = (areaUnits[i] / 100.0) / width;
+        var tb;
+        if (t >= floorTan) {
+          tb = t;
+        } else {
+          tb = floorTan;
+          floored[i] = 1;
+        }
+        var x = a / tb;
+        arg[i] = x;
+        twi[i] = log(x);
+      }
+    }
+    return { arg: arg, twi: twi, floored: floored };
+  }
+
+  /** Profile and tangential curvature by Evans and Young's quadratic,
+   * fitted to samples `kCells` cells apart: terrain_analysis.curvatures.
+   * kCells is `spacingM` over the mean cell side of the middle row,
+   * rounded, and at least 1 (3 at 1 arc-second and 90 m, 1 at 3
+   * arc-seconds), which brings the noise of a 3 by 3 window at 30 m below
+   * the signal without smoothing passes, whose rim grows with each pass.
+   * In 1/m, with Florinsky's and Minar's signs (a dome is + and +): profile
+   * > 0 where flow speeds up over a convex slope, tangential < 0 where it
+   * converges into a hollow. NaN on a cell that is not land, wherever a
+   * sample lies outside the grid or has no height, and on ground flatter
+   * than `floorTan`, where the slope has no direction.
+   * @param {Float64Array} zt the working heights in metres, south-first, NaN where there are none
+   * @param {Uint8Array} cls each cell's class (classifyCells): 0 void, 1 land, 2 sea
+   * @param {number} rows
+   * @param {number} cols
+   * @param {{dx: ArrayLike<number>, dy: ArrayLike<number>}} metric each row's cell size in metres (rowMetric)
+   * @param {number} spacingM the spacing to sample at, metres (terrain.curvature_spacing_m), finite and above 0
+   * @param {number} floorTan the least slope tangent with a direction (terrain.flat_tan_slope), finite and above 0
+   * @returns {{profile: Float64Array, tangential: Float64Array, kCells: number}}
+   */
+  function curvatures(zt, cls, rows, cols, metric, spacingM, floorTan) {
+    surfaceShape('the height grid', zt, rows, cols);
+    surfaceShape('the cell classes', cls, rows, cols);
+    surfaceRows('cell widths', metric.dx, rows);
+    surfaceRows('cell heights', metric.dy, rows);
+    /* Both engines refuse, rather than fall back to k = 1: a spacing that is
+     * not a finite positive number of metres, a grid with no middle row to
+     * measure it on, and a spacing so many cells long that k is not finite. */
+    if (!(spacingM > 0 && spacingM < Infinity)) {
+      throw new Error('the curvature spacing must be a positive number of metres, not ' + spacingM);
+    }
+    if (!rows) throw new Error('a grid with no rows has no middle row to measure the curvature spacing on');
+    var h = Math.floor(rows / 2), cells = spacingM / ((metric.dx[h] + metric.dy[h]) / 2.0) + 0.5;
+    if (!surfaceFinite(cells)) {
+      throw new Error('a curvature spacing of ' + spacingM + ' m is no finite number of cells');
+    }
+    surfaceFloor(floorTan);
+    var k = Math.max(1, Math.floor(cells));
+    var sqrt = Math.sqrt, n = rows * cols, flat = floorTan * floorTan;
+    var profile = new Float64Array(n).fill(NaN), tangential = new Float64Array(n).fill(NaN);
+    for (var r = k; r < rows - k; r++) {
+      var X = k * metric.dx[r], Y = k * metric.dy[r];
+      var sixX = 6.0 * X, sixY = 6.0 * Y, xx = (3.0 * X) * X, yy = (3.0 * Y) * Y, xy = (4.0 * X) * Y;
+      var south = (r - k) * cols, here = r * cols, north = (r + k) * cols;
+      for (var c = k; c < cols - k; c++) {
+        if (cls[here + c] !== SURFACE_LAND) continue;
+        var z1 = zt[north + c - k], z2 = zt[north + c], z3 = zt[north + c + k];
+        var z4 = zt[here + c - k], z5 = zt[here + c], z6 = zt[here + c + k];
+        var z7 = zt[south + c - k], z8 = zt[south + c], z9 = zt[south + c + k];
+        if (!(surfaceFinite(z1) && surfaceFinite(z2) && surfaceFinite(z3) && surfaceFinite(z4) && surfaceFinite(z5) &&
+              surfaceFinite(z6) && surfaceFinite(z7) && surfaceFinite(z8) && surfaceFinite(z9))) continue;
+        var p = (((((z3 + z6) + z9) - z1) - z4) - z7) / sixX;
+        var q = (((((z1 + z2) + z3) - z7) - z8) - z9) / sixY;
+        var rr = ((((((z1 + z3) + z4) + z6) + z7) + z9) - 2.0 * ((z2 + z5) + z8)) / xx;
+        var t = ((((((z1 + z2) + z3) + z7) + z8) + z9) - 2.0 * ((z4 + z5) + z6)) / yy;
+        var s = (((z3 + z7) - z1) - z9) / xy;
+        var g2 = p * p + q * q;
+        if (!(g2 >= flat)) continue;
+        var w = 1.0 + g2;
+        profile[here + c] = -(((p * p) * rr + ((2.0 * p) * q) * s) + (q * q) * t) / (g2 * (w * sqrt(w)));
+        tangential[here + c] = -(((q * q) * rr - ((2.0 * p) * q) * s) + (p * p) * t) / (g2 * sqrt(w));
+      }
+    }
+    return { profile: profile, tangential: tangential, kCells: k };
+  }
+
+  /** A round contour interval giving about a dozen lines over `relief`
+   * metres: terrain_analysis.contour_interval. The largest of 1, 2, 5, 10,
+   * 20, 50, ... metres that is no more than (relief/12)*2, and never less
+   * than 1; 10 where there is no relief, or none that is finite. The steps
+   * are whole numbers made by multiplying whole numbers (BigInt, as
+   * Python's int) and each is compared with the limit exactly, as Python
+   * compares an int with a float, so the two engines agree at every knife
+   * edge, where log10, as the interval was once chosen, can round across a
+   * power of ten, and where a double would round a step past 10^22.
+   * @param {number} relief the highest finite height less the lowest, metres
+   * @returns {number}
+   */
+  function contourInterval(relief) {
+    if (!isFinite(relief) || relief <= 0) return 10.0;
+    var limit = (relief / 12.0) * 2.0;
+    /* the rule in both engines: exact integer candidates (BigInt here, int
+     * in Python), each compared exactly with the double limit, and the
+     * answer the double nearest the one chosen */
+    var steps = [BigInt(1), BigInt(2), BigInt(5)], ten = BigInt(10);
+    var best = BigInt(1), decade = BigInt(1);
+    for (;;) {
+      for (var m = 0; m < 3; m++) {
+        var v = steps[m] * decade;
+        if (!(v <= limit)) return Number(best);
+        best = v;
+      }
+      decade = decade * ten;
+    }
+  }
+
+  /** The `lo` and `hi` fractions of the finite values, by rank:
+   * terrain_analysis.display_range. The finite values are sorted ascending
+   * and the elements at floor(lo*(n-1)) and floor(hi*(n-1)) are taken as
+   * they are, never interpolated, so the two engines choose the same
+   * element whatever the values; NaN and the infinities are left out. A
+   * zero comes back as +0, because -0 and +0 sort as equals and which of
+   * them lands at the index is not fixed. [NaN, NaN] when no value is
+   * finite.
+   * @param {ArrayLike<number>} values
+   * @param {number} lo a fraction from 0 to `hi`
+   * @param {number} hi a fraction from `lo` to 1
+   * @returns {[number, number]}
+   */
+  function displayRange(values, lo, hi) {
+    /* Both engines refuse fractions out of order or outside 0..1 (NaN
+     * included) rather than hand back a range upside down. */
+    if (!(lo >= 0 && lo <= hi && hi <= 1)) {
+      throw new Error('a display range needs 0 <= lo <= hi <= 1, not ' + lo + ' and ' + hi);
+    }
+    var n = 0, i;
+    for (i = 0; i < values.length; i++) if (typeof values[i] === 'number' && surfaceFinite(values[i])) n++;
+    if (!n) return [NaN, NaN];
+    var finite = new Float64Array(n);
+    n = 0;
+    for (i = 0; i < values.length; i++) {
+      if (typeof values[i] === 'number' && surfaceFinite(values[i])) finite[n++] = values[i];
+    }
+    finite.sort();
+    /* a zero comes back as +0 in both engines: + 0.0 on the two elements
+     * chosen here, on every value before the choice in Python */
+    return [finite[Math.floor(lo * (n - 1))] + 0.0, finite[Math.floor(hi * (n - 1))] + 0.0];
+  }
+
+  Object.assign(C, {
+    hornGradients: hornGradients, hillshadeLayer: hillshadeLayer,
+    multidirectionalHillshade: multidirectionalHillshade, wetnessIndex: wetnessIndex, curvatures: curvatures,
+    contourInterval: contourInterval, displayRange: displayRange,
+  });
+
+  /* ================================================================ codecs
+   * groundwater/geotiff.py's _inflate_block, _lzw_decode and
+   * _packbits_decode: DEFLATE (Copernicus GLO-30 tiles, FABDEM), LZW (what
+   * GDAL's COG driver and QGIS write by default) and PackBits (QGIS's "low
+   * compression"). Written out, beside sha256Hex and for a like reason:
+   * DecompressionStream answers only asynchronously, the worker's tasks are
+   * synchronous, and the Node sandboxes the tests run in have none. Each
+   * takes and returns Uint8Arrays only, and a block that does not decode
+   * throws an Error whose code is 'damaged', or 'old_lzw' for the pre-1992
+   * form of LZW, which the reader turns into its sentence. */
+
+  /** @typedef {{count: Uint16Array, symbol: Uint16Array, fast: Int32Array}} HuffmanCode */
+
+  /** @param {string} code 'damaged' or 'old_lzw'
+   * @returns {Error}
+   */
+  function codecError(code) {
+    var error = /** @type {Error & {code: string}} */ (new Error('the block does not decode: ' + code));
+    error.code = code;
+    return error;
+  }
+
+  var INFLATE_LBASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+    35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+  var INFLATE_LEXT = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+  var INFLATE_DBASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+    257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+  var INFLATE_DEXT = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+    7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+  /* the order a dynamic block sends its code-length code's lengths in */
+  var INFLATE_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+  /* codes this long or shorter are looked up whole; longer ones, which are
+   * rare, are walked a bit at a time */
+  var INFLATE_FAST = 9;
+  /** @type {HuffmanCode[]|null} */
+  var inflateFixed = null;
+
+  /* One canonical Huffman code from its code lengths, refused where zlib's
+   * inftrees.c refuses it, so the two inflates agree on every stream: an
+   * over-subscribed set always; an incomplete one unless it is a single
+   * one-bit code, and never for the code-length code. A set with no codes at
+   * all is kept and fails only when a symbol is read from it, which is
+   * zlib's rule for a block that copies nothing and so sends no distances.
+   * (zlib also keeps an empty code-length code, but every stream that has
+   * one is refused later, for want of an end-of-block code.) */
+  function huffmanCode(lengths, start, n, lengthsCode) {
+    var count = new Uint16Array(16), offsets = new Uint16Array(16);
+    var symbol = new Uint16Array(n), fast = new Int32Array(1 << INFLATE_FAST).fill(-1);
+    var i, len, max = 15, left = 1, code = 0, k = 0;
+    for (i = 0; i < n; i++) count[lengths[start + i]]++;
+    count[0] = 0;
+    while (max > 0 && count[max] === 0) max--;
+    for (len = 1; len <= 15; len++) {
+      left = (left << 1) - count[len];
+      if (left < 0) throw codecError('damaged');
+    }
+    if (max === 0) {
+      if (lengthsCode) throw codecError('damaged');
+      return { count: count, symbol: symbol, fast: fast };
+    }
+    if (left > 0 && (lengthsCode || max !== 1)) throw codecError('damaged');
+    for (len = 1; len < 15; len++) offsets[len + 1] = offsets[len] + count[len];
+    for (i = 0; i < n; i++) {
+      len = lengths[start + i];
+      if (len) symbol[offsets[len]++] = i;
+    }
+    /* each short code, bit-reversed as it arrives, entered at every index
+     * whose low bits it fills */
+    for (len = 1; len <= INFLATE_FAST; len++) {
+      for (i = 0; i < count[len]; i++, k++, code++) {
+        var reversed = 0;
+        for (var b = 0; b < len; b++) reversed |= ((code >> b) & 1) << (len - 1 - b);
+        for (var at = reversed; at < (1 << INFLATE_FAST); at += 1 << len) {
+          fast[at] = (len << 16) | symbol[k];
+        }
+      }
+      code <<= 1;
+    }
+    return { count: count, symbol: symbol, fast: fast };
+  }
+
+  /* The fixed codes, complete: literal/lengths 286 and 287 and distances 30
+   * and 31 have codes, and reading one is refused where it is read. */
+  function inflateFixedCodes() {
+    if (!inflateFixed) {
+      var lengths = new Uint8Array(288 + 32);
+      lengths.fill(8, 0, 144);
+      lengths.fill(9, 144, 256);
+      lengths.fill(7, 256, 280);
+      lengths.fill(8, 280, 288);
+      lengths.fill(5, 288, 320);
+      inflateFixed = [huffmanCode(lengths, 0, 288, false), huffmanCode(lengths, 288, 32, false)];
+    }
+    return inflateFixed;
+  }
+
+  /** The first `expected` bytes of a zlib-wrapped DEFLATE block, as
+   * geotiff._inflate_block gives them. The block is accepted only when the
+   * whole stream is valid to its end, Adler-32 included, and holds between
+   * `expected` bytes and one `full` block: the rule zlib can be held to
+   * whatever it does inside a stream that runs on past what was asked for.
+   * Validity is zlib's, check by check (inflate.c and inftrees.c), not the
+   * looser one most small inflates apply. The output is allocated at `full`
+   * bytes and the byte after that is refused, so a stream that would
+   * inflate to gigabytes stops there. Bytes after the checksum are ignored.
+   * @param {Uint8Array} bytes the block as stored
+   * @param {number} expected the bytes the block has to give
+   * @param {number} full the bytes in one full block, the most it may give
+   * @returns {Uint8Array}
+   */
+  function inflateZlib(bytes, expected, full) {
+    var src = bytes, size = src.length;
+    if (size < 2) throw codecError('damaged');
+    var cmf = src[0], flg = src[1];
+    /* deflate, a window of 32 KB or less, the header check, no preset
+     * dictionary. A smaller declared window is read as 32 KB, as zlib reads
+     * it: its own encoder never reaches past what it declared. */
+    if ((cmf & 15) !== 8 || (cmf >> 4) > 7 || ((cmf << 8) | flg) % 31 !== 0 || (flg & 32)) {
+      throw codecError('damaged');
+    }
+    var out = new Uint8Array(full);
+    var op = 0, pos = 2, bitbuf = 0, bitcnt = 0;
+    var last, type, lit, dist, codes, len, sym, extra, from, end, i;
+    var lengths = new Uint8Array(19), all, nlen, ndist, ncode, repeat, value;
+
+    /* n bits, least significant first; running out of input is damage */
+    function bits(n) {
+      while (bitcnt < n) {
+        if (pos >= size) throw codecError('damaged');
+        bitbuf |= src[pos++] << bitcnt;
+        bitcnt += 8;
+      }
+      var v = bitbuf & ((1 << n) - 1);
+      bitbuf >>>= n;
+      bitcnt -= n;
+      return v;
+    }
+
+    /* one symbol: a short code at one look, a long one bit by bit */
+    function decode(code) {
+      while (bitcnt < INFLATE_FAST && pos < size) {
+        bitbuf |= src[pos++] << bitcnt;
+        bitcnt += 8;
+      }
+      var hit = code.fast[bitbuf & ((1 << INFLATE_FAST) - 1)];
+      if (hit >= 0 && (hit >>> 16) <= bitcnt) {
+        bitbuf >>>= hit >>> 16;
+        bitcnt -= hit >>> 16;
+        return hit & 0xffff;
+      }
+      var c = 0, first = 0, index = 0;
+      for (var l = 1; l <= 15; l++) {
+        c |= bits(1);
+        var count = code.count[l];
+        if (c - count < first) return code.symbol[index + (c - first)];
+        index += count;
+        first = (first + count) << 1;
+        c <<= 1;
+      }
+      throw codecError('damaged');
+    }
+
+    do {
+      last = bits(1);
+      type = bits(2);
+      if (type === 0) {
+        /* to a byte boundary: whole bytes already in the bit buffer go
+         * back, and the rest of the byte the header came from is dropped */
+        pos -= bitcnt >> 3;
+        bitbuf = 0;
+        bitcnt = 0;
+        if (pos + 4 > size) throw codecError('damaged');
+        len = src[pos] | (src[pos + 1] << 8);
+        if (len !== (~(src[pos + 2] | (src[pos + 3] << 8)) & 0xffff)) throw codecError('damaged');
+        pos += 4;
+        if (pos + len > size || op + len > full) throw codecError('damaged');
+        out.set(src.subarray(pos, pos + len), op);
+        op += len;
+        pos += len;
+        continue;
+      }
+      if (type === 1) {
+        codes = inflateFixedCodes();
+        lit = codes[0];
+        dist = codes[1];
+      } else if (type === 2) {
+        nlen = bits(5) + 257;
+        ndist = bits(5) + 1;
+        ncode = bits(4) + 4;
+        if (nlen > 286 || ndist > 30) throw codecError('damaged');
+        lengths.fill(0);
+        for (i = 0; i < ncode; i++) lengths[INFLATE_ORDER[i]] = bits(3);
+        codes = huffmanCode(lengths, 0, 19, true);
+        all = new Uint8Array(nlen + ndist);
+        for (i = 0; i < nlen + ndist;) {
+          sym = decode(codes);
+          if (sym < 16) {
+            all[i++] = sym;
+            continue;
+          }
+          value = 0;
+          if (sym === 16) {
+            if (i === 0) throw codecError('damaged');
+            value = all[i - 1];
+            repeat = 3 + bits(2);
+          } else if (sym === 17) {
+            repeat = 3 + bits(3);
+          } else {
+            repeat = 11 + bits(7);
+          }
+          if (i + repeat > nlen + ndist) throw codecError('damaged');
+          for (end = i + repeat; i < end;) all[i++] = value;
+        }
+        if (all[256] === 0) throw codecError('damaged');   // no end-of-block code
+        lit = huffmanCode(all, 0, nlen, false);
+        dist = huffmanCode(all, nlen, ndist, false);
+      } else {
+        throw codecError('damaged');
+      }
+      for (;;) {
+        sym = decode(lit);
+        if (sym < 256) {
+          if (op >= full) throw codecError('damaged');
+          out[op++] = sym;
+        } else if (sym === 256) {
+          break;
+        } else {
+          sym -= 257;
+          if (sym >= 29) throw codecError('damaged');
+          len = INFLATE_LBASE[sym] + bits(INFLATE_LEXT[sym]);
+          sym = decode(dist);
+          if (sym >= 30) throw codecError('damaged');
+          extra = INFLATE_DBASE[sym] + bits(INFLATE_DEXT[sym]);
+          if (extra > op || op + len > full) throw codecError('damaged');
+          /* byte by byte, since a copy may overlap what it is writing */
+          for (from = op - extra, end = op + len; op < end;) out[op++] = out[from++];
+        }
+      }
+    } while (!last);
+
+    /* the Adler-32, after the whole bytes still unread in the bit buffer */
+    pos -= bitcnt >> 3;
+    if (pos + 4 > size) throw codecError('damaged');
+    var a = 1, b = 0;
+    for (i = 0; i < op;) {
+      for (end = Math.min(op, i + 5552); i < end; i++) {
+        a += out[i];
+        b += a;
+      }
+      a %= 65521;
+      b %= 65521;
+    }
+    var check = ((src[pos] << 24) | (src[pos + 1] << 16) | (src[pos + 2] << 8) | src[pos + 3]) >>> 0;
+    if ((((b << 16) | a) >>> 0) !== check || op < expected) throw codecError('damaged');
+    return expected === full ? out : out.slice(0, expected);
+  }
+
+  /* libtiff's table bound: 4,096 twelve-bit codes plus 1,023 entries no code
+   * can name (MAXCODE(12) + 1024, tif_lzw.c). An encoder that defers its
+   * Clear may keep adding to the table that far, and libtiff and GDAL read
+   * what it wrote. */
+  var LZW_TABLE = 5119;
+
+  /** The first `expected` bytes of a TIFF LZW strip or tile, as
+   * geotiff._lzw_decode gives them: codes most significant bit first,
+   * widening one code early, at 511, 1023 and 2047. Decoding stops once
+   * `expected` bytes are out, so whatever follows - an end code or not,
+   * padding, codes no valid table could hold - is never looked at; a stream
+   * that ends before then, or names a code the table does not hold, is
+   * damaged. The table is four arrays, each entry its prefix's code and one
+   * byte, and each entry is written straight into the output, last byte
+   * first.
+   * @param {Uint8Array} bytes the strip or tile as stored
+   * @param {number} expected the bytes it has to give
+   * @returns {Uint8Array}
+   */
+  function lzwDecode(bytes, expected) {
+    var size = bytes.length;
+    /* the pre-1992 form, least significant bit first: libtiff's own test */
+    if (size >= 2 && bytes[0] === 0 && (bytes[1] & 1)) throw codecError('old_lzw');
+    var data = new Uint8Array(size + 3);
+    data.set(bytes);
+    var prefix = new Uint16Array(LZW_TABLE), suffix = new Uint8Array(LZW_TABLE);
+    var length = new Uint16Array(LZW_TABLE), first = new Uint8Array(LZW_TABLE);
+    for (var i = 0; i < 256; i++) {
+      suffix[i] = i;
+      first[i] = i;
+      length[i] = 1;
+    }
+    var out = new Uint8Array(expected);
+    var bits = size * 8, pos = 0, width = 9, next = 258, prev = -1, op = 0;
+    var p, code, tail, at, c;
+    while (op < expected) {
+      if (bits - pos < width) break;   // no end code: stop where the data stops
+      p = pos >>> 3;
+      code = (((data[p] << 16) | (data[p + 1] << 8) | data[p + 2]) >>> (24 - (pos & 7) - width)) &
+        ((1 << width) - 1);
+      pos += width;
+      if (code === 257) break;
+      if (code === 256) {
+        next = 258;
+        width = 9;
+        prev = -1;
+        continue;
+      }
+      if (prev < 0) {
+        if (code > 255) throw codecError('damaged');
+        out[op++] = code;
+        prev = code;
+        continue;
+      }
+      if (code < next) tail = first[code];
+      else if (code === next) tail = first[prev];
+      else throw codecError('damaged');
+      if (next === LZW_TABLE) throw codecError('damaged');
+      prefix[next] = prev;
+      suffix[next] = tail;
+      length[next] = length[prev] + 1;
+      first[next] = first[prev];
+      next++;
+      if (next + 1 >= (1 << width) && width < 12) width++;
+      /* backwards from the entry's last byte, past what falls beyond the block */
+      c = code;
+      for (at = op + length[code] - 1; at >= expected; at--) c = prefix[c];
+      for (; at >= op; at--) {
+        out[at] = suffix[c];
+        c = prefix[c];
+      }
+      op += length[code];
+      prev = code;
+    }
+    if (op < expected) throw codecError('damaged');
+    return out;
+  }
+
+  /** The first `expected` bytes of a PackBits strip or tile, as
+   * geotiff._packbits_decode gives them. Each header byte n, read as signed,
+   * is followed by n + 1 bytes to copy (0 to 127), one byte to repeat 1 - n
+   * times (-127 to -1), or nothing (-128). A run reaching past `expected` is
+   * cut there and needs only the bytes it uses, as libtiff reads it;
+   * running out of data first is damage.
+   * @param {Uint8Array} bytes the strip or tile as stored
+   * @param {number} expected the bytes it has to give
+   * @returns {Uint8Array}
+   */
+  function packbitsDecode(bytes, expected) {
+    var out = new Uint8Array(expected), size = bytes.length, pos = 0, op = 0;
+    var header, take;
+    while (op < expected) {
+      if (pos >= size) throw codecError('damaged');
+      header = bytes[pos++];
+      if (header < 128) {
+        take = Math.min(header + 1, expected - op);
+        if (pos + take > size) throw codecError('damaged');
+        out.set(bytes.subarray(pos, pos + take), op);
+        op += take;
+        pos += header + 1;
+      } else if (header > 128) {
+        if (pos >= size) throw codecError('damaged');
+        take = Math.min(257 - header, expected - op);
+        out.fill(bytes[pos++], op, op + take);
+        op += take;
+      }
+    }
+    return out;
+  }
+
+  Object.assign(C, {
+    inflateZlib: inflateZlib, lzwDecode: lzwDecode, packbitsDecode: packbitsDecode,
+  });
+
+  /* ===================================================== TIFF and GeoTIFF
+   * groundwater/geotiff.py's reader: geotiff_layout, block_ranges,
+   * decode_block and read_geotiff. It knows TIFF and GeoTIFF, not
+   * elevation: it reads any sample type the toolkit takes in any coordinate
+   * system, so the writer's own UTM output reads back through it, and
+   * whether a grid is an elevation model the toolkit can use is the
+   * elevation layer's question.
+   *
+   * It reads in two steps, so that a page never has to hold a whole file:
+   * geotiffLayout learns where everything lies from the bytes it has been
+   * given and names the ranges it still needs, and decodeTiffBlock turns
+   * one block's bytes into values, so a window decodes only the blocks it
+   * meets (blockRanges). Everything is synchronous and Uint8Array in,
+   * typed arrays out, for the worker and the Node sandboxes alike.
+   * Multi-byte values are read through a DataView in the file's own byte
+   * order; a 64-bit one is read as two 32-bit halves, because a value at or
+   * past 2^53 is no offset or count a number holds exactly, and the halves
+   * show that without BigInt. Each refusal is a catalogued sentence, thrown
+   * by tiffError with the id Python raises. */
+
+  /** @typedef {Record<string, any>} TiffLayout  what geotiffLayout returns */
+  /** @typedef {[number, number, number, [number, number]|null]} TiffRange  [block, offset, length, rows] */
+
+  /** A refusal as the reader makes it, the twin of geotiff.GeoTiffError:
+   * an Error whose message is the catalogued sentence, carrying the id
+   * (`ident`), the id without its 'terrain.' prefix (`code`) and the values
+   * the sentence was given (`values`).
+   * @param {string} ident the sentence's full id, such as 'terrain.not_tiff'
+   * @param {Record<string, *>} values what fills the sentence
+   * @returns {Error}
+   */
+  function tiffError(ident, values) {
+    var error = /** @type {Error & {ident: string, code: string, values: Record<string, *>}} */ (
+      new Error(phrase(ident, values)));
+    error.ident = ident;
+    error.code = ident.slice(ident.indexOf('.') + 1);
+    error.values = values;
+    return error;
+  }
+
+  /* The tags the reader reads, each with the name the bad_tag sentence
+   * gives it, what it holds (whole numbers, real numbers, the GeoKey
+   * directory's shorts, or text) and how many values it may have: exactly
+   * one ('one', as libtiff reads them), at least one with the first read
+   * ('first', given per sample), or any number, none included ('any'). */
+  var TIFF_TAGS = {
+    254: ['NewSubfileType', 'int', 'one'], 255: ['SubfileType', 'int', 'one'],
+    256: ['ImageWidth', 'int', 'one'], 257: ['ImageLength', 'int', 'one'],
+    258: ['BitsPerSample', 'int', 'first'], 259: ['Compression', 'int', 'one'],
+    266: ['FillOrder', 'int', 'one'], 273: ['StripOffsets', 'int', 'any'],
+    277: ['SamplesPerPixel', 'int', 'one'], 278: ['RowsPerStrip', 'int', 'one'],
+    279: ['StripByteCounts', 'int', 'any'], 284: ['PlanarConfiguration', 'int', 'one'],
+    317: ['Predictor', 'int', 'one'], 322: ['TileWidth', 'int', 'one'],
+    323: ['TileLength', 'int', 'one'], 324: ['TileOffsets', 'int', 'any'],
+    325: ['TileByteCounts', 'int', 'any'], 339: ['SampleFormat', 'int', 'first'],
+    33550: ['ModelPixelScale', 'real', 'any'], 33922: ['ModelTiepoint', 'real', 'any'],
+    34264: ['ModelTransformation', 'real', 'any'], 34735: ['GeoKeyDirectory', 'short', 'any'],
+    34736: ['GeoDoubleParams', 'real', 'any'], 34737: ['GeoAsciiParams', 'text', 'any'],
+    42112: ['GDAL_METADATA', 'text', 'any'], 42113: ['GDAL_NODATA', 'text', 'any'],
+  };
+  /* the image directory's tags, read in this order, so that the first
+   * damaged one is the one named whichever engine reads it */
+  var TIFF_READ = [256, 257, 258, 259, 266, 273, 277, 278, 279, 284, 317, 322, 323, 324, 325,
+    339, 33550, 33922, 34264, 34735, 34736, 34737, 42112, 42113];
+  /* bytes per value of each TIFF field type; 0 for a type the reader does
+   * not know (13, IFD, among them), which TIFF 6.0 tells a reader to skip:
+   * an entry of such a type is passed over, unless the reader needs it */
+  var TIFF_TYPE_SIZE = [0, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8, 0, 0, 0, 8, 8, 8];
+  /* The field types each kind of tag may have; any other is a damaged
+   * entry, in both engines. These are the types TIFF and GeoTIFF give each
+   * tag: an unsigned integer as BYTE, SHORT or LONG (TIFF 6.0 tells readers
+   * to take any of the three) or BigTIFF's LONG8, never a signed or IFD
+   * type; the GeoTIFF reals as DOUBLE; the GeoKey directory as SHORT; text
+   * as ASCII. libtiff converts more, but a file written otherwise is not
+   * one GDAL or any GeoTIFF writer makes, and refusing it is the simpler
+   * rule. */
+  var TIFF_KIND_TYPES = { int: [1, 3, 4, 16], real: [12], short: [3], text: [2] };
+  /* the GeoKeys read: model type, raster type, geographic CRS, datum,
+   * angular unit and projected CRS */
+  var TIFF_GEOKEYS = [1024, 1025, 2048, 2050, 2054, 3072];
+  var TIFF_SAMPLE_KINDS = { 1: 'unsigned integer', 2: 'signed integer', 3: 'floating-point' };
+  /* the (SampleFormat, BitsPerSample) pairs the reader takes */
+  var TIFF_SAMPLE_TYPES = [[1, 8], [2, 8], [1, 16], [2, 16], [1, 32], [2, 32], [3, 32], [3, 64]];
+  var TIFF_COMPRESSIONS = [1, 5, 8, 32946, 32773];
+  /* the largest block decoded whole: a block is held in memory at once */
+  var TIFF_BLOCK_LIMIT = 64 * 1048576;
+  /* the block tables, each held to terrain.max_blocks before its values
+   * are read */
+  var TIFF_BLOCK_TABLES = [273, 279, 324, 325];
+
+  /* An unsigned 64-bit field, as two 32-bit halves. At or past 2^53 it is
+   * no offset or count a number holds exactly, and the file is refused
+   * there rather than read somewhere else. */
+  function tiffU64(view, at, little, name) {
+    var lo = view.getUint32(at + (little ? 0 : 4), little);
+    var hi = view.getUint32(at + (little ? 4 : 0), little);
+    if (hi >= 0x200000) throw tiffError('terrain.too_large', { file: name });
+    return hi * 4294967296 + lo;
+  }
+
+  /* `count` values of field type `type` (one TIFF_KIND_TYPES allows) from
+   * `at`: numbers, or for ASCII the bytes as one string, a character a byte
+   * (Latin-1, as Python reads them). A LONG8 value of 2^53 or more is
+   * refused as it is read. */
+  function tiffFieldValues(view, at, type, count, little, name) {
+    var i, p, size = TIFF_TYPE_SIZE[type];
+    if (type === 2) {
+      var text = '';
+      for (i = 0; i < count; i++) text += String.fromCharCode(view.getUint8(at + i));
+      return text;
+    }
+    var out = new Array(count);
+    for (i = 0, p = at; i < count; i++, p += size) {
+      switch (type) {
+        case 1: out[i] = view.getUint8(p); break;
+        case 3: out[i] = view.getUint16(p, little); break;
+        case 4: out[i] = view.getUint32(p, little); break;
+        case 12: out[i] = view.getFloat64(p, little); break;
+        default: out[i] = tiffU64(view, p, little, name);   // 16, LONG8
+      }
+    }
+    return out;
+  }
+
+  /* `text` with any of the characters in `blanks` trimmed from its end, and
+   * from its start too unless `endOnly`: as Python's str.strip and rstrip */
+  function tiffTrim(text, blanks, endOnly) {
+    var start = 0, end = text.length;
+    while (!endOnly && start < end && blanks.indexOf(text.charAt(start)) >= 0) start++;
+    while (end > start && blanks.indexOf(text.charAt(end - 1)) >= 0) end--;
+    return text.slice(start, end);
+  }
+  /* NULs and ASCII white space, which a no-data value is trimmed of */
+  var TIFF_BLANKS = '\0 \t\n\r';
+
+  /* GDAL_NODATA's number rule, which GDAL_METADATA's scale and offset are
+   * read by too: NULs and ASCII white space trimmed, then the words GDAL
+   * writes for NaN and the infinities, then a plain decimal number, read
+   * correctly rounded as Python's float() reads it. null for empty text,
+   * undefined for text that is not a number. */
+  function tiffNumber(text) {
+    var s = tiffTrim(text, TIFF_BLANKS, false), low = s.toLowerCase();
+    if (s === '') return null;
+    if (low === 'nan' || low === '+nan' || low === '-nan') return NaN;
+    if (low === 'inf' || low === '+inf' || low === 'infinity' || low === '+infinity') return Infinity;
+    if (low === '-inf' || low === '-infinity') return -Infinity;
+    if (/^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(s)) return Number(s);
+    return undefined;
+  }
+
+  /* A no-data value as a sample of the file's type holds it: float32
+   * rounded to the nearest float32, as GDAL casts it, so one beyond the
+   * largest float32 by more than half a step is an infinity (ArcGIS's
+   * -3.40282346639e+038 lies within half a step and rounds to the largest
+   * on its own); float64 as read; for an integer type only a whole number
+   * in range, else null, since then no cell can hold it. */
+  function tiffNodataCast(value, format, bits) {
+    if (format === 3 && bits === 32) return Math.fround(value);
+    if (format === 3) return value;
+    var low = format === 1 ? 0 : -Math.pow(2, bits - 1);
+    var high = format === 1 ? Math.pow(2, bits) - 1 : Math.pow(2, bits - 1) - 1;
+    return Number.isInteger(value) && value >= low && value <= high ? value + 0 : null;
+  }
+
+  /** Where everything in a GeoTIFF lies, from the bytes read so far, as
+   * geotiff.geotiff_layout gives it - the image's size, sample type,
+   * compression and predictor, its blocks and where each lies, its
+   * coordinate system, the centres of its first column and row (row 0 the
+   * northernmost) and its cell sizes, and its no-data value - or, when
+   * bytes it needs have not been read, the sorted list of [offset, length]
+   * ranges to read next and pass back with the rest. The header is the
+   * first 16 bytes; the directory chain is followed from there to the first
+   * full-resolution image (overviews and masks are passed by, at most 64
+   * directories); then every value of that image's tags that lies outside
+   * its directory is read. The image is checked - dimensions, samples to a
+   * cell, sample type, compression, predictor, fill order, block table,
+   * block size, in that order - before its georeferencing, no-data value
+   * and GDAL scale and offset are read; last, the directory after it is
+   * read to see whether it is a GDAL mask of the image (hasMask), which the
+   * reader notes but does not apply. A block table longer than
+   * terrain.max_blocks is refused before its values are read. A range past
+   * the end of the file is refused as an incomplete file, never asked for.
+   * @param {string} name the file's name, as the sentences give it
+   * @param {number} size the file's length in bytes
+   * @param {Array<[number, Uint8Array]>} chunks the bytes read so far, as [offset, bytes]
+   * @returns {TiffLayout|Array<[number, number]>}
+   */
+  function geotiffLayout(name, size, chunks) {
+    /** @type {Array<[number, number]>} */
+    var need = [];
+
+    /* bytes [off, off + n) as a DataView, when one chunk holds them all;
+     * otherwise the range joins those still needed and null comes back */
+    function at(off, n, part) {
+      if (off + n > size) throw tiffError('terrain.ends_early', { file: name, part: part });
+      for (var k = 0; k < chunks.length; k++) {
+        var start = chunks[k][0], bytes = chunks[k][1];
+        if (start <= off && off + n <= start + bytes.length) {
+          return new DataView(bytes.buffer, bytes.byteOffset + (off - start), n);
+        }
+      }
+      need.push([off, n]);
+      return null;
+    }
+
+    function needed() {
+      need.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+      return need.filter(function (range, k) {
+        return k === 0 || range[0] !== need[k - 1][0] || range[1] !== need[k - 1][1];
+      });
+    }
+
+    var head = at(0, 16, 'file header');
+    if (!head) return needed();
+    var mark = head.getUint16(0, false), little;
+    if (mark === 0x4949) little = true;
+    else if (mark === 0x4D4D) little = false;
+    else throw tiffError('terrain.not_tiff', { file: name });
+    var version = head.getUint16(2, little), big = version === 43, ifd;
+    if (version === 42) ifd = head.getUint32(4, little);
+    else if (big && head.getUint16(4, little) === 8 && head.getUint16(6, little) === 0) {
+      ifd = tiffU64(head, 8, little, name);
+    } else {
+      throw tiffError('terrain.not_tiff', { file: name });
+    }
+    var countSize = big ? 8 : 2, entrySize = big ? 20 : 12, word = big ? 8 : 4;
+
+    /* the directory in hand: where each tag's first entry starts, its
+     * type, and the directory's bytes. Only the entries of the tags the
+     * reader reads are examined; any other is passed over, whatever its
+     * type or count, as libtiff passes over a tag it does not use. */
+    var entries = {}, body = head, index = -1, seen = [], n = 0, e;
+
+    /* Make the directory at `where` the one in hand: its entry count `n`,
+     * its bytes (the entries and the next pointer) and each tag's first
+     * entry, a repeated tag's first counting, as libtiff has it. False
+     * while its bytes are still needed. */
+    function enter(where) {
+      var counted = at(where, countSize, 'image directory');
+      if (!counted) return false;
+      n = big ? tiffU64(counted, 0, little, name) : counted.getUint16(0, little);
+      var read = at(where + countSize, n * entrySize + word, 'image directory');
+      if (!read) return false;
+      body = read;
+      entries = {};
+      for (e = 0; e < n; e++) {
+        var p = e * entrySize, tag = body.getUint16(p, little);
+        if (own(entries, tag)) continue;
+        entries[tag] = { type: body.getUint16(p + 2, little), at: p };
+      }
+      return true;
+    }
+
+    /* A tag's entry in the directory in hand, judged in this order in both
+     * engines: its type, then (BigTIFF) a count of 2^53 or more, then its
+     * count. Returns its type, count, byte length and where its value
+     * field lies in the directory. */
+    function checked(tag) {
+      var spec = TIFF_TAGS[tag], p = entries[tag].at, type = entries[tag].type;
+      if (TIFF_KIND_TYPES[spec[1]].indexOf(type) < 0) {
+        throw tiffError('terrain.bad_tag', { file: name, tag: spec[0] });
+      }
+      var count = big ? tiffU64(body, p + 4, little, name) : body.getUint32(p + 4, little);
+      if ((spec[2] === 'one' && count !== 1) || (spec[2] === 'first' && count < 1)) {
+        throw tiffError('terrain.bad_tag', { file: name, tag: spec[0] });
+      }
+      return { type: type, count: count, length: count * TIFF_TYPE_SIZE[type], field: p + (big ? 12 : 8) };
+    }
+
+    /* NewSubfileType or SubfileType, NewSubfileType judged first. One of a
+     * field type TIFF does not define is skipped, as TIFF 6.0 tells a reader
+     * to skip it, and counts as absent (null); one of a known type must be
+     * an unsigned integer type, one value, held in the entry itself (a
+     * LONG8 is not, in a classic TIFF), or the entry is damaged. */
+    function subfile(tag) {
+      if (!own(entries, tag) || !TIFF_TYPE_SIZE[entries[tag].type]) return null;
+      var entry = checked(tag);
+      if (entry.length > word) throw tiffError('terrain.bad_tag', { file: name, tag: TIFF_TAGS[tag][0] });
+      return tiffFieldValues(body, entry.field, entry.type, 1, little, name)[0];
+    }
+
+    for (;;) {
+      /* The next pointer is judged in this order in both engines: 0 ends
+       * the chain, then 2^53 or more is too large (refused by tiffU64 as it
+       * is read below, which cannot clash with 0), then a directory already
+       * walked is a loop, then a 65th directory is not walked. */
+      if (ifd === 0) throw tiffError('terrain.no_full_image', { file: name });
+      if (seen.indexOf(ifd) >= 0) throw tiffError('terrain.directory_loop', { file: name });
+      if (seen.length === 64) throw tiffError('terrain.no_full_image', { file: name });
+      seen.push(ifd);
+      index++;
+      if (!enter(ifd)) return needed();
+      var newer = subfile(254), older = subfile(255);
+      /* full resolution: neither a reduced image (bit 0) nor a mask (bit 2)
+       * by NewSubfileType, nor a reduced image (2) by the old SubfileType;
+       * its next pointer is looked at only for its mask, once the image is
+       * described */
+      if (!((newer || 0) & 5) && older !== 2 && own(entries, 256) && own(entries, 257)) break;
+      ifd = big ? tiffU64(body, n * entrySize, little, name) : body.getUint32(n * entrySize, little);
+    }
+
+    /* The chosen directory's entries, in ascending tag order, each judged
+     * in this order in both engines: its type, then (BigTIFF) a count of
+     * 2^53 or more, then its count, then a block table longer than
+     * terrain.max_blocks (the default: the reader takes no configuration),
+     * then an out-of-line offset of 2^53 or more, then values running past
+     * the end of the file. Values not yet read are asked for together once
+     * every entry has passed, since none depends on another, so the refusal
+     * a file earns does not depend on how it was read. A block table is
+     * held to the cap before its values are asked for, so that opening a
+     * file never reads or builds millions of offsets. */
+    /** @type {Array<[number, DataView, number, {type: number, count: number}]>} */
+    var held = [];
+    var maxBlocks = withConfig(null).terrain.max_blocks;
+    TIFF_READ.forEach(function (tag) {
+      if (!own(entries, tag)) return;
+      var entry = checked(tag), view = /** @type {DataView|null} */ (body), pos = entry.field;
+      if (TIFF_BLOCK_TABLES.indexOf(tag) >= 0 && entry.count > maxBlocks) {
+        throw tiffError('terrain.too_many_blocks', { file: name, n: entry.count, cap: maxBlocks });
+      }
+      if (entry.length > word) {
+        view = at(big ? tiffU64(body, pos, little, name) : body.getUint32(pos, little),
+          entry.length, 'values of ' + TIFF_TAGS[tag][0]);
+        pos = 0;
+      }
+      if (view) held.push([tag, view, pos, entry]);
+    });
+    if (need.length) return needed();
+    /* Then every value is decoded, tag by tag in ascending order, before any
+     * check reads one: a LONG8 value of 2^53 or more is refused here, ahead
+     * of every check on what the values mean. An absent tag is null. */
+    /** @type {Record<number, any>} */
+    var v = {};
+    TIFF_READ.forEach(function (tag) { v[tag] = null; });
+    held.forEach(function (h) {
+      v[h[0]] = tiffFieldValues(h[1], h[2], h[3].type, h[3].count, little, name);
+    });
+    function first(tag, absent) {
+      return v[tag] ? v[tag][0] : absent;
+    }
+
+    /* dimensions, before anything is divided by them */
+    var width = first(256, 0), height = first(257, 0);
+    if (width < 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'ImageWidth' });
+    if (height < 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'ImageLength' });
+    var tiled = !!(v[322] || v[323]), blockWidth, blockHeight, rowsPerStrip = null;
+    if (tiled) {
+      blockWidth = first(322, 0);
+      blockHeight = first(323, 0);
+      if (blockWidth < 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'TileWidth' });
+      if (blockHeight < 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'TileLength' });
+    } else {
+      /* absent, 2^32 - 1 (libtiff's "the whole image") or past the image:
+       * one strip; 2^32 - 1 is named because a LONG8 height may pass it */
+      rowsPerStrip = first(278, height);
+      if (rowsPerStrip === 0xFFFFFFFF) rowsPerStrip = height;
+      rowsPerStrip = Math.min(rowsPerStrip, height);
+      if (rowsPerStrip < 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'RowsPerStrip' });
+      blockWidth = width;
+      blockHeight = rowsPerStrip;
+    }
+    var samples = first(277, 1);
+    if (samples !== 1) throw tiffError('terrain.bands', { file: name, n: samples });
+    /* an absent SampleFormat is unsigned, as the TIFF rule and GDAL have
+     * it; the pair is matched as a pair, since folded into one number
+     * SampleFormat 1 with 108 bits would pass for 2 with 8 */
+    var bits = first(258, 1), format = first(339, 1);
+    if (!TIFF_SAMPLE_TYPES.some(function (t) { return t[0] === format && t[1] === bits; })) {
+      throw tiffError('terrain.sample_type', {
+        file: name, bits: bits,
+        kind: own(TIFF_SAMPLE_KINDS, format) ? TIFF_SAMPLE_KINDS[format] : 'SampleFormat ' + format,
+      });
+    }
+    var compression = first(259, 1);
+    if (TIFF_COMPRESSIONS.indexOf(compression) < 0) {
+      var methods = phraseTable('terrain.compression_names');
+      throw tiffError('terrain.compression', {
+        file: name,
+        method: own(methods, String(compression)) ? methods[String(compression)] :
+          'TIFF method ' + compression,
+      });
+    }
+    /* libtiff sets a predictor up only inside its LZW and DEFLATE codecs, so
+     * with no compression or PackBits the tag is ignored, its value
+     * unexamined, and GDAL reads the values as they are stored; with LZW or
+     * DEFLATE it must be 1, 2 or 3, and 3 needs floating-point samples */
+    var predictor = first(317, 1);
+    var coded = compression === 5 || compression === 8 || compression === 32946;
+    if (coded && ([1, 2, 3].indexOf(predictor) < 0 || (predictor === 3 && format !== 3))) {
+      throw tiffError('terrain.predictor', { file: name, code: predictor });
+    }
+    /* FillOrder 2 is refused by name; any value but 1 or 2 is one libtiff
+     * rejects as a bad value, so a damaged entry */
+    var fillOrder = first(266, 1);
+    if (fillOrder === 2) throw tiffError('terrain.fill_order', { file: name });
+    if (fillOrder !== 1) throw tiffError('terrain.bad_tag', { file: name, tag: 'FillOrder' });
+    var blocks = (tiled ? Math.ceil(width / blockWidth) : 1) * Math.ceil(height / blockHeight);
+    var offsets = v[tiled ? 324 : 273] || [], byteCounts = v[tiled ? 325 : 279] || [];
+    if (offsets.length !== blocks) {
+      throw tiffError('terrain.bad_tag', { file: name, tag: tiled ? 'TileOffsets' : 'StripOffsets' });
+    }
+    if (byteCounts.length !== blocks) {
+      throw tiffError('terrain.bad_tag', { file: name, tag: tiled ? 'TileByteCounts' : 'StripByteCounts' });
+    }
+    var full = blockWidth * blockHeight * (bits / 8);
+    if (full > TIFF_BLOCK_LIMIT) {
+      throw tiffError('terrain.block_too_large', { file: name, mb: full / 1048576 });
+    }
+
+    /* GeoKeys. Every key read holds a SHORT, so only one stored in the
+     * directory itself (location 0) is taken, as libgeotiff reads a SHORT
+     * key; the first of a repeated key counts. A directory of fewer than
+     * four values, of a version other than 1 (the only one GeoTIFF
+     * defines; libgeotiff refuses later ones) or shorter than its keys is
+     * damaged. */
+    /** @type {Record<number, number>} */
+    var keys = {};
+    var directory = v[34735];
+    if (directory) {
+      if (directory.length < 4 || directory[0] !== 1 || 4 + 4 * directory[3] > directory.length) {
+        throw tiffError('terrain.bad_tag', { file: name, tag: 'GeoKeyDirectory' });
+      }
+      for (e = 0; e < directory[3]; e++) {
+        var key = directory[4 + 4 * e];
+        if (TIFF_GEOKEYS.indexOf(key) >= 0 && !own(keys, key) && directory[5 + 4 * e] === 0) {
+          keys[key] = directory[7 + 4 * e];
+        }
+      }
+    }
+    function geokey(key) {
+      return own(keys, key) ? keys[key] : null;
+    }
+    /* PixelIsPoint only when the key says 2; absent, 0 or anything else is
+     * area, as GDAL reads it */
+    var modelType = geokey(1024), rasterType = geokey(1025) === 2 ? 2 : 1;
+    var epsg = geokey(modelType === 1 ? 3072 : 2048);
+
+    /* Scale and tiepoint first, as GDAL reads them; a transformation only
+     * when there is no scale; several tiepoints alone place the grid by
+     * control points. A scale, when there is one, is judged in this order
+     * in both engines: fewer than two values is a damaged entry, then no
+     * tiepoint places nothing, then a tiepoint of fewer than six values is
+     * damaged, then a scale that is not positive is a flipped grid. */
+    var scale = v[33550], tie = v[33922], matrix = v[34264], sx, sy, col, row, x, y;
+    if (scale) {
+      if (scale.length < 2) throw tiffError('terrain.bad_tag', { file: name, tag: 'ModelPixelScale' });
+      if (!tie) throw tiffError('terrain.no_georeference', { file: name });
+      if (tie.length < 6) throw tiffError('terrain.bad_tag', { file: name, tag: 'ModelTiepoint' });
+      sx = scale[0];
+      sy = scale[1];
+      col = tie[0];
+      row = tie[1];
+      x = tie[3];
+      y = tie[4];
+      if (!(sx > 0 && sy > 0)) throw tiffError('terrain.rotated', { file: name });
+    } else if (matrix) {
+      if (matrix.length !== 16) {
+        throw tiffError('terrain.bad_tag', { file: name, tag: 'ModelTransformation' });
+      }
+      if (!(matrix[1] === 0 && matrix[4] === 0 && matrix[0] > 0 && matrix[5] < 0)) {
+        throw tiffError('terrain.rotated', { file: name });
+      }
+      sx = matrix[0];
+      sy = -matrix[5];
+      col = 0;
+      row = 0;
+      x = matrix[3];
+      y = matrix[7];
+    } else if (tie && tie.length >= 12) {
+      throw tiffError('terrain.control_points', { file: name });
+    } else {
+      throw tiffError('terrain.no_georeference', { file: name });
+    }
+    /* the centre of column 0 and of row 0 (north): PixelIsArea puts the
+     * tiepoint at a cell's corner, PixelIsPoint at its centre. Integer
+     * times double, then add, in this order in both engines. */
+    var area = rasterType !== 2;
+    var x0 = (x - col * sx) + (area ? 0.5 * sx : 0.0);
+    var y0 = (y + row * sy) - (area ? 0.5 * sy : 0.0);
+
+    /* Float no-data keeps the sign of a zero (-0 still matches every zero);
+     * an integer one that no sample can equal is null */
+    var nodata = null, nodataText = v[42113];
+    if (nodataText !== null) {
+      var number = tiffNumber(nodataText);
+      if (number === undefined) {
+        throw tiffError('terrain.nodata_unreadable', {
+          file: name, text: tiffTrim(nodataText, TIFF_BLANKS, false),
+        });
+      }
+      if (number !== null) nodata = tiffNodataCast(number, format, bits);
+    }
+    /* a scale or offset that is empty, not a number or NaN is refused too:
+     * only an exact 1 and 0 (-0 included) are no scaling */
+    var metadata = v[42112];
+    if (metadata !== null) {
+      var item = /<Item[^>]*role="(scale|offset)"[^>]*>([^<]*)<\/Item>/g, found;
+      while ((found = item.exec(metadata)) !== null) {
+        var factor = tiffNumber(found[2]);
+        if (factor === null || factor === undefined || factor !== (found[1] === 'scale' ? 1 : 0)) {
+          throw tiffError('terrain.scaled', { file: name });
+        }
+      }
+    }
+
+    /* Last, once the image has passed every check, the directory after it:
+     * GDAL writes a mask of the image's cells there (masks before the image
+     * belong to other images, and are passed by as the chain is walked).
+     * Its next pointer is judged as the chain judges one, in the same order
+     * in both engines: 0 is no mask, then 2^53 or more is too large
+     * (refused by tiffU64 as it is read), then a directory already walked is
+     * no mask. The mask's NewSubfileType, then its width and its height,
+     * are each read as the chain reads NewSubfileType, held in the entry. */
+    var geoAscii = v[34737] === null ? null : tiffTrim(v[34737], '\0', true);
+    var hasMask = false;
+    var following = big ? tiffU64(body, n * entrySize, little, name) : body.getUint32(n * entrySize, little);
+    if (following !== 0 && seen.indexOf(following) < 0) {
+      if (!enter(following)) return needed();
+      var mask = subfile(254);
+      hasMask = mask !== null && (mask & 5) === 4 && subfile(256) === width && subfile(257) === height;
+    }
+
+    return {
+      name: name, size: size, byteOrder: little ? '<' : '>', bigtiff: big,
+      width: width, height: height, bits: bits, sampleFormat: format,
+      compression: compression, predictor: predictor, predictorApplied: coded && predictor !== 1,
+      tiled: tiled, blockWidth: blockWidth, blockHeight: blockHeight, rowsPerStrip: rowsPerStrip,
+      offsets: offsets.slice(), byteCounts: byteCounts.slice(),
+      modelType: modelType, rasterType: rasterType, epsg: epsg,
+      datum: geokey(2050), angularUnit: geokey(2054),
+      x0: x0, y0: y0, sx: sx, sy: sy, nodata: nodata, ifdIndex: index,
+      geoAscii: geoAscii, hasNodataTag: nodataText !== null, hasMask: hasMask,
+    };
+  }
+
+  /* Where block `index` lies: its first image row and column, the rows it
+   * decodes to (a tile's whole height, padding included; a strip's own
+   * rows), and the rows and columns of it inside the image. */
+  function tiffBlockBox(layout, index) {
+    var across = layout.tiled ? Math.ceil(layout.width / layout.blockWidth) : 1;
+    var top = Math.floor(index / across) * layout.blockHeight;
+    var left = (index % across) * layout.blockWidth;
+    var rows = Math.min(layout.blockHeight, layout.height - top);
+    return {
+      top: top, left: left, decoded: layout.tiled ? layout.blockHeight : rows,
+      rows: rows, cols: Math.min(layout.blockWidth, layout.width - left),
+    };
+  }
+
+  /** The blocks holding rows [j0, j1) and columns [i0, i1) of the image
+   * (north row 0, half-open; clipped to the image), in the file's block
+   * order, as geotiff.block_ranges lists them: [block, offset, length,
+   * rows], the bytes to read for each. rows is null except for an
+   * uncompressed strip only part of which is wanted: then it is the
+   * strip's own half-open [r0, r1], and the range covers only those rows,
+   * since an uncompressed strip never carries an applied predictor and a
+   * part of it decodes as the whole does. A sparse block (offset and
+   * length 0) is listed too, with nothing to read. A range reaching past
+   * the end of the file is refused as an incomplete file.
+   * @param {TiffLayout} layout what geotiffLayout returned
+   * @param {number} j0 the first row, north first
+   * @param {number} j1 the row after the last
+   * @param {number} i0 the first column
+   * @param {number} i1 the column after the last
+   * @returns {Array<TiffRange>}
+   */
+  function blockRanges(layout, j0, j1, i0, i1) {
+    var width = layout.width, height = layout.height;
+    j0 = Math.max(0, j0);
+    j1 = Math.min(height, j1);
+    i0 = Math.max(0, i0);
+    i1 = Math.min(width, i1);
+    /** @type {Array<TiffRange>} */
+    var out = [];
+    if (j1 <= j0 || i1 <= i0) return out;
+    var bw = layout.blockWidth, bh = layout.blockHeight, ty, tx, k;
+    if (layout.tiled) {
+      var across = Math.ceil(width / bw);
+      for (ty = Math.floor(j0 / bh); ty <= Math.floor((j1 - 1) / bh); ty++) {
+        for (tx = Math.floor(i0 / bw); tx <= Math.floor((i1 - 1) / bw); tx++) {
+          k = ty * across + tx;
+          out.push([k, layout.offsets[k], layout.byteCounts[k], null]);
+        }
+      }
+    } else {
+      var rowBytes = width * (layout.bits / 8);
+      for (k = Math.floor(j0 / bh); k <= Math.floor((j1 - 1) / bh); k++) {
+        var top = k * bh, rows = Math.min(bh, height - top);
+        var r0 = Math.max(j0 - top, 0), r1 = Math.min(j1 - top, rows);
+        var sparse = layout.offsets[k] === 0 && layout.byteCounts[k] === 0;
+        if (layout.compression === 1 && (r0 > 0 || r1 < rows)) {
+          out.push(sparse ? [k, 0, 0, [r0, r1]] :
+            [k, layout.offsets[k] + r0 * rowBytes, (r1 - r0) * rowBytes, [r0, r1]]);
+        } else {
+          out.push([k, layout.offsets[k], layout.byteCounts[k], null]);
+        }
+      }
+    }
+    /* the block as stored must lie in the file even when only some of its
+     * rows are read, so a part is refused where the whole would be; a
+     * sparse block has no bytes to lie anywhere */
+    out.forEach(function (range) {
+      var offset = layout.offsets[range[0]], count = layout.byteCounts[range[0]];
+      if (!(offset === 0 && count === 0) && offset + count > layout.size) {
+        throw tiffError('terrain.ends_early', { file: layout.name, part: 'data block ' + (range[0] + 1) });
+      }
+    });
+    return out;
+  }
+
+  /* Predictor 2 undone in place on the first `rows` rows of a decoded
+   * block: each word of `size` bytes, read in the file's byte order, plus
+   * the one before it, modulo the word. A 64-bit word is two 32-bit halves
+   * with the carry taken across by hand. Float samples are added as their
+   * bit patterns, as FABDEM's are written. Only the `cols` words inside
+   * the image are needed, since each depends only on those before it. */
+  function tiffUndoHorizontal(data, view, rows, rowBytes, cols, size, little) {
+    var r, c, p, q, prev, now, lo, hi, plo, phi;
+    var loAt = little ? 0 : 4, hiAt = little ? 4 : 0;
+    for (r = 0; r < rows; r++) {
+      p = r * rowBytes;
+      if (size === 1) {
+        for (c = 1; c < cols; c++) data[p + c] = (data[p + c] + data[p + c - 1]) & 255;
+      } else if (size === 2) {
+        prev = view.getUint16(p, little);
+        for (c = 1; c < cols; c++) {
+          now = (view.getUint16(p + 2 * c, little) + prev) & 0xFFFF;
+          view.setUint16(p + 2 * c, now, little);
+          prev = now;
+        }
+      } else if (size === 4) {
+        prev = view.getUint32(p, little);
+        for (c = 1; c < cols; c++) {
+          now = (view.getUint32(p + 4 * c, little) + prev) >>> 0;
+          view.setUint32(p + 4 * c, now, little);
+          prev = now;
+        }
+      } else {
+        plo = view.getUint32(p + loAt, little);
+        phi = view.getUint32(p + hiAt, little);
+        for (c = 1; c < cols; c++) {
+          q = p + 8 * c;
+          lo = (view.getUint32(q + loAt, little) + plo) >>> 0;
+          hi = (view.getUint32(q + hiAt, little) + phi + (lo < plo ? 1 : 0)) >>> 0;
+          view.setUint32(q + loAt, lo, little);
+          view.setUint32(q + hiAt, hi, little);
+          plo = lo;
+          phi = hi;
+        }
+      }
+    }
+  }
+
+  /** One block's values, as geotiff.decode_block gives them: rows north
+   * first, the padding of an edge tile cropped, and each sample judged
+   * before anything else uses it. A sample matching the no-data value, or NaN,
+   * has reason 1 (no data); with `bounds`, one that is infinite or lies
+   * outside them has reason 2 (implausible); both are NaN in `values`.
+   * Every other sample is widened to a double exactly and canonicalised
+   * with v + 0, so -0 reads as +0, with reason 0. Without bounds (the raw
+   * layer) only no data and NaN are voided. A sparse block is all reason
+   * 1: GDAL reads it as 0, but a block that holds no data is not ground at
+   * 0 m. A block that does not decode is refused with the one damaged-block
+   * sentence, numbered from 1 in the file's block order.
+   * @param {TiffLayout} layout what geotiffLayout returned
+   * @param {number} index the block, in the file's block order from 0
+   * @param {Uint8Array} bytes what blockRanges said to read for it
+   * @param {[number, number]|null} [rows] the rows blockRanges listed for an uncompressed strip read in part
+   * @param {[number, number]|null} [bounds] the lowest and highest plausible value, or null for none
+   * @returns {{values: Float64Array, reasons: Uint8Array, rows: number, cols: number}}
+   */
+  function decodeTiffBlock(layout, index, bytes, rows, bounds) {
+    var box = tiffBlockBox(layout, index), size = layout.bits / 8;
+    var rowBytes = layout.blockWidth * size;
+    var expected = box.decoded * rowBytes, full = layout.blockHeight * rowBytes;
+    var r0 = 0, r1 = box.rows, cols = box.cols;
+    if (rows) {
+      /* rows only of an uncompressed strip, and within it, as blockRanges gives them */
+      if (layout.tiled || layout.compression !== 1 || !(rows[0] >= 0 && rows[0] < rows[1] && rows[1] <= box.rows)) {
+        throw new Error('decodeTiffBlock: rows ' + JSON.stringify(rows) + ' are not rows of uncompressed strip ' +
+          index);
+      }
+      r0 = rows[0];
+      r1 = rows[1];
+    }
+    var n = (r1 - r0) * cols;
+    var values = new Float64Array(n), reasons = new Uint8Array(n);
+    if (layout.offsets[index] === 0 && layout.byteCounts[index] === 0) {
+      values.fill(NaN);
+      reasons.fill(1);
+      return { values: values, reasons: reasons, rows: r1 - r0, cols: cols };
+    }
+    var data;
+    try {
+      if (layout.compression === 1) {
+        /* the stored count is held to the whole block even when part of it
+         * is read; the data given must hold the whole block (a tile's
+         * padding included) or the rows asked for */
+        if (layout.byteCounts[index] < expected || bytes.length < (rows ? (r1 - r0) * rowBytes : expected)) {
+          throw codecError('damaged');
+        }
+        data = bytes;
+      } else if (layout.compression === 5) {
+        data = lzwDecode(bytes, expected);
+      } else if (layout.compression === 32773) {
+        data = packbitsDecode(bytes, expected);
+      } else {
+        data = inflateZlib(bytes, expected, full);
+      }
+    } catch (e) {
+      if (e.code === 'old_lzw') throw tiffError('terrain.old_lzw', { file: layout.name });
+      if (e.code === 'damaged') {
+        throw tiffError('terrain.block_damaged', { n: index + 1, file: layout.name, bytes: expected });
+      }
+      throw e;
+    }
+    var little = layout.byteOrder === '<';
+    var view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    var floating = layout.predictorApplied && layout.predictor === 3;
+    if (layout.predictorApplied && layout.predictor === 2) {
+      tiffUndoHorizontal(data, view, box.rows, rowBytes, cols, size, little);
+    }
+    /* predictor 3: each row's bytes summed straight through, then sample
+     * c's bytes are row[c], row[c + w], ... most significant first, a
+     * big-endian float whatever the file's byte order (libtiff fpAcc) */
+    var planes = floating ? new Uint8Array(rowBytes) : null;
+    var planeView = planes ? new DataView(planes.buffer) : view;
+    var code = layout.sampleFormat * 100 + layout.bits, bw = layout.blockWidth;
+    var r, c, b, p, k = 0, i, end;
+    for (r = r0; r < r1; r++, k += cols) {
+      p = (r - r0) * rowBytes;
+      if (planes) {
+        for (i = p + 1, end = p + rowBytes; i < end; i++) data[i] = (data[i] + data[i - 1]) & 255;
+        for (b = 0; b < size; b++) {
+          for (c = 0; c < cols; c++) planes[c * size + b] = data[p + b * bw + c];
+        }
+        if (size === 4) {
+          for (c = 0; c < cols; c++) values[k + c] = planeView.getFloat32(4 * c, false);
+        } else {
+          for (c = 0; c < cols; c++) values[k + c] = planeView.getFloat64(8 * c, false);
+        }
+        continue;
+      }
+      switch (code) {
+        case 108: for (c = 0; c < cols; c++) values[k + c] = data[p + c]; break;
+        case 208: for (c = 0; c < cols; c++) values[k + c] = view.getInt8(p + c); break;
+        case 116: for (c = 0; c < cols; c++) values[k + c] = view.getUint16(p + 2 * c, little); break;
+        case 216: for (c = 0; c < cols; c++) values[k + c] = view.getInt16(p + 2 * c, little); break;
+        case 132: for (c = 0; c < cols; c++) values[k + c] = view.getUint32(p + 4 * c, little); break;
+        case 232: for (c = 0; c < cols; c++) values[k + c] = view.getInt32(p + 4 * c, little); break;
+        case 332: for (c = 0; c < cols; c++) values[k + c] = view.getFloat32(p + 4 * c, little); break;
+        default: for (c = 0; c < cols; c++) values[k + c] = view.getFloat64(p + 8 * c, little);
+      }
+    }
+    /* the native value is compared with the no-data value before anything
+     * else is done to it; -0 matches 0, in both engines. NaN and Infinity
+     * are held in locals: read as globals once a sample, in a Node vm they
+     * cost several times the rest of the loop. */
+    var nodata = layout.nodata, hasNodata = nodata !== null && nodata !== undefined;
+    var judged = !!bounds, low = bounds ? bounds[0] : 0, high = bounds ? bounds[1] : 0;
+    var nan = NaN, inf = Infinity, value;
+    for (i = 0; i < n; i++) {
+      value = values[i];
+      if (value !== value || (hasNodata && value === nodata)) {
+        values[i] = nan;
+        reasons[i] = 1;
+      } else if (judged && (value === inf || value === -inf || value < low || value > high)) {
+        values[i] = nan;
+        reasons[i] = 2;
+      } else {
+        values[i] = value + 0;
+      }
+    }
+    return { values: values, reasons: reasons, rows: r1 - r0, cols: cols };
+  }
+
+  /** A whole GeoTIFF read through the raw layer, as geotiff.read_geotiff
+   * reads one: z row-major and south first (rows ascending in latitude or
+   * northing), x the column centres ascending and y the row centres
+   * ascending, each written as start + index * step from the layout's
+   * centres, so both engines give the same bits. Voids (no data,
+   * NaN, sparse blocks) are NaN; nothing is judged implausible here. The
+   * apps read windows instead; this is for files known to be small, and
+   * for tests.
+   * @param {Uint8Array} bytes the whole file
+   * @param {string} name the file's name, as the sentences give it
+   * @returns {{z: Float64Array, x: Float64Array, y: Float64Array, rows: number, cols: number,
+   *   layout: TiffLayout}}
+   */
+  function readGeoTiff(bytes, name) {
+    var layout = geotiffLayout(name, bytes.length, [[0, bytes]]);
+    if (Array.isArray(layout)) throw new Error('readGeoTiff: bytes are missing from a whole file');
+    var width = layout.width, height = layout.height, i, r;
+    var z = new Float64Array(width * height);
+    blockRanges(layout, 0, height, 0, width).forEach(function (range) {
+      var box = tiffBlockBox(layout, range[0]);
+      var block = decodeTiffBlock(layout, range[0], bytes.subarray(range[1], range[1] + range[2]),
+        range[3], null);
+      for (var j = 0; j < block.rows; j++) {
+        z.set(block.values.subarray(j * block.cols, (j + 1) * block.cols),
+          (height - 1 - (box.top + j)) * width + box.left);
+      }
+    });
+    var x = new Float64Array(width), y = new Float64Array(height);
+    for (i = 0; i < width; i++) x[i] = layout.x0 + i * layout.sx;
+    for (r = 0; r < height; r++) y[r] = layout.y0 - (height - 1 - r) * layout.sy;
+    return { z: z, x: x, y: y, rows: height, cols: width, layout: layout };
+  }
+
+  Object.assign(C, {
+    geotiffLayout: geotiffLayout, blockRanges: blockRanges, decodeTiffBlock: decodeTiffBlock,
+    readGeoTiff: readGeoTiff,
+  });
+
+  /* ===================================================== Elevation models
+   * groundwater/mapping/elevation.py's elevation layer: what turns the
+   * files an operator supplies into the window the terrain analysis reads.
+   * A file is opened for its layout alone (elevationFile: a GeoTIFF's
+   * directories, nothing at all for .hgt) and refused here unless it is in
+   * WGS 84 longitude and latitude, clear of the poles; its source is then
+   * recognised from its name and georeferencing together. The window is
+   * planned around the site (windowCentre, planElevationWindow): the square
+   * shown, the margin analysed beyond it and the cap on cells, the files
+   * joined on one lattice and never resampled, and the blocks each file
+   * must give up, edge blocks of a missing tile included. The page reads
+   * those bytes (elevationBlockRanges says which) and readElevationWindow
+   * turns them into one grid: each block's samples judged first, overlaps
+   * held to the bit, a missing tile taken as sea only when the full edges
+   * beside it are at sea level, and the read report written.
+   *
+   * Every float expression is Python's, operation for operation and in the
+   * same order, and every refusal is raised in the same order with the
+   * same catalogued sentence, so the two engines plan and read the same
+   * window to the bit; the parity suite and tests/test_terrain_engine_js.py
+   * hold them together. The browser never reads a strided window (the
+   * Python app's wide topographic map does), so the stride is always 1
+   * here. Everything is synchronous, for the worker and the Node sandboxes
+   * alike. */
+
+  /** @typedef {{name: string, size: number, layout: TiffLayout, kind: string, sourceId: string,
+   *   notes: string[]}} ElevationFile  one file opened for its layout: kind 'geotiff' or 'hgt',
+   *   sourceId what it was recognised as, notes the catalogue ids of what is said about it alone */
+  /** @typedef {{lon: number, lat: number, label: string, exact: boolean, note: string|null}} WindowCentre */
+  /** @typedef {{missing: number, file: number, row: number|null, column: number|null}} PlanEdge */
+  /** @typedef {{file: number, index: number, offset: number, length: number, rows: [number, number]|null,
+   *   window: boolean, edges: number[]}} PlanBlock */
+  /** @typedef {{files: ElevationFile[], sources: string[], declared: [string, string],
+   *   offsets: Array<[number, number]>, x0: number, y0: number, sx: number, sy: number,
+   *   centre: WindowCentre, ci: number, cj: number, stride: number, hx: number, hy: number,
+   *   hxs: number, hys: number, width: number, height: number, cells: number,
+   *   shown: [number, number, number, number], radiusKm: number, marginKm: number, dx: number,
+   *   dy: number, lons: Float64Array, lats: Float64Array, tile: number,
+   *   missing: Array<[number, number]>, edges: PlanEdge[], blocks: PlanBlock[]}} WindowPlan */
+  /** @typedef {{file: number, name: string, offset: number, length: number, blocks: number[]}} ElevationRange */
+  /** @typedef {{label: string, credit: string, notice: string|null, surface: string,
+   *   seaClean: boolean}} TerrainCredit */
+
+  /* SRTM marks a void with this value; it is not an elevation */
+  var SRTM_VOID = -32768;
+  /* An .hgt name: the south-west corner, ASCII letters and digits only, as
+   * Python's expression has them. */
+  var HGT_NAME = /^([NSns])([0-9]{2})([EWew])([0-9]{3})/;
+  /* What a file's source is recognised from: its name without the
+   * extension, letters in either case (ASCII only, as Python's re.ASCII has
+   * them; without the u flag JavaScript folds no other letter to an ASCII
+   * one either). Python's $ also matches before a newline that ends the
+   * text, which \n?$ copies. */
+  var COPERNICUS_NAME = /^Copernicus_DSM_(?:COG_)?10_([NS])(\d{2})_00_([EW])(\d{3})_00_DEM\n?$/i;
+  var SRTM_NAME = /^([ns])(\d{2})_([ew])(\d{3})_[13]arc_v[23]\n?$/i;
+  var FABDEM_NAME = /_fabdem_v1-\d/i;
+  /* products that write the sea as exactly 0 m and publish no tiles of
+   * open sea, so a tile missing from a set of them may be sea */
+  var SEA_AT_0 = ['copernicus_glo30', 'srtm', 'hgt'];
+  /* how a product is named in a sentence */
+  var PRODUCT_NAMES = /** @type {Record<string, string>} */ (
+    { copernicus_glo30: 'Copernicus GLO-30', srtm: 'SRTM', hgt: 'SRTM' });
+  /* what the operator may declare a set to be */
+  var DECLARED_KINDS = ['detect', 'copernicus_glo30', 'srtm', 'other'];
+  /* within this much of a whole degree, a file's first centre is on it */
+  var DEGREE_TOL = 1e-9;
+  var ARCSEC = 1.0 / 3600.0;
+  /* Python's str.isspace characters, which str.strip() takes from both
+   * ends of the operator's own words; String.trim takes a byte-order mark
+   * that Python keeps and keeps U+0085 and U+001C to U+001F, which Python
+   * takes */
+  var PY_SPACE = '\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005' +
+    '\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000';
+  /* reads of one file closer than this are made as one, and no merged
+   * read is longer than ELEVATION_MERGE_MAX, as Python merges its reads */
+  var ELEVATION_MERGE_GAP = 65536;
+  var ELEVATION_MERGE_MAX = 16 * 1048576;
+
+  /* a over b, rounded down, exactly for any two safe integers (b > 0) */
+  function floorDiv(a, b) {
+    var q = Math.floor(a / b);
+    if (q * b > a) q -= 1;
+    else if ((q + 1) * b <= a) q += 1;
+    return q + 0;
+  }
+
+  function isHgt(name) {
+    return name.slice(-4).toLowerCase() === '.hgt';
+  }
+
+  /* the name without its extension: up to its last dot, unless that is the
+   * first character */
+  function nameStem(name) {
+    var dot = name.lastIndexOf('.');
+    return dot > 0 ? name.slice(0, dot) : name;
+  }
+
+  /** An SRTM-format .hgt tile described as geotiffLayout describes a file,
+   * so that a window of it is read block by block as a GeoTIFF's is:
+   * elevation.hgt_layout. The file has no header: its corner comes from its
+   * name and its resolution from its length. It is big-endian int16 with
+   * -32768 for no data, northern row first, each row a strip of its own, so
+   * a window reads only its own rows; cells are centred on whole fractions
+   * of a degree from the named corner, the 1201 or 3601 samples a side
+   * including both edges of the degree. A name that does not carry the
+   * corner, or a length of neither size, is refused.
+   * @param {string} name the file's name, as the sentences give it
+   * @param {number} size the file's length in bytes
+   * @returns {TiffLayout}
+   */
+  function hgtLayout(name, size) {
+    var match = HGT_NAME.exec(name);
+    if (match === null) throw tiffError('terrain.hgt_name', { file: name });
+    var side = size === 2 * 1201 * 1201 ? 1201 : size === 2 * 3601 * 3601 ? 3601 : 0;
+    if (!side) throw tiffError('terrain.hgt_size', { file: name, n: Math.floor(size / 2) });
+    /* + 0, so that S00 and W000 are +0 as Python's integers are */
+    var lat0 = Number(match[2]) * (match[1] === 'N' || match[1] === 'n' ? 1 : -1) + 0;
+    var lon0 = Number(match[4]) * (match[3] === 'E' || match[3] === 'e' ? 1 : -1) + 0;
+    var step = 1.0 / (side - 1);
+    var offsets = new Array(side), counts = new Array(side);
+    for (var j = 0; j < side; j++) {
+      offsets[j] = 2 * side * j;
+      counts[j] = 2 * side;
+    }
+    return {
+      name: name, size: size, byteOrder: '>', bigtiff: false, width: side, height: side, bits: 16,
+      sampleFormat: 2, compression: 1, predictor: 1, predictorApplied: false, tiled: false,
+      blockWidth: side, blockHeight: 1, rowsPerStrip: 1, offsets: offsets, byteCounts: counts,
+      modelType: 2, rasterType: 2, epsg: 4326, datum: null, angularUnit: null,
+      x0: lon0, y0: lat0 + 1, sx: step, sy: step, nodata: SRTM_VOID, ifdIndex: 0,
+      geoAscii: null, hasNodataTag: false, hasMask: false,
+    };
+  }
+
+  /** One file of an elevation model opened for its layout alone:
+   * elevation.open_elevation_file, one round of it. A file is .hgt by its
+   * name, which needs no bytes, and a GeoTIFF otherwise, whose layout is
+   * read from `chunks` by geotiffLayout's rule; while bytes are missing the
+   * sorted [offset, length] ranges still to read come back instead, to be
+   * read (each rounded up to 64 KiB, at most 16 rounds, as Python reads
+   * them) and passed back with the rest. The file is refused, with its own
+   * sentence, unless it is in WGS 84 longitude and latitude in degrees with
+   * every cell centre more than a degree from a pole; then its source is
+   * recognised, and `notes` holds the ids of what is said about it alone
+   * (fileNotes writes them out).
+   * @param {string} name the file's name, as the sentences give it
+   * @param {number} size the file's length in bytes
+   * @param {Array<[number, Uint8Array]>} chunks the bytes read so far, as [offset, bytes]
+   * @returns {ElevationFile|Array<[number, number]>}
+   */
+  function elevationFile(name, size, chunks) {
+    if (isHgt(name)) return openedElevationFile(name, size, hgtLayout(name, size), 'hgt');
+    var layout = geotiffLayout(name, size, chunks);
+    if (Array.isArray(layout)) return layout;
+    return openedElevationFile(name, size, layout, 'geotiff');
+  }
+
+  /** @returns {ElevationFile} */
+  function openedElevationFile(name, size, layout, kind) {
+    acceptElevation(layout, name);
+    var found = identifySource(name, layout);
+    return { name: name, size: size, layout: layout, kind: kind, sourceId: found[0], notes: found[1] };
+  }
+
+  /* Refuse a file that is not in WGS 84 longitude and latitude, in
+   * degrees, with every cell centre more than a degree from a pole:
+   * elevation._accept. A file carrying a GDAL mask is refused first, since
+   * the cells it hides usually hold 0, which would read as ground at sea
+   * level. A projected file is named by its CRS, so the operator can tell
+   * which copy of the tile they sent. Georeferencing no elevation model has
+   * - an origin that is infinite or not a number, longitudes beyond any
+   * map, cells under 1e-7 or over 1 degree - is refused before the poles
+   * are looked at, the test written so that NaN fails it. At a pole a cell
+   * has no width east to west, and the window arithmetic divides by it. */
+  function acceptElevation(layout, name) {
+    if (layout.hasMask) throw tiffError('terrain.internal_mask', { file: name });
+    var model = layout.modelType;
+    if (model === 1) throw tiffError('terrain.projected', { file: name, crs: projectedName(layout.epsg) });
+    if (model === null || model === undefined) throw tiffError('terrain.no_crs', { file: name });
+    if (model !== 2) throw tiffError('terrain.not_wgs84', { file: name, crs: 'GeoTIFF model type ' + model });
+    var wgs84 = layout.epsg === 4326 ||
+      ((layout.epsg === null || layout.epsg === 32767) && layout.datum === 6326);
+    if (!wgs84 || !(layout.angularUnit === null || layout.angularUnit === 9102)) {
+      throw tiffError('terrain.not_wgs84', { file: name, crs: geographicName(layout) });
+    }
+    var east = layout.x0 + (layout.width - 1) * layout.sx;
+    var south = layout.y0 - (layout.height - 1) * layout.sy;
+    if (!(layout.x0 >= -540.0 && east <= 540.0 && south >= -90.0 && layout.y0 <= 90.0 &&
+        layout.sx >= 1e-7 && layout.sx <= 1.0 && layout.sy >= 1e-7 && layout.sy <= 1.0)) {
+      throw tiffError('terrain.bad_georeference', { file: name });
+    }
+    if (!(south > -89.0 && layout.y0 < 89.0)) throw tiffError('terrain.polar', { file: name });
+  }
+
+  /* a projected CRS as the refusal names it: the UTM zones and the Sierra
+   * Leone 1968 grid by name, anything else by its EPSG code */
+  function projectedName(epsg) {
+    if (epsg === null || epsg === 32767) return 'a projected system with no EPSG code';
+    if ((epsg >= 32601 && epsg <= 32660) || (epsg >= 32701 && epsg <= 32760)) {
+      return 'WGS 84 / UTM zone ' + (epsg % 100) + (epsg < 32700 ? 'N' : 'S') + ' (EPSG ' + epsg + ')';
+    }
+    if (epsg === 2161 || epsg === 2162) {
+      return 'Sierra Leone 1968 / UTM zone ' + (epsg === 2161 ? 28 : 29) + 'N (EPSG ' + epsg + ')';
+    }
+    return 'EPSG ' + epsg;
+  }
+
+  /* a geographic CRS that is not WGS 84 in degrees, as the refusal names it */
+  function geographicName(layout) {
+    var epsg = layout.epsg, datum = layout.datum, unit = layout.angularUnit, text;
+    if (epsg !== null && epsg !== 32767) text = 'EPSG ' + epsg;
+    else if (datum === 6326) text = 'WGS 84';
+    else if (datum !== null && datum !== 32767) text = 'a geographic system on datum EPSG ' + datum;
+    else text = 'a geographic system with no EPSG code';
+    if (unit !== null && unit !== 9102) text += ' in angular unit EPSG ' + unit;
+    return text;
+  }
+
+  function spacingIs(value, step) {
+    return Math.abs(value - step) <= 1e-12;
+  }
+
+  /* finite first, as Python must have it: its math.floor of an infinity or
+   * NaN raises */
+  function onDegree(value) {
+    return isFinite(value) && Math.abs(value - Math.floor(value + 0.5)) <= DEGREE_TOL;
+  }
+
+  /* Every cell centre lies in the 1-degree square whose south-west corner
+   * is (lon0, lat0), give or take a billionth of a degree; so a tile of
+   * 3600 or of 3601 samples a side passes. */
+  function insideSquare(layout, lon0, lat0) {
+    var east = layout.x0 + (layout.width - 1) * layout.sx;
+    var south = layout.y0 - (layout.height - 1) * layout.sy;
+    return layout.x0 >= lon0 - DEGREE_TOL && east <= lon0 + 1 + DEGREE_TOL &&
+      south >= lat0 - DEGREE_TOL && layout.y0 <= lat0 + 1 + DEGREE_TOL;
+  }
+
+  /** [lon0, lat0, tile code such as "N08 W012"] from a name's four groups
+   * @returns {[number, number, string]} */
+  function namedCorner(match) {
+    var ns = match[1].toUpperCase(), latDeg = match[2], ew = match[3].toUpperCase(), lonDeg = match[4];
+    var lat0 = Number(latDeg) * (ns === 'N' ? 1 : -1) + 0;
+    var lon0 = Number(lonDeg) * (ew === 'E' ? 1 : -1) + 0;
+    return [lon0, lat0, ns + latDeg + ' ' + ew + lonDeg];
+  }
+
+  /* Laid out as a Copernicus GLO-30 tile is, whatever its name. Nothing in
+   * a tile says it is Copernicus, so this only prompts the operator; it
+   * never credits. */
+  function glo30Fingerprint(layout) {
+    return layout.modelType === 2 && layout.epsg === 4326 &&
+      spacingIs(layout.sx, ARCSEC) && spacingIs(layout.sy, ARCSEC) &&
+      layout.rasterType === 2 && onDegree(layout.x0) && onDegree(layout.y0) &&
+      layout.sampleFormat === 3 && layout.bits === 32 && !layout.hasNodataTag &&
+      layout.geoAscii === 'WGS 84|';
+  }
+
+  /** [source id, catalogue ids] for a file, from its name and
+   * georeferencing together: elevation.identify_source. A tile holds
+   * nothing that identifies it and operators rename files, so the name is
+   * believed only when the georeferencing bears it out.
+   * @returns {[string, string[]]} */
+  function identifySource(name, layout) {
+    if (isHgt(name)) return ['hgt', []];
+    var stem = nameStem(name);
+    var match = COPERNICUS_NAME.exec(stem), corner;
+    if (match !== null) {
+      corner = namedCorner(match);
+      if (layout.modelType === 2 && layout.epsg === 4326 && spacingIs(layout.sx, ARCSEC) &&
+          spacingIs(layout.sy, ARCSEC) && insideSquare(layout, corner[0], corner[1])) {
+        return ['copernicus_glo30', []];
+      }
+      return ['unidentified', ['terrain.name_mismatch']];
+    }
+    match = SRTM_NAME.exec(stem);
+    if (match !== null) {
+      corner = namedCorner(match);
+      var spacing = spacingIs(layout.sx, ARCSEC) ? ARCSEC
+        : spacingIs(layout.sx, 1.0 / 1200.0) ? 1.0 / 1200.0 : null;
+      if (spacing !== null && spacingIs(layout.sy, spacing) && insideSquare(layout, corner[0], corner[1])) {
+        return ['srtm', []];
+      }
+    }
+    if (FABDEM_NAME.test(stem)) return ['unidentified', ['terrain.fabdem_licence']];
+    if (glo30Fingerprint(layout)) return ['unidentified', ['terrain.looks_copernicus']];
+    return ['unidentified', []];
+  }
+
+  /** The operator's declaration [kind, text], checked, its text trimmed as
+   * Python trims it, and another source of no stated name read as no
+   * declaration at all. None given is 'detect'.
+   * @returns {[string, string]} */
+  function elevationDeclaration(declared) {
+    var kind = declared ? declared[0] : 'detect';
+    var text = declared && declared[1] ? String(declared[1]) : '';
+    if (DECLARED_KINDS.indexOf(kind) < 0) {
+      throw new Error('the source declared is ' + JSON.stringify(kind) + ', not one of ' +
+        DECLARED_KINDS.join(', '));
+    }
+    var trimmed = stripChars(text, PY_SPACE);
+    if (kind === 'other' && !trimmed) return ['detect', ''];
+    return [kind, trimmed];
+  }
+
+  /** What is said about one file alone, written out: elevation.file_notes.
+   * Once the operator has declared the source, a note about how the file
+   * would otherwise be credited no longer applies; the FABDEM licence
+   * warning does.
+   * @param {ElevationFile} found what elevationFile opened
+   * @param {[string, string]|null} [declared] the operator's [kind, text]: kind 'detect',
+   *   'copernicus_glo30', 'srtm' or 'other' (text their own words); none is 'detect'
+   * @returns {string[]}
+   */
+  function fileNotes(found, declared) {
+    var kind = elevationDeclaration(declared)[0];
+    /** @type {string[]} */
+    var out = [];
+    found.notes.forEach(function (ident) {
+      if (kind !== 'detect' && ident !== 'terrain.fabdem_licence') return;
+      if (ident === 'terrain.name_mismatch') {
+        out.push(phrase('terrain.name_mismatch', { file: found.name }));
+      } else if (ident === 'terrain.looks_copernicus') {
+        out.push(phrase('terrain.looks_copernicus', { file: found.name }));
+      } else {
+        out.push(phrase('terrain.fabdem_licence', { file: found.name }));
+      }
+    });
+    return out;
+  }
+
+  /* each file's source once the declaration is applied: the declaration
+   * wins, and a source in the operator's own words is no product the
+   * toolkit knows */
+  function declaredSources(files, declared) {
+    var kind = elevationDeclaration(declared)[0];
+    return files.map(function (found) {
+      return kind === 'detect' ? found.sourceId : kind !== 'other' ? kind : 'unidentified';
+    });
+  }
+
+  function setSource(sources) {
+    return sources.length && sources.every(function (s) { return s === sources[0]; })
+      ? sources[0] : 'unidentified';
+  }
+
+  /** @returns {string} */
+  function tileCodeOf(name) {
+    var stem = nameStem(name);
+    var match = COPERNICUS_NAME.exec(stem) || SRTM_NAME.exec(stem);
+    return match !== null ? namedCorner(match)[2] : name;
+  }
+
+  /* Plan order: the greatest y0 first, then the smallest x0, then the name
+   * in UTF-16 code-unit order, which is how < compares strings (never
+   * localeCompare); the sort is stable, as Python's is. */
+  function elevationPlanOrder(files) {
+    return files.slice().sort(function (a, b) {
+      if (a.layout.y0 !== b.layout.y0) return a.layout.y0 > b.layout.y0 ? -1 : 1;
+      if (a.layout.x0 !== b.layout.x0) return a.layout.x0 < b.layout.x0 ? -1 : 1;
+      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    });
+  }
+
+  /** What the figures drawn from a set of files say of them:
+   * elevation.elevation_label_and_credit. The label names the files and
+   * where they came from; the credit is what a licence asks a figure drawn
+   * from them to carry ('' where none is known); the notice is the
+   * Copernicus licence's liability sentence, given wherever the set holds a
+   * Copernicus file (null otherwise); the surface note says what the
+   * heights are heights of. The operator's declaration wins over what the
+   * names say. seaClean is true when every file comes from a product that
+   * writes the sea as exactly 0 m and publishes no tiles of open sea.
+   * @param {ElevationFile[]} files what elevationFile opened
+   * @param {[string, string]|null} [declared] the operator's [kind, text]; none is 'detect'
+   * @returns {TerrainCredit}
+   */
+  function terrainCredit(files, declared) {
+    var decl = elevationDeclaration(declared), kind = decl[0], text = decl[1];
+    var ordered = elevationPlanOrder(files);
+    var names = andJoin(ordered.map(function (f) { return f.name; }));
+    var copernicus = phrase('terrain.credit_copernicus_modified');
+    var liability = phrase('terrain.copernicus_liability');
+    function credit(label, credited, notice, surface, seaClean) {
+      return { label: label, credit: credited, notice: notice, surface: surface, seaClean: seaClean };
+    }
+    if (kind === 'copernicus_glo30') {
+      return credit(phrase('terrain.label_declared', { declared: PRODUCT_NAMES[kind], files: names }),
+        copernicus, liability, phrase('terrain.surface_copernicus'), true);
+    }
+    if (kind === 'srtm') {
+      return credit(phrase('terrain.label_declared', { declared: PRODUCT_NAMES[kind], files: names }),
+        phrase('terrain.credit_srtm'), null, phrase('terrain.surface_srtm'), true);
+    }
+    if (kind === 'other') {
+      return credit(phrase('terrain.label_declared', { declared: text, files: names }), '', null,
+        phrase('terrain.surface_unknown'), false);
+    }
+    var sources = ordered.map(function (f) { return f.sourceId; });
+    var found = ordered.filter(function (f) { return f.sourceId === 'copernicus_glo30'; });
+    function tiles(of) { return andJoin(of.map(function (f) { return tileCodeOf(f.name); })); }
+    if (found.length && found.length === ordered.length) {
+      return credit(phrase('terrain.label_copernicus', { n: found.length, tiles: tiles(found) }), copernicus,
+        liability, phrase('terrain.surface_copernicus'), true);
+    }
+    if (found.length && sources.every(function (s) { return s === 'copernicus_glo30' || s === 'unidentified'; })) {
+      var rest = andJoin(ordered.filter(function (f) { return f.sourceId !== 'copernicus_glo30'; })
+        .map(function (f) { return f.name; }));
+      return credit(phrase('terrain.label_mixed', { n: found.length, tiles: tiles(found), files: rest }),
+        copernicus, liability, phrase('terrain.surface_unknown'), false);
+    }
+    if (sources.length && sources.every(function (s) { return s === 'srtm'; })) {
+      return credit(phrase('terrain.label_srtm', { n: ordered.length, tiles: tiles(ordered) }),
+        phrase('terrain.credit_srtm'), null, phrase('terrain.surface_srtm'), true);
+    }
+    if (sources.length && sources.every(function (s) { return s === 'hgt'; })) {
+      return credit(phrase('terrain.label_hgt', { n: ordered.length, files: names }), '', null,
+        phrase('terrain.surface_srtm'), true);
+    }
+    return credit(phrase('terrain.label_unidentified', { files: names }), '', null,
+      phrase('terrain.surface_unknown'), false);
+  }
+
+  /* --- degrees and metres, with the same bits in both engines ------------ */
+
+  var ELEVATION_D2R = Math.PI / 180.0;
+  var WGS84_A = 6378137.0;                    // WGS 84, as groundwater.geo has it
+  var WGS84_FLAT = 1.0 / 298.257223563;
+  var WGS84_E2 = WGS84_FLAT * (2.0 - WGS84_FLAT);
+
+  /* k! as an exact integer, then a double: exact for k <= 18 (< 2**53) */
+  function exactFactorial(k) {
+    var product = 1;
+    for (var n = 2; n <= k; n++) product *= n;
+    return product;
+  }
+
+  /* The Taylor coefficients, worked out at load rather than typed as
+   * decimal literals, so that they are Python's doubles by construction:
+   * 1/k! is one correctly rounded division in both engines. */
+  var SIN_TERMS = [], COS_TERMS = [];
+  (function () {
+    for (var n = 0; n < 9; n++) SIN_TERMS.push((n % 2 ? -1.0 : 1.0) / exactFactorial(2 * n + 1));
+    for (n = 0; n < 10; n++) COS_TERMS.push((n % 2 ? -1.0 : 1.0) / exactFactorial(2 * n));
+  }());
+
+  /** The sine and cosine of `d` degrees from additions, multiplications and
+   * one floor, so that both engines give the same bits: elevation.sin_cos_deg.
+   * Math.sin and Python's math.sin differ in the last bit for some inputs,
+   * and every row's cell size is worked out from these. The angle is first
+   * reduced to within 45 degrees of a right angle, which is exact, then a
+   * Taylor polynomial is summed in a fixed order. At a right angle the
+   * answer is exactly 0 or 1; elsewhere it is within about 1e-15 of the
+   * true value. Something that is not a finite number gives NaN.
+   * @param {number} d degrees
+   * @returns {[number, number]} [sine, cosine]
+   */
+  function sinCosDeg(d) {
+    d = Number(d);
+    if (!isFinite(d)) return [NaN, NaN];
+    var q = Math.floor(d / 90.0 + 0.5);
+    var r = d - 90.0 * q;
+    var x = r * ELEVATION_D2R;
+    var x2 = x * x;
+    var s = SIN_TERMS[8], k;
+    for (k = 7; k >= 0; k--) s = s * x2 + SIN_TERMS[k];
+    s = s * x;
+    var c = COS_TERMS[9];
+    for (k = 8; k >= 0; k--) c = c * x2 + COS_TERMS[k];
+    var m = ((q % 4) + 4) % 4;
+    return m === 0 ? [s, c] : m === 1 ? [c, -s] : m === 2 ? [-s, -c] : [-c, s];
+  }
+
+  /** The east-west and north-south size in metres of a cell centred at
+   * latitude `lat`, `stepLon` by `stepLat` degrees, on the WGS 84
+   * ellipsoid: elevation.wgs84_cell_size. The radii of curvature in the
+   * prime vertical (N) and the meridian (M) at that latitude, times the
+   * step in radians.
+   * @param {number} lat the cell centre's latitude, degrees
+   * @param {number} stepLon the cell's width, degrees
+   * @param {number} stepLat the cell's height, degrees
+   * @returns {[number, number]} [dx, dy] in metres
+   */
+  function wgs84CellSize(lat, stepLon, stepLat) {
+    var sc = sinCosDeg(lat), s = sc[0], c = sc[1];
+    var den = 1.0 - WGS84_E2 * (s * s);
+    var rt = Math.sqrt(den);
+    var n = WGS84_A / rt;
+    var m = (WGS84_A * (1.0 - WGS84_E2)) / (den * rt);
+    return [(n * c) * (stepLon * ELEVATION_D2R), m * (stepLat * ELEVATION_D2R)];
+  }
+
+  /** Each row's cell size for a grid with these centres: elevation.row_metric.
+   * A cell 1 arc-second wide is 0.26% narrower at the north edge of a
+   * Sierra Leone tile than at its south edge, so each row has its own size:
+   * dx east-west and dy north-south in metres, dg the diagonal, and auRow
+   * the cell's area in whole units of 0.01 square metres (an integer, so
+   * areas add up exactly in any order). Row 0 is the first latitude given,
+   * the southern row in a grid.
+   * @param {ArrayLike<number>} lons the column centres, at least 2
+   * @param {ArrayLike<number>} lats the row centres, at least 2
+   * @returns {{dx: Float64Array, dy: Float64Array, dg: Float64Array, auRow: Float64Array}}
+   */
+  function rowMetric(lons, lats) {
+    var width = lons.length, height = lats.length;
+    if (width < 2 || height < 2) {
+      throw new Error('a ' + height + ' by ' + width + ' grid has no step between its cells to measure');
+    }
+    var stepLon = (lons[width - 1] - lons[0]) / (width - 1);
+    var stepLat = (lats[height - 1] - lats[0]) / (height - 1);
+    var dx = new Float64Array(height), dy = new Float64Array(height);
+    var dg = new Float64Array(height), au = new Float64Array(height);
+    for (var r = 0; r < height; r++) {
+      var size = wgs84CellSize(lats[r], stepLon, stepLat), x = size[0], y = size[1];
+      dx[r] = x;
+      dy[r] = y;
+      dg[r] = Math.sqrt(x * x + y * y);
+      au[r] = Math.floor(x * y * 100.0 + 0.5);
+    }
+    return { dx: dx, dy: dy, dg: dg, auRow: au };
+  }
+
+  function elevationCellNote(dx, dy) {
+    return 'about ' + pyFixed(dx, 0) + ' by ' + pyFixed(dy, 0) + ' m';
+  }
+
+  /* a point as the read report writes one, through Python's %.5f: 9.03487 N, 11.92862 W */
+  function elevationCoordinates(lon, lat) {
+    return pyFixed(Math.abs(lat), 5) + ' ' + (lat >= 0 ? 'N' : 'S') + ', ' +
+      pyFixed(Math.abs(lon), 5) + ' ' + (lon >= 0 ? 'E' : 'W');
+  }
+
+  /* what a model covers, as terrain._bounds_text writes it */
+  function elevationBoundsText(bounds) {
+    var lonMin = bounds[0], latMin = bounds[1], lonMax = bounds[2], latMax = bounds[3];
+    return pyFixed(Math.abs(latMin), 3) + '-' + pyFixed(Math.abs(latMax), 3) + ' ' +
+      (latMin >= 0 ? 'N' : 'S') + ', ' + pyFixed(Math.abs(lonMax), 3) + '-' +
+      pyFixed(Math.abs(lonMin), 3) + ' ' + (lonMin >= 0 ? 'E' : 'W');
+  }
+
+  /* [west, south, east, north]: the bounding box of the files' cell
+   * centres, which holds any gap between them too; the first of equal
+   * values kept, as Python's min and max keep it */
+  function elevationExtent(files) {
+    var west = 0, south = 0, east = 0, north = 0;
+    files.forEach(function (found, k) {
+      var lay = found.layout;
+      var w = lay.x0, e = lay.x0 + (lay.width - 1) * lay.sx;
+      var s = lay.y0 - (lay.height - 1) * lay.sy, n = lay.y0;
+      if (k === 0 || w < west) west = w;
+      if (k === 0 || e > east) east = e;
+      if (k === 0 || s < south) south = s;
+      if (k === 0 || n > north) north = n;
+    });
+    return [west, south, east, north];
+  }
+
+  /* --- the window: its centre, its cells, the blocks to read ------------ */
+
+  /** Where the window is centred, and what to call the place:
+   * elevation.window_centre. The site's GPS fix (`latlon`, as the page
+   * reads it), else its chiefdom, else its district, as every other local
+   * map is centred (areaWindow), with a note saying so when it is not a
+   * fix; with no location at all, the middle of the files' cell centres,
+   * named by its coordinates.
+   * @param {Rec|null} site the project's site, or null
+   * @param {{lat: number, lon: number}|null} latlon the site's position, or null
+   * @param {ElevationFile[]} files what elevationFile opened
+   * @returns {WindowCentre}
+   */
+  function windowCentre(site, latlon, files) {
+    if (site) {
+      var area = areaWindow(site, latlon || null);
+      if (area) {
+        return { lon: Number(area.lon), lat: Number(area.lat), label: area.label, exact: !!area.exact,
+          note: area.exact ? null : phrase('terrain.centre_area', { label: area.label }) };
+      }
+    }
+    if (!files || !files.length) throw new Error('no elevation files to centre the window on');
+    var extent = elevationExtent(files);
+    var lon = (extent[0] + extent[2]) / 2.0, lat = (extent[1] + extent[3]) / 2.0;
+    return { lon: lon, lat: lat, label: elevationCoordinates(lon, lat), exact: false,
+      note: phrase('terrain.centre_no_site') };
+  }
+
+  /* [qLo, qHi], the window positions 0..n-1 (lattice cell start + q) that
+   * fall in lattice cells first..first+count-1, or null: elevation._steps
+   * at stride 1 */
+  function elevationSteps(first, count, start, n) {
+    var delta = first - start;
+    var lo = delta > 0 ? delta : 0, hi = delta + count - 1 < n - 1 ? delta + count - 1 : n - 1;
+    return lo <= hi ? [lo, hi] : null;
+  }
+
+  /* [row, column] of a block's first image cell (of rows[0] for a strip
+   * read in part), row 0 north */
+  function elevationBlockOrigin(layout, index, rows) {
+    var box = tiffBlockBox(layout, index);
+    return [box.top + (rows ? rows[0] : 0), box.left];
+  }
+
+  /* [rows, columns] of the image a block (or the rows of it read) holds */
+  function elevationBlockShape(layout, index, rows) {
+    if (rows) return [rows[1] - rows[0], layout.width];
+    var box = tiffBlockBox(layout, index);
+    return [box.rows, box.cols];
+  }
+
+  /** Plan the window: elevation.plan_window, at stride 1. Check that the
+   * files join, work out which cells the window holds, and list the blocks
+   * of each file to read.
+   *
+   * `radiusKm` is the half-side of the square shown; the analysis also
+   * reads `marginKm` beyond it on every side (by default the configuration's
+   * terrain.analysis_buffer_km), and terrain.max_cells caps the whole, once
+   * the centre is known to lie on a file (else it lies in a gap between
+   * them or outside them); terrain.max_blocks caps the blocks the plan
+   * names, counted before they are listed. The
+   * files are put in plan order (the greatest y0 first, then the smallest
+   * x0, then the name in UTF-16 code units) and the first one's lattice is
+   * the reference; each other file must lie on it, at the same spacing and
+   * a whole number of cells from it, and identified files must be of one
+   * product. When every file is a whole 1-degree tile of a product that
+   * publishes no tiles of open sea, the tiles the window meets that no file
+   * supplies are listed with the full edges of the tiles beside them, and
+   * the blocks holding those edges are read too, even outside the window.
+   * Each refusal is thrown with its sentence, in Python's order.
+   * @param {ElevationFile[]} files what elevationFile opened
+   * @param {WindowCentre} centre what windowCentre gave, or a centre of the same shape
+   * @param {number} radiusKm the half-side of the square shown, km
+   * @param {Rec|null} [cfg] the project's configuration (or a part of it, as withConfig takes)
+   * @param {number|null} [marginKm] the margin analysed beyond the square shown, km
+   * @param {[string, string]|null} [declared] the operator's [kind, text]; none is 'detect'
+   * @returns {WindowPlan}
+   */
+  function planElevationWindow(files, centre, radiusKm, cfg, marginKm, declared) {
+    var terrain = withConfig(cfg).terrain;
+    var margin = marginKm === null || marginKm === undefined ? terrain.analysis_buffer_km : Number(marginKm);
+    var radius = Number(radiusKm);
+    if (!files || !files.length) throw new Error('no elevation files to plan a window over');
+    var k;
+
+    /* plan order, one file per name, one kind of file */
+    var ordered = elevationPlanOrder(files);
+    /** @type {string[]} */
+    var seen = [];
+    for (k = 0; k < ordered.length; k++) {
+      if (seen.indexOf(ordered[k].name) >= 0) throw tiffError('terrain.duplicate_name', { file: ordered[k].name });
+      seen.push(ordered[k].name);
+    }
+    for (k = 1; k < ordered.length; k++) {
+      if (ordered[k].kind !== ordered[0].kind) {
+        throw tiffError('terrain.mixed_formats', { a: ordered[0].name, b: ordered[k].name });
+      }
+    }
+    var sources = declaredSources(ordered, declared);
+
+    /* one lattice, the reference file's */
+    var ref = ordered[0].layout, x0 = ref.x0, y0 = ref.y0, sx = ref.sx, sy = ref.sy;
+    /** @type {Array<[number, number]>} */
+    var offsets = [[0, 0]];
+    for (k = 1; k < ordered.length; k++) {
+      var lay = ordered[k].layout;
+      if (Math.abs(lay.sx - sx) > 1e-9 * sx || Math.abs(lay.sy - sy) > 1e-9 * sy) {
+        throw tiffError('terrain.join_spacing', { a: ordered[0].name, b: ordered[k].name });
+      }
+      var ex = (lay.x0 - x0) / sx, ey = (y0 - lay.y0) / sy;
+      /* written so that an infinite or NaN offset fails */
+      if (!(Math.abs(ex - Math.floor(ex + 0.5)) <= 1e-6) || !(Math.abs(ey - Math.floor(ey + 0.5)) <= 1e-6)) {
+        throw tiffError('terrain.join_phase', { a: ordered[0].name, b: ordered[k].name });
+      }
+      offsets.push([Math.floor(ex + 0.5), Math.floor(ey + 0.5)]);
+    }
+
+    /* one product */
+    var first = -1;
+    for (k = 0; k < sources.length; k++) {
+      if (sources[k] === 'unidentified') continue;
+      if (first < 0) {
+        first = k;
+      } else if (sources[k] !== sources[first]) {
+        throw tiffError('terrain.join_products', { a: ordered[first].name, pa: PRODUCT_NAMES[sources[first]],
+          b: ordered[k].name, pb: PRODUCT_NAMES[sources[k]] });
+      }
+    }
+
+    /* the centre cell (NaN or an infinity for a centre no cell reaches,
+     * which every test below then fails, as Python refuses it) */
+    var ci = Math.floor((centre.lon - x0) / sx + 0.5);
+    var cj = Math.floor((y0 - centre.lat) / sy + 0.5);
+
+    /* before the cap, the centre must lie on a file, so that a centre off
+     * the files is told so rather than given a radius that would not help;
+     * it lies in a gap between them when the files' bounding box holds it,
+     * judged on whole cells so the engines cannot disagree */
+    var inside = ordered.some(function (found, f) {
+      var oi = offsets[f][0], oj = offsets[f][1];
+      return oi <= ci && ci < oi + found.layout.width && oj <= cj && cj < oj + found.layout.height;
+    });
+    if (!inside) {
+      var iLow = Infinity, iHigh = -Infinity, jLow = Infinity, jHigh = -Infinity;
+      ordered.forEach(function (found, f) {
+        iLow = Math.min(iLow, offsets[f][0]);
+        iHigh = Math.max(iHigh, offsets[f][0] + found.layout.width);
+        jLow = Math.min(jLow, offsets[f][1]);
+        jHigh = Math.max(jHigh, offsets[f][1] + found.layout.height);
+      });
+      var extent = elevationBoundsText(elevationExtent(ordered));
+      if (iLow <= ci && ci < iHigh && jLow <= cj && cj < jHigh) {
+        throw tiffError('terrain.site_gap', { where: centre.label, extent: extent });
+      }
+      throw tiffError('terrain.site_outside', { where: centre.label, extent: extent });
+    }
+
+    /* the half sizes from the centre cell's size; + 0 keeps a ceiling of a
+     * small negative from being -0, as no Python integer is */
+    var size = wgs84CellSize(y0 - cj * sy, sx, sy), dxC = size[0], dyC = size[1];
+    var hx = Math.ceil((radius + margin) * 1000 / dxC) + 0;
+    var hy = Math.ceil((radius + margin) * 1000 / dyC) + 0;
+    var hxs = Math.ceil(radius * 1000 / dxC) + 0;
+    var hys = Math.ceil(radius * 1000 / dyC) + 0;
+    var width = 2 * hx + 1, height = 2 * hy + 1;
+
+    /* the cap, on everything analysed, and the least window analysed. When
+     * the margin alone is over the cap no radius fits, and the sentence
+     * says to lower the margin rather than offer a radius of 0 km. */
+    if (width * height > terrain.max_cells) {
+      var hx0 = Math.ceil(1000 * margin / dxC) + 0, hy0 = Math.ceil(1000 * margin / dyC) + 0;
+      if ((2 * hx0 + 1) * (2 * hy0 + 1) > terrain.max_cells) {
+        throw tiffError('terrain.margin_too_many_cells', { margin: margin, cap: terrain.max_cells });
+      }
+      var h = Math.floor((Math.sqrt(terrain.max_cells) - 1) / 2);
+      var fit = Math.floor((h * (dyC < dxC ? dyC : dxC) - 1000 * margin) / 100) / 10;
+      throw tiffError('terrain.too_many_cells', { radius: radius, margin: margin, cap: terrain.max_cells,
+        fit: fit > 0.0 ? fit : 0.0 });
+    }
+    if (width < 3 || height < 3) throw tiffError('terrain.too_small', { w: width, h: height });
+
+    /* the axes, origin plus index times step, south row first */
+    var lons = new Float64Array(width), lats = new Float64Array(height);
+    for (k = 0; k < width; k++) lons[k] = x0 + (ci + (k - hx)) * sx;
+    for (k = 0; k < height; k++) lats[k] = y0 - (cj + (hy - k)) * sy;
+
+    /* missing 1-degree tiles of a product that publishes no sea tiles */
+    var iFirst = ci - hx, jFirst = cj - hy;
+    var tiles = elevationMissingTiles(ordered, sources, offsets, sx, iFirst, jFirst, width, height);
+
+    /* the blocks, counted before any is listed: each costs a decode of its
+     * own, so a file cut into tiny blocks is refused here however few cells
+     * the window holds; a block holding both window cells and an edge is
+     * counted once for each, so the count bounds the decodes from above */
+    var counts = elevationCountBlocks(ordered, offsets, iFirst, jFirst, width, height, tiles.edges);
+    var total = 0, most = 0;
+    counts.forEach(function (count, f) {
+      total += count;
+      if (count > counts[most]) most = f;
+    });
+    if (total > terrain.max_blocks) {
+      throw tiffError('terrain.too_many_blocks', { file: ordered[most].name, n: total, cap: terrain.max_blocks });
+    }
+    var blocks = elevationPlanBlocks(ordered, offsets, iFirst, jFirst, width, height, tiles.edges);
+    return {
+      files: ordered, sources: sources, declared: elevationDeclaration(declared), offsets: offsets,
+      x0: x0, y0: y0, sx: sx, sy: sy, centre: centre, ci: ci, cj: cj, stride: 1, hx: hx, hy: hy,
+      hxs: hxs, hys: hys, width: width, height: height, cells: width * height,
+      shown: [hy - hys, hy + hys + 1, hx - hxs, hx + hxs + 1], radiusKm: radius, marginKm: margin,
+      dx: dxC, dy: dyC, lons: lons, lats: lats, tile: tiles.tile, missing: tiles.missing,
+      edges: tiles.edges, blocks: blocks,
+    };
+  }
+
+  /* The tiles the window meets that no file supplies, and the full edges of
+   * the supplied tiles beside each, when every file is a whole 1-degree
+   * tile of a product that publishes no tiles of open sea; else none. A
+   * tile is numbered on the reference lattice by integer division, so the
+   * numbering is exact; a file supplies the tile its first cell lies in. */
+  function elevationMissingTiles(files, sources, offsets, sx, iFirst, jFirst, width, height) {
+    var p = Math.floor(1 / sx + 0.5);
+    /** @type {Array<[number, number]>} */
+    var missing = [];
+    /** @type {PlanEdge[]} */
+    var edges = [];
+    var whole = sources.every(function (s) { return SEA_AT_0.indexOf(s) >= 0; }) &&
+      files.every(function (found) {
+        var lay = found.layout;
+        return (lay.width === p || lay.width === p + 1) && (lay.height === p || lay.height === p + 1) &&
+          onDegree(lay.x0) && onDegree(lay.y0);
+      });
+    if (!whole) return { tile: 0, missing: missing, edges: edges };
+    /** @type {Map<string, number[]>} */
+    var supplied = new Map();
+    offsets.forEach(function (o, k) {
+      var key = floorDiv(o[0], p) + ',' + floorDiv(o[1], p);
+      if (!supplied.has(key)) supplied.set(key, []);
+      /** @type {number[]} */ (supplied.get(key)).push(k);
+    });
+    /* the tile columns and rows the window meets, ascending: the tile of
+     * each window cell never decreases along a row or a column */
+    var columns = [], rows = [], k, t;
+    for (k = 0; k < width; k++) {
+      t = floorDiv(iFirst + k, p);
+      if (!columns.length || columns[columns.length - 1] !== t) columns.push(t);
+    }
+    for (k = 0; k < height; k++) {
+      t = floorDiv(jFirst + k, p);
+      if (!rows.length || rows[rows.length - 1] !== t) rows.push(t);
+    }
+    rows.forEach(function (ty) {
+      columns.forEach(function (tx) {
+        if (!supplied.has(tx + ',' + ty)) missing.push([tx, ty]);
+      });
+    });
+    missing.forEach(function (tile, m) {
+      var tx = tile[0], ty = tile[1];
+      /* the neighbour to the north gives its last row, to the south its
+       * first, to the west its last column, to the east its first */
+      [[tx, ty - 1, 'last_row'], [tx, ty + 1, 'first_row'], [tx - 1, ty, 'last_column'],
+        [tx + 1, ty, 'first_column']].forEach(function (side) {
+        (supplied.get(side[0] + ',' + side[1]) || []).forEach(function (k) {
+          var lay = files[k].layout;
+          if (side[2] === 'last_row') edges.push({ missing: m, file: k, row: lay.height - 1, column: null });
+          else if (side[2] === 'first_row') edges.push({ missing: m, file: k, row: 0, column: null });
+          else if (side[2] === 'last_column') edges.push({ missing: m, file: k, row: null, column: lay.width - 1 });
+          else edges.push({ missing: m, file: k, row: null, column: 0 });
+        });
+      });
+    });
+    return { tile: p, missing: missing, edges: edges };
+  }
+
+  /* How many blocks of `size` cells along an axis of `extent` cells hold one
+   * of the window's `n` cells from `first` on, in the file's own cell
+   * numbering: elevation._blocks_met at stride 1, where every block the
+   * window spans holds one, so the count is worked out, never listed. */
+  function elevationBlocksMet(extent, size, first, n) {
+    var low = first > 0 ? first : 0, high = first + n < extent ? first + n : extent;
+    return low < high ? Math.floor((high - 1) / size) - Math.floor(low / size) + 1 : 0;
+  }
+
+  /* The blocks each file gives up, counted without listing them:
+   * elevation._count_blocks. The block rows holding a window row times the
+   * block columns holding a window column (a strip spans every column, so
+   * it is one block column), and the blocks holding each full edge, a row
+   * of tiles or a column of them (or of strips). */
+  function elevationCountBlocks(files, offsets, iFirst, jFirst, width, height, edges) {
+    return files.map(function (found, k) {
+      var lay = found.layout;
+      var count = elevationBlocksMet(lay.height, lay.blockHeight, jFirst - offsets[k][1], height) *
+        elevationBlocksMet(lay.width, lay.blockWidth, iFirst - offsets[k][0], width);
+      edges.forEach(function (edge) {
+        if (edge.file !== k) return;
+        count += edge.row !== null ? Math.ceil(lay.width / lay.blockWidth) : Math.ceil(lay.height / lay.blockHeight);
+      });
+      return count;
+    });
+  }
+
+  /* The blocks to read, file by file in plan order and each file's blocks
+   * in its own order: those the window's cells lie in, and those holding
+   * the edges, each block (keyed by its index and the rows read of it)
+   * once, sorted by index and then rows, a whole block first. */
+  function elevationPlanBlocks(files, offsets, iFirst, jFirst, width, height, edges) {
+    /** @type {PlanBlock[]} */
+    var planned = [];
+    files.forEach(function (found, k) {
+      var lay = found.layout, oi = offsets[k][0], oj = offsets[k][1];
+      /** @type {Map<string, PlanBlock>} */
+      var wanted = new Map();
+      function want(range, inWindow) {
+        var key = range[0] + '|' + (range[3] ? range[3][0] + ',' + range[3][1] : '');
+        if (!wanted.has(key)) {
+          wanted.set(key, { file: k, index: range[0], offset: range[1], length: range[2], rows: range[3],
+            window: inWindow, edges: [] });
+        }
+        return /** @type {PlanBlock} */ (wanted.get(key));
+      }
+      blockRanges(lay, jFirst - oj, jFirst - oj + (height - 1) + 1, iFirst - oi,
+        iFirst - oi + (width - 1) + 1).forEach(function (range) {
+        var origin = elevationBlockOrigin(lay, range[0], range[3]);
+        var shape = elevationBlockShape(lay, range[0], range[3]);
+        if (elevationSteps(origin[0] + oj, shape[0], jFirst, height) === null ||
+            elevationSteps(origin[1] + oi, shape[1], iFirst, width) === null) return;
+        want(range, true);
+      });
+      edges.forEach(function (edge, e) {
+        if (edge.file !== k) return;
+        var ranges = edge.row !== null ? blockRanges(lay, edge.row, edge.row + 1, 0, lay.width)
+          : blockRanges(lay, 0, lay.height, /** @type {number} */ (edge.column),
+            /** @type {number} */ (edge.column) + 1);
+        ranges.forEach(function (range) { want(range, false).edges.push(e); });
+      });
+      Array.from(wanted.values()).sort(function (a, b) {
+        if (a.index !== b.index) return a.index - b.index;
+        var ra = a.rows || [-1, -1], rb = b.rows || [-1, -1];
+        return ra[0] !== rb[0] ? ra[0] - rb[0] : ra[1] - rb[1];
+      }).forEach(function (block) { planned.push(block); });
+    });
+    return planned;
+  }
+
+  /** The reads that bring in a plan's blocks: the ranges of each file to
+   * read, file by file in plan order and in order of offset within a file,
+   * neighbouring blocks read together (within 64 KiB of each other, up to
+   * 16 MiB a read), as Python reads them. Each is {file, name, offset,
+   * length, blocks}: read `length` bytes of the file called `name` from
+   * `offset`, and hand each plan block b listed in `blocks` its own bytes,
+   * plan.blocks[b].length of them from plan.blocks[b].offset. A block with
+   * nothing to read (a sparse one) is in no read.
+   * @param {WindowPlan} plan what planElevationWindow gave
+   * @returns {ElevationRange[]}
+   */
+  function elevationBlockRanges(plan) {
+    /** @type {Map<number, number[]>} */
+    var byFile = new Map();
+    plan.blocks.forEach(function (block, b) {
+      if (!block.length) return;
+      if (!byFile.has(block.file)) byFile.set(block.file, []);
+      /** @type {number[]} */ (byFile.get(block.file)).push(b);
+    });
+    /** @type {ElevationRange[]} */
+    var reads = [];
+    byFile.forEach(function (members, k) {
+      members.sort(function (a, b) { return plan.blocks[a].offset - plan.blocks[b].offset; });
+      /** @type {number[][]} */
+      var groups = [];
+      var start = 0, end = 0;
+      members.forEach(function (b) {
+        var block = plan.blocks[b], stop = block.offset + block.length;
+        if (groups.length && block.offset <= end + ELEVATION_MERGE_GAP &&
+            (end > stop ? end : stop) - start <= ELEVATION_MERGE_MAX) {
+          groups[groups.length - 1].push(b);
+          end = end > stop ? end : stop;
+        } else {
+          groups.push([b]);
+          start = block.offset;
+          end = stop;
+        }
+      });
+      groups.forEach(function (group) {
+        var first = plan.blocks[group[0]].offset, last = 0;
+        group.forEach(function (b) {
+          var stop = plan.blocks[b].offset + plan.blocks[b].length;
+          if (stop > last) last = stop;
+        });
+        reads.push({ file: k, name: plan.files[k].name, offset: first, length: last - first, blocks: group });
+      });
+    });
+    return reads;
+  }
+
+  /* `count` as a whole percentage of `cells`, half up, as
+   * elevation._percent gives it: integers alone (all under 2^53, so the
+   * division is exact enough to floor), and a share short of the whole at
+   * most 99, since "100%" while some cell was read contradicts itself */
+  function elevationPercent(count, cells) {
+    var pct = Math.floor((200 * count + cells) / (2 * cells));
+    return count < cells && pct === 100 ? 99 : pct;
+  }
+
+  /* a tile of the plan's reference lattice named by its south-west corner,
+   * as tiles are: "N07 W013" */
+  function planTileCode(plan, tile) {
+    var lon0 = Math.floor(plan.x0 + 0.5) + tile[0];
+    var lat0 = Math.floor(plan.y0 + 0.5) - 1 - tile[1];
+    return (lat0 >= 0 ? 'N' : 'S') + String(Math.abs(lat0)).padStart(2, '0') + ' ' +
+      (lon0 >= 0 ? 'E' : 'W') + String(Math.abs(lon0)).padStart(3, '0');
+  }
+
+  /** Read the planned window, block by block, into one grid:
+   * elevation.read_window. Each block's samples are judged first (no data,
+   * a height that cannot be ground, or a height), then written where they
+   * fall. Where files overlap, the first file's height is kept and every
+   * other file's height there must be the same to the bit; any that differ
+   * refuse the join, after every block is read. A missing tile is taken as
+   * open sea, with no height, only when every height on the full edges of
+   * the supplied tiles beside it is at or below sea level; any other cell
+   * no file covers is a gap. With no height in the window at all, it is
+   * refused.
+   *
+   * `blocks[b]` holds the bytes of plan.blocks[b] (its `length` bytes from
+   * its `offset`, as elevationBlockRanges' reads bring them in); a block
+   * with nothing to read needs none. `progress(fraction, label)`, when
+   * given, is told how far the read has gone.
+   *
+   * The read holds the grid ({lons, lats, z south row first, rows, cols,
+   * shown, assumedSea, sourceId, seaClean, label, credit, notice, surface,
+   * files, cellNote}); the square shown as rows [r0, r1) and columns
+   * [c0, c1) of it; assumedSea, 1 where a missing tile was taken as sea;
+   * reasons, why each cell holds what it does (0 a height, 1 no data,
+   * 2 implausible, 3 not supplied, assumed sea included), south row first;
+   * the counts of cells, voids, implausible heights, cells no file covers
+   * (uncovered, not counting assumed sea) and assumed sea, and the share
+   * covered; the read report (notes) sentence by sentence in the order the
+   * apps print it, what is said about single files (prompts), the surface
+   * note, the Copernicus notice or null, the credit line a figure carries
+   * (figureCredit), and the plan itself, as Python's read keeps it, so
+   * that terrainCaptions states the radius and margin the window was read
+   * at.
+   * @param {WindowPlan} plan what planElevationWindow gave
+   * @param {Array<Uint8Array|null|undefined>} blocks each planned block's bytes, by its place in plan.blocks
+   * @param {Rec|null} [cfg] the project's configuration (or a part of it, as withConfig takes)
+   * @param {((fraction: number, label: string) => void)|null} [progress]
+   * @returns {Rec}
+   */
+  function readElevationWindow(plan, blocks, cfg, progress) {
+    var terrain = withConfig(cfg).terrain;
+    var labelRead = phrase('terrain.stage_read');
+    if (progress) progress(0.0, labelRead);
+    var width = plan.width, height = plan.height, cells = width * height;
+    var iFirst = plan.ci - plan.hx, jFirst = plan.cj - plan.hy;
+    /* row 0 north while reading */
+    var win = new Float64Array(cells).fill(NaN);
+    var why = new Uint8Array(cells).fill(3);
+    var owner = new Int32Array(cells).fill(-1);
+    var edgeCount = plan.missing.map(function () { return 0; });
+    var edgeLand = plan.missing.map(function () { return false; });
+    var disagreements = 0, largest = 0.0;
+    /* the files of the first disagreement: the one already holding the
+     * cell, and the one that disagrees with it */
+    /** @type {Array<[string, string]>} */
+    var pair = [];
+    /** @type {[number, number]} */
+    var bounds = [terrain.implausible_below_m, terrain.implausible_above_m];
+    var seaLevel = terrain.sea_level_m;
+    var empty = new Uint8Array(0);
+
+    plan.blocks.forEach(function (block, b) {
+      var lay = plan.files[block.file].layout;
+      var decoded = decodeTiffBlock(lay, block.index, blocks[b] || empty, block.rows, bounds);
+      var values = decoded.values, reasons = decoded.reasons, cols = decoded.cols;
+      var origin = elevationBlockOrigin(lay, block.index, block.rows), row0 = origin[0], col0 = origin[1];
+      if (block.window) {
+        var oi = plan.offsets[block.file][0], oj = plan.offsets[block.file][1];
+        var down = elevationSteps(row0 + oj, decoded.rows, jFirst, height);
+        var across = elevationSteps(col0 + oi, cols, iFirst, width);
+        if (down !== null && across !== null) {
+          /* window cell (q, k) is the block's cell (q - dr, k - dc) */
+          var dr = row0 + oj - jFirst, dc = col0 + oi - iFirst;
+          for (var q = down[0]; q <= down[1]; q++) {
+            for (var k = across[0]; k <= across[1]; k++) {
+              var at = (q - dr) * cols + (k - dc), c = q * width + k;
+              var v = values[at], reason = reasons[at];
+              if (reason === 0) {
+                if (why[c] === 0) {
+                  if (win[c] !== v) {
+                    disagreements += 1;
+                    var gap = Math.abs(win[c] - v);
+                    if (gap > largest) largest = gap;
+                    if (!pair.length) pair.push([plan.files[owner[c]].name, plan.files[block.file].name]);
+                  }
+                } else {
+                  win[c] = v;
+                  why[c] = 0;
+                  owner[c] = block.file;
+                }
+              } else if (why[c] !== 0 && reason < why[c]) {
+                why[c] = reason;
+              }
+            }
+          }
+        }
+      }
+      block.edges.forEach(function (e) {
+        var edge = plan.edges[e], i, n, at, step;
+        if (edge.row !== null) {
+          at = (edge.row - row0) * cols;
+          n = cols;
+          step = 1;
+        } else {
+          at = /** @type {number} */ (edge.column) - col0;
+          n = decoded.rows;
+          step = cols;
+        }
+        for (i = 0; i < n; i++, at += step) {
+          if (reasons[at] !== 0) continue;
+          edgeCount[edge.missing] += 1;
+          if (values[at] > seaLevel) edgeLand[edge.missing] = true;
+        }
+      });
+      if (progress) progress((b + 1) / plan.blocks.length, labelRead);
+    });
+
+    if (disagreements) {
+      throw tiffError('terrain.join_disagree', { a: pair[0][0], b: pair[0][1], n: disagreements, m: largest });
+    }
+
+    /* a missing tile is sea, with no height, when the full edges beside it
+     * hold heights and every one of them is at or below sea level */
+    var sea = new Uint8Array(cells);
+    /** @type {string[]} */
+    var seaTiles = [];
+    if (plan.missing.length) {
+      /** @type {number[]} */
+      var tileX = [];
+      /** @type {number[]} */
+      var tileY = [];
+      for (var x = 0; x < width; x++) tileX.push(floorDiv(iFirst + x, plan.tile));
+      for (var y = 0; y < height; y++) tileY.push(floorDiv(jFirst + y, plan.tile));
+      plan.missing.forEach(function (tile, m) {
+        if (!(edgeCount[m] && !edgeLand[m])) return;
+        /* a tile is named only when some window cell of it is taken as sea:
+         * a window reaching just the row or column an .hgt tile shares with
+         * the next meets that tile without a cell of it going uncovered */
+        var found = false;
+        for (var r = 0; r < height; r++) {
+          if (tileY[r] !== tile[1]) continue;
+          for (var col = 0; col < width; col++) {
+            if (tileX[col] === tile[0] && why[r * width + col] === 3) {
+              sea[r * width + col] = 1;
+              found = true;
+            }
+          }
+        }
+        if (found) seaTiles.push(planTileCode(plan, tile));
+      });
+    }
+    var voids = 0, implausible = 0, open = 0, assumed = 0, held = 0, i;
+    for (i = 0; i < cells; i++) {
+      if (why[i] === 0) held += 1;
+      else if (why[i] === 1) voids += 1;
+      else if (why[i] === 2) implausible += 1;
+      else open += 1;
+      assumed += sea[i];
+    }
+    if (!held) {
+      throw tiffError('terrain.no_elevations', { radius: plan.radiusKm, where: plan.centre.label });
+    }
+    var uncovered = open - assumed;
+    var credited = terrainCredit(plan.files, plan.declared);
+    var dx = plan.dx, dy = plan.dy;
+    /* the files read are those with a block in the plan, an edge block
+     * included, in plan order; the label and credit stay the whole set's */
+    var used = plan.files.map(function () { return false; });
+    plan.blocks.forEach(function (block) { used[block.file] = true; });
+    var names = plan.files.filter(function (f, k) { return used[k]; }).map(function (f) { return f.name; });
+
+    /* the grid, the mask and the reasons south row first */
+    var z = new Float64Array(cells), seaSouth = new Uint8Array(cells), whySouth = new Uint8Array(cells);
+    for (var row = 0; row < height; row++) {
+      var from = (height - 1 - row) * width;
+      z.set(win.subarray(from, from + width), row * width);
+      seaSouth.set(sea.subarray(from, from + width), row * width);
+      whySouth.set(why.subarray(from, from + width), row * width);
+    }
+    var cellNote = elevationCellNote(dx, dy);
+    /* the summary counts the square shown, which is what its radius
+     * describes; the margin read beyond it has a sentence of its own */
+    var shown = plan.shown;
+    var notes = [phrase('terrain.read_summary', { n: names.length, names: andJoin(names),
+      cells: (shown[1] - shown[0]) * (shown[3] - shown[2]), dx: dx, dy: dy, where: plan.centre.label,
+      radius: plan.radiusKm })];
+    if (plan.centre.note) notes.push(plan.centre.note);
+    if (plan.marginKm > 0) notes.push(phrase('terrain.read_margin', { margin: plan.marginKm }));
+    if (uncovered && 200 * uncovered < cells) {
+      notes.push(phrase('terrain.read_uncovered_little', { count: uncovered }));
+    } else if (uncovered) {
+      notes.push(phrase('terrain.read_uncovered', { pct: elevationPercent(uncovered, cells) }));
+    }
+    if (assumed && 200 * assumed < cells) {
+      notes.push(phrase('terrain.read_assumed_sea_little', { count: assumed, n: seaTiles.length,
+        tiles: andJoin(seaTiles), level: seaLevel, product: PRODUCT_NAMES[setSource(plan.sources)] }));
+    } else if (assumed) {
+      notes.push(phrase('terrain.read_assumed_sea', { pct: elevationPercent(assumed, cells), n: seaTiles.length,
+        tiles: andJoin(seaTiles), level: seaLevel, product: PRODUCT_NAMES[setSource(plan.sources)] }));
+    }
+    if (voids) notes.push(phrase('terrain.read_voids', { n: voids }));
+    if (implausible) {
+      notes.push(phrase('terrain.read_implausible', { n: implausible, lo: terrain.implausible_below_m,
+        hi: terrain.implausible_above_m }));
+    }
+    notes.push(credited.surface);
+    var figureCredit = credited.credit
+      ? phrase('terrain.figure_credit', { label: credited.label, credit: credited.credit, dx: dx, dy: dy })
+      : phrase('terrain.figure_credit_bare', { label: credited.label, dx: dx, dy: dy });
+    /** @type {string[]} */
+    var prompts = [];
+    plan.files.forEach(function (f) {
+      fileNotes(f, plan.declared).forEach(function (note) { prompts.push(note); });
+    });
+    if (progress) progress(1.0, labelRead);
+    var grid = {
+      lons: plan.lons, lats: plan.lats, z: z, rows: height, cols: width, shown: plan.shown.slice(),
+      assumedSea: seaSouth, sourceId: setSource(plan.sources), seaClean: credited.seaClean,
+      label: credited.label, credit: credited.credit, notice: credited.notice, surface: credited.surface,
+      files: names, cellNote: cellNote,
+    };
+    return {
+      grid: grid, assumedSea: seaSouth, reasons: whySouth, shown: plan.shown.slice(), cells: cells,
+      voids: voids, uncovered: uncovered, implausible: implausible, assumed: assumed,
+      coverage: (cells - uncovered - assumed) / cells, centre: plan.centre, notes: notes, prompts: prompts,
+      surface: credited.surface, notice: credited.notice, figureCredit: figureCredit, plan: plan,
+    };
+  }
+
+  Object.assign(C, {
+    hgtLayout: hgtLayout, elevationFile: elevationFile, fileNotes: fileNotes, terrainCredit: terrainCredit,
+    sinCosDeg: sinCosDeg, wgs84CellSize: wgs84CellSize, rowMetric: rowMetric, windowCentre: windowCentre,
+    planElevationWindow: planElevationWindow, elevationBlockRanges: elevationBlockRanges,
+    readElevationWindow: readElevationWindow,
+  });
+
+  /* ============================================== Terrain analysis: routing
+   * groundwater/mapping/terrain_analysis.py's routing core: where water
+   * goes on an elevation model, and how much ground drains through each
+   * cell. classifyCells says which cells are land, sea or no data, and
+   * voids a sea area whose edge runs straight along the grid, the mark of
+   * a 0 m fill rather than a coast. fillDepressions raises every hollow to
+   * the height it spills at. flowDirections gives each land cell its
+   * steepest (D8) neighbour on that surface, and resolveFlats routes the
+   * cells left level across their flat, away from higher ground and
+   * towards lower (Barnes, Lehman and Mulla 2014). accumulateFlow counts
+   * the cells and adds up the ground upstream of each, flagging what
+   * drains in from the window's edge, from beside a void or, for a source
+   * not known to write sea as 0 m, from beside the sea.
+   *
+   * Grids are south row first and row-major, as readElevationWindow gives
+   * them: cell i = r * cols + c, and north is row + 1. Every scan visits
+   * the eight neighbours in one order, E, S, W, N, SE, SW, NW, NE, which
+   * settles every tie; Python's vectorised twin settles each the same way,
+   * so the engines agree to the bit on the classes, the filled surface
+   * (one answer however it is found, once -0 is gone), the codes and the
+   * counts. Counts and areas are whole numbers held in Float64Array, exact
+   * below 2^53 in any order: an Int32Array or Uint32Array would wrap past
+   * 2^32 units of 0.01 square metres (one catchment in the default window
+   * reaches about 4e10) and a Float32Array would round a count across the
+   * stream threshold. Everything is synchronous and DOM-free, for the
+   * worker and the Node sandboxes alike. */
+
+  /* The neighbour order K as (row, column) steps, north being row + 1, and
+   * the ESRI code each direction is written with. */
+  var ROUTE_DR = [0, -1, 0, 1, -1, -1, 1, 1];
+  var ROUTE_DC = [1, 0, -1, 0, 1, -1, -1, 1];
+  var ROUTE_ESRI = [1, 4, 16, 64, 2, 8, 32, 128];
+  /* the k an ESRI code names: -1 for 0 (no direction), 255 (leaves the
+   * analysis) and anything else */
+  var ROUTE_K_OF_CODE = (function () {
+    var out = new Int8Array(256).fill(-1);
+    for (var k = 0; k < 8; k++) out[ROUTE_ESRI[k]] = k;
+    return out;
+  }());
+  var ROUTE_VOID = 0, ROUTE_LAND = 1, ROUTE_SEA = 2;
+
+  /* the number of cells in a rows by cols grid, after checking that each
+   * array given for it holds one value a cell (a grid with no cells routes
+   * to empty layers, in both engines) */
+  function routeCells(rows, cols, arrays) {
+    if (!(Number.isInteger(rows) && Number.isInteger(cols) && rows >= 0 && cols >= 0)) {
+      throw new Error('a grid of ' + rows + ' by ' + cols + ' cells has no shape to route');
+    }
+    var n = rows * cols;
+    for (var a = 0; a < arrays.length; a++) {
+      if (arrays[a].length !== n) {
+        throw new Error('a ' + rows + ' by ' + cols + ' grid holds ' + n + ' cells, not ' + arrays[a].length);
+      }
+    }
+    return n;
+  }
+
+  /* A metric gives each row its own value, once (rowMetric's arrays for
+   * this grid). Both engines refuse one of any other length, which would be
+   * read past its end as NaN or belong to another grid. */
+  function routeRows(what, values, rows) {
+    if (values.length !== rows) {
+      throw new Error('the metric gives ' + values.length + ' ' + what + ', not one for each of ' + rows + ' rows');
+    }
+  }
+
+  /* Spread a code through the 8-connected cells holding another, from the
+   * first `tail` cells of `queue`, which already hold it: every cell
+   * reached changes from `from` to `to` and joins the queue's end. */
+  function routeSpread(cls, from, to, queue, tail, rows, cols) {
+    for (var head = 0; head < tail; head++) {
+      var i = queue[head], r = (i / cols) | 0, c = i - r * cols;
+      for (var k = 0; k < 8; k++) {
+        var rr = r + ROUTE_DR[k], cc = c + ROUTE_DC[k];
+        if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+        var j = rr * cols + cc;
+        if (cls[j] === from) {
+          cls[j] = to;
+          queue[tail++] = j;
+        }
+      }
+    }
+  }
+
+  /**
+   * Which cells are land, sea or no data: terrain_analysis.classify_cells.
+   * Sea is ground at or below `seaLevel` joined, cell to diagonal cell, to
+   * the grid's edge or to a missing tile taken as sea;
+   * low ground inland that is not joined stays land, to be filled. A sea
+   * area that meets land along a straight row or column of `straightEdge`
+   * cells or more is not a coast but a mosaic's 0 m fill - real coasts
+   * zigzag across the lattice, in runs of at most 45 cells on Sierra
+   * Leone's tiles - so the whole of it becomes no data (`zeroFill`) and
+   * drainage ends at it flagged, rather than 100 km inland, unflagged.
+   * Every height goes through `+ 0` first, so a -0 reads as 0 and the two
+   * engines' fills cannot differ in a zero's sign.
+   * @param {ArrayLike<number>} z heights in metres, south row first; NaN or an infinity where there is none
+   * @param {number} rows the grid's rows
+   * @param {number} cols the grid's columns
+   * @param {number} seaLevel the height at or below which ground joined to the edge is sea (terrain.sea_level_m)
+   * @param {ArrayLike<number>|null} [assumedSea] 1 where a missing tile was taken as sea, with no height;
+   *   null or left out for none
+   * @param {number|null} [straightEdge] the straight run of sea edge, in cells, that marks a 0 m fill
+   *   (terrain.sea_straight_edge_cells; 150 when left out)
+   * @returns {{cls: Uint8Array, seed: Uint8Array, zeroFill: Uint8Array, zt: Float64Array}} cls 0 no data
+   *   (the zero-filled cells included), 1 land, 2 sea; seed 1 on the land cells on the edge or beside sea
+   *   or no data; zeroFill 1 on the cells moved from sea to no data; zt the working heights, NaN on no
+   *   data and on assumed sea
+   */
+  function classifyCells(z, rows, cols, seaLevel, assumedSea, straightEdge) {
+    var n = routeCells(rows, cols, assumedSea ? [z, assumedSea] : [z]);
+    var longest = straightEdge === undefined || straightEdge === null ? 150 : straightEdge;   // as None in Python
+    var cls = new Uint8Array(n), seed = new Uint8Array(n), zeroFill = new Uint8Array(n);
+    var zt = new Float64Array(n), queue = new Int32Array(n);
+    /* working codes besides the three classes: a sea candidate not (yet)
+     * joined to the edge, and a cell of a zero-filled area */
+    var CANDIDATE = 3, ZERO = 4;
+    var i, r, c, k, j, a, b, run, tail, v;
+    for (i = 0; i < n; i++) {
+      v = z[i];
+      if (assumedSea && assumedSea[i]) {
+        cls[i] = CANDIDATE;
+        zt[i] = NaN;
+      } else if (typeof v === 'number' && v - v === 0) {   // finite: NaN and the infinities give NaN
+        zt[i] = v + 0.0;
+        cls[i] = zt[i] <= seaLevel ? CANDIDATE : ROUTE_LAND;
+      } else {
+        zt[i] = NaN;
+      }
+    }
+
+    /* sea: the candidates joined to one on the edge or to assumed sea,
+     * spread from those cells in ascending order */
+    tail = 0;
+    for (i = 0; i < n; i++) {
+      if (cls[i] !== CANDIDATE) continue;
+      r = (i / cols) | 0;
+      c = i - r * cols;
+      if (r === 0 || r === rows - 1 || c === 0 || c === cols - 1 || (assumedSea && assumedSea[i])) {
+        cls[i] = ROUTE_SEA;
+        queue[tail++] = i;
+      }
+    }
+    routeSpread(cls, CANDIDATE, ROUTE_SEA, queue, tail, rows, cols);
+    for (i = 0; i < n; i++) if (cls[i] === CANDIDATE) cls[i] = ROUTE_LAND;
+
+    /* The straight edges: runs of row pairs (r, r + 1) along the columns,
+     * then of column pairs (c, c + 1) along the rows, where one cell is
+     * sea with a height and the other land. The sea cell of each pair in a
+     * run of `longest` or more is marked in zeroFill for now. */
+    for (r = 0; r + 1 < rows; r++) {
+      run = 0;
+      for (c = 0; c <= cols; c++) {
+        a = r * cols + c;
+        b = a + cols;
+        if (c < cols && ((cls[a] === ROUTE_SEA && zt[a] === zt[a] && cls[b] === ROUTE_LAND) ||
+                         (cls[a] === ROUTE_LAND && cls[b] === ROUTE_SEA && zt[b] === zt[b]))) {
+          run += 1;
+          continue;
+        }
+        if (run >= longest) {
+          for (a = r * cols + c - run; a < r * cols + c; a++) zeroFill[cls[a] === ROUTE_SEA ? a : a + cols] = 1;
+        }
+        run = 0;
+      }
+    }
+    for (c = 0; c + 1 < cols; c++) {
+      run = 0;
+      for (r = 0; r <= rows; r++) {
+        a = r * cols + c;
+        b = a + 1;
+        if (r < rows && ((cls[a] === ROUTE_SEA && zt[a] === zt[a] && cls[b] === ROUTE_LAND) ||
+                         (cls[a] === ROUTE_LAND && cls[b] === ROUTE_SEA && zt[b] === zt[b]))) {
+          run += 1;
+          continue;
+        }
+        if (run >= longest) {
+          for (var s = r - run; s < r; s++) {
+            a = s * cols + c;
+            zeroFill[cls[a] === ROUTE_SEA ? a : a + 1] = 1;
+          }
+        }
+        run = 0;
+      }
+    }
+    /* each marked cell's whole sea area, assumed sea in it included,
+     * becomes no data */
+    tail = 0;
+    for (i = 0; i < n; i++) {
+      if (zeroFill[i]) {
+        cls[i] = ZERO;
+        queue[tail++] = i;
+      }
+    }
+    if (tail) {
+      routeSpread(cls, ROUTE_SEA, ZERO, queue, tail, rows, cols);
+      for (i = 0; i < n; i++) {
+        if (cls[i] !== ZERO) continue;
+        cls[i] = ROUTE_VOID;
+        zeroFill[i] = 1;
+        zt[i] = NaN;
+      }
+    }
+
+    /* the seeds: land on the edge, or beside sea or no data (found from
+     * the sea and no data, which are few, rather than from every cell) */
+    for (r = 0; r < rows; r++) {
+      for (c = 0; c < cols; c++) {
+        i = r * cols + c;
+        if (cls[i] === ROUTE_LAND) {
+          if (r === 0 || r === rows - 1 || c === 0 || c === cols - 1) seed[i] = 1;
+          continue;
+        }
+        for (k = 0; k < 8; k++) {
+          var rr = r + ROUTE_DR[k], cc = c + ROUTE_DC[k];
+          if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+          j = rr * cols + cc;
+          if (cls[j] === ROUTE_LAND) seed[j] = 1;
+        }
+      }
+    }
+    return { cls: cls, seed: seed, zeroFill: zeroFill, zt: zt };
+  }
+
+  /**
+   * The depression-filled surface: terrain_analysis.fill_depressions.
+   * Each land cell is raised to the lowest height at which
+   * water standing on it could reach a seed - the least, over the land
+   * paths to a seed, of the highest cell on the path - so every land cell
+   * has a way out that never climbs. The fill is unique, so this
+   * Priority-Flood (Barnes, Lehman and Mulla 2014, with the queue of cells
+   * already settled at their pit's spill height) gives the bits Python's
+   * basin graph gives. Seeds keep their height, sea keeps its own (NaN on
+   * assumed sea) and no data stays NaN; land with no path to a seed, which
+   * only a seed mask other than classifyCells' can leave, is +Infinity.
+   * @param {ArrayLike<number>} zt the working heights classifyCells gives
+   * @param {ArrayLike<number>} cls the classes classifyCells gives: 0 no data, 1 land, 2 sea
+   * @param {ArrayLike<number>} seed 1 on the land cells water may leave the grid from
+   * @param {number} rows the grid's rows
+   * @param {number} cols the grid's columns
+   * @returns {Float64Array} the filled heights, south row first
+   */
+  function fillDepressions(zt, cls, seed, rows, cols) {
+    var n = routeCells(rows, cols, [zt, cls, seed]);
+    var filled = new Float64Array(n), closed = new Uint8Array(n);
+    var i;
+    for (i = 0; i < n; i++) {
+      if (cls[i] === ROUTE_LAND) {
+        filled[i] = zt[i];
+      } else {
+        filled[i] = cls[i] === ROUTE_SEA ? zt[i] : NaN;
+        closed[i] = 1;
+      }
+    }
+    /* A binary min-heap keyed by (height, the order cells were put in),
+     * grown as needed; and the pit queue, first in first out, which holds
+     * each cell at most once. */
+    var size = 0, order = 0, capacity = 1024;
+    var keys = new Float64Array(capacity), seqs = new Float64Array(capacity), cells = new Int32Array(capacity);
+    var pit = new Int32Array(n), pitHead = 0, pitTail = 0;
+    var push = function (key, cell) {
+      if (size === capacity) {
+        capacity *= 2;
+        var k2 = new Float64Array(capacity), s2 = new Float64Array(capacity), c2 = new Int32Array(capacity);
+        k2.set(keys);
+        s2.set(seqs);
+        c2.set(cells);
+        keys = k2;
+        seqs = s2;
+        cells = c2;
+      }
+      var seq = order++, at = size++;
+      while (at > 0) {
+        var up = (at - 1) >> 1;
+        if (keys[up] < key || (keys[up] === key && seqs[up] < seq)) break;
+        keys[at] = keys[up];
+        seqs[at] = seqs[up];
+        cells[at] = cells[up];
+        at = up;
+      }
+      keys[at] = key;
+      seqs[at] = seq;
+      cells[at] = cell;
+    };
+    var pop = function () {
+      var top = cells[0];
+      size -= 1;
+      if (size > 0) {
+        var key = keys[size], seq = seqs[size], cell = cells[size], at = 0;
+        for (;;) {
+          var least = 2 * at + 1;
+          if (least >= size) break;
+          var right = least + 1;
+          if (right < size && (keys[right] < keys[least] ||
+                               (keys[right] === keys[least] && seqs[right] < seqs[least]))) least = right;
+          if (!(keys[least] < key || (keys[least] === key && seqs[least] < seq))) break;
+          keys[at] = keys[least];
+          seqs[at] = seqs[least];
+          cells[at] = cells[least];
+          at = least;
+        }
+        keys[at] = key;
+        seqs[at] = seq;
+        cells[at] = cell;
+      }
+      return top;
+    };
+    for (i = 0; i < n; i++) {
+      if (cls[i] === ROUTE_LAND && seed[i]) {
+        closed[i] = 1;
+        push(filled[i], i);
+      }
+    }
+    while (pitHead < pitTail || size > 0) {
+      var cell = pitHead < pitTail ? pit[pitHead++] : pop();
+      var level = filled[cell], r = (cell / cols) | 0, c = cell - r * cols;
+      for (var k = 0; k < 8; k++) {
+        var rr = r + ROUTE_DR[k], cc = c + ROUTE_DC[k];
+        if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+        var j = rr * cols + cc;
+        if (closed[j]) continue;
+        closed[j] = 1;
+        if (filled[j] <= level) {
+          filled[j] = level;
+          pit[pitTail++] = j;
+        } else {
+          push(filled[j], j);
+        }
+      }
+    }
+    /* land the flood never reached has no path to a seed: the least over
+     * no paths is +Infinity, which Python's basin graph gives too. Only a
+     * seed mask other than classifyCells' leaves such land. */
+    for (i = 0; i < n; i++) if (cls[i] === ROUTE_LAND && !closed[i]) filled[i] = Infinity;
+    return filled;
+  }
+
+  /**
+   * Each land cell's steepest way down on the filled surface, as an ESRI
+   * D8 code: terrain_analysis.flow_directions. The drop to each
+   * neighbour is divided by the distance between the cell centres in the
+   * cell's own row; land and sea neighbours take part (sea at its own
+   * height, assumed sea at sea level) and no data does not. Only a
+   * neighbour whose height is below the cell's is ranked, by its drop, so
+   * a drop that underflows to 0 still counts as a way down. The first
+   * steepest neighbour in the order E, S, W, N, SE, SW, NW, NE wins a tie,
+   * so ties go to cardinals first. A seed with no neighbour below it
+   * flows out of the analysis (255); any other land cell with none is
+   * level (0), for resolveFlats; every cell that is not land is 0.
+   * @param {ArrayLike<number>} zt the working heights classifyCells gives
+   * @param {ArrayLike<number>} filled the heights fillDepressions gives
+   * @param {ArrayLike<number>} cls the classes: 0 no data, 1 land, 2 sea
+   * @param {ArrayLike<number>} seed 1 on the land cells water may leave the grid from
+   * @param {number} rows the grid's rows
+   * @param {number} cols the grid's columns
+   * @param {{dx: ArrayLike<number>, dy: ArrayLike<number>, dg: ArrayLike<number>}} metric each row's cell
+   *   width, height and diagonal in metres, as rowMetric gives them
+   * @param {number} seaLevel the height assumed sea stands at (terrain.sea_level_m)
+   * @returns {Uint8Array} the D8 codes, south row first
+   */
+  function flowDirections(zt, filled, cls, seed, rows, cols, metric, seaLevel) {
+    var n = routeCells(rows, cols, [zt, filled, cls, seed]);
+    routeRows('cell widths', metric.dx, rows);
+    routeRows('cell heights', metric.dy, rows);
+    routeRows('cell diagonals', metric.dg, rows);
+    var code = new Uint8Array(n), dist = new Float64Array(8);
+    for (var r = 0; r < rows; r++) {
+      dist[0] = dist[2] = metric.dx[r];
+      dist[1] = dist[3] = metric.dy[r];
+      dist[4] = dist[5] = dist[6] = dist[7] = metric.dg[r];
+      for (var c = 0; c < cols; c++) {
+        var i = r * cols + c;
+        if (cls[i] !== ROUTE_LAND) continue;
+        var here = filled[i], best = 0.0, bk = -1;
+        for (var k = 0; k < 8; k++) {
+          var rr = r + ROUTE_DR[k], cc = c + ROUTE_DC[k];
+          if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+          var j = rr * cols + cc, kind = cls[j];
+          if (kind === ROUTE_VOID) continue;
+          var there = kind === ROUTE_LAND ? filled[j] : (Number.isFinite(zt[j]) ? zt[j] : seaLevel);
+          var drop = (here - there) / dist[k];
+          /* lower is decided on the heights, not on the drop's sign: a
+           * difference of a few times 2^-1074 divided by some thirty metres
+           * rounds to +0, and the cell would be taken for a pit */
+          if (here > there && (bk < 0 || drop > best)) {
+            best = drop;
+            bk = k;
+          }
+        }
+        code[i] = bk >= 0 ? ROUTE_ESRI[bk] : (seed[i] ? 255 : 0);
+      }
+    }
+    return code;
+  }
+
+  /* Breadth-first levels over a flat: the cells already at level 1 are the
+   * first `tail` of `queue`; each step moves to a level (code 0) land
+   * neighbour of the same filled height not yet reached. */
+  function routeFlatLevels(level, queue, tail, filled, cls, codeD8, rows, cols) {
+    for (var head = 0; head < tail; head++) {
+      var i = queue[head], r = (i / cols) | 0, c = i - r * cols, here = filled[i], next = level[i] + 1;
+      for (var k = 0; k < 8; k++) {
+        var rr = r + ROUTE_DR[k], cc = c + ROUTE_DC[k];
+        if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+        var j = rr * cols + cc;
+        if (level[j] === 0 && cls[j] === ROUTE_LAND && codeD8[j] === 0 && filled[j] === here) {
+          level[j] = next;
+          queue[tail++] = j;
+        }
+      }
+    }
+  }
+
+  /**
+   * Directions across flats: terrain_analysis.resolve_flats, after
+   * Barnes, Lehman and Mulla (2014). A level land cell (D8 code 0) is
+   * routed down a mask that falls away from the higher ground beside its
+   * flat and towards the flat's lower edge, the second weighted double so
+   * that the way out always wins. One maximum over the whole grid stands
+   * in for Barnes's per-flat maximum: within a flat the two differ by a
+   * constant, so every comparison, and so every direction, is the same,
+   * and the flats need no labels. Ties go to the first neighbour in the
+   * order E, S, W, N, SE, SW, NW, NE. On a filled surface every level cell
+   * has a way out; `unresolved` counts any that find none, which keep 0.
+   * @param {ArrayLike<number>} filled the heights fillDepressions gives
+   * @param {ArrayLike<number>} cls the classes: 0 no data, 1 land, 2 sea
+   * @param {ArrayLike<number>} codeD8 the codes flowDirections gives
+   * @param {number} rows the grid's rows
+   * @param {number} cols the grid's columns
+   * @returns {{code: Uint8Array, unresolved: number}} the codes with the level cells routed
+   */
+  function resolveFlats(filled, cls, codeD8, rows, cols) {
+    var n = routeCells(rows, cols, [filled, cls, codeD8]);
+    var code = new Uint8Array(n);
+    code.set(codeD8);
+    var away = new Int32Array(n), towards = new Int32Array(n), queue = new Int32Array(n);
+    var i, r, c, k, rr, cc, j, here, tail;
+    /* The high edges (level cells beside higher land) start the away
+     * levels, the low edges (cells with a way down beside a level cell of
+     * their height) the towards levels. Both are found from the level
+     * cells, a few in each hundred, rather than from every cell. */
+    for (r = 0; r < rows; r++) {
+      for (c = 0; c < cols; c++) {
+        i = r * cols + c;
+        if (cls[i] !== ROUTE_LAND || codeD8[i] !== 0) continue;
+        here = filled[i];
+        for (k = 0; k < 8; k++) {
+          rr = r + ROUTE_DR[k];
+          cc = c + ROUTE_DC[k];
+          if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+          j = rr * cols + cc;
+          if (cls[j] !== ROUTE_LAND) continue;
+          if (filled[j] > here) away[i] = 1;
+          else if (codeD8[j] !== 0 && filled[j] === here) towards[j] = 1;
+        }
+      }
+    }
+    tail = 0;
+    for (i = 0; i < n; i++) if (away[i]) queue[tail++] = i;
+    routeFlatLevels(away, queue, tail, filled, cls, codeD8, rows, cols);
+    tail = 0;
+    for (i = 0; i < n; i++) if (towards[i]) queue[tail++] = i;
+    routeFlatLevels(towards, queue, tail, filled, cls, codeD8, rows, cols);
+    var most = 0;
+    for (i = 0; i < n; i++) if (away[i] > most) most = away[i];
+    /* the mask, written over the away levels: (most - away) + 2 towards
+     * where the away pass reached, 2 towards elsewhere (0 off the flats) */
+    for (i = 0; i < n; i++) away[i] = away[i] > 0 ? (most - away[i]) + 2 * towards[i] : 2 * towards[i];
+    var mask = away, unresolved = 0;
+    for (r = 0; r < rows; r++) {
+      for (c = 0; c < cols; c++) {
+        i = r * cols + c;
+        if (cls[i] !== ROUTE_LAND || codeD8[i] !== 0) continue;
+        here = filled[i];
+        var best = mask[i], bk = -1;
+        for (k = 0; k < 8; k++) {
+          rr = r + ROUTE_DR[k];
+          cc = c + ROUTE_DC[k];
+          if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+          j = rr * cols + cc;
+          if (cls[j] === ROUTE_LAND && filled[j] === here && mask[j] < best) {
+            best = mask[j];
+            bk = k;
+          }
+        }
+        if (bk >= 0) code[i] = ROUTE_ESRI[bk];
+        else unresolved += 1;
+      }
+    }
+    return { code: code, unresolved: unresolved };
+  }
+
+  /**
+   * How much drains through each land cell: terrain_analysis.accumulate_flow.
+   * `count` is the cells upstream, the cell itself included
+   * (TauDEM and Whitebox count it; ESRI's is one less), and `areaUnits`
+   * their ground in whole units of 0.01 square metres, each cell its row's
+   * auRow, so both are exact whatever order cells are added in. `flag`
+   * marks a cell some of whose upstream ground lies on the window's edge,
+   * beside no data or, unless `seaClean`, beside sea: ground beyond those
+   * may drain in or out unseen, so the area there is uncertain either way
+   * (TauDEM's AreaD8 rule, flagging instead of deleting). Cells that are
+   * not land hold 0 in all three.
+   * @param {ArrayLike<number>} code the codes resolveFlats gives
+   * @param {ArrayLike<number>} cls the classes: 0 no data, 1 land, 2 sea
+   * @param {number} rows the grid's rows
+   * @param {number} cols the grid's columns
+   * @param {{auRow: ArrayLike<number>}} metric each row's cell area in whole units of 0.01 square metres,
+   *   as rowMetric gives it
+   * @param {boolean} seaClean whether the source is known to write sea as 0 m, so sea flags nothing
+   * @returns {{count: Float64Array, areaUnits: Float64Array, flag: Uint8Array}}
+   */
+  function accumulateFlow(code, cls, rows, cols, metric, seaClean) {
+    var n = routeCells(rows, cols, [code, cls]);
+    routeRows('cell areas', metric.auRow, rows);
+    /* Both engines refuse a cell area that is not a whole number of units,
+     * or so large that the largest times the cells reaches 2^53: Python's
+     * int64 would cut off a fraction that a Float64Array keeps, and past
+     * 2^53 the totals here would round where Python's are exact. A -0 is
+     * taken as 0, as int64 takes it. */
+    var auRow = new Float64Array(rows), most = 0;
+    for (var a = 0; a < rows; a++) {
+      auRow[a] = metric.auRow[a] + 0;
+      if (!(Number.isInteger(auRow[a]) && auRow[a] >= 0)) {
+        throw new Error('a cell area of ' + auRow[a] + ' is not a whole number of 0.01 m^2 units');
+      }
+      if (auRow[a] > most) most = auRow[a];
+    }
+    if (!(most * n < 9007199254740992)) {
+      throw new Error('cell areas of up to ' + most + ' units over ' + n + ' cells could total 2^53 or more');
+    }
+    var down = new Int32Array(n).fill(-1), inflow = new Uint8Array(n), queue = new Int32Array(n);
+    var count = new Float64Array(n), areaUnits = new Float64Array(n), flag = new Uint8Array(n);
+    var i, r, c, k, rr, cc, j;
+    for (r = 0; r < rows; r++) {
+      for (c = 0; c < cols; c++) {
+        i = r * cols + c;
+        if (cls[i] !== ROUTE_LAND) {
+          /* the land beside no data, or beside sea from a source that may
+           * write a 0 m fill as sea, is flagged from the other side */
+          if (cls[i] === ROUTE_SEA && seaClean) continue;
+          for (k = 0; k < 8; k++) {
+            rr = r + ROUTE_DR[k];
+            cc = c + ROUTE_DC[k];
+            if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+            j = rr * cols + cc;
+            if (cls[j] === ROUTE_LAND) flag[j] = 1;
+          }
+          continue;
+        }
+        count[i] = 1;
+        areaUnits[i] = auRow[r];
+        if (r === 0 || r === rows - 1 || c === 0 || c === cols - 1) flag[i] = 1;
+        k = ROUTE_K_OF_CODE[code[i]];
+        if (!(k >= 0)) continue;
+        rr = r + ROUTE_DR[k];
+        cc = c + ROUTE_DC[k];
+        if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+        j = rr * cols + cc;
+        if (cls[j] !== ROUTE_LAND) continue;
+        down[i] = j;
+        inflow[j] += 1;
+      }
+    }
+    /* Kahn's order: a cell passes its totals on once everything upstream
+     * of it has */
+    var tail = 0;
+    for (i = 0; i < n; i++) if (cls[i] === ROUTE_LAND && inflow[i] === 0) queue[tail++] = i;
+    for (var head = 0; head < tail; head++) {
+      i = queue[head];
+      j = down[i];
+      if (j < 0) continue;
+      count[j] += count[i];
+      areaUnits[j] += areaUnits[i];
+      flag[j] |= flag[i];
+      inflow[j] -= 1;
+      if (inflow[j] === 0) queue[tail++] = j;
+    }
+    /* a cell still waiting for inflow lies on a loop of directions, which
+     * Kahn's order never reaches: its totals, and those of all that drains
+     * into the loop, would come back short without a word */
+    for (i = 0; i < n; i++) if (inflow[i] > 0) throw new Error('the flow directions form a loop');
+    return { count: count, areaUnits: areaUnits, flag: flag };
+  }
+
+  Object.assign(C, {
+    classifyCells: classifyCells, fillDepressions: fillDepressions, flowDirections: flowDirections,
+    resolveFlats: resolveFlats, accumulateFlow: accumulateFlow,
+  });
+
+  /* ============================================= Terrain analysis: assembly
+   * groundwater/mapping/terrain_analysis.py's analysis block: the routing
+   * and the surface kernels run together on one window (analyseTerrain),
+   * the drainage lines traced from the routing and cut to the square shown
+   * (drainageLinks), the summary of that square, the captions
+   * (terrainCaptions) and the drainage lines' GeoJSON (drainageGeoJson).
+   *
+   * Every step is Python's, in Python's order: the same layers taken in
+   * the same order, each float sum added left to right from 0, the lines
+   * numbered and visited in grid order, the captions chosen by the same
+   * tests and returned under the same keys in the same order. Links,
+   * parts, the summary and the captions keep Python's snake_case field
+   * names, because they are data both apps print and the parity suite
+   * compares as JSON; the analysis object itself takes this file's
+   * camelCase. Counts and areas are whole numbers in Float64Array, exact
+   * below 2^53 in any order, as in the routing above.
+   *
+   * The worker hands the page the core (terrainCore) and display copies of
+   * the layers (terrainDisplayLayers), and the page re-traces the lines
+   * from the core alone when the threshold changes: drainageLinks is the
+   * one function both apps trace with, on the same inputs. Everything is
+   * synchronous and DOM-free, for the worker and the Node sandboxes
+   * alike; hot loops call no global, which a Node vm looks up through its
+   * context at every use. */
+
+  /** @typedef {{lons: ArrayLike<number>, lats: ArrayLike<number>, z: ArrayLike<number>, rows: number,
+   *   cols: number, shown?: ArrayLike<number>|null, assumedSea?: ArrayLike<number>|null,
+   *   sourceId?: string, seaClean?: boolean, label?: string}} TerrainGrid  a window of heights, south
+   *   row first, as readElevationWindow's read holds it (its other fields are not read here) */
+  /** @typedef {{rows: number, cols: number, shown: number[], lons: Float64Array, lats: Float64Array,
+   *   dx: Float64Array, dy: Float64Array, dg: Float64Array, count: Float64Array, areaUnits: Float64Array,
+   *   cls: Uint8Array, code: Uint8Array, flag: Uint8Array, raised: Uint8Array,
+   *   flatRouted: Uint8Array}} TerrainCore  what drainageLinks traces from: terrain_analysis.TerrainCore */
+  /** @typedef {{id: number, start: number, vertices: Array<[number, number]>, cells: number,
+   *   outlet: string, downstream: number, strahler: number, area_units: number, length_m: number,
+   *   edge_contaminated: boolean, filled_cells: number, flat_routed_cells: number}} DrainageLink
+   *   one drainage line over the analysed square: terrain_analysis.DrainageLink */
+  /** @typedef {{id: number, part: number, vertices: Array<[number, number]>, stretch_flat: boolean[],
+   *   outlet: string, strahler: number, downstream: number, area_units: number, length_m: number,
+   *   edge_contaminated: boolean, filled_cells: number, flat_routed_cells: number}} DrainagePart
+   *   a drainage line's piece inside the square shown: terrain_analysis.DrainagePart */
+  /** @typedef {{grid: TerrainGrid, metric: {dx: Float64Array, dy: Float64Array, dg: Float64Array,
+   *   auRow: Float64Array}, core: TerrainCore, filled: Float64Array, fillDepth: Float64Array|Float32Array,
+   *   unresolved: number, stream: Uint8Array, links: DrainageLink[], parts: DrainagePart[],
+   *   p: Float64Array, q: Float64Array, tanb: Float64Array|Float32Array,
+   *   hillshades: Array<Float64Array|Float32Array>, hillshadeMulti: Float64Array|Float32Array,
+   *   twiArg: Float64Array, twi: Float64Array|Float32Array, profile: Float64Array|Float32Array,
+   *   tangential: Float64Array|Float32Array, kCells: number, floored: number, zeroFill: number,
+   *   summary: Rec, settings: Rec}} TerrainAnalysis  everything worked out from one window:
+   *   terrain_analysis.TerrainAnalysis */
+
+  /* The drainage threshold in whole 0.01 m^2 units, rounded half up: 0.5
+   * km^2 is 5e7 units, about 532 cells at 8.5 degrees north and 1
+   * arc-second. Areas are compared as whole numbers, so a cell is a stream
+   * cell in both engines or in neither. Both refuse an area that is not a
+   * finite number of square kilometres, 0 or more, small enough to count
+   * in 0.01 m^2 units: past about 1.8e300 km^2 the count overflows to
+   * Infinity, which Python cannot floor to a whole number. */
+  function assemblyThreshold(areaKm2) {
+    var area = typeof areaKm2 === 'number' ? areaKm2 : NaN;
+    var units = area * 1e8 + 0.5;
+    if (!(area >= 0 && units < Infinity)) {
+      throw new Error('the drainage area must be a number of square kilometres, not ' + areaKm2);
+    }
+    return Math.floor(units);
+  }
+
+  /* The first index of the ascending `turns` whose value is above `value`
+   * (`orEqual` false) or at or above it (true): Python's bisect_right and
+   * bisect_left. */
+  function assemblyBisect(turns, value, orEqual) {
+    var lo = 0, hi = turns.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (turns[mid] < value || (!orEqual && turns[mid] === value)) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  /* The positions a to b - 1 of a line kept as vertices: both ends, and
+   * every position between them in `turns` (where the line turns or
+   * changes how it was routed). One position is one vertex. `turns` is in
+   * ascending order, so the turns inside are found by two binary searches
+   * rather than a scan of the whole list: a line that leaves the square
+   * shown and comes back is cut into many parts, and a scan per part
+   * would cost the parts times the turns. */
+  function assemblyVertexPositions(turns, a, b) {
+    if (b - a === 1) return [a];
+    var out = [a];
+    var hi = assemblyBisect(turns, b - 1, true);
+    for (var t = assemblyBisect(turns, a, false); t < hi; t++) out.push(turns[t]);
+    out.push(b - 1);
+    return out;
+  }
+
+  /**
+   * The drainage lines where more than `areaKm2` drains, over the analysed
+   * square, and their parts in the square shown:
+   * terrain_analysis.drainage_links. A stream cell is a land cell with at
+   * least the threshold's area. A line starts at every stream cell no
+   * other stream cell drains to (a headwater) and at every one that two or
+   * more drain to (a confluence), numbered in grid order, and follows the
+   * directions until it meets the next confluence, which starts another
+   * line, or leaves the land: into the sea, which it runs into, or out of
+   * the analysis at the edge or at a void. Strahler orders are worked out
+   * upstream first: a line no other line joins is of order 1, and a line
+   * is one higher than the highest that joins it only where two or more
+   * of that order meet.
+   *
+   * Each line is then cut to the square shown, so that what is drawn and
+   * exported ends at the edge of the map rather than in the margin, while
+   * its area, flag and order stay those worked out over the whole analysed
+   * square; a piece of a single position is dropped and takes no number.
+   * Only whole numbers and comparisons decide the lines, and lengths are
+   * added in order along them, so the page, re-tracing from the core its
+   * worker handed over (structuredClone included), draws Python's lines
+   * to the bit. Vertices are [row, column] of the analysed grid.
+   * @param {TerrainCore} core what terrainCore gives
+   * @param {number} areaKm2 the drainage threshold, km^2 (terrain.drainage_area_km2)
+   * @returns {{links: DrainageLink[], parts: DrainagePart[]}} the links in grid order of their first
+   *   cell, the parts by (id, part)
+   */
+  function drainageLinks(core, areaKm2) {
+    var rows = core.rows, cols = core.cols, n = rows * cols;
+    var r0 = core.shown[0], r1 = core.shown[1], c0 = core.shown[2], c1 = core.shown[3];
+    var threshold = assemblyThreshold(areaKm2);
+    var cls = core.cls, code = core.code, area = core.areaUnits, count = core.count;
+    var flag = core.flag, raised = core.raised, flatRouted = core.flatRouted;
+    [cls, code, area, count, flag, raised, flatRouted].forEach(function (layer) {
+      if (layer.length !== n) {
+        throw new Error('a core of ' + rows + ' by ' + cols + ' cells holds a layer of ' + layer.length);
+      }
+    });
+    /** @type {DrainageLink[]} */
+    var links = [];
+    /** @type {DrainagePart[]} */
+    var parts = [];
+    /* the stream cells in grid order, and each one's place among them */
+    var place = new Int32Array(n).fill(-1), m = 0, i, p;
+    for (i = 0; i < n; i++) {
+      if (cls[i] === ROUTE_LAND && area[i] >= threshold) place[i] = m++;
+    }
+    if (!m) return { links: links, parts: parts };
+    var cells = new Int32Array(m);
+    for (i = 0; i < n; i++) if (place[i] >= 0) cells[place[i]] = i;
+
+    /* Every stream cell's neighbour along its direction. A stream cell's
+     * area only grows downstream, so a land neighbour is a stream cell too;
+     * anything else means the core's layers do not belong together. A code
+     * that is no direction steps as east does, as Python's indexing has it,
+     * though only a flowing direction is ever followed. */
+    var down = new Int32Array(m), feeds = new Int32Array(m), dist = new Float64Array(m);
+    var rowOf = new Int32Array(m), colOf = new Int32Array(m), nextRow = new Int32Array(m);
+    var nextCol = new Int32Array(m), edge = new Uint8Array(m), outOfGrid = false, belowThreshold = false;
+    for (p = 0; p < m; p++) {
+      i = cells[p];
+      var r = (i / cols) | 0, c = i - r * cols, k = ROUTE_K_OF_CODE[code[i]], kk = k >= 0 ? k : 0;
+      rowOf[p] = r;
+      colOf[p] = c;
+      edge[p] = r === 0 || r === rows - 1 || c === 0 || c === cols - 1 ? 1 : 0;
+      nextRow[p] = r + ROUTE_DR[kk];
+      nextCol[p] = c + ROUTE_DC[kk];
+      down[p] = -1;
+      if (k < 0) continue;
+      if (nextRow[p] < 0 || nextRow[p] >= rows || nextCol[p] < 0 || nextCol[p] >= cols) {
+        outOfGrid = true;
+        continue;
+      }
+      dist[p] = k >= 4 ? core.dg[r] : k % 2 ? core.dy[r] : core.dx[r];
+      var j = nextRow[p] * cols + nextCol[p];
+      if (cls[j] !== ROUTE_LAND) continue;
+      if (place[j] < 0) {
+        belowThreshold = true;
+        continue;
+      }
+      down[p] = place[j];
+    }
+    /* refused in Python's order: a direction off the grid first */
+    if (outOfGrid) throw new Error('a direction in the core points out of the grid');
+    if (belowThreshold) throw new Error('a stream cell drains to land below the threshold; the core\'s layers disagree');
+    for (p = 0; p < m; p++) if (down[p] >= 0) feeds[down[p]] += 1;
+    /** @type {number[]} */
+    var starts = [];
+    var linkOf = new Int32Array(m).fill(-1);
+    for (p = 0; p < m; p++) {
+      if (feeds[p] === 0 || feeds[p] >= 2) {
+        linkOf[p] = starts.length;
+        starts.push(p);
+      }
+    }
+
+    /* each line: its own cells (by place), how it ends, the line it joins
+     * and the position it runs into, where it runs into one */
+    var traced = starts.map(function (s) {
+      var own = [s], cur = s, joins = -1, outlet = '';
+      /** @type {[number, number]|null} */
+      var end = null;
+      for (;;) {
+        var d = down[cur];
+        if (d >= 0) {
+          if (feeds[d] >= 2) {
+            outlet = 'confluence';
+            joins = linkOf[d];
+            end = [rowOf[d], colOf[d]];
+            break;
+          }
+          own.push(d);
+          cur = d;
+        } else if (code[cells[cur]] === 255) {
+          outlet = edge[cur] ? 'edge' : 'void';
+          break;
+        } else if (code[cells[cur]] === 0) {
+          outlet = 'sink';          // a flat left without a direction: never expected
+          break;
+        } else {
+          outlet = 'sea';
+          end = [nextRow[cur], nextCol[cur]];
+          break;
+        }
+      }
+      return { own: own, outlet: outlet, joins: joins, end: end };
+    });
+
+    /* Strahler orders, upstream first: a line's first cell gathers more
+     * cells than any cell upstream of it, so ordering by that count, then
+     * by the cell, puts every line after the lines that join it. */
+    var joining = starts.map(function () { return /** @type {number[]} */ ([]); });
+    traced.forEach(function (line, t) { if (line.joins >= 0) joining[line.joins].push(t); });
+    var order = starts.map(function () { return 0; });
+    var byCount = starts.map(function (s, t) { return t; });
+    byCount.sort(function (a, b) {
+      var ca = count[cells[starts[a]]], cb = count[cells[starts[b]]];
+      return ca !== cb ? (ca < cb ? -1 : 1) : starts[a] - starts[b];
+    });
+    byCount.forEach(function (t) {
+      var incoming = joining[t];
+      if (!incoming.length) {
+        order[t] = 1;
+        return;
+      }
+      var top = 0, tops = 0;
+      incoming.forEach(function (u) { if (order[u] > top) top = order[u]; });
+      incoming.forEach(function (u) { if (order[u] === top) tops += 1; });
+      order[t] = tops >= 2 ? top + 1 : top;
+    });
+
+    var flat = function (q) { return !!flatRouted[cells[q]]; };
+    var lengthOf = function (own, a, b) {
+      /* the steps of own[a] to own[b - 1], added left to right from 0 */
+      var total = 0.0;
+      for (var x = a; x < b; x++) total += dist[own[x]];
+      return total;
+    };
+    var counted = function (layer, own, a, b) {
+      var total = 0;
+      for (var x = a; x < b; x++) if (layer[cells[own[x]]]) total += 1;
+      return total;
+    };
+    traced.forEach(function (line, t) {
+      var own = line.own, places = own.map(function (q) {
+        return /** @type {[number, number]} */ ([rowOf[q], colOf[q]]);
+      });
+      if (line.end !== null) places.push(line.end);
+      var size = places.length, x;
+      /* where the line turns or changes how it was routed */
+      var turns = [];
+      for (x = 1; x < own.length; x++) {
+        if (code[cells[own[x]]] !== code[cells[own[x - 1]]] || flat(own[x]) !== flat(own[x - 1])) turns.push(x);
+      }
+      var last = cells[own[own.length - 1]];
+      links.push({
+        id: t, start: cells[own[0]],
+        vertices: assemblyVertexPositions(turns, 0, size).map(function (v) { return places[v]; }),
+        cells: own.length, outlet: line.outlet, downstream: line.joins, strahler: order[t],
+        area_units: area[last], length_m: lengthOf(own, 0, size - 1), edge_contaminated: !!flag[last],
+        filled_cells: counted(raised, own, 0, own.length), flat_routed_cells: counted(flatRouted, own, 0, own.length),
+      });
+
+      /* the runs of positions inside the square shown */
+      var piece = 0, at = 0;
+      var inside = places.map(function (rc) { return rc[0] >= r0 && rc[0] < r1 && rc[1] >= c0 && rc[1] < c1; });
+      while (at < size) {
+        if (!inside[at]) {
+          at += 1;
+          continue;
+        }
+        var a = at;
+        while (at < size && inside[at]) at += 1;
+        if (at - a < 2) continue;
+        var mineEnd = Math.min(at, own.length), mine = cells[own[mineEnd - 1]];
+        var kept = assemblyVertexPositions(turns, a, at);
+        parts.push({
+          id: t, part: piece, vertices: kept.map(function (v) { return places[v]; }),
+          stretch_flat: kept.slice(0, -1).map(function (v) { return flat(own[v]); }),
+          outlet: at === size ? line.outlet : 'beyond_view', strahler: order[t], downstream: line.joins,
+          area_units: area[mine], length_m: lengthOf(own, a, at - 1), edge_contaminated: !!flag[mine],
+          filled_cells: counted(raised, own, a, mineEnd), flat_routed_cells: counted(flatRouted, own, a, mineEnd),
+        });
+        piece += 1;
+      }
+    });
+    return { links: links, parts: parts };
+  }
+
+  /**
+   * The summary's counts of drainage-line cells in the square shown at a
+   * threshold, as terrain_analysis.analyse_terrain counts them: the land
+   * cells (class 1) with at least the threshold's area, the threshold in
+   * whole 0.01 m^2 units as drainageLinks takes it, those of them routed
+   * across a flat or a filled hollow, and those flagged for edge
+   * contamination; each share is of the line cells, 0 of none.
+   * analyseTerrain counts its summary with this, and the page counts again
+   * with it, from the core alone, when the threshold changes.
+   * @param {TerrainCore} core what terrainCore gives
+   * @param {number} areaKm2 the drainage threshold, km^2 (terrain.drainage_area_km2)
+   * @returns {{flat_routed_stream: number, stream: number, contaminated_stream: number,
+   *   flat_routed_lines_pct: number, contaminated_pct: number, threshold_units: number}}
+   */
+  function streamCounts(core, areaKm2) {
+    var threshold = assemblyThreshold(areaKm2);
+    var cls = core.cls, area = core.areaUnits, flatRouted = core.flatRouted, flag = core.flag;
+    var cols = core.cols, shown = core.shown, stream = 0, flat = 0, flagged = 0;
+    for (var r = shown[0]; r < shown[1]; r++) {
+      for (var i = r * cols + shown[2]; i < r * cols + shown[3]; i++) {
+        if (cls[i] !== ROUTE_LAND || area[i] < threshold) continue;
+        stream += 1;
+        flat += flatRouted[i];
+        flagged += flag[i] ? 1 : 0;
+      }
+    }
+    return {
+      flat_routed_stream: flat, stream: stream, contaminated_stream: flagged,
+      flat_routed_lines_pct: assemblyShare(flat, stream), contaminated_pct: assemblyShare(flagged, stream),
+      threshold_units: threshold,
+    };
+  }
+
+  /* A string as Python's json.dumps writes it with ensure_ascii (spec
+   * 3.10): the quote and the backslash escaped, \b \f \n \r \t by name,
+   * any other code unit below 0x20 and every one from 0x7F up as \uXXXX in
+   * lowercase hex, each half of a pair on its own as Python writes a
+   * character beyond the BMP. A file or place name in any script then
+   * gives the same bytes in both engines. */
+  var JSON_NAMED = /** @type {Record<string, string>} */ (
+    { '"': '\\"', '\\': '\\\\', '\b': '\\b', '\f': '\\f', '\n': '\\n', '\r': '\\r', '\t': '\\t' });
+  function jsonAscii(s) {
+    var out = '"';
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charAt(i), unit = s.charCodeAt(i);
+      if (own(JSON_NAMED, ch)) out += JSON_NAMED[ch];
+      else if (unit < 0x20 || unit >= 0x7f) out += '\\u' + ('000' + unit.toString(16)).slice(-4);
+      else out += ch;
+    }
+    return out + '"';
+  }
+
+  /* The GeoJSON's description, which terrainCaptions gives again as
+   * geojson_description: terrain_analysis._geojson_description. What the
+   * lines are and are not, and, when the source does not say it writes the
+   * sea as 0 m and the analysed window holds sea, why the lines ending
+   * there are flagged. */
+  function geojsonDescription(label, area, radius, where, margin, depth, surface, seaUnstated, level) {
+    var text = phrase('terrain.geojson_description', { label: label, area: area, radius: radius, where: where,
+      margin: margin, depth: depth, surface: surface });
+    if (seaUnstated) text += ' ' + phrase('terrain.geojson_sea_unstated', { level: level });
+    return text;
+  }
+
+  /**
+   * The drainage lines shown, as GeoJSON text written by hand, without
+   * whitespace and in a fixed key order, so that both engines write the
+   * same bytes: terrain_analysis.drainage_geojson. The description says
+   * what the lines are and are not, in the catalogue's words, and why
+   * lines ending in sea are flagged when the source may write a fill
+   * value as sea; the notice is written only for a set holding a
+   * Copernicus file, as its licence asks. Each feature's link number is
+   * the property "link", never "id": a line cut into parts repeats it,
+   * and GDAL takes an integer "id" property for the feature id, which it
+   * then renumbers on conversion. Coordinates have six decimals (about 0.1
+   * m) and areas six in km^2, lengths one in metres, all rounded as Python
+   * rounds (pyFixed); the threshold, radius and margin are written as
+   * Python's "%g" (formatG). Parts are written in the order given, which
+   * drainageLinks makes (id, part).
+   * @param {TerrainCore} core the core the parts were traced from (for its cell centres)
+   * @param {DrainagePart[]} parts what drainageLinks gives
+   * @param {{label: string, figure_credit: string, notice?: string|null, surface: string, area: number,
+   *   radius: number, margin: number, centre: {lon: number, lat: number, label: string},
+   *   fill_note_m: number, sea_clean: boolean, sea_cells: number, sea_level_m: number}} meta Python's
+   *   meta keys: what the files are (label); the credit line a figure of the set carries, as the read's
+   *   figureCredit gives it; the Copernicus notice or null; what the heights are heights of; the
+   *   drainage threshold (km^2); the radius and margin (km); the window's centre; the fill depth
+   *   filled_cells counts from (m); and the source's sea rule, the sea cells of the analysed window
+   *   (assumed sea included) and the sea level (m)
+   * @returns {string}
+   */
+  function drainageGeoJson(core, parts, meta) {
+    var centre = meta.centre;
+    var description = geojsonDescription(meta.label, meta.area, meta.radius, centre.label, meta.margin,
+      meta.fill_note_m, meta.surface, !meta.sea_clean && Number(meta.sea_cells) > 0, meta.sea_level_m);
+    var out = ['{"type":"FeatureCollection","description":', jsonAscii(description),
+      ',"attribution":', jsonAscii(String(meta.figure_credit))];
+    if (meta.notice) out.push(',"notice":', jsonAscii(String(meta.notice)));
+    out.push(',"drainage_area_km2":' + formatG(Number(meta.area)), ',"radius_km":' + formatG(Number(meta.radius)),
+      ',"margin_km":' + formatG(Number(meta.margin)),
+      ',"centre":[' + pyFixed(Number(centre.lon), 6) + ',' + pyFixed(Number(centre.lat), 6) + '],"features":[');
+    var lons = core.lons, lats = core.lats;
+    parts.forEach(function (part, t) {
+      var line = part.vertices.map(function (v) {
+        return '[' + pyFixed(lons[v[1]], 6) + ',' + pyFixed(lats[v[0]], 6) + ']';
+      }).join(',');
+      out.push((t ? ',' : '') +
+        '{"type":"Feature","properties":{"link":' + String(part.id) + ',"part":' + String(part.part) +
+        ',"strahler":' + String(part.strahler) + ',"outlet":' + jsonAscii(part.outlet) +
+        ',"area_km2":' + pyFixed(part.area_units / 1e8, 6) + ',"length_m":' + pyFixed(part.length_m, 1) +
+        ',"edge_contaminated":' + (part.edge_contaminated ? 'true' : 'false') +
+        ',"filled_cells":' + String(part.filled_cells) + ',"flat_routed_cells":' + String(part.flat_routed_cells) +
+        ',"downstream":' + String(part.downstream) +
+        '},"geometry":{"type":"LineString","coordinates":[' + line + ']}}');
+    });
+    out.push(']}');
+    return out.join('');
+  }
+
+  /* The square shown as rows r0 to r1 and columns c0 to c1 (half-open),
+   * the whole grid when none is given; refused unless it lies inside the
+   * grid. Whole numbers are taken as Python's int() takes them. */
+  function assemblySquare(shown, rows, cols) {
+    if (shown === undefined || shown === null) return [0, rows, 0, cols];
+    var r0 = Math.trunc(Number(shown[0])), r1 = Math.trunc(Number(shown[1]));
+    var c0 = Math.trunc(Number(shown[2])), c1 = Math.trunc(Number(shown[3]));
+    if (!(r0 >= 0 && r0 < r1 && r1 <= rows && c0 >= 0 && c0 < c1 && c1 <= cols)) {
+      throw new Error('the square shown, rows ' + r0 + ':' + r1 + ' and columns ' + c0 + ':' + c1 +
+        ', is not inside the ' + rows + ' by ' + cols + ' grid');
+    }
+    return [r0, r1, c0, c1];
+  }
+
+  /* count as a percentage of total, written as Python writes it; 0 of
+   * nothing is 0 */
+  function assemblyShare(count, total) {
+    return total ? (100.0 * count) / total : 0.0;
+  }
+
+  /**
+   * Analyse a window of an elevation model: where water would run, the
+   * drainage lines, the shading, the wetness index and the curvature:
+   * terrain_analysis.analyse_terrain. The grid's assumedSea marks a
+   * missing tile taken as open sea, which has no height, and its seaClean
+   * the source's sea rule. `shown` is the square shown, as rows [r0, r1)
+   * and columns [c0, c1) of the grid; when left out the grid's own shown
+   * square is taken (readElevationWindow gives one), and the whole grid
+   * when it has none, as Python's shown=None. The window beyond it is the
+   * margin: analysed, so that the edge of the analysis does not bend the
+   * lines, while the lines are cut and the summary counted where the map
+   * ends. `progress(fraction, label)`, when given, hears each stage start,
+   * in the catalogue's words, at Python's fractions.
+   *
+   * Every count, threshold, drainage line and display limit is taken in
+   * float64 or from whole numbers. With precision 'float32' (the default,
+   * as in Python) the layers that are only drawn - the slope, the
+   * hillshades, the wetness index, the curvatures and the fill depth - are
+   * then narrowed to Float32Array, each as soon as nothing more is read
+   * from it, which halves what they hold at the cap on cells; p, q, twiArg,
+   * the filled surface, the core and the lines keep full precision. The
+   * parity suite runs 'float64', where every layer is Python's to the bit
+   * and the wetness index to 1e-12.
+   * @param {TerrainGrid} grid the window: heights south row first, its axes, the assumed sea and the
+   *   source's sea rule
+   * @param {Rec|null} [cfg] the project's configuration (or a part of it, as withConfig takes)
+   * @param {((fraction: number, label: string) => void)|null} [progress]
+   * @param {string|null} [precision] 'float32' (the default) or 'float64'
+   * @param {ArrayLike<number>|null} [shown] the square shown as [r0, r1, c0, c1]
+   * @returns {TerrainAnalysis}
+   */
+  function analyseTerrain(grid, cfg, progress, precision, shown) {
+    var settings = withConfig(cfg).terrain;
+    var mode = precision === undefined || precision === null ? 'float32' : precision;
+    if (mode !== 'float32' && mode !== 'float64') {
+      throw new Error("precision must be 'float32' or 'float64', not " + JSON.stringify(precision));
+    }
+    var narrow = mode === 'float32';
+    var keep = function (layer) { return narrow ? new Float32Array(layer) : layer; };
+    /* each stage is announced with the share of the whole gone before it,
+     * as measured at the default window (the fill takes about a third) */
+    var stage = function (fraction, label) { if (progress) progress(fraction, label); };
+
+    var rows = grid.rows, cols = grid.cols, n = rows * cols, i, r;
+    if (!(Number.isInteger(rows) && Number.isInteger(cols) && rows >= 0 && cols >= 0) ||
+        grid.z.length !== n || grid.lats.length !== rows || grid.lons.length !== cols) {
+      throw new Error('the elevation grid holds ' + grid.z.length + ' heights, but ' + grid.lats.length +
+        ' latitudes and ' + grid.lons.length + ' longitudes were given');
+    }
+    var z = new Float64Array(n), given = grid.z;
+    for (i = 0; i < n; i++) z[i] = given[i] + 0.0;          // -0 becomes +0
+    var square = assemblySquare(shown === undefined || shown === null ? grid.shown : shown, rows, cols);
+    var r0 = square[0], r1 = square[1], c0 = square[2], c1 = square[3];
+    var assumed = grid.assumedSea || null;
+    var lons = Float64Array.from(grid.lons), lats = Float64Array.from(grid.lats);
+    var metric = rowMetric(lons, lats);
+    /* The routing, the wetness index and the curvature take every cell
+     * size as a distance. An axis that descends makes the sizes negative,
+     * which turns every drop round and sends water uphill into loops, and
+     * one with no step makes them 0, so both are refused here, as in
+     * Python; rowMetric itself takes them, because the shading is right on
+     * either order. NaN fails the test as well. */
+    for (r = 0; r < rows; r++) {
+      if (!(metric.dx[r] > 0 && metric.dy[r] > 0)) throw new Error(phrase('terrain.axes_descend'));
+    }
+    var threshold = assemblyThreshold(settings.drainage_area_km2);
+
+    stage(0.0, phrase('terrain.stage_classes'));
+    var classes = classifyCells(z, rows, cols, settings.sea_level_m, assumed, settings.sea_straight_edge_cells);
+    var cls = classes.cls, zt = classes.zt;
+    /* What each cell of the square shown is. Together they count every
+     * cell once: land, sea with a height, assumed sea, a zero-filled gap,
+     * or no height in the window at all (uncovered), which is either no
+     * value (voids) or an infinite one (implausible). */
+    var land = 0, sea = 0, assumedShown = 0, uncovered = 0, implausible = 0, zeroFill = 0;
+    for (r = r0; r < r1; r++) {
+      for (i = r * cols + c0; i < r * cols + c1; i++) {
+        var marked = !!(assumed && assumed[i]), v = z[i];
+        if (cls[i] === ROUTE_LAND) land += 1;
+        else if (cls[i] === ROUTE_SEA) {
+          if (marked) assumedShown += 1;
+          else sea += 1;
+        }
+        if (!marked && v - v !== 0) {
+          uncovered += 1;
+          if (v === v) implausible += 1;
+        }
+        if (classes.zeroFill[i]) zeroFill += 1;
+      }
+    }
+    var cells = (r1 - r0) * (c1 - c0);
+    /** @type {Rec} */
+    var summary = { cells: cells, land: land, sea: sea, assumed_sea: assumedShown, voids: uncovered - implausible,
+      uncovered: uncovered, implausible: implausible, zero_fill: zeroFill };
+
+    stage(0.15, phrase('terrain.stage_fill'));
+    var filled = fillDepressions(zt, cls, classes.seed, rows, cols);
+    stage(0.45, phrase('terrain.stage_flow'));
+    var codeD8 = flowDirections(zt, filled, cls, classes.seed, rows, cols, metric, settings.sea_level_m);
+    stage(0.5, phrase('terrain.stage_flats'));
+    var flats = resolveFlats(filled, cls, codeD8, rows, cols);
+    var fillDepth = new Float64Array(n), raised = new Uint8Array(n), flatRouted = new Uint8Array(n);
+    var note = settings.fill_note_m;
+    for (i = 0; i < n; i++) {
+      if (cls[i] !== ROUTE_LAND) {
+        fillDepth[i] = NaN;
+        continue;
+      }
+      var depth = filled[i] - zt[i];
+      fillDepth[i] = depth;
+      raised[i] = depth >= note ? 1 : 0;
+      flatRouted[i] = codeD8[i] === 0 || depth > 0.0 ? 1 : 0;
+    }
+    var maxFill = -Infinity;
+    for (r = r0; r < r1; r++) {
+      for (i = r * cols + c0; i < r * cols + c1; i++) {
+        if (cls[i] === ROUTE_LAND && fillDepth[i] > maxFill) maxFill = fillDepth[i];
+      }
+    }
+    if (maxFill === -Infinity) maxFill = 0.0;      // no land in the square shown
+    fillDepth = keep(fillDepth);
+
+    stage(0.6, phrase('terrain.stage_accumulate'));
+    var totals = accumulateFlow(flats.code, cls, rows, cols, metric, !!grid.seaClean);
+    var areaUnits = totals.areaUnits, flag = totals.flag;
+    /** @type {TerrainCore} */
+    var core = {
+      rows: rows, cols: cols, shown: square, lons: lons, lats: lats, dx: metric.dx, dy: metric.dy, dg: metric.dg,
+      count: totals.count, areaUnits: areaUnits, cls: cls, code: flats.code, flag: flag, raised: raised,
+      flatRouted: flatRouted,
+    };
+
+    stage(0.7, phrase('terrain.stage_drainage'));
+    var drawn = drainageLinks(core, settings.drainage_area_km2);
+    var stream = new Uint8Array(n);
+    for (i = 0; i < n; i++) stream[i] = cls[i] === ROUTE_LAND && areaUnits[i] >= threshold ? 1 : 0;
+
+    stage(0.75, phrase('terrain.stage_shading'));
+    var slope = hornGradients(zt, rows, cols, metric);
+    var altitude = settings.hillshade_altitude_deg, zFactor = settings.hillshade_z_factor;
+    var hillshades = settings.hillshade_panel_azimuths_deg.map(function (azimuth) {
+      return keep(hillshadeLayer(slope.p, slope.q, azimuth, altitude, zFactor));
+    });
+    var hillshadeMulti = keep(multidirectionalHillshade(slope.p, slope.q, settings.hillshade_azimuths_deg,
+      altitude, zFactor));
+
+    var labelCurvature = phrase('terrain.stage_curvature');
+    stage(0.85, labelCurvature);
+    var wet = wetnessIndex(areaUnits, cls, slope.tanb, rows, cols, metric, settings.flat_tan_slope);
+    var twi = keep(wet.twi), tanb = keep(slope.tanb);
+    var bends = curvatures(zt, cls, rows, cols, metric, settings.curvature_spacing_m, settings.flat_tan_slope);
+    /* one limit for both panels: |profile| of the square shown, then
+     * |tangential|, as Python concatenates them */
+    var bend = new Float64Array(2 * cells), at = 0, abs = Math.abs;
+    for (var layer = 0; layer < 2; layer++) {
+      var values = layer ? bends.tangential : bends.profile;
+      for (r = r0; r < r1; r++) for (i = r * cols + c0; i < r * cols + c1; i++) bend[at++] = abs(values[i]);
+    }
+    var curvatureLimit = displayRange(bend, 0.98, 0.98)[0];
+    var profile = keep(bends.profile), tangential = keep(bends.tangential);
+
+    /* The relief counts every finite height of the square shown, sea with
+     * a height included; the wetness range is chosen on the exact argument
+     * and only the two chosen values pass through a logarithm. */
+    var lowest = Infinity, highest = -Infinity, any = false;
+    var arg = new Float64Array(cells);
+    at = 0;
+    var floored = 0, nRaised = 0;
+    for (r = r0; r < r1; r++) {
+      for (i = r * cols + c0; i < r * cols + c1; i++) {
+        var height = zt[i];
+        if (height - height === 0) {
+          any = true;
+          if (height < lowest) lowest = height;
+          if (height > highest) highest = height;
+        }
+        arg[at++] = wet.arg[i];
+        floored += wet.floored[i];
+        nRaised += raised[i];
+      }
+    }
+    var relief = any ? highest - lowest : NaN;
+    var twiEnds = displayRange(arg, 0.02, 0.98);
+    var lines = streamCounts(core, settings.drainage_area_km2);
+    Object.assign(summary, {
+      raised: nRaised, flat_routed_stream: lines.flat_routed_stream, stream: lines.stream,
+      contaminated_stream: lines.contaminated_stream, unresolved: flats.unresolved, floored: floored,
+      raised_pct: assemblyShare(nRaised, land), flat_routed_lines_pct: lines.flat_routed_lines_pct,
+      contaminated_pct: lines.contaminated_pct, sea_pct: assemblyShare(sea + assumedShown, cells),
+      zero_fill_pct: assemblyShare(zeroFill, cells), max_fill_m: maxFill, k_cells: bends.kCells,
+      threshold_units: threshold, relief: relief, contour_interval: contourInterval(relief),
+      twi_range: [Math.log(twiEnds[0]), Math.log(twiEnds[1])], curvature_limit: curvatureLimit,
+    });
+    stage(1.0, labelCurvature);
+    return {
+      grid: grid, metric: metric, core: core, filled: filled, fillDepth: fillDepth, unresolved: flats.unresolved,
+      stream: stream, links: drawn.links, parts: drawn.parts, p: slope.p, q: slope.q, tanb: tanb,
+      hillshades: hillshades, hillshadeMulti: hillshadeMulti, twiArg: wet.arg, twi: twi, profile: profile,
+      tangential: tangential, kCells: bends.kCells, floored: floored, zeroFill: zeroFill, summary: summary,
+      settings: settings,
+    };
+  }
+
+  /**
+   * The core an analysis traces its drainage lines from, as the worker
+   * hands it to the page so that a new threshold re-traces the lines with
+   * drainageLinks and nothing else: the core object of spec 5.1, its
+   * Float64Array lons, lats, dx, dy, dg, count and areaUnits and its
+   * Uint8Array cls, code, flag, raised and flatRouted. The arrays are the
+   * analysis's own, not copies, so a worker that transfers them gives up
+   * the analysis it took them from; each is a buffer of its own.
+   * @param {TerrainAnalysis} analysis what analyseTerrain gives
+   * @returns {TerrainCore}
+   */
+  function terrainCore(analysis) {
+    var core = analysis.core;
+    return {
+      rows: core.rows, cols: core.cols, shown: core.shown.slice(), lons: core.lons, lats: core.lats,
+      dx: core.dx, dy: core.dy, dg: core.dg, count: core.count, areaUnits: core.areaUnits, cls: core.cls,
+      code: core.code, flag: core.flag, raised: core.raised, flatRouted: core.flatRouted,
+    };
+  }
+
+  /* What the heights are heights of, by the product a grid was read as,
+   * for a grid that came without a read report: terrain_analysis's
+   * _surface_note. */
+  function assemblySurfaceNote(sourceId) {
+    if (sourceId === 'copernicus_glo30') return phrase('terrain.surface_copernicus');
+    if (sourceId === 'srtm' || sourceId === 'hgt') return phrase('terrain.surface_srtm');
+    return phrase('terrain.surface_unknown');
+  }
+
+  /* The radius and the margin of an analysed window, in km, measured
+   * from the window itself for an analysis that came without a read's
+   * plan: terrain_analysis._measured_window. With [r0, r1, c0, c1] =
+   * core.shown and mid = floor((r0 + r1) / 2), the middle row shown, in
+   * float64 and in this order (Python works out the same expressions, so
+   * the two print the same figures):
+   *   marginM = min(r0 * dy[r0], (rows - r1) * dy[r1 - 1], c0 * dx[mid], (cols - c1) * dx[mid])
+   *   radiusM = min((r1 - r0) * dy[mid], (c1 - c0) * dx[mid]) / 2.0
+   *   km = floor(m / 100.0) / 10.0
+   * The margin is the narrowest of the four sides analysed beyond the
+   * square shown, rows measured by the cell height of the shown row beside
+   * them and columns by the cell width of the middle shown row; the radius
+   * is half the shown square's shorter side. Both are floored to 0.1 km,
+   * so that they never overstate what was analysed, and a margin under
+   * 100 m is stated as none. */
+  function measuredWindow(core) {
+    var shown = core.shown, r0 = shown[0], r1 = shown[1], c0 = shown[2], c1 = shown[3];
+    var mid = Math.floor((r0 + r1) / 2), width = core.dx[mid], height = core.dy[mid];
+    var marginM = Math.min(r0 * core.dy[r0], (core.rows - r1) * core.dy[r1 - 1], c0 * width,
+      (core.cols - c1) * width);
+    var radiusM = Math.min((r1 - r0) * height, (c1 - c0) * width) / 2.0;
+    return { radius: Math.floor(radiusM / 100.0) / 10.0, margin: Math.floor(marginM / 100.0) / 10.0 };
+  }
+
+  /* A caption giving `count` cells as a share of `cells` (the square
+   * shown, or its land), by the read report's rule in whole numbers alone:
+   * over none but under half a per cent, the `little` sentence with the
+   * count instead of "0%"; else the `share` sentence, at most 99% while
+   * any cell is not counted, never "100%", and 0% of none. `values` are
+   * the sentences' other values. terrain_analysis._share_sentence. */
+  function shareSentence(share, little, count, cells, values) {
+    if (count > 0 && 200 * count < cells) return phrase(little, Object.assign({ count: count }, values));
+    return phrase(share, Object.assign({ pct: cells ? elevationPercent(count, cells) : 0 }, values));
+  }
+
+  /**
+   * Every sentence the terrain figures and the drainage lines carry, in
+   * the catalogue's words, so that both apps print the same:
+   * terrain_analysis.terrain_captions. `read` is the read the window came
+   * from, or null: its surface note says what the heights are heights of
+   * (else the grid's source decides), and its plan the radius and margin
+   * of the window; without a plan both are measured from the analysed
+   * window and the square shown (measuredWindow), so that a grid analysed
+   * whole says it had no margin. `where` names the place, as the read
+   * report does.
+   *
+   * The keys, in Python's order: title_relief, title_wetness,
+   * title_curvature and title_directions; panel_0 onwards, the title of
+   * each panel lit from one direction; relief, wetness, curvature and
+   * directions, each figure's captions as one paragraph in the order they
+   * are printed under it (the sea, a zero-filled gap, sea in a file of
+   * unstated source and an unresolved flat are mentioned only where the
+   * square shows one, but sea of unstated source for the wetness index
+   * and the description wherever the analysed window holds some);
+   * figure_caveat, the line drawn inside every figure;
+   * geojson_description; and the analysis's stage labels, stage_classes to
+   * stage_curvature.
+   * @param {TerrainAnalysis} analysis what analyseTerrain gives
+   * @param {Rec|null|undefined} read what readElevationWindow gives, or null for a grid read some other
+   *   way
+   * @param {string} where the place, as the read report names it
+   * @returns {Record<string, string>}
+   */
+  function terrainCaptions(analysis, read, where) {
+    var cfg = analysis.settings, summary = analysis.summary, grid = analysis.grid;
+    var surface = read && read.surface ? read.surface : assemblySurfaceNote(grid.sourceId);
+    var measured = read && read.plan ? { radius: read.plan.radiusKm, margin: read.plan.marginKm }
+      : measuredWindow(analysis.core);
+    var radius = measured.radius, margin = measured.margin;
+    var level = cfg.sea_level_m;
+    var candidates = phrase('terrain.caption_candidates');
+    var cells = summary.cells, sea = summary.sea + summary.assumed_sea;
+    /* the lines and the lightened cells may drain sea anywhere in the
+     * analysed window, the margin included, not only in the square shown */
+    var unstated = !grid.seaClean, cls = analysis.core.cls, windowSea = false;
+    for (var i = 0; i < cls.length && !windowSea; i++) windowSea = cls[i] === ROUTE_SEA;
+    var seaUnstated = unstated && windowSea;
+
+    var relief = [
+      phrase('terrain.caption_relief', { interval: summary.contour_interval, area: cfg.drainage_area_km2 }),
+      shareSentence('terrain.caption_fill', 'terrain.caption_fill_little', summary.raised, summary.land,
+        { lines_pct: summary.flat_routed_lines_pct, depth: cfg.fill_note_m }),
+      margin > 0 ? phrase('terrain.caption_edge', { margin: margin }) : phrase('terrain.caption_edge_none'),
+    ];
+    if (sea > 0) {
+      relief.push(shareSentence('terrain.caption_sea', 'terrain.caption_sea_little', sea, cells, { level: level }));
+    }
+    if (unstated && sea > 0) relief.push(phrase('terrain.caption_sea_unstated', { level: level }));
+    if (summary.zero_fill > 0) {
+      relief.push(shareSentence('terrain.caption_zero_fill', 'terrain.caption_zero_fill_little', summary.zero_fill,
+        cells, { level: level }));
+    }
+    if (summary.unresolved > 0) relief.push(phrase('terrain.caption_unresolved', { n: summary.unresolved }));
+    relief.push(candidates);
+    /* the spacing the curvature was taken over, in metres of the middle row */
+    var mid = Math.floor(analysis.core.rows / 2);
+    var spacing = analysis.kCells * ((analysis.core.dx[mid] + analysis.core.dy[mid]) / 2.0);
+    var azimuths = cfg.hillshade_panel_azimuths_deg.slice();
+    if (!azimuths.length) {
+      /* Python's and_join raises on an empty list, so both refuse */
+      throw new Error('the hillshade panels need at least one azimuth');
+    }
+
+    /** @type {Record<string, string>} */
+    var out = {
+      title_relief: phrase('terrain.title_relief', { where: where }),
+      title_wetness: phrase('terrain.title_wetness', { where: where }),
+      title_curvature: phrase('terrain.title_curvature', { where: where }),
+      title_directions: phrase('terrain.title_directions', { where: where }),
+    };
+    azimuths.forEach(function (azimuth, t) { out['panel_' + t] = phrase('terrain.panel_azimuth', { az: azimuth }); });
+    out.relief = relief.join(' ');
+    var wetness = [phrase('terrain.caption_twi', { floor: cfg.flat_tan_slope, n: summary.floored })];
+    if (seaUnstated) wetness.push(phrase('terrain.caption_sea_unstated', { level: level }));
+    out.wetness = wetness.concat([candidates, surface]).join(' ');
+    out.curvature = [phrase('terrain.caption_curvature', { spacing: spacing, floor: cfg.flat_tan_slope }),
+      candidates, surface].join(' ');
+    out.directions = phrase('terrain.caption_directions', {
+      azimuths: andJoin(azimuths.map(function (azimuth) { return formatG(Number(azimuth)) + '°'; })),
+      altitude: cfg.hillshade_altitude_deg });
+    out.figure_caveat = phrase('terrain.figure_caveat', { surface: surface });
+    out.geojson_description = geojsonDescription(grid.label, cfg.drainage_area_km2, radius, where, margin,
+      cfg.fill_note_m, surface, seaUnstated, level);
+    out.stage_classes = phrase('terrain.stage_classes');
+    out.stage_fill = phrase('terrain.stage_fill');
+    out.stage_flow = phrase('terrain.stage_flow');
+    out.stage_flats = phrase('terrain.stage_flats');
+    out.stage_accumulate = phrase('terrain.stage_accumulate');
+    out.stage_drainage = phrase('terrain.stage_drainage');
+    out.stage_shading = phrase('terrain.stage_shading');
+    out.stage_curvature = phrase('terrain.stage_curvature');
+    return out;
+  }
+
+  /**
+   * The layers the four terrain figures draw, as the worker hands them to
+   * the page: cropped to the square shown and decimated by one whole
+   * stride, ceil(max(Ws, Hs) / maxEdge), so that neither side has more
+   * than maxEdge cells; each kept cell is the one at the stride's start,
+   * a[r0 + y*stride][c0 + x*stride], never an average, so a class or a
+   * mask is never blended and a value is one the analysis gave. Python has
+   * no twin: its figures draw the full layers, and nothing here is
+   * compared between engines, only held by its own test to the cells it
+   * keeps.
+   *
+   * The continuous layers are Float32Array (the heights, the composite
+   * and panel hillshades, the wetness index and both curvatures); the
+   * classes and masks are Uint8Array (cls, assumedSea, raised, stream and
+   * the uncertain-area flag); lons and lats are the kept cells' centres.
+   * Every array is new, so the worker can transfer them all.
+   * @param {TerrainAnalysis} analysis what analyseTerrain gives
+   * @param {TerrainGrid|null} grid the grid it analysed, for its heights and assumed sea (the analysis's
+   *   own when null)
+   * @param {number} maxEdge the most cells a side may keep, a whole number from 1
+   * @returns {Rec} {rows, cols, stride, shown, lons, lats, z, hillshadeMulti, hillshades, twi, profile,
+   *   tangential, cls, assumedSea, raised, stream, flag}
+   */
+  function terrainDisplayLayers(analysis, grid, maxEdge) {
+    if (!(Number.isInteger(maxEdge) && maxEdge >= 1)) {
+      throw new Error('a display layer needs a whole number of cells a side from 1, not ' + maxEdge);
+    }
+    var from = grid || analysis.grid, core = analysis.core, cols = core.cols, shown = core.shown;
+    if (from.z.length !== core.rows * cols) {
+      throw new Error('the grid holds ' + from.z.length + ' heights, not the ' + core.rows * cols + ' analysed');
+    }
+    var r0 = shown[0], c0 = shown[2], high = shown[1] - r0, wide = shown[3] - c0;
+    var stride = Math.ceil(Math.max(wide, high) / maxEdge);
+    var outRows = Math.ceil(high / stride), outCols = Math.ceil(wide / stride);
+    var pick = function (layer, Kind) {
+      var out = new Kind(outRows * outCols);
+      for (var y = 0; y < outRows; y++) {
+        var at = (r0 + y * stride) * cols + c0;
+        for (var x = 0; x < outCols; x++) out[y * outCols + x] = layer[at + x * stride];
+      }
+      return out;
+    };
+    var lons = new Float64Array(outCols), lats = new Float64Array(outRows), k;
+    for (k = 0; k < outCols; k++) lons[k] = core.lons[c0 + k * stride];
+    for (k = 0; k < outRows; k++) lats[k] = core.lats[r0 + k * stride];
+    var sea = from.assumedSea || new Uint8Array(core.rows * cols);
+    return {
+      rows: outRows, cols: outCols, stride: stride, shown: shown.slice(), lons: lons, lats: lats,
+      z: pick(from.z, Float32Array), hillshadeMulti: pick(analysis.hillshadeMulti, Float32Array),
+      hillshades: analysis.hillshades.map(function (layer) { return pick(layer, Float32Array); }),
+      twi: pick(analysis.twi, Float32Array), profile: pick(analysis.profile, Float32Array),
+      tangential: pick(analysis.tangential, Float32Array), cls: pick(core.cls, Uint8Array),
+      assumedSea: pick(sea, Uint8Array), raised: pick(core.raised, Uint8Array),
+      stream: pick(analysis.stream, Uint8Array), flag: pick(core.flag, Uint8Array),
+    };
+  }
+
+  Object.assign(C, {
+    analyseTerrain: analyseTerrain, terrainCore: terrainCore, drainageLinks: drainageLinks, streamCounts: streamCounts,
+    drainageGeoJson: drainageGeoJson, terrainCaptions: terrainCaptions, terrainDisplayLayers: terrainDisplayLayers,
+  });
+
   /* =========================================================== curve type
    * groundwater/ves/classify.py
    */
@@ -2717,17 +6935,25 @@
     if (value === 0) return Object.is(value, -0) ? '-0' : '0';
     if (value !== value) return 'nan';
     if (!isFinite(value)) return value > 0 ? 'inf' : '-inf';
-    var rounded = roundSig(value, p);
+    /* A subnormal is not put through roundSig: snapping its p-digit decimal
+     * back to the nearest subnormal double can cross into the decade below
+     * (1.000004e-318 came back as 9.99999e-319). Its exact value has
+     * hundreds of significant digits, so toExponential's rounding half up
+     * meets no tie, and gives Python's half-even digits. */
+    var rounded = Math.abs(value) < 2.2250738585072014e-308 ? value : roundSig(value, p);
     /* Not Math.log10: in V8 Math.log(1e6)/Math.LN10 is 5.999999999999999, so
      * the exponent came out one too low at exact powers of ten and %g chose
      * the fixed form where Python chooses the exponential one. The decimal
-     * string carries the exponent exactly. */
-    var exp = Number(Math.abs(rounded).toExponential().split('e')[1]);
+     * string carries the exponent exactly; the mantissa and the exponent
+     * are both taken from the one p-digit string, because a subnormal's
+     * shortest form can lie a decade away from it (the double 1e-320 is
+     * 9.99989e-321 to six digits, as Python writes it). */
+    var parts = rounded.toExponential(p - 1).split('e');
+    var exp = Number(parts[1]);
     if (exp < -4 || exp >= p) {
       /* the mantissa's digits as toExponential writes them, rather than
        * rounded / 10^exp, which is Infinity below 1e-308 */
-      var mstr = rounded.toExponential(p - 1).split('e')[0]
-        .replace(/0+$/, '').replace(/\.$/, '');
+      var mstr = parts[0].replace(/0+$/, '').replace(/\.$/, '');
       return mstr + 'e' + (exp < 0 ? '-' : '+') +
         String(Math.abs(exp)).padStart(2, '0');
     }
