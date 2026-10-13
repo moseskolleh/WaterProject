@@ -463,6 +463,17 @@ presses at the cap, every second press there, and a second press at
 provisional, for the owner to confirm, and the rule covers two presses:
 a fourth press in one server at 13.6 km reached 694 MB, as above.
 
+At the new cap, the same day (load average 0.6 to 1.3), `run.py --only
+terrain` analysed the window, 1219 by 1213 cells (1,478,647), in 2.04 s
+(median of five, IQR 0.23 s; the default window 1.21 s, the drainage
+lines from the core 17 ms), and `terrain_memory.py` gave `increase_mb`
+190 and 179 (MB of 2^20 bytes). `web.mjs --only terrain`, run once,
+three presses at each size: a press at the cap took 3.99 s with the
+worker (IQR 0.31 s) and added 349 MB to the tab at its peak, and 17.72 s
+on the page at 4x; at the default window 2.73 s, 233 MB and 12.04 s.
+The figures below that name the cap were taken before it came down, at
+16.5 km and 2,000,000 cells.
+
 The synthetic tile looks like ground, which is the easy case. Surfaces
 built to be hard, each 1414 by 1414 cells (1,999,396, just under the cap),
 were measured on 12 October with the analysis alone, as `terrain_memory.py`
@@ -474,9 +485,9 @@ is on a drainage line, 1.88 s and +308 MB; a channel in lanes that turns
 at every cell, 2.51 s and +435 MB; and ground dead flat, 4.27 s and +320
 MB (MB of 2^20 bytes). Before the part b review the first two took 27.2
 s and 5.6 s, and raised the peak by 731 MB and 692 MB. Those surfaces
-were not pressed in the app; their analysis alone takes up to 156 MB
-more than the synthetic tile's 279 MB, so a whole press on them would
-take more than the table above. The time is well under 6.0 s on every
+were not pressed in the app; their analysis alone took up to 156 MB
+more than the synthetic tile's 279 MB at the old cap, so a whole press
+on them would take more than the table above. The time is well under 6.0 s on every
 one.
 
 The cap is one number for every runtime, so a slower runtime makes a

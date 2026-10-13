@@ -305,8 +305,9 @@ class TerrainConfig:
     # to 679 to 729 MB on a first press at 2,000,000 cells and 747 to 779 MB
     # on a second, against Community Cloud's 690 MB, while at 1,500,000
     # every press measured stayed under it (535 to 669 MB). CPython analyses
-    # the window at this cap in 2.0 s, under the rule's 6.0 s. Provisional:
-    # it wants the owner's confirmation.
+    # the window at this cap in 2.0 s, under the rule's 6.0 s, and a press
+    # in the browser takes 4.0 s with the engine worker. Provisional: it
+    # wants the owner's confirmation.
     max_cells: int = _TERRAIN["max_cells"]
     # One limit on the blocks a read decodes, each a decode of its own: a
     # file cut into tiles of a cell or two costs a decode a cell, and two
