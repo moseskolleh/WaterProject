@@ -902,16 +902,16 @@ where the map ends. Checked against an 11 km margin on three 10 km
 windows of a real Copernicus tile, no undashed line cell in the square
 shown appeared or disappeared, and 0 to 100 of them kept a changed
 upslope area. At the defaults the analysed square is about 983 by 979
-cells at 1 arc-second. It may hold at most 2,000,000 cells, margin
+cells at 1 arc-second. It may hold at most 1,500,000 cells, margin
 included (`terrain.max_cells`), in both apps alike, so that whether a
 window is refused does not depend on which app ran it. A radius whose
 window would hold more is refused, and the refusal names a radius that
-fits: at 1 arc-second and the default margin, 16.6 km south of about 8.4
-degrees north and 16.5 km north of it. That radius is worked out from
-the largest square window the cap holds, 1,413 cells each way, sized by
+fits: at 1 arc-second and the default margin, 13.7 km south of about 8.3
+degrees north and 13.6 km north of it. That radius is worked out from
+the largest square window the cap holds, 1,223 cells each way, sized by
 a cell's shorter side, less the margin and rounded down to a tenth of a
-kilometre, so a radius a little wider, up to about 16.6 to 16.7 km, may
-still fit. Coarser tiles fit a wider radius.
+kilometre, so a radius a little wider, up to about 13.7 km, may still
+fit. Coarser tiles fit a wider radius.
 
 **Analysing the terrain.** Add the tiles: in the Python app with the
 uploader on the Topography tab, in the browser app by dropping them on
@@ -1035,7 +1035,7 @@ owner's confirmation; the changelog lists which, and why.
 |---|---|---|
 | `terrain.analysis_radius_km` | 10 | the radius the page starts at |
 | `terrain.analysis_buffer_km` | 5 | the margin analysed beyond the square shown |
-| `terrain.max_cells` | 2,000,000 | the cap on the cells analysed, margin included, and on the cells the wider map draws before it thins them |
+| `terrain.max_cells` | 1,500,000 | the cap on the cells analysed, margin included, and on the cells the wider map draws before it thins them |
 | `terrain.max_blocks` | 100,000 | the most blocks a file may be cut into, or a window may need decoded |
 | `terrain.sea_level_m` | 0 | ground at or below this, joined to the edge, is sea |
 | `terrain.sea_straight_edge_cells` | 150 | a 0 m area meeting land along a straight line this many cells long is a fill, not sea |
@@ -1063,7 +1063,8 @@ is the elevation recorded at each sounding, in order along the line,
 measured at the pegs and straight between them. Both apps' geophysical
 survey reports carry the profile. The Python app also analyses one
 `.asc` or `.xyz` grid, cut to the same window and held to the same cap
-as tiles.
+as tiles; where the grid ends before the window does, the square shown
+stops with it, and the read report gives the radius it reached.
 
 **Subsurface** - maps of this site rather than of the country, every
 one drawn from the soundings themselves: depth to bedrock, interpreted

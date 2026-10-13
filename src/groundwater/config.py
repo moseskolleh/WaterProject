@@ -299,15 +299,14 @@ class TerrainConfig:
     analysis_buffer_km: float = _TERRAIN["analysis_buffer_km"]
     # One limit on the cells analysed, the margin included, in every
     # runtime, so that whether a window is refused does not depend on where
-    # the engine ran. Still provisional (bench/README.md): CPython analysed
-    # the window at the cap in 2.8 s on 12 October 2026, under the rule's
-    # 6.0 s, but a whole press of "Analyse the terrain" there in the
-    # Streamlit app, measured on 13 October 2026, took the server to 679 to
-    # 729 MB on a first press and 747 to 779 MB on a second, against
-    # Community Cloud's 690 MB; at 1,500,000 cells both stayed under it. In
-    # the browser a press at the cap took 5.1 s with the engine worker, 3.2
-    # s of it the analysis, and Pyodide, ad hoc, analysed the same window in
-    # 4.1 s.
+    # the engine ran. Lowered from 2,000,000 on 13 October 2026 by the rule
+    # in bench/README.md: a whole press of "Analyse the terrain" in the
+    # Streamlit app (the read, the analysis and the figures) took the server
+    # to 679 to 729 MB on a first press at 2,000,000 cells and 747 to 779 MB
+    # on a second, against Community Cloud's 690 MB, while at 1,500,000
+    # every press measured stayed under it (535 to 669 MB). CPython analyses
+    # the window at this cap in 2.0 s, under the rule's 6.0 s. Provisional:
+    # it wants the owner's confirmation.
     max_cells: int = _TERRAIN["max_cells"]
     # One limit on the blocks a read decodes, each a decode of its own: a
     # file cut into tiles of a cell or two costs a decode a cell, and two

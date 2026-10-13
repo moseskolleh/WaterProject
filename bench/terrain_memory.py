@@ -11,8 +11,9 @@ run before, and prints one JSON document:
 - ``increase_mb``: the peak resident set size once the analysis has
   returned (``ru_maxrss``) less the resident set size just before it,
   with the window already read and held. This is the analysis's own
-  memory, the figure the cap's memory budget takes (bench/README.md,
-  "The terrain analysis: why 2,000,000 cells");
+  memory, one part of what a press of "Analyse the terrain" costs; the
+  cap's memory budget takes the whole press in the running app
+  (bench/README.md, "The terrain analysis: why 1,500,000 cells");
 - ``read_mb``: what reading the window added before that, the grid held;
 - ``first_use_mb``: what a first analysis of a small window left behind.
   numpy, the reader and the analysis's module are imported before it, as

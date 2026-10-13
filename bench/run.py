@@ -507,16 +507,17 @@ def _terrain_window(path: Path, radius_km: float | None = None):
 
 
 def _terrain_cap_radius(path: Path) -> float:
-    """The widest radius shown whose analysed square, the default margin
-    included, fits under ``terrain.max_cells`` in the middle of the DEFLATE
-    tile at ``path``: 16.5 km at 2,000,000 cells, an analysed square of
-    1407 by 1401 cells (1,971,207).
+    """The radius shown that the planner's refusal offers when asked for
+    more: its analysed square, the default margin included, fits under
+    ``terrain.max_cells`` in the middle of the DEFLATE tile at ``path``:
+    13.6 km at 1,500,000 cells, an analysed square of
+    1219 by 1213 cells (1,478,647).
 
     It is the radius the refusal offers an operator who asks for more, taken
     from the planner rather than written here, so that a measure at the cap
     stays at the cap if the cap is lowered: the rule in bench/README.md
-    ("The terrain analysis: why 2,000,000 cells") lowers it in steps of
-    250,000 until the analysis there meets its time and memory budget. A
+    ("The terrain analysis: why 1,500,000 cells") lowers it in steps of
+    250,000 until a press there meets its time and memory budget. A
     plan is refused before any block is read, so this decodes nothing.
     """
     from groundwater.geotiff import GeoTiffError

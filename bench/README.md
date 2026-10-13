@@ -126,8 +126,9 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   Streamlit app keeps them. `analyse at the cap` is the same on a window
   near the cap on cells (`terrain.max_cells`) with the default margin: its
   radius is the one the planner's refusal offers when asked for more, so
-  the measure follows the cap if the cap moves (16.5 km at 2,000,000
-  cells, 1407 by 1401 cells, 1,971,207). `trace drainage lines
+  the measure follows the cap if the cap moves (13.6 km at 1,500,000
+  cells, 1219 by 1213 cells, 1,478,647; it was 16.5 km at 2,000,000
+  until 13 October 2026). `trace drainage lines
   from the core` is `drainage_links` at the default threshold (0.5 km²)
   on the default window's core: the drainage lines alone, which the
   browser traces again on the page each time the threshold is moved.
@@ -245,7 +246,7 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
   figures. No site is entered, so the window is centred on the middle of
   the tile, as `run.py`'s is: the default (983 by 979 cells analysed),
   and one near the cap on cells, at the radius the card offers when
-  asked for 50 km (16.5 km, 1407 by 1401). Each press is made in a
+  asked for 50 km (13.6 km, 1219 by 1213). Each press is made in a
   fresh browser, so the worker starts with it. These are not cold
   loads: the app is loaded first, unthrottled, and the network plays no
   part. The CPU is at full speed, because Chromium slows the page and
@@ -358,15 +359,16 @@ interactive on the throttled profile went from 11.11 s to 11.84 s
 (median of three cold loads each, the commit before the step and the
 step's last commit), first contentful paint staying at 2.4 s.
 
-## The terrain analysis: why 2,000,000 cells
+## The terrain analysis: why 1,500,000 cells
 
 PLAN.md step 4.1 caps the cells the terrain analysis takes, the margin
 included, at `terrain.max_cells`: one limit in every runtime, so that
 whether a window is refused does not depend on where the engine ran. At
-2,000,000 cells, asked for more, the planner offers 16.5 km on the
-bench's tile: with the 5 km margin, 1407 by 1401 cells at 1 arc-second,
-1,971,207. The value was committed as provisional, to be confirmed here
-by this rule, on the bench machine:
+1,500,000 cells, asked for more, the planner offers 13.6 km on the
+bench's tile: with the 5 km margin, 1219 by 1213 cells at 1 arc-second,
+1,478,647. The cap was committed at 2,000,000 cells (16.5 km, 1407 by
+1401, 1,971,207) as provisional, to be confirmed here by this rule, on
+the bench machine:
 
 - `terrain/analyse at the cap` (`run.py --only terrain`) has a median of
   at most 6.0 s;
@@ -456,8 +458,10 @@ press (600 to 669 MB) measured stayed under 690 MB. **A whole press, the
 second included, fits at 1,500,000 cells, 13.6 km.** Read as 690 MiB,
 the verdict is the same: 690 MiB is 724 MB, and two of the six first
 presses at the cap, every second press there, and a second press at
-15.1 km after one at 10 km (751 MB) went over it. `max_cells` is not
-changed here; it stays provisional, for the owner to decide.
+15.1 km after one at 10 km (751 MB) went over it. So, by the rule,
+`max_cells` came down to 1,500,000 on 13 October 2026. It stays
+provisional, for the owner to confirm, and the rule covers two presses:
+a fourth press in one server at 13.6 km reached 694 MB, as above.
 
 The synthetic tile looks like ground, which is the easy case. Surfaces
 built to be hard, each 1414 by 1414 cells (1,999,396, just under the cap),
