@@ -244,8 +244,8 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
   worker reading the window and analysing it, and the page drawing the
   figures. No site is entered, so the window is centred on the middle of
   the tile, as `run.py`'s is: the default (983 by 979 cells analysed),
-  and the widest the cap on cells allows, at the radius the card offers
-  when asked for 50 km (16.5 km, 1407 by 1401). Each press is made in a
+  and one near the cap on cells, at the radius the card offers when
+  asked for 50 km (16.5 km, 1407 by 1401). Each press is made in a
   fresh browser, so the worker starts with it. These are not cold
   loads: the app is loaded first, unthrottled, and the network plays no
   part. The CPU is at full speed, because Chromium slows the page and
@@ -430,31 +430,33 @@ The cap is one number for every runtime, so a slower runtime makes a
 long wait, not a different answer. The browser app was timed with the
 page part c adds, on 13 October 2026, on the same machine (Chromium
 141, load average 0.9 to 1.3): `web.mjs`, median of three presses at
-each size, each in a fresh browser, on the synthetic tile.
+each size, each in a fresh browser, on the synthetic tile. MB from here
+on are 10^6 bytes, as `web.mjs` and `run.py` print them, where those of
+`terrain_memory.py` above are 2^20 bytes.
 
 | measure | median | IQR |
 |---|---|---|
 | terrain default window wall time, worker | 2.88 s | 0.46 s |
 | terrain default window longest main-thread task, worker | 0.69 s | 0.10 s |
-| terrain default window memory added, worker | 295 MB | 7 MB |
+| terrain default window memory added, worker | 309 MB | 8 MB |
 | terrain window at the cap wall time, worker | 5.31 s | 0.29 s |
 | terrain window at the cap longest main-thread task, worker | 0.53 s | 0.16 s |
-| terrain window at the cap memory added, worker | 462 MB | 5 MB |
+| terrain window at the cap memory added, worker | 485 MB | 5 MB |
 | terrain default window wall time, on the page (CPU 4x) | 11.65 s | 0.42 s |
 | terrain window at the cap wall time, on the page (CPU 4x) | 17.56 s | 0.53 s |
 
 A press is timed whole. Where its time goes was read once from the
 engine's own record of its requests (a scratch run, two presses at each
 size, not part of `web.mjs`): the page planned the window and read the
-blocks out of the file in 0.5 to 1.1 s, the worker read the window in
-0.44 to 0.57 s and analysed it in 1.21 to 1.27 s at the default window
-and 3.20 s at the cap, and the figures were drawn in about half a second
-after its answer: that drawing is the longest main-thread task above. So
-the browser's analysis at the cap takes a little longer than CPython's
-2.79 s, and a press there 5.3 s from click to figures, with the bar and
-its Cancel on the page throughout. On the page, at a quarter of the
-speed, the press holds the page for 11.7 s at the default and 17.6 s at
-the cap.
+blocks out of the file in about 0.13 s from the click, the worker read
+the window in 0.44 to 0.57 s and analysed it in 1.21 to 1.27 s at the
+default window and 3.20 s at the cap, and the figures were drawn in
+about half a second after its answer: that drawing is the longest
+main-thread task above. So the browser's analysis at the cap takes a
+little longer than CPython's 2.79 s, and a press there 5.3 s from click
+to figures, with the bar and its Cancel on the page throughout. On the
+page, at a quarter of the speed, the press holds the page for 11.7 s at
+the default and 17.6 s at the cap.
 
 The memory is the page and its worker together, and is more than the
 design's estimate (80 to 90 MB in the worker at the default window, 150
@@ -477,9 +479,9 @@ as `run.py` does (float32), three times after a 1 km warm-up, in a
 fresh browser for each window, twice. The analysis took 1.90 s at the
 default window (median of six, 1.76 to 2.34 s) and 4.09 s at the cap
 (3.90 to 5.49 s, the first of each three the slowest), and the read 0.24
-to 0.37 s. Its WebAssembly memory, which only grows, went from 192 MB
-with the window at the cap read to 398 MB after the analyses (160 to
-276 MB at the default). So Pyodide analyses the window at the cap in
+to 0.37 s. Its WebAssembly memory, which only grows, went from 201 MB
+with the window at the cap read to 417 MB after the analyses (168 to
+290 MB at the default). So Pyodide analyses the window at the cap in
 about one and a half times CPython's time, under the 6.0 s CPython is
 held to.
 

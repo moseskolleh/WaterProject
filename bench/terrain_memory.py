@@ -58,7 +58,6 @@ import importlib
 import importlib.util
 import json
 import os
-import resource
 import subprocess
 import sys
 import tempfile
@@ -100,7 +99,9 @@ def _rss_mb() -> float:
 
 def _peak_mb() -> float:
     """The largest the resident set has been, in MB (Linux gives
-    ``ru_maxrss`` in kilobytes)."""
+    ``ru_maxrss`` in kilobytes). ``resource`` is imported here, as Windows
+    has none, so that ``--write-tile`` runs there."""
+    import resource
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 
 

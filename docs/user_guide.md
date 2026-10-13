@@ -904,9 +904,14 @@ shown appeared or disappeared, and 0 to 100 of them kept a changed
 upslope area. At the defaults the analysed square is about 983 by 979
 cells at 1 arc-second. It may hold at most 2,000,000 cells, margin
 included (`terrain.max_cells`), in both apps alike, so that whether a
-window is refused does not depend on which app ran it: at 1 arc-second
-the widest square shown is 16.5 km each way, and a wider radius is
-refused with the radius that fits. Coarser tiles fit a wider radius.
+window is refused does not depend on which app ran it. A radius whose
+window would hold more is refused, and the refusal names a radius that
+fits: at 1 arc-second and the default margin, 16.6 km south of about 8.4
+degrees north and 16.5 km north of it. That radius is worked out from
+the largest square window the cap holds, 1,413 cells each way, sized by
+a cell's shorter side, less the margin and rounded down to a tenth of a
+kilometre, so a radius a little wider, up to about 16.6 to 16.7 km, may
+still fit. Coarser tiles fit a wider radius.
 
 **Analysing the terrain.** Add the tiles: in the Python app with the
 uploader on the Topography tab, in the browser app by dropping them on

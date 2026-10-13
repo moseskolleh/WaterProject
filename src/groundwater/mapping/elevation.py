@@ -1667,8 +1667,9 @@ def _percent(count: int, cells: int) -> int:
     """``count`` as a whole percentage of ``cells``, half up, in integers
     alone so that both engines give the same figure: a read report saying
     "100%" while some cell was read would contradict itself, so a share
-    short of the whole is at most 99. A share under half a percent has a
-    sentence of its own ("less than 1%") and never comes here."""
+    short of the whole is at most 99. A share over none but under half a
+    percent has a sentence of its own ("less than 1%") and never comes
+    here; a count of none does, from the fill caption, and is 0."""
     pct = (200 * count + cells) // (2 * cells)
     return 99 if count < cells and pct == 100 else pct
 
