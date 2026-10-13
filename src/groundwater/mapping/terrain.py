@@ -522,17 +522,21 @@ def _where_label(site: SiteMetadata | None, window: AreaWindow | None) -> str:
 # Four figures of one analysed window, each cropped to the square shown and
 # composited as the browser's figures are (gwt-charts.js), so that the two
 # apps draw the same thing: the colours of each layer, the sea, the gaps and
-# the tint over filled hollows, the drainage lines with their paler and
-# dashed stretches, and the credit and the caveat inside the figure, where
-# the PNG and the SVG carry them. The browser draws from layers decimated to
-# a side of 1,024 cells; these draw every cell.
+# the tint over filled hollows, the contours, the drainage lines with their
+# paler and dashed stretches, the colour bars' labels, and the credit and
+# the caveat inside the figure, where the PNG and the SVG carry them. The
+# browser draws from layers decimated to a side of 1,024 cells; these are
+# given every cell of the square shown, and the PNG and the SVG both draw
+# them resampled to the pixels the axes have at figure_dpi: a square wider
+# than its axes is drawn with the cell nearest each pixel, so some cells
+# are not drawn, and a narrower one with each cell over one pixel or more.
 
 #: Sea with a height, and a missing tile taken as open sea, which is
 #: hatched: a cell whose column plus its row from the top leaves 0 or 1 in
-#: 6 is darkened
+#: 6 takes the hatch's darker blue
 _SEA_COLOUR = "#CFE3F2"
 _HATCH = 6
-_HATCH_DARKEN = 0.85
+_SEA_HATCH = "#9DBDD8"
 #: A cell with no height to analyse: no data, ground no file covers, or a
 #: zero-filled gap
 _GAP_COLOUR = "#E6E6E6"
@@ -541,15 +545,18 @@ _SHADE_SHARE = 0.35
 #: The tint over land the fill raised by fill_note_m or more, and its share
 _FILL_TINT = "#7B5EA7"
 _FILL_SHARE = 0.25
-#: How far a stream cell of uncertain area is lightened towards white on
+#: How far a cell of uncertain area, one that receives water from beyond
+#: the analysed square or from behind a gap, is lightened towards white on
 #: the wetness map
 _LIGHTEN = 0.35
 #: The drainage lines: their colour, and the opacity of a stretch routed
 #: across a flat or a filled hollow
-_LINE_COLOUR = "#1F5FAE"
+_LINE_COLOUR = "#1F5C99"
 _FLAT_OPACITY = 0.45
-#: Contours are traced on the heights taken one cell in every few, so that
-#: neither side has more than this many
+#: The contours: their colour and opacity, and the most cells a side of the
+#: heights they are traced on, taken one cell in every few
+_CONTOUR_COLOUR = "#5A3A1E"
+_CONTOUR_OPACITY = 0.7
 _CONTOUR_CELLS = 300
 
 
@@ -581,7 +588,7 @@ def _coloured(values: np.ndarray, cmap, lo: float, hi: float) -> np.ndarray:
 
 def _paint_ground(rgba: np.ndarray, analysis: TerrainAnalysis, view: tuple[slice, slice]) -> np.ndarray:
     """Paint over a layer's colours what is not land: sea, a missing tile
-    taken as open sea hatched in the same colour, and gaps in grey.
+    taken as open sea hatched in a darker blue, and gaps in grey.
 
     The assumed sea is the sea with no height: the read leaves it NaN in
     the grid, where every other sea cell has a height."""
@@ -594,15 +601,22 @@ def _paint_ground(rgba: np.ndarray, analysis: TerrainAnalysis, view: tuple[slice
     from_top = (rows - 1 - np.arange(rows))[:, None]
     hatch = (np.arange(cols)[None, :] + from_top) % _HATCH < 2
     rgba[sea] = (*to_rgb(_SEA_COLOUR), 1.0)
-    rgba[assumed & hatch, :3] *= _HATCH_DARKEN
+    rgba[assumed & hatch] = (*to_rgb(_SEA_HATCH), 1.0)
     rgba[cls == VOID] = (*to_rgb(_GAP_COLOUR), 1.0)
     return rgba
 
 
 def _draw_raster(ax, rgba: np.ndarray, frame: tuple[float, float, float, float]) -> None:
     """A composited layer, one image cell to a grid cell, framed on the
-    square shown."""
-    ax.imshow(rgba, extent=frame, origin="lower", interpolation="nearest", zorder=1, aspect="auto")
+    square shown.
+
+    The image is handed over in bytes, as matplotlib turns a float colour
+    into one (``(rgba * 255).astype(np.uint8)``), so the figure draws the
+    same pixels while the image it holds until it is saved is an eighth of
+    the size of the float64 one: the figures are drawn while the analysis
+    is still held."""
+    image = (np.clip(rgba, 0.0, 1.0) * 255).astype(np.uint8)
+    ax.imshow(image, extent=frame, origin="lower", interpolation="nearest", zorder=1, aspect="auto")
     ax.set_xlim(frame[0], frame[1])
     ax.set_ylim(frame[2], frame[3])
 
@@ -611,13 +625,20 @@ def _draw_parts(ax, parts: Sequence[DrainagePart], lons: np.ndarray, lats: np.nd
     """The drainage lines shown, wider with Strahler order, dashed where the
     upslope area is uncertain, and paler where a stretch was routed across
     a flat or a filled hollow rather than by slope. ``lons`` and ``lats``
-    are the analysed grid's, which the vertices index."""
-    lines, colours, widths, styles = [], [], [], []
+    are the analysed grid's, which the vertices index.
+
+    A line ``w`` points wide is dashed ``2.6w + 1.4`` on and ``1.6w + 0.9``
+    off, with flat ends, and a solid one has round ends, as the browser
+    draws them."""
     base = to_rgb(_LINE_COLOUR)
+    # the solid lines and the dashed ones, each with its own ends
+    drawn = {False: ([], [], [], []), True: ([], [], [], [])}
     for part in parts:
         points = [(float(lons[c]), float(lats[r])) for r, c in part.vertices]
         width = 0.6 + 0.5 * (part.strahler - 1)
-        style = (0, (3.0, 2.0)) if part.edge_contaminated else "solid"
+        # matplotlib draws a dash pattern this many times the line's width
+        style = (0, (2.6 + 1.4 / width, 1.6 + 0.9 / width)) if part.edge_contaminated else "solid"
+        lines, colours, widths, styles = drawn[part.edge_contaminated]
         # each run of stretches routed one way is one line, so that a dash
         # pattern runs on through the vertices where the line only turns
         start = 0
@@ -628,17 +649,20 @@ def _draw_parts(ax, parts: Sequence[DrainagePart], lons: np.ndarray, lats: np.nd
                 widths.append(width)
                 styles.append(style)
                 start = v
-    if lines:
-        ax.add_collection(LineCollection(lines, colors=colours, linewidths=widths, linestyles=styles,
-                                         capstyle="round", joinstyle="round", zorder=4))
+    for dashed, (lines, colours, widths, styles) in drawn.items():
+        if lines:
+            ax.add_collection(LineCollection(lines, colors=colours, linewidths=widths, linestyles=styles,
+                                             capstyle="butt" if dashed else "round", joinstyle="round",
+                                             zorder=4))
 
 
 def _draw_contours(ax, analysis: TerrainAnalysis, view: tuple[slice, slice], lons: np.ndarray,
                    lats: np.ndarray) -> None:
-    """Contours of the heights of the square shown at the analysis's own
-    interval, traced over the land and the sea that has a height, on one
-    cell in every few so that neither side has more than _CONTOUR_CELLS."""
-    z = np.where(analysis.core.cls[view] == VOID, np.nan, analysis.grid.z[view])
+    """Contours of the land heights of the square shown at the analysis's
+    own interval, on one cell in every few so that neither side has more
+    than _CONTOUR_CELLS. Sea and gaps are left out, so a contour stops at
+    the coast and at a gap, as the browser draws them."""
+    z = np.where(analysis.core.cls[view] == LAND, analysis.grid.z[view], np.nan)
     step = max(1, math.ceil(max(z.shape) / _CONTOUR_CELLS))
     z, lons, lats = z[::step, ::step], lons[::step], lats[::step]
     finite = z[np.isfinite(z)]
@@ -651,7 +675,8 @@ def _draw_contours(ax, analysis: TerrainAnalysis, view: tuple[slice, slice], lon
     if len(levels) > 1:
         # solid below sea level too, where matplotlib would dash them: a
         # dashed line on these figures is a drainage line of uncertain area
-        ax.contour(lons, lats, z, levels=levels, colors="#5A3A1E", linewidths=0.5, linestyles="solid", zorder=3)
+        ax.contour(lons, lats, z, levels=levels, colors=_CONTOUR_COLOUR, alpha=_CONTOUR_OPACITY, linewidths=0.5,
+                   linestyles="solid", zorder=3)
 
 
 def _caveat(ax, below: float, caveat: str) -> None:
@@ -778,18 +803,19 @@ def plot_wetness_index(
     terrain figure.
 
     Drawn on ``GnBu`` between the display limits the analysis chose
-    (``summary["twi_range"]``); a stream cell whose upslope area is
-    uncertain, because it drains ground beyond the analysed square or
-    behind a gap, is lightened 35% towards white, as the caption says.
-    Sea and gaps are painted as on the relief. ``captions``, ``credit``,
-    ``path`` and ``svg`` are as :func:`plot_terrain_relief` takes them; the
-    captions to print under it are ``captions["wetness"]``.
+    (``summary["twi_range"]``); every cell whose upslope area is
+    uncertain, because it receives water from beyond the analysed square
+    or from behind a gap (``core.flag``), is lightened 35% towards white,
+    as the caption says. Sea and gaps are painted as on the relief.
+    ``captions``, ``credit``, ``path`` and ``svg`` are as
+    :func:`plot_terrain_relief` takes them; the captions to print under it
+    are ``captions["wetness"]``.
     """
     style = style or HouseStyle()
     view, lons, lats, frame = _shown_axes(analysis)
     lo, hi = analysis.summary["twi_range"]
     rgba = _coloured(analysis.twi[view], "GnBu", lo, hi)
-    uncertain = analysis.stream[view] & analysis.core.flag[view].astype(bool)
+    uncertain = analysis.core.flag[view].astype(bool) & np.isfinite(analysis.twi[view])
     rgba[uncertain, :3] = (1.0 - _LIGHTEN) * rgba[uncertain, :3] + _LIGHTEN
     _paint_ground(rgba, analysis, view)
 
@@ -801,7 +827,7 @@ def plot_wetness_index(
         if not (math.isfinite(lo) and math.isfinite(hi)):
             lo, hi = 0.0, 1.0
         sm = plt.cm.ScalarMappable(cmap="GnBu", norm=Normalize(vmin=lo, vmax=hi))
-        fig.colorbar(sm, ax=ax, pad=0.02, shrink=0.85).set_label("Topographic wetness index")
+        fig.colorbar(sm, ax=ax, pad=0.02, shrink=0.85).set_label("Wetness index")
         below = _geo_axes_finish(ax, float(np.mean(lats)), credit or _grid_credit(analysis.grid))
         _caveat(ax, below, captions["figure_caveat"])
         ax.set_title(captions["title_wetness"])
@@ -846,7 +872,7 @@ def plot_curvature(
                 _mark_site(ax, site, carto.SITE)
             sm = plt.cm.ScalarMappable(cmap="BrBG_r", norm=Normalize(vmin=-limit, vmax=limit))
             fig.colorbar(sm, ax=ax, orientation="horizontal", pad=0.12, shrink=0.9,
-                         fraction=0.05).set_label("Curvature per km", fontsize=7)
+                         fraction=0.05).set_label("Curvature (per km)", fontsize=7)
             _panel_finish(ax, float(np.mean(lats)))
             ax.set_title(name, fontsize=9)
         fig.suptitle(captions["title_curvature"], fontsize=11, fontweight="bold")

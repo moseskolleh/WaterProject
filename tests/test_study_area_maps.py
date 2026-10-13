@@ -3,7 +3,9 @@
 Three groups of assertions, and they are not the same kind of assertion.
 The figures are checked for having been drawn at all - a PNG a report can
 embed - because asserting on the contents of a raster is asserting on
-matplotlib. What is checked properly is everything around the figure: the
+matplotlib. The terrain figures are the exception: the browser draws the
+same four, so their PNGs are read at cells whose colours the two apps
+share. What is checked properly is everything around the figure: the
 readers, which parse real file formats byte for byte and must not quietly
 mis-place a tile by a degree; the geometry, which decides whether a
 cross-section through these soundings means anything; and the refusals,
@@ -660,7 +662,10 @@ def test_the_four_terrain_figures_are_drawn_as_png_and_svg(tmp_path):
         text = _svg_text(svg)
         for line in (caps[f"title_{key}"], read.figure_credit, caps["figure_caveat"]):
             assert " ".join(line.split()) in text, (key, line)
-        assert "Date" not in svg.read_text(encoding="utf-8").split("</metadata>")[0], "no date in the SVG"
+        # matplotlib writes the date as <dc:date> and names itself with its
+        # version in the SVG's metadata unless save_figure says otherwise
+        head = svg.read_text(encoding="utf-8").split("</metadata>")[0]
+        assert "<dc:date>" not in head and "Matplotlib v" not in head, "no date or version in the SVG"
     # each panel of the directions is titled with its light
     assert all(caps[f"panel_{n}"] in _svg_text(tmp_path / "terrain_directions.svg") for n in range(4))
     # without a path the figure itself comes back, and nothing is written
@@ -671,6 +676,181 @@ def test_the_four_terrain_figures_are_drawn_as_png_and_svg(tmp_path):
         assert _figure_text(fig).count("Worked out from the elevation model alone") == 1
     finally:
         plt.close(fig)
+
+
+def _coast_analysis():
+    """A coast to draw the terrain figures over, 48 cells of about 110 m
+    square: sea along the west edge, deepening seawards; a missing tile
+    taken as open sea in the north-west corner; a gap on the north slope;
+    and between two ridges a valley running west to the sea, which a line
+    down each slope joins. The lines below the gap, and the valley below
+    them, drain the gap's edge."""
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import analyse_terrain
+
+    n = 48
+    r, c = np.arange(n)[:, None], np.arange(n)[None, :]
+    across = np.where(abs(r - 24) <= 18, abs(r - 24), 36 - abs(r - 24))   # ridges on rows 6 and 42
+    along = np.where(c <= 40, c - 7, 73 - c)                              # and on column 40
+    z = np.where(c <= 7, 6.0 * (c - 7) + 0.0 * r, 2.0 * along + 6.0 * across + 1.0)
+    z[36:39, 30:34] = np.nan
+    assumed = np.zeros((n, n), dtype=bool)
+    assumed[42:, :12] = True
+    z[assumed] = np.nan
+    grid = ElevationGrid(-12.2 + 0.001 * np.arange(n), 8.9 + 0.001 * np.arange(n), z, source="test grid",
+                         resolution_note="110 m cell", sea_clean=True)
+    return analyse_terrain(grid, TerrainConfig(drainage_area_km2=0.15), assumed_sea=assumed)
+
+
+def _commonest(png: np.ndarray, at: tuple[int, int], half: int = 2) -> tuple[int, ...]:
+    """The colour most of the pixels round ``at`` have: the cell's own where
+    a graticule line crosses a few of them."""
+    row, col = at
+    patch = png[row - half:row + half + 1, col - half:col + half + 1].reshape(-1, 3)
+    colours, counts = np.unique(patch, axis=0, return_counts=True)
+    return tuple(int(v) for v in colours[counts.argmax()])
+
+
+def test_the_terrain_figures_paint_their_layers_as_the_browser_does(tmp_path):
+    """A blank terrain figure passed every test, which read only its text
+    and its size. Each figure's PNG is read here at cells of a coast whose
+    analysis says what they are: in every map the sea, the assumed sea
+    hatched in its darker blue and the gap take the browser's colours
+    (gwt-charts.js, as smoke.mjs reads them off its figures); on the
+    wetness map a cell receiving water from beyond the square is lightened
+    35% towards white, stream or not, and no other cell is; the contours
+    stop at the coast; and the relief's drainage lines are the browser's
+    blue, dashed as the browser dashes them where their area is uncertain.
+    Each map holds its picture in bytes, not in floats eight times the
+    size."""
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+    from matplotlib.colors import Normalize, to_rgb
+    from matplotlib.contour import ContourSet
+
+    from groundwater.config import HouseStyle
+    from groundwater.mapping import (
+        plot_curvature,
+        plot_hillshade_directions,
+        plot_terrain_relief,
+        plot_wetness_index,
+        terrain_captions,
+    )
+    from groundwater.mapping.terrain_analysis import LAND, SEA, VOID
+
+    a = _coast_analysis()
+    caps = terrain_captions(a, None, "the coast")
+    cls, flag, z = a.core.cls, a.core.flag.astype(bool), a.grid.z
+    # cells clear of the graticule, which crosses the centres of every tenth
+    # row and column, and of the scale bar and the north arrow
+    sea, hatched, assumed, gap = (23, 3), (44, 3), (44, 6), (37, 31)
+    assert cls[sea] == cls[hatched] == cls[assumed] == SEA and cls[gap] == VOID
+    assert np.isfinite(z[sea]) and np.isnan(z[hatched]) and np.isnan(z[assumed])
+    # hatched where the column plus the row from the top leaves 0 or 1 in 6
+    assert (3 + 47 - 44) % 6 < 2 <= (6 + 47 - 44) % 6
+    painted = {sea: (207, 227, 242), hatched: (157, 189, 216), assumed: (207, 227, 242), gap: (230, 230, 230)}
+    beyond, within = (33, 31), (33, 21)
+    assert cls[beyond] == cls[within] == LAND and flag[beyond] and not flag[within]
+    assert not (a.stream[beyond] or a.stream[within])
+    valley = next(p for p in a.parts if p.vertices == ((24, 37), (24, 36)))
+    assert valley.strahler == 2 and not valley.edge_contaminated and not any(valley.stretch_flat)
+    lons, lats = a.core.lons, a.core.lats
+    style = HouseStyle()
+    labels = {"relief": ["Ground elevation (m)"], "wetness": ["Wetness index"],
+              "curvature": ["Curvature (per km)"] * 2, "directions": []}
+    figures = {"relief": (plot_terrain_relief, 1), "wetness": (plot_wetness_index, 1),
+               "curvature": (plot_curvature, 2), "directions": (plot_hillshade_directions, 4)}
+    for key, (draw, count) in figures.items():
+        fig = draw(a, caps, style=style)
+        try:
+            maps = [ax for ax in fig.axes if ax.images]
+            assert len(maps) == count, key
+            assert all(ax.images[0].get_array().dtype == np.uint8 for ax in maps), key
+            bars = [ax for ax in fig.axes if ax.get_label() == "<colorbar>"]
+            assert [bar.get_ylabel() or bar.get_xlabel() for bar in bars] == labels[key]
+            # where each cell's centre falls in the PNG save_figure writes at
+            # the figure's dpi, cropped to the drawing (bbox_inches="tight")
+            dpi = style.figure_dpi
+            fig.set_dpi(dpi)
+            fig.canvas.draw()
+            box = fig.get_tightbbox(fig.canvas.get_renderer()).padded(plt.rcParams["savefig.pad_inches"])
+
+            def pixel(ax, row: float, col: float) -> tuple[int, int]:
+                x, y = ax.transData.transform((np.interp(col, np.arange(lons.size), lons),
+                                               np.interp(row, np.arange(lats.size), lats)))
+                return int(box.y1 * dpi - y), int(x - box.x0 * dpi)
+
+            spots = [{cell: pixel(ax, *cell) for cell in (*painted, beyond, within, (24, 36.5), (38, 1), (10, 5))}
+                     for ax in maps]
+            if key == "relief":
+                ax = maps[0]
+                lines = {line.get_capstyle(): line for line in ax.collections if type(line) is LineCollection}
+                assert sorted(lines) == ["butt", "round"]
+                assert all(np.allclose(line.get_colors()[:, :3], to_rgb("#1F5C99")) for line in lines.values())
+                dashed = lines["butt"]
+                for width, (_, dashes) in zip(dashed.get_linewidths(), dashed.get_linestyles(), strict=True):
+                    assert dashes == pytest.approx([2.6 * width + 1.4, 1.6 * width + 0.9])
+                assert all(dashes is None for _, dashes in lines["round"].get_linestyles())
+                contours = [c for c in ax.collections if isinstance(c, ContourSet)]
+                assert len(contours) == 1 and contours[0].get_alpha() == 0.7
+        finally:
+            plt.close(fig)
+
+        png = np.round(plt.imread(draw(a, caps, path=tmp_path / f"{key}.png", style=style))[..., :3] * 255)
+        png = png.astype(int)
+        for spot in spots:
+            for cell, colour in painted.items():
+                assert _commonest(png, spot[cell]) == colour, (key, cell)
+        if key == "wetness":
+            lo, hi = a.summary["twi_range"]
+            for cell, lighten in ((beyond, 0.35), (within, 0.0)):
+                ramp = np.asarray(plt.get_cmap("GnBu")(Normalize(lo, hi, clip=True)(float(a.twi[cell])))[:3])
+                want = 255 * ((1.0 - lighten) * ramp + lighten)
+                assert np.abs(np.asarray(_commonest(png, spots[0][cell])) - want).max() <= 1, (cell, want)
+        if key == "relief":
+            # the sea three cells and more from the coast has no contour
+            # on it, whose brown is redder than it is blue
+            (top, left), (bottom, right) = spots[0][(38, 1)], spots[0][(10, 5)]
+            sea_area = png[top:bottom, left:right]
+            assert not (sea_area[..., 0] > sea_area[..., 2]).any(), "a contour over the sea"
+            # half way along a stretch of the valley, three pixels wide,
+            # some pixel takes the line's colour whole
+            row, col = spots[0][(24, 36.5)]
+            near = png[row - 3:row + 4, col - 3:col + 4].reshape(-1, 3)
+            assert (np.abs(near - (31, 92, 153)).max(axis=1) <= 1).any(), "the valley's line"
+
+
+def test_a_terrain_press_hands_the_memory_it_freed_back_where_glibc_can(monkeypatch):
+    """The Streamlit app's terrain press ends with glibc's malloc_trim(0),
+    which hands the system back the pages the analysis and the figures
+    held (app/views/site_maps.py). Where the C library cannot be loaded as
+    glibc, or has no malloc_trim, as on macOS, Windows and musl, the press
+    still ends quietly."""
+    import ctypes
+    import sys
+
+    app_dir = str(Path(__file__).resolve().parents[1] / "app")
+    if app_dir not in sys.path:
+        sys.path.insert(0, app_dir)
+    from views import site_maps
+
+    trimmed = []
+
+    class Glibc:
+        def malloc_trim(self, pad: int) -> int:
+            trimmed.append(pad)
+            return 1
+
+    class Other:
+        """A C library with no malloc_trim."""
+
+    def missing(name):
+        raise OSError(f"{name}: cannot open shared object file")
+
+    for library in (lambda name: Glibc(), lambda name: Other(), missing):
+        monkeypatch.setattr(ctypes, "CDLL", library)
+        site_maps._give_back_memory()
+    assert trimmed == [0]
 
 
 def test_a_grid_read_whole_is_analysed_in_a_window_held_to_the_same_cap():

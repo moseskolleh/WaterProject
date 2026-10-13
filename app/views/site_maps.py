@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ctypes
 import dataclasses
+import gc
 from pathlib import Path
 
 import streamlit as st
@@ -140,6 +142,26 @@ def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, decl
                        encoding="utf-8")
     return {"figures": figures, "geojson": str(geojson), "summary": dict(analysis.summary),
             "captions": captions, "notes": notes, "notice": notice}
+
+
+def _give_back_memory() -> None:
+    """Hand the system back the memory a terrain press freed.
+
+    The analysis and the figures are dropped when the press ends, but glibc
+    keeps most of the pages they held, and a later press does not reuse
+    them all. In the running app on the bench's tile, a press at the
+    default left the server at 377 and 404 MiB, and a press at the cap
+    after it, in another session, reached 817 and 867 MiB; with this, 245
+    and 248 MiB, then 714 and 717. ``malloc_trim(0)`` hands the free pages
+    back once the figures, which matplotlib holds in reference cycles, are
+    collected. Where the C library is not glibc there is no
+    ``malloc_trim``, and this only collects."""
+    gc.collect()
+    try:
+        trim = ctypes.CDLL("libc.so.6").malloc_trim
+    except (OSError, AttributeError):
+        return
+    trim(0)
 
 
 def _show_terrain(result: dict) -> None:
@@ -436,6 +458,7 @@ def render() -> None:
                 else:
                     _bar.progress(1.0)
                     _status.update(state="complete")
+            _give_back_memory()
             if _result is None:
                 # the figures shown before were of other files or another
                 # window, and a refusal is said in their place
