@@ -3981,13 +3981,27 @@ await withPage(async (page, base, consoleErrors) => {
       for (let s = 1; s <= flats.length; s++) {
         if (s < flats.length && flats[s] === flats[start]) continue;
         runs.push({ id: part.id, width: 0.6 + 0.5 * (part.strahler - 1), flat: flats[start],
-          dashed: part.edge_contaminated });
+          dashed: part.edge_contaminated, first: start === 0 });
         start = s;
       }
     });
-    const paths = Array.from(svgs.terrainRelief.querySelectorAll('path[data-link]')).map((p) => ({
+    const drawn = Array.from(svgs.terrainRelief.querySelectorAll('path[data-link]'));
+    const paths = drawn.map((p) => ({
       id: Number(p.getAttribute('data-link')), width: Number(p.getAttribute('stroke-width')),
       flat: p.getAttribute('stroke-opacity') === '0.45', dashed: p.hasAttribute('stroke-dasharray') }));
+    /* each run of a dashed line takes the pattern up as far along the line
+     * as the runs before it were drawn, so a run shorter than a dash is not
+     * drawn solid by starting the pattern again */
+    let along = 0;
+    const offsets = drawn.map((p, i) => {
+      if (runs[i] && runs[i].first) along = 0;
+      const at = { id: runs[i] && runs[i].id, dashed: runs[i] && runs[i].dashed, along,
+        offset: Number(p.getAttribute('stroke-dashoffset')) };
+      along += p.getTotalLength();
+      return at;
+    }).filter((at) => at.dashed);
+    out.dashes = { runs: offsets.length, later: offsets.filter((at) => at.along > 0).length,
+      off: offsets.filter((at) => !(Math.abs(at.offset - at.along) < 0.1)) };
     out.lines = {
       parts: analysis.parts.length, runs: runs.length, paths: paths.length,
       same: JSON.stringify(paths) === JSON.stringify(runs.map((r) => ({ id: r.id, width: r.width,
@@ -3997,6 +4011,40 @@ await withPage(async (page, base, consoleErrors) => {
       contours: svgs.terrainRelief.querySelectorAll('path[data-contour]').length,
       elsewhere: ['wetnessMap', 'curvatureMaps', 'hillshadeDirections']
         .map((name) => svgs[name].querySelectorAll('path[data-link], path[data-contour]').length),
+    };
+
+    /* a line of order 5, 2.6 units wide, on a relief 218 units wide, whose
+     * map is 60 units across for the 60 cells shown, so a cell is drawn one
+     * unit across, as a window's cells are at the cap: two stretches routed
+     * by slope, one across a flat and two more by slope. The map alone,
+     * without the graticule, scale bar and north arrow drawn over it, and
+     * rasterised at 8 times: the flat stretch keeps its 45% at its middle,
+     * which round ends on the stretches beside it would cover, and those
+     * stretches are drawn in the line's full colour. */
+    const line = { id: 1, part: 0, strahler: 5, edge_contaminated: false, outlet: 'edge',
+      vertices: [30, 31, 32, 33, 34, 35].map((c) => [45, c]), stretch_flat: [false, false, true, false, false] };
+    const narrow = (parts) => {
+      const svg = charts.terrainRelief(display, Object.assign({}, opts,
+        { parts, summary: {}, site: null, width: 218 }));
+      Array.from(svg.children).forEach((node) => {
+        if (node.tagName !== 'defs' && !node.querySelector('[data-layer]')) node.setAttribute('data-export', 'skip');
+      });
+      return svg;
+    };
+    const lined = narrow([line]);
+    const runsOf = Array.from(lined.querySelectorAll('path[data-link]'));
+    const [withLine, ground] = await Promise.all([lined, narrow([])].map(async (svg) =>
+      decode((await charts.toPng(svg, { scale: 8 })).dataUrl)));
+    const middle = (p) => {
+      const at = p.getPointAtLength(p.getTotalLength() / 2);
+      return [Math.floor(at.x * 8), Math.floor(at.y * 8)];
+    };
+    out.caps = runsOf.length !== 3 ? { runs: runsOf.length } : {
+      runs: runsOf.length, unit: Number(runsOf[1].getTotalLength().toFixed(2)),
+      flat: withLine.at(...middle(runsOf[1])).slice(0, 3),
+      pale: ground.at(...middle(runsOf[1])).slice(0, 3)
+        .map((g, i) => Math.round(0.45 * [31, 92, 153][i] + 0.55 * g)),
+      solid: [runsOf[0], runsOf[2]].map((p) => withLine.at(...middle(p)).slice(0, 3)),
     };
     return out;
   });
@@ -4024,6 +4072,12 @@ await withPage(async (page, base, consoleErrors) => {
     terrain.lines.same && terrain.lines.paths > 0 && terrain.lines.flat > 0 && terrain.lines.dashed > 0 &&
     terrain.lines.solid > 0 && terrain.lines.contours > 0 && terrain.lines.elsewhere.every((count) => count === 0),
     JSON.stringify(terrain.lines));
+  check('terrain figures: a dashed line\'s pattern runs on from one run to the next, not starting again',
+    terrain.dashes.later > 0 && terrain.dashes.off.length === 0, JSON.stringify(terrain.dashes));
+  const apart = (a, b) => a.reduce((sum, v, i) => sum + Math.abs(v - b[i]), 0);
+  check('terrain figures: a flat-routed stretch shorter than the line is wide is still drawn paler',
+    terrain.caps.runs === 3 && terrain.caps.unit < 2 && apart(terrain.caps.flat, terrain.caps.pale) <= 9 &&
+    terrain.caps.solid.every((c) => apart(c, [31, 92, 153]) <= 6), JSON.stringify(terrain.caps));
   check('terrain figures: toPng of each gives a PNG whose maps are painted',
     terrainFigures.every(([, f]) => f.png[0] === f.png[2] && f.png[1] === f.png[3] &&
       f.painted.length === f.want.length && f.painted.every((share) => share > 0.6)),
