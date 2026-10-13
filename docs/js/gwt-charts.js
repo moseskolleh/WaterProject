@@ -6074,8 +6074,14 @@
    * the analysed square or behind a gap (edge_contaminated), so its area
    * and order may be larger or smaller than drawn; and each stretch routed
    * across a flat or a filled hollow rather than by slope (stretch_flat)
-   * at 45% opacity, the least certain stretches drawn the palest. A part's
-   * vertices are [row, column] of the analysed grid. */
+   * at 45% opacity, the least certain stretches drawn the palest. Each run
+   * of stretches routed alike is a path of its own, so a dashed run takes
+   * up the pattern where the run before it left off, and a short run is not
+   * drawn solid by starting it again. A run routed by slope ends square, so
+   * its ends do not cover a flat-routed run beside it; a flat-routed run
+   * keeps round ends, which fall on the darker run and fill the outside of
+   * the corner between them. A part's vertices are [row, column] of the
+   * analysed grid. */
   function terrainDrainage(panel, parts, geo) {
     (parts || []).forEach(function (part) {
       var vertices = part.vertices || [];
@@ -6085,14 +6091,17 @@
       var dash = part.edge_contaminated
         ? (2.6 * width + 1.4).toFixed(1) + ' ' + (1.6 * width + 0.9).toFixed(1) : null;
       var pts = vertices.map(function (v) { return panel.project(geo.lon(v[1]), geo.lat(v[0])); });
-      var stretches = pts.length - 1, start = 0;
+      var stretches = pts.length - 1, start = 0, along = 0;
       for (var s = 1; s <= stretches; s++) {
         if (s < stretches && !!flat[s] === !!flat[start]) continue;
         panel.layer.appendChild(polyline(pts.slice(start, s + 1), {
           stroke: TERRAIN_LINE, 'stroke-width': width, 'stroke-opacity': flat[start] ? 0.45 : null,
-          'stroke-dasharray': dash, 'stroke-linecap': dash ? 'butt' : 'round', 'data-link': part.id,
+          'stroke-dasharray': dash, 'stroke-dashoffset': dash ? along.toFixed(2) : null,
+          'stroke-linecap': dash || !flat[start] ? 'butt' : 'round', 'data-link': part.id,
         }));
-        start = s;
+        for (; start < s; start++) {
+          along += Math.hypot(pts[start + 1][0] - pts[start][0], pts[start + 1][1] - pts[start][1]);
+        }
       }
     });
   }
