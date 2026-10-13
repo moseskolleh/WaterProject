@@ -5854,6 +5854,39 @@
     return { links: links, parts: parts };
   }
 
+  /**
+   * The summary's counts of drainage-line cells in the square shown at a
+   * threshold, as terrain_analysis.analyse_terrain counts them: the land
+   * cells (class 1) with at least the threshold's area, the threshold in
+   * whole 0.01 m^2 units as drainageLinks takes it, those of them routed
+   * across a flat or a filled hollow, and those flagged for edge
+   * contamination; each share is of the line cells, 0 of none.
+   * analyseTerrain counts its summary with this, and the page counts again
+   * with it, from the core alone, when the threshold changes.
+   * @param {TerrainCore} core what terrainCore gives
+   * @param {number} areaKm2 the drainage threshold, km^2 (terrain.drainage_area_km2)
+   * @returns {{flat_routed_stream: number, stream: number, contaminated_stream: number,
+   *   flat_routed_lines_pct: number, contaminated_pct: number, threshold_units: number}}
+   */
+  function streamCounts(core, areaKm2) {
+    var threshold = assemblyThreshold(areaKm2);
+    var cls = core.cls, area = core.areaUnits, flatRouted = core.flatRouted, flag = core.flag;
+    var cols = core.cols, shown = core.shown, stream = 0, flat = 0, flagged = 0;
+    for (var r = shown[0]; r < shown[1]; r++) {
+      for (var i = r * cols + shown[2]; i < r * cols + shown[3]; i++) {
+        if (cls[i] !== ROUTE_LAND || area[i] < threshold) continue;
+        stream += 1;
+        flat += flatRouted[i];
+        flagged += flag[i] ? 1 : 0;
+      }
+    }
+    return {
+      flat_routed_stream: flat, stream: stream, contaminated_stream: flagged,
+      flat_routed_lines_pct: assemblyShare(flat, stream), contaminated_pct: assemblyShare(flagged, stream),
+      threshold_units: threshold,
+    };
+  }
+
   /* A string as Python's json.dumps writes it with ensure_ascii (spec
    * 3.10): the quote and the backslash escaped, \b \f \n \r \t by name,
    * any other code unit below 0x20 and every one from 0x7F up as \uXXXX in
@@ -6127,7 +6160,7 @@
     var lowest = Infinity, highest = -Infinity, any = false;
     var arg = new Float64Array(cells);
     at = 0;
-    var floored = 0, nStream = 0, nFlat = 0, nFlagged = 0, nRaised = 0;
+    var floored = 0, nRaised = 0;
     for (r = r0; r < r1; r++) {
       for (i = r * cols + c0; i < r * cols + c1; i++) {
         var height = zt[i];
@@ -6139,20 +6172,16 @@
         arg[at++] = wet.arg[i];
         floored += wet.floored[i];
         nRaised += raised[i];
-        if (stream[i]) {
-          nStream += 1;
-          nFlat += flatRouted[i];
-          nFlagged += flag[i] ? 1 : 0;
-        }
       }
     }
     var relief = any ? highest - lowest : NaN;
     var twiEnds = displayRange(arg, 0.02, 0.98);
+    var lines = streamCounts(core, settings.drainage_area_km2);
     Object.assign(summary, {
-      raised: nRaised, flat_routed_stream: nFlat, stream: nStream, contaminated_stream: nFlagged,
-      unresolved: flats.unresolved, floored: floored,
-      raised_pct: assemblyShare(nRaised, land), flat_routed_lines_pct: assemblyShare(nFlat, nStream),
-      contaminated_pct: assemblyShare(nFlagged, nStream), sea_pct: assemblyShare(sea + assumedShown, cells),
+      raised: nRaised, flat_routed_stream: lines.flat_routed_stream, stream: lines.stream,
+      contaminated_stream: lines.contaminated_stream, unresolved: flats.unresolved, floored: floored,
+      raised_pct: assemblyShare(nRaised, land), flat_routed_lines_pct: lines.flat_routed_lines_pct,
+      contaminated_pct: lines.contaminated_pct, sea_pct: assemblyShare(sea + assumedShown, cells),
       zero_fill_pct: assemblyShare(zeroFill, cells), max_fill_m: maxFill, k_cells: bends.kCells,
       threshold_units: threshold, relief: relief, contour_interval: contourInterval(relief),
       twi_range: [Math.log(twiEnds[0]), Math.log(twiEnds[1])], curvature_limit: curvatureLimit,
@@ -6388,7 +6417,7 @@
   }
 
   Object.assign(C, {
-    analyseTerrain: analyseTerrain, terrainCore: terrainCore, drainageLinks: drainageLinks,
+    analyseTerrain: analyseTerrain, terrainCore: terrainCore, drainageLinks: drainageLinks, streamCounts: streamCounts,
     drainageGeoJson: drainageGeoJson, terrainCaptions: terrainCaptions, terrainDisplayLayers: terrainDisplayLayers,
   });
 

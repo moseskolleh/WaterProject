@@ -648,6 +648,22 @@ vm.runInContext('var globalThis = this;', sandbox);
 sandbox.importScripts('gwt-worker.js');
 const C = sandbox.GWT.core;
 
+// what the worker asks of the engine, which it reads off GWT.core when a
+// task runs: the precision an analysis is made in, what the analysis
+// holds its drawn layers in, and the most cells a side of the display
+const engineAnalyse = C.analyseTerrain, engineDisplay = C.terrainDisplayLayers;
+const spied = { precision: [], twi: [], edge: [] };
+C.analyseTerrain = (grid, cfg, progress, precision, shown) => {
+  const analysis = engineAnalyse(grid, cfg, progress, precision, shown);
+  spied.precision.push(precision);
+  spied.twi.push(analysis.twi.constructor.name);
+  return analysis;
+};
+C.terrainDisplayLayers = (analysis, grid, maxEdge) => {
+  spied.edge.push(maxEdge);
+  return engineDisplay(analysis, grid, maxEdge);
+};
+
 // the page's part: open the files, plan the window, cut out its blocks
 const names = ['holes_N08W012.tif', 'holes_sea_N08W013.tif', 'holes_sea_N07W012.tif'];
 const bytes = Object.fromEntries(names.map((name) => [name, new Uint8Array(readFileSync(dem + '/' + name))]));
@@ -675,12 +691,12 @@ function answered(post) {
   process.exit(0);
 }
 // for each array named: whether its buffer is in the transfer list,
-// whether the worker's own array is now empty, and how many values the
-// page received
+// whether the worker's own array is now empty (a buffer handed over has
+// no bytes left), and how many values the page received
 function moved(post, sent, got) {
   const fates = {};
   for (const [name, array] of Object.entries(sent)) {
-    fates[name] = { listed: post.list.includes(array.buffer), detached: array.buffer.detached,
+    fates[name] = { listed: post.list.includes(array.buffer), detached: array.buffer.byteLength === 0,
       length: got[name].length };
   }
   return fates;
@@ -709,7 +725,7 @@ a.display.hillshades.forEach((layer, k) => {
   sentLayers['display.hillshades.' + k] = layer;
   gotLayers['display.hillshades.' + k] = b.display.hillshades[k];
 });
-const direct = C.analyseTerrain(onPage.grid, null, null, 'float32', onPage.grid.shown);
+const direct = engineAnalyse(onPage.grid, null, null, 'float32', onPage.grid.shown);
 const directCore = C.terrainCore(direct);
 
 // a refusal is an error, with nothing to hand over, and another task's
@@ -717,6 +733,18 @@ const directCore = C.terrainCore(direct);
 const descending = { ...grid, lats: Float64Array.from(grid.lats).reverse() };
 const refused = ask(3, 'analyseTerrain', { grid: descending, cfg: null, read: null, where });
 const other = ask(4, 'recompute', { sources: {} });
+
+// a square shown 1,100 cells a side, wider than the display's 1,024: a
+// plane rising to the north-east, with a margin of 4 cells
+const side = 1108, step = 1 / 3600;
+const plane = {
+  lons: Float64Array.from({ length: side }, (_, i) => -12.0 + i * step),
+  lats: Float64Array.from({ length: side }, (_, j) => 8.0 + j * step),
+  z: Float64Array.from({ length: side * side }, (_, k) => 100.0 + 0.01 * (k % side) + 0.02 * Math.floor(k / side)),
+  rows: side, cols: side, shown: [4, 1104, 4, 1104], assumedSea: null, sourceId: 'unidentified', seaClean: false,
+  label: 'a plane',
+};
+const thinned = answered(ask(5, 'analyseTerrain', { grid: plane, cfg: null, read: null, where })).received.result;
 
 writeFileSync(out, JSON.stringify({
   ready: posted[0].message.ready === true,
@@ -727,13 +755,11 @@ writeFileSync(out, JSON.stringify({
     rows: got.grid.rows, cols: got.grid.cols, assumed: got.assumed,
     same: same(got.grid.z, onPage.grid.z) && same(got.reasons, onPage.reasons) &&
       same(got.grid.assumedSea, onPage.grid.assumedSea),
-    blocksKept: blocks.every((block) => !block.buffer.detached && block.length > 0),
   },
   analyse: {
     moved: moved(analysed, sentLayers, gotLayers), listed: analysed.list.length,
     display: [b.display.rows, b.display.cols], core: [b.core.rows, b.core.cols],
     keys: Object.keys(b).sort(),
-    gridKept: !grid.z.buffer.detached && grid.z.length === grid.rows * grid.cols,
     same: same(b.core.areaUnits, directCore.areaUnits) && same(b.core.code, directCore.code) &&
       JSON.stringify(b.summary) === JSON.stringify(direct.summary) &&
       JSON.stringify(b.captions) === JSON.stringify(C.terrainCaptions(direct, onPage, where)),
@@ -741,6 +767,12 @@ writeFileSync(out, JSON.stringify({
   refused: { error: refused.message.error, listed: refused.list.length },
   descend: C.phrase('terrain.axes_descend'),
   other: { error: other.message.error || null, listed: other.list.length },
+  spied,
+  thinned: {
+    at: [thinned.display.stride, thinned.display.rows, thinned.display.cols],
+    lengths: Object.entries(thinned.display).flatMap(([key, v]) => (ArrayBuffer.isView(v) ? [[key, v.length]]
+      : key === 'hillshades' ? v.map((layer) => [key, layer.length]) : [])),
+  },
 }));
 """
 
@@ -753,9 +785,10 @@ def test_the_worker_hands_terrain_layers_back_by_transfer(tmp_path):
     on a device that may be short of memory already. Each terrain answer
     names every buffer under its arrays in the transfer list, and each one
     once: a buffer named twice makes the whole answer fail to clone, and
-    one left out is copied. The requests stay copies, so that the page
-    still has the blocks and the grid it sent if it has to run the task
-    itself, and an error or another task's answer hands nothing over.
+    one left out is copied. An error or another task's answer hands nothing
+    over. The worker analyses in float32, so that the layers only drawn
+    take half the memory, and thins the display to 1,024 cells a side,
+    which a square shown at the cap is wider than.
     """
     found = _node(tmp_path, _JS_TRANSFER, str(REPO / "docs" / "js"),
                   str(REPO / "tests" / "webapp" / "fixtures" / "dem"))
@@ -775,7 +808,6 @@ def test_the_worker_hands_terrain_layers_back_by_transfer(tmp_path):
     }
     assert read["listed"] == 5, "the list names a buffer the answer does not hold"
     assert read["same"], "the read the page receives is not the read the engine gives"
-    assert read["blocksKept"], "the page's blocks went with the request"
 
     analyse = found["analyse"]
     assert analyse["keys"] == ["captions", "core", "display", "kCells", "links", "parts", "summary"]
@@ -788,11 +820,21 @@ def test_the_worker_hands_terrain_layers_back_by_transfer(tmp_path):
         length = lengths.get(name, high * wide if name.startswith("display.") else rows * cols)
         assert fate == {"listed": True, "detached": True, "length": length}, name
     assert analyse["listed"] == len(moved), "the list names a buffer the answer does not hold"
-    assert analyse["gridKept"], "the page's grid went with the request"
     assert analyse["same"], "the analysis the page receives is not the one the engine gives"
 
     assert found["refused"] == {"error": {"name": "Error", "message": found["descend"]}, "listed": 0}
     assert found["other"] == {"error": None, "listed": 0}
+
+    # every analysis the worker made (the descending grid was refused before
+    # it had one) was in float32 and thinned to 1,024 cells a side
+    assert found["spied"] == {"precision": ["float32", "float32"], "twi": ["Float32Array", "Float32Array"],
+                              "edge": [1024, 1024]}
+    # 1,100 cells a side are drawn from every other one
+    thinned = found["thinned"]
+    assert thinned["at"] == [2, 550, 550]
+    assert thinned["lengths"] and all(
+        length == (550 if key in ("lons", "lats") else 550 * 550) for key, length in thinned["lengths"]
+    ), thinned["lengths"]
 
 
 # GWT.engine on a page, in Node, with a Worker the script drives by hand: it
@@ -818,9 +860,11 @@ function page() {
       this.terminated = false;
       workers.push(this);
     }
-    // what reaches the worker is a copy, as postMessage makes one
+    // what reaches the worker is a copy, as postMessage makes one, with
+    // the buffers listed handed over
     postMessage(message, transfer) {
-      this.sent.push({ message: structuredClone(message), transfer: transfer === undefined ? null : transfer });
+      this.sent.push({ message: structuredClone(message, { transfer: transfer || [] }),
+        transfer: transfer === undefined ? null : transfer });
     }
     terminate() { this.terminated = true; }
   }
@@ -855,6 +899,13 @@ const FAILS = {
   uncloneable: (worker) => worker.onmessage({ data: { id: worker.sent[0].message.id,
     error: { name: 'DataCloneError', message: 'the answer would not clone' }, uncloneable: true } }),
 };
+// the error a task threw, which the worker answers with and goes on: an
+// array Chromium or Firefox found no memory for, or the engine's refusal
+const THROWN = {
+  chromium: { name: 'RangeError', message: 'Array buffer allocation failed' },
+  firefox: { name: 'Error', message: 'out of memory' },
+  refused: { name: 'Error', message: 'The window holds no elevations.' },
+};
 
 async function settled(promise) {
   try {
@@ -879,19 +930,24 @@ async function run(start, fail, ready) {
   const { engine, workers, warnings } = page();
   const promise = start(engine);
   if (ready) workers[0].onmessage({ data: { ready: true } });
-  FAILS[fail](workers[0]);
+  fail(workers[0]);
   const outcome = await settled(promise);
   return report(engine, workers, warnings, outcome);
 }
 
-const found = { stopped: {}, rerun: {} };
+const found = { stopped: {}, rerun: {}, thrown: {} };
 for (const fail of Object.keys(FAILS)) {
   for (const [task, start] of Object.entries(terrain)) {
-    found.stopped[fail + ' ' + task] = await run(start, fail, true);
+    found.stopped[fail + ' ' + task] = await run(start, FAILS[fail], true);
   }
-  found.rerun[fail] = await run((engine) => engine.recompute({ sources: {} }), fail, true);
+  found.rerun[fail] = await run((engine) => engine.recompute({ sources: {} }), FAILS[fail], true);
 }
-found.beforeReady = await run(terrain.analyseTerrain, 'crashed', false);
+for (const [kind, error] of Object.entries(THROWN)) {
+  const fail = (worker) => worker.onmessage({ data: { id: worker.sent[0].message.id, error } });
+  for (const [task, start] of Object.entries(terrain)) found.thrown[kind + ' ' + task] = await run(start, fail, true);
+  found.thrown[kind + ' recompute'] = await run((engine) => engine.recompute({ sources: {} }), fail, true);
+}
+found.beforeReady = await run(terrain.analyseTerrain, FAILS.crashed, false);
 {
   const { engine, workers, warnings } = page();
   engine.forcePage(true);
@@ -904,7 +960,25 @@ found.beforeReady = await run(terrain.analyseTerrain, 'crashed', false);
   const stopped = engine.cancel(['readElevation', 'analyseTerrain']);
   found.cancelled = { stopped, ...report(engine, workers, warnings, await settled(promise)) };
 }
-found.blocksKept = blocks[0].length === 4 && !blocks[0].buffer.detached && !grid.z.buffer.detached;
+{
+  // a read answered, then an analysis, then another request: the worker
+  // that answered the analysis is stopped, and the request after it starts
+  // a fresh one
+  const { engine, workers, warnings } = page();
+  const answer = (worker) => worker.onmessage({ data: { id: worker.sent[worker.sent.length - 1].message.id,
+    result: { answered: true } } });
+  const read = terrain.readElevation(engine);
+  workers[0].onmessage({ data: { ready: true } });
+  answer(workers[0]);
+  const afterRead = { ...await settled(read), terminated: workers.map((w) => w.terminated) };
+  const analysis = terrain.analyseTerrain(engine);
+  answer(workers[0]);
+  const outcome = await settled(analysis);
+  engine.recompute({ sources: {} });
+  found.answered = { afterRead, ...report(engine, workers, warnings, outcome) };
+}
+// a buffer handed over has no bytes left
+found.blocksKept = blocks[0].length === 4 && blocks[0].buffer.byteLength > 0 && grid.z.buffer.byteLength > 0;
 writeFileSync(out, JSON.stringify(found));
 """
 
@@ -918,9 +992,13 @@ def test_a_terrain_job_is_not_rerun_on_the_page_after_the_started_worker_stops(t
     So once the worker has said it is ready, a crash, an answer that cannot
     be read and an answer that could not be sent each fail a terrain job
     with an error named WorkerStopped, which says to try a smaller radius.
-    A worker that fails before it is ready never ran the job, so the job
-    still runs on the page, as every later one does; and where the page is
-    the engine from the start, a terrain job runs there as any other.
+    So does an array the browser found no memory for: the task throws, and
+    the worker answers with the error and goes on, which is how most
+    terrain jobs short of memory end; that worker is stopped. The engine's
+    own refusal still comes through in its words. A worker that fails
+    before it is ready never ran the job, so the job still runs on the
+    page, as every later one does; and where the page is the engine from
+    the start, a terrain job runs there as any other.
     """
     found = _node(tmp_path, _JS_ENGINE_STOPS, str(REPO / "docs" / "js"))
     stopped = ["WorkerStopped", ("The background engine stopped while working out the terrain, most "
@@ -932,9 +1010,10 @@ def test_a_terrain_job_is_not_rerun_on_the_page_after_the_started_worker_stops(t
         assert got["history"] == [[task, "worker", "failed"]], case
         # the request went as a copy, with nothing handed over
         assert got["sent"] == [[task, None]], case
-        # the worker stays the engine, and only a crashed one is stopped
+        # the worker stays the engine, and only a crashed one is stopped, or
+        # one that had an analysis
         assert got["mode"] == "worker" and got["unavailable"] == "", case
-        assert got["terminated"] == [failure == "crashed"], case
+        assert got["terminated"] == [failure == "crashed" or task == "analyseTerrain"], case
         if failure == "uncloneable":
             assert got["warnings"] == [(f"The engine worker could not send back its answer to {task} "
                                         "(the answer would not clone).")], case
@@ -946,6 +1025,21 @@ def test_a_terrain_job_is_not_rerun_on_the_page_after_the_started_worker_stops(t
     assert found["rerun"]["uncloneable"]["warnings"] == [
         ("The engine worker could not send back its answer to recompute (the answer would not clone); "
          "working it out on the page.")]
+
+    errors = {"chromium": ["RangeError", "Array buffer allocation failed"], "firefox": ["Error", "out of memory"],
+              "refused": ["Error", "The window holds no elevations."]}
+    for case, got in found["thrown"].items():
+        kind, task = case.split()
+        assert got["history"] == [[task, "worker", "failed"]] and got["sent"] == [[task, None]], case
+        assert got["mode"] == "worker", case
+        if kind != "refused" and task != "recompute":
+            # a terrain job short of memory: the sentence, and its worker stopped
+            assert got.get("rejected") == stopped and got["terminated"] == [True], case
+        else:
+            # the task's own error in its own words, from a worker that is
+            # kept unless it had an analysis
+            assert got.get("rejected") == errors[kind], case
+            assert got["terminated"] == [task == "analyseTerrain"], case
 
     before = found["beforeReady"]
     assert before.get("resolved") == ["captions", "core", "display", "kCells", "links", "parts", "summary"], before
@@ -961,3 +1055,24 @@ def test_a_terrain_job_is_not_rerun_on_the_page_after_the_started_worker_stops(t
     assert cancelled["history"] == [["analyseTerrain", "worker", "cancelled"]] and cancelled["terminated"] == [True]
 
     assert found["blocksKept"], "the page's blocks or grid went with a request"
+
+
+def test_the_worker_that_analysed_the_terrain_is_stopped_once_it_has_answered(tmp_path):
+    """An idle worker would keep the analysis it answered from.
+
+    The answer's layers are handed over, but the rest of the analysis is
+    garbage the idle worker may hold for minutes, a hundred megabytes and
+    more at the default window, while the page draws the figures on top of
+    it. So the worker is stopped once an analysis is answered, and the next
+    request starts a fresh one; a read answered keeps its worker for the
+    analysis that follows it.
+    """
+    found = _node(tmp_path, _JS_ENGINE_STOPS, str(REPO / "docs" / "js"))
+    answered = found["answered"]
+    assert answered["afterRead"] == {"resolved": ["answered"], "terminated": [False]}
+    assert answered["resolved"] == ["answered"]
+    assert answered["history"] == [["readElevation", "worker", "done"], ["analyseTerrain", "worker", "done"]]
+    # the read and the analysis went to the first worker, the request after
+    # them to a second
+    assert answered["sent"] == [["readElevation", None], ["analyseTerrain", None], ["recompute", None]]
+    assert answered["workers"] == 2 and answered["terminated"] == [True, False]

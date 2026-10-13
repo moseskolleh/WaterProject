@@ -292,7 +292,7 @@
   var HISTORY = 40;
 
   var engine = {
-    worker: null,     // started with the first request, and after a cancel
+    worker: null,     // started with the first request, and after a cancel or a terrain analysis
     ready: false,     // it has loaded the engine and said so
     unavailable: '',  // why every request runs on the page, once one has to
     pageOnly: false,  // forcePage(true): for tests, and for debugging
@@ -450,12 +450,38 @@
         job.type + ' (' + data.error.message + ')' +
         (job.rerunOnPage ? '; working it out on the page.' : '.'));
       rerun(job);
+    } else if (data.error && !job.rerunOnPage && ranOutOfMemory(data.error)) {
+      /* a terrain job the worker found no memory for: the worker caught
+       * the error and is still going, but it is stopped, which frees its
+       * memory before a smaller radius is tried, and the job fails as one
+       * that stopped the worker does */
+      stopWorker();
+      settle(job, 'failed', workerStopped());
     } else if (data.error) {
       settle(job, 'failed', rebuilt(data.error));
     } else {
       settle(job, 'done', null, data.result);
     }
+    stopAfter(job);
     next();
+  }
+
+  /* An array the browser could not find the memory for: V8's "Array
+   * buffer allocation failed", JavaScriptCore's "Out of memory", and
+   * SpiderMonkey's "out of memory", which it throws as a string (errorOf
+   * names it Error). A task does not stop the worker by throwing, so this
+   * is how most terrain jobs short of memory end. */
+  function ranOutOfMemory(error) {
+    return /allocation failed|out of memory/i.test(String(error && error.message));
+  }
+
+  /* A worker that has analysed the terrain is stopped once the job is
+   * settled, and the next request starts a fresh one, as after a cancel.
+   * The analysis is garbage once its answer is handed over, but an idle
+   * worker may hold it for minutes, a hundred megabytes and more at the
+   * default window, on top of what the page takes to draw the figures. */
+  function stopAfter(job) {
+    if (job.type === 'analyseTerrain') stopWorker();
   }
 
   /* What a job that may not be run again on the page fails with when the
@@ -504,7 +530,10 @@
   function unreadable() {
     var job = engine.running;
     engine.running = null;
-    if (job) rerun(job);
+    if (job) {
+      rerun(job);
+      stopAfter(job);
+    }
     next();
   }
 
