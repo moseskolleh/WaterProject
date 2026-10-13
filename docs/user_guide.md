@@ -421,7 +421,7 @@ further and name one thing on them:
 | Address | Opens |
 |---|---|
 | [`#/overview`](index.html#/overview) | Overview |
-| [`#/site`](index.html#/site), [`#/site/terrain`](index.html#/site/terrain) | Site & maps, at its topography and terrain card <!-- 4.1c: check against the built page --> |
+| [`#/site`](index.html#/site), [`#/site/terrain`](index.html#/site/terrain) | Site & maps, at its topography and terrain card |
 | [`#/ves`](index.html#/ves), `#/ves/VES-3` | Geophysics, at sounding VES-3 |
 | [`#/vescopilot`](index.html#/vescopilot) | VES co-pilot |
 | [`#/design`](index.html#/design) | Borehole design |
@@ -731,8 +731,9 @@ at [`#/site/terrain`](index.html#/site/terrain).
 From the country down to the rock under the borehole. The Python app
 lays the page out in four tabs: Study area & setting, Topography,
 Subsurface and Interactive. The browser app's Site & maps page is one
-page of cards instead: where the site sits, the study area, geology and
-aquifers, topography and terrain, and the interactive map. <!-- 4.1c: check against the built page -->
+page of cards instead: the project and its location, where the site
+sits, the study area, geology and aquifers, topography and terrain, and
+the interactive map.
 The subsurface maps outside the reports are in the Python app for now.
 Enter the UTM coordinates in the sidebar to place the site star; the
 window slider sets how much ground the local maps cover. Every figure
@@ -804,7 +805,7 @@ none is downloaded, so the terrain is worked out from files you supply,
 and every figure names their source. Both apps read GeoTIFF and `.hgt`
 tiles and analyse the ground around the site: the Python app on its
 Topography tab, the browser app on the *Topography and terrain* card
-([`#/site/terrain`](index.html#/site/terrain)). <!-- 4.1c: check against the built page -->
+([`#/site/terrain`](index.html#/site/terrain)).
 None of it needs GDAL.
 
 - **GeoTIFF tiles** (`.tif`) in longitude and latitude (WGS 84), as
@@ -880,11 +881,11 @@ FABDEM tile is flagged: its makers license it for non-commercial use
 only, the Copernicus notices may apply to it too, and the credit is
 yours to add. The *Source of the elevation model* choice (detect it from
 the file names, Copernicus GLO-30, SRTM, or another source in your own
-words) lets you state the source, and what you state wins. <!-- 4.1c: check against the built page -->
+words) lets you state the source, and what you state wins.
 Copernicus tiles carry their licence's "produced using Copernicus
 WorldDEM-30 ..." notice inside every figure, and its liability sentence
 under the downloads, in the drainage lines' GeoJSON and, in the browser
-app, in small print on the card (see `THIRD_PARTY_NOTICES.md`). <!-- 4.1c: check against the built page -->
+app, in small print on the card (see `THIRD_PARTY_NOTICES.md`).
 A `.hgt` tile is credited as an SRTM-format tile of unstated source
 unless you say it is SRTM, because NASADEM and void-filled compilations
 such as the viewfinderpanoramas tiles use the same format; declare those
@@ -910,33 +911,31 @@ refused with the radius that fits. Coarser tiles fit a wider radius.
 **Analysing the terrain.** Add the tiles: in the Python app with the
 uploader on the Topography tab, in the browser app by dropping them on
 the card or picking them (any file can be picked; the card reads each
-one to see what it is). <!-- 4.1c: check against the built page -->
-Each GeoTIFF and `.hgt` file is read for its layout as soon as it is
-added, so a refusal, or a question about its source, shows beside its
-name before anything is analysed; the browser card also lists each
-file's size and the source detected. <!-- 4.1c: check against the built page -->
-Set the radius of the square shown (1 to 50 km) and the drainage
-threshold (0.05 to 100 km²; 0.5 km² unless `terrain.drainage_area_km2`
-says otherwise): a drainage line starts where more than that drains to
-a cell. <!-- 4.1c: check against the built page --> Then press
-**Analyse the terrain**. The progress names each stage as it runs, from
-reading the elevation model to working out curvature and wetness. In the
-browser app the analysis runs in the background, with the bar across the
-top of the page and its **Cancel**, which stops it and keeps nothing. <!-- 4.1c: check against the built page -->
-What the read found comes first: the files read, the cells and their
-size, how much of the window is a gap or taken as sea, and any heights
-read as no data. Then the four figures, each with the same captions
-under it in both apps. <!-- 4.1c: check against the built page -->
+one to see what it is). Each GeoTIFF and `.hgt` file is read for its
+layout as soon as it is added, so a refusal, or a question about its
+source, shows beside its name before anything is analysed; the browser
+card also lists each file's size and the source detected. Set the
+radius of the square shown (1 to 50 km) and the drainage threshold
+(0.05 to 100 km²; 0.5 km² unless `terrain.drainage_area_km2` says
+otherwise): a drainage line starts where more than that drains to a
+cell. Then press **Analyse the terrain**. The progress names each stage
+as it runs, from reading the elevation model to working out curvature
+and wetness, and in the Python app then each figure as it is drawn. In
+the browser app the analysis runs in the background, with the bar
+across the top of the page and its **Cancel**, which stops it and keeps
+nothing. What the read found comes first: the files read, the cells and
+their size, how much of the window is a gap or taken as sea, and any
+heights read as no data. Then the four figures, each with the same
+captions under it in both apps.
 
 In the browser app a new drainage threshold redraws the lines without
 analysing the ground again: the card traces them afresh on the page
 from the analysis it holds, and redraws the relief figure and the
-GeoJSON with them. <!-- 4.1c: check against the built page --> The
-Python app keeps the figures but not the analysis, so a new threshold
-there needs another press of the button. The lines come out the same
-either way. A new radius, other files or another declared source need a
-new analysis in both apps, and the figures drawn from the old files or
-the old source are taken away. <!-- 4.1c: check against the built page -->
+GeoJSON with them. The Python app keeps the figures but not the
+analysis, so a new threshold there needs another press of the button.
+The lines come out the same either way. A new radius, other files or
+another declared source need a new analysis in both apps, and the
+figures drawn from the old files or the old source are taken away.
 
 **The four figures.** Everything on them is worked out from the
 elevation model alone, so it is a candidate to check on the ground, not
@@ -991,7 +990,7 @@ blue, a missing tile taken as sea the same blue hatched, and gaps grey.
   geophysics.
 
 **Downloads.** Each figure downloads as PNG and SVG, and the drainage
-lines as GeoJSON (*Drainage lines (GeoJSON)* on the browser card). <!-- 4.1c: check against the built page -->
+lines as GeoJSON (*Drainage lines (GeoJSON)* on the browser card).
 Each GeoJSON feature is one piece of a line inside the square shown,
 with its link number and part, its Strahler order, where it ends, its
 upslope area in km² and its length in metres, `edge_contaminated` where
@@ -1004,11 +1003,12 @@ layers themselves are not offered as GeoTIFF yet.
 **Nothing is saved with the project, and nothing goes into a report
 yet.** The tiles, the radius and threshold chosen on the page, the
 figures and the drainage lines belong to the session: loading a project
-drops them in both apps, as starting a new project or resetting does in
-the browser app, so add the tiles again to work the terrain out afresh;
-the same files and settings give the same figures. <!-- 4.1c: check against the built page --> The topographic map
-and the terrain figures are not carried into any report yet, and both
-apps say so on the page; download the figures to use them.
+drops them in both apps, as opening a sample project or *Reset
+everything* on the Settings page does in the browser app, so add the
+tiles again to work the terrain out afresh; the same files and settings
+give the same figures. The topographic map and the terrain figures are
+not carried into any report yet, and both apps say so on the page;
+download the figures to use them.
 
 **On a phone, and from a copy opened as a file.** If the browser app's
 background engine stops partway through the terrain, most likely for
@@ -1016,10 +1016,10 @@ lack of memory, the card says so and suggests a smaller radius, rather
 than running the analysis again on the page, where it could take the
 tab down with it. A device that reports 2 GB of memory or less asks
 before it analyses a window of more than 1,000,000 cells; the default
-window at 1 arc-second is just under that. <!-- 4.1c: check against the built page -->
+window at 1 arc-second is just under that.
 A copy opened as a file has no background engine: the card says before
 a run that the page will be held until the analysis finishes, and
-Cancel is read only between reading the files and analysing them. <!-- 4.1c: check against the built page -->
+Cancel is read only between reading the files and analysing them.
 
 **Settings.** The radius and the threshold are set on the page; the
 rest are under `terrain` in the project's configuration. Most of these

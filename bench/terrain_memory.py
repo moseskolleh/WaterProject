@@ -44,6 +44,10 @@ tile):
 
     python bench/terrain_memory.py
     python bench/terrain_memory.py --out memory.json
+
+``--write-tile PATH`` writes the synthetic tile alone, on any system, and
+prints the run's header: ``bench/web.mjs`` times the browser app's
+terrain card on the same tile with it.
 """
 
 from __future__ import annotations
@@ -160,15 +164,17 @@ def _fresh(env: dict, step: str, path: Path) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--out", type=Path, help="also write the result as JSON here")
-    # the two fresh interpreters' parts
-    parser.add_argument("--write-tile", type=Path, help=argparse.SUPPRESS)
+    # the two fresh interpreters' parts; the first is also how bench/web.mjs
+    # writes the tile it times the browser app on
+    parser.add_argument("--write-tile", type=Path, metavar="PATH",
+                        help="only write the synthetic tile to PATH, and print the run's header")
     parser.add_argument("--measure", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    if not STATM.exists():
-        raise SystemExit(f"{TOOL} reads the resident set size from {STATM}, so it runs on Linux only")
     if args.write_tile is not None:
         print(json.dumps(write_tile(args.write_tile)))
         return 0
+    if not STATM.exists():
+        raise SystemExit(f"{TOOL} reads the resident set size from {STATM}, so it runs on Linux only")
     if args.measure is not None:
         print(json.dumps(measure(args.measure)))
         return 0

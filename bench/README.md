@@ -15,14 +15,18 @@ python bench/run.py --quick --only inversion         # one group, 2 samples
 python bench/run.py --compare bench/baseline.json    # now, beside the baseline
 python bench/terrain_memory.py                       # the terrain analysis's memory, ~15 s
 
-node bench/web.mjs                                   # the browser app, ~2.5 min
+node bench/web.mjs                                   # the browser app, ~5.5 min
 node bench/web.mjs --quick --out web.json
+node bench/web.mjs --only terrain                    # the terrain card alone, ~3 min
 python bench/run.py --from web.json --compare bench/baseline.json
 ```
 
 `run.py` imports the package from this checkout's `src/`, whatever is
 installed, so it times the code beside it. `web.mjs` serves `docs/` with
-`tests/webapp/harness.mjs` and needs Playwright as the web tests do.
+`tests/webapp/harness.mjs` and needs Playwright as the web tests do, and
+for its terrain measures the package's own dependencies as well: it has
+`bench/terrain_memory.py --write-tile` write the tile `run.py` reads
+(with `python`, or the interpreter `PYTHON` names).
 Both write the same JSON layout (`--out FILE`), and `run.py --from`
 reads one or more such files instead of running anything, so one
 command merges the two into a baseline and the same `--compare` prints
@@ -37,7 +41,9 @@ python bench/run.py --from py.json --from web.json --out bench/baseline.json \
 
 `--only GROUP` (repeatable) is one of `import`, `forward`,
 `inversion`, `range`, `cost`, `pumping`, `terrain`, `reports`,
-`recompute`, `streamlit`.
+`recompute`, `streamlit`; for `web.mjs`, `--only PART` is one of
+`load` (the cold load, the Rokel re-inversion and the reopening),
+`autosave` and `terrain`.
 `--quick` takes 2 samples per measure instead of 5 (`web.mjs --quick`:
 1 run instead of 3), which is enough to see that something moved and
 not enough to quote.
@@ -228,6 +234,36 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
   every one of these was the whole session stringified into
   localStorage, and localStorage refused it for quota;
   `options.autosave_stored` in the run says whether the writes went in.
+- `terrain default window wall time, worker` and `terrain window at
+  the cap wall time, worker` - PLAN.md step 4.1's Topography and
+  terrain card on Site & maps, as an operator meets it: the synthetic
+  tile `run.py`'s terrain group reads (below) picked on the card, and
+  *Analyse the terrain* pressed, timed from the click to the last change
+  the page makes to show the four figures. That is all of it: the page
+  reading the blocks the window needs out of the file, the engine
+  worker reading the window and analysing it, and the page drawing the
+  figures. No site is entered, so the window is centred on the middle of
+  the tile, as `run.py`'s is: the default (983 by 979 cells analysed),
+  and the widest the cap on cells allows, at the radius the card offers
+  when asked for 50 km (16.5 km, 1407 by 1401). Each press is made in a
+  fresh browser, so the worker starts with it. These are not cold
+  loads: the app is loaded first, unthrottled, and the network plays no
+  part. The CPU is at full speed, because Chromium slows the page and
+  not the worker: at 4x only the page's share would slow.
+  `... longest main-thread task, worker` is the longest Long Task in the
+  same interval, which is the figures being drawn; the page answers
+  while the worker works. `... memory added, worker` (Linux only) is how
+  far the renderer process, which holds the page and its worker, rose
+  above its resident set at the click: its high-water mark once the
+  figures are shown (`VmHWM` in `/proc/PID/status`, reset to the
+  resident set just before the click by writing 5 to
+  `/proc/PID/clear_refs`), less that resident set.
+- `terrain default window wall time, on the page` and `terrain window
+  at the cap wall time, on the page` - the same presses with the
+  analysis on the page's own thread, as a copy of the app opened as a
+  file runs it, having no worker (`GWT.engine.forcePage`, the engine's
+  switch for tests), and the CPU slowed 4x, so the page is held from
+  the read to the figures.
 
 ## The range of models: why 4,000 samples
 
@@ -311,8 +347,9 @@ and a half times what DEFLATE with the floating-point predictor does,
 because zlib inflates in C and the LZW decoder is numpy. Decoding LZW a
 Clear segment at a time, rather than one code at a time as the 40-line
 loop it is tested against does, makes the LZW read 5.5 times quicker.
-The browser engine's reads are not timed here: `web.mjs` drives the app,
-and the app has no elevation model page until step 4.1c.
+The browser engine's reads are not timed on their own: `web.mjs` drives
+the app, and times a press of *Analyse the terrain* whole, the read
+included (below).
 
 On the same day `web.mjs` measured what the reader costs the browser
 app before anyone uses it: `gwt-core.js` grew from 1.06 MB to 1.18 MB
@@ -389,11 +426,74 @@ by 731 MB and 692 MB. The worst, +435 MB, plus the idle app's 159 MB is
 as above: under 690 MB, with little to spare, so a surface harder still
 could pass it. The time is well under 6.0 s on every one.
 
-Not measured yet: the browser worker's time at the cap and the page-only
-fallback at 4x (`web.mjs` needs the page step 4.1c adds), and an ad hoc
-Pyodide run at the cap. The cap is one number for every runtime, so a
-slower runtime makes a long wait, not a different answer; part c measures
-the browser before the cap can be said to suit it.
+The cap is one number for every runtime, so a slower runtime makes a
+long wait, not a different answer. The browser app was timed with the
+page part c adds, on 13 October 2026, on the same machine (Chromium
+141, load average 0.9 to 1.3): `web.mjs`, median of three presses at
+each size, each in a fresh browser, on the synthetic tile.
+
+| measure | median | IQR |
+|---|---|---|
+| terrain default window wall time, worker | 2.88 s | 0.46 s |
+| terrain default window longest main-thread task, worker | 0.69 s | 0.10 s |
+| terrain default window memory added, worker | 295 MB | 7 MB |
+| terrain window at the cap wall time, worker | 5.31 s | 0.29 s |
+| terrain window at the cap longest main-thread task, worker | 0.53 s | 0.16 s |
+| terrain window at the cap memory added, worker | 462 MB | 5 MB |
+| terrain default window wall time, on the page (CPU 4x) | 11.65 s | 0.42 s |
+| terrain window at the cap wall time, on the page (CPU 4x) | 17.56 s | 0.53 s |
+
+A press is timed whole. Where its time goes was read once from the
+engine's own record of its requests (a scratch run, two presses at each
+size, not part of `web.mjs`): the page planned the window and read the
+blocks out of the file in 0.5 to 1.1 s, the worker read the window in
+0.44 to 0.57 s and analysed it in 1.21 to 1.27 s at the default window
+and 3.20 s at the cap, and the figures were drawn in about half a second
+after its answer: that drawing is the longest main-thread task above. So
+the browser's analysis at the cap takes a little longer than CPython's
+2.79 s, and a press there 5.3 s from click to figures, with the bar and
+its Cancel on the page throughout. On the page, at a quarter of the
+speed, the press holds the page for 11.7 s at the default and 17.6 s at
+the cap.
+
+The memory is the page and its worker together, and is more than the
+design's estimate (80 to 90 MB in the worker at the default window, 150
+to 250 MB at the cap), which was scaled from the routing alone: the
+worker holds the grid and the analysis's layers while it works (those
+only drawn in float32, as in Python, the rest in float64), and the page
+the blocks read, the layers handed back for drawing, the full-size core
+it traces new thresholds from, and the figures. A device that reports
+2 GB of memory or less is asked before it analyses more than 1,000,000
+cells, so above the default window; the default window itself adds
+about 300 MB to the tab.
+
+An ad hoc Pyodide run, labelled as such: not part of `web.mjs`, run once
+by hand on the pattern of `spikes/pyodide-engine/measure.mjs`, its
+scripts not committed. Pyodide 0.29.3 (Python 3.13.2, numpy 2.2.5, scipy
+1.14.1, what the Streamlit demo ships), in a Web Worker in the same
+headless Chromium, with the package's terrain modules and the synthetic
+tile on its file system, read the window and ran `analyse_terrain` on it
+as `run.py` does (float32), three times after a 1 km warm-up, in a
+fresh browser for each window, twice. The analysis took 1.90 s at the
+default window (median of six, 1.76 to 2.34 s) and 4.09 s at the cap
+(3.90 to 5.49 s, the first of each three the slowest), and the read 0.24
+to 0.37 s. Its WebAssembly memory, which only grows, went from 192 MB
+with the window at the cap read to 398 MB after the analyses (160 to
+276 MB at the default). So Pyodide analyses the window at the cap in
+about one and a half times CPython's time, under the 6.0 s CPython is
+held to.
+
+On the same day `web.mjs` measured what part c's page costs the app
+before anyone uses it. Its scripts grew by 63 KB: `gwt-app.js` from 353
+to 381 KB, `gwt-charts.js` from 263 to 292 KB and `gwt-worker.js` from
+21 to 27 KB, the catalogue in `gwt-data.js` by 748 bytes and
+`gwt-core.js` by 208. Time to interactive on the
+throttled profile went from 12.39 s to 12.56 s, first contentful paint
+from 2.42 s to 2.46 s, and the bytes before first paint from 98,610 to
+104,082 (the larger worker script; median of three cold loads each, the
+commit before part c, `plan/4.1c-base`, and part c's last). The 11.84 s
+above was taken on another day, before part b's analysis joined
+`gwt-core.js`, and is not to be compared with these.
 
 ## The committed baseline
 

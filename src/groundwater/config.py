@@ -301,8 +301,10 @@ class TerrainConfig:
     # runtime, so that whether a window is refused does not depend on where
     # the engine ran. Confirmed in CPython by the bench on 12 October 2026:
     # 2.8 s at the cap and a peak about 280 MB above the Streamlit app's
-    # 159 MB idle, against Community Cloud's 690 MB (bench/README.md). Still
-    # provisional for the browser worker, which step 4.1c measures.
+    # 159 MB idle, against Community Cloud's 690 MB (bench/README.md). In
+    # the browser, measured on 13 October 2026: a press of "Analyse the
+    # terrain" at the cap took 5.3 s with the engine worker, 3.2 s of it the
+    # analysis, and Pyodide, ad hoc, analysed the same window in 4.1 s.
     max_cells: int = _TERRAIN["max_cells"]
     # One limit on the blocks a read decodes, each a decode of its own: a
     # file cut into tiles of a cell or two costs a decode a cell, and two
