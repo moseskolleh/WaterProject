@@ -76,10 +76,10 @@ def save_figure(fig, path: str | Path, style: HouseStyle | None = None, svg: boo
 
     With ``svg`` the figure is also written as ``path.with_suffix(".svg")``,
     before it is closed, for a figure a reader will want to scale or edit:
-    the lines and the text stay vectors, and a raster layer in it is kept
-    at its own resolution. The SVG carries no date and no matplotlib
-    version, as the PNG carries none, so the same figure writes the same
-    metadata whenever it is drawn.
+    the lines and the text stay vectors, and a raster layer in it is
+    embedded as an image resampled to ``figure_dpi``, as in the PNG. The
+    SVG carries no date and no matplotlib version, as the PNG carries none,
+    so the same figure writes the same metadata whenever it is drawn.
     """
     style = style or _DEFAULT
     path = Path(path)
