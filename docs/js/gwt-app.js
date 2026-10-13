@@ -1549,9 +1549,13 @@
     } else if (key === 'terrain') {
       /* the run is dropped with whatever it had read, the worker stopped
        * and the bar taken away (dropTerrainRead), at once even while the
-       * page is still reading the files, which cannot be stopped; the run
-       * draws the card again as it ends */
+       * page is still reading the files. A read under way cannot be
+       * stopped and the run ends only after it, so the card is drawn
+       * again here then; in the worker the run ends at once, and draws it
+       * as it ends */
+      var reading = terrainSession.reading;
       dropTerrainRead(terrainSession);
+      if (reading) refresh();
       S.toast('The terrain analysis was stopped, and nothing of it is kept. The tiles ' +
         'are still on the Topography and terrain card, which can analyse them again.', 'warn');
     }
@@ -2150,8 +2154,9 @@
       /* counts the runs asked for, so that an answer to an older one, or to
        * files since replaced, is dropped */
       run: 0,
-      /* a run is reading the files or analysing them */
-      running: false,
+      /* a run is reading the files or analysing them, and whether it is
+       * still reading the blocks out of the files on the page */
+      running: false, reading: false,
       /* what the engine read of the window, and why the last run was refused */
       read: null, refusal: '',
       /* what the page keeps of the analysis of the read (terrainResult),
@@ -2244,6 +2249,7 @@
       if (work.terrain) workEnd(work.terrain);
     }
     session.running = false;
+    session.reading = false;
     session.read = null;
     session.refusal = '';
     session.result = null;
@@ -2291,8 +2297,10 @@
    * blocks of a missing tile included. Each block is cut out with slice,
    * never subarray, so that it holds a buffer of its own: the request to the
    * worker is a copy, and a view would carry the whole read with it.
-   * `heard(fraction)` is told how many of the reads are done. */
-  async function terrainBlocks(plan, session, heard) {
+   * `heard(fraction)` is told how many of the reads are done. Once
+   * `current()` says the run is no longer wanted, no further read is
+   * started, and the answer is null. */
+  async function terrainBlocks(plan, session, heard, current) {
     var fileOf = new Map();
     session.files.forEach(function (file) {
       fileOf.set(session.opened.get(file).found, file);
@@ -2300,6 +2308,7 @@
     var blocks = plan.blocks.map(function () { return null; });
     var reads = C.elevationBlockRanges(plan);
     for (var r = 0; r < reads.length; r++) {
+      if (!current()) return null;
       var read = reads[r], bytes;
       try {
         bytes = await fileBytes(fileOf.get(plan.files[read.file]), read.offset, read.length);
@@ -2405,8 +2414,10 @@
     }
     render();
     try {
-      var blocks = await terrainBlocks(plan, session, heard(0, 0.05));
+      session.reading = true;
+      var blocks = await terrainBlocks(plan, session, heard(0, 0.05), current);
       if (!current()) return;
+      session.reading = false;
       var read = await engine.readElevation(plan, blocks, cfg, { onProgress: heard(0.05, 0.05) });
       if (!current()) return;
       session.read = read;
@@ -2426,8 +2437,23 @@
        * so in its own */
       session.refusal = e.message;
     } finally {
+      /* Of the read, the page keeps what the card, the captions and the
+       * GeoJSON take from it: its notes and plan, its credits, and the
+       * grid's axes, label and source. Its layers of a value a cell (the
+       * heights, the assumed sea and the reasons) went to the engine with
+       * the request, and nothing on the page reads them once it has
+       * answered. */
+      if (read) {
+        read.grid.z = null;
+        read.grid.assumedSea = null;
+        read.assumedSea = null;
+        read.reasons = null;
+      }
       workEnd(job);
-      if (current()) session.running = false;
+      if (current()) {
+        session.running = false;
+        session.reading = false;
+      }
       refresh();
     }
   }
@@ -2463,37 +2489,14 @@
     });
   }
 
-  /* The summary's counts of drainage-line cells in the square shown at a
-   * threshold, as C.analyseTerrain counts them: a land cell (class 1) is
-   * on a line where at least the threshold drains to it, the threshold in
-   * whole 0.01 m² units rounded half up, and each share is of those
-   * cells, 0 of none. */
-  function terrainStreamCounts(core, areaKm2) {
-    var threshold = Math.floor(areaKm2 * 1e8 + 0.5);
-    var cls = core.cls, area = core.areaUnits, flatRouted = core.flatRouted, flag = core.flag;
-    var cols = core.cols, shown = core.shown, stream = 0, flat = 0, flagged = 0;
-    for (var r = shown[0]; r < shown[1]; r++) {
-      for (var i = r * cols + shown[2]; i < r * cols + shown[3]; i++) {
-        if (cls[i] !== 1 || area[i] < threshold) continue;
-        stream += 1;
-        flat += flatRouted[i];
-        flagged += flag[i] ? 1 : 0;
-      }
-    }
-    return {
-      flat_routed_stream: flat, stream: stream, contaminated_stream: flagged,
-      flat_routed_lines_pct: stream ? (100.0 * flat) / stream : 0.0,
-      contaminated_pct: stream ? (100.0 * flagged) / stream : 0.0, threshold_units: threshold,
-    };
-  }
-
   /* A new drainage threshold for the analysis on show, worked out on the
    * page from the core the worker handed over, without analysing the
    * ground again. The lines are traced afresh by C.drainageLinks, the one
    * function both apps trace with, on the same core, so they are the
    * lines an analysis at this threshold draws in either app. What names
-   * the threshold follows them: the summary's counts of line cells, which
-   * the relief's caption gives a share of, the captions (C.terrainCaptions,
+   * the threshold follows them: the summary's counts of line cells
+   * (C.streamCounts, which the analysis counts them with), which the
+   * relief's caption gives a share of, the captions (C.terrainCaptions,
    * given the parts of an analysis it reads) and the GeoJSON. Nothing else
    * depends on the threshold, so of the figures only the relief is drawn
    * again. */
@@ -2503,7 +2506,7 @@
     var cfg = Object.assign({}, result.cfg, {
       terrain: Object.assign({}, result.cfg.terrain, { drainage_area_km2: area }) });
     var lines = C.drainageLinks(result.core, area);
-    var summary = Object.assign({}, result.summary, terrainStreamCounts(result.core, area));
+    var summary = Object.assign({}, result.summary, C.streamCounts(result.core, area));
     var captions = C.terrainCaptions({ grid: read.grid, core: result.core, settings: cfg.terrain,
       summary: summary, kCells: result.kCells }, read, read.centre.label);
     var next = Object.assign({}, result, { cfg: cfg, areaKm2: area, links: lines.links,
