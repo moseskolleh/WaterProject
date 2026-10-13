@@ -513,6 +513,7 @@ def test_the_topography_tab_draws_a_map_from_geotiff_tiles(sample_data):
     assert not at.exception, at.exception
     assert any("refuse_epsg_3857.tif" in str(e.value) for e in at.error)
     assert at.button(key="run_topo").disabled
+    assert at.button(key="run_terrain").disabled
 
     at.file_uploader(key="dem_upload").set_value(
         [(n, (dem / n).read_bytes(), "image/tiff") for n in names])
@@ -602,6 +603,77 @@ def test_a_topographic_map_is_not_shown_beside_files_it_was_not_drawn_from(sampl
     assert not shown(), "no files at all"
 
 
+def _terrain_page(files, fix=(280126.0, 994900.0)) -> AppTest:
+    """The Site maps page with ``files`` in the elevation model's uploader
+    (as ``set_value`` takes them), the terrain radius at 1 km and the
+    drainage threshold at 0.05 km², and the GPS fix ``fix`` in zone 29N, by
+    default on the two Copernicus fixture tiles' shared edge, 8.995 N,
+    11.0 W; None records no location."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Site maps"
+    if fix is not None:
+        at.session_state["meta_easting"], at.session_state["meta_northing"] = fix
+        at.session_state["meta_zone"] = "29N"
+    at.run()
+    assert not at.exception, at.exception
+    at.file_uploader(key="dem_upload").set_value(files)
+    at.run()
+    at.number_input(key="terrain_radius_km").set_value(1.0)
+    at.number_input(key="terrain_area_km2").set_value(0.05)
+    at.run()
+    return at
+
+
+def _tiles(*names: str) -> list:
+    """Fixture tiles from tests/webapp/fixtures/dem as the uploader takes
+    them; by default the two Copernicus tiles either side of 11 W, each 40
+    cells, about 1.2 km, wide."""
+    dem = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+    names = names or ("Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif",
+                      "Copernicus_DSM_COG_10_N08_00_W011_00_DEM.tif")
+    return [(n, (dem / n).read_bytes(), "image/tiff") for n in names]
+
+
+def _analyse(at: AppTest) -> dict:
+    """Press "Analyse the terrain", check the run was neither refused nor
+    failed, and give the result the page keeps."""
+    at.button(key="run_terrain").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert not at.error, [e.value for e in at.error]
+    return at.session_state["terrain_result"]
+
+
+def _analysis_kept(at: AppTest) -> list[str]:
+    """Where the session holds an array, the analysis, its core, the read or
+    an elevation grid, searched through every value's dicts, lists, tuples
+    and sets: the page keeps the files and the sentences of an analysis,
+    never the analysis itself."""
+    import numpy as np
+
+    from groundwater.mapping.elevation import ElevationGrid, ElevationRead
+    from groundwater.mapping.terrain_analysis import TerrainAnalysis, TerrainCore
+
+    found, seen = [], set()
+
+    def walk(value, where: str) -> None:
+        if id(value) in seen:
+            return
+        seen.add(id(value))
+        if isinstance(value, (np.ndarray, TerrainAnalysis, TerrainCore, ElevationRead, ElevationGrid)):
+            found.append(where)
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                walk(item, f"{where}[{key!r}]")
+        elif isinstance(value, (list, tuple, set)):
+            for n, item in enumerate(value):
+                walk(item, f"{where}[{n}]")
+
+    for key, value in at.session_state.items():
+        walk(value, key)
+    return found
+
+
 def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_data):
     """The Topography tab drew a map of the tiles and nothing more. "Analyse
     the terrain" reads the window with its margin, analyses it and draws the
@@ -609,10 +681,13 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
     PNG and SVG offered, the drainage lines as GeoJSON, the read report, and
     the Copernicus liability sentence under the downloads. The session keeps
     the files and the sentences, not the analysis, and the radius and the
-    threshold are carried through a visit to another page."""
+    threshold are carried through a visit to another page. A radius over the
+    cap is refused, and the figures of the square before go with it."""
     import json
+    import pickle
+    import re
 
-    import numpy as np
+    from streamlit.runtime.forward_msg_queue import ForwardMsgQueue
 
     from groundwater.text import phrase
 
@@ -635,23 +710,49 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
     at.number_input(key="terrain_radius_km").set_value(1.0)
     at.number_input(key="terrain_area_km2").set_value(0.05)
     at.run()
-    at.button(key="run_terrain").click()
-    at.run()
+    sent = []
+    ForwardMsgQueue.on_before_enqueue_msg(sent.append)
+    try:
+        at.button(key="run_terrain").click()
+        at.run()
+    finally:
+        ForwardMsgQueue.on_before_enqueue_msg(None)
     assert not at.exception, at.exception
     assert not at.error, [e.value for e in at.error]
+    # the run's status opens as it starts, so the bar in it is seen while
+    # it runs, and not only by whoever opens it
+    opened = next(m for m in sent if m.delta.add_block.expandable.label == phrase("terrain.stage_read"))
+    assert opened.delta.add_block.expandable.expanded
+    assert any(m.delta.new_element.WhichOneof("type") == "progress"
+               and m.metadata.delta_path[:-1] == opened.metadata.delta_path for m in sent)
 
     result = at.session_state["terrain_result"]
-    assert set(result) == {"figures", "geojson", "summary", "captions", "notes", "notice", "inputs"}
-    assert not any(isinstance(value, np.ndarray) for value in result["summary"].values()), (
-        "the analysis's layers are dropped")
+    assert set(result) == {"figures", "geojson", "folder", "summary", "captions", "notes", "notice", "inputs"}
+    assert not _analysis_kept(at), "the analysis's layers are dropped"
+    assert len(pickle.dumps(result)) < 200_000, "the result holds paths and sentences alone"
     assert [key for key, _, _ in result["figures"]] == ["relief", "wetness", "curvature", "directions"]
+    # the run's files are in a folder of its own, in the session's
+    assert Path(result["folder"]).parent == at.session_state["workdir"]
     names = []
     for key, png, svg in result["figures"]:
-        assert Path(png).name == f"terrain_{key}.png" and Path(svg) == Path(png).with_suffix(".svg")
+        assert Path(png) == Path(result["folder"]) / f"terrain_{key}.png"
+        assert Path(svg) == Path(png).with_suffix(".svg")
         assert Path(png).stat().st_size > 20_000 and Path(svg).stat().st_size > 20_000
         names += [Path(png).name, Path(svg).name]
+    assert Path(result["geojson"]) == Path(result["folder"]) / "drainage_lines.geojson"
+    # every panel marks the site, labelled "Site" for want of a community
+    # name; matplotlib writes each line of text in an SVG as a comment
+    panels = {"relief": 1, "wetness": 1, "curvature": 2, "directions": 4}
+    for key, _, svg in result["figures"]:
+        drawn = re.findall(r"<!-- (.*?) -->", Path(svg).read_text(encoding="utf-8"), re.S)
+        assert " ".join(drawn).split().count("Site") == panels[key], key
     lines = json.loads(Path(result["geojson"]).read_text(encoding="utf-8"))
     assert lines["features"], "a 0.05 km2 threshold traces lines on the tiles"
+    # the default 0.5 km2 traces a line on these tiles too, so the threshold
+    # asked for is checked where the analysis and its sentences give it
+    assert result["summary"]["threshold_units"] == 5_000_000, "the analysis ran at the 0.05 km2 asked for"
+    assert "more than 0.05 km² drains" in result["captions"]["relief"]
+    assert "more than 0.05 km² drains" in lines["description"]
     assert lines["description"] == result["captions"]["geojson_description"]
     assert lines["notice"] == result["notice"] == notice
     assert result["notes"][0].startswith("Read 2 files (")
@@ -664,6 +765,9 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
     offered = [element.proto.label for element in at.get("download_button")]
     assert [f"Download {name}" for name in names] + ["Download the drainage lines (GeoJSON)"] == [
         label for label in offered if "terrain_" in label or "drainage" in label]
+    # the run's progress is cleared once the figures are drawn, rather than
+    # left ticked under the title of the last of them
+    assert not at.status, [status.label for status in at.status]
 
     goto(at, "Overview")
     goto(at, "Site maps")
@@ -672,13 +776,34 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
     assert at.number_input(key="terrain_area_km2").value == 0.05
     assert at.session_state["terrain_result"] == result, "the same files, handed back by the uploader"
     assert result["captions"]["relief"] in [str(c.value) for c in at.caption]
+    assert not _analysis_kept(at), "nor is it kept by a visit to another page"
+
+    at.number_input(key="terrain_radius_km").set_value(50.0)
+    at.run()
+    at.button(key="run_terrain").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert [str(e.value)[:len("A 50 km radius")] for e in at.error] == ["A 50 km radius"]
+    assert "terrain_result" not in at.session_state, "the figures were of the 1 km square"
+    assert result["captions"]["relief"] not in [str(c.value) for c in at.caption]
+    assert not Path(result["folder"]).exists()
+    assert result["geojson"] not in at.session_state["artifacts"].values()
+    # the refused run's status stays, at the stage that refused it, with its bar
+    status, = at.status
+    assert status.state == "error" and status.label == phrase("terrain.stage_read")
+    assert [child.type for child in status.children.values()] == ["progress"]
 
 
 def test_the_topography_tab_analyses_an_ascii_grid_in_a_window_of_its_own(sample_data):
     """An ESRI ASCII grid is read whole, not as a window of tiles, so the
     analysis cuts the window out of it around the site, the margin as far
     as the grid reaches, and credits the figures and the drainage lines
-    with the grid's own line; there is no Copernicus notice to give."""
+    with the grid's own line; there is no Copernicus notice to give. The
+    read says of the window cut what the read of tiles says: a square asked
+    wider than the grid was reported as partly a gap, under figures cut to
+    the grid, which draw none, and it is now given as the square shown.
+    Without a location, the window is centred on the grid, and the read
+    says so."""
     import json
     import re
 
@@ -710,10 +835,22 @@ def test_the_topography_tab_analyses_an_ascii_grid_in_a_window_of_its_own(sample
     assert not at.exception, at.exception
     assert not at.error, [e.value for e in at.error]
 
+    def shown(result: dict) -> tuple[str, str]:
+        """The radius of the square shown and its place, as the GeoJSON's
+        description measures them on the window."""
+        said = re.search(r"within ([0-9.]+) km each way of (.+?), analysed",
+                         result["captions"]["geojson_description"])
+        assert said, result["captions"]["geojson_description"]
+        return said.group(1), said.group(2)
+
     result = at.session_state["terrain_result"]
-    assert result["notice"] is None and result["notes"] == [], "a GPS fix, inside the grid"
+    assert result["notice"] is None
+    assert not _analysis_kept(at), "the analysis's layers are dropped"
     lines = json.loads(Path(result["geojson"]).read_text(encoding="utf-8"))
     assert lines["features"], "the valley drains more than 0.05 km2"
+    assert result["summary"]["threshold_units"] == 5_000_000, "the analysis ran at the 0.05 km2 asked for"
+    assert "more than 0.05 km² drains" in result["captions"]["relief"]
+    assert "more than 0.05 km² drains" in lines["description"]
     assert lines["attribution"].startswith("Elevation: ") and "valley.asc" in lines["attribution"]
     assert "notice" not in lines and lines["description"] == result["captions"]["geojson_description"]
     # the grid ends 5 km south of the site, so the square shown has about 4
@@ -722,6 +859,200 @@ def test_the_topography_tab_analyses_an_ascii_grid_in_a_window_of_its_own(sample
     assert said and 3.8 <= float(said.group(1)) <= 4.1, result["captions"]["relief"]
     assert phrase("terrain.caption_edge", margin=float(said.group(1))) in result["captions"]["relief"]
     assert all(Path(png).is_file() and Path(svg).is_file() for _, png, svg in result["figures"])
+    # a GPS fix inside the grid: the read gives the file, the square shown
+    # and the margin, as the read of tiles does
+    radius, where = shown(result)
+    read, margin = result["notes"]
+    assert read.startswith("Read 1 file (valley.asc): ") and read.endswith(f" around {where}, {radius} km each way.")
+    assert margin == phrase("terrain.read_margin", margin=float(said.group(1)))
+    captions = [str(c.value) for c in at.caption]
+    assert all(note in captions for note in result["notes"])
+
+    # the grid is about 11 km across: a 10 km radius is cut to it, so the
+    # read gives the square the figures show and no gap they do not draw
+    at.number_input(key="terrain_radius_km").set_value(10.0)
+    at.run()
+    cut = _analyse(at)
+    radius, where = shown(cut)
+    assert float(radius) < 10.0
+    assert [note[-len(f" around {where}, {radius} km each way."):] for note in cut["notes"]] == [
+        f" around {where}, {radius} km each way."], cut["notes"]
+    assert phrase("terrain.caption_edge_none") in cut["captions"]["relief"], "the grid has no margin beyond it"
+
+    # with no location recorded, the window is centred on the middle of the
+    # grid, and the read says so
+    bare = _terrain_page([("valley.asc", text.encode(), "text/plain")], fix=None)
+    centred = _analyse(bare)
+    assert phrase("terrain.centre_no_site") in centred["notes"]
+    assert phrase("terrain.centre_no_site") in [str(c.value) for c in bare.caption]
+
+
+def test_a_terrain_run_stopped_part_way_leaves_the_figures_shown_whole(sample_data):
+    """Every run wrote its figures over the same files, so a second analysis
+    stopped part-way, as a click anywhere on the page stops a run at its
+    next progress update, left the first result on the page over figures the
+    second had already redrawn: an image of the new threshold under the old
+    one's caption, beside the old one's other figures and drainage lines.
+    Each run now writes into a folder of its own. One stopped part-way
+    leaves the result shown untouched and nothing of its own behind, and a
+    result's folder is deleted once a finished run has taken its place."""
+    import hashlib
+    import sys
+
+    from streamlit.runtime.scriptrunner_utils.script_requests import RerunData
+    from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
+
+    def digests(result: dict) -> dict:
+        files = [path for _, png, svg in result["figures"] for path in (png, svg)] + [result["geojson"]]
+        return {path: hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in files}
+
+    at = _terrain_page(_tiles())
+    first = _analyse(at)
+    drawn = digests(first)
+    runs = Path(at.session_state["workdir"])
+
+    # a rerun asked for once the first figure is drawn, as a click on the
+    # page asks for one: Streamlit stops the run at its next progress update
+    site_maps = sys.modules["views.site_maps"]
+    figures = site_maps._TERRAIN_FIGURES
+
+    def then_rerun(draw):
+        def drawing(*args, **kwargs):
+            png = draw(*args, **kwargs)
+            ctx = get_script_run_ctx()
+            ctx.script_requests.request_rerun(RerunData(page_script_hash=ctx.page_script_hash))
+            return png
+        return drawing
+
+    at.number_input(key="terrain_area_km2").set_value(0.5)
+    at.run()
+    site_maps._TERRAIN_FIGURES = ((figures[0][0], then_rerun(figures[0][1])),) + figures[1:]
+    try:
+        at.button(key="run_terrain").click()
+        at.run()
+    finally:
+        site_maps._TERRAIN_FIGURES = figures
+    assert not at.exception, at.exception
+    assert at.session_state["terrain_result"] == first
+    assert digests(first) == drawn, "the figures shown were not drawn over"
+    assert sorted(runs.glob("terrain_*")) == [Path(first["folder"])], "nothing of the stopped run is left"
+
+    second = _analyse(at)
+    assert "more than 0.5 km² drains" in second["captions"]["relief"]
+    assert all(Path(path).is_file() for path in digests(second))
+    assert sorted(runs.glob("terrain_*")) == [Path(second["folder"])], "the first run's folder is deleted"
+
+
+def test_the_terrain_figures_are_not_shown_beside_files_they_were_not_worked_out_from(sample_data):
+    """The terrain figures, with their read report and Copernicus notice,
+    describe the files and the declared source they were worked out from,
+    and nothing held that the page drops them when either changes. They go,
+    with their files, when another source is declared, a file is removed or
+    added, or the source is put in other words; a visit to another page,
+    which hands the same files back, keeps them (the analysis test holds
+    that)."""
+    pair = _tiles()
+    at = _terrain_page(pair)
+
+    def dropped(result: dict, why: str) -> None:
+        assert not at.exception, at.exception
+        assert "terrain_result" not in at.session_state, why
+        captions = [str(c.value) for c in at.caption]
+        assert not set(result["notes"]) & set(captions), why
+        assert result["captions"]["relief"] not in captions and result["notice"] not in captions, why
+        assert not Path(result["folder"]).exists(), why
+
+    result = _analyse(at)
+    at.selectbox(key="terrain_source").select("srtm")
+    at.run()
+    dropped(result, "another source declared")
+
+    at.selectbox(key="terrain_source").select("detect")
+    at.run()
+    result = _analyse(at)
+    # the site is on the eastern tile's western edge
+    at.file_uploader(key="dem_upload").set_value(pair[1:])
+    at.run()
+    dropped(result, "a tile removed")
+
+    result = _analyse(at)
+    at.file_uploader(key="dem_upload").set_value(pair)
+    at.run()
+    dropped(result, "a tile added")
+
+    at.selectbox(key="terrain_source").select("other")
+    at.run()
+    result = _analyse(at)
+    at.text_input(key="terrain_source_text").set_value("viewfinderpanoramas")
+    at.run()
+    dropped(result, "the source put in other words")
+
+
+def test_the_terrain_analysis_takes_a_missing_tile_as_sea_as_the_read_does(sample_data):
+    """Copernicus publishes no tiles of open sea, so the read takes a missing
+    tile whose whole edge with the tiles supplied is at or below 0 m as sea
+    with no height, and the page hands that on to the analysis. Nothing held
+    that it does: without it the sea is a gap, the lines draining to it are
+    dashed, and the relief caption gives 38% of the square as sea rather
+    than 63%."""
+    import dataclasses
+
+    from groundwater.config import Config
+    from groundwater.geo import geographic_to_utm
+    from groundwater.mapping import analyse_terrain, read_elevation, terrain_captions
+    from groundwater.models import SiteMetadata
+
+    # three tiles around a missing one, the site at their corner, 8 N 12 W
+    names = ("holes_N08W012.tif", "holes_sea_N08W013.tif", "holes_sea_N07W012.tif")
+    fix = geographic_to_utm(8.0, -12.0, 29)
+    at = _terrain_page(_tiles(*names), fix=(fix.easting, fix.northing))
+    at.selectbox(key="terrain_source").select("copernicus_glo30")
+    at.number_input(key="terrain_radius_km").set_value(15.0)
+    at.number_input(key="terrain_area_km2").set_value(1.0)
+    at.run()
+    result = _analyse(at)
+    assert result["summary"]["assumed_sea"] > 0
+
+    dem = Path(__file__).resolve().parent / "webapp" / "fixtures" / "dem"
+    cfg = dataclasses.replace(Config().terrain, drainage_area_km2=1.0)
+    site = SiteMetadata(easting=fix.easting, northing=fix.northing, utm_zone=29)
+    read = read_elevation([(n, dem / n) for n in names], site, 15.0, cfg, declared=("copernicus_glo30", ""))
+    analysis = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown, precision="float32")
+    assert result["captions"] == terrain_captions(analysis, read, read.centre.label)
+
+
+def test_a_project_load_takes_the_site_maps_off_the_deliverables(sample_data):
+    """Loading a project dropped the outgoing site's maps from the Site maps
+    page, but the Overview's Deliverables still offered them, the terrain
+    figures and drainage lines among them, as though they were the loaded
+    site's. They leave the list with the page, and the terrain figures are
+    deleted."""
+    import groundwater
+    from groundwater.project_io import serialize_project
+
+    at = _terrain_page(_tiles())
+    at.slider(key="map_radius").set_value(5)
+    at.run()
+    at.button(key="run_topo").click()
+    at.run()
+    assert not at.exception and not at.error, (at.exception, [e.value for e in at.error])
+    result = _analyse(at)
+    built = {at.session_state["topo_path"], result["geojson"]} | {
+        path for _, png, svg in result["figures"] for path in (png, svg)}
+    assert built <= set(at.session_state["artifacts"].values())
+
+    saved = serialize_project({"meta_community": "Kuntolo"}, groundwater.__version__)
+    at.file_uploader(key="project_upload").set_value(("kuntolo_project.yaml", saved, "application/x-yaml"))
+    at.run()
+    at.button(key="project_load").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert any("Project loaded" in str(s.value) for s in at.success)
+    assert not built & set(at.session_state["artifacts"].values())
+    assert not Path(result["folder"]).exists()
+    goto(at, "Overview")
+    assert not at.exception, at.exception
+    assert "📦 Deliverables" not in [str(h.value) for h in at.subheader], "nothing else was built"
 
 
 def test_project_state_tracked(app):

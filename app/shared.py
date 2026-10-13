@@ -471,6 +471,25 @@ def offer_download(path: Path, label: str, keep: bool = True) -> None:
                            key=f"dl_{_html.escape(label)}_{path.name}")
 
 
+def forget_artifacts(paths) -> None:
+    """Take files off the Deliverables list: the page that built them no
+    longer shows them, so the Overview does not offer them either."""
+    gone = {str(path) for path in paths}
+    artifacts = st.session_state.get("artifacts") or {}
+    for label in [label for label, path in artifacts.items() if path in gone]:
+        del artifacts[label]
+
+
+def discard_terrain_result(result: dict | None) -> None:
+    """Delete the terrain figures and drainage lines of a result the Site
+    maps page no longer shows, with the folder its run wrote them to, and
+    take them off the Deliverables list."""
+    if not result:
+        return
+    forget_artifacts([path for _, png, svg in result["figures"] for path in (png, svg)] + [result["geojson"]])
+    shutil.rmtree(result["folder"], ignore_errors=True)
+
+
 def _offer_raster(picture: Path) -> None:
     """Download button for the GeoTIFF a map kept beside its picture.
 
@@ -878,6 +897,18 @@ def _load_project() -> None:
     except ValueError:
         st.session_state.project_load_error = True
         return
+    # the outgoing site's maps leave the Deliverables list with it, where
+    # they would pass as the loaded site's: every file its maps' keys hold,
+    # with the GeoTIFF a map keeps beside its picture, and the terrain
+    # figures and drainage lines, deleted with their folder
+    outgoing = []
+    for key in ("topo_path", "profile_path", "map_paths", "subsurface_paths", "section_path",
+                "pseudosection_path", "geolibre_path"):
+        held = st.session_state.get(key) or []
+        for path in held if isinstance(held, list) else [held]:
+            outgoing += [str(path), str(Path(path).with_suffix(".tif"))]
+    forget_artifacts(outgoing)
+    discard_terrain_result(st.session_state.get("terrain_result"))
     # a loaded project fully replaces the working state: drop the previous
     # data sources, recompute inputs and computed results first, so a stale
     # dataset from earlier in the session cannot bleed into the loaded project
