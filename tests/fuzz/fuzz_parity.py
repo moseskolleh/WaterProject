@@ -20,14 +20,24 @@ log: on the nightly run shrunk by Hypothesis to the smallest sheet that still
 shows it, on a pull request as drawn. Commit it with a note saying what it
 was, and it is replayed on every run from then on.
 
+An inversion on a knife edge is not a disagreement. Where one engine's own
+answer moves when every reading moves by one ulp, at a place where the two
+engines disagree, which of them ends where is the luck of the last bit;
+``knife_edge`` says so, the case is printed and written to
+``tests/fuzz/knife-edges/found/``, and the run goes on. A divergence that
+neither engine's own answer moves at is still a failure. The ones committed
+to ``tests/fuzz/knife-edges/`` are replayed to hold the check to its word.
+
 The module is not named ``test_*`` so the ordinary pytest run, which has no
 browser, does not collect it; ``nox -s fuzz`` names it explicitly.
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -45,6 +55,10 @@ from sheets import ves_case, workbook_bytes
 
 HERE = Path(__file__).resolve().parent
 REGRESSIONS = HERE / "regressions"
+KNIFE_EDGES = HERE / "knife-edges"
+# where a run writes the knife edges it finds; the replays read only the
+# folder above, so one is kept by moving it up with a note
+FOUND = KNIFE_EDGES / "found"
 
 # Every generator, each seeded by its own name, so adding one draws nothing
 # new for the others.
@@ -152,25 +166,40 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
     inversion, equivalent models, a poorly resolved boundary) stopped
     diverging once the browser's Bessel tables and its interp were put
     right. The first two were port defects and are now held to agreeing;
-    the third agrees by luck and is replayed under these rules. What parity
-    should mean for a knife-edge model is for the owner to decide; until
-    then the rules stay as they were.
+    the third agrees by luck and is replayed under these rules. A generated
+    inversion that diverges anywhere else is put to ``knife_edge``, which
+    asks the engines themselves whether the answer is one the last bit
+    decides; these rules stay as they were.
     """
-    from groundwater.ves.interpret import POORLY_RESOLVED_FACTOR
+    return judge(*answers(engine, case, workdir), open_questions=open_questions)
 
+
+def answers(engine: BrowserEngine, case: dict, workdir: Path) -> tuple:
+    """``(browser, python, factors, settled)``: each engine's summary of
+    ``case``, and apart from them what ``judge`` reads beside them.
+
+    Judges, not answers: the Python model's own resolution, which the
+    browser is not asked for, and whether each inversion converged, which
+    no report prints. At a parameter bound one engine can stop for want of
+    a better step while the other runs out its iterations, with models that
+    agree to the tolerance.
+    """
     data, suffix = case_file(case)
     path = workdir / f"case{suffix}"
     path.write_bytes(data)
     py = python_summary(case["kind"], path, str(path), case["options"])
     js = engine.summary(case["kind"], data, str(path), case["options"])
-    # Judges here, not answers: the Python model's own resolution, which
-    # the browser is not asked for, and whether each inversion converged,
-    # which no report prints. At a parameter bound one engine can stop for
-    # want of a better step while the other runs out its iterations, with
-    # models that agree to the tolerance.
     factors = [inv.pop("h_factor", None) for inv in py.get("inversions") or []]
     settled = [[inv.pop("converged", None) for inv in side.get("inversions") or []
                 if isinstance(inv, dict)] for side in (js, py)]
+    return js, py, factors, settled
+
+
+def judge(js: dict, py: dict, factors: list, settled: list,
+          open_questions: bool = False) -> list:
+    """Where ``js`` and ``py`` disagree, with ``compare``'s rules."""
+    from groundwater.ves.interpret import POORLY_RESOLVED_FACTOR
+
     found = divergences(js, py)
     if open_questions:
         skipped = set()
@@ -184,6 +213,96 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
         found = [d for d in found if d[0].endswith("[]") or (
             d[0] not in skipped and d[0].rsplit("[", 1)[0] not in skipped)]
     return found
+
+
+# How knife_edge moves a sounding's readings: each one ulp up, each one down,
+# and alternately one way and the other, starting either way.
+NUDGES = ("up", "down", "up-down", "down-up")
+
+# the number in a reading typed as text: "078.7", "1,5", "80m", " 261.1 "
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def nudged(case: dict, nudge: str) -> dict | None:
+    """``case`` with every reading of every sounding moved one ulp, as
+    ``nudge`` says, or None for a case with no readings to move.
+
+    A reading is the cell in the last column of the table under the header
+    row that starts "No.", as ``ves_sheet`` writes it. One typed as text
+    stays text, spelt as it was, with only its number moved.
+    """
+    out = copy.deepcopy(case)
+    moved = 0
+    for sheet in out.get("sheets") or []:
+        rows = sheet["rows"]
+        head = next((i for i, row in enumerate(rows)
+                     if row and str(row[0]).strip() == "No."), None)
+        if head is None:
+            continue
+        column = max(k for k, cell in enumerate(rows[head]) if cell is not None)
+        for row in rows[head + 1:]:
+            # a reading's row is numbered; a spacer or a note is not
+            if (column >= len(row) or isinstance(row[0], bool)
+                    or not isinstance(row[0], (int, float))):
+                continue
+            cell = row[column]
+            if isinstance(cell, str):
+                match = _NUMBER.search(cell)
+                if match is None:
+                    continue
+                value = float(match.group().replace(",", "."))
+            elif isinstance(cell, (int, float)) and not isinstance(cell, bool):
+                match = None
+                value = float(cell)
+            else:
+                continue
+            if not math.isfinite(value):
+                continue
+            up = {"up": True, "down": False, "up-down": moved % 2 == 0,
+                  "down-up": moved % 2 == 1}[nudge]
+            value = math.nextafter(value, math.inf if up else -math.inf)
+            if match is None:
+                row[column] = value
+            else:
+                text = repr(value)
+                if "," in match.group():
+                    text = text.replace(".", ",")
+                row[column] = cell[:match.start()] + text + cell[match.end():]
+            moved += 1
+    return out if moved else None
+
+
+def knife_edge(engine: BrowserEngine, case: dict, workdir: Path, found: list,
+               js: dict, py: dict) -> str | None:
+    """Why the divergence ``found`` between ``js`` and ``py`` on an
+    inversion of ``case`` is a knife edge, or None if it is not one.
+
+    It is one when, with every reading moved by one ulp in one of the ways
+    NUDGES lists, either engine's own answer moves by more than parity's
+    tolerance at a place the two disagree. An answer the last bit of the
+    readings moves is not one either engine can be held to, by the other
+    or by itself (the two in knife-edges/ say how far one moved). The place
+    must be one of those in ``found``: a poorly resolved boundary that
+    moves says nothing about a layer count the engines disagree on. A
+    disagreement neither engine moves at, as the browser's old Bessel
+    tables and interp edge gave (see the regressions named for them), is
+    still a divergence.
+    """
+    where = {path for path, _, _ in found}
+    for nudge in NUDGES:
+        moved = nudged(case, nudge)
+        if moved is None:
+            return None
+        js_moved, py_moved, _, _ = answers(engine, moved, workdir)
+        for side, before, after in (("the browser", js, js_moved), ("Python", py, py_moved)):
+            moves = [d for d in divergences({"inversions": after.get("inversions")},
+                                            {"inversions": before.get("inversions")})
+                     if d[0] in where]
+            if moves:
+                path, now, then = moves[0]
+                return (f"{side}'s own {path} moves from {json.dumps(then)} to "
+                        f"{json.dumps(now)} with every reading one ulp {nudge}")
+    return None
 
 
 def case_file(case: dict) -> tuple[bytes, str]:
@@ -205,16 +324,29 @@ def report(found: list) -> str:
 def save_regression(case: dict, found: list) -> Path:
     """Write a counterexample where the next run replays it: shrunk on the
     nightly run, as drawn on a pull request."""
+    return _save(REGRESSIONS, case, found, "Found by the fuzz suite on "
+                 + date.today().isoformat()
+                 + ". Say here what diverged and which engine was put right.")
+
+
+def save_knife_edge(case: dict, found: list, reason: str) -> Path:
+    """Write a knife edge to FOUND, which no run replays."""
+    return _save(FOUND, case, found, "Found by the fuzz suite on "
+                 + date.today().isoformat() + ", on a knife edge: " + reason
+                 + ". Say here what the engines were choosing between, and move it "
+                 "up a folder to keep it.")
+
+
+def _save(folder: Path, case: dict, found: list, note: str) -> Path:
     where = found[0][0]
     slug = re.sub(r"[^a-z0-9]+", "-", re.sub(r"\[\d+\]", "", where).lower()).strip("-")
     body = json.dumps({key: case[key] for key in ("kind", *INPUTS, "options") if key in case},
                       sort_keys=True)
     digest = hashlib.sha1(body.encode()).hexdigest()[:8]
-    REGRESSIONS.mkdir(exist_ok=True)
-    path = REGRESSIONS / f"{case['kind']}-{slug[:40]}-{digest}.json"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{case['kind']}-{slug[:40]}-{digest}.json"
     path.write_text(regression_text({
-        "note": "Found by the fuzz suite on " + date.today().isoformat()
-                + ". Say here what diverged and which engine was put right.",
+        "note": note,
         "first_divergence": [where, found[0][1], found[0][2]],
         **json.loads(body),
     }), encoding="utf-8")
@@ -286,13 +418,42 @@ def test_regression(path, engine, workdir):
     assert not found, report(found)
 
 
-def _fuzz(engine, workdir, name: str, strategy, examples: int, **options) -> None:
-    last: dict = {"agreed": 0}
+@pytest.mark.parametrize("path", sorted(KNIFE_EDGES.glob("*.json")), ids=lambda p: p.stem)
+def test_knife_edge(path, engine, workdir):
+    """Every generated inversion kept as a knife edge, judged again as
+    test_inversions_agree judges one.
+
+    The engines may agree on it today or not: on a knife edge either is the
+    luck of the last bit. While they disagree, ``knife_edge`` must still
+    find one of their own answers moving where they do. The day it finds
+    none, the disagreement is a divergence like any other, and this fails
+    with it.
+    """
+    case = json.loads(path.read_text(encoding="utf-8"))
+    js, py, factors, settled = answers(engine, case, workdir)
+    found = judge(js, py, factors, settled, open_questions=True)
+    if found:
+        assert knife_edge(engine, case, workdir, found, js, py), (
+            "no longer a knife edge: neither engine's own answer moves where "
+            "they disagree when the readings move one ulp\n" + report(found))
+
+
+def _fuzz(engine, workdir, name: str, strategy, examples: int,
+          knife_edges: bool = False, **options) -> None:
+    """``knife_edges``: a divergence on which ``knife_edge`` finds one
+    engine's own answer moving is printed, kept in FOUND and passed."""
+    last: dict = {"agreed": 0, "edges": {}}
 
     @given(strategy)
     @_settings(examples)
     def agree(case):
-        found = compare(engine, case, workdir, **options)
+        js, py, factors, settled = answers(engine, case, workdir)
+        found = judge(js, py, factors, settled, **options)
+        if found and knife_edges:
+            reason = knife_edge(engine, case, workdir, found, js, py)
+            if reason:
+                last["edges"][json.dumps(case, sort_keys=True)] = (case, found, reason)
+                return
         last["agreed"] += not found
         if found:
             # Hypothesis replays the case it reports last, so this ends holding it
@@ -308,13 +469,22 @@ def _fuzz(engine, workdir, name: str, strategy, examples: int, **options) -> Non
     try:
         agree()
         # nox -s fuzz passes -rP, so this reaches the log of every run
-        print(f"{last['agreed']} generated cases, the engines agreeing on each")
+        edges = len(last["edges"])
+        print(f"{last['agreed']} generated cases, the engines agreeing on each"
+              + (f"; {edges} more on a knife edge" if edges else ""))
     except AssertionError:
         if "case" in last:
             saved = save_regression(last["case"], last["found"])
             print(f"\ncounterexample written to {saved.relative_to(HERE.parents[1])}, "
                   f"which reads:\n{saved.read_text(encoding='utf-8')}")
         raise
+    finally:
+        # a run that fails keeps the knife edges it passed on its way too
+        for case, found, reason in last["edges"].values():
+            saved = save_knife_edge(case, found, reason)
+            print(f"\na knife edge, not a divergence: {reason}. "
+                  f"{report(found)}\nwritten to {saved.relative_to(HERE.parents[1])}, "
+                  f"which reads:\n{saved.read_text(encoding='utf-8')}")
 
 
 @pytest.mark.parametrize("kind", sorted(CASES))
@@ -332,22 +502,27 @@ def test_inversions_agree(engine, workdir):
     and the reports would all have to accept; two layers with the boundary
     marked unresolved; or a refusal. Today both engines fit two layers of
     the one resistivity with the boundary wherever each search left it.
-    Perturbing Python's forward model by 1e-15 moves its own boundary by
-    more than parity's 1e-3, and with a thickness factor of 1.0001 the
-    model is not one ``open_questions`` leaves out, so whether the engines
-    agree on it is luck. The sheet that recorded the question,
+    The sheet that recorded the question,
     regressions/ves-uniform-half-space-boundary.json (in the tree at
-    74b123d), is retired from the replays for that reason until the owner
-    decides.
+    74b123d), stays retired from the replays; the engines agree on it
+    today, which is luck.
 
     The models ``compare`` leaves out with ``open_questions`` are left out
-    here too; see ``compare``. On a pull request the ten soundings are the
-    same on every run until one of the things PROFILES lists changes, the
-    Python forward model among them, when ten new ones are drawn. A new
-    sample can land on a knife-edge model those rules do not cover, which
-    is still a question for the owner; replaying the saved case on main
-    tells such a case from a change that broke parity.
+    here too; see ``compare``. A divergence on any other model is put to
+    ``knife_edge``: where one engine's own answer moves when the readings
+    move by one ulp, the case is a knife edge, printed and kept in FOUND,
+    and does not fail the run. The two the nightly run found first are in
+    knife-edges/: a layer count that a one-ulp change to Python's
+    quadrature weights flips from four to three, and a top layer the data
+    do not determine, which the browser's search left at 18,763 ohm-m and
+    10,507 when one starting value moved by an ulp. What parity should
+    hold a knife edge to otherwise is left as it was: nothing.
+
+    On a pull request the ten soundings are the same on every run until one
+    of the things PROFILES lists changes, the Python forward model among
+    them, when ten new ones are drawn.
     """
     strategy = ves_case(varied=True).map(
         lambda case: {**case, "sheets": case["sheets"][:1], "options": {"invert": True}})
-    _fuzz(engine, workdir, "inversions", strategy, INVERSIONS, open_questions=True)
+    _fuzz(engine, workdir, "inversions", strategy, INVERSIONS, knife_edges=True,
+          open_questions=True)
