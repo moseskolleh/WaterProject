@@ -34,10 +34,12 @@ cells a side in whole centimetres over small ranges, so that ties are
 everywhere, with plateaus, pits, voids, -0, now and then the infinities,
 sea along one edge (at times a straight strip of 0 m, a zero-filled gap),
 holes no file covers, a missing tile taken as sea, small drainage
-thresholds, other settings and a square shown inside the window. The
-window is handed to both engines as its numbers (``_terrain_file``), and
-both must give every layer, drainage line, part, caption, summary value
-and the GeoJSON exactly, and the wetness index to 1e-12. A case stores the
+thresholds, other settings and a square shown inside the window, and
+lineament settings fine enough to find candidates a few cells long in it
+(PLAN.md step 4.2). The window is handed to both engines as its numbers
+(``_terrain_file``), and both must give every layer, drainage line, part,
+lineament candidate, caption, summary value and both GeoJSON files
+exactly, and the wetness index to 1e-12. A case stores the
 heights as a table of centimetres, south row first, readable in a
 regression file a row to a line.
 """
@@ -355,6 +357,19 @@ def terrain_case(draw) -> dict:
     # sea cells that says whether the window holds any
     meta.update(fill_note_m=settings["fill_note_m"], sea_clean=sea_clean, sea_cells=coin.choice([0, 1, 250]),
                 sea_level_m=settings["sea_level_m"])
+    if coin.random() < 0.8:  # lineaments a few cells long; drawn last, so the draws above are as they were
+        settings.update(
+            lineament_smoothing_m=coin.choice([10.0, 10.0, 10.0, 25.0, 65.0]),
+            lineament_contrast_km=coin.choice([0.1, 0.3, 0.6, 1.5]),
+            lineament_share=coin.choice([1.0, 1.0, 0.4, 0.05]),
+            lineament_min_curvature_per_km=coin.choice([1e-6, 0.01, 0.01, 0.1, 2.0]),
+            lineament_turn_deg=coin.choice([10.0, 30.0, 60.0, 89.0]),
+            lineament_straight_m=coin.choice([5.0, 30.0, 90.0]),
+            lineament_piece_m=coin.choice([10.0, 30.0, 60.0, 120.0]),
+            lineament_min_length_m=coin.choice([10.0, 30.0, 60.0, 120.0, 600.0]),
+            lineament_link_angle_deg=coin.choice([5.0, 10.0, 45.0]),
+            lineament_link_offset_m=coin.choice([10.0, 30.0, 90.0]),
+            lineament_link_gap_m=coin.choice([1.0, 60.0, 300.0]))
     return {"kind": "terrain",
             "grid": {"rows": rows, "cols": cols, "lon0": lon0, "lat0": lat0, "step": step, "assumed": assumed,
                      "cm": cm},

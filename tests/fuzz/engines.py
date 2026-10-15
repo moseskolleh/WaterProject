@@ -352,7 +352,11 @@ def _terrain(path: Path, name: str, options: dict) -> dict:
     length; the captions as text; the summary's values by their float64
     bits (a count as exactly as a share) and its keys in order; the
     unresolved flats, curvature spacing, floored and zero-filled cells and
-    square shown; and the progress heard. The wetness index alone, the log
+    square shown; the lineament candidates (PLAN.md step 4.2) by a digest of
+    their JSON with every number by its bits, their summary's values by
+    their bits, the roses and frame by their bits, their captions as text
+    and their GeoJSON by its SHA-256 and length; and the progress heard,
+    the lineaments' after the analysis's. The wetness index alone, the log
     of a library in each engine, goes under ``terrain_twi``, at 1e-12
     (_TIGHTER): up to 25 cells spread through those where it is defined,
     and the display range."""
@@ -361,6 +365,7 @@ def _terrain(path: Path, name: str, options: dict) -> dict:
 
     from groundwater.config import TerrainConfig
     from groundwater.mapping.elevation import ElevationGrid, WindowCentre
+    from groundwater.mapping.lineaments import lineament_candidates, lineament_captions, lineament_geojson
     from groundwater.mapping.terrain_analysis import analyse_terrain, drainage_geojson, terrain_captions
 
     rows, cols = options["rows"], options["cols"]
@@ -396,6 +401,11 @@ def _terrain(path: Path, name: str, options: dict) -> dict:
     meta = dict(options["meta"])
     meta["centre"] = WindowCentre(meta["centre"]["lon"], meta["centre"]["lat"], meta["centre"]["label"], True)
     geojson = drainage_geojson(core, a.parts, meta)
+    lin = lineament_candidates(a, progress=lambda fraction, label: heard.append([_f64_hex(fraction), label]))
+    lin_text = json.dumps([[item.id, item.kind, [_f64_hex(v) for v in item.start], [_f64_hex(v) for v in item.end],
+                            _f64_hex(item.length_m), _f64_hex(item.strike_deg), item.pieces, item.cells, item.cut]
+                           for item in lin.lineaments], separators=(",", ":"))
+    lin_geojson = lineament_geojson(lin, grid.lons, grid.lats, meta)
     summary = [(key, v) for key, v in a.summary.items() if key != "twi_range"]
     twi = np.ravel(np.asarray(a.twi, dtype=np.float64))
     finite = np.flatnonzero(np.isfinite(twi))
@@ -409,6 +419,13 @@ def _terrain(path: Path, name: str, options: dict) -> dict:
         "summary": {key: _f64_hex(v) for key, v in summary},
         "scalars": " ".join(str(v) for v in (a.unresolved, a.k_cells, a.floored, a.zero_fill, *core.shown)),
         "heard": heard,
+        "lineaments": f"{hashlib.sha256(lin_text.encode('utf-8')).hexdigest()} {len(lin.lineaments)}",
+        "lineament_summary": {key: _f64_hex(v) for key, v in lin.summary.items()},
+        "lineament_summary_keys": " ".join(lin.summary),
+        "lineament_roses": " ".join(_f64_hex(v) for v in (*lin.rose_valley_m, *lin.rose_ridge_m, *lin.rose_valleys,
+                                                          *lin.rose_ridges, *lin.frame)),
+        "lineament_captions": [list(item) for item in lineament_captions(lin, options["where"]).items()],
+        "lineament_geojson": f"{hashlib.sha256(lin_geojson.encode('utf-8')).hexdigest()} {len(lin_geojson)}",
         "terrain_twi": {"at": ",".join(str(i) for i in at), "cells": nums(twi[at]),
                         "range": nums(list(a.summary["twi_range"]))},
     }

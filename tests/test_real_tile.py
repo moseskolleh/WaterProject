@@ -1,6 +1,7 @@
 """The real-tile acceptance: a whole Copernicus GLO-30 tile, read by the
 toolkit's own reader and held to GDAL, then read as the apps read it and
-analysed at the default window (PLAN.md step 4.1).
+analysed at the default window (PLAN.md step 4.1), and its lineament
+candidates found (step 4.2).
 
 The committed fixtures are clips of a few dozen cells a side, built by the
 project's own scripts. A tile as Copernicus publishes it is 3600 by 3600
@@ -58,6 +59,7 @@ from groundwater.mapping.elevation import (
     read_window,
     window_centre,
 )
+from groundwater.mapping.lineaments import Lineament, lineament_candidates, lineament_captions, lineament_geojson
 from groundwater.mapping.terrain_analysis import LAND, SEA, analyse_terrain, drainage_geojson, terrain_captions
 from groundwater.text import phrase
 
@@ -199,13 +201,20 @@ def _meta(read, a) -> dict:
 def analysis(windows):
     """The window read under the tile's own name, analysed as the apps
     analyse it: the default settings and precision, the square shown cut
-    out of the margin."""
+    out of the margin; and its lineament candidates."""
     read = windows["own"].read
     start = time.perf_counter()
     a = analyse_terrain(read.grid, TerrainConfig(), assumed_sea=read.assumed_sea, shown=read.shown)
     seconds = time.perf_counter() - start
+    start = time.perf_counter()
+    lineaments = lineament_candidates(a)
+    lineament_seconds = time.perf_counter() - start
+    meta = _meta(read, a)
     return SimpleNamespace(a=a, seconds=seconds, captions=terrain_captions(a, read, read.centre.label),
-                           geojson=drainage_geojson(a.core, a.parts, _meta(read, a)))
+                           geojson=drainage_geojson(a.core, a.parts, meta), lineaments=lineaments,
+                           lineament_seconds=lineament_seconds,
+                           lineament_captions=lineament_captions(lineaments, read.centre.label),
+                           lineament_geojson=lineament_geojson(lineaments, read.grid.lons, read.grid.lats, meta))
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +376,25 @@ def test_the_default_window_resolves_every_flat_and_accounts_for_every_cell_of_a
           f"routed across flats or filled hollows, {summary['contaminated_pct']:.1f}% uncertain, "
           f"{summary['raised_pct']:.1f}% of the land raised by {a.settings.fill_note_m:g} m or more "
           f"(deepest {summary['max_fill_m']:.2f} m); {len(a.links)} drainage lines, {len(a.parts)} parts shown")
+
+
+def test_the_default_window_finds_lineament_candidates_of_both_kinds_inside_the_square_shown(analysis):
+    """Prevents a change that finds no lineament on real ground, or one
+    outside the square shown, from passing on made-up grids alone; the
+    counts and the time are reported."""
+    lin, (dx, dy) = analysis.lineaments, analysis.lineaments.frame
+    r0, r1, c0, c1 = lin.shown
+    assert lin.summary["valleys"] > 0 and lin.summary["ridges"] > 0
+    for item in lin.lineaments:
+        assert item.length_m >= analysis.a.settings.lineament_min_length_m
+        for x, y in (item.start, item.end):
+            assert (c0 - 0.5) * dx - 1e-6 <= x <= (c1 - 0.5) * dx + 1e-6
+            assert (r0 - 0.5) * dy - 1e-6 <= y <= (r1 - 0.5) * dy + 1e-6
+    summary = lin.summary
+    print(f"{summary['candidates']} lineament candidates ({summary['valleys']} valleys, {summary['ridges']} ridges, "
+          f"{summary['linked']} of them linked from more than one piece, {summary['length_m'] / 1000:.1f} km in all) "
+          f"from {summary['kept_cells']:,} of {summary['centre_cells']:,} centreline cells, "
+          f"in {analysis.lineament_seconds:.2f} s")
 
 
 def test_the_tile_is_credited_only_under_a_copernicus_name_and_otherwise_prompts_for_its_source(tile, windows):
@@ -549,6 +577,23 @@ def _analysis_record(analysis) -> dict:
     }
 
 
+def _lineament_record(analysis) -> dict:
+    """The lineament candidates as realtile.mjs builds its answer from the
+    browser's, all exact: the candidates field by field, the summary, the
+    roses and frame, the captions and the GeoJSON."""
+    lin = analysis.lineaments
+    return {
+        "fields": [f.name for f in dataclasses.fields(Lineament)],
+        "summary": {"keys": list(lin.summary), "values": _clean(list(lin.summary.values()))},
+        "values": [_clean([item.id, item.kind, item.start, item.end, item.length_m, item.strike_deg, item.pieces,
+                           item.cells, item.cut]) for item in lin.lineaments],
+        "roses": _clean([lin.rose_valley_m, lin.rose_ridge_m, lin.rose_valleys, lin.rose_ridges]),
+        "frame": _clean(lin.frame), "shown": _clean(lin.shown),
+        "captions": [list(item) for item in analysis.lineament_captions.items()],
+        "geojson": analysis.lineament_geojson,
+    }
+
+
 def test_what_the_browser_must_reproduce_is_written_for_realtile_mjs(tile, windows, analysis):
     """Prevents realtile.mjs from comparing the browser with a stale run or
     another tile: the file names the tile by its size and SHA-256, and
@@ -566,6 +611,7 @@ def test_what_the_browser_must_reproduce_is_written_for_realtile_mjs(tile, windo
         },
         "windows": {kind: _window_record(window) for kind, window in windows.items()},
         "analysis": _analysis_record(analysis),
+        "lineaments": _lineament_record(analysis),
     }
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(json.dumps(record, separators=(",", ":"), allow_nan=False), encoding="utf-8")

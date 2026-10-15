@@ -457,6 +457,48 @@ geojson_sea_unstated: >-
   below {level:g} m may end in a fill value rather than the sea, and are
   marked edge_contaminated.
 
+# Lineament candidates (PLAN.md step 4.2): the straight valleys and ridges
+# found in the shading, written by lineament_candidates, lineament_captions
+# and lineament_geojson in mapping/lineaments.py and by
+# C.lineamentCandidates, C.lineamentCaptions and C.lineamentGeoJson in the
+# browser. {azimuths} is the panel azimuths written as 270°, joined by
+# and_join; {where} and {surface} are as above.
+title_lineaments: "Lineament candidates - {where}"
+
+title_rose: "Strike of the lineament candidates - {where}"
+
+caption_lineaments: >-
+  {valleys:num} straight {valleys:plural:valley|valleys} and {ridges:num}
+  {ridges:plural:ridge|ridges} at least {length:g} m long, found where the
+  relief, smoothed over about {smoothing:g} m and lit from {azimuths}, changes
+  sharply along a line. A valley or a ridge is told by which way the ground
+  bends across it, and a candidate drawn from several straight pieces is one
+  where shorter valleys or ridges line up. They are inferred from terrain, not
+  confirmed by geophysics: a fracture zone, a geological contact, a dyke, a
+  road or a field boundary can each draw one.
+
+caption_lineaments_none: >-
+  No straight valley or ridge at least {length:g} m long stands out in the
+  square shown, in the relief smoothed over about {smoothing:g} m and lit from
+  {azimuths}. That says only that the relief draws none: a fracture can lie
+  beneath flat ground without showing in it.
+
+caption_rose: >-
+  The length of the candidates in each 10° band of strike, measured clockwise
+  from grid north and folded to 0 to 180°, valleys and ridges apart. A band
+  that stands out is a direction that many straight features share; the
+  analysis itself favours none, as tested on terrain that has none.
+
+lineament_geojson_description: >-
+  Lineament candidates worked out from {label}: straight valleys and ridges at
+  least {length:g} m long within {radius:g} km each way of {where}, found in
+  the relief smoothed over about {smoothing:g} m and lit from {azimuths}. They
+  are inferred from terrain, not confirmed by geophysics. kind is valley or
+  ridge, by which way the ground bends across the line; strike_deg is measured
+  clockwise from grid north, from 0 to 180; pieces counts the straight pieces
+  linked into the candidate, and cut marks one cut at the edge of the square
+  shown. {surface}
+
 # The progress labels: while the files are read, then each stage of the
 # analysis in the order it runs.
 stage_read: Reading the elevation model
@@ -476,6 +518,8 @@ stage_drainage: Tracing drainage lines
 stage_shading: Shading the relief
 
 stage_curvature: Working out curvature and wetness
+
+stage_lineaments: Looking for lineament candidates
 
 # Said by both apps: what of the terrain work only the Python app does, and
 # that neither app's reports carry it yet (PLAN.md step 4.4).

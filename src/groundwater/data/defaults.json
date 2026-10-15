@@ -108,6 +108,17 @@
     "hillshade_azimuths_deg": [225.0, 270.0, 315.0, 360.0],
     "hillshade_panel_azimuths_deg": [270.0, 315.0, 0.0, 45.0],
     "hillshade_altitude_deg": 45.0,
-    "hillshade_z_factor": 1.0
+    "hillshade_z_factor": 1.0,
+    "lineament_smoothing_m": 65.0,
+    "lineament_contrast_km": 1.5,
+    "lineament_share": 0.4,
+    "lineament_min_curvature_per_km": 0.1,
+    "lineament_turn_deg": 30.0,
+    "lineament_straight_m": 90.0,
+    "lineament_piece_m": 300.0,
+    "lineament_min_length_m": 600.0,
+    "lineament_link_angle_deg": 10.0,
+    "lineament_link_offset_m": 90.0,
+    "lineament_link_gap_m": 300.0
   }
 }

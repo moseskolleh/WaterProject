@@ -30,7 +30,9 @@
  * value by one float32 step at most, so 50 of its cells and its least and
  * greatest values are held to one step, its count exactly and its display
  * range, worked out in float64, to 1e-12. Its digest is reported, alike or
- * not.
+ * not. Then the window's lineament candidates (PLAN.md step 4.2), all held
+ * exactly: the candidates field by field, the summary, the roses, the
+ * captions word for word and their GeoJSON to the character.
  */
 import { withPage } from './harness.mjs';
 import { createHash } from 'node:crypto';
@@ -284,6 +286,22 @@ await withPage(async (page, base, consoleErrors) => {
       captions: Object.entries(C.terrainCaptions(a, read, read.centre.label)),
       geojson,
     };
+    const lin = await timed('lineaments', () => C.lineamentCandidates(a, null, null));
+    const linGeojson = C.lineamentGeoJson(lin, read.grid.lons, read.grid.lats, {
+      label: read.grid.label, figure_credit: read.figureCredit, notice: read.notice, surface: read.surface,
+      radius: read.plan.radiusKm, centre: read.centre,
+    });
+    answer.lineaments = {
+      fields: Object.keys(lin.lineaments[0] || {}),
+      summary: { keys: Object.keys(lin.summary), values: Object.values(lin.summary).map(number) },
+      values: lin.lineaments.map((l) => [l.id, l.kind, l.start.map(number), l.end.map(number), number(l.length_m),
+        number(l.strike_deg), l.pieces, l.cells, l.cut]),
+      roses: [lin.roseValleyM.map(number), lin.roseRidgeM.map(number), Array.from(lin.roseValleys),
+        Array.from(lin.roseRidges)],
+      frame: lin.frame.map(number), shown: Array.from(lin.shown),
+      captions: Object.entries(C.lineamentCaptions(lin, read.centre.label)),
+      geojson: linGeojson,
+    };
     answer.seconds = seconds;
     return answer;
   }, ask);
@@ -355,6 +373,17 @@ await withPage(async (page, base, consoleErrors) => {
   check(`the wetness index: ${counted(T.count, 'cell', 'cells')} with a value, ${T.values.length} of them, the ` +
     'least and greatest to one float32 step and the display range to 1e-12', misses.length === 0,
   misses.slice(0, 4).join('; '));
+  {
+    const L = expected.lineaments, lin = got.lineaments;
+    const members = ['fields', 'summary', 'values', 'roses', 'frame', 'shown'];
+    const found = firstDifference(pick(lin, members), pick(L, members));
+    check(`the ${counted(L.values.length, 'lineament candidate', 'lineament candidates')}, field by field, ` +
+      'with the summary and the roses', !found, found);
+    const said = firstDifference(lin.captions, L.captions);
+    check(`the ${L.captions.length} lineament captions, word for word`, !said, said);
+    check(`the lineaments' GeoJSON (${counted(L.geojson.length, 'character', 'characters')}), to the character`,
+      lin.geojson === L.geojson, textDifference(lin.geojson, L.geojson));
+  }
   console.log(`     the wetness index's digest is ${t.digest === T.digest ? 'Python\'s' : 'not Python\'s'}; ` +
     `${moved} of the ${T.values.length} cells held differ from Python's at all`);
   console.log('     seconds in the page: ' + Object.entries(got.seconds)

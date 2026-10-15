@@ -132,6 +132,14 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   from the core` is `drainage_links` at the default threshold (0.5 km²)
   on the default window's core: the drainage lines alone, which the
   browser traces again on the page each time the threshold is moved.
+  `lineament candidates on the default window` and `... at the cap` are
+  `lineament_candidates` (PLAN.md step 4.2) on those two analyses. The
+  synthetic surface holds few straight lines (no candidate at the
+  defaults, a few hundred lines), so these time the stages over the whole
+  grid more than the lines; on the real tile N08 W012, which holds 187
+  and 399 candidates, the same calls took 0.89 s and 1.48 s (median of
+  five, measured once by hand, 15 October 2026), where `run.py` gave
+  0.55 s and 0.90 s on the synthetic tile.
   Writing the file, reading the window and, for the drainage lines, the
   analysis they are traced from, are setup and are not timed.
 
@@ -144,7 +152,11 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   already read; `read_mb` and `first_use_mb` are what the read and the
   warm-up (the modules the analysis imports on first use) added before
   that; and it gives the analysis's wall time, the window, the commit, the
-  date and the same `machine` block as `run.py`. MB there are 2^20 bytes,
+  date and the same `machine` block as `run.py`. `lineament_increase_mb`
+  is what finding the lineament candidates next, from the analysis held,
+  adds to the peak: Linux's VmHWM, reset through `/proc/self/clear_refs`
+  because the analysis has already set `ru_maxrss` higher, less the
+  resident set size just before. MB there are 2^20 bytes,
   `ps -o rss` divided by 1024. It reads `/proc`, so it runs on Linux only.
 - `reports/*` - each document the package builds, from inputs made
   beforehand, written with its figures into a temporary folder: the
