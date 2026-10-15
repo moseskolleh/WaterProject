@@ -322,6 +322,18 @@ jobs:
           path: tests/fuzz/regressions/
           if-no-files-found: ignore
 
+      # A knife edge, an inversion one engine's own answer moves on when the
+      # readings move by one ulp, does not fail the run; it is printed in the
+      # log and written under tests/fuzz/knife-edges/found, kept here on a
+      # green run as on a red one.
+      - name: Keep the knife edges
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-knife-edges
+          path: tests/fuzz/knife-edges/found/
+          if-no-files-found: ignore
+
   depth-spine:
     name: Depth Spine workspace
     runs-on: ubuntu-latest

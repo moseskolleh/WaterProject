@@ -1,0 +1,39 @@
+{
+ "note": "Found by CI's fuzz job on main at bf591a5, the nightly run of 2026-10-14, as ves-inversions-h-ce767907.json. A Wenner sounding reading 3.0 to 3.4 ohm-m from a = 5 to 375 m, noise and no layering to speak of. Both engines fit two layers, a thin resistive top over 3.17 ohm-m, and stop in a valley along which the fit is still improving: Python at 10,519 ohm-m over 0.572 m (2.68935 percent), the browser in Chromium at 18,763 ohm-m over 0.549 m (2.68857 percent). Python rates that resistivity uncertain by its cap, a factor of 10, and the thickness by 1.92, just under the factor of 2 at which compare leaves a model's numbers out. The two searches walk one path, their costs within 4e-9 of each other through the fifteenth iteration; by the 23rd, with the top layer near 10,500 ohm-m, the browser is 1.2e-3 from Python, and its next step is taken where Python's is refused. The same gwt-core.js in Node 22, whose Math.sin, cos and pow differ from Chromium 141's in the last bit on a few percent of arguments, stops at 10,518; in Chromium, moving one of its starting values by one ulp stops it at 10,507 or 10,572 instead. Python's answer moves by at most 2.5e-4 under every last-bit change tried on it (its forward model, its quadrature weights, its linear algebra, the browser's own tables); the browser's cannot be held to it.",
+ "first_divergence": ["inversions[0].h[0]", 0.5494828209724347, 0.5721186858549328],
+ "kind": "ves",
+ "options": {"invert": true},
+ "sheets": [
+  {"name": "VES 1", "rows": [
+   ["SCHLUMBERGER ARRAY VES FIELD DATA", null, null, null],
+   ["Community", "Rokel", "District", "Western Area"],
+   ["Elevation (m)", 71, "Date", "8th December, 2015"],
+   ["Sounding Number", "VES 1", "Array", "Wenner"],
+   ["Instrument", "Syscal Junior", null, null],
+   [null, null, null, null],
+   ["No.", "a (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+   [1, 5.0, 5.0, "3.4"],
+   [2, 6.0, 6, 3.2],
+   [3, 9.0, null, 3.4],
+   [4, 10.0, 10.0, "3.2"],
+   [5, 10.5, 10.5, 3.1],
+   [6, 12.0, 12.0, 3.1],
+   [7, 15, null, "3.2"],
+   [8, 18.0, null, 3.2],
+   [9, 20, null, 3.3],
+   [10, 37.5, 37.5, 3.1],
+   [11, 40.0, 40.0, 3.1],
+   [12, 45.0, 45, "3.2"],
+   [null, null, null, null],
+   [13, 70.0, 70.0, 3.2],
+   [14, 75.0, 75.0, 3.3],
+   [15, 80.0, 80, 3.3],
+   [16, 90.0, 90.0, 3.0],
+   [17, 100.0, null, "3.2"],
+   [18, 180.0, 180.0, 3.1],
+   [19, 200.0, 200.0, "3.2"],
+   [20, 225.0, 225.0, 3.2],
+   [21, 375.0, null, 3.2]
+  ]}
+ ]
+}
