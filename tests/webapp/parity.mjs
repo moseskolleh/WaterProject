@@ -3594,6 +3594,205 @@ await withPage(async (page, base, consoleErrors) => {
   }
   console.log(`     terrain: the worst wetness-index gap is ${twiWorst.toExponential(2)} relative`);
 
+  // --- Lineament candidates (PLAN.md step 4.2) ---
+  // C.lineamentCandidates, C.lineamentCaptions and C.lineamentGeoJson, the
+  // twins of groundwater/mapping/lineaments.py, on the terrain section's
+  // small windows (T1-T3, T5 and T7) with the defaults and with settings
+  // fine enough to find candidates a few cells long in them, each GeoJSON
+  // by a short digest; on T5's window round a pit with settings both
+  // refuse, word for word; and on L1 and L2, a window generated here from
+  // C.rangeStream(43, 0) with five straight valleys and ridges cut into
+  // it, as make_reference.py's lineament_heights generates it, with the
+  // defaults and with every centreline cell kept, every GeoJSON to the
+  // character. Everything is held exactly: the candidates field by field
+  // (each number by Object.is), the summary, the roses, the frame, the
+  // progress and the captions word for word.
+  const LN = R.lineaments;
+  const lnJs = await page.evaluate(({ LN, TA }) => {
+    const C = GWT.core;
+    const number = (v) => (v !== v ? null : v === Infinity ? 'Infinity' : v === -Infinity ? '-Infinity'
+      : Object.is(v, -0) ? '-0' : v);
+    const unfold = (v) => (v === null ? NaN : v === 'Infinity' ? Infinity : v === '-Infinity' ? -Infinity
+      : v === '-0' ? -0 : v);
+    const bytesOf = (values) => {
+      const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] !== values[i]) {
+          view.setUint32(8 * i, 0, true);
+          view.setUint32(8 * i + 4, 0x7FF80000, true);
+        } else {
+          view.setFloat64(8 * i, values[i], true);
+        }
+      }
+      return bytes;
+    };
+    const spots = (values, n = 3) =>
+      Array.from({ length: n }, (_, k) => number(values[Math.floor(k * (values.length - 1) / (n - 1))]));
+    /* the window as make_reference.py's _ta_analysis builds it */
+    const analyse = (kase, z) => {
+      const lons = Float64Array.from({ length: kase.cols }, (_, j) => kase.lon0 + j * kase.step);
+      const lats = Float64Array.from({ length: kase.rows }, (_, j) => kase.lat0 + j * kase.step);
+      let assumedSea = null;
+      if (kase.assumed) {
+        assumedSea = new Uint8Array(kase.rows * kase.cols);
+        for (const [r0, r1, c0, c1] of kase.assumed) {
+          for (let r = r0; r < r1; r++) for (let c = c0; c < c1; c++) assumedSea[r * kase.cols + c] = 1;
+        }
+      }
+      const grid = { lons, lats, z, rows: kase.rows, cols: kase.cols, assumedSea, sourceId: kase.sourceId,
+        seaClean: kase.seaClean, label: kase.label };
+      return { a: C.analyseTerrain(grid, { terrain: kase.settings }, null, 'float64', kase.shown), lons, lats };
+    };
+    /* make_reference.py's _ln_answer */
+    const answer = (kase, run, settings) => {
+      const heard = [];
+      let result;
+      try {
+        result = C.lineamentCandidates(run.a, settings ? { terrain: { ...kase.settings, ...settings } } : null,
+          (fraction, label) => heard.push([fraction, label]));
+      } catch (e) {
+        return { exact: { refused: String(e && e.message !== undefined ? e.message : e) } };
+      }
+      const plan = kase.read ? kase.read.plan : null;
+      const geojson = C.lineamentGeoJson(result, run.lons, run.lats, {
+        label: kase.label, figure_credit: kase.figureCredit, notice: kase.notice, surface: TA.surface,
+        radius: plan ? plan.radiusKm : 0.3,
+        centre: { lon: run.lons[Math.floor(kase.cols / 2)], lat: run.lats[Math.floor(kase.rows / 2)],
+          label: kase.where },
+      });
+      return {
+        exact: {
+          lineaments: result.lineaments.map((l) => [l.id, l.kind, l.start.map(number), l.end.map(number),
+            number(l.length_m), number(l.strike_deg), l.pieces, l.cells, l.cut]),
+          summary: Object.values(result.summary).map(number),
+          roses: [result.roseValleyM.map(number), result.roseRidgeM.map(number), Array.from(result.roseValleys),
+            Array.from(result.roseRidges)],
+          frame: result.frame.map(number), shown: Array.from(result.shown), heard,
+          captions: Object.entries(C.lineamentCaptions(result, kase.where)),
+        },
+        keys: { summary: Object.keys(result.summary),
+          fields: [...new Set(result.lineaments.map((l) => JSON.stringify(Object.keys(l))))] },
+        geojson,
+      };
+    };
+    const tried = (f) => {
+      try {
+        return f();
+      } catch (e) {
+        return { threw: String(e && e.stack || e) };
+      }
+    };
+    const runs = new Map();
+    const small = (kase) => {
+      if (!runs.has(kase.index)) {
+        const window = TA.cases[kase.index];
+        runs.set(kase.index, analyse(window, Float64Array.from(JSON.parse(window.z), unfold)));
+      }
+      const got = answer(TA.cases[kase.index], runs.get(kase.index), kase.settings);
+      if (got.geojson !== undefined) {
+        got.geojson = [C.sha256Hex(got.geojson).slice(0, 16), got.geojson.length];
+      }
+      return got;
+    };
+
+    /* L1 and L2: the heights as make_reference.py's lineament_heights
+     * makes them */
+    const generated = () => {
+      const g = LN.generated, rows = g.rows, cols = g.cols, draw = C.rangeStream(g.seed, g.stream);
+      const z = new Float64Array(rows * cols);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const left = c ? z[r * cols + c - 1] : 0.0, below = r ? z[(r - 1) * cols + c] : 0.0;
+          z[r * cols + c] = 0.5 * left + 0.5 * below + 4.0 * (draw.uniform() - 0.5);
+        }
+      }
+      for (const [r0, c0, r1, c1, depth, width] of g.planted) {
+        const er = r1 - r0, ec = c1 - c0, span = er * er + ec * ec;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            let t = ((r - r0) * er + (c - c0) * ec) / span;
+            t = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
+            const pr = (r0 + t * er) - r, pc = (c0 + t * ec) - c;
+            const d = Math.sqrt(pr * pr + pc * pc);
+            if (d < width) z[r * cols + c] = z[r * cols + c] - depth * (1.0 - d / width);
+          }
+        }
+      }
+      const [s0, s1] = g.sea, [v0, v1, w0, w1] = g.void;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          let v = Math.floor((z[r * cols + c] + g.base) * 100.0 + 0.5) / 100.0;
+          if (s0 <= c && c < s1) v = v - 150.0;
+          if (v0 <= r && r < v1 && w0 <= c && c < w1) v = NaN;
+          z[r * cols + c] = v;
+        }
+      }
+      const window = { ...g, assumed: null };
+      const run = analyse(window, z);
+      return { z: [C.sha256Hex(bytesOf(z)), spots(z)], cases: g.cases.map((kase) => answer(window, run, kase.settings)) };
+    };
+
+    return {
+      small: LN.small.map((kase) => tried(() => small(kase))),
+      refused: LN.refused.map((kase) => tried(() => small(kase))),
+      generated: tried(generated),
+    };
+  }, { LN, TA });
+
+  /* the keys the browser's summary and candidates came in, against
+   * Python's order, which the values are compared in */
+  const lnKeys = (got) => {
+    const out = [];
+    if (JSON.stringify(got.summary) !== JSON.stringify(LN.summary)) {
+      out.push(`summary keys ${JSON.stringify(got.summary)}`);
+    }
+    if (got.fields.some((keys) => keys !== JSON.stringify(LN.fields))) out.push(`fields ${got.fields.join(' | ')}`);
+    return out.join('; ');
+  };
+  const lnCheck = (name, got, want, geojson) => {
+    if (got.threw) {
+      check(name, false, `threw ${got.threw}`);
+      return;
+    }
+    if (got.exact.refused !== undefined) {
+      check(name, false, `the browser refused: ${got.exact.refused}`);
+      return;
+    }
+    const keys = lnKeys(got.keys);
+    const found = firstDifference(got.exact, want);
+    check(`${name} - the candidates, summary, roses, progress and captions`, !found && !keys, found || keys);
+    check(`${name} - the GeoJSON${typeof geojson === 'string' ? ', to the character' : ', by digest'}`,
+      sameJson(got.geojson, geojson), typeof geojson === 'string'
+        ? textDifference(got.geojson, geojson) : `js ${JSON.stringify(got.geojson)}, py ${JSON.stringify(geojson)}`);
+  };
+  const lnSettings = (settings) => (settings ? 'settings fine enough for a few cells' : 'the defaults');
+  check(`lineaments: the page answered every small window (${LN.small.length})`,
+    lnJs.small.length === LN.small.length, `${lnJs.small.length} answers`);
+  LN.small.forEach((kase, i) => {
+    lnCheck(`lineaments: ${TA.cases[kase.index].case}, ${lnSettings(kase.settings)}`,
+      lnJs.small[i] || { threw: 'no answer' }, JSON.parse(kase.expect), kase.geojson);
+  });
+  LN.refused.forEach((kase, i) => {
+    const got = lnJs.refused[i] || { threw: 'no answer' };
+    const said = got.threw ? `threw ${got.threw}` : got.exact.refused;
+    check(`lineaments: ${JSON.stringify(kase.settings)} refused in Python's words`, said === kase.refused,
+      `js ${JSON.stringify(said)}\n     py ${JSON.stringify(kase.refused)}`);
+  });
+  {
+    const g = LN.generated, got = lnJs.generated;
+    if (got.threw) {
+      check('lineaments: the generated window', false, `threw ${got.threw}`);
+    } else {
+      check('lineaments: the heights drawn from C.rangeStream(43, 0) with five lines cut in',
+        sameJson(got.z, g.z), `js ${JSON.stringify(got.z)}, py ${JSON.stringify(g.z)}`);
+      g.cases.forEach((kase, i) => {
+        const want = JSON.parse(kase.expect);
+        lnCheck(`lineaments: ${kase.case} (${counted(want.lineaments.length, 'candidate', 'candidates')})`,
+          got.cases[i] || { threw: 'no answer' }, want, kase.geojson);
+      });
+    }
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 

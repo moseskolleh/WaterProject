@@ -26,6 +26,13 @@ run before, and prints one JSON document:
   analysis's;
 - ``seconds``: the wall time of that one analysis, for orientation only;
   ``run.py``'s median is the time to quote;
+- ``lineament_increase_mb``: the lineament candidates' own memory (PLAN.md
+  step 4.2), found next from the analysis, held: the peak resident set
+  size while they are found less the resident set size just before. The
+  analysis has already set ``ru_maxrss`` higher, so the peak is Linux's
+  VmHWM, reset first by writing 5 to ``/proc/self/clear_refs``; None
+  where that cannot be written. ``lineament_seconds`` is their wall time,
+  for orientation;
 - the window (radius shown, margin, cells analysed, the cap, the
   precision of the layers kept), the commit, the date and the machine,
   in the block ``run.py`` writes, taken before any of the work.
@@ -77,6 +84,8 @@ LOADED = ("groundwater.mapping.elevation", "groundwater.mapping.terrain_analysis
 METHOD = (f"a fresh interpreter: the window at the cap read, then analyse_terrain(precision='float32') "
           f"once, after a warm-up analysis of a {WARM_UP_RADIUS_KM:g} km window; increase_mb is "
           "ru_maxrss after the analysis minus the resident set size (/proc/self/statm) just before it; "
+          "lineament_increase_mb is VmHWM, reset through /proc/self/clear_refs, after "
+          "lineament_candidates on that analysis minus the resident set size just before it; "
           "MB of 2**20 bytes")
 
 
@@ -104,6 +113,25 @@ def _peak_mb() -> float:
     has none, so that ``--write-tile`` runs there."""
     import resource
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+
+
+def _reset_peak() -> bool:
+    """Reset Linux's record of the largest resident set (VmHWM) to the
+    resident set now, and say whether it could be."""
+    try:
+        Path("/proc/self/clear_refs").write_text("5")
+    except OSError:
+        return False
+    return True
+
+
+def _hwm_mb() -> float:
+    """VmHWM, the largest the resident set has been since the last reset,
+    in MB (/proc/self/status gives it in kilobytes)."""
+    for line in Path("/proc/self/status").read_text().splitlines():
+        if line.startswith("VmHWM:"):
+            return int(line.split()[1]) / 1024
+    raise RuntimeError("/proc/self/status has no VmHWM")
 
 
 def write_tile(path: Path) -> dict:
@@ -136,9 +164,20 @@ def measure(path: Path) -> dict:
     before = _rss_mb()
     peak_before = _peak_mb()
     began = time.perf_counter()
-    bench._analyse_window(cfg, read)         # ru_maxrss keeps its high point, the finished result held
+    analysis = bench._analyse_window(cfg, read)      # ru_maxrss keeps its high point, the result held
     seconds = time.perf_counter() - began
     peak_after = _peak_mb()
+
+    from groundwater.mapping.lineaments import lineament_candidates
+    gc.collect()
+    held = _rss_mb()
+    lineament_increase = None
+    reset = _reset_peak()
+    began = time.perf_counter()
+    lineament_candidates(analysis)
+    lineament_seconds = time.perf_counter() - began
+    if reset:
+        lineament_increase = round(_hwm_mb() - held, 1)
     r0, r1, c0, c1 = read.shown
     return {
         "window": {"radius_km": radius, "margin_km": cfg.analysis_buffer_km,
@@ -152,6 +191,8 @@ def measure(path: Path) -> dict:
         "peak_after_mb": round(peak_after, 1),
         "peak_set_by_analysis": peak_after > peak_before,
         "seconds": round(seconds, 3),
+        "lineament_increase_mb": lineament_increase,
+        "lineament_seconds": round(lineament_seconds, 3),
     }
 
 

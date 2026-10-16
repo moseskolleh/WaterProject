@@ -621,6 +621,16 @@ def _terrain_measures() -> list[Measure]:
             return lambda: _analyse_window(cfg, read)
         return setup
 
+    def lineaments(at_cap: bool):
+        def setup(tmp):
+            from groundwater.mapping.lineaments import lineament_candidates
+            path = tmp / TERRAIN_TILE
+            _write_terrain_tile(path, "deflate", 1024)
+            cfg, read = _terrain_window(path, _terrain_cap_radius(path) if at_cap else None)
+            analysis = _analyse_window(cfg, read)
+            return lambda: lineament_candidates(analysis)
+        return setup
+
     def drainage(tmp):
         from groundwater.mapping.terrain_analysis import drainage_links
         path = tmp / TERRAIN_TILE
@@ -637,6 +647,8 @@ def _terrain_measures() -> list[Measure]:
         Measure("terrain", "analyse the default window", analysed(at_cap=False)),
         Measure("terrain", "analyse at the cap", analysed(at_cap=True)),
         Measure("terrain", "trace drainage lines from the core", drainage),
+        Measure("terrain", "lineament candidates on the default window", lineaments(at_cap=False)),
+        Measure("terrain", "lineament candidates at the cap", lineaments(at_cap=True)),
     ]
 
 

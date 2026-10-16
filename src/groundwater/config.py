@@ -357,6 +357,46 @@ class TerrainConfig:
     hillshade_altitude_deg: float = _TERRAIN["hillshade_altitude_deg"]
     # No vertical exaggeration, so that relief on the plains is drawn as it is.
     hillshade_z_factor: float = _TERRAIN["hillshade_z_factor"]
+    # Lineament candidates (PLAN.md step 4.2, groundwater.mapping.lineaments).
+    # Every value here is provisional and wants a geologist; each was chosen
+    # on the Copernicus tile N08 W012 and on random terrain with straight
+    # valleys planted in it, as the module says.
+    # The heights are smoothed at about this scale before they are shaded:
+    # 9 binomial passes at 1 arc-second. Unsmoothed, the canopy's texture
+    # broke every edge into pieces of fewer than ten cells.
+    lineament_smoothing_m: float = _TERRAIN["lineament_smoothing_m"]
+    # The side of the square around each cell that its edge strength is
+    # measured against, so that a valley across the plains counts as well as
+    # one among the hills, where a single threshold kept only the hills.
+    lineament_contrast_km: float = _TERRAIN["lineament_contrast_km"]
+    # The share of the centreline cells of the square shown kept by their
+    # strength against their surroundings.
+    lineament_share: float = _TERRAIN["lineament_share"]
+    # Ground that bends by less than this across a line is not a line, however
+    # it compares with its surroundings: 0.1 per km is half a metre over 100 m
+    # either side. On the tile 99 in 100 points along the candidates bent by
+    # 0.49 per km or more and half the land by 0.83, while a plane rising 3 m
+    # a cell gives 1e-6; without a floor, comparing a cell with its
+    # surroundings drew ridges on a plane.
+    lineament_min_curvature_per_km: float = _TERRAIN["lineament_min_curvature_per_km"]
+    # Two neighbouring centreline cells belong to one line when their
+    # directions differ by no more than this.
+    lineament_turn_deg: float = _TERRAIN["lineament_turn_deg"]
+    # A line is cut into straight pieces until no cell of a piece lies
+    # further than this from it: three cells at 1 arc-second.
+    lineament_straight_m: float = _TERRAIN["lineament_straight_m"]
+    # The shortest straight piece kept before pieces are linked.
+    lineament_piece_m: float = _TERRAIN["lineament_piece_m"]
+    # The shortest candidate shown: about 20 cells at 1 arc-second, longer
+    # than the texture of the model itself.
+    lineament_min_length_m: float = _TERRAIN["lineament_min_length_m"]
+    # Two pieces of one kind are linked into one candidate when their
+    # directions differ by no more than this, neither end of the second lies
+    # further than lineament_link_offset_m from the first's line, and the
+    # gap between them along it is no more than lineament_link_gap_m.
+    lineament_link_angle_deg: float = _TERRAIN["lineament_link_angle_deg"]
+    lineament_link_offset_m: float = _TERRAIN["lineament_link_offset_m"]
+    lineament_link_gap_m: float = _TERRAIN["lineament_link_gap_m"]
 
 
 # ---------------------------------------------------------------------------

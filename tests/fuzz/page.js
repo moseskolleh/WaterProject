@@ -307,6 +307,15 @@
     };
     var meta = Object.assign({}, options.meta);
     var geojson = C.drainageGeoJson(C.terrainCore(a), a.parts, meta);
+    var lin = C.lineamentCandidates(a, null, function (fraction, label) { heard.push([f64Hex(fraction), label]); });
+    var linText = JSON.stringify(lin.lineaments.map(function (l) {
+      return [l.id, l.kind, l.start.map(f64Hex), l.end.map(f64Hex), f64Hex(l.length_m), f64Hex(l.strike_deg),
+        l.pieces, l.cells, l.cut];
+    }));
+    var linGeojson = C.lineamentGeoJson(lin, lons, lats, meta);
+    var linSummary = {};
+    Object.keys(lin.summary).forEach(function (key) { linSummary[key] = f64Hex(lin.summary[key]); });
+    var linCaptions = C.lineamentCaptions(lin, options.where);
     var summary = Object.keys(a.summary).filter(function (key) { return key !== 'twi_range'; });
     var values = {};
     summary.forEach(function (key) { values[key] = f64Hex(a.summary[key]); });
@@ -329,6 +338,12 @@
       summary_keys: summary.join(' '), summary: values,
       scalars: [a.unresolved, a.kCells, a.floored, a.zeroFill].concat(Array.from(core.shown)).join(' '),
       heard: heard,
+      lineaments: C.sha256Hex(linText) + ' ' + lin.lineaments.length,
+      lineament_summary: linSummary, lineament_summary_keys: Object.keys(lin.summary).join(' '),
+      lineament_roses: [].concat(lin.roseValleyM, lin.roseRidgeM, Array.from(lin.roseValleys),
+        Array.from(lin.roseRidges), lin.frame).map(f64Hex).join(' '),
+      lineament_captions: Object.keys(linCaptions).map(function (key) { return [key, linCaptions[key]]; }),
+      lineament_geojson: C.sha256Hex(linGeojson) + ' ' + linGeojson.length,
       terrain_twi: { at: at.join(','), cells: nums(at.map(function (j) { return twi[j]; })),
         range: nums(a.summary.twi_range) },
     };

@@ -888,7 +888,8 @@ class DrainagePart:
 @dataclass(frozen=True, eq=False)
 class TerrainAnalysis:
     """Everything worked out from one window, for the figures, the
-    downloads and the hand-over to lineament work (PLAN.md step 4.2).
+    downloads and :mod:`.lineaments`, which finds the window's lineament
+    candidates from its heights, row metric and classes (PLAN.md step 4.2).
 
     ``grid`` is the window analysed and ``metric`` its row metric; ``core``
     the layers the drainage lines are traced from (:class:`TerrainCore`).
