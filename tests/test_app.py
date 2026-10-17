@@ -677,17 +677,20 @@ def _analysis_kept(at: AppTest) -> list[str]:
 def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_data):
     """The Topography tab drew a map of the tiles and nothing more. "Analyse
     the terrain" reads the window with its margin, analyses it, finds its
-    lineament candidates and draws the four terrain figures and the
-    candidates' map (and their rose, where there is a candidate), each with
-    the engine's captions under it and its PNG and SVG offered, the
-    drainage lines and the candidates as GeoJSON, the read report, and the
-    Copernicus liability sentence under the downloads. The session keeps
-    the files and the sentences, not the analysis, and the radius and the
-    threshold are carried through a visit to another page. A radius over the
-    cap is refused, and the figures of the square before go with it."""
+    lineament candidates, lays the survey plan across them, and draws the
+    four terrain figures, the candidates' map (and their rose, where there
+    is a candidate) and the plan, each with the engine's captions under it
+    and its PNG and SVG offered, the plan's soundings in a table, the
+    drainage lines and the candidates as GeoJSON, the plan as GPX and a
+    GeoLibre project, the read report, and the Copernicus liability
+    sentence under the downloads. The session keeps the files and the
+    sentences, not the analysis, and the radius and the threshold are
+    carried through a visit to another page. A radius over the cap is
+    refused, and the figures of the square before go with it."""
     import json
     import pickle
     import re
+    import xml.etree.ElementTree as ET
 
     from streamlit.runtime.forward_msg_queue import ForwardMsgQueue
 
@@ -730,12 +733,28 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
 
     result = at.session_state["terrain_result"]
     assert set(result) == {"figures", "geojson", "lineament_geojson", "folder", "summary", "captions", "notes",
-                           "notice", "inputs"}
+                           "notice", "inputs", "plan_gpx", "plan_geolibre", "plan_rows"}
     assert not _analysis_kept(at), "the analysis's layers are dropped"
     assert len(pickle.dumps(result)) < 200_000, "the result holds paths and sentences alone"
     candidates = json.loads(Path(result["lineament_geojson"]).read_text(encoding="utf-8"))
-    keys = ["relief", "wetness", "curvature", "directions", "lineaments"] + (["rose"] if candidates["features"] else [])
+    # the tiles hold one valley within 500 m of the fix: one line across it
+    # and three soundings, a GPX waypoint each, and the line a route
+    assert len(candidates["features"]) == 1
+    keys = ["relief", "wetness", "curvature", "directions", "lineaments", "rose", "plan"]
     assert [key for key, _, _ in result["figures"]] == keys
+    gpx = ET.fromstring(Path(result["plan_gpx"]).read_bytes())
+    ns = {"g": "http://www.topografix.com/GPX/1/1"}
+    assert [w.findtext("g:name", namespaces=ns) for w in gpx.findall("g:wpt", ns)] == [
+        "Site", "VES 1", "VES 2", "VES 3", "Line 1 start", "Line 1 end"]
+    assert len(gpx.findall("g:rte/g:rtept", ns)) == 41
+    project = json.loads(Path(result["plan_geolibre"]).read_text(encoding="utf-8"))
+    assert [layer["name"] for layer in project["layers"]] == [
+        "Lineament candidates", "Service radius", "Profiling lines", "Profile stations", "Proposed soundings", "Site"]
+    assert [row["Sounding"] for row in result["plan_rows"]] == ["VES 1", "VES 2", "VES 3"]
+    table = next(str(m.value) for m in at.markdown if str(m.value).startswith("| Sounding |"))
+    assert [line.split(" | ")[0].lstrip("| ") for line in table.splitlines()[2:]] == ["VES 1", "VES 2", "VES 3"]
+    assert "not confirmed by geophysics" in result["captions"]["plan_note"]
+    assert "No water points were loaded" in result["captions"]["plan"]
     # the run's files are in a folder of its own, in the session's
     assert Path(result["folder"]).parent == at.session_state["workdir"]
     names = []
@@ -749,7 +768,7 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
     # every panel marks the site, labelled "Site" for want of a community
     # name; matplotlib writes each line of text in an SVG as a comment; a
     # rose is not a map, and has nowhere to mark it
-    panels = {"relief": 1, "wetness": 1, "curvature": 2, "directions": 4, "lineaments": 1, "rose": 0}
+    panels = {"relief": 1, "wetness": 1, "curvature": 2, "directions": 4, "lineaments": 1, "rose": 0, "plan": 1}
     for key, _, svg in result["figures"]:
         drawn = re.findall(r"<!-- (.*?) -->", Path(svg).read_text(encoding="utf-8"), re.S)
         assert " ".join(drawn).split().count("Site") == panels[key], key
@@ -774,8 +793,11 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
     assert notice in captions
     offered = [element.proto.label for element in at.get("download_button")]
     assert [f"Download {name}" for name in names] + ["Download the drainage lines (GeoJSON)",
-                                                      "Download the lineament candidates (GeoJSON)"] == [
-        label for label in offered if "terrain_" in label or "drainage" in label or "lineament" in label]
+                                                      "Download the lineament candidates (GeoJSON)",
+                                                      "Download the survey plan (GPX)",
+                                                      "Download the survey plan (GeoLibre project)"] == [
+        label for label in offered
+        if "terrain_" in label or "drainage" in label or "lineament" in label or "survey plan" in label]
     # the run's progress is cleared once the figures are drawn, rather than
     # left ticked under the title of the last of them
     assert not at.status, [status.label for status in at.status]
@@ -1016,6 +1038,8 @@ def test_the_terrain_analysis_takes_a_missing_tile_as_sea_as_the_read_does(sampl
         lineament_candidates,
         lineament_captions,
         read_elevation,
+        survey_plan,
+        survey_plan_captions,
         terrain_captions,
     )
     from groundwater.models import SiteMetadata
@@ -1037,8 +1061,11 @@ def test_the_terrain_analysis_takes_a_missing_tile_as_sea_as_the_read_does(sampl
     read = read_elevation([(n, dem / n) for n in names], site, 15.0, cfg, declared=("copernicus_glo30", ""))
     analysis = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown, precision="float32")
     where = read.centre.label
-    assert result["captions"] == {**terrain_captions(analysis, read, where),
-                                  **lineament_captions(lineament_candidates(analysis), where)}
+    candidates = lineament_candidates(analysis)
+    lat, lon = site.latlon
+    plan = survey_plan(candidates, analysis.core, analysis.parts, (lon, lat), (), cfg)
+    assert result["captions"] == {**terrain_captions(analysis, read, where), **lineament_captions(candidates, where),
+                                  **survey_plan_captions(plan, where)}
 
 
 def test_a_project_load_takes_the_site_maps_off_the_deliverables(sample_data):

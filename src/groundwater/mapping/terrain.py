@@ -62,6 +62,7 @@ from .elevation import (  # noqa: F401 - the moved names, re-exported
     read_srtm_hgt,
     read_xyz,
     row_metric,
+    sin_cos_deg,
     wgs84_cell_size,
 )
 from .lineaments import ROSE_BANDS, LineamentAnalysis, lineament_lonlat
@@ -73,6 +74,7 @@ from .regional import (
     area_window,
     load_admin,
 )
+from .survey import SurveyPlan, line_station
 from .terrain_analysis import (
     LAND,
     SEA,
@@ -1119,6 +1121,145 @@ def plot_lineament_rose(
         fig.suptitle(captions["title_rose"], fontsize=11, fontweight="bold")
         fig.tight_layout()
         _small_print(fig, credit or _grid_credit(analysis.grid), _lineament_note(captions))
+        return _finished(fig, path, style, svg)
+
+
+# The survey plan's figure (PLAN.md step 4.3): the profiling lines in purple,
+# apart from the candidates' blue and orange; the separation rings thin,
+# dashed and brown; the service radius dashed in near-black; the mapped
+# water points in the blue the GeoLibre project gives a survey point.
+_PLAN_LINE = "#5B2A86"
+_PLAN_RING = "#8A5A2B"
+_PLAN_RADIUS = "#333333"
+_PLAN_WATER = "#17527E"
+#: The view's half side, in service radii: the radius and its rings with a
+#: margin round them.
+_PLAN_VIEW = 1.25
+
+
+def _plan_ring(plan: SurveyPlan, lons, lats, x: float, y: float, d: float) -> np.ndarray:
+    """A circle of ``d`` metres round ``(x, y)`` of the candidates' frame,
+    in longitude and latitude, closed, from the vertices the GeoJSON writes."""
+    points = []
+    for k in range(65):
+        sin, cos = sin_cos_deg(360.0 * (k % 64) / 64)
+        points.append(lineament_lonlat(plan, lons, lats, (x + d * sin, y + d * cos)))
+    return np.asarray(points)
+
+
+def plot_survey_plan(
+    analysis: TerrainAnalysis,
+    captions: dict[str, str],
+    site: SiteMetadata | None = None,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    svg: bool = False,
+    credit: str | None = None,
+    *,
+    lineaments: LineamentAnalysis,
+    plan: SurveyPlan,
+):
+    """The survey plan round the site: the seventh terrain figure (PLAN.md
+    step 4.3).
+
+    The ground is the lineament map's, the multidirectional hillshade in
+    grey lightened towards white, cut to a square a quarter wider than the
+    service radius each way, with the drainage lines over it as the relief
+    draws them and the candidates as the lineament map draws them. Over
+    those: the service radius, dashed; each mapped water point within reach
+    with its separation ring; each profiling line with a dot at each
+    station and its name at its start; and each proposed sounding as a
+    numbered ring, with its spread drawn dashed along its candidate's
+    strike to the AB/2 it is planned to. The note that the candidates are
+    inferred from terrain and the pegs are proposals is drawn inside with
+    the analysis's caveat. ``captions`` holds the terrain captions with the
+    lineaments' and :func:`.survey.survey_plan_captions`'s merged in:
+    the title is ``captions["title_plan"]``, and the caption to print under
+    it ``captions["plan"]``. ``credit``, ``path`` and ``svg`` are as
+    :func:`plot_terrain_relief` takes them.
+    """
+    style = style or HouseStyle()
+    core = analysis.core
+    lons, lats = core.lons, core.lats
+    dx, dy = plan.frame
+    sx, sy = plan.site
+    half = _PLAN_VIEW * plan.radius_m
+    c_lo, c_hi = max(0, math.floor((sx - half) / dx)), min(core.cols - 1, math.ceil((sx + half) / dx))
+    r_lo, r_hi = max(0, math.floor((sy - half) / dy)), min(core.rows - 1, math.ceil((sy + half) / dy))
+    view = (slice(r_lo, r_hi + 1), slice(c_lo, c_hi + 1))
+    land = core.cls[view] == LAND
+    shade = np.asarray(analysis.hillshade_multi[view], dtype=np.float64)
+    rgba = _coloured(np.where(land, shade, np.nan), "gray", 0.0, 1.0)
+    lit = land & np.isfinite(shade)
+    rgba[lit, :3] = (1.0 - _LINEAMENT_GROUND) * rgba[lit, :3] + _LINEAMENT_GROUND
+    _paint_ground(rgba, analysis, view)
+    half_x = (float(lons[-1]) - float(lons[0])) / (2 * (core.cols - 1))
+    half_y = (float(lats[-1]) - float(lats[0])) / (2 * (core.rows - 1))
+    cells = (float(lons[c_lo]) - half_x, float(lons[c_hi]) + half_x, float(lats[r_lo]) - half_y,
+             float(lats[r_hi]) + half_y)
+    west, south = lineament_lonlat(plan, lons, lats, (sx - half, sy - half))
+    east, north = lineament_lonlat(plan, lons, lats, (sx + half, sy + half))
+    parts = [part for part in analysis.parts
+             if any(r_lo <= r <= r_hi and c_lo <= c <= c_hi for r, c in part.vertices)]
+    segments = {"valley": [], "ridge": []}
+    for item in lineaments.lineaments:
+        segments[item.kind].append([lineament_lonlat(lineaments, lons, lats, item.start),
+                                    lineament_lonlat(lineaments, lons, lats, item.end)])
+    reach = float(plan.ab2["max_ab2"])
+
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 6.4))
+        _draw_raster(ax, rgba, cells)
+        _draw_parts(ax, parts, lons, lats)
+        for kind, colour in (("valley", _VALLEY_COLOUR), ("ridge", _RIDGE_COLOUR)):
+            if segments[kind]:
+                ax.add_collection(LineCollection(segments[kind], colors=colour, linewidths=_LINEAMENT_WIDTH,
+                                                 capstyle="round", zorder=4))
+        ring = _plan_ring(plan, lons, lats, sx, sy, plan.radius_m)
+        ax.plot(ring[:, 0], ring[:, 1], color=_PLAN_RADIUS, linewidth=1.2, linestyle=(0, (5, 3)), zorder=5)
+        for x, y, _, d in plan.rings:
+            ring = _plan_ring(plan, lons, lats, x, y, d)
+            ax.plot(ring[:, 0], ring[:, 1], color=_PLAN_RING, linewidth=0.9, linestyle=(0, (2, 2)), zorder=5)
+            lon, lat = lineament_lonlat(plan, lons, lats, (x, y))
+            ax.plot(lon, lat, marker="s", markersize=4.5, color=_PLAN_WATER, markeredgecolor="white", zorder=6)
+        for line in plan.lines:
+            points = np.asarray([lineament_lonlat(plan, lons, lats, line_station(line, k))
+                                 for k in range(line.first, line.last + 1)])
+            ax.plot(points[[0, -1], 0], points[[0, -1], 1], color=_PLAN_LINE, linewidth=2.0,
+                    solid_capstyle="butt", zorder=6)
+            ax.scatter(points[:, 0], points[:, 1], s=3.0, color=_PLAN_LINE, zorder=6, linewidths=0)
+            ax.text(points[0, 0], points[0, 1], f" {phrase('survey_plan.line_name', line=line.id)} ", fontsize=7,
+                    color=_PLAN_LINE, fontweight="bold", ha="right" if line.direction[0] >= 0 else "left",
+                    va="center", zorder=8, path_effects=carto.halo())
+        for x in plan.soundings:
+            sin, cos = sin_cos_deg(x.spread_deg)
+            a = lineament_lonlat(plan, lons, lats, (x.point[0] - reach * sin, x.point[1] - reach * cos))
+            b = lineament_lonlat(plan, lons, lats, (x.point[0] + reach * sin, x.point[1] + reach * cos))
+            ax.plot([a[0], b[0]], [a[1], b[1]], color=_PLAN_LINE, linewidth=0.8, linestyle=(0, (3, 2)),
+                    alpha=0.75, zorder=6)
+            lon, lat = lineament_lonlat(plan, lons, lats, x.point)
+            ax.plot(lon, lat, marker="o", markersize=10, markerfacecolor="white", markeredgecolor=_PLAN_LINE,
+                    markeredgewidth=1.6, zorder=7)
+            ax.text(lon, lat, str(x.id), fontsize=6.5, fontweight="bold", color=_PLAN_LINE, ha="center",
+                    va="center", zorder=8)
+        if site is not None:
+            _mark_site(ax, site, carto.SITE)
+        handles = [
+            Line2D([0], [0], color=_VALLEY_COLOUR, lw=2.0, label="Straight valley"),
+            Line2D([0], [0], color=_RIDGE_COLOUR, lw=2.0, label="Straight ridge"),
+            Line2D([0], [0], color=_PLAN_LINE, lw=2.0, label="Profiling line"),
+            Line2D([0], [0], color=_PLAN_LINE, lw=0, marker="o", markersize=8, markerfacecolor="white",
+                   markeredgewidth=1.6, label="Proposed sounding"),
+            Line2D([0], [0], color=_PLAN_RING, lw=0.9, linestyle=(0, (2, 2)), label="Separation ring"),
+            Line2D([0], [0], color=_PLAN_RADIUS, lw=1.2, linestyle=(0, (5, 3)), label="Service radius"),
+        ]
+        ax.legend(handles=handles, loc="upper left", fontsize=7, framealpha=0.85)
+        ax.set_xlim(west, east)
+        ax.set_ylim(south, north)
+        below = _geo_axes_finish(ax, float(np.mean(lats[r_lo:r_hi + 1])), credit or _grid_credit(analysis.grid))
+        _caveat(ax, below, f"{captions['plan_note']} {captions['figure_caveat']}")
+        ax.set_title(captions["title_plan"])
+        fig.tight_layout()
         return _finished(fig, path, style, svg)
 
 

@@ -69,6 +69,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol
 
 import numpy as np
 
@@ -752,10 +753,19 @@ def _clip(ox: float, oy: float, ux: float, uy: float, lo: float, hi: float,
 # --- what is said of them, and the download
 
 
-def lineament_lonlat(result: LineamentAnalysis, lons, lats, point: tuple[float, float]) -> tuple[float, float]:
+class Framed(Protocol):
+    """Anything placed in a window's frame: the lineament candidates, or the
+    survey plan laid across them (:mod:`.survey`)."""
+
+    @property
+    def frame(self) -> tuple[float, float]: ...
+
+
+def lineament_lonlat(result: Framed, lons, lats, point: tuple[float, float]) -> tuple[float, float]:
     """A point of the window's frame as longitude and latitude, read between
     the centres of the two columns and the two rows it lies between (or
-    beyond the last two, at the window's edge)."""
+    beyond the last two, at the window's edge). ``result`` gives the frame:
+    the candidates, or anything placed in the same frame."""
     lons = np.asarray(lons, dtype=np.float64)
     lats = np.asarray(lats, dtype=np.float64)
     dx, dy = result.frame

@@ -931,15 +931,16 @@ the browser app the analysis runs in the background, with the bar
 across the top of the page and its **Cancel**, which stops it and keeps
 nothing. What the read found comes first: the files read, the cells and
 their size, how much of the window is a gap or taken as sea, and any
-heights read as no data. Then the four terrain figures and the two of
-the lineament candidates, each with the same captions under it in both
-apps.
+heights read as no data. Then the four terrain figures, the two of the
+lineament candidates and the survey plan laid across them, each with the
+same captions under it in both apps.
 
 In the browser app a new drainage threshold redraws the lines without
 analysing the ground again: the card traces them afresh on the page
 from the analysis it holds, and redraws the relief figure and the
-GeoJSON with them. The lineament candidates do not depend on the
-threshold, and stay as they are. The Python app keeps the figures but not the
+GeoJSON with them, and lays the survey plan again, which keeps clear of
+the lines. The lineament candidates do not depend on the threshold, and
+stay as they are. The Python app keeps the figures but not the
 analysis, so a new threshold there needs another press of the button.
 The lines come out the same either way. A new radius, other files or
 another declared source need a new analysis in both apps, and the
@@ -1021,6 +1022,39 @@ blue, a missing tile taken as sea the same blue hatched, and gaps grey.
   lengths. A band that stands out is a direction many straight features
   share, which is worth comparing with the structural trends of the
   geological map. The rose is drawn only where there is a candidate.
+- **Survey plan**, round the site where it has a GPS position: profiling
+  lines across the lineament candidates nearest the site, at right angles
+  to their strike, and soundings proposed on them, all inside the 500 m
+  within which the water point check counts a source as serving the
+  community. Each line runs through its candidate's point nearest the
+  site, and so through the site itself unless the candidate ends short
+  of it: 400 m long, or as long as the service radius leaves room for,
+  with a station every 10 m, the crossing one of them. A candidate that
+  a line already crosses at right angles (their strikes within 20°) gets
+  no line of its own, and at most two lines are laid. Each line has three
+  soundings: on its candidate, and 50 m along the line to either side,
+  because a candidate is placed from the terrain only to within a cell
+  or two. A sounding is a place a borehole may go, so it is kept the
+  distances of the site separation table from what the page maps: 50 m
+  from a mapped borehole, 20 m from a dug well, 10 m from any other water
+  point, 20 m from surface water and from the drainage lines, which stand
+  for the streams, and 1,000 m from the sea. One inside such a ring moves
+  along its line to the nearest clear place, no further than 20 m; where
+  there is none, it is left out, and the caption says how many and why.
+  The water points are those loaded on the Water points page when the
+  terrain was analysed. Latrines and soakaways, buildings, refuse dumps
+  and burial grounds are on no map here: check each peg for them on the
+  ground. Each sounding is planned with the VES co-pilot's AB/2 series
+  to the spacing at which the depth-of-investigation rule reaches 60 m
+  (AB/2 = 120 m, a 240 m spread), the spread laid along its candidate's
+  strike so that it reads the zone along its length. With no candidate
+  within the service radius, one line runs through the site across the
+  strike of the 10° band holding most of the candidates' length, and no
+  sounding is proposed: each goes where the profile finds a zone to
+  sound. With no candidate in the square shown, or a site with no GPS
+  position, the caption says why there is no plan. A table under the
+  figure lists each proposed sounding's position, its line and its
+  distance along it, and what it was moved clear of.
 
 **Downloads.** Each figure downloads as PNG and SVG, and the drainage
 lines and the lineament candidates as GeoJSON (*Drainage lines
@@ -1038,6 +1072,20 @@ from grid north (0 to 180), the straight `pieces` linked into it, and
 `cut` where the square shown cuts it; its `description` says that the
 candidates are inferred from terrain, not confirmed by geophysics. The
 layers themselves are not offered as GeoTIFF yet.
+
+The survey plan downloads as GPX (`survey_plan.gpx`, *Survey plan (GPX)*
+on the browser card) and as a GeoLibre project
+(`survey_plan.geolibre.json`, *Survey plan (GeoLibre)*). The GPX holds a
+waypoint at the site, at the centre of each proposed sounding (`VES 1`,
+`VES 2` and on) and at each line's two ends, and each line as a route
+with a point at each station, named by its line and its distance along
+it (`L1 000`, `L1 010` and on), so that a phone's GPS app that imports
+GPX can walk the team to each peg. Each sounding's description says
+where it lies, any move, and its AB/2 and spread. The GeoLibre project
+draws the service radius, the separation ring round each mapped water
+point within reach, the lines, their stations and the soundings, over
+the candidates and the water points near the site, and opens on the
+service radius.
 
 **Nothing is saved with the project, and nothing goes into a report
 yet.** The tiles, the radius and threshold chosen on the page, the
@@ -1091,6 +1139,13 @@ owner's confirmation; the changelog lists which, and why.
 | `terrain.lineament_piece_m` | 300 | the shortest straight piece |
 | `terrain.lineament_min_length_m` | 600 | the shortest candidate drawn |
 | `terrain.lineament_link_angle_deg`, `terrain.lineament_link_offset_m`, `terrain.lineament_link_gap_m` | 10, 90, 300 | how closely pieces must line up, and across how long a gap, to be linked |
+| `terrain.survey_lines` | 2 | the most profiling lines the survey plan lays |
+| `terrain.survey_line_m` | 400 | the length of a line, where the service radius leaves room for it |
+| `terrain.survey_station_m` | 10 | the spacing of a line's stations |
+| `terrain.survey_flank_m` | 50 | how far along the line the flank soundings are from the crossing |
+| `terrain.survey_move_m` | 20 | the furthest a sounding moves along its line to clear a separation ring; under half of `survey_flank_m` |
+| `terrain.survey_cross_within_deg` | 20 | how far from parallel two candidates may be for one line to cross both at right angles |
+| `terrain.survey_target_depth_m` | 60 | the depth each sounding is planned to see to, by the depth-of-investigation rule |
 
 **The topographic map and the ground profile** (Python app only). The
 Topography tab also draws a topographic map over the wider window the

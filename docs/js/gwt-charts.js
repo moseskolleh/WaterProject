@@ -6273,6 +6273,8 @@
    *   lineamentRose), whose captions, C.lineamentCaptions's, are merged into `captions`
    * @property {{lons: ArrayLike<number>, lats: ArrayLike<number>}|null} [axes] the analysed grid's
    *   cell centres, which lineamentMap places the candidates' ends by (C.lineamentLonLat)
+   * @property {Object|null} [plan] what C.surveyPlan gives (surveyPlanMap), whose captions,
+   *   C.surveyPlanCaptions's, are merged into `captions` with the candidates'
    * @property {number} [width] the figure's width in the SVG's units, 680 by default
    */
 
@@ -6605,6 +6607,180 @@
     return svg;
   }
 
+  /* The survey plan's figure (mapping/terrain.py plot_survey_plan): the
+   * profiling lines in purple, apart from the candidates' blue and orange;
+   * the separation rings thin, dashed and brown; the service radius dashed
+   * in near-black; the mapped water points in a survey point's blue; and
+   * the view's half side, in service radii. */
+  var PLAN_LINE = '#5B2A86';
+  var PLAN_RING = '#8A5A2B';
+  var PLAN_RADIUS = '#333333';
+  var PLAN_WATER = '#17527E';
+  var PLAN_VIEW = 1.25;
+
+  /* The display layers a figure of part of the square shown draws: rows
+   * r0 to r1 and columns c0 to c1 of the analysed grid (half-open), cut to
+   * the square shown, in whole display cells. terrainGeometry places it as
+   * it places the whole. */
+  function cropDisplay(display, r0, r1, c0, c1) {
+    var s = display.stride, shown = display.shown;
+    var y0 = Math.max(0, Math.floor((r0 - shown[0]) / s)), y1 = Math.min(display.rows, Math.ceil((r1 - shown[0]) / s));
+    var x0 = Math.max(0, Math.floor((c0 - shown[2]) / s)), x1 = Math.min(display.cols, Math.ceil((c1 - shown[2]) / s));
+    if (!(y1 > y0 && x1 > x0)) return null;
+    var rows = y1 - y0, cols = x1 - x0;
+    var pick = function (layer, Kind) {
+      var out = new Kind(rows * cols);
+      for (var y = 0; y < rows; y++) {
+        for (var x = 0; x < cols; x++) out[y * cols + x] = layer[(y0 + y) * display.cols + x0 + x];
+      }
+      return out;
+    };
+    return {
+      rows: rows, cols: cols, stride: s, lons: display.lons.slice(x0, x1), lats: display.lats.slice(y0, y1),
+      shown: [shown[0] + y0 * s, Math.min(shown[1], shown[0] + y1 * s), shown[2] + x0 * s,
+        Math.min(shown[3], shown[2] + x1 * s)],
+      cls: pick(display.cls, Uint8Array), assumedSea: pick(display.assumedSea, Uint8Array),
+      hillshadeMulti: pick(display.hillshadeMulti, Float32Array),
+    };
+  }
+
+  /* a circle of d metres round [x, y] of the candidates' frame, in
+   * longitude and latitude, closed, from the vertices the plan's GeoJSON
+   * writes */
+  function planRing(plan, axes, x, y, d) {
+    var points = [];
+    for (var k = 0; k <= 64; k++) {
+      var sc = C.sinCosDeg(360 * (k % 64) / 64);
+      points.push(C.lineamentLonLat(plan, axes.lons, axes.lats, [x + d * sc[0], y + d * sc[1]]));
+    }
+    return points;
+  }
+
+  /**
+   * The seventh terrain figure (PLAN.md step 4.3): the survey plan round
+   * the site, as mapping/terrain.py's plot_survey_plan draws it. The ground
+   * is the lineament map's, the multidirectional hillshade in grey
+   * lightened towards white, cut to a square a quarter wider than the
+   * service radius each way, with the drainage lines as the relief draws
+   * them and the candidates as the lineament map draws them. Over those:
+   * the service radius, dashed; each mapped water point within reach with
+   * its separation ring; each profiling line with a dot at each station
+   * and its name at its start; and each proposed sounding as a numbered
+   * ring, its spread dashed along its candidate's strike to the AB/2 it is
+   * planned to. The note that the candidates are inferred from terrain and
+   * the pegs are proposals is drawn with the caveat under the credit.
+   * @param {Object|null} display what C.terrainDisplayLayers gives
+   * @param {TerrainFigureOptions} opts with `plan`, `lineaments` and `axes`
+   * @returns {SVGElement|null} the figure, or null without a display, a plan or a line
+   */
+  function surveyPlanMap(display, opts) {
+    var o = /** @type {TerrainFigureOptions} */ (opts || {});
+    var plan = o.plan, result = o.lineaments, axes = o.axes;
+    if (!display || !plan || !plan.lines.length || !result || !axes) return null;
+    var captions = o.captions || {}, grey = rampTable('gray');
+    var dx = plan.frame[0], dy = plan.frame[1], sx = plan.site[0], sy = plan.site[1];
+    var half = PLAN_VIEW * plan.radius_m;
+    var r0 = Math.floor((sy - half) / dy), r1 = Math.ceil((sy + half) / dy) + 1;
+    var c0 = Math.floor((sx - half) / dx), c1 = Math.ceil((sx + half) / dx) + 1;
+    var crop = cropDisplay(display, r0, r1, c0, c1);
+    if (!crop) return null;
+    var multi = crop.hillshadeMulti, reach = Number(plan.ab2.max_ab2);
+    var at = function (point) { return C.lineamentLonLat(plan, axes.lons, axes.lats, point); };
+    var parts = (o.parts || []).filter(function (part) {
+      return part.vertices.some(function (v) { return v[0] >= r0 && v[0] < r1 && v[1] >= c0 && v[1] < c1; });
+    });
+    var segments = result.lineaments.map(function (item) {
+      return { id: item.id, kind: item.kind, a: C.lineamentLonLat(result, axes.lons, axes.lats, item.start),
+        b: C.lineamentLonLat(result, axes.lons, axes.lats, item.end) };
+    });
+    var path = function (panel, points, attrs) {
+      return polyline(points.map(function (p) { return panel.project(p[0], p[1]); }), attrs);
+    };
+    return terrainFigure(crop, o, {
+      title: captions.title_plan,
+      caveat: [captions.plan_note, captions.figure_caveat].filter(Boolean).join(' '),
+      panels: [{
+        name: 'plan',
+        colourOf: function (value, k, x, y) {
+          var ground = terrainGround(crop, k, x, y);
+          if (ground !== -2) return ground;
+          var v = multi[k];
+          return v === v ? mixPacked(grey[rampEntry(v, 0, 1)], 0xFFFFFF, LINEAMENT_GROUND) : -1;
+        },
+        overlay: function (panel, geo) {
+          var layer = panel.layer;
+          terrainDrainage(panel, parts, geo);
+          segments.forEach(function (seg) {
+            var a = panel.project(seg.a[0], seg.a[1]), b = panel.project(seg.b[0], seg.b[1]);
+            layer.appendChild(svgEl('line', {
+              x1: a[0], y1: a[1], x2: b[0], y2: b[1], 'stroke-width': LINEAMENT_WIDTH, 'stroke-linecap': 'round',
+              stroke: seg.kind === 'valley' ? LINEAMENT_VALLEY : LINEAMENT_RIDGE,
+              'data-lineament': seg.id, 'data-kind': seg.kind,
+            }));
+          });
+          layer.appendChild(path(panel, planRing(plan, axes, sx, sy, plan.radius_m), {
+            stroke: PLAN_RADIUS, 'stroke-width': 1.2, 'stroke-dasharray': '5 3', 'data-radius': plan.radius_m,
+          }));
+          plan.rings.forEach(function (ring) {
+            layer.appendChild(path(panel, planRing(plan, axes, ring[0], ring[1], ring[3]), {
+              stroke: PLAN_RING, 'stroke-width': 0.9, 'stroke-dasharray': '2 2', 'data-ring': ring[2],
+              'data-distance': ring[3],
+            }));
+            var w = at([ring[0], ring[1]]), q = panel.project(w[0], w[1]);
+            layer.appendChild(marker(q[0], q[1], 'square', PLAN_WATER, '#FFFFFF', 3.2));
+          });
+          plan.lines.forEach(function (line) {
+            var points = [];
+            for (var k = line.first; k <= line.last; k++) {
+              var p = at(C.lineStation(line, k));
+              points.push(panel.project(p[0], p[1]));
+            }
+            var ends = [points[0], points[points.length - 1]];
+            layer.appendChild(polyline(ends, {
+              stroke: PLAN_LINE, 'stroke-width': 2.4, 'stroke-linecap': 'butt', 'data-plan-line': line.id,
+            }));
+            points.forEach(function (pt) {
+              layer.appendChild(svgEl('circle', { cx: pt[0], cy: pt[1], r: 1.1, fill: PLAN_LINE, 'data-station': line.id }));
+            });
+            var east = line.direction[0] >= 0;
+            layer.appendChild(svgEl('text', {
+              x: points[0][0] + (east ? -6 : 6), y: points[0][1] + 3, 'text-anchor': east ? 'end' : 'start',
+              'font-size': 9, 'font-weight': 700, fill: PLAN_LINE, stroke: '#FFFFFF', 'stroke-width': 2.6,
+              'paint-order': 'stroke', text: C.phrase('survey_plan.line_name', { line: line.id }),
+            }));
+          });
+          plan.soundings.forEach(function (x) {
+            var sc = C.sinCosDeg(x.spread_deg);
+            var a = at([x.point[0] - reach * sc[0], x.point[1] - reach * sc[1]]);
+            var b = at([x.point[0] + reach * sc[0], x.point[1] + reach * sc[1]]);
+            layer.appendChild(polyline([panel.project(a[0], a[1]), panel.project(b[0], b[1])], {
+              stroke: PLAN_LINE, 'stroke-width': 0.8, 'stroke-dasharray': '3 2', 'stroke-opacity': 0.75,
+              'data-spread': x.id,
+            }));
+          });
+          plan.soundings.forEach(function (x) {
+            var w = at(x.point), q = panel.project(w[0], w[1]);
+            layer.appendChild(svgEl('circle', {
+              cx: q[0], cy: q[1], r: 7, fill: '#FFFFFF', stroke: PLAN_LINE, 'stroke-width': 1.6, 'data-sounding': x.id,
+              'data-role': x.role,
+            }));
+            layer.appendChild(svgEl('text', {
+              x: q[0], y: q[1] + 3.2, 'text-anchor': 'middle', 'font-size': 8.5, 'font-weight': 700, fill: PLAN_LINE,
+              text: String(x.id),
+            }));
+          });
+        },
+      }],
+      legend: [{ kind: 'line', colour: LINEAMENT_VALLEY, label: 'Straight valley' },
+        { kind: 'line', colour: LINEAMENT_RIDGE, label: 'Straight ridge' },
+        { kind: 'line', colour: PLAN_LINE, label: 'Profiling line' },
+        { kind: 'circle', colour: PLAN_LINE, label: 'Proposed sounding' },
+        { kind: 'line', colour: PLAN_RING, dash: '2 2', label: 'Separation ring' },
+        { kind: 'line', colour: PLAN_RADIUS, dash: '5 3', label: 'Service radius' }],
+      bar: null,
+    });
+  }
+
   /* ============================================================ export */
 
   /* Rasterise an SVG to a PNG data URL for embedding in the .docx reports.
@@ -6704,8 +6880,9 @@
      * from C.terrainDisplayLayers, and the raster they are painted with. */
     terrainRelief: terrainRelief, wetnessMap: wetnessMap, curvatureMaps: curvatureMaps,
     hillshadeDirections: hillshadeDirections, rasterImage: rasterImage,
-    /* and the lineament candidates' two (PLAN.md step 4.2) */
-    lineamentMap: lineamentMap, lineamentRose: lineamentRose,
+    /* and the lineament candidates' two (PLAN.md step 4.2), and the survey
+     * plan laid across them (step 4.3) */
+    lineamentMap: lineamentMap, lineamentRose: lineamentRose, surveyPlanMap: surveyPlanMap,
     rampColour: rampColour, colourRamps: COLOUR_RAMPS, colourBar: colourBar,
     testOverview: testOverview, cooperJacob: cooperJacob,
     recovery: recoveryPlot, stepTest: stepTestPlot, diagnostic: diagnosticPlot,
