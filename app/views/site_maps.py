@@ -32,11 +32,16 @@ from groundwater.mapping import (
     MapPoint,
     analyse_terrain,
     drainage_geojson,
+    lineament_candidates,
+    lineament_captions,
+    lineament_geojson,
     plot_admin_map,
     plot_curvature,
     plot_geological_map,
     plot_hillshade_directions,
     plot_hydrogeology_map,
+    plot_lineament_rose,
+    plot_lineaments,
     plot_study_area_map,
     plot_terrain_relief,
     plot_topographic_map,
@@ -92,6 +97,14 @@ _TERRAIN_FIGURES = (
     ("directions", plot_hillshade_directions),
 )
 
+#: The lineament candidates' figures (PLAN.md step 4.2), drawn after the
+#: four, each given the candidates too; the rose only where there is a
+#: candidate to draw
+_LINEAMENT_FIGURES = (
+    ("lineaments", plot_lineaments),
+    ("rose", plot_lineament_rose),
+)
+
 
 def _open_tile(kept: KeptPath) -> ElevationFile:
     """A kept GeoTIFF or ``.hgt`` tile opened for its layout alone: only the
@@ -132,8 +145,10 @@ def _grid_notes(name: str, analysis, centre, meta: dict) -> list[str]:
 
 
 def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, declared, heard) -> dict:
-    """Read the window, analyse it, draw the four figures and write the
-    drainage lines, and return what the page keeps of it all.
+    """Read the window, analyse it, find its lineament candidates, draw the
+    four terrain figures and the two of the candidates, and write the
+    drainage lines and the candidates as GeoJSON; return what the page
+    keeps of it all.
 
     ``tiles`` are GeoTIFF and ``.hgt`` files, read as one window with its
     margin; ``grids`` one ESRI ASCII or XYZ grid, read whole and cut to the
@@ -141,7 +156,8 @@ def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, decl
     progress callback for a part of the run, ``start`` to ``start + width``
     of the bar. The analysis itself is dropped once the figures and the
     GeoJSON are written: the session keeps only their paths, the summary,
-    the captions and the read report, so a new threshold is another run.
+    the captions (the analysis's and the candidates', in one) and the read
+    report, so a new threshold is another run.
 
     The files are written to a folder of this run's own in ``workdir()``,
     so the files of the result on show are never written over. A click
@@ -157,34 +173,42 @@ def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, decl
         grid = load_elevation(save_upload(grids[0]))
         window, shown, centre = grid_analysis_window(grid, site, radius_km, cfg)
         read, notice = None, None
-        analysis = analyse_terrain(window, cfg, shown=shown, progress=heard(0.05, 0.75), precision="float32")
+        analysis = analyse_terrain(window, cfg, shown=shown, progress=heard(0.05, 0.65), precision="float32")
     else:
         read = read_elevation([(f.name, f.path) for f in tiles], site, radius_km, cfg, declared=declared,
                               progress=heard(0.0, 0.1))
         centre, notice = read.centre, read.notice
         analysis = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown,
-                                   progress=heard(0.1, 0.7), precision="float32")
+                                   progress=heard(0.1, 0.6), precision="float32")
+    lineaments = lineament_candidates(analysis, progress=heard(0.7, 0.1))
     meta = geojson_meta(analysis, read, centre)
     notes = list(read.notes) if read is not None else _grid_notes(Path(grids[0].name).name, analysis, centre, meta)
-    captions = terrain_captions(analysis, read, centre.label)
+    captions = {**terrain_captions(analysis, read, centre.label), **lineament_captions(lineaments, centre.label)}
     credit = read.figure_credit if read is not None else None
     folder = Path(tempfile.mkdtemp(prefix="terrain_", dir=workdir()))
     try:
         # each figure is announced by its title while it is drawn
         drawing = heard(0.8, 0.2)
+        draws = [(key, draw, {}) for key, draw in _TERRAIN_FIGURES]
+        draws += [(key, draw, {"lineaments": lineaments}) for key, draw in _LINEAMENT_FIGURES
+                  if key != "rose" or lineaments.lineaments]
         figures = []
-        for n, (key, draw) in enumerate(_TERRAIN_FIGURES):
-            drawing(n / len(_TERRAIN_FIGURES), captions[f"title_{key}"])
-            png = draw(analysis, captions, site, folder / f"terrain_{key}.png", style, svg=True, credit=credit)
+        for n, (key, draw, more) in enumerate(draws):
+            drawing(n / len(draws), captions[f"title_{key}"])
+            png = draw(analysis, captions, site, folder / f"terrain_{key}.png", style, svg=True, credit=credit,
+                       **more)
             figures.append((key, str(png), str(png.with_suffix(".svg"))))
         geojson = folder / "drainage_lines.geojson"
         geojson.write_text(drainage_geojson(analysis.core, analysis.parts, meta), encoding="utf-8")
+        lines = folder / "lineament_candidates.geojson"
+        lines.write_text(lineament_geojson(lineaments, analysis.grid.lons, analysis.grid.lats, meta),
+                         encoding="utf-8")
     except BaseException:
         # stopped or failed part-way: nothing of this run is kept
         shutil.rmtree(folder, ignore_errors=True)
         raise
-    return {"figures": figures, "geojson": str(geojson), "folder": str(folder), "summary": dict(analysis.summary),
-            "captions": captions, "notes": notes, "notice": notice}
+    return {"figures": figures, "geojson": str(geojson), "lineament_geojson": str(lines), "folder": str(folder),
+            "summary": dict(analysis.summary), "captions": captions, "notes": notes, "notice": notice}
 
 
 def _give_back_memory() -> None:
@@ -210,8 +234,9 @@ def _give_back_memory() -> None:
 def _show_terrain(result: dict) -> None:
     """The terrain figures as the page keeps them: the read report, each
     figure with the engine's captions under it and its PNG and SVG, the
-    drainage lines' GeoJSON, and the Copernicus liability sentence under
-    the downloads when the files hold a Copernicus tile."""
+    drainage lines' and the lineament candidates' GeoJSON, and the
+    Copernicus liability sentence under the downloads when the files hold
+    a Copernicus tile."""
     for note in result.get("notes", []):
         st.caption(note)
     captions = result["captions"]
@@ -221,6 +246,8 @@ def _show_terrain(result: dict) -> None:
         offer_download(Path(png), f"Download {Path(png).name}")
         offer_download(Path(svg), f"Download {Path(svg).name}")
     offer_download(Path(result["geojson"]), "Download the drainage lines (GeoJSON)")
+    if result.get("lineament_geojson"):
+        offer_download(Path(result["lineament_geojson"]), "Download the lineament candidates (GeoJSON)")
     if result.get("notice"):
         st.caption(result["notice"])
 

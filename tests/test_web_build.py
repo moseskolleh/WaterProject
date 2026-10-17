@@ -810,7 +810,10 @@ def test_the_worker_hands_terrain_layers_back_by_transfer(tmp_path):
     assert read["same"], "the read the page receives is not the read the engine gives"
 
     analyse = found["analyse"]
-    assert analyse["keys"] == ["captions", "core", "display", "kCells", "links", "parts", "summary"]
+    # the lineament candidates (PLAN.md step 4.2) are plain objects and
+    # numbers, copied: no buffer of theirs is handed over
+    assert analyse["keys"] == ["captions", "core", "display", "kCells", "lineamentCaptions", "lineaments", "links",
+                               "parts", "summary"]
     (high, wide), (rows, cols) = analyse["display"], analyse["core"]
     lengths = {"display.lons": wide, "display.lats": high, "core.lons": cols, "core.lats": rows,
                "core.dx": rows, "core.dy": rows, "core.dg": rows}
@@ -1042,7 +1045,8 @@ def test_a_terrain_job_is_not_rerun_on_the_page_after_the_started_worker_stops(t
             assert got["terminated"] == [task == "analyseTerrain"], case
 
     before = found["beforeReady"]
-    assert before.get("resolved") == ["captions", "core", "display", "kCells", "links", "parts", "summary"], before
+    assert before.get("resolved") == ["captions", "core", "display", "kCells", "lineamentCaptions", "lineaments",
+                                      "links", "parts", "summary"], before
     assert before["history"] == [["analyseTerrain", "page", "done"]]
     assert before["mode"] == "page" and before["unavailable"].startswith("it did not start")
 

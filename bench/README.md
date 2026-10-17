@@ -486,6 +486,49 @@ on the page at 4x; at the default window 2.73 s, 233 MB and 12.04 s.
 The figures below that name the cap were taken before it came down, at
 16.5 km and 2,000,000 cells.
 
+The lineament candidates (PLAN.md step 4.2) joined the press on 16
+October 2026: the server now finds them after the analysis, with the
+analysis held, and draws their map and rose after the four figures. The
+rule was checked again the same way, at the cap (13.6 km, 1,478,647
+cells), on the same machine (Streamlit 1.66.0, load average 0.4 to 0.8),
+driven headless by Playwright with a scratch script that is not
+committed: three fresh servers on main as it stood (37566f8) and three on
+the branch, alternated, each a first press and then a second from another
+session.
+
+| | first press | second press | first press, click to the last download |
+|---|---|---|---|
+| main, without the candidates | 533, 542, 606 MB | 605, 609, 628 MB | 9.6 to 10.1 s |
+| with the candidates and their two figures | 554, 563, 580 MB | 624, 625, 658 MB | 11.1 to 11.6 s |
+
+Every press stays under 690 MB, the second at most 32 MB below it. The
+bench's synthetic tile holds few straight lines; on the real tile N08
+W012, which holds 399 candidates at the cap, finding them raised the
+peak by 90 MB, against 79 MB on the synthetic tile measured the same way
+(a scratch script on the pattern of `terrain_memory.py`, the analysis
+held; MB of 2^20 bytes there), so a press on real ground may come about
+12 MB (10^6 bytes) closer.
+
+In the browser, `web.mjs --only terrain` on 17 October 2026, two runs on
+the branch beside four on main (37566f8), alternated, each run three
+presses at each size and the median of the three:
+
+| measure | main | with the candidates |
+|---|---|---|
+| default window wall time, worker | 2.84 to 2.92 s | 3.28, 3.41 s |
+| default window memory added, worker | 228 to 246 MB | 266, 273 MB |
+| window at the cap wall time, worker | 4.15 to 4.41 s | 5.03, 5.13 s |
+| window at the cap longest main-thread task, worker | 0.96 to 1.02 s | 1.03, 1.08 s |
+| window at the cap memory added, worker | 333 to 354 MB | 370, 372 MB |
+| default window wall time, on the page (CPU 4x) | 11.80 to 12.24 s | 14.05, 14.05 s |
+| window at the cap wall time, on the page (CPU 4x) | 17.04 to 17.23 s | 20.41, 20.46 s |
+
+The worker builds the page's answer first and lets go of the analysis's
+other layers before it looks for the candidates, which read only the
+heights, the classes, the row metric and the settings. Looked for beside
+those layers, the candidates added 446 MB to the tab at the cap and 301
+MB at the default window (one run).
+
 The synthetic tile looks like ground, which is the easy case. Surfaces
 built to be hard, each 1414 by 1414 cells (1,999,396, just under the cap),
 were measured on 12 October with the analysis alone, as `terrain_memory.py`

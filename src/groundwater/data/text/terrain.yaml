@@ -485,9 +485,23 @@ caption_lineaments_none: >-
 
 caption_rose: >-
   The length of the candidates in each 10° band of strike, measured clockwise
-  from grid north and folded to 0 to 180°, valleys and ridges apart. A band
+  from grid north and folded to 0 to 180°, valleys and ridges apart, on one
+  scale. A strike has no way along it, so each band is drawn twice, opposite
+  itself, and each petal's area rather than its reach is in proportion to the
+  length, so that the longest band does not look longer than it is. A band
   that stands out is a direction that many straight features share; the
   analysis itself favours none, as tested on terrain that has none.
+
+# Drawn inside both lineament figures, before the caveat, so that a
+# downloaded figure carries it; and the heading of each of the rose's two
+# panels, with the count and the length in it.
+figure_note_lineaments: >-
+  Lineament candidates are inferred from terrain, not confirmed by
+  geophysics.
+
+rose_valleys: "{count:num} {count:plural:valley|valleys}, {km:.1f} km"
+
+rose_ridges: "{count:num} {count:plural:ridge|ridges}, {km:.1f} km"
 
 lineament_geojson_description: >-
   Lineament candidates worked out from {label}: straight valleys and ridges at

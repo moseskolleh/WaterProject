@@ -859,6 +859,97 @@ def test_the_terrain_figures_paint_their_layers_as_the_browser_does(tmp_path):
             assert (np.abs(near - (31, 92, 153)).max(axis=1) <= 1).any(), "the valley's line"
 
 
+def _lineament_analysis():
+    """A window of gentle relief, 160 cells of 1 arc-second square, with a
+    valley 8 m deep cut due north along column 60 and a ridge 8 m high
+    raised north-west of it, along a line at 45 degrees: the analysis and
+    the lineament candidates it holds, one of each."""
+    from groundwater.config import TerrainConfig
+    from groundwater.mapping import analyse_terrain, lineament_candidates
+
+    n = 160
+    r, c = np.mgrid[0:n, 0:n].astype(float)
+    z = 100.0 + 0.02 * c + 1.5 * np.sin(r / 9.0) * np.cos(c / 11.0)
+    z -= 8.0 * np.exp(-((c - 60.0) / 3.0) ** 2) * ((r > 20) & (r < 140))
+    along, across = (r + c) / np.sqrt(2.0), (r - c) / np.sqrt(2.0)
+    z += 8.0 * np.exp(-((across - 20.0) / 3.0) ** 2) * ((along > 60) & (along < 170))
+    grid = ElevationGrid(-12.0 + np.arange(n) / 3600, 8.5 + np.arange(n) / 3600, z, source="test grid",
+                         source_id="copernicus_glo30", sea_clean=True)
+    a = analyse_terrain(grid, TerrainConfig(), shown=(10, 150, 10, 150), precision="float64")
+    lin = lineament_candidates(a)
+    assert [(item.kind, round(item.strike_deg)) for item in lin.lineaments] == [("valley", 0), ("ridge", 45)]
+    return a, lin
+
+
+def test_the_lineament_candidates_and_their_rose_are_drawn_with_the_note_inside(tmp_path):
+    """PLAN.md step 4.2 draws the lineament candidates and a rose of their
+    strikes, captioned as inferred from terrain, not confirmed by
+    geophysics. Both figures are saved as PNG and SVG, with the title, the
+    credit line, that note and the analysis's caveat inside them, where a
+    download keeps them. The map draws each candidate from its start to its
+    end, valleys blue and ridges orange, keyed; the rose draws each band
+    with a candidate twice, opposite itself, the longest band of either
+    rose reaching the outer ring and the other petals reaching the square
+    root of their share of it, so that a petal's area goes with its length;
+    and a rose with no candidate to draw is refused rather than drawn
+    empty."""
+    import dataclasses
+
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+    from matplotlib.colors import to_hex
+
+    from groundwater.mapping import lineament_captions, plot_lineament_rose, plot_lineaments, terrain_captions
+    from groundwater.mapping.lineaments import lineament_lonlat
+
+    a, lin = _lineament_analysis()
+    caps = {**terrain_captions(a, None, "Testville"), **lineament_captions(lin, "Testville")}
+    credit = "Elevation: a test grid. Cells about 31 by 31 m."
+    for key, draw in (("lineaments", plot_lineaments), ("rose", plot_lineament_rose)):
+        path = tmp_path / f"terrain_{key}.png"
+        assert draw(a, caps, path=path, svg=True, credit=credit, lineaments=lin) == path
+        assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" and path.stat().st_size > 20_000, key
+        text = _svg_text(path.with_suffix(".svg"))
+        for line in (caps[f"title_{key}"], credit, caps["figure_note"], caps["figure_caveat"]):
+            assert " ".join(line.split()) in text, (key, line)
+    assert "Straight valley" in _svg_text(tmp_path / "terrain_lineaments.svg")
+    assert all(caps[k] in _svg_text(tmp_path / "terrain_rose.svg") for k in ("rose_valleys", "rose_ridges"))
+    assert caps["rose_valleys"] == "1 valley, 3.6 km" and caps["rose_ridges"] == "1 ridge, 3.4 km"
+
+    fig = plot_lineaments(a, caps, lineaments=lin)
+    try:
+        lines = [c for c in fig.axes[0].collections if isinstance(c, LineCollection)]
+        drawn = {to_hex(c.get_colors()[0]): [s.tolist() for s in c.get_segments()] for c in lines}
+        lons, lats = a.grid.lons, a.grid.lats
+        for item, colour in zip(lin.lineaments, ("#1d4e89", "#c15a2a"), strict=True):
+            ends = [list(lineament_lonlat(lin, lons, lats, p)) for p in (item.start, item.end)]
+            assert drawn[colour] == [ends], item.kind
+    finally:
+        plt.close(fig)
+
+    fig = plot_lineament_rose(a, caps, lineaments=lin)
+    try:
+        roses = [ax for ax in fig.axes if ax.name == "polar"]
+        assert len(roses) == 2
+        valley_m, ridge_m = sum(lin.rose_valley_m), sum(lin.rose_ridge_m)
+        longest = max(valley_m, ridge_m)
+        for ax, length, band in zip(roses, (valley_m, ridge_m), (0, 4), strict=True):
+            petals = ax.patches
+            assert len(petals) == 2, "each band drawn twice, opposite itself"
+            assert sorted(round(math.degrees(p.get_x() + p.get_width() / 2)) for p in petals) == [
+                10 * band + 5, 10 * band + 185]
+            assert all(p.get_height() == pytest.approx(math.sqrt(length / longest)) for p in petals)
+        assert _figure_text(fig).count(" km") >= 8, "the rings name their lengths"
+    finally:
+        plt.close(fig)
+
+    none = dataclasses.replace(lin, lineaments=(), rose_valley_m=(0.0,) * 18, rose_ridge_m=(0.0,) * 18,
+                               rose_valleys=(0,) * 18, rose_ridges=(0,) * 18)
+    with pytest.raises(ValueError, match="needs a candidate"):
+        plot_lineament_rose(a, caps, lineaments=none)
+    plt.close("all")
+
+
 def test_a_drainage_line_is_drawn_run_by_run_as_the_browser_draws_it(tmp_path):
     """Each run of stretches routed alike is a line of its own. A dashed
     run started its pattern again, so a dashed part of runs each shorter

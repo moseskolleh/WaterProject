@@ -774,7 +774,9 @@ def _azimuths(cfg: TerrainConfig) -> str:
 
 def lineament_captions(result: LineamentAnalysis, where: str) -> dict[str, str]:
     """The titles and captions of the lineament map and its rose, in the
-    catalogue's words."""
+    catalogue's words, with what the figures draw inside them: the note
+    that the candidates are inferred from terrain (``figure_note``) and the
+    heading of each of the rose's panels, its count and its length."""
     cfg = result.settings
     common = {"length": float(cfg.lineament_min_length_m), "smoothing": float(cfg.lineament_smoothing_m),
               "azimuths": _azimuths(cfg)}
@@ -788,7 +790,22 @@ def lineament_captions(result: LineamentAnalysis, where: str) -> dict[str, str]:
         "title_rose": phrase("terrain.title_rose", where=where),
         "lineaments": caption,
         "rose": phrase("terrain.caption_rose"),
+        "figure_note": phrase("terrain.figure_note_lineaments"),
+        "rose_valleys": phrase("terrain.rose_valleys", count=sum(result.rose_valleys),
+                               km=_in_order(result.rose_valley_m) / 1000.0),
+        "rose_ridges": phrase("terrain.rose_ridges", count=sum(result.rose_ridges),
+                              km=_in_order(result.rose_ridge_m) / 1000.0),
     }
+
+
+def _in_order(values: Sequence[float]) -> float:
+    """A sum taken one value at a time from 0, as the browser takes it:
+    from Python 3.12, sum() of floats is compensated, which can differ in
+    the last bit."""
+    total = 0.0
+    for value in values:
+        total = total + value
+    return total
 
 
 def lineament_geojson(result: LineamentAnalysis, lons, lats, meta: Mapping) -> str:

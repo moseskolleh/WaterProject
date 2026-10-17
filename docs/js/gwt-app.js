@@ -2460,12 +2460,13 @@
 
   /* What the page keeps of an analysis: the worker's answer (the display
    * layers, the core at full size, the lines, the summary and the
-   * captions), the settings it was worked out with and the threshold its
-   * lines were traced at, the sea cells of the analysed window (assumed
-   * sea included; class 2), which the GeoJSON's description reads, and the
-   * GeoJSON itself. The figures star the site the window was centred on
-   * where it has a GPS fix, named by its community or "Site", as the
-   * Python figures mark it (regional._mark_site). */
+   * captions, and the lineament candidates with theirs), the settings it
+   * was worked out with and the threshold its lines were traced at, the sea
+   * cells of the analysed window (assumed sea included; class 2), which the
+   * GeoJSON's description reads, and the two GeoJSON files. The figures
+   * star the site the window was centred on where it has a GPS fix, named
+   * by its community or "Site", as the Python figures mark it
+   * (regional._mark_site). */
   function terrainResult(read, answer, cfg, latlon) {
     var cls = answer.core.cls, sea = 0;
     for (var i = 0; i < cls.length; i++) if (cls[i] === 2) sea += 1;
@@ -2473,6 +2474,10 @@
       seaCells: sea, site: latlon ? { lon: latlon.lon, lat: latlon.lat,
         label: store.get('site.community') || 'Site' } : null });
     result.geojson = terrainGeoJson(read, result);
+    result.lineamentGeojson = C.lineamentGeoJson(result.lineaments, read.grid.lons, read.grid.lats, {
+      label: read.grid.label, figure_credit: read.figureCredit, notice: read.notice, surface: read.surface,
+      radius: read.plan.radiusKm, centre: read.centre,
+    });
     return result;
   }
 
@@ -2580,39 +2585,58 @@
 
   /* The four figures, by the name the captions give each, which also
    * names its files as the Python app saves them (terrain_<name>.png and
-   * .svg), and the builder in gwt-charts.js that draws it. */
+   * .svg), and the builder in gwt-charts.js that draws it; then the
+   * lineament candidates' two (PLAN.md step 4.2), named by their own
+   * captions and drawn the same way, the rose only where there is a
+   * candidate. */
   var TERRAIN_FIGURES = [
     ['relief', 'terrainRelief'], ['wetness', 'wetnessMap'], ['curvature', 'curvatureMaps'],
     ['directions', 'hillshadeDirections'],
   ];
+  var LINEAMENT_FIGURES = [['lineaments', 'lineamentMap'], ['rose', 'lineamentRose']];
 
   /* The figures of the analysis on show, each with the engine's captions
-   * under it and its PNG and SVG buttons, and the drainage lines as
-   * GeoJSON, as the Python app writes them. A figure is drawn once and
-   * kept: the four from a display of 1024 cells a side take most of a
-   * second, and the page is drawn again at every change on it. One set to
-   * null (a new threshold sets the relief's) is drawn again, and all four
-   * are when the theme has changed the colours they were drawn in, which
-   * are the page's (charts.palette). */
+   * under it and its PNG and SVG buttons, and the drainage lines and the
+   * lineament candidates as GeoJSON, as the Python app writes them. A
+   * figure is drawn once and kept: the four from a display of 1024 cells a
+   * side take most of a second, and the page is drawn again at every change
+   * on it. One set to null (a new threshold sets the relief's) is drawn
+   * again, and all of them are when the theme has changed the colours they
+   * were drawn in, which are the page's (charts.palette). */
   function terrainFigureNodes(session) {
     var result = session.result;
     var colours = JSON.stringify(charts.palette());
     if (!session.figures || session.figuresIn !== colours) {
-      session.figures = { relief: null, wetness: null, curvature: null, directions: null };
+      session.figures = { relief: null, wetness: null, curvature: null, directions: null, lineaments: null,
+        rose: null };
       session.figuresIn = colours;
     }
     var figures = session.figures;
     var opts = { parts: result.parts, summary: result.summary, captions: result.captions,
       site: result.site, figureCredit: session.read.figureCredit, cfg: result.cfg.terrain };
+    var lineamentOpts = Object.assign({}, opts, {
+      captions: Object.assign({}, result.captions, result.lineamentCaptions), lineaments: result.lineaments,
+      axes: { lons: session.read.grid.lons, lats: session.read.grid.lats } });
+    var lineamentFigures = result.lineaments.lineaments.length ? LINEAMENT_FIGURES : LINEAMENT_FIGURES.slice(0, 1);
     return [
       TERRAIN_FIGURES.map(function (entry) {
         var name = entry[0];
         if (!figures[name]) figures[name] = charts[entry[1]](result.display, opts);
         return charts.figure(figures[name], result.captions[name], { filename: 'terrain_' + name });
       }),
+      lineamentFigures.map(function (entry) {
+        var name = entry[0];
+        if (!figures[name]) {
+          figures[name] = charts[entry[1]](name === 'rose' ? result.lineaments : result.display, lineamentOpts);
+        }
+        return charts.figure(figures[name], result.lineamentCaptions[name], { filename: 'terrain_' + name });
+      }),
       el('div.btn-row', [
         button('Drainage lines (GeoJSON)', function () {
           S.download('drainage_lines.geojson', result.geojson, 'application/geo+json');
+        }, { variant: 'ghost' }),
+        button('Lineament candidates (GeoJSON)', function () {
+          S.download('lineament_candidates.geojson', result.lineamentGeojson, 'application/geo+json');
         }, { variant: 'ghost' }),
       ]),
     ];
