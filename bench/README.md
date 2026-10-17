@@ -529,6 +529,38 @@ heights, the classes, the row metric and the settings. Looked for beside
 those layers, the candidates added 446 MB to the tab at the cap and 301
 MB at the default window (one run).
 
+The survey plan (PLAN.md step 4.3) joined the press on 17 October 2026: the
+server lays it after finding the candidates and draws it as a seventh
+figure, with a table of its soundings, and writes its GPX and GeoLibre
+project. It needs the site's GPS fix, which the measures above do not set,
+and the bench's synthetic tile has no candidate near its centre, so the
+rule was checked again on the real tile N08 W012 with the fix at its
+centre (8.5 N, 11.5 W; 224764 E, 940462 N in zone 29N), where the plan
+crosses two ridges with three soundings each. At the cap (13.6 km), on
+the same machine (load average 0.4 to 1.0), driven headless by Playwright
+with a scratch script that is not committed: three fresh servers on main
+as it stood (3b9d307) and three on the branch, alternated, each a first
+press and then a second from another session, the fix entered in each.
+
+| | first press | second press | first press, click to the last download |
+|---|---|---|---|
+| main, the site set | 560, 574, 602 MB | 650, 650, 673 MB | 16.0 to 16.8 s |
+| with the survey plan | 554, 576, 579 MB | 645, 645, 645 MB | 17.4 to 18.3 s |
+
+Every press stays under 690 MB. The branch first drew the table of
+soundings with `st.dataframe`, which loads pandas the first time any page
+asks for one: the server then ended a first press 50 to 75 MB higher than
+main and kept it, and every second press went over the rule, at 728 to
+768 MB (six servers). The table is now Markdown, and the server ends a
+first press where main does. On the real tile with the site set, main's
+own second press comes within 17 MB of the rule.
+
+In the browser the plan is laid on the page from the worker's answer:
+`C.surveyPlan` with its captions, GPX and GeoJSON took 4.1 ms (median of
+seven, Node 22, the real tile's default window, 187 candidates), against
+0.18 s in Python. `web.mjs --only terrain` sets no site, so its figures
+above do not include the plan.
+
 The synthetic tile looks like ground, which is the easy case. Surfaces
 built to be hard, each 1414 by 1414 cells (1,999,396, just under the cap),
 were measured on 12 October with the analysis alone, as `terrain_memory.py`

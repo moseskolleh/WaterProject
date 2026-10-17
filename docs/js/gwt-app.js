@@ -2478,7 +2478,27 @@
       label: read.grid.label, figure_credit: read.figureCredit, notice: read.notice, surface: read.surface,
       radius: read.plan.radiusKm, centre: read.centre,
     });
+    terrainPlan(read, result);
     return result;
+  }
+
+  /* The survey plan (PLAN.md step 4.3), laid across the candidates within
+   * the service radius of the site, as the Python app lays it in the same
+   * press: it needs the site's GPS fix, and keeps clear of the water points
+   * the page holds now, which it keeps with it (planWaterPoints). Its
+   * captions, or why there is no plan, and its GPX and GeoJSON, written
+   * only where it lays a line. A new threshold lays it again
+   * (retraceTerrain), as a press in the Python app does. */
+  function terrainPlan(read, result) {
+    var cfg = result.cfg;
+    result.planWaterPoints = (derived || {}).waterPoints || null;
+    result.plan = result.site ? C.surveyPlan(result.lineaments, result.core, result.parts,
+      [result.site.lon, result.site.lat], result.planWaterPoints, cfg.terrain, cfg.ves) : null;
+    result.planCaptions = C.surveyPlanCaptions(result.plan, read.centre.label);
+    var laid = !!result.plan && result.plan.basis !== 'none';
+    var told = { where: read.centre.label, label: read.grid.label, site_label: store.get('site.community') || 'Site' };
+    result.planGpx = laid ? C.surveyPlanGpx(result.plan, result.core.lons, result.core.lats, told) : null;
+    result.planGeoJson = laid ? C.surveyPlanGeoJson(result.plan, result.core.lons, result.core.lats, told) : null;
   }
 
   /* The drainage lines shown, as GeoJSON, told what terrain.geojson_meta
@@ -2503,8 +2523,8 @@
    * (C.streamCounts, which the analysis counts them with), which the
    * relief's caption gives a share of, the captions (C.terrainCaptions,
    * given the parts of an analysis it reads) and the GeoJSON. Nothing else
-   * depends on the threshold, so of the figures only the relief is drawn
-   * again. */
+   * depends on the threshold but the survey plan, which keeps clear of the
+   * lines, so of the figures only the relief and the plan are drawn again. */
   function retraceTerrain(session) {
     var result = session.result, read = session.read, area = terrainArea(session);
     if (!result || !read || result.areaKm2 === area) return;
@@ -2517,8 +2537,12 @@
     var next = Object.assign({}, result, { cfg: cfg, areaKm2: area, links: lines.links,
       parts: lines.parts, summary: summary, captions: captions });
     next.geojson = terrainGeoJson(read, next);
+    terrainPlan(read, next);
     session.result = next;
-    if (session.figures) session.figures.relief = null;
+    if (session.figures) {
+      session.figures.relief = null;
+      session.figures.plan = null;
+    }
   }
 
   function sizeText(bytes) {
@@ -2596,19 +2620,21 @@
   var LINEAMENT_FIGURES = [['lineaments', 'lineamentMap'], ['rose', 'lineamentRose']];
 
   /* The figures of the analysis on show, each with the engine's captions
-   * under it and its PNG and SVG buttons, and the drainage lines and the
-   * lineament candidates as GeoJSON, as the Python app writes them. A
-   * figure is drawn once and kept: the four from a display of 1024 cells a
-   * side take most of a second, and the page is drawn again at every change
-   * on it. One set to null (a new threshold sets the relief's) is drawn
-   * again, and all of them are when the theme has changed the colours they
-   * were drawn in, which are the page's (charts.palette). */
+   * under it and its PNG and SVG buttons; the survey plan's figure and its
+   * soundings where it lays a line, or why there is none; and the drainage
+   * lines and the lineament candidates as GeoJSON and the plan as GPX and a
+   * GeoLibre project, as the Python app writes them. A figure is drawn once
+   * and kept: the four from a display of 1024 cells a side take most of a
+   * second, and the page is drawn again at every change on it. One set to
+   * null (a new threshold sets the relief's and the plan's) is drawn again,
+   * and all of them are when the theme has changed the colours they were
+   * drawn in, which are the page's (charts.palette). */
   function terrainFigureNodes(session) {
     var result = session.result;
     var colours = JSON.stringify(charts.palette());
     if (!session.figures || session.figuresIn !== colours) {
       session.figures = { relief: null, wetness: null, curvature: null, directions: null, lineaments: null,
-        rose: null };
+        rose: null, plan: null };
       session.figuresIn = colours;
     }
     var figures = session.figures;
@@ -2618,6 +2644,11 @@
       captions: Object.assign({}, result.captions, result.lineamentCaptions), lineaments: result.lineaments,
       axes: { lons: session.read.grid.lons, lats: session.read.grid.lats } });
     var lineamentFigures = result.lineaments.lineaments.length ? LINEAMENT_FIGURES : LINEAMENT_FIGURES.slice(0, 1);
+    var laid = !!result.planGpx;
+    if (laid && !figures.plan) {
+      figures.plan = charts.surveyPlanMap(result.display, Object.assign({}, lineamentOpts, {
+        captions: Object.assign({}, lineamentOpts.captions, result.planCaptions), plan: result.plan }));
+    }
     return [
       TERRAIN_FIGURES.map(function (entry) {
         var name = entry[0];
@@ -2631,6 +2662,9 @@
         }
         return charts.figure(figures[name], result.lineamentCaptions[name], { filename: 'terrain_' + name });
       }),
+      laid ? charts.figure(figures.plan, result.planCaptions.plan, { filename: 'terrain_plan' })
+        : el('p.muted', { 'data-plan': 'none' }, result.planCaptions.plan),
+      laid && result.plan.soundings.length ? terrainPlanTable(result) : null,
       el('div.btn-row', [
         button('Drainage lines (GeoJSON)', function () {
           S.download('drainage_lines.geojson', result.geojson, 'application/geo+json');
@@ -2638,8 +2672,33 @@
         button('Lineament candidates (GeoJSON)', function () {
           S.download('lineament_candidates.geojson', result.lineamentGeojson, 'application/geo+json');
         }, { variant: 'ghost' }),
+        laid ? button('Survey plan (GPX)', function () {
+          S.download('survey_plan.gpx', result.planGpx, 'application/gpx+xml');
+        }, { variant: 'ghost' }) : null,
+        laid ? button('Survey plan (GeoLibre)', function () {
+          GWT.geolibre.saveSurveyPlan({ planGeoJson: result.planGeoJson, lineamentGeoJson: result.lineamentGeojson,
+            waterPoints: result.planWaterPoints, site: { lat: result.site.lat, lon: result.site.lon,
+              label: store.get('site.community') || '' } });
+        }, { variant: 'ghost' }) : null,
       ]),
     ];
+  }
+
+  /* The proposed soundings as both apps list them under the plan: each
+   * one's name, line, distance along it, position and what is said of it
+   * (C.surveySoundingText). */
+  function terrainPlanTable(result) {
+    var plan = result.plan;
+    return S.table([
+      { key: 'name', label: 'Sounding' }, { key: 'line', label: 'Line', align: 'right' },
+      { key: 'at', label: 'Along the line (m)', align: 'right' },
+      { key: 'lat', label: 'Latitude', align: 'right' }, { key: 'lon', label: 'Longitude', align: 'right' },
+      { key: 'text', label: 'Where and how' },
+    ], plan.soundings.map(function (x) {
+      var p = C.lineamentLonLat(plan, result.core.lons, result.core.lats, x.point);
+      return { name: C.phrase('survey_plan.ves_name', { n: x.id }), line: x.line, at: C.pyFixed(x.at_m, 1),
+        lat: C.pyFixed(p[1], 6), lon: C.pyFixed(p[0], 6), text: C.surveySoundingText(plan, x) };
+    }));
   }
 
   /* The Copernicus licence's liability sentence, in small print where the

@@ -3607,8 +3607,8 @@ await withPage(async (page, base, consoleErrors) => {
   // character. Everything is held exactly: the candidates field by field
   // (each number by Object.is), the summary, the roses, the frame, the
   // progress and the captions word for word.
-  const LN = R.lineaments;
-  const lnJs = await page.evaluate(({ LN, TA }) => {
+  const LN = R.lineaments, SP = R.survey_plan;
+  const lnJs = await page.evaluate(({ LN, TA, SP }) => {
     const C = GWT.core;
     const number = (v) => (v !== v ? null : v === Infinity ? 'Infinity' : v === -Infinity ? '-Infinity'
       : Object.is(v, -0) ? '-0' : v);
@@ -3729,7 +3729,45 @@ await withPage(async (page, base, consoleErrors) => {
       }
       const window = { ...g, assumed: null };
       const run = analyse(window, z);
-      return { z: [C.sha256Hex(bytesOf(z)), spots(z)], cases: g.cases.map((kase) => answer(window, run, kase.settings)) };
+      /* the survey plans laid on it (PLAN.md step 4.3), as
+       * make_reference.py's _sp_answer lays them */
+      const lin = C.lineamentCandidates(run.a, null, null);
+      const at = (p) => [g.lon0 + p[0] * g.step, g.lat0 + p[1] * g.step];
+      const pair = (p) => p.map(number);
+      const plan = (kase) => {
+        const water = kase.water.map((w) => {
+          const p = at(w);
+          return { lon: p[0], lat: p[1], source: w[2], technology: w[3] };
+        });
+        let laid;
+        try {
+          laid = C.surveyPlan(lin, run.a.core, run.a.parts, at(kase.at), water,
+            Object.assign({}, lin.settings, kase.settings), C.defaultConfig().ves);
+        } catch (e) {
+          return { exact: { refused: String(e && e.message !== undefined ? e.message : e) } };
+        }
+        const geojson = C.surveyPlanGeoJson(laid, run.a.core.lons, run.a.core.lats, SP.meta);
+        return {
+          exact: {
+            basis: laid.basis, site: pair(laid.site), near: laid.near, skipped: laid.skipped, reach: laid.reach,
+            covered: laid.covered, water_points: laid.water_points,
+            rings: laid.rings.map((r) => [number(r[0]), number(r[1]), r[2], number(r[3])]),
+            lines: laid.lines.map((l) => [l.id, l.candidate, l.kind, number(l.strike_deg), number(l.bearing_deg),
+              pair(l.origin), pair(l.direction), l.first, l.last, number(l.length_m), number(l.crossing_m),
+              l.crosses.map((c) => [c[0], number(c[1])]), l.shortened]),
+            soundings: laid.soundings.map((x) => [x.id, x.line, x.role, number(x.at_m), pair(x.point),
+              number(x.moved_m), x.cleared, number(x.spread_deg)]),
+            dropped: laid.dropped.map((d) => [d.line, d.role, number(d.at_m), d.reasons]),
+            ab2: laid.ab2,
+            captions: Object.entries(C.surveyPlanCaptions(laid, SP.meta.where)),
+          },
+          gpx: C.surveyPlanGpx(laid, run.a.core.lons, run.a.core.lats, SP.meta),
+          geojson: [C.sha256Hex(geojson).slice(0, 16), geojson.length],
+        };
+      };
+      return { z: [C.sha256Hex(bytesOf(z)), spots(z)], cases: g.cases.map((kase) => answer(window, run, kase.settings)),
+        plans: SP.cases.map((kase) => tried(() => plan(kase))),
+        refused: SP.refused.map((kase) => tried(() => plan(Object.assign({}, SP.cases[0], { settings: kase.settings })))) };
     };
 
     return {
@@ -3737,7 +3775,7 @@ await withPage(async (page, base, consoleErrors) => {
       refused: LN.refused.map((kase) => tried(() => small(kase))),
       generated: tried(generated),
     };
-  }, { LN, TA });
+  }, { LN, TA, SP });
 
   /* the keys the browser's summary and candidates came in, against
    * Python's order, which the values are compared in */
@@ -3789,6 +3827,32 @@ await withPage(async (page, base, consoleErrors) => {
         const want = JSON.parse(kase.expect);
         lnCheck(`lineaments: ${kase.case} (${counted(want.lineaments.length, 'candidate', 'candidates')})`,
           got.cases[i] || { threw: 'no answer' }, want, kase.geojson);
+      });
+      // --- The survey plan (PLAN.md step 4.3) ---
+      // C.surveyPlan, C.surveyPlanCaptions, C.surveyPlanGpx and
+      // C.surveyPlanGeoJson, the twins of groundwater/mapping/survey.py, on
+      // L1's window and its candidates at the defaults, round six sites:
+      // the plan field by field (each number by Object.is), its AB/2 series
+      // and captions word for word, the GPX to the character and the
+      // GeoJSON by digest; and settings both refuse, word for word.
+      SP.cases.forEach((kase, i) => {
+        const plan = (got.plans || [])[i] || { threw: 'no answer' };
+        const name = `survey plan: ${kase.case}`;
+        if (plan.threw || plan.exact.refused !== undefined) {
+          check(name, false, plan.threw ? `threw ${plan.threw}` : `the browser refused: ${plan.exact.refused}`);
+          return;
+        }
+        const found = firstDifference(plan.exact, JSON.parse(kase.expect));
+        check(`${name} - the lines, soundings, reasons, AB/2 and captions`, !found, found);
+        check(`${name} - the GPX, to the character`, plan.gpx === kase.gpx, textDifference(plan.gpx, kase.gpx));
+        check(`${name} - the GeoJSON, by digest`, sameJson(plan.geojson, kase.geojson),
+          `js ${JSON.stringify(plan.geojson)}, py ${JSON.stringify(kase.geojson)}`);
+      });
+      SP.refused.forEach((kase, i) => {
+        const plan = (got.refused || [])[i] || { threw: 'no answer' };
+        const said = plan.threw ? `threw ${plan.threw}` : plan.exact.refused;
+        check(`survey plan: ${JSON.stringify(kase.settings)} refused in Python's words`, said === kase.refused,
+          `js ${JSON.stringify(said)}\n     py ${JSON.stringify(kase.refused)}`);
       });
     }
   }

@@ -43,17 +43,24 @@ from groundwater.mapping import (
     plot_lineament_rose,
     plot_lineaments,
     plot_study_area_map,
+    plot_survey_plan,
     plot_terrain_relief,
     plot_topographic_map,
     plot_wetness_index,
     protective_capacity_map,
     read_elevation,
     site_location_map,
+    survey_plan,
+    survey_plan_captions,
+    survey_plan_geojson,
+    survey_plan_gpx,
+    survey_sounding_text,
     terrain_captions,
     transverse_resistance_map,
     traverse_profile,
 )
 from groundwater.mapping.elevation import ElevationFile, file_notes, open_elevation_file, wgs84_cell_size
+from groundwater.mapping.lineaments import lineament_lonlat
 from groundwater.mapping.terrain import geojson_meta, grid_analysis_window, uncovered_cells, uncovered_note
 from groundwater.siting import assess_siting
 from groundwater.text import phrase
@@ -144,11 +151,45 @@ def _grid_notes(name: str, analysis, centre, meta: dict) -> list[str]:
     return notes
 
 
-def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, declared, heard) -> dict:
-    """Read the window, analyse it, find its lineament candidates, draw the
-    four terrain figures and the two of the candidates, and write the
-    drainage lines and the candidates as GeoJSON; return what the page
-    keeps of it all.
+def _plan_rows(plan, lons, lats) -> list[dict]:
+    """The proposed soundings as the page's table lists them: each one's
+    name, line, distance along it, position and what is said of it."""
+    rows = []
+    for x in plan.soundings:
+        lon, lat = lineament_lonlat(plan, lons, lats, x.point)
+        rows.append({"Sounding": phrase("survey_plan.ves_name", n=x.id), "Line": x.line,
+                     "Along the line (m)": round(float(x.at_m), 1), "Latitude": round(float(lat), 6),
+                     "Longitude": round(float(lon), 6),
+                     "Where and how": survey_sounding_text(plan, x)})
+    return rows
+
+
+def _plan_table(rows: list[dict]) -> str:
+    """The proposed soundings as a Markdown table. Not st.dataframe, which
+    loads pandas the first time any page asks for one: about 60 MB that a
+    server showing Site maps alone had not loaded, and kept after a press,
+    so that a second press at the cap went over the 690 MB the cap is held
+    to (bench/README.md)."""
+    def cell(value) -> str:
+        return str(value).replace("|", "\\|")
+
+    head = list(rows[0])
+    lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    lines += ["| " + " | ".join(cell(row[key]) for key in head) + " |" for row in rows]
+    return "\n".join(lines)
+
+
+def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, declared, heard,
+                     water_points=()) -> dict:
+    """Read the window, analyse it, find its lineament candidates and lay
+    the survey plan across them, draw the four terrain figures, the two of
+    the candidates and the plan's, and write the drainage lines and the
+    candidates as GeoJSON and the plan as GPX and a GeoLibre project; return
+    what the page keeps of it all.
+
+    The plan needs the site's GPS fix, and keeps clear of ``water_points``,
+    those the Water points page holds at the press; without a fix the
+    captions say why there is no plan.
 
     ``tiles`` are GeoTIFF and ``.hgt`` files, read as one window with its
     margin; ``grids`` one ESRI ASCII or XYZ grid, read whole and cut to the
@@ -181,9 +222,17 @@ def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, decl
         analysis = analyse_terrain(read.grid, cfg, assumed_sea=read.assumed_sea, shown=read.shown,
                                    progress=heard(0.1, 0.6), precision="float32")
     lineaments = lineament_candidates(analysis, progress=heard(0.7, 0.1))
+    plan = None
+    if site.latlon is not None:
+        lat, lon = site.latlon
+        plan = survey_plan(lineaments, analysis.core, analysis.parts, (lon, lat), water_points, cfg,
+                           app_config().ves)
     meta = geojson_meta(analysis, read, centre)
     notes = list(read.notes) if read is not None else _grid_notes(Path(grids[0].name).name, analysis, centre, meta)
     captions = {**terrain_captions(analysis, read, centre.label), **lineament_captions(lineaments, centre.label)}
+    captions.update(survey_plan_captions(plan, centre.label))
+    # the plan's figure and files only where it lays a line
+    laid = plan is not None and plan.basis != "none"
     credit = read.figure_credit if read is not None else None
     folder = Path(tempfile.mkdtemp(prefix="terrain_", dir=workdir()))
     try:
@@ -192,6 +241,8 @@ def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, decl
         draws = [(key, draw, {}) for key, draw in _TERRAIN_FIGURES]
         draws += [(key, draw, {"lineaments": lineaments}) for key, draw in _LINEAMENT_FIGURES
                   if key != "rose" or lineaments.lineaments]
+        if laid:
+            draws.append(("plan", plot_survey_plan, {"lineaments": lineaments, "plan": plan}))
         figures = []
         for n, (key, draw, more) in enumerate(draws):
             drawing(n / len(draws), captions[f"title_{key}"])
@@ -201,14 +252,25 @@ def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, decl
         geojson = folder / "drainage_lines.geojson"
         geojson.write_text(drainage_geojson(analysis.core, analysis.parts, meta), encoding="utf-8")
         lines = folder / "lineament_candidates.geojson"
-        lines.write_text(lineament_geojson(lineaments, analysis.grid.lons, analysis.grid.lats, meta),
-                         encoding="utf-8")
+        candidates = lineament_geojson(lineaments, analysis.grid.lons, analysis.grid.lats, meta)
+        lines.write_text(candidates, encoding="utf-8")
+        plan_files = {}
+        if laid:
+            told = {"where": centre.label, "label": meta["label"], "site_label": site.community or "Site"}
+            gpx = folder / "survey_plan.gpx"
+            gpx.write_text(survey_plan_gpx(plan, analysis.core.lons, analysis.core.lats, told), encoding="utf-8")
+            project = geolibre.survey_plan_project(
+                survey_plan_geojson(plan, analysis.core.lons, analysis.core.lats, told), site=site,
+                lineament_geojson=candidates, water_points=water_points)
+            plan_files = {"plan_gpx": str(gpx), "plan_geolibre": str(geolibre.write_project(
+                project, folder / "survey_plan.geolibre.json")),
+                "plan_rows": _plan_rows(plan, analysis.core.lons, analysis.core.lats)}
     except BaseException:
         # stopped or failed part-way: nothing of this run is kept
         shutil.rmtree(folder, ignore_errors=True)
         raise
     return {"figures": figures, "geojson": str(geojson), "lineament_geojson": str(lines), "folder": str(folder),
-            "summary": dict(analysis.summary), "captions": captions, "notes": notes, "notice": notice}
+            "summary": dict(analysis.summary), "captions": captions, "notes": notes, "notice": notice, **plan_files}
 
 
 def _give_back_memory() -> None:
@@ -234,20 +296,30 @@ def _give_back_memory() -> None:
 def _show_terrain(result: dict) -> None:
     """The terrain figures as the page keeps them: the read report, each
     figure with the engine's captions under it and its PNG and SVG, the
-    drainage lines' and the lineament candidates' GeoJSON, and the
+    drainage lines' and the lineament candidates' GeoJSON, the survey plan's
+    soundings, GPX and GeoLibre project (or why there is no plan), and the
     Copernicus liability sentence under the downloads when the files hold
     a Copernicus tile."""
     for note in result.get("notes", []):
         st.caption(note)
     captions = result["captions"]
+    drawn = set()
     for key, png, svg in result["figures"]:
+        drawn.add(key)
         st.image(png)
         st.caption(captions[key])
         offer_download(Path(png), f"Download {Path(png).name}")
         offer_download(Path(svg), f"Download {Path(svg).name}")
+        if key == "plan" and result.get("plan_rows"):
+            st.markdown(_plan_table(result["plan_rows"]))
+    if "plan" not in drawn and captions.get("plan"):
+        st.caption(captions["plan"])
     offer_download(Path(result["geojson"]), "Download the drainage lines (GeoJSON)")
     if result.get("lineament_geojson"):
         offer_download(Path(result["lineament_geojson"]), "Download the lineament candidates (GeoJSON)")
+    if result.get("plan_gpx"):
+        offer_download(Path(result["plan_gpx"]), "Download the survey plan (GPX)")
+        offer_download(Path(result["plan_geolibre"]), "Download the survey plan (GeoLibre project)")
     if result.get("notice"):
         st.caption(result["notice"])
 
@@ -524,7 +596,8 @@ def render() -> None:
                 try:
                     _result = _analyse_terrain(
                         _tiles, _grids, site, float(_terrain_radius),
-                        float(_terrain_area), _declared, _heard)
+                        float(_terrain_area), _declared, _heard,
+                        (st.session_state.get("wp_result") or {}).get("points") or ())
                 except ValueError as exc:
                     _failed = str(exc)
                     _status.update(state="error")

@@ -84,6 +84,7 @@ __all__ = [
     "separation_ring_features",
     "site_project",
     "suitability_features",
+    "survey_plan_project",
     "survey_point_features",
     "unit_features",
     "water_point_features",
@@ -1155,3 +1156,88 @@ def portfolio_project(
     return build_project(
         name, layers, metadata=dict(metadata or {}), frame_on=("Boreholes",)
     )
+
+
+# ---------------------------------------------------------------------------
+# The survey plan (PLAN.md step 4.3)
+# ---------------------------------------------------------------------------
+
+#: The survey plan's layers, back to front, by the ``layer`` each feature of
+#: :func:`.survey.survey_plan_geojson` names, each with its kind and the
+#: simplestyle colours the plan figure draws it in.
+_PLAN_LAYERS = (
+    ("clearance", "Separation rings", "polygon",
+     {"fill": "#8A5A2B", "fill-opacity": 0.0, "stroke": "#8A5A2B", "stroke-width": 1.2}),
+    ("service_radius", "Service radius", "polygon",
+     {"fill": "#333333", "fill-opacity": 0.0, "stroke": "#333333", "stroke-width": 1.5}),
+    ("line", "Profiling lines", "line", {"stroke": "#5B2A86", "stroke-width": 3}),
+    ("station", "Profile stations", "point", {"marker-color": "#5B2A86", "fill": "#5B2A86", "stroke": "#FFFFFF"}),
+    ("sounding", "Proposed soundings", "point", {"marker-color": "#FFFFFF", "fill": "#FFFFFF", "stroke": "#5B2A86"}),
+)
+
+#: A lineament candidate's colour by its kind, as the lineament map draws it.
+_CANDIDATE_COLOURS = {"valley": "#1D4E89", "ridge": "#C15A2A"}
+
+
+def survey_plan_project(
+    plan_geojson: str,
+    *,
+    name: str = "",
+    site=None,
+    lineament_geojson: str | None = None,
+    water_points: Iterable | None = None,
+    metadata: dict | None = None,
+) -> dict:
+    """The survey plan as a GeoLibre project, so that the pegs can be found
+    on a phone in GeoLibre's own map, over whatever imagery the operator
+    switches on.
+
+    ``plan_geojson`` is :func:`.survey.survey_plan_geojson`'s text. Its
+    features name their layer, and are taken apart into layers here, each
+    in the colours the plan figure gives it. With ``lineament_geojson``
+    (:func:`.lineaments.lineament_geojson`'s text) the candidates that reach
+    within twice the service radius are drawn under them, and with
+    ``water_points`` the mapped water points within it; ``site`` adds the
+    site itself. The project opens on the service radius.
+    """
+    from ..waterpoints import WPDX_CREDIT
+
+    collection = json.loads(plan_geojson)
+    lon, lat = collection["site"]
+    window = window_around(lat, lon, 2.0 * float(collection["radius_m"]) / 1000.0)
+    grouped: dict[str, list[dict]] = {}
+    for feature in collection["features"]:
+        grouped.setdefault(feature["properties"]["layer"], []).append(feature)
+
+    layers: list[dict] = []
+    if lineament_geojson:
+        candidates = [
+            _feature(feature["geometry"], {
+                **feature["properties"],
+                "stroke": _CANDIDATE_COLOURS.get(feature["properties"].get("kind"), "#6B7785"),
+                "stroke-width": 2,
+            })
+            for feature in features_within(json.loads(lineament_geojson)["features"], window)
+        ]
+        layers.append(geojson_layer("Lineament candidates", candidates, kind="line", color="#1D4E89",
+                                    stroke="#1D4E89", stroke_width=2.0))
+    if water_points:
+        layers.append(geojson_layer("Existing water points",
+                                    water_point_features(points_within_window(water_points, window)),
+                                    radius=6.0, attribution=WPDX_CREDIT))
+    for key, title, kind, style in _PLAN_LAYERS:
+        features = [_feature(feature["geometry"], {**feature["properties"], **style})
+                    for feature in grouped.get(key, [])]
+        layers.append(geojson_layer(title, features, kind=kind, color=style.get("fill", style["stroke"]),
+                                    stroke=style["stroke"], fill_opacity=0.0,
+                                    stroke_width=float(style.get("stroke-width", 1.0)),
+                                    radius=4.0 if key == "station" else 7.0))
+    if site is not None and site.latlon is not None:
+        site_lat, site_lon = site.latlon
+        layers.append(geojson_layer("Site", [_point(site_lon, site_lat, _clean({
+            "label": site.community or "Site", "marker-color": "#B23A2E", "fill": "#B23A2E", "stroke": "#FFFFFF",
+        }))], radius=10.0, color="#B23A2E"))
+    plan_metadata = dict(metadata or {})
+    plan_metadata.setdefault("about", collection["description"])
+    title = name or " - ".join(part for part in ("Survey plan", site.community if site is not None else "") if part)
+    return build_project(title, layers, metadata=plan_metadata, frame_on=("Service radius",))

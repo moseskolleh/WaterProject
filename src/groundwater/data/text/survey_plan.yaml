@@ -1,0 +1,182 @@
+# The survey plan (PLAN.md step 4.3): profiling lines across the lineament
+# candidates near the site, and the soundings proposed on them, written by
+# survey_plan_captions, survey_plan_gpx and survey_plan_geojson in
+# mapping/survey.py and by C.surveyPlanCaptions, C.surveyPlanGpx and
+# C.surveyPlanGeoJson in the browser; the Streamlit Site maps page and the
+# browser's terrain card show them. Every entry is read by its quoted id in
+# both engines, never by an id built from pieces. {where} is the place as the
+# read report names it; {radius} is the service radius in metres; strikes and
+# bearings are degrees clockwise from grid north. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+title_plan: "Survey plan - {where}"
+
+# The caption under the figure, sentence by sentence: what the lines rest
+# on, one of three; how many candidates come near; the soundings and their
+# spacings; what moved or was left out; what they are kept clear of; and
+# what no map here records.
+lines_candidates: >-
+  {lines:num} profiling {lines:plural:line crosses|lines cross} the lineament
+  {lines:plural:candidate|candidates} nearest the site at right angles to
+  {lines:plural:its|their} strike, inside the {radius:num} m the site serves:
+  {lines:plural:it is|each is} {length:g} m long, or as long as the service
+  radius leaves room for, with a station every {station:g} m.
+
+lines_strike: >-
+  No lineament candidate comes within the {radius:num} m the site serves, so
+  the profiling line runs through the site at right angles to {strike:.0f}°,
+  the strike of the 10° band that holds the greatest length of candidates in
+  the square shown, {length:g} m long with a station every {station:g} m. No
+  sounding is proposed beforehand: each goes where the profile finds a zone
+  to sound.
+
+lines_none: >-
+  No lineament candidate is found in the square shown, so there is no strike
+  for a profiling line to cross and no plan is drawn: lay the profile in the
+  field, across the strike of what is seen on the ground.
+
+near: >-
+  {count:num} {count:plural:candidate comes|candidates come} within the
+  service radius.
+
+crossed: >-
+  {count:num} of them {count:plural:is|are} crossed at right angles by a line
+  laid for a nearer one.
+
+soundings: >-
+  {count:num} proposed {count:plural:sounding|soundings}: one where each line
+  crosses its candidate and one {flank:g} m along the line to either side,
+  since a candidate is placed from the terrain to within a cell or two. Each
+  is planned to AB/2 = {ab2:g} m, which by the depth-of-investigation rule
+  sees {depth:g} m down, for a target of {target:g} m, with its {spread:g} m
+  spread laid along its candidate's strike.
+
+capped: >-
+  The field schedule's longest AB/2, {ab2:g} m, sees only {depth:g} m, short
+  of the {target:g} m target.
+
+moved: >-
+  {count:num} {count:plural:sounding was|soundings were} moved along
+  {count:plural:its line|their lines}, by up to {most:num} m, to clear a
+  separation distance.
+
+dropped_rings: >-
+  {count:num} {count:plural:sounding is|soundings are} left out, as no place
+  within {move:g} m along {count:plural:its line|their lines} clears the
+  separation distances.
+
+dropped_short: >-
+  {count:num} flank {count:plural:sounding is|soundings are} left out, as
+  the service radius ends {count:plural:its line|their lines} before
+  {count:plural:it|them}.
+
+# What every proposed sounding is kept clear of, as one sentence: "kept"
+# with the kept_ pieces that apply joined by and_join, each piece's
+# distance from the separation table.
+kept: "Every proposed sounding is kept at least {kept}."
+
+kept_borehole: "{distance:g} m from {count:num} mapped {count:plural:borehole|boreholes}"
+
+kept_dug_well: "{distance:g} m from {count:num} mapped dug {count:plural:well|wells}"
+
+kept_other: "{distance:g} m from {count:num} other mapped water {count:plural:point|points}"
+
+kept_surface: "{distance:g} m from {count:num} mapped surface water {count:plural:point|points}"
+
+kept_streams: "{distance:g} m from the drainage lines, which stand for the streams"
+
+kept_coast: "{distance:g} m from the sea"
+
+kept_nothing: >-
+  No water point, drainage line or sea that this page maps lies within reach
+  of the service radius.
+
+no_water_points: >-
+  No water points were loaded when the terrain was analysed: read or fetch
+  them on the Water points page and analyse the terrain again, so that the
+  plan keeps clear of them.
+
+# {structures} is unmapped_item for each row of the separation table no map
+# here records, in the table's order, joined by and_join; {structure} is the
+# row's name with its first letter lowered.
+unmapped: >-
+  No map here records {structures}: check each peg for them on the ground.
+
+unmapped_item: "{structure} ({distance:g} m)"
+
+uncovered: >-
+  The square shown does not hold the whole service radius, so candidates,
+  streams and sea beyond its edge were not seen.
+
+# Drawn inside the figure under the credit, so that a downloaded figure
+# carries it.
+figure_note: >-
+  Lineament candidates are inferred from terrain, not confirmed by
+  geophysics, and every peg is a proposal to check on the ground.
+
+# The caption in place of the plan where the site has no GPS fix.
+needs_site: >-
+  A survey plan needs the site's GPS position: its lines and soundings are
+  laid out within {radius:num} m of the site, and without a position there is
+  nothing to measure that from.
+
+# The names and descriptions of the pegs, in the GPX file, the GeoJSON
+# behind the GeoLibre project and the table of soundings. {at} is a distance
+# along a line from its start; {chainage} is the same written as the
+# station's name has it, zero-padded to the width of the line's last.
+ves_name: "VES {n:num}"
+
+sounding_crossing: >-
+  On the {kind} candidate {candidate:num}, at {at:num} m along line
+  {line:num}.
+
+sounding_flank: >-
+  {offset:num} m from the {kind} candidate {candidate:num}, at {at:num} m
+  along line {line:num}.
+
+sounding_moved: "Moved {moved:num} m along the line to clear {cleared}."
+
+sounding_spread: "AB/2 to {ab2:g} m: the {spread:g} m spread laid along {strike:.0f}°."
+
+# What a sounding was moved clear of, joined by and_join into {cleared}.
+cleared_borehole: a borehole
+
+cleared_dug_well: a dug well
+
+cleared_other: another water point
+
+cleared_stream: a stream
+
+cleared_coast: the sea
+
+line_name: "Line {line:num}"
+
+line_candidate: >-
+  {length:g} m at {bearing:.0f}°, a station every {station:g} m, across the
+  {kind} candidate {candidate:num} at {at:num} m.
+
+line_strike: >-
+  {length:g} m at {bearing:.0f}°, a station every {station:g} m, across the
+  strike of {strike:.0f}°, through the site at {at:num} m.
+
+line_start: "Line {line:num} start"
+
+line_end: "Line {line:num} end"
+
+station_name: "L{line:num} {chainage}"
+
+gpx_description: >-
+  Survey plan for {where}, from the lineament candidates worked out from
+  {label}. The candidates are inferred from terrain, not confirmed by
+  geophysics, and every peg is a proposal to check on the ground. Each VES
+  waypoint is the centre of a sounding; each route is a profiling line, a
+  point at each station.
+
+geojson_description: >-
+  Survey plan for {where}, from the lineament candidates worked out from
+  {label}, inferred from terrain, not confirmed by geophysics: every peg is a
+  proposal to check on the ground. layer is service_radius (the {radius:num}
+  m the site serves), clearance (the separation distance round a mapped water
+  point), line (a profiling line), station or sounding; chainage_m is the
+  distance along a line from its start, and bearings and strikes are degrees
+  clockwise from grid north.
