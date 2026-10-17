@@ -72,7 +72,9 @@ __all__ = [
     "odds_table_caption",
     "odds_tables",
     "odds_text",
+    "odds_prior_text",
     "point_latlon",
+    "prior_odds",
     "programme_offer",
     "programme_rate",
     "prior_for",
@@ -406,14 +408,7 @@ def success_odds(interp, model_range, bgs_code: str | None, glg: str | None,
     config = config or Config()
     tables = odds_tables()
     rate_m3h = float(config.odds.success_yield_m3_per_h)
-    row = prior_for(bgs_code, glg, rate_m3h)
-    p0 = row["rate"]
-    n = row["effective_n"]
-    alpha, beta = p0 * n, (1.0 - p0) * n
-    # held inside (0, 1) as the rate is: a percentile that rounded to
-    # exactly 1 raised ZeroDivisionError carried through the odds below
-    prior_low = _inside(beta_quantile(alpha, beta, _PRIOR_BAND[0]))
-    prior_high = _inside(beta_quantile(alpha, beta, _PRIOR_BAND[1]))
+    row, p0, n, prior_low, prior_high = _prior_band(bgs_code, glg, rate_m3h)
     prior_odds = _odds(p0)
 
     survey = _survey_evidence(interp, model_range)
@@ -455,6 +450,52 @@ def success_odds(interp, model_range, bgs_code: str | None, glg: str | None,
         probability=_probability(odds),
         low=carried(prior_low), high=carried(prior_high),
         range_sampled=model_range is not None,
+        calibration=" ".join(str(tables["evidence"]["calibration"]).split()),
+    )
+
+
+def _prior_band(bgs_code: str | None, glg: str | None, rate_m3h: float):
+    """The prior table's row for this ground, its rate and effective size,
+    and the 10th and 90th percentiles of its Beta."""
+    row = prior_for(bgs_code, glg, rate_m3h)
+    p0 = row["rate"]
+    n = row["effective_n"]
+    alpha, beta = p0 * n, (1.0 - p0) * n
+    # held inside (0, 1) as the rate is: a percentile that rounded to
+    # exactly 1 raised ZeroDivisionError carried through the odds after it
+    low = _inside(beta_quantile(alpha, beta, _PRIOR_BAND[0]))
+    high = _inside(beta_quantile(alpha, beta, _PRIOR_BAND[1]))
+    return row, p0, n, low, high
+
+
+def prior_odds(bgs_code: str | None, glg: str | None,
+               config: Config | None = None) -> SuccessOdds:
+    """The chance of a working borehole from the ground alone, before any
+    survey: the prior, with no evidence to move it.
+
+    What :func:`success_odds` returns, with an empty breakdown, so its
+    headline and prior sentence are :func:`odds_headline` and
+    :func:`odds_prior_text`. A desk study (PLAN.md step 4.4) gives it.
+    """
+    config = config or Config()
+    tables = odds_tables()
+    rate_m3h = float(config.odds.success_yield_m3_per_h)
+    row, p0, n, prior_low, prior_high = _prior_band(bgs_code, glg, rate_m3h)
+    odds = _odds(p0)
+    return SuccessOdds(
+        sounding_id="",
+        success_yield_m3_per_h=rate_m3h,
+        bgs_code=bgs_code, glg=glg,
+        matched=row["matched"], status=row["status"], basis=row["basis"],
+        yield_q1_l_per_s=row["yield_q1_l_per_s"],
+        yield_q3_l_per_s=row["yield_q3_l_per_s"],
+        effective_n=n,
+        prior=p0, prior_low=prior_low, prior_high=prior_high, prior_odds=odds,
+        evidence=[],
+        posterior_odds=odds,
+        probability=_probability(odds),
+        low=_probability(_odds(prior_low)), high=_probability(_odds(prior_high)),
+        range_sampled=False,
         calibration=" ".join(str(tables["evidence"]["calibration"]).split()),
     )
 
@@ -544,20 +585,24 @@ def _ground_text(o: SuccessOdds) -> str:
     return phrase("odds.ground_no_unit", code=o.bgs_code)
 
 
+def odds_prior_text(o: SuccessOdds) -> str:
+    """The prior in a sentence: its rate and band, the ground it is for and
+    what it rests on."""
+    prior = dict(p=_percent(o.prior), low=_percent(o.prior_low),
+                 high=_percent(o.prior_high), n=o.effective_n, basis=o.basis)
+    if o.matched == "fallback":
+        return phrase("odds.prior_fallback", **prior)
+    return phrase(
+        "odds.prior_combination" if o.matched == "combination" else "odds.prior_class",
+        ground=_ground_text(o), q1=o.yield_q1_l_per_s, q3=o.yield_q3_l_per_s,
+        ls=o.success_yield_m3_per_h / 3.6, **prior)
+
+
 def odds_point_text(o: SuccessOdds) -> list[str]:
     """What is particular to the point: the headline, its prior, and what
     was left out. A report or page with several points prints this under
     each and :func:`odds_basis_text` once."""
-    out = [odds_headline(o)]
-    prior = dict(p=_percent(o.prior), low=_percent(o.prior_low),
-                 high=_percent(o.prior_high), n=o.effective_n, basis=o.basis)
-    if o.matched == "fallback":
-        out.append(phrase("odds.prior_fallback", **prior))
-    else:
-        out.append(phrase(
-            "odds.prior_combination" if o.matched == "combination" else "odds.prior_class",
-            ground=_ground_text(o), q1=o.yield_q1_l_per_s, q3=o.yield_q3_l_per_s,
-            ls=o.success_yield_m3_per_h / 3.6, **prior))
+    out = [odds_headline(o), odds_prior_text(o)]
     if not o.range_sampled:
         out.append(phrase("odds.not_sampled", sid=o.sounding_id))
     return out

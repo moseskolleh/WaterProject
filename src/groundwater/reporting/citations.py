@@ -35,6 +35,9 @@ _REFERENCES_FOR = {
     # the dose card: the supervision guide the checklist item follows, and
     # WHO, which the dose calculator names
     "field_kit": ["rwsn_supervision", "who"],
+    # the maps the ground is read from, the guide the prior's yields come
+    # from, and the water point inventory
+    "desk_study": ["usgs_geology", "salwaco_geology", "bgs_atlas", "bgs_guide", "wpdx"],
 }
 
 

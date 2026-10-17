@@ -1,0 +1,317 @@
+# The desk study (PLAN.md step 4.4): what is known of a site before anyone
+# travels to it, from the bundled maps, the water point inventory, earlier
+# projects, the prior odds and, where an elevation model was analysed, the
+# terrain, its lineament candidates and the survey plan. Written by
+# desk_study_content in desk_study.py and by C.deskStudyContent in the
+# browser. Every entry is read by its quoted id in both engines, never by an
+# id built from pieces. {where} is the place as the terrain captions name it;
+# {radius} is a distance in metres and {km} one in kilometres; strikes and
+# bearings are degrees clockwise from grid north. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+title: "Desk study - {where}"
+
+subtitle: A pre-field siting report
+
+# The stamp on the page after the cover, on every desk study: it is never a
+# certification, whatever the project holds.
+stamp_title: PRE-FIELD DOCUMENT - NOT A SURVEY RESULT
+
+stamp_lead: >-
+  This desk study was put together before anyone went to the site, from the
+  bundled national maps, the water point inventory, earlier projects and,
+  where one was supplied, an elevation model. Nothing in it was measured on
+  the ground: every position, candidate and figure in it is to be checked in
+  the field, and no borehole is to be sited from it alone.
+
+# The site, as a table of two columns.
+site_heading: The site
+
+site_community: Community
+
+site_chiefdom: Chiefdom
+
+site_district: District
+
+site_position: Position
+
+site_utm: UTM
+
+position: "{lat:.5f} N, {lon:.5f} W"
+
+utm: "zone {zone:g}N, {easting:.0f} E, {northing:.0f} N"
+
+no_position: No GPS position recorded
+
+# The ground under the site.
+ground_heading: Geology and aquifer class
+
+ground_lead: >-
+  The bundled maps put the site on the ground below. Both are published at
+  1:5,000,000, where a boundary can lie kilometres from where it runs on the
+  ground, so the rock under the site is to be confirmed in the field.
+
+ground_caption: The ground under the site on the bundled maps
+
+ground_col_map: Map
+
+ground_col_unit: Unit
+
+ground_col_meaning: What it means for a borehole
+
+ground_map_geology: USGS Geologic Map of Africa
+
+ground_map_aquifer: BGS Africa Groundwater Atlas
+
+ground_unit: "{unit} ({code})"
+
+ground_none: The map has no unit under the site.
+
+ground_yield: >-
+  Boreholes sited and developed properly here yield {q1:num} to {q3:num} L/s
+  between them, the class's published range, read as its quartiles.
+
+ground_no_yield: The prior table gives no yield range for this ground.
+
+ground_no_position: >-
+  The site has no GPS position, so the ground under it cannot be read from
+  the maps: record the position and build the desk study again.
+
+# The terrain and its lineament candidates, where an elevation model was
+# analysed. {band_low} and {band_high} bound the 10-degree band of strike
+# that holds the greatest length of candidates.
+terrain_heading: Terrain and lineaments
+
+terrain_found: >-
+  The elevation model, {label}, was analysed over the square round the site.
+  {candidates:num} lineament {candidates:plural:candidate was|candidates were}
+  found in it, {valleys:num} {valleys:plural:valley|valleys} and {ridges:num}
+  {ridges:plural:ridge|ridges}, {km:.1f} km in all, and the 10° band of strike
+  that holds the greatest length of them runs from {band_low:.0f} to
+  {band_high:.0f}° ({band_km:.1f} km).
+
+terrain_near: >-
+  {near:num} of them {near:plural:comes|come} within the {radius:num} m the
+  site serves.
+
+terrain_near_none: None of them comes within the {radius:num} m the site serves.
+
+terrain_found_none: >-
+  The elevation model, {label}, was analysed over the square round the site,
+  and no lineament candidate was found in it.
+
+terrain_none: >-
+  No elevation model was analysed, so this desk study has no terrain,
+  lineament candidates or survey plan: supply one on the Site maps page,
+  analyse the terrain and build the desk study again.
+
+terrain_elsewhere: >-
+  The terrain was last analysed round another position than the site's, so
+  it is left out: analyse the terrain again and build the desk study again.
+
+# The water points the inventory records near the site.
+water_heading: Water points nearby
+
+water_counts: >-
+  The WPdx+ inventory records {total:num} water
+  {total:plural:point|points} within {radius:num} m of the site:
+  {working:num} working, {broken:num} not working and {unknown:num} of
+  unknown status.
+
+water_none: >-
+  The WPdx+ inventory records no water point within {radius:num} m of the
+  site.
+
+water_not_loaded: >-
+  No water points were loaded: read or fetch them on the Water points page
+  and build the desk study again.
+
+water_no_position: >-
+  The water points near the site are found from its GPS position, which is
+  not recorded.
+
+water_serving: >-
+  {count:num} working improved {count:plural:source lies|sources lie} within
+  the {radius:num} m the site serves, so the community may already be
+  served.
+
+water_rehab: >-
+  {count:num} improved {count:plural:source|sources} within the {radius:num}
+  m the site serves {count:plural:is|are} recorded as not working:
+  {count:plural:a rehabilitation candidate|rehabilitation candidates}, to
+  assess before a new borehole is drilled.
+
+water_nearest: >-
+  The nearest working improved source is {distance:num} m from the site.
+
+water_no_working: >-
+  No working improved source is recorded within {radius:num} m of the site.
+
+water_depth: >-
+  The inventory records no depth or yield for its points; the earlier
+  projects below give them where their files hold them.
+
+water_caption: "Water points within {radius:num} m of the site, nearest first"
+
+water_more: >-
+  {count:num} more {count:plural:lies|lie} within the {radius:num} m, further
+  away than the last listed.
+
+water_col_distance: Distance (m)
+
+water_col_status: Status
+
+water_col_source: Source
+
+water_col_installed: Installed
+
+water_working: Working
+
+water_broken: Not working
+
+water_unknown: Unknown
+
+# Earlier projects in the portfolio loaded.
+projects_heading: "Earlier projects within {km:g} km"
+
+projects_found: >-
+  {count:num} {count:plural:project|projects} in the portfolio loaded
+  {count:plural:lies|lie} within {km:g} km of the site: {drilled:num}
+  drilled, {successful:num} of them successful.
+
+projects_none: >-
+  No project in the portfolio loaded lies within {km:g} km of the site.
+
+projects_not_loaded: >-
+  No portfolio was loaded: load the earlier projects' files on the Portfolio
+  page and build the desk study again.
+
+projects_no_position: >-
+  The earlier projects near the site are found from its GPS position, which
+  is not recorded.
+
+projects_unplaced: >-
+  {count:num} {count:plural:project carries|projects carry} no position and
+  {count:plural:is|are} left out.
+
+projects_caption: "Earlier projects within {km:g} km of the site, nearest first"
+
+projects_col_project: Project
+
+projects_col_distance: Distance (km)
+
+projects_col_status: Status
+
+projects_col_depth: Depth (m)
+
+projects_col_yield: Safe yield (m3/h)
+
+projects_col_water: Water quality
+
+# The odds from the prior alone. The sentences themselves are odds.yaml's.
+odds_heading: The odds before the survey
+
+odds_note: >-
+  These odds rest on the ground under the site alone, before any survey. The
+  geophysical report moves them by what the soundings find: the depth to
+  basement, whether it was resolved, the resistivity of the water-bearing
+  zone and the confidence of the fit.
+
+odds_no_position: >-
+  The site has no GPS position, so the ground under it is not known and the
+  placeholder prior applies.
+
+# The survey plan, where one was laid. Its sentences are survey_plan.yaml's.
+plan_heading: Survey plan
+
+plan_no_terrain: >-
+  The survey plan is laid across the lineament candidates near the site, so
+  it waits for the terrain to be analysed.
+
+plan_soundings_caption: Proposed soundings
+
+plan_lines_caption: Profiling lines
+
+plan_col_sounding: Sounding
+
+plan_col_line: Line
+
+plan_col_along: Along the line (m)
+
+plan_col_position: Position
+
+plan_col_where: Where and how
+
+plan_col_bearing: Bearing (°)
+
+plan_col_length: Length (m)
+
+plan_col_start: Start
+
+plan_col_end: End
+
+# What the field visit is to check, as bullets: the first always, the rest
+# where they apply.
+checks_heading: What the field visit is to check
+
+check_ground: >-
+  The rock and the weathered zone at the site, against the geology above.
+
+check_position: The site's GPS position, which this desk study did not have.
+
+check_serving: >-
+  Whether the working sources within the {radius:num} m the site serves
+  reach the community, and all year.
+
+check_rehab: >-
+  Why the improved sources recorded as not working failed, and whether
+  rehabilitating one would serve the community.
+
+check_candidates: >-
+  What draws each lineament candidate the profiling lines cross: a fracture
+  zone, a contact, a dyke, a road or a field boundary.
+
+check_pegs: >-
+  Each peg of the survey plan, for what the plan above says no map here
+  records.
+
+check_terrain: >-
+  The ground round the site for the valleys and ridges an elevation model
+  would have shown, since none was analysed.
+
+# The executive summary, sentence by sentence.
+summary_ground: >-
+  The bundled maps put the site on {unit}, which the BGS atlas classes as
+  {aquifer}.
+
+summary_ground_partial: "The bundled maps put the site on {unit}."
+
+summary_no_ground: The bundled maps have no unit under the site.
+
+summary_terrain: >-
+  {candidates:num} lineament {candidates:plural:candidate was|candidates were}
+  found in the terrain round it, and the survey plan proposes {lines:num}
+  profiling {lines:plural:line|lines} and {soundings:num}
+  {soundings:plural:sounding|soundings}.
+
+summary_terrain_strike: >-
+  {candidates:num} lineament {candidates:plural:candidate was|candidates were}
+  found in the terrain round it, none within the {radius:num} m the site
+  serves, so the survey plan lays a profiling line across their strike and
+  proposes no sounding before it is run.
+
+summary_terrain_none: >-
+  {candidates:num} lineament {candidates:plural:candidate was|candidates were}
+  found in the terrain round it, and no profiling line could be laid.
+
+summary_water: >-
+  {total:num} water {total:plural:point is|points are} recorded within
+  {radius:num} m, {working:num} of them working.
+
+summary_water_none: "No water point is recorded within {radius:num} m."
+
+summary_projects: >-
+  {count:num} earlier {count:plural:project lies|projects lie} within
+  {km:g} km.
+
+summary_projects_none: "No earlier project lies within {km:g} km."
