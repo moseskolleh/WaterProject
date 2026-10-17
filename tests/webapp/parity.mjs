@@ -3763,6 +3763,11 @@ await withPage(async (page, base, consoleErrors) => {
           },
           gpx: C.surveyPlanGpx(laid, run.a.core.lons, run.a.core.lats, SP.meta),
           geojson: [C.sha256Hex(geojson).slice(0, 16), geojson.length],
+          /* what a desk study keeps of it (PLAN.md step 4.4), from the
+           * captions merged as the terrain card merges them */
+          desk: C.deskStudyTerrain(lin, laid, run.a.core.lons, run.a.core.lats,
+            Object.assign({}, C.lineamentCaptions(lin, SP.meta.where), C.surveyPlanCaptions(laid, SP.meta.where)),
+            SP.meta.label),
         };
       };
       return { z: [C.sha256Hex(bytesOf(z)), spots(z)], cases: g.cases.map((kase) => answer(window, run, kase.settings)),
@@ -3847,6 +3852,8 @@ await withPage(async (page, base, consoleErrors) => {
         check(`${name} - the GPX, to the character`, plan.gpx === kase.gpx, textDifference(plan.gpx, kase.gpx));
         check(`${name} - the GeoJSON, by digest`, sameJson(plan.geojson, kase.geojson),
           `js ${JSON.stringify(plan.geojson)}, py ${JSON.stringify(kase.geojson)}`);
+        const kept = firstDifference(plan.desk, JSON.parse(kase.desk));
+        check(`${name} - what a desk study keeps of it`, !kept, kept);
       });
       SP.refused.forEach((kase, i) => {
         const plan = (got.refused || [])[i] || { threw: 'no answer' };
@@ -3855,6 +3862,41 @@ await withPage(async (page, base, consoleErrors) => {
           `js ${JSON.stringify(said)}\n     py ${JSON.stringify(kase.refused)}`);
       });
     }
+  }
+
+  // --- The desk study (PLAN.md step 4.4) ---
+  // C.deskStudyContent, the twin of groundwater/desk_study.py's
+  // desk_study_content, on each of make_reference.py's DESK_CASES: the
+  // site's names, its position or none, the WPdx+ rows loaded, read by the
+  // browser's own reader, the earlier projects' summaries, and the terrain
+  // the browser itself kept of L1's plan above, held whole, word for word.
+  {
+    const DS = R.desk_study;
+    const plans = (lnJs.generated && lnJs.generated.plans) || [];
+    const terrains = plans.map((plan) => (plan && plan.desk) || null);
+    const deskJs = await page.evaluate(({ DS, terrains }) => {
+      const C = GWT.core;
+      return DS.cases.map((kase) => {
+        try {
+          const points = kase.water === null ? null : C.parseWpdxRecords(kase.water);
+          return { ok: C.deskStudyContent(kase.site, kase.where,
+            kase.latlon ? { lat: kase.latlon[0], lon: kase.latlon[1] } : null,
+            { waterPoints: points, searchRadiusM: kase.radius, portfolio: kase.portfolio,
+              terrain: kase.plan === null ? null : terrains[kase.plan] }) };
+        } catch (e) {
+          return { threw: String(e && e.stack || e) };
+        }
+      });
+    }, { DS, terrains });
+    DS.cases.forEach((kase, i) => {
+      const got = deskJs[i] || { threw: 'no answer' };
+      if (got.threw) {
+        check(`desk study: ${kase.case}`, false, `threw ${got.threw}`);
+        return;
+      }
+      const found = firstDifference(got.ok, JSON.parse(kase.expect));
+      check(`desk study: ${kase.case}`, !found, found);
+    });
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

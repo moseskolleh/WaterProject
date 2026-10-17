@@ -99658,7 +99658,8 @@
     "geojson": [
      "de9b126c4e4f3ad9",
      13350
-    ]
+    ],
+    "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.522222222222222,-11.977777777777778],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":1,\"basis\":\"candidates\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"1 profiling line crosses the lineament candidate nearest the site at right angles to its strike, inside the 500 m the site serves: it is 400 m long, or as long as the service radius leaves room for, with a station every 10 m. 1 candidate comes within the service radius. 3 proposed soundings: one where each line crosses its candidate and one 50 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 120 m, which by the depth-of-investigation rule sees 60 m down, for a target of 60 m, with its 240 m spread laid along its candidate's strike. Every proposed sounding is kept at least 10 m from 2 other mapped water points. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"45\",\"400\",\"8.52093 N, 11.97907 W\",\"8.52349 N, 11.97651 W\"]],\"soundings\":[[\"VES 1\",\"1\",\"150.0\",\"8.52189 N, 11.97811 W\",\"50 m from the ridge candidate 0, at 150 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\\u00b0.\"],[\"VES 2\",\"1\",\"200.0\",\"8.52221 N, 11.97779 W\",\"On the ridge candidate 0, at 200 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\\u00b0.\"],[\"VES 3\",\"1\",\"250.0\",\"8.52253 N, 11.97747 W\",\"50 m from the ridge candidate 0, at 250 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\\u00b0.\"]]}"
    },
    {
     "case": "P2: two lines across a third candidate, with a borehole, a dug well and surface water on them",
@@ -99692,7 +99693,8 @@
     "geojson": [
      "8072f2a22f4076a0",
      22322
-    ]
+    ],
+    "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.511666666666667,-11.98638888888889],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":3,\"basis\":\"candidates\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"2 profiling lines cross the lineament candidates nearest the site at right angles to their strike, inside the 500 m the site serves: each is 400 m long, or as long as the service radius leaves room for, with a station every 10 m. 3 candidates come within the service radius. 1 of them is crossed at right angles by a line laid for a nearer one. 4 proposed soundings: one where each line crosses its candidate and one 50 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 120 m, which by the depth-of-investigation rule sees 60 m down, for a target of 60 m, with its 240 m spread laid along its candidate's strike. 2 soundings were moved along their lines, by up to 15 m, to clear a separation distance. 2 soundings are left out, as no place within 20 m along their lines clears the separation distances. Every proposed sounding is kept at least 50 m from 1 mapped borehole, 20 m from 1 mapped dug well, 20 m from 1 mapped surface water point and 20 m from the drainage lines, which stand for the streams. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"110\",\"400\",\"8.51206 N, 11.98749 W\",\"8.51083 N, 11.98407 W\"],[\"Line 2\",\"103\",\"400\",\"8.51095 N, 11.99064 W\",\"8.51015 N, 11.98710 W\"]],\"soundings\":[[\"VES 1\",\"1\",\"150.0\",\"8.51160 N, 11.98620 W\",\"50 m from the ridge candidate 6, at 150 m along line 1. AB/2 to 120 m: the 240 m spread laid along 20\\u00b0.\"],[\"VES 2\",\"2\",\"135.0\",\"8.51068 N, 11.98944 W\",\"65 m from the ridge candidate 9, at 135 m along line 2. Moved 15 m along the line to clear a stream. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"],[\"VES 3\",\"2\",\"192.0\",\"8.51057 N, 11.98894 W\",\"On the ridge candidate 9, at 192 m along line 2. Moved 8.01 m along the line to clear a dug well. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"],[\"VES 4\",\"2\",\"250.0\",\"8.51045 N, 11.98842 W\",\"50 m from the ridge candidate 9, at 250 m along line 2. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"]]}"
    },
    {
     "case": "P3: a line the service radius shortens",
@@ -99707,7 +99709,8 @@
     "geojson": [
      "9f2392a25508fbb1",
      14034
-    ]
+    ],
+    "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.515,-11.988333333333333],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":3,\"basis\":\"candidates\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"2 profiling lines cross the lineament candidates nearest the site at right angles to their strike, inside the 500 m the site serves: each is 400 m long, or as long as the service radius leaves room for, with a station every 10 m. 3 candidates come within the service radius. 1 of them is crossed at right angles by a line laid for a nearer one. 5 proposed soundings: one where each line crosses its candidate and one 50 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 120 m, which by the depth-of-investigation rule sees 60 m down, for a target of 60 m, with its 240 m spread laid along its candidate's strike. 1 sounding was moved along its line, by up to 10.8 m, to clear a separation distance. 1 flank sounding is left out, as the service radius ends its line before it. Every proposed sounding is kept at least 20 m from the drainage lines, which stand for the streams. No water points were loaded when the terrain was analysed: read or fetch them on the Water points page and analyse the terrain again, so that the plan keeps clear of them. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"105\",\"400\",\"8.51493 N, 11.98807 W\",\"8.51396 N, 11.98457 W\"],[\"Line 2\",\"103\",\"160\",\"8.51081 N, 11.99002 W\",\"8.51049 N, 11.98860 W\"]],\"soundings\":[[\"VES 1\",\"1\",\"139.2\",\"8.51459 N, 11.98685 W\",\"60.8 m from the valley candidate 2, at 139 m along line 1. Moved 10.8 m along the line to clear a stream. AB/2 to 120 m: the 240 m spread laid along 15\\u00b0.\"],[\"VES 2\",\"1\",\"200.0\",\"8.51444 N, 11.98632 W\",\"On the valley candidate 2, at 200 m along line 1. AB/2 to 120 m: the 240 m spread laid along 15\\u00b0.\"],[\"VES 3\",\"1\",\"250.0\",\"8.51432 N, 11.98588 W\",\"50 m from the valley candidate 2, at 250 m along line 1. AB/2 to 120 m: the 240 m spread laid along 15\\u00b0.\"],[\"VES 4\",\"2\",\"80.0\",\"8.51065 N, 11.98931 W\",\"50 m from the ridge candidate 9, at 80 m along line 2. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"],[\"VES 5\",\"2\",\"130.0\",\"8.51055 N, 11.98887 W\",\"On the ridge candidate 9, at 130 m along line 2. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"]]}"
    },
    {
     "case": "P4: no candidate within the service radius",
@@ -99722,7 +99725,8 @@
     "geojson": [
      "c8f1411e29373529",
      9101
-    ]
+    ],
+    "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.534722222222221,-11.965277777777779],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":0,\"basis\":\"strike\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"No lineament candidate comes within the 500 m the site serves, so the profiling line runs through the site at right angles to 15\\u00b0, the strike of the 10\\u00b0 band that holds the greatest length of candidates in the square shown, 400 m long with a station every 10 m. No sounding is proposed beforehand: each goes where the profile finds a zone to sound. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"105\",\"400\",\"8.53519 N, 11.96703 W\",\"8.53425 N, 11.96352 W\"]],\"soundings\":[]}"
    },
    {
     "case": "P5: every setting changed, and a target past the longest spacing",
@@ -99745,7 +99749,8 @@
     "geojson": [
      "75ed3b107ce80005",
      7624
-    ]
+    ],
+    "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.522222222222222,-11.977777777777778],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":1,\"basis\":\"candidates\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"1 profiling line crosses the lineament candidate nearest the site at right angles to its strike, inside the 500 m the site serves: it is 600 m long, or as long as the service radius leaves room for, with a station every 25 m. 1 candidate comes within the service radius. 3 proposed soundings: one where each line crosses its candidate and one 80 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 500 m, which by the depth-of-investigation rule sees 250 m down, for a target of 300 m, with its 1000 m spread laid along its candidate's strike. The field schedule's longest AB/2, 500 m, sees only 250 m, short of the 300 m target. No water point, drainage line or sea that this page maps lies within reach of the service radius. No water points were loaded when the terrain was analysed: read or fetch them on the Water points page and analyse the terrain again, so that the plan keeps clear of them. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"45\",\"600\",\"8.52028 N, 11.97971 W\",\"8.52414 N, 11.97587 W\"]],\"soundings\":[[\"VES 1\",\"1\",\"220.0\",\"8.52170 N, 11.97830 W\",\"80 m from the ridge candidate 0, at 220 m along line 1. AB/2 to 500 m: the 1000 m spread laid along 135\\u00b0.\"],[\"VES 2\",\"1\",\"300.0\",\"8.52221 N, 11.97779 W\",\"On the ridge candidate 0, at 300 m along line 1. AB/2 to 500 m: the 1000 m spread laid along 135\\u00b0.\"],[\"VES 3\",\"1\",\"380.0\",\"8.52272 N, 11.97728 W\",\"80 m from the ridge candidate 0, at 380 m along line 1. AB/2 to 500 m: the 1000 m spread laid along 135\\u00b0.\"]]}"
    },
    {
     "case": "P6: at the edge of the square shown",
@@ -99760,7 +99765,8 @@
     "geojson": [
      "8ca2b0ec8c0cc3a1",
      9101
-    ]
+    ],
+    "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.53888888888889,-11.994444444444444],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":0,\"basis\":\"strike\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"No lineament candidate comes within the 500 m the site serves, so the profiling line runs through the site at right angles to 15\\u00b0, the strike of the 10\\u00b0 band that holds the greatest length of candidates in the square shown, 400 m long with a station every 10 m. No sounding is proposed beforehand: each goes where the profile finds a zone to sound. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground. The square shown does not hold the whole service radius, so candidates, streams and sea beyond its edge were not seen.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"105\",\"400\",\"8.53936 N, 11.99620 W\",\"8.53842 N, 11.99269 W\"]],\"soundings\":[]}"
    }
   ],
   "refused": [
@@ -99793,6 +99799,520 @@
      "survey_station_m": 800.0
     },
     "refused": "terrain.survey_station_m must be no longer than terrain.survey_line_m"
+   }
+  ]
+ },
+ "desk_study": {
+  "cases": [
+   {
+    "case": "D1: inland, with water points and earlier projects",
+    "site": {
+     "community": "Rokel",
+     "chiefdom": "Maforki",
+     "district": "Port Loko"
+    },
+    "where": "Rokel",
+    "latlon": [
+     8.6,
+     -11.9
+    ],
+    "water": [
+     {
+      "row_id": "w1",
+      "lat_deg": 8.6012,
+      "lon_deg": -11.900500000000001,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "water_tech_clean": "Hand Pump - India Mark II",
+      "install_year": "2012"
+     },
+     {
+      "row_id": "w2",
+      "lat_deg": 8.603,
+      "lon_deg": -11.901,
+      "status_clean": "Non-Functional",
+      "water_source_clean": "Protected Shallow Well",
+      "install_year": 2008
+     },
+     {
+      "row_id": "w3",
+      "lat_deg": 8.596,
+      "lon_deg": -11.8965,
+      "status_clean": "",
+      "water_tech_clean": "Hand Pump"
+     },
+     {
+      "row_id": "w4",
+      "lat_deg": 8.5979,
+      "lon_deg": -11.9002,
+      "status_clean": "Functional",
+      "water_source_clean": "Surface Water (River/Stream/Lake/Pond/Dam)"
+     },
+     {
+      "row_id": "w5",
+      "lat_deg": 8.6065,
+      "lon_deg": -11.896,
+      "status_clean": "Non-Functional",
+      "water_source_clean": "Piped Water",
+      "water_tech_clean": "Tap stand",
+      "install_year": "2016"
+     },
+     {
+      "row_id": "w6",
+      "lat_deg": 8.62,
+      "lon_deg": -11.9,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole"
+     },
+     {
+      "row_id": "r0",
+      "lat_deg": 8.6055,
+      "lon_deg": -11.9,
+      "status_clean": "Broken",
+      "water_source_clean": "Protected Spring",
+      "install_year": 1995
+     },
+     {
+      "row_id": "r1",
+      "lat_deg": 8.597249999999999,
+      "lon_deg": -11.895236860279185,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "install_year": 1996
+     },
+     {
+      "row_id": "r2",
+      "lat_deg": 8.597249999999999,
+      "lon_deg": -11.904763139720815,
+      "status_clean": "Functional",
+      "water_source_clean": "Protected Spring",
+      "install_year": 1997
+     }
+    ],
+    "radius": 1000.0,
+    "portfolio": [
+     {
+      "easting": 180798.57894891873,
+      "northing": 954827.2526706879,
+      "utm_zone": 29,
+      "community": "Masanga",
+      "district": "Tonkolili",
+      "status": "Completed - successful",
+      "total_depth_m": 48.5,
+      "safe_yield_m3_per_h": 1.8,
+      "water_verdict": "pass",
+      "verdict_schema": 2
+     },
+     {
+      "easting": 180768.3610636196,
+      "northing": 950842.3682796395,
+      "utm_zone": 29,
+      "community": "Rokel",
+      "district": "Port Loko",
+      "status": "dry",
+      "total_depth_m": "62",
+      "water_verdict": "fail"
+     },
+     {
+      "easting": 182428.40945311083,
+      "northing": 951826.1031305633,
+      "utm_zone": 29,
+      "community": "Lunsar",
+      "status": "sited"
+     },
+     {
+      "easting": 180821.3246867223,
+      "northing": 957815.9195984441,
+      "utm_zone": 29,
+      "community": "Far",
+      "status": "Completed - successful",
+      "total_depth_m": 40.0
+     },
+     {
+      "community": "Nowhere",
+      "status": "dry"
+     },
+     {
+      "easting": 178572.530066174,
+      "northing": 951855.3376436011,
+      "utm_zone": null,
+      "community": "Zoneless",
+      "status": "in progress",
+      "safe_yield_m3_per_h": 0.9
+     }
+    ],
+    "plan": null,
+    "expect": "{\"title\":\"Desk study - Rokel\",\"subtitle\":\"A pre-field siting report\",\"where\":\"Rokel\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Precambrian basement, chiefly Leonean granite, which the BGS atlas classes as Basement aquifer - low productivity.\",\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"8 water points are recorded within 1,000 m, 4 of them working.\",\"4 earlier projects lie within 5 km.\"],\"site_rows\":[[\"Community\",\"Rokel\"],[\"Chiefdom\",\"Maforki\"],[\"District\",\"Port Loko\"],[\"Position\",\"8.60000 N, 11.90000 W\"],[\"UTM\",\"zone 29N, 180776 E, 951839 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Precambrian (pCm)\",\"Precambrian basement, chiefly Leonean granite (LG, Lg, PLg, LM, Er, Lkm, Lkt), Archaean to Palaeoproterozoic. Crystalline basement, but not one rock. Cross-tabbed against the bundled BGS hydrogeology on a 1.4 km national grid, 87% of this class is basement aquifer and 12% is consolidated sedimentary with fracture flow - the Rokel River Group belt through Port Loko, Kambia, Moyamba and Tonkolili. On the 2017 map the basement part is chiefly Leonean granite (LG), with Liberian granite (Lg), migmatitic gneiss (PLg, LM), the Magbele and Tapr formations (Lkm, Lkt) and a mylonite zone. Mostly the crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock, yield following regolith thickness and the fracture set at the weathered-fresh contact. But this class is not one rock, and where it covers the Rokel River metasediments the aquifer is fracture flow in indurated beds with shales acting as aquicludes - a different target. Read the aquifer map beside it: the BGS layer separates the two where this one does not.\"],[\"BGS Africa Groundwater Atlas\",\"Basement aquifer - low productivity (B-L)\",\"Boreholes sited and developed properly here yield 0.1 to 0.5 L/s between them, the class's published range, read as its quartiles.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"No elevation model was analysed, so this desk study has no terrain, lineament candidates or survey plan: supply one on the Site maps page, analyse the terrain and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"The WPdx+ inventory records 8 water points within 1,000 m of the site: 4 working, 2 not working and 2 of unknown status.\",\"1 working improved source lies within the 500 m the site serves, so the community may already be served.\",\"1 improved source within the 500 m the site serves is recorded as not working: a rehabilitation candidate, to assess before a new borehole is drilled.\",\"The inventory records no depth or yield for its points; the earlier projects below give them where their files hold them.\"],\"tables\":[{\"caption\":\"Water points within 1,000 m of the site, nearest first\",\"header\":[\"Distance (m)\",\"Status\",\"Source\",\"Installed\"],\"rows\":[[\"144\",\"Working\",\"Borehole\",\"2012\"],[\"235\",\"Working\",\"Surface Water (River/Stream/Lake/Pond/Dam)\",\"\"],[\"351\",\"Not working\",\"Protected Shallow Well\",\"2008\"],[\"588\",\"Unknown\",\"Hand Pump\",\"\"],[\"606\",\"Working\",\"Borehole\",\"1996\"],[\"606\",\"Working\",\"Protected Spring\",\"1997\"],[\"612\",\"Unknown\",\"Protected Spring\",\"1995\"],[\"846\",\"Not working\",\"Piped Water\",\"2016\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"4 projects in the portfolio loaded lie within 5 km of the site: 2 drilled, 1 of them successful.\",\"1 project carries no position and is left out.\"],\"tables\":[{\"caption\":\"Earlier projects within 5 km of the site, nearest first\",\"header\":[\"Project\",\"Distance (km)\",\"Status\",\"Depth (m)\",\"Safe yield (m3/h)\",\"Water quality\"],\"rows\":[[\"Rokel (Port Loko)\",\"1.0\",\"Dry / failed\",\"62.0\",\"\",\"Treat before use*\"],[\"Lunsar\",\"1.7\",\"Sited (not drilled)\",\"\",\"\",\"\"],[\"Zoneless\",\"2.2\",\"In progress\",\"\",\"0.90\",\"\"],[\"Masanga (Tonkolili)\",\"3.0\",\"Successful\",\"48.5\",\"1.80\",\"Safe\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"The survey plan is laid across the lineament candidates near the site, so it waits for the terrain to be analysed.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"Whether the working sources within the 500 m the site serves reach the community, and all year.\",\"Why the improved sources recorded as not working failed, and whether rehabilitating one would serve the community.\",\"The ground round the site for the valleys and ridges an elevation model would have shown, since none was analysed.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
+   },
+   {
+    "case": "D2: Freetown, with nothing near",
+    "site": {
+     "community": "Leicester",
+     "district": "Western Area Rural"
+    },
+    "where": "Leicester",
+    "latlon": [
+     8.4657,
+     -13.2317
+    ],
+    "water": [],
+    "radius": 500.0,
+    "portfolio": [],
+    "plan": null,
+    "expect": "{\"title\":\"Desk study - Leicester\",\"subtitle\":\"A pre-field siting report\",\"where\":\"Leicester\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Freetown Layered Complex, which the BGS atlas classes as Igneous intrusive aquifer - low productivity.\",\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"No water point is recorded within 500 m.\",\"No earlier project lies within 5 km.\"],\"site_rows\":[[\"Community\",\"Leicester\"],[\"District\",\"Western Area Rural\"],[\"Position\",\"8.46570 N, 13.23170 W\"],[\"UTM\",\"zone 28N, 694667 E, 936225 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Paleozoic Igneous (Pi)\",\"Freetown Layered Complex (Jf), Jurassic (about 193 Ma). Layered gabbro, norite and anorthosite; a basic to ultrabasic intrusion forming the Freetown peninsula hills. Massive and crystalline, with negligible primary porosity. Groundwater is confined to the weathered mantle and to fracture and joint sets; yields are modest and highly site-dependent, so the fracture target is the whole of the siting problem.\"],[\"BGS Africa Groundwater Atlas\",\"Igneous intrusive aquifer - low productivity (I-L)\",\"Boreholes sited and developed properly here yield 0.1 to 0.5 L/s between them, the class's published range, read as its quartiles.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"No elevation model was analysed, so this desk study has no terrain, lineament candidates or survey plan: supply one on the Site maps page, analyse the terrain and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"The WPdx+ inventory records no water point within 500 m of the site.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"No project in the portfolio loaded lies within 5 km of the site.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 43 percent (between 23 and 63), for the BGS class I-L on the USGS unit Pi: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Tables 3 and 4). No cited source separates the Freetown Complex unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"The survey plan is laid across the lineament candidates near the site, so it waits for the terrain to be analysed.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"The ground round the site for the valleys and ridges an elevation model would have shown, since none was analysed.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
+   },
+   {
+    "case": "D3: no position",
+    "site": {
+     "community": "Kamakwie",
+     "district": "Karene"
+    },
+    "where": "Sella Limba",
+    "latlon": null,
+    "water": null,
+    "radius": 1000.0,
+    "portfolio": null,
+    "plan": null,
+    "expect": "{\"title\":\"Desk study - Sella Limba\",\"subtitle\":\"A pre-field siting report\",\"where\":\"Sella Limba\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"About 50 percent (between 10 and 90) that a borehole here yields enough for a handpump through the dry season. Placeholder prior, with no cited rate behind it.\"],\"site_rows\":[[\"Community\",\"Kamakwie\"],[\"District\",\"Karene\"],[\"Position\",\"No GPS position recorded\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The site has no GPS position, so the ground under it cannot be read from the maps: record the position and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"No elevation model was analysed, so this desk study has no terrain, lineament candidates or survey plan: supply one on the Site maps page, analyse the terrain and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"The water points near the site are found from its GPS position, which is not recorded.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"The earlier projects near the site are found from its GPS position, which is not recorded.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 50 percent (between 10 and 90) that a borehole here yields enough for a handpump through the dry season. Placeholder prior, with no cited rate behind it.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 50 percent (between 10 and 90), a placeholder held as weakly as 2 boreholes would hold it: no BGS aquifer class for the point (no position, or outside the map); no cited rate applies, so it is an even chance.\",\"The site has no GPS position, so the ground under it is not known and the placeholder prior applies.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"The survey plan is laid across the lineament candidates near the site, so it waits for the terrain to be analysed.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"The site's GPS position, which this desk study did not have.\",\"The ground round the site for the valleys and ridges an elevation model would have shown, since none was analysed.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
+   },
+   {
+    "case": "D4: L1's two lines, and more water points than are listed",
+    "site": {
+     "community": "Rokel"
+    },
+    "where": "Kakua",
+    "latlon": [
+     8.511666666666667,
+     -11.98638888888889
+    ],
+    "water": [
+     {
+      "row_id": "w1",
+      "lat_deg": 8.512866666666667,
+      "lon_deg": -11.98688888888889,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "water_tech_clean": "Hand Pump - India Mark II",
+      "install_year": "2012"
+     },
+     {
+      "row_id": "w2",
+      "lat_deg": 8.514666666666667,
+      "lon_deg": -11.987388888888889,
+      "status_clean": "Non-Functional",
+      "water_source_clean": "Protected Shallow Well",
+      "install_year": 2008
+     },
+     {
+      "row_id": "w3",
+      "lat_deg": 8.507666666666667,
+      "lon_deg": -11.982888888888889,
+      "status_clean": "",
+      "water_tech_clean": "Hand Pump"
+     },
+     {
+      "row_id": "w4",
+      "lat_deg": 8.509566666666666,
+      "lon_deg": -11.986588888888889,
+      "status_clean": "Functional",
+      "water_source_clean": "Surface Water (River/Stream/Lake/Pond/Dam)"
+     },
+     {
+      "row_id": "w5",
+      "lat_deg": 8.518166666666668,
+      "lon_deg": -11.98238888888889,
+      "status_clean": "Non-Functional",
+      "water_source_clean": "Piped Water",
+      "water_tech_clean": "Tap stand",
+      "install_year": "2016"
+     },
+     {
+      "row_id": "w6",
+      "lat_deg": 8.531666666666666,
+      "lon_deg": -11.98638888888889,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole"
+     },
+     {
+      "row_id": "r0",
+      "lat_deg": 8.517166666666666,
+      "lon_deg": -11.98638888888889,
+      "status_clean": "Broken",
+      "water_source_clean": "Protected Spring",
+      "install_year": 1995
+     },
+     {
+      "row_id": "r1",
+      "lat_deg": 8.51662199544013,
+      "lon_deg": -11.984002528323742,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "install_year": 1996
+     },
+     {
+      "row_id": "r2",
+      "lat_deg": 8.51509586057689,
+      "lon_deg": -11.982088815735315,
+      "status_clean": "Functional",
+      "water_source_clean": "Protected Spring",
+      "install_year": 1997
+     },
+     {
+      "row_id": "r3",
+      "lat_deg": 8.512890531803427,
+      "lon_deg": -11.98102678537189,
+      "status_clean": "Broken",
+      "water_source_clean": "Borehole",
+      "install_year": 1998
+     },
+     {
+      "row_id": "r4",
+      "lat_deg": 8.510442801529907,
+      "lon_deg": -11.98102678537189,
+      "status_clean": "Functional",
+      "water_source_clean": "Protected Spring",
+      "install_year": 1999
+     },
+     {
+      "row_id": "r5",
+      "lat_deg": 8.508237472756443,
+      "lon_deg": -11.982088815735315,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "install_year": 2000
+     },
+     {
+      "row_id": "r6",
+      "lat_deg": 8.506711337893204,
+      "lon_deg": -11.984002528323742,
+      "status_clean": "Broken",
+      "water_source_clean": "Protected Spring",
+      "install_year": 2001
+     },
+     {
+      "row_id": "r7",
+      "lat_deg": 8.506166666666667,
+      "lon_deg": -11.98638888888889,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "install_year": 2002
+     },
+     {
+      "row_id": "r8",
+      "lat_deg": 8.506711337893204,
+      "lon_deg": -11.988775249454036,
+      "status_clean": "Functional",
+      "water_source_clean": "Protected Spring",
+      "install_year": 2003
+     },
+     {
+      "row_id": "r9",
+      "lat_deg": 8.508237472756443,
+      "lon_deg": -11.990688962042464,
+      "status_clean": "Broken",
+      "water_source_clean": "Borehole",
+      "install_year": 2004
+     },
+     {
+      "row_id": "r10",
+      "lat_deg": 8.510442801529907,
+      "lon_deg": -11.991750992405889,
+      "status_clean": "Functional",
+      "water_source_clean": "Protected Spring",
+      "install_year": 2005
+     },
+     {
+      "row_id": "r11",
+      "lat_deg": 8.512890531803427,
+      "lon_deg": -11.991750992405889,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "install_year": 2006
+     },
+     {
+      "row_id": "r12",
+      "lat_deg": 8.51509586057689,
+      "lon_deg": -11.990688962042464,
+      "status_clean": "Broken",
+      "water_source_clean": "Protected Spring",
+      "install_year": 2007
+     },
+     {
+      "row_id": "r13",
+      "lat_deg": 8.51662199544013,
+      "lon_deg": -11.988775249454036,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "install_year": 2008
+     }
+    ],
+    "radius": 1000.0,
+    "portfolio": null,
+    "plan": 1,
+    "expect": "{\"title\":\"Desk study - Kakua\",\"subtitle\":\"A pre-field siting report\",\"where\":\"Kakua\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Precambrian basement, chiefly Leonean granite, which the BGS atlas classes as Basement aquifer - low productivity.\",\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"12 lineament candidates were found in the terrain round it, and the survey plan proposes 2 profiling lines and 4 soundings.\",\"19 water points are recorded within 1,000 m, 11 of them working.\"],\"site_rows\":[[\"Community\",\"Rokel\"],[\"Position\",\"8.51167 N, 11.98639 W\"],[\"UTM\",\"zone 29N, 171182 E, 942133 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Precambrian (pCm)\",\"Precambrian basement, chiefly Leonean granite (LG, Lg, PLg, LM, Er, Lkm, Lkt), Archaean to Palaeoproterozoic. Crystalline basement, but not one rock. Cross-tabbed against the bundled BGS hydrogeology on a 1.4 km national grid, 87% of this class is basement aquifer and 12% is consolidated sedimentary with fracture flow - the Rokel River Group belt through Port Loko, Kambia, Moyamba and Tonkolili. On the 2017 map the basement part is chiefly Leonean granite (LG), with Liberian granite (Lg), migmatitic gneiss (PLg, LM), the Magbele and Tapr formations (Lkm, Lkt) and a mylonite zone. Mostly the crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock, yield following regolith thickness and the fracture set at the weathered-fresh contact. But this class is not one rock, and where it covers the Rokel River metasediments the aquifer is fracture flow in indurated beds with shales acting as aquicludes - a different target. Read the aquifer map beside it: the BGS layer separates the two where this one does not.\"],[\"BGS Africa Groundwater Atlas\",\"Basement aquifer - low productivity (B-L)\",\"Boreholes sited and developed properly here yield 0.1 to 0.5 L/s between them, the class's published range, read as its quartiles.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"The elevation model, Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif, was analysed over the square round the site. 12 lineament candidates were found in it, 5 valleys and 7 ridges, 14.0 km in all, and the 10\\u00b0 band of strike that holds the greatest length of them runs from 10 to 20\\u00b0 (5.5 km). 3 of them come within the 500 m the site serves.\"],\"tables\":[],\"figures\":[{\"key\":\"lineaments\",\"caption\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\"},{\"key\":\"rose\",\"caption\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\"}],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"The WPdx+ inventory records 19 water points within 1,000 m of the site: 11 working, 2 not working and 6 of unknown status.\",\"1 working improved source lies within the 500 m the site serves, so the community may already be served.\",\"1 improved source within the 500 m the site serves is recorded as not working: a rehabilitation candidate, to assess before a new borehole is drilled.\",\"The inventory records no depth or yield for its points; the earlier projects below give them where their files hold them.\",\"4 more lie within the 1,000 m, further away than the last listed.\"],\"tables\":[{\"caption\":\"Water points within 1,000 m of the site, nearest first\",\"header\":[\"Distance (m)\",\"Status\",\"Source\",\"Installed\"],\"rows\":[[\"144\",\"Working\",\"Borehole\",\"2012\"],[\"235\",\"Working\",\"Surface Water (River/Stream/Lake/Pond/Dam)\",\"\"],[\"351\",\"Not working\",\"Protected Shallow Well\",\"2008\"],[\"588\",\"Unknown\",\"Hand Pump\",\"\"],[\"605\",\"Unknown\",\"Borehole\",\"1998\"],[\"605\",\"Working\",\"Borehole\",\"2006\"],[\"605\",\"Working\",\"Protected Spring\",\"1999\"],[\"605\",\"Working\",\"Protected Spring\",\"2005\"],[\"607\",\"Working\",\"Protected Spring\",\"1997\"],[\"607\",\"Unknown\",\"Protected Spring\",\"2007\"],[\"607\",\"Working\",\"Borehole\",\"2000\"],[\"607\",\"Unknown\",\"Borehole\",\"2004\"],[\"610\",\"Working\",\"Borehole\",\"1996\"],[\"610\",\"Working\",\"Borehole\",\"2008\"],[\"610\",\"Unknown\",\"Protected Spring\",\"2001\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"No portfolio was loaded: load the earlier projects' files on the Portfolio page and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"2 profiling lines cross the lineament candidates nearest the site at right angles to their strike, inside the 500 m the site serves: each is 400 m long, or as long as the service radius leaves room for, with a station every 10 m. 3 candidates come within the service radius. 1 of them is crossed at right angles by a line laid for a nearer one. 4 proposed soundings: one where each line crosses its candidate and one 50 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 120 m, which by the depth-of-investigation rule sees 60 m down, for a target of 60 m, with its 240 m spread laid along its candidate's strike. 2 soundings were moved along their lines, by up to 15 m, to clear a separation distance. 2 soundings are left out, as no place within 20 m along their lines clears the separation distances. Every proposed sounding is kept at least 50 m from 1 mapped borehole, 20 m from 1 mapped dug well, 20 m from 1 mapped surface water point and 20 m from the drainage lines, which stand for the streams. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\"],\"tables\":[{\"caption\":\"Profiling lines\",\"header\":[\"Line\",\"Bearing (\\u00b0)\",\"Length (m)\",\"Start\",\"End\"],\"rows\":[[\"Line 1\",\"110\",\"400\",\"8.51206 N, 11.98749 W\",\"8.51083 N, 11.98407 W\"],[\"Line 2\",\"103\",\"400\",\"8.51095 N, 11.99064 W\",\"8.51015 N, 11.98710 W\"]]},{\"caption\":\"Proposed soundings\",\"header\":[\"Sounding\",\"Line\",\"Along the line (m)\",\"Position\",\"Where and how\"],\"rows\":[[\"VES 1\",\"1\",\"150.0\",\"8.51160 N, 11.98620 W\",\"50 m from the ridge candidate 6, at 150 m along line 1. AB/2 to 120 m: the 240 m spread laid along 20\\u00b0.\"],[\"VES 2\",\"2\",\"135.0\",\"8.51068 N, 11.98944 W\",\"65 m from the ridge candidate 9, at 135 m along line 2. Moved 15 m along the line to clear a stream. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"],[\"VES 3\",\"2\",\"192.0\",\"8.51057 N, 11.98894 W\",\"On the ridge candidate 9, at 192 m along line 2. Moved 8.01 m along the line to clear a dug well. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"],[\"VES 4\",\"2\",\"250.0\",\"8.51045 N, 11.98842 W\",\"50 m from the ridge candidate 9, at 250 m along line 2. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"]]}],\"figures\":[{\"key\":\"plan\",\"caption\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"}],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"Whether the working sources within the 500 m the site serves reach the community, and all year.\",\"Why the improved sources recorded as not working failed, and whether rehabilitating one would serve the community.\",\"What draws each lineament candidate the profiling lines cross: a fracture zone, a contact, a dyke, a road or a field boundary.\",\"Each peg of the survey plan, for what the plan above says no map here records.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
+   },
+   {
+    "case": "D5: L1's line across the strike",
+    "site": {
+     "community": "Rokel"
+    },
+    "where": "Kakua",
+    "latlon": [
+     8.534722222222221,
+     -11.965277777777779
+    ],
+    "water": null,
+    "radius": 1000.0,
+    "portfolio": [],
+    "plan": 3,
+    "expect": "{\"title\":\"Desk study - Kakua\",\"subtitle\":\"A pre-field siting report\",\"where\":\"Kakua\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Precambrian basement, chiefly Leonean granite, which the BGS atlas classes as Basement aquifer - low productivity.\",\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"12 lineament candidates were found in the terrain round it, none within the 500 m the site serves, so the survey plan lays a profiling line across their strike and proposes no sounding before it is run.\",\"No earlier project lies within 5 km.\"],\"site_rows\":[[\"Community\",\"Rokel\"],[\"Position\",\"8.53472 N, 11.96528 W\"],[\"UTM\",\"zone 29N, 173528 E, 944668 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Precambrian (pCm)\",\"Precambrian basement, chiefly Leonean granite (LG, Lg, PLg, LM, Er, Lkm, Lkt), Archaean to Palaeoproterozoic. Crystalline basement, but not one rock. Cross-tabbed against the bundled BGS hydrogeology on a 1.4 km national grid, 87% of this class is basement aquifer and 12% is consolidated sedimentary with fracture flow - the Rokel River Group belt through Port Loko, Kambia, Moyamba and Tonkolili. On the 2017 map the basement part is chiefly Leonean granite (LG), with Liberian granite (Lg), migmatitic gneiss (PLg, LM), the Magbele and Tapr formations (Lkm, Lkt) and a mylonite zone. Mostly the crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock, yield following regolith thickness and the fracture set at the weathered-fresh contact. But this class is not one rock, and where it covers the Rokel River metasediments the aquifer is fracture flow in indurated beds with shales acting as aquicludes - a different target. Read the aquifer map beside it: the BGS layer separates the two where this one does not.\"],[\"BGS Africa Groundwater Atlas\",\"Basement aquifer - low productivity (B-L)\",\"Boreholes sited and developed properly here yield 0.1 to 0.5 L/s between them, the class's published range, read as its quartiles.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"The elevation model, Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif, was analysed over the square round the site. 12 lineament candidates were found in it, 5 valleys and 7 ridges, 14.0 km in all, and the 10\\u00b0 band of strike that holds the greatest length of them runs from 10 to 20\\u00b0 (5.5 km). None of them comes within the 500 m the site serves.\"],\"tables\":[],\"figures\":[{\"key\":\"lineaments\",\"caption\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\"},{\"key\":\"rose\",\"caption\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\"}],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"No water points were loaded: read or fetch them on the Water points page and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"No project in the portfolio loaded lies within 5 km of the site.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"No lineament candidate comes within the 500 m the site serves, so the profiling line runs through the site at right angles to 15\\u00b0, the strike of the 10\\u00b0 band that holds the greatest length of candidates in the square shown, 400 m long with a station every 10 m. No sounding is proposed beforehand: each goes where the profile finds a zone to sound. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\"],\"tables\":[{\"caption\":\"Profiling lines\",\"header\":[\"Line\",\"Bearing (\\u00b0)\",\"Length (m)\",\"Start\",\"End\"],\"rows\":[[\"Line 1\",\"105\",\"400\",\"8.53519 N, 11.96703 W\",\"8.53425 N, 11.96352 W\"]]}],\"figures\":[{\"key\":\"plan\",\"caption\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"}],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"Each peg of the survey plan, for what the plan above says no map here records.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
+   },
+   {
+    "case": "D6: the site moved off L1's plan",
+    "site": {
+     "community": "Rokel"
+    },
+    "where": "Kakua",
+    "latlon": [
+     8.522322222222222,
+     -11.977777777777778
+    ],
+    "water": null,
+    "radius": 1000.0,
+    "portfolio": null,
+    "plan": 0,
+    "expect": "{\"title\":\"Desk study - Kakua\",\"subtitle\":\"A pre-field siting report\",\"where\":\"Kakua\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Precambrian basement, chiefly Leonean granite, which the BGS atlas classes as Basement aquifer - low productivity.\",\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\"],\"site_rows\":[[\"Community\",\"Rokel\"],[\"Position\",\"8.52232 N, 11.97778 W\"],[\"UTM\",\"zone 29N, 172140 E, 943306 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Precambrian (pCm)\",\"Precambrian basement, chiefly Leonean granite (LG, Lg, PLg, LM, Er, Lkm, Lkt), Archaean to Palaeoproterozoic. Crystalline basement, but not one rock. Cross-tabbed against the bundled BGS hydrogeology on a 1.4 km national grid, 87% of this class is basement aquifer and 12% is consolidated sedimentary with fracture flow - the Rokel River Group belt through Port Loko, Kambia, Moyamba and Tonkolili. On the 2017 map the basement part is chiefly Leonean granite (LG), with Liberian granite (Lg), migmatitic gneiss (PLg, LM), the Magbele and Tapr formations (Lkm, Lkt) and a mylonite zone. Mostly the crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock, yield following regolith thickness and the fracture set at the weathered-fresh contact. But this class is not one rock, and where it covers the Rokel River metasediments the aquifer is fracture flow in indurated beds with shales acting as aquicludes - a different target. Read the aquifer map beside it: the BGS layer separates the two where this one does not.\"],[\"BGS Africa Groundwater Atlas\",\"Basement aquifer - low productivity (B-L)\",\"Boreholes sited and developed properly here yield 0.1 to 0.5 L/s between them, the class's published range, read as its quartiles.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"The terrain was last analysed round another position than the site's, so it is left out: analyse the terrain again and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"No water points were loaded: read or fetch them on the Water points page and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"No portfolio was loaded: load the earlier projects' files on the Portfolio page and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 43 percent (between 23 and 63), for the BGS class B-L on the USGS unit pCm: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"The survey plan is laid across the lineament candidates near the site, so it waits for the terrain to be analysed.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
+   },
+   {
+    "case": "D7: the Bullom Group",
+    "site": {
+     "community": "Lungi",
+     "district": "Port Loko"
+    },
+    "where": "Lungi",
+    "latlon": [
+     8.62,
+     -13.2
+    ],
+    "water": [
+     {
+      "row_id": "w1",
+      "lat_deg": 8.6212,
+      "lon_deg": -13.2005,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "water_tech_clean": "Hand Pump - India Mark II",
+      "install_year": "2012"
+     },
+     {
+      "row_id": "w2",
+      "lat_deg": 8.623,
+      "lon_deg": -13.200999999999999,
+      "status_clean": "Non-Functional",
+      "water_source_clean": "Protected Shallow Well",
+      "install_year": 2008
+     },
+     {
+      "row_id": "w3",
+      "lat_deg": 8.616,
+      "lon_deg": -13.196499999999999,
+      "status_clean": "",
+      "water_tech_clean": "Hand Pump"
+     },
+     {
+      "row_id": "w4",
+      "lat_deg": 8.617899999999999,
+      "lon_deg": -13.200199999999999,
+      "status_clean": "Functional",
+      "water_source_clean": "Surface Water (River/Stream/Lake/Pond/Dam)"
+     },
+     {
+      "row_id": "w5",
+      "lat_deg": 8.6265,
+      "lon_deg": -13.196,
+      "status_clean": "Non-Functional",
+      "water_source_clean": "Piped Water",
+      "water_tech_clean": "Tap stand",
+      "install_year": "2016"
+     },
+     {
+      "row_id": "w6",
+      "lat_deg": 8.639999999999999,
+      "lon_deg": -13.2,
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole"
+     }
+    ],
+    "radius": 750.0,
+    "portfolio": [
+     {
+      "easting": 698064.5609286481,
+      "northing": 956293.7212922119,
+      "utm_zone": 28,
+      "community": "Masanga",
+      "district": "Tonkolili",
+      "status": "Completed - successful",
+      "total_depth_m": 48.5,
+      "safe_yield_m3_per_h": 1.8,
+      "water_verdict": "pass",
+      "verdict_schema": 2
+     },
+     {
+      "easting": 698083.3358225983,
+      "northing": 952311.8510311381,
+      "utm_zone": 28,
+      "community": "Rokel",
+      "district": "Port Loko",
+      "status": "dry",
+      "total_depth_m": "62",
+      "water_verdict": "fail"
+     },
+     {
+      "easting": 699729.8336500714,
+      "northing": 953315.1278257376,
+      "utm_zone": 28,
+      "community": "Lunsar",
+      "status": "sited"
+     },
+     {
+      "easting": 698050.4287255356,
+      "northing": 959280.1284031959,
+      "utm_zone": 28,
+      "community": "Far",
+      "status": "Completed - successful",
+      "total_depth_m": 40.0
+     },
+     {
+      "community": "Nowhere",
+      "status": "dry"
+     },
+     {
+      "easting": 695877.0906751711,
+      "northing": 953297.0058029345,
+      "utm_zone": null,
+      "community": "Zoneless",
+      "status": "in progress",
+      "safe_yield_m3_per_h": 0.9
+     }
+    ],
+    "plan": null,
+    "expect": "{\"title\":\"Desk study - Lungi\",\"subtitle\":\"A pre-field siting report\",\"where\":\"Lungi\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Bullom Group, which the BGS atlas classes as Unconsolidated intergranular aquifer - moderate to high productivity.\",\"About 97 percent (between 90 and over 99) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"4 water points are recorded within 750 m, 2 of them working.\",\"4 earlier projects lie within 5 km.\"],\"site_rows\":[[\"Community\",\"Lungi\"],[\"District\",\"Port Loko\"],[\"Position\",\"8.62000 N, 13.20000 W\"],[\"UTM\",\"zone 28N, 698079 E, 953307 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Holocene (Qe)\",\"Bullom Group (Q, Tb), Miocene to Recent. Sands, clays, clayey sands and lignite over the coastal lowland; alluvium along the drainage. Intergranular, generally the best yields available without deep drilling. Shallow water tables mean the protective cover is thin, so siting must keep clear of latrines and surface drainage.\"],[\"BGS Africa Groundwater Atlas\",\"Unconsolidated intergranular aquifer - moderate to high productivity (U-M/H)\",\"Boreholes sited and developed properly here yield 2 to 20 L/s between them, the class's published range, read as its quartiles.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"No elevation model was analysed, so this desk study has no terrain, lineament candidates or survey plan: supply one on the Site maps page, analyse the terrain and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"The WPdx+ inventory records 4 water points within 750 m of the site: 2 working, 1 not working and 1 of unknown status.\",\"1 working improved source lies within the 500 m the site serves, so the community may already be served.\",\"1 improved source within the 500 m the site serves is recorded as not working: a rehabilitation candidate, to assess before a new borehole is drilled.\",\"The inventory records no depth or yield for its points; the earlier projects below give them where their files hold them.\"],\"tables\":[{\"caption\":\"Water points within 750 m of the site, nearest first\",\"header\":[\"Distance (m)\",\"Status\",\"Source\",\"Installed\"],\"rows\":[[\"144\",\"Working\",\"Borehole\",\"2012\"],[\"235\",\"Working\",\"Surface Water (River/Stream/Lake/Pond/Dam)\",\"\"],[\"351\",\"Not working\",\"Protected Shallow Well\",\"2008\"],[\"588\",\"Unknown\",\"Hand Pump\",\"\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"4 projects in the portfolio loaded lie within 5 km of the site: 2 drilled, 1 of them successful.\",\"1 project carries no position and is left out.\"],\"tables\":[{\"caption\":\"Earlier projects within 5 km of the site, nearest first\",\"header\":[\"Project\",\"Distance (km)\",\"Status\",\"Depth (m)\",\"Safe yield (m3/h)\",\"Water quality\"],\"rows\":[[\"Rokel (Port Loko)\",\"1.0\",\"Dry / failed\",\"62.0\",\"\",\"Treat before use*\"],[\"Lunsar\",\"1.7\",\"Sited (not drilled)\",\"\",\"\",\"\"],[\"Zoneless\",\"2.2\",\"In progress\",\"\",\"0.90\",\"\"],[\"Masanga (Tonkolili)\",\"3.0\",\"Successful\",\"48.5\",\"1.80\",\"Safe\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 97 percent (between 90 and over 99) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 97 percent (between 90 and over 99), for the BGS class U-M/H on the USGS unit Qe: BGS Moderate to High productivity, the span 2 to 20 L/s (O Dochartaigh 2021, Tables 3 and 4). No cited source separates the Holocene unit within the class, so the class's yields apply. The yields say nothing of salinity near the coast. Read as the quartiles of a lognormal spread, 2 and 20 L/s put 97 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"The survey plan is laid across the lineament candidates near the site, so it waits for the terrain to be analysed.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"Whether the working sources within the 500 m the site serves reach the community, and all year.\",\"Why the improved sources recorded as not working failed, and whether rehabilitating one would serve the community.\",\"The ground round the site for the valleys and ridges an elevation model would have shown, since none was analysed.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
+   },
+   {
+    "case": "D8: surface water",
+    "site": {
+     "community": "T"
+    },
+    "where": "T",
+    "latlon": [
+     7.3,
+     -11.8
+    ],
+    "water": [],
+    "radius": 1000.0,
+    "portfolio": [],
+    "plan": null,
+    "expect": "{\"title\":\"Desk study - T\",\"subtitle\":\"A pre-field siting report\",\"where\":\"T\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Surface water, which the BGS atlas classes as Surface water.\",\"About 50 percent (between 10 and 90) that a borehole here yields enough for a handpump through the dry season. Placeholder prior, with no cited rate behind it.\",\"No water point is recorded within 1,000 m.\",\"No earlier project lies within 5 km.\"],\"site_rows\":[[\"Community\",\"T\"],[\"Position\",\"7.30000 N, 11.80000 W\"],[\"UTM\",\"zone 29N, 190819 E, 807874 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Water (River or Lake) (H2O)\",\"Surface water. River, lake or estuary. Not an aquifer.\"],[\"BGS Africa Groundwater Atlas\",\"Surface water (n/a)\",\"The prior table gives no yield range for this ground.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"No elevation model was analysed, so this desk study has no terrain, lineament candidates or survey plan: supply one on the Site maps page, analyse the terrain and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"The WPdx+ inventory records no water point within 1,000 m of the site.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"No project in the portfolio loaded lies within 5 km of the site.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 50 percent (between 10 and 90) that a borehole here yields enough for a handpump through the dry season. Placeholder prior, with no cited rate behind it.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 50 percent (between 10 and 90), a placeholder held as weakly as 2 boreholes would hold it: the BGS map shows surface water here, so it gives no aquifer class for the point; no cited rate applies, so it is an even chance.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"The survey plan is laid across the lineament candidates near the site, so it waits for the terrain to be analysed.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"The ground round the site for the valleys and ridges an elevation model would have shown, since none was analysed.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
    }
   ]
  }

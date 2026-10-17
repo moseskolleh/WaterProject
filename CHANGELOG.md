@@ -132,6 +132,33 @@ On the real tile N08 W012, a site at its centre gets two lines, across two ridge
 
 Main's nightly fuzz job went red on 17 October on a laboratory sheet with chromium 0.064, copper 1.65 and arsenic 0.029 mg/L. Its Hazard Index is 4.55 exactly, a tie at one decimal: Python's flag said 4.5 and the browser's said 4.6. From Python 3.12 the built-in `sum()` compensates a sum of floats, and it came to 4.55; the browser adds the hazard quotients one at a time and came to 4.550000000000001, as Python 3.10 and 3.11 do. So Python's answer hung on its version. The new `utils.sum_in_order` adds one value at a time from 0, as `costing/distribution.py` and `mapping/lineaments.py` already did. Every built-in `sum()` of floats that `gwt-core.js` mirrors now goes through it: the Hazard Index and the ionic balance's cation and anion totals, a cost estimate's direct cost and a programme's dry-attempt cost and transport rate, a design's screen length, the pumping test's step volume and step durations and the spread's residual mean and slope sums, the field kit's timed-container mean, the VES interpretation's aquifer thickness, the portfolio's mean yield and cost per metre, the study-area map's centre, and a payment certificate's totals. The browser's certificate now adds each line's variation as a difference, `t + (a - c)` rather than `t + a - c`, as Python does. The sheet is kept as `tests/fuzz/regressions/quality-hazard-index-half-tie.json`, and `tests/test_indices.py` holds the flag at 4.6 on every Python version. Python's float sums that the browser does not mirror, such as the Depth Spine's Piper percentages, the iso-resistivity map's geometric mean and the regional maps' label points, are unchanged. Because `gwt-core.js` changed, each saved inversion is re-run once when its project is reopened.
 
+### What a desk study says, in both engines (PLAN.md step 4.4, part a)
+
+Both engines now put together the content of a desk study: what is known of a site before anyone travels to it. Neither app offers it yet; part b lays it out as the eleventh document and puts a button for it on Site maps in both apps. The new module is `groundwater.desk_study` (`desk_study_content`, `desk_study_terrain`, `site_ground`), with `C.deskStudyContent`, `C.deskStudyTerrain` and `C.siteGround` in the browser's engine. Its words are in the new catalogue `data/text/desk_study.yaml`. Like the field kit's, the content is plain data that the two document writers will only lay out, and every number in it is already written as text, so parity compares the content whole. It holds:
+
+- **The site:** its names, its position in degrees and in UTM, for the cover.
+- **The stamp**, "PRE-FIELD DOCUMENT - NOT A SURVEY RESULT", with a lead that says nothing in it was measured on the ground. It goes on every desk study: a desk study is never a certification, so it takes no readiness gate.
+- **The ground:** the USGS unit and the BGS aquifer class under the site, with the formation and what the rock means for a borehole from the crosswalk the map key uses (so the Freetown Complex is named as such, not as the USGS layer's "Paleozoic Igneous"), and the class's published yield range from the prior table.
+- **The terrain and its lineament candidates,** where an elevation model was analysed: the count, the length and the 10-degree band of strike that holds the most of it, how many come within the 500 m the site serves, and the figures' captions. `desk_study_terrain` keeps this from the press beside the figures, since neither app keeps the analysis, with the position the plan was laid round; a desk study whose site has moved more than a metre since leaves the terrain out and says to analyse it again.
+- **The water points** the Water points page loaded, within the radius it searched: how many are working, not working or of unknown status, whether a working improved source lies within the 500 m the site serves, the improved sources recorded as not working there (rehabilitation candidates), the nearest working one, and a table of the nearest 15. The WPdx+ inventory carries no depth or yield, and neither reader reads one; the content says so and points to the earlier projects.
+- **The earlier projects** in the portfolio loaded within 5 km, nearest first, with their status, depth, safe yield and water quality, and how many were drilled and successful; a project with no position is counted and left out.
+- **The odds from the prior alone:** the new `prior_odds` (`C.priorOdds`) is `success_odds` with no evidence to move it, so its headline and its prior sentence are step 3.3's own (`odds_prior_text`, factored out of `odds_point_text` with no change to the geophysical report).
+- **The survey plan's** caption, its lines (bearing, length, ends) and its soundings (line, distance along it, position, what is said of it).
+- **What the field visit is to check:** the rock, the position where there was none, the sources that may already serve the community, the broken ones, what draws each candidate a line crosses, and each peg.
+- **The references,** including a new WPdx+ entry in `references.yaml`.
+
+Each section says what it waits for where something is missing: no position, no water points loaded, no portfolio loaded, no elevation model analysed. Parity gains a desk study section, 14 checks (2478 in all). Each engine keeps what a desk study says of each of L1's six survey plans from its own analysis of the window, and the content of eight cases is held whole:
+- inland, with water points and earlier projects;
+- Freetown, with nothing near;
+- no position;
+- L1's two lines with more water points than are listed;
+- L1's line across the strike;
+- the site moved off L1's plan;
+- the Bullom Group;
+- surface water, where the placeholder prior applies.
+
+`tests/test_desk_study.py` holds each rule, and holds the browser's engine to Python's in a Node vm on 60 seeded cases, with a test that they reach every rule. Because `gwt-core.js` changed, each saved inversion is re-run once when its project is reopened. The 5 km, the 15 water points listed, the stamp's words, the checks and showing the prior before any survey want the owner's confirmation.
+
 ### What is still open from these steps
 
 - A page with no service worker yet (a first visit, or `file://`) fetches its bundles on demand, so a deploy landing between first paint and a later bundle could mix two releases in one tab. A release query on the bundle URLs would close it; the service worker already matches with `ignoreSearch`.
@@ -175,6 +202,7 @@ Main's nightly fuzz job went red on 17 October on a laboratory sheet with chromi
 - A drainage threshold of 0 km², which only a direct call to the Python API can ask for (the controls part c adds start at 0.05 km²), makes every land cell a line: at the cap, 1.25 million lines in about 22 s and 1.9 GB, the cost of the objects the API returns.
 - The survey plan keeps clear of the water points loaded when the terrain is analysed; water points loaded afterwards need another press in either app. It knows of no latrine, building, refuse dump or burial ground, the separation table records no source for its distances, and WPDx does not map every well, so every peg is a proposal for the field.
 - Neither report carries the survey plan, and neither app saves it with the project; step 4.4 designs the desk study report. The site project of the Interactive tab does not carry the plan's layers; the plan has a project of its own.
+- The desk study's content (step 4.4, part a) is in both engines, but no document lays it out and neither app offers it until part b. The WPdx+ inventory as read here carries no depth or yield, so the depths and yields near a site are only the earlier projects' in the portfolio loaded; a national borehole register would fill the gap.
 - The GPX was checked by parsing it as GPX 1.1; no phone app has imported it and walked to a peg.
 - A candidate and a drainage line are placed from a model of 30 m cells or coarser, so a peg moved to clear a 20 m stream ring is cleared from the line the model draws, which may lie a cell or more from the stream on the ground.
 

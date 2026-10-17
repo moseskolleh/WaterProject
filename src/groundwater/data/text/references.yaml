@@ -118,6 +118,11 @@ citations:
   usgs_geology: >-
     United States Geological Survey (1997). Geologic Map of Africa, Open-File
     Report 97-470A. Public domain, 1:5,000,000.
+  # the inventory the Water points page reads, as waterpoints.WPDX_CREDIT
+  # credits it
+  wpdx: >-
+    Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone.
+    https://www.waterpointdata.org. Licensed CC BY 4.0.
   salwaco_geology: >-
     Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone.
     Freetown.
