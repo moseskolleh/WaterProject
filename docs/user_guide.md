@@ -925,24 +925,27 @@ radius of the square shown (1 to 50 km) and the drainage threshold
 otherwise): a drainage line starts where more than that drains to a
 cell. Then press **Analyse the terrain**. The progress names each stage
 as it runs, from reading the elevation model to working out curvature
-and wetness, and in the Python app then each figure as it is drawn. In
+and wetness and looking for lineament candidates, and in the Python app
+then each figure as it is drawn. In
 the browser app the analysis runs in the background, with the bar
 across the top of the page and its **Cancel**, which stops it and keeps
 nothing. What the read found comes first: the files read, the cells and
 their size, how much of the window is a gap or taken as sea, and any
-heights read as no data. Then the four figures, each with the same
-captions under it in both apps.
+heights read as no data. Then the four terrain figures and the two of
+the lineament candidates, each with the same captions under it in both
+apps.
 
 In the browser app a new drainage threshold redraws the lines without
 analysing the ground again: the card traces them afresh on the page
 from the analysis it holds, and redraws the relief figure and the
-GeoJSON with them. The Python app keeps the figures but not the
+GeoJSON with them. The lineament candidates do not depend on the
+threshold, and stay as they are. The Python app keeps the figures but not the
 analysis, so a new threshold there needs another press of the button.
 The lines come out the same either way. A new radius, other files or
 another declared source need a new analysis in both apps, and the
 figures drawn from the old files or the old source are taken away.
 
-**The four figures.** Everything on them is worked out from the
+**The figures.** Everything on them is worked out from the
 elevation model alone, so it is a candidate to check on the ground, not
 a mapped stream, spring, wet patch or fracture. The heights are of a
 surface, not always of the ground: Copernicus GLO-30 is a surface model
@@ -993,16 +996,47 @@ blue, a missing tile taken as sea the same blue hatched, and gaps grey.
   shows most strongly under light across it and fades under light along
   it; anything seen here is inferred from the terrain, not confirmed by
   geophysics.
+- **Lineament candidates**: straight valleys (blue) and straight ridges
+  (orange) at least 600 m long, drawn over the relief in grey. In
+  crystalline basement a borehole finds water where it meets a fracture
+  zone, and a fracture zone often shows on the surface as a straight
+  valley, a straight ridge or valleys that line up. The candidates are
+  found in the relief smoothed over about 65 m and lit from the four
+  directions of the panels above: where the shading changes sharply
+  along a line, compared with the ground within 1.5 km of it, and the
+  ground bends across the line, a valley where it bends up and a ridge
+  where it bends down. Pieces that line up across a gap of up to 300 m
+  are drawn as one. They are inferred from terrain, not confirmed by
+  geophysics, and the figure says so inside it: a fracture zone, a
+  geological contact, a dyke, a road or a field boundary can each draw
+  one, and on a surface model a line of trees can too. The method favours
+  no direction (tested on terrain that has none), but it draws candidates
+  wherever the relief has straight stretches, fractured or not, so they
+  are where to look first, not where to drill.
+- **Strike of the lineament candidates**: two roses, valleys and ridges,
+  of the length of the candidates in each 10° band of strike, measured
+  clockwise from grid north. A strike has no way along it, so each band
+  is drawn twice, opposite itself; each petal's area, not its reach, goes
+  with the length, and both roses are on one scale, the rings naming the
+  lengths. A band that stands out is a direction many straight features
+  share, which is worth comparing with the structural trends of the
+  geological map. The rose is drawn only where there is a candidate.
 
 **Downloads.** Each figure downloads as PNG and SVG, and the drainage
-lines as GeoJSON (*Drainage lines (GeoJSON)* on the browser card).
+lines and the lineament candidates as GeoJSON (*Drainage lines
+(GeoJSON)* and *Lineament candidates (GeoJSON)* on the browser card).
 Each GeoJSON feature is one piece of a line inside the square shown,
 with its link number and part, its Strahler order, where it ends, its
 upslope area in km² and its length in metres, `edge_contaminated` where
 it is dashed on the figure, and `flat_routed_cells` and `filled_cells`:
 its cells routed across flats or filled hollows, and those of them the
 fill raised by 1 m or more. The file's `description` says what the lines
-are and are not, and the file carries the figures' credit line. The
+are and are not, and the file carries the figures' credit line. Each
+feature of `lineament_candidates.geojson` is one candidate as a straight
+line, with its `kind` (valley or ridge), its `length_m`, its `strike_deg`
+from grid north (0 to 180), the straight `pieces` linked into it, and
+`cut` where the square shown cuts it; its `description` says that the
+candidates are inferred from terrain, not confirmed by geophysics. The
 layers themselves are not offered as GeoTIFF yet.
 
 **Nothing is saved with the project, and nothing goes into a report
@@ -1048,6 +1082,15 @@ owner's confirmation; the changelog lists which, and why.
 | `terrain.hillshade_panel_azimuths_deg` | 270, 315, 0, 45 | the suns of the four panels |
 | `terrain.hillshade_altitude_deg` | 45 | the height of the sun above the horizon |
 | `terrain.hillshade_z_factor` | 1 | the vertical exaggeration: none |
+| `terrain.lineament_smoothing_m` | 65 | how far the heights are smoothed before lineaments are sought |
+| `terrain.lineament_contrast_km` | 1.5 | the side of the square a centreline cell is compared with |
+| `terrain.lineament_share` | 0.4 | the share of centreline cells kept, the strongest against their surroundings |
+| `terrain.lineament_min_curvature_per_km` | 0.1 | the least bend across a line, per km |
+| `terrain.lineament_turn_deg` | 30 | the most two neighbouring cells of one line may turn |
+| `terrain.lineament_straight_m` | 90 | how far a cell may lie from the straight piece it is on |
+| `terrain.lineament_piece_m` | 300 | the shortest straight piece |
+| `terrain.lineament_min_length_m` | 600 | the shortest candidate drawn |
+| `terrain.lineament_link_angle_deg`, `terrain.lineament_link_offset_m`, `terrain.lineament_link_gap_m` | 10, 90, 300 | how closely pieces must line up, and across how long a gap, to be linked |
 
 **The topographic map and the ground profile** (Python app only). The
 Topography tab also draws a topographic map over the wider window the

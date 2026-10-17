@@ -4083,6 +4083,102 @@ await withPage(async (page, base, consoleErrors) => {
       f.painted.length === f.want.length && f.painted.every((share) => share > 0.6)),
     JSON.stringify(terrainFigures.map(([name, f]) => [name, f.png, f.painted])));
 
+  // The lineament candidates' two figures (PLAN.md step 4.2), drawn from an
+  // analysis made here of the window test_study_area_maps.py draws them
+  // from: gentle relief with a valley cut due north and a ridge raised
+  // north-east, one candidate of each. The map draws each candidate from
+  // end to end in its kind's colour over the grey relief of the square
+  // shown, keyed, with the site, a scale bar and a north arrow; the rose
+  // draws each band twice, opposite itself, reaching the square root of its
+  // share of the longest band, with its rings named; both carry the title,
+  // the credit, and the note that the candidates are inferred from terrain
+  // with the caveat, inside the SVG; a rose with no candidate is not drawn;
+  // and both rasterise through toPng.
+  const lineamentFigures = await page.evaluate(async () => {
+    const C = window.GWT.core, charts = window.GWT.charts;
+    const n = 160, step = 1 / 3600;
+    const lons = new Float64Array(n), lats = new Float64Array(n), z = new Float64Array(n * n);
+    for (let k = 0; k < n; k++) {
+      lons[k] = -12.0 + k * step;
+      lats[k] = 8.5 + k * step;
+    }
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const along = (r + c) / Math.SQRT2, across = (r - c) / Math.SQRT2;
+        let v = 100 + 0.02 * c + 1.5 * Math.sin(r / 9) * Math.cos(c / 11);
+        if (r > 20 && r < 140) v -= 8 * Math.exp(-(((c - 60) / 3) ** 2));
+        if (along > 60 && along < 170) v += 8 * Math.exp(-(((across - 20) / 3) ** 2));
+        z[r * n + c] = v;
+      }
+    }
+    const grid = { lons, lats, z, rows: n, cols: n, shown: [10, 150, 10, 150], assumedSea: null,
+      sourceId: 'copernicus_glo30', seaClean: true, label: 'a generated window' };
+    const analysis = C.analyseTerrain(grid, null, null, 'float64', grid.shown);
+    const lin = C.lineamentCandidates(analysis, null, null);
+    const display = C.terrainDisplayLayers(analysis, grid, 1024);
+    const captions = Object.assign({}, C.terrainCaptions(analysis, null, 'Testville'),
+      C.lineamentCaptions(lin, 'Testville'));
+    const credit = 'Elevation: a generated window. Cells about 31 by 31 m.';
+    const opts = { captions, figureCredit: credit, lineaments: lin, axes: { lons, lats },
+      site: { lon: lons[80], lat: lats[80], label: 'Testville' } };
+    const flat = (text) => String(text).replace(/\s+/g, ' ').trim();
+    const map = charts.lineamentMap(display, opts), rose = charts.lineamentRose(lin, opts);
+    const notes = (svg, kind) => flat(Array.from(svg.querySelectorAll(`text[data-note="${kind}"]`))
+      .map((t) => t.textContent).join(' '));
+    const texts = (svg) => Array.from(svg.querySelectorAll('text')).map((t) => t.textContent);
+    const lines = Array.from(map.querySelectorAll('line[data-lineament]')).map((line) => {
+      const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((key) => Number(line.getAttribute(key)));
+      return { kind: line.getAttribute('data-kind'), colour: line.getAttribute('stroke'),
+        across: Math.round(100 * Math.abs(x2 - x1) / Math.abs(y2 - y1)) / 100 };
+    });
+    const longest = Math.max(...lin.roseValleyM, ...lin.roseRidgeM);
+    const petals = Array.from(rose.querySelectorAll('path[data-petal]')).map((path) => {
+      const kind = path.getAttribute('data-petal'), band = Number(path.getAttribute('data-band'));
+      const length = (kind === 'valley' ? lin.roseValleyM : lin.roseRidgeM)[band];
+      return [kind, band, Number(path.getAttribute('data-from')),
+        Math.abs(Number(path.getAttribute('data-reach')) - Math.sqrt(length / longest)) < 1e-6];
+    });
+    const zeros = new Array(18).fill(0);
+    const painted = async (svg) => {
+      const png = await charts.toPng(svg, { scale: 2 });
+      const viewBox = svg.getAttribute('viewBox').split(' ').map(Number);
+      return [png.width, png.height].join() === [viewBox[2] * 2, viewBox[3] * 2].join();
+    };
+    return {
+      candidates: lin.lineaments.map((l) => [l.kind, Math.round(l.strike_deg)]), lines,
+      layer: Array.from(map.querySelectorAll('image')).map((i) => i.getAttribute('data-layer')).join(),
+      key: ['Straight valley', 'Straight ridge'].every((label) => texts(map).includes(label)),
+      furniture: [map.querySelectorAll('[data-site]').length, texts(map).filter((t) => t === 'N').length,
+        texts(map).filter((t) => /^\d+(\.\d+)? k?m$/.test(t)).length].join(),
+      inside: [map, rose].map((svg) => [flat(texts(svg).join(' ')).includes(flat(captions['title_' +
+        (svg === map ? 'lineaments' : 'rose')])), notes(svg, 'credit') === credit,
+      notes(svg, 'caveat') === flat(captions.figure_note + ' ' + captions.figure_caveat)].join()),
+      petals, headings: [captions.rose_valleys, captions.rose_ridges].every((h) => texts(rose).includes(h)),
+      rings: rose.querySelectorAll('text[data-ring]').length,
+      none: charts.lineamentRose(Object.assign({}, lin, { lineaments: [], roseValleyM: zeros, roseRidgeM: zeros }),
+        opts) === null,
+      png: [await painted(map), await painted(rose)].join(),
+    };
+  });
+  check('lineament figures: the planted valley and ridge are found, one candidate each',
+    JSON.stringify(lineamentFigures.candidates) === '[["valley",0],["ridge",45]]',
+    JSON.stringify(lineamentFigures.candidates));
+  check('lineament figures: the map draws each candidate end to end in its kind\'s colour over the grey relief, ' +
+    'keyed, with the site, a scale bar and a north arrow',
+    JSON.stringify(lineamentFigures.lines.map((l) => [l.kind, l.colour])) ===
+      '[["valley","#1D4E89"],["ridge","#C15A2A"]]' && lineamentFigures.lines[0].across < 0.05 &&
+    Math.abs(lineamentFigures.lines[1].across - 1) < 0.1 && lineamentFigures.layer === 'lineaments' &&
+    lineamentFigures.key && lineamentFigures.furniture === '1,1,1', JSON.stringify(lineamentFigures));
+  check('lineament figures: the rose draws each band twice, opposite itself, its area going with its length, ' +
+    'the rings named and each rose headed with its count and length',
+    JSON.stringify(lineamentFigures.petals) ===
+      '[["valley",0,0,true],["valley",0,180,true],["ridge",4,40,true],["ridge",4,220,true]]' &&
+    lineamentFigures.headings && lineamentFigures.rings === 8 && lineamentFigures.none,
+    JSON.stringify([lineamentFigures.petals, lineamentFigures.headings, lineamentFigures.rings, lineamentFigures.none]));
+  check('lineament figures: both carry the title, the credit, and the note with the caveat inside the SVG, and ' +
+    'rasterise whole', lineamentFigures.inside.every((row) => row === 'true,true,true') &&
+    lineamentFigures.png === 'true,true', JSON.stringify([lineamentFigures.inside, lineamentFigures.png]));
+
   // The Topography and terrain card on Site & maps (PLAN.md step 4.1), at
   // #/site/terrain. Files dropped on it or picked are opened for their
   // layout at once, so a refusal or a question about a file's source shows
@@ -4380,7 +4476,8 @@ await withPage(async (page, base, consoleErrors) => {
   // has 2 GB of memory or less is asked before a window of more than a
   // million cells. The tile is an SRTM-format .hgt made here: ridges and
   // hollows falling to the south-west, at 3 arc-seconds, around a site at
-  // 8.5 N, 11.5 W.
+  // 8.5 N, 11.5 W, with a straight valley 15 m deep running due north
+  // through it, a lineament candidate on every window the card reads.
   await removeAll();
   const keptTerrain = await page.evaluate(() => {
     const app = window.GWT.app, engine = window.GWT.engine, store = app.store;
@@ -4393,7 +4490,8 @@ await withPage(async (page, base, consoleErrors) => {
     for (let row = 0; row < n; row++) {
       for (let col = 0; col < n; col++) {
         const x = col, y = n - 1 - row;
-        const z = 300 - 0.1 * (x + y) + 35 * Math.sin(x / 31) * Math.sin(y / 23) + 20 * Math.cos((x - y) / 47);
+        const z = 300 - 0.1 * (x + y) + 35 * Math.sin(x / 31) * Math.sin(y / 23) + 20 * Math.cos((x - y) / 47) -
+          15 * Math.exp(-(((x - 603) / 4) ** 2));
         view.setInt16(2 * (row * n + col), Math.round(z), false);
       }
     }
@@ -4429,11 +4527,13 @@ await withPage(async (page, base, consoleErrors) => {
     };
     /* the session's answer, and the engine's own analysis of the grid the
      * card read and handed over, at a threshold, with the GeoJSON the
-     * Python app writes */
+     * Python app writes; and the lineament candidates found in it, with
+     * their captions and GeoJSON, which no threshold moves */
     window.__terrainGot = () => {
       const r = app.terrainSession().result;
       return JSON.stringify({ links: r.links, parts: r.parts, summary: r.summary, captions: r.captions,
-        geojson: r.geojson });
+        geojson: r.geojson, lineaments: Object.assign({}, r.lineaments, { settings: null }),
+        lineamentCaptions: r.lineamentCaptions, lineamentGeojson: r.lineamentGeojson });
     };
     window.__terrainWant = (areaKm2) => {
       const C = window.GWT.core, read = app.terrainSession().read, grid = window.__grid, cfg = app.config();
@@ -4446,8 +4546,16 @@ await withPage(async (page, base, consoleErrors) => {
         radius: read.plan.radiusKm, margin: read.plan.marginKm, centre: read.centre,
         fill_note_m: a.settings.fill_note_m, sea_clean: read.grid.seaClean, sea_cells: sea,
         sea_level_m: a.settings.sea_level_m });
+      const lineaments = C.lineamentCandidates(a, null, null);
+      const lineamentGeojson = C.lineamentGeoJson(lineaments, read.grid.lons, read.grid.lats, {
+        label: read.grid.label, figure_credit: read.figureCredit, notice: read.notice, surface: read.surface,
+        radius: read.plan.radiusKm, centre: read.centre });
       return JSON.stringify({ links: a.links, parts: a.parts, summary: a.summary,
-        captions: C.terrainCaptions(a, read, read.centre.label), geojson });
+        captions: C.terrainCaptions(a, read, read.centre.label), geojson,
+        /* the settings the candidates carry name the threshold, which no
+         * candidate depends on */
+        lineaments: Object.assign({}, lineaments, { settings: null }),
+        lineamentCaptions: C.lineamentCaptions(lineaments, read.centre.label), lineamentGeojson });
     };
     window.__until = async (test, ms) => {
       const began = performance.now();
@@ -4482,7 +4590,7 @@ await withPage(async (page, base, consoleErrors) => {
   /* the tile as found, whatever was declared for the files before it */
   await setField('Source of the elevation model', 'detect');
   const stages = await page.evaluate(() => ['classes', 'fill', 'flow', 'flats', 'accumulate', 'drainage',
-    'shading', 'curvature'].map((s) => window.GWT.core.phrase('terrain.stage_' + s)));
+    'shading', 'curvature', 'lineaments'].map((s) => window.GWT.core.phrase('terrain.stage_' + s)));
   /* labels in the order the engine names its stages, none twice */
   const inOrder = (labels) => labels.every((label, i) => stages.indexOf(label) >= 0 &&
     (i === 0 || stages.indexOf(label) > stages.indexOf(labels[i - 1])));
@@ -4558,8 +4666,11 @@ await withPage(async (page, base, consoleErrors) => {
     const links = (svg) => (svg ? Array.from(new Set(Array.from(svg.querySelectorAll('path[data-link]'))
       .map((p) => Number(p.getAttribute('data-link'))))).sort((a, b) => a - b).join() : null);
     const shown = Array.from(document.querySelectorAll('[data-item="terrain"] figure.figure'));
+    /* the four, and the lineament map and, where there is a candidate, the rose */
+    const all = ['relief', 'wetness', 'curvature', 'directions', 'lineaments']
+      .concat(s.result.lineaments.lineaments.length ? ['rose'] : []);
     return { asked: window.GWT.engine.history().length - window.__mark, areaKm2: s.result.areaKm2,
-      figures, drawn: Object.keys(was).filter((key) => was[key]),
+      figures, drawn: Object.keys(was).filter((key) => was[key]), all,
       relief: !!now.relief && now.relief !== was.relief && links(now.relief) === Array.from(new Set(
         s.result.parts.filter((p) => p.vertices.length > 1).map((p) => p.id))).sort((a, b) => a - b).join() &&
         links(now.relief) !== links(was.relief),
@@ -4582,10 +4693,10 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify([retraced.caption, retraced.got.slice(0, 300), retraced.want.slice(0, 300)]));
   check('terrain threshold: of the figures, only the relief is drawn again, with the lines and the caption ' +
     'at the new threshold',
-    retraced.drawn.join() === 'relief,wetness,curvature,directions' && retraced.relief &&
-    retraced.figures.join() === 'wetness,curvature,directions' &&
-    retraced.shown.join() === 'relief,wetness,curvature,directions' && retraced.shownCaption === retraced.caption,
-    JSON.stringify([retraced.drawn, retraced.relief, retraced.figures, retraced.shown]));
+    retraced.all.length === 6 && retraced.drawn.join() === retraced.all.join() && retraced.relief &&
+    retraced.figures.join() === retraced.all.slice(1).join() &&
+    retraced.shown.join() === retraced.all.join() && retraced.shownCaption === retraced.caption,
+    JSON.stringify([retraced.all, retraced.drawn, retraced.relief, retraced.figures, retraced.shown]));
 
   /* a threshold changed while the analysis runs is traced from its answer */
   await setField('Radius of the square shown (km)', '3');
@@ -4799,10 +4910,12 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify([memory.anyway, memory.small, memory.ample]));
 
   // The figures on the card: each of the four drawn from the worker's
-  // display layers by its builder in gwt-charts.js, with the engine's
-  // captions under it, and PNG and SVG buttons that save it under the name
-  // the Python app gives its files; and the drainage lines saved as the
-  // GeoJSON the engine writes, told what the Python app tells it. The
+  // display layers by its builder in gwt-charts.js, and the lineament
+  // candidates' map and rose (PLAN.md step 4.2), with the engine's captions
+  // under each, and PNG and SVG buttons that save it under the name the
+  // Python app gives its files; and the drainage lines and the candidates
+  // saved as the GeoJSON the engine writes, told what the Python app tells
+  // it. The
   // Copernicus licence's liability sentence is in small print under the
   // downloads when the files hold a Copernicus tile, and only then. Loading
   // a project, with a run still going, opening a sample and resetting the
@@ -4817,7 +4930,11 @@ await withPage(async (page, base, consoleErrors) => {
     const done = await window.__until(window.__settled);
     const s = app.terrainSession(), want = JSON.parse(window.__terrainWant(0.5));
     const layers = { relief: ['relief'], wetness: ['wetness'], curvature: ['profile', 'tangential'],
-      directions: s.result.cfg.terrain.hillshade_panel_azimuths_deg.map((a) => 'hillshade-' + a) };
+      directions: s.result.cfg.terrain.hillshade_panel_azimuths_deg.map((a) => 'hillshade-' + a),
+      lineaments: ['lineaments'], rose: [] };
+    /* the lineament figures' captions, and the note they carry with the caveat */
+    const lineament = (name) => name === 'lineaments' || name === 'rose';
+    const captions = Object.assign({}, want.captions, want.lineamentCaptions);
     const flat = (text) => String(text).replace(/\s+/g, ' ').trim();
     const label = app.store.get('site.community') || 'Site';
     const figures = Array.from(document.querySelectorAll('[data-item="terrain"] figure.figure')).map((node) => {
@@ -4827,29 +4944,36 @@ await withPage(async (page, base, consoleErrors) => {
       const note = (kind) => flat(Array.from(svg.querySelectorAll(`text[data-note="${kind}"]`))
         .map((t) => t.textContent).join(' '));
       return { name, caption: (node.querySelector('figcaption span') || {}).textContent,
-        want: want.captions[name], layers: Array.from(svg.querySelectorAll('image'))
+        want: (lineament(name) ? want.lineamentCaptions : want.captions)[name],
+        layers: Array.from(svg.querySelectorAll('image'))
           .map((image) => image.getAttribute('data-layer')).join() === (layers[name] || []).join(),
-        title: flat(texts.join(' ')).includes(flat(want.captions['title_' + name])),
+        title: flat(texts.join(' ')).includes(flat(captions['title_' + name])),
         credit: note('credit') === flat(s.read.figureCredit),
-        caveat: note('caveat') === flat(want.captions.figure_caveat),
-        stars: svg.querySelectorAll('[data-site]').length === (layers[name] || []).length && texts.includes(label),
+        caveat: note('caveat') === flat(lineament(name) ? captions.figure_note + ' ' + captions.figure_caveat
+          : captions.figure_caveat),
+        stars: svg.querySelectorAll('[data-site]').length === (layers[name] || []).length &&
+          (name === 'rose' || texts.includes(label)),
         buttons: Array.from(node.querySelectorAll('.figure-actions button')).map((b) => b.textContent).join() };
     });
+    const count = (text) => Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .filter((b) => b.textContent === text).length;
     return { done, figures, ran: window.__lastTerrain(), readNotice: s.read.notice,
+      candidates: s.result.lineaments.lineaments.length,
       notices: document.querySelectorAll('[data-item="terrain"] .terrain-notice').length,
-      geojson: Array.from(document.querySelectorAll('[data-item="terrain"] button'))
-        .filter((b) => b.textContent === 'Drainage lines (GeoJSON)').length };
+      geojson: [count('Drainage lines (GeoJSON)'), count('Lineament candidates (GeoJSON)')].join() };
   });
-  check('terrain figures on the card: the four, each drawn from the worker\'s answer with its layers, title, ' +
-    'credit, caveat and the site starred, and the engine\'s captions under it',
+  check('terrain figures on the card: the four and the lineament candidates\' map and rose, each drawn from ' +
+    'the worker\'s answer with its layers, title, credit, caveat and the site starred on every map, and the ' +
+    'engine\'s captions under it',
     drawn.done && JSON.stringify(drawn.ran) ===
       '[["readElevation","worker","done",true],["analyseTerrain","worker","done",true]]' &&
-    drawn.figures.map((f) => f.name).join() === 'relief,wetness,curvature,directions' &&
+    drawn.candidates > 0 &&
+    drawn.figures.map((f) => f.name).join() === 'relief,wetness,curvature,directions,lineaments,rose' &&
     drawn.figures.every((f) => f.caption === f.want && f.layers && f.title && f.credit && f.caveat && f.stars),
-    JSON.stringify([drawn.done, drawn.ran, drawn.figures]));
-  check('terrain figures on the card: each with its PNG and SVG buttons, the lines\' GeoJSON after them, and ' +
-    'no liability sentence for a set holding no Copernicus tile',
-    drawn.figures.every((f) => f.buttons === 'PNG,SVG') && drawn.geojson === 1 && drawn.readNotice === null &&
+    JSON.stringify([drawn.done, drawn.ran, drawn.candidates, drawn.figures]));
+  check('terrain figures on the card: each with its PNG and SVG buttons, the lines\' and the candidates\' ' +
+    'GeoJSON after them, and no liability sentence for a set holding no Copernicus tile',
+    drawn.figures.every((f) => f.buttons === 'PNG,SVG') && drawn.geojson === '1,1' && drawn.readNotice === null &&
     drawn.notices === 0, JSON.stringify([drawn.figures.map((f) => f.buttons), drawn.geojson, drawn.readNotice,
       drawn.notices]));
 
@@ -4874,12 +4998,12 @@ await withPage(async (page, base, consoleErrors) => {
     return { was, light: light.grounds, dark: dark.grounds, back: back.grounds,
       redrawn: [light.svgs.length, light.svgs.filter((svg, i) => svg !== dark.svgs[i]).length,
         back.svgs.filter((svg, i) => svg !== light.svgs[i]).length].join(), kept: kept(back.svgs),
-      painted: light.grounds === Array(4).fill(light.surface).join() && light.grounds !== dark.grounds &&
+      painted: light.grounds === Array(6).fill(light.surface).join() && light.grounds !== dark.grounds &&
         back.grounds === dark.grounds };
   });
   check('terrain figures on the card: a new theme draws them again in its colours',
-    themed.was === 'dark' && themed.redrawn === '4,4,4' && themed.kept === 'relief,wetness,curvature,directions' &&
-    themed.painted, JSON.stringify(themed));
+    themed.was === 'dark' && themed.redrawn === '6,6,6' &&
+    themed.kept === 'relief,wetness,curvature,directions,lineaments,rose' && themed.painted, JSON.stringify(themed));
 
   /* what each button saves, kept instead of handed to the browser */
   const saved = await page.evaluate(async () => {
@@ -4897,9 +5021,10 @@ await withPage(async (page, base, consoleErrors) => {
         await window.__until(() => got.length > count, 20000);
       }
     }
-    const lineButton = Array.from(host.querySelectorAll('button'))
-      .find((b) => b.textContent === 'Drainage lines (GeoJSON)');
-    if (lineButton) lineButton.click();
+    for (const text of ['Drainage lines (GeoJSON)', 'Lineament candidates (GeoJSON)']) {
+      const lineButton = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === text);
+      if (lineButton) lineButton.click();
+    }
     support.download = window.__download;
     const out = { names: got.map((g) => g.name), figures: [] };
     for (let i = 0; i < figures.length; i++) {
@@ -4929,10 +5054,13 @@ await withPage(async (page, base, consoleErrors) => {
       const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
       const hrefs = (root) => Array.from(root.querySelectorAll('image')).map((image) => image.getAttribute('href'));
       const words = (root) => Array.from(root.querySelectorAll('text')).map((t) => t.textContent).join('|');
+      /* the rose is drawn, not painted from a raster: its petals are what
+       * it shows */
+      const rose = svg.querySelectorAll('path[data-petal]').length;
       out.figures.push({
-        png: [png.type, bitmap.width, bitmap.height, viewBox[2] * 2, viewBox[3] * 2], painted,
+        png: [png.type, bitmap.width, bitmap.height, viewBox[2] * 2, viewBox[3] * 2], painted, rose,
         svg: [got[2 * i + 1].mime, doc.documentElement.nodeName, !doc.querySelector('parsererror'),
-          hrefs(doc).length > 0 && hrefs(doc).join() === hrefs(svg).join(), words(doc) === words(svg)],
+          (hrefs(doc).length > 0 || rose > 0) && hrefs(doc).join() === hrefs(svg).join(), words(doc) === words(svg)],
       });
     }
     const lines = got.slice(2 * figures.length)[0] || {}, parsed = JSON.parse(lines.data || '{"features":[]}');
@@ -4940,20 +5068,31 @@ await withPage(async (page, base, consoleErrors) => {
       features: parsed.features.length === s.result.parts.length && parsed.features.length > 0,
       attribution: parsed.attribution === s.read.figureCredit, notice: 'notice' in parsed,
       description: parsed.description === want.captions.geojson_description };
+    const candidates = got.slice(2 * figures.length)[1] || {};
+    const found = JSON.parse(candidates.data || '{"features":[]}');
+    out.lineaments = { mime: candidates.mime,
+      same: candidates.data === s.result.lineamentGeojson && candidates.data === want.lineamentGeojson,
+      features: found.features.length === s.result.lineaments.lineaments.length && found.features.length > 0,
+      attribution: found.attribution === s.read.figureCredit, notice: 'notice' in found,
+      described: found.description.includes('not confirmed by geophysics') };
     return out;
   });
   check('terrain downloads: each figure saves as a PNG with its maps painted and an SVG of what the page ' +
     'draws, under the Python app\'s names',
-    saved.names.join() === ['relief', 'wetness', 'curvature', 'directions']
-      .map((n) => `terrain_${n}.png,terrain_${n}.svg`).join() + ',drainage_lines.geojson' &&
+    saved.names.join() === ['relief', 'wetness', 'curvature', 'directions', 'lineaments', 'rose']
+      .map((n) => `terrain_${n}.png,terrain_${n}.svg`).join() + ',drainage_lines.geojson,lineament_candidates.geojson' &&
     saved.figures.every((f) => f.png[0] === 'image/png' && f.png[1] === f.png[3] && f.png[2] === f.png[4] &&
-      f.painted.length > 0 && f.painted.every((share) => share > 0.6) &&
+      (f.painted.length > 0 || f.rose > 0) && f.painted.every((share) => share > 0.6) &&
       JSON.stringify(f.svg) === '["image/svg+xml;charset=utf-8","svg",true,true,true]'),
     JSON.stringify([saved.names, saved.figures]));
   check('terrain downloads: the drainage lines save as the GeoJSON the engine writes, credited and described ' +
     'as the Python app has it',
     JSON.stringify(saved.geojson) === JSON.stringify({ mime: 'application/geo+json', same: true, features: true,
       attribution: true, notice: false, description: true }), JSON.stringify(saved.geojson));
+  check('terrain downloads: the lineament candidates save as the GeoJSON the engine writes, credited and ' +
+    'described as not confirmed by geophysics',
+    JSON.stringify(saved.lineaments) === JSON.stringify({ mime: 'application/geo+json', same: true, features: true,
+      attribution: true, notice: false, described: true }), JSON.stringify(saved.lineaments));
 
   /* a Copernicus set: the three tiles around a missing fourth, declared
    * Copernicus GLO-30, at 8 N, 12 W */
@@ -5015,14 +5154,15 @@ await withPage(async (page, base, consoleErrors) => {
       credit: s().read.figureCredit.includes(C.phrase('terrain.credit_copernicus_modified')) &&
         figures.every((f) => flat(Array.from(f.querySelectorAll('text[data-note="credit"]'))
           .map((t) => t.textContent).join(' ')) === flat(s().read.figureCredit)),
-      geojson: JSON.parse(s().result.geojson).notice,
+      geojson: JSON.parse(s().result.geojson).notice, lineaments: JSON.parse(s().result.lineamentGeojson).notice,
+      drawn: 5 + (s().result.lineaments.lineaments.length ? 1 : 0),
     };
   });
   check('terrain figures on the card: a Copernicus set\'s liability sentence is in small print under the ' +
-    'downloads, once, and its credit inside every figure and in the GeoJSON',
-    licensed.figures === 4 && JSON.stringify(licensed.notices) === JSON.stringify([licensed.liability]) &&
-    licensed.underDownloads && licensed.credit && licensed.geojson === licensed.liability,
-    JSON.stringify(licensed));
+    'downloads, once, and its credit inside every figure and in both GeoJSON files',
+    licensed.figures === licensed.drawn && JSON.stringify(licensed.notices) === JSON.stringify([licensed.liability]) &&
+    licensed.underDownloads && licensed.credit && licensed.geojson === licensed.liability &&
+    licensed.lineaments === licensed.liability, JSON.stringify(licensed));
 
   /* A file removed or added, or the source put in other words, after a
    * run: what was read and drawn from the files as they were is taken

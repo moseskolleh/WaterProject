@@ -7010,7 +7010,19 @@
       title_rose: phrase('terrain.title_rose', { where: where }),
       lineaments: caption,
       rose: phrase('terrain.caption_rose'),
+      figure_note: phrase('terrain.figure_note_lineaments'),
+      rose_valleys: phrase('terrain.rose_valleys', { count: linSum(result.roseValleys),
+        km: linSum(result.roseValleyM) / 1000.0 }),
+      rose_ridges: phrase('terrain.rose_ridges', { count: linSum(result.roseRidges),
+        km: linSum(result.roseRidgeM) / 1000.0 }),
     };
+  }
+
+  /* a sum taken in order from 0, as Python's sum() takes it */
+  function linSum(values) {
+    var total = 0;
+    for (var i = 0; i < values.length; i++) total = total + values[i];
+    return total;
   }
 
   /** The candidates shown as GeoJSON text, byte for byte as

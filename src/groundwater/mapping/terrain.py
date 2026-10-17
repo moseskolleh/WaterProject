@@ -23,7 +23,9 @@ The terrain figures (PLAN.md step 4.1) are drawn here too, from an analysis
 :mod:`.terrain_analysis` worked out: the shaded relief with its drainage
 lines, the wetness index, the curvature and the relief lit from four
 directions, each with the captions the analysis wrote and the model's
-credit and the analysis's caveat drawn inside the figure.
+credit and the analysis's caveat drawn inside the figure; and the
+lineament candidates :mod:`.lineaments` found in it, over the shaded relief
+and as a rose of their strikes (step 4.2).
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection
 from matplotlib.colors import Normalize, to_rgb
+from matplotlib.lines import Line2D
 from matplotlib.transforms import ScaledTranslation
 
 from ..config import HouseStyle, TerrainConfig
@@ -61,6 +64,7 @@ from .elevation import (  # noqa: F401 - the moved names, re-exported
     row_metric,
     wgs84_cell_size,
 )
+from .lineaments import ROSE_BANDS, LineamentAnalysis, lineament_lonlat
 from .regional import (
     ADMIN_CREDIT,
     AreaWindow,
@@ -333,7 +337,7 @@ def geojson_meta(analysis: TerrainAnalysis, read: ElevationRead | None = None,
                  centre: WindowCentre | None = None, credit: str | None = None) -> dict:
     """What :func:`.terrain_analysis.drainage_geojson` is told about an
     analysis, as the app tells it, so that the download says what the
-    captions say.
+    captions say; :func:`.lineaments.lineament_geojson` is told the same.
 
     For a window read from tiles, ``read`` gives the label, the credit line,
     the Copernicus notice, the surface note, the radius and the margin and
@@ -558,6 +562,17 @@ _FLAT_OPACITY = 0.45
 _CONTOUR_COLOUR = "#5A3A1E"
 _CONTOUR_OPACITY = 0.7
 _CONTOUR_CELLS = 300
+#: The lineament candidates: the colour of a valley and of a ridge, the
+#: width they are drawn at, and how far the grey relief under them is
+#: lightened towards white, so that the lines stand out on it
+_VALLEY_COLOUR = "#1D4E89"
+_RIDGE_COLOUR = "#C15A2A"
+_LINEAMENT_WIDTH = 1.6
+_LINEAMENT_GROUND = 0.4
+#: The rose: the opacity of a petal, and the shares of the longest band its
+#: rings are drawn at
+_PETAL_OPACITY = 0.85
+_ROSE_RINGS = (0.25, 0.5, 0.75, 1.0)
 
 
 def _shown_axes(analysis: TerrainAnalysis) -> tuple[tuple[slice, slice], np.ndarray, np.ndarray,
@@ -964,6 +979,146 @@ def plot_hillshade_directions(
         fig.suptitle(captions["title_directions"], fontsize=11, fontweight="bold")
         fig.tight_layout()
         _small_print(fig, credit or _grid_credit(analysis.grid), captions["figure_caveat"])
+        return _finished(fig, path, style, svg)
+
+
+def _lineament_note(captions: dict[str, str]) -> str:
+    """What both lineament figures carry inside them under the credit: that
+    the candidates are inferred from terrain, then the analysis's caveat,
+    as one paragraph."""
+    return f"{captions['figure_note']} {captions['figure_caveat']}"
+
+
+def plot_lineaments(
+    analysis: TerrainAnalysis,
+    captions: dict[str, str],
+    site: SiteMetadata | None = None,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    svg: bool = False,
+    credit: str | None = None,
+    *,
+    lineaments: LineamentAnalysis,
+):
+    """The lineament candidates over the shaded relief of the square shown:
+    the fifth terrain figure (PLAN.md step 4.2).
+
+    The land is the multidirectional hillshade in grey, lightened 40%
+    towards white, with sea and gaps painted as on the relief; each
+    candidate is a straight line from its start to its end, a valley in
+    blue and a ridge in orange, keyed in the upper left. ``captions`` is
+    what :func:`.terrain_analysis.terrain_captions` gave with what
+    :func:`.lineaments.lineament_captions` gave merged into it: the title
+    is ``captions["title_lineaments"]``, and the note that the candidates
+    are inferred from terrain is drawn inside the figure before the caveat;
+    the captions to print under it are ``captions["lineaments"]``.
+    ``credit``, ``path`` and ``svg`` are as :func:`plot_terrain_relief`
+    takes them.
+    """
+    style = style or HouseStyle()
+    view, lons, lats, frame = _shown_axes(analysis)
+    land = analysis.core.cls[view] == LAND
+    shade = np.asarray(analysis.hillshade_multi[view], dtype=np.float64)
+    rgba = _coloured(np.where(land, shade, np.nan), "gray", 0.0, 1.0)
+    lit = land & np.isfinite(shade)
+    rgba[lit, :3] = (1.0 - _LINEAMENT_GROUND) * rgba[lit, :3] + _LINEAMENT_GROUND
+    _paint_ground(rgba, analysis, view)
+    grid = analysis.grid
+    segments = {"valley": [], "ridge": []}
+    for item in lineaments.lineaments:
+        segments[item.kind].append([lineament_lonlat(lineaments, grid.lons, grid.lats, item.start),
+                                    lineament_lonlat(lineaments, grid.lons, grid.lats, item.end)])
+
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 6.0))
+        _draw_raster(ax, rgba, frame)
+        for kind, colour in (("valley", _VALLEY_COLOUR), ("ridge", _RIDGE_COLOUR)):
+            if segments[kind]:
+                ax.add_collection(LineCollection(segments[kind], colors=colour, linewidths=_LINEAMENT_WIDTH,
+                                                 capstyle="round", zorder=4, label=kind))
+        if site is not None:
+            _mark_site(ax, site, carto.SITE)
+        ax.legend(handles=[Line2D([0], [0], color=_VALLEY_COLOUR, lw=2.0, label="Straight valley"),
+                           Line2D([0], [0], color=_RIDGE_COLOUR, lw=2.0, label="Straight ridge")],
+                  loc="upper left", fontsize=7, framealpha=0.85)
+        ax.set_xlim(frame[0], frame[1])
+        ax.set_ylim(frame[2], frame[3])
+        below = _geo_axes_finish(ax, float(np.mean(lats)), credit or _grid_credit(analysis.grid))
+        _caveat(ax, below, _lineament_note(captions))
+        ax.set_title(captions["title_lineaments"])
+        fig.tight_layout()
+        return _finished(fig, path, style, svg)
+
+
+def _rose_label(metres: float) -> str:
+    """A ring's length, in km to a tenth below 10 km and whole above."""
+    km = metres / 1000.0
+    return f"{km:.1f} km" if km < 10.0 else f"{km:.0f} km"
+
+
+def plot_lineament_rose(
+    analysis: TerrainAnalysis,
+    captions: dict[str, str],
+    site: SiteMetadata | None = None,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    svg: bool = False,
+    credit: str | None = None,
+    *,
+    lineaments: LineamentAnalysis,
+):
+    """The strikes of the lineament candidates as two roses, valleys and
+    ridges side by side: the sixth terrain figure (PLAN.md step 4.2).
+
+    Each 10-degree band of strike is a petal drawn twice, opposite itself,
+    because a strike has no way along it, with north up and bearings
+    clockwise. A petal's reach is the square root of its band's length over
+    the longest band's, of either rose, so that its area is in proportion
+    to the length and the two roses are on one scale; the rings are at a
+    quarter, a half, three quarters and all of the longest band's length,
+    which they name. Each rose is headed with its count and length
+    (``captions["rose_valleys"]`` and ``captions["rose_ridges"]``). The
+    figure needs a candidate to draw: ``lineaments`` with none is refused.
+    ``captions``, ``credit``, ``path`` and ``svg`` are as
+    :func:`plot_lineaments` takes them; ``site`` is taken so that every
+    terrain figure is called alike, and a rose has nowhere to mark it. The
+    captions to print under it are ``captions["rose"]``.
+    """
+    del site
+    longest = max((*lineaments.rose_valley_m, *lineaments.rose_ridge_m), default=0.0)
+    if not longest > 0.0:
+        raise ValueError("a rose of the lineament candidates needs a candidate to draw")
+    style = style or HouseStyle()
+    width = math.radians(180.0 / ROSE_BANDS)
+    roses = ((lineaments.rose_valley_m, _VALLEY_COLOUR, captions["rose_valleys"]),
+             (lineaments.rose_ridge_m, _RIDGE_COLOUR, captions["rose_ridges"]))
+
+    with figure_context(style):
+        fig, axes = plt.subplots(1, 2, figsize=(style.figure_width_in, 3.9), subplot_kw={"projection": "polar"})
+        for ax, (lengths, colour, heading) in zip(axes, roses, strict=True):
+            ax.set_theta_zero_location("N")
+            ax.set_theta_direction(-1)
+            for band, length in enumerate(lengths):
+                if length <= 0.0:
+                    continue
+                reach = math.sqrt(length / longest)
+                for start in (band * 10.0, band * 10.0 + 180.0):
+                    # under the axis (2.5), so the rings and their lengths read over them
+                    ax.bar(math.radians(start + 5.0), reach, width=width, bottom=0.0, color=colour,
+                           alpha=_PETAL_OPACITY, edgecolor="white", linewidth=0.5, zorder=2)
+            ax.set_ylim(0.0, 1.0)
+            ax.set_yticks([math.sqrt(share) for share in _ROSE_RINGS])
+            ax.set_yticklabels([])
+            for share in _ROSE_RINGS:
+                ax.text(math.radians(22.5), math.sqrt(share), _rose_label(share * longest), fontsize=6,
+                        color=carto.INK_MUTED, ha="left", va="bottom", zorder=5, path_effects=carto.halo())
+            ax.set_xticks([math.radians(a) for a in (0.0, 90.0, 180.0, 270.0)])
+            ax.set_xticklabels(["N", "E", "S", "W"], fontsize=8)
+            ax.grid(color=carto.INK_FAINT, linewidth=0.4, alpha=0.6)
+            ax.set_title(heading, fontsize=9, pad=12)
+        fig.suptitle(captions["title_rose"], fontsize=11, fontweight="bold")
+        fig.tight_layout()
+        _small_print(fig, credit or _grid_credit(analysis.grid), _lineament_note(captions))
         return _finished(fig, path, style, svg)
 
 

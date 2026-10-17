@@ -65,7 +65,8 @@
  *     (bench/terrain_memory.py --write-tile), picked on the Topography and
  *     terrain card of Site & maps as an operator picks a tile, and "Analyse
  *     the terrain" pressed: the wall time from the click to the last change
- *     the page makes to show the four figures, and the longest main-thread
+ *     the page makes to show the figures (the four of step 4.1 and the
+ *     lineament candidates' two of step 4.2), and the longest main-thread
  *     task in that interval. Each press is in a browser of its own, with no
  *     site entered, so the window is centred on the middle of the tile as
  *     run.py's is: the default window, and one near the cap on cells, at
@@ -473,8 +474,10 @@ async function setTerrainRadius(page, km) {
 }
 
 /* Press "Analyse the terrain" and time it to the last change the page makes
- * to show the four figures. A device that reports 2 GB of memory or less is
- * asked first before a large window, and then the run starts at the answer. */
+ * to show the figures: the four terrain figures and the lineament
+ * candidates' map, and their rose where there is a candidate (PLAN.md step
+ * 4.2). A device that reports 2 GB of memory or less is asked first before a
+ * large window, and then the run starts at the answer. */
 async function analyseTerrain(page) {
   await page.evaluate(`(() => {
     const b = window.__bench;
@@ -493,7 +496,7 @@ async function analyseTerrain(page) {
   const ask = page.getByRole('button', { name: 'Run it anyway' });
   if (await ask.count()) await ask.click();
   // finished: the page has changed since the click, shows no work under
-  // way, shows the four figures (or a refusal, reported below), and has not
+  // way, shows the figures (or a refusal, reported below), and has not
   // changed for SETTLED_MS
   await page.waitForFunction(`(() => {
     const b = window.__bench, card = document.querySelector('${TERRAIN_CARD}');
@@ -501,7 +504,7 @@ async function analyseTerrain(page) {
     if (document.querySelector('#work-status .work-bar')) return false;
     if (Array.from(card.querySelectorAll('p.muted'))
       .some((p) => p.textContent.startsWith('Analysing the terrain.'))) return false;
-    if (card.querySelectorAll('figure').length < 4 &&
+    if (card.querySelectorAll('figure').length < 5 &&
       !card.querySelector('.btn-row ~ .callout-bad')) return false;
     return performance.now() - b.changes[b.changes.length - 1] > ${SETTLED_MS};
   })()`, null, { polling: 250, timeout: 600000 });

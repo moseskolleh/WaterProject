@@ -5891,6 +5891,16 @@
   var TERRAIN_CONTOUR = '#5A3A1E';
   /* _mark_site's colour on the topographic map */
   var TERRAIN_SITE = '#C1272D';
+  /* the lineament candidates (mapping/terrain.py _VALLEY_COLOUR and
+   * _RIDGE_COLOUR): a valley blue and a ridge orange, drawn 1.6 wide over
+   * the grey relief lightened 40% towards white; and the rose's petals at
+   * 85% and the shares of the longest band its rings are drawn at */
+  var LINEAMENT_VALLEY = '#1D4E89';
+  var LINEAMENT_RIDGE = '#C15A2A';
+  var LINEAMENT_WIDTH = 1.6;
+  var LINEAMENT_GROUND = 0.4;
+  var PETAL_OPACITY = 0.85;
+  var ROSE_RINGS = [0.25, 0.5, 0.75, 1.0];
 
   /* A packed 0xRRGGBB colour moved `f` of the way to `to`, each channel
    * rounded as mixHex rounds. */
@@ -6131,7 +6141,9 @@
    * colourOf, overlay}: colourOf colours the display's cells (rasterImage),
    * and overlay(panel, geo) draws over the raster, inside the panel's clip
    * and under its furniture. `bar` is colourBar's spec without its place,
-   * or null. */
+   * or null; `legend` is legend's entries, drawn in the first panel's upper
+   * left, or none; and `caveat`, where given, is drawn in place of the
+   * captions' figure_caveat. */
   function terrainFigure(display, opts, spec) {
     var p = palette();
     var width = opts.width || 680;
@@ -6169,7 +6181,7 @@
         notes.push({ text: line, fill: p.muted, note: 'credit' });
       });
     }
-    var caveat = opts.captions && opts.captions.figure_caveat;
+    var caveat = spec.caveat !== undefined ? spec.caveat : opts.captions && opts.captions.figure_caveat;
     if (caveat) {
       wrapText(caveat, notesWidth, 8.5).forEach(function (line) {
         notes.push({ text: line, fill: p.inkSoft, note: 'caveat' });
@@ -6219,6 +6231,11 @@
       return rect;
     });
 
+    /* a key in the first panel's upper left, which the scale bar (lower
+     * left) and the north arrow (upper right) leave free */
+    if (spec.legend) {
+      legend({ svg: svg, palette: p }, spec.legend, { x: rects[0].x + 14, y: rects[0].y + 20 });
+    }
     if (spec.bar) {
       var barTop = rects[0].y + ph * 0.075, barBottom = rects[rects.length - 1].y + ph * 0.925;
       var edge = rects[columns - 1];
@@ -6252,6 +6269,10 @@
    *   figureCredit gives it, drawn inside every figure above the caveat
    * @property {Object|null} [cfg] the configuration's terrain section; hillshadeDirections names its
    *   panels' layers by hillshade_panel_azimuths_deg
+   * @property {Object|null} [lineaments] what C.lineamentCandidates gives (lineamentMap and
+   *   lineamentRose), whose captions, C.lineamentCaptions's, are merged into `captions`
+   * @property {{lons: ArrayLike<number>, lats: ArrayLike<number>}|null} [axes] the analysed grid's
+   *   cell centres, which lineamentMap places the candidates' ends by (C.lineamentLonLat)
    * @property {number} [width] the figure's width in the SVG's units, 680 by default
    */
 
@@ -6406,6 +6427,184 @@
     });
   }
 
+  /* What both lineament figures draw under their credit, as one paragraph:
+   * that the candidates are inferred from terrain, then the caveat
+   * (terrain._lineament_note). */
+  function lineamentNote(captions) {
+    return [captions.figure_note, captions.figure_caveat].filter(Boolean).join(' ');
+  }
+
+  /**
+   * The fifth terrain figure (PLAN.md step 4.2): the lineament candidates
+   * over the relief of the square shown, as mapping/terrain.py's
+   * plot_lineaments draws them. The land is the multidirectional hillshade
+   * in grey, lightened 40% towards white; sea, hatched assumed sea and gaps
+   * as every terrain panel draws them. Each candidate is a straight line
+   * from its start to its end, placed by C.lineamentLonLat on the analysed
+   * grid's cell centres, a valley blue and a ridge orange, keyed in the
+   * upper left. The note that the candidates are inferred from terrain is
+   * drawn with the caveat under the credit.
+   * @param {Object|null} display what C.terrainDisplayLayers gives
+   * @param {TerrainFigureOptions} opts with `lineaments` and `axes`
+   * @returns {SVGElement|null} the figure, or null without a display or candidates' analysis
+   */
+  function lineamentMap(display, opts) {
+    var o = /** @type {TerrainFigureOptions} */ (opts || {});
+    if (!display || !o.lineaments || !o.axes) return null;
+    var captions = o.captions || {}, grey = rampTable('gray'), multi = display.hillshadeMulti;
+    var result = o.lineaments, axes = o.axes;
+    var segments = result.lineaments.map(function (item) {
+      return { id: item.id, kind: item.kind, a: C.lineamentLonLat(result, axes.lons, axes.lats, item.start),
+        b: C.lineamentLonLat(result, axes.lons, axes.lats, item.end) };
+    });
+    return terrainFigure(display, o, {
+      title: captions.title_lineaments,
+      caveat: lineamentNote(captions),
+      panels: [{
+        name: 'lineaments',
+        colourOf: function (value, k, x, y) {
+          var ground = terrainGround(display, k, x, y);
+          if (ground !== -2) return ground;
+          var v = multi[k];
+          return v === v ? mixPacked(grey[rampEntry(v, 0, 1)], 0xFFFFFF, LINEAMENT_GROUND) : -1;
+        },
+        overlay: function (panel) {
+          segments.forEach(function (seg) {
+            var a = panel.project(seg.a[0], seg.a[1]), b = panel.project(seg.b[0], seg.b[1]);
+            panel.layer.appendChild(svgEl('line', {
+              x1: a[0], y1: a[1], x2: b[0], y2: b[1], 'stroke-width': LINEAMENT_WIDTH, 'stroke-linecap': 'round',
+              stroke: seg.kind === 'valley' ? LINEAMENT_VALLEY : LINEAMENT_RIDGE,
+              'data-lineament': seg.id, 'data-kind': seg.kind,
+            }));
+          });
+        },
+      }],
+      legend: [{ kind: 'line', colour: LINEAMENT_VALLEY, label: 'Straight valley' },
+        { kind: 'line', colour: LINEAMENT_RIDGE, label: 'Straight ridge' }],
+      bar: null,
+    });
+  }
+
+  /* A ring's length: in km to a tenth below 10 km and whole above
+   * (terrain._rose_label). */
+  function roseLabel(metres) {
+    var km = metres / 1000;
+    return C.pyFixed(km, km < 10 ? 1 : 0) + ' km';
+  }
+
+  /**
+   * The sixth terrain figure (PLAN.md step 4.2): the strikes of the
+   * lineament candidates as two roses, valleys and ridges side by side, as
+   * plot_lineament_rose draws them. Each 10-degree band is a petal drawn
+   * twice, opposite itself, north up and bearings clockwise; a petal
+   * reaches the square root of its band's length over the longest band's,
+   * of either rose, so its area goes with the length and the two roses are
+   * on one scale. The rings are at a quarter, a half, three quarters and
+   * all of the longest band's length, named along the bearing 22.5°. Each
+   * rose is headed with its count and length (rose_valleys, rose_ridges),
+   * and the credit and the note are drawn under both.
+   * @param {Object|null} result what C.lineamentCandidates gives
+   * @param {TerrainFigureOptions} opts its captions merged with C.lineamentCaptions's
+   * @returns {SVGElement|null} the figure, or null where there is no candidate to draw
+   */
+  function lineamentRose(result, opts) {
+    if (!result) return null;
+    var o = /** @type {TerrainFigureOptions} */ (opts || {});
+    var captions = o.captions || {}, p = palette(), width = o.width || 680;
+    var longest = Math.max.apply(null, result.roseValleyM.concat(result.roseRidgeM));
+    if (!(longest > 0)) return null;
+    var left = 54, right = 18, gap = 58;
+    var side = (width - left - right - gap) / 2, radius = side / 2 - 26;
+    var titleLines = captions.title_rose ? wrapText(captions.title_rose, width - left - 14,
+      TITLE_SIZE * TITLE_BOLD_WIDTH) : [];
+    var top = 14 + titleLines.length * 16 + 24;
+    var notes = [], notesWidth = width - left - 14;
+    if (o.figureCredit) {
+      wrapText(o.figureCredit, notesWidth, 8.5).forEach(function (line) {
+        notes.push({ text: line, fill: p.muted, note: 'credit' });
+      });
+    }
+    var note = lineamentNote(captions);
+    if (note) {
+      wrapText(note, notesWidth, 8.5).forEach(function (line) {
+        notes.push({ text: line, fill: p.inkSoft, note: 'caveat' });
+      });
+    }
+    var notesTop = top + side + 10;
+    var height = Math.ceil(notesTop + notes.length * 11 + 6);
+    var svg = svgEl('svg', {
+      viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS, 'font-family': FONT,
+      role: 'img', 'aria-label': captions.title_rose || 'Rose of strikes',
+    });
+    svg.appendChild(svgEl('rect', { x: 0, y: 0, width: width, height: height, fill: p.surface }));
+    titleLines.forEach(function (line, i) {
+      svg.appendChild(svgEl('text', {
+        x: left, y: 18 + i * 16, 'font-size': TITLE_SIZE, 'font-weight': 600, fill: p.ink, text: line,
+      }));
+    });
+    var at = function (cx, cy, reach, degrees) {
+      var a = degrees * Math.PI / 180;
+      return [cx + reach * Math.sin(a), cy - reach * Math.cos(a)];
+    };
+    [['valley', result.roseValleyM, LINEAMENT_VALLEY, captions.rose_valleys],
+      ['ridge', result.roseRidgeM, LINEAMENT_RIDGE, captions.rose_ridges]].forEach(function (rose, n) {
+      var kind = rose[0], lengths = rose[1], colour = rose[2], heading = rose[3];
+      var cx = left + n * (side + gap) + side / 2, cy = top + side / 2;
+      if (heading) {
+        svg.appendChild(svgEl('text', {
+          x: cx, y: top - 8, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 600, fill: p.inkSoft,
+          text: heading,
+        }));
+      }
+      var g = svgEl('g', { 'data-rose': kind });
+      svg.appendChild(g);
+      lengths.forEach(function (length, band) {
+        if (!(length > 0)) return;
+        var reach = Math.sqrt(length / longest) * radius;
+        [band * 10, band * 10 + 180].forEach(function (start) {
+          var a = at(cx, cy, reach, start), b = at(cx, cy, reach, start + 10);
+          g.appendChild(svgEl('path', {
+            d: 'M' + cx.toFixed(2) + ' ' + cy.toFixed(2) + 'L' + a[0].toFixed(2) + ' ' + a[1].toFixed(2) +
+              'A' + reach.toFixed(2) + ' ' + reach.toFixed(2) + ' 0 0 1 ' + b[0].toFixed(2) + ' ' +
+              b[1].toFixed(2) + 'Z',
+            fill: colour, 'fill-opacity': PETAL_OPACITY, stroke: '#FFFFFF', 'stroke-width': 0.5,
+            'data-petal': kind, 'data-band': band, 'data-from': start,
+            'data-reach': (reach / radius).toFixed(6),
+          }));
+        });
+      });
+      /* the rings and the bearings over the petals, the rings named */
+      ROSE_RINGS.forEach(function (share) {
+        var reach = Math.sqrt(share) * radius;
+        svg.appendChild(svgEl('circle', {
+          cx: cx, cy: cy, r: reach, fill: 'none', stroke: p.muted,
+          'stroke-width': share === 1 ? 1 : 0.4, 'stroke-opacity': share === 1 ? 0.9 : 0.6,
+        }));
+        var spot = at(cx, cy, reach, 22.5);
+        svg.appendChild(svgEl('text', {
+          x: spot[0] + 2, y: spot[1] - 2, 'font-size': 8, fill: p.inkSoft, stroke: p.surface,
+          'stroke-width': 2.4, 'paint-order': 'stroke', 'data-ring': share, text: roseLabel(share * longest),
+        }));
+      });
+      [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']].forEach(function (mark) {
+        var a = at(cx, cy, radius, mark[0]), b = at(cx, cy, radius + 13, mark[0]);
+        svg.appendChild(svgEl('line', {
+          x1: cx, y1: cy, x2: a[0], y2: a[1], stroke: p.muted, 'stroke-width': 0.4, 'stroke-opacity': 0.6,
+        }));
+        svg.appendChild(svgEl('text', {
+          x: b[0], y: b[1] + 4, 'text-anchor': 'middle', 'font-size': 10, fill: p.inkSoft, text: mark[1],
+        }));
+      });
+    });
+    notes.forEach(function (line, i) {
+      svg.appendChild(svgEl('text', {
+        x: left, y: notesTop + 8 + i * 11, 'font-size': 8.5, fill: line.fill,
+        'data-note': line.note, text: line.text,
+      }));
+    });
+    return svg;
+  }
+
   /* ============================================================ export */
 
   /* Rasterise an SVG to a PNG data URL for embedding in the .docx reports.
@@ -6505,6 +6704,8 @@
      * from C.terrainDisplayLayers, and the raster they are painted with. */
     terrainRelief: terrainRelief, wetnessMap: wetnessMap, curvatureMaps: curvatureMaps,
     hillshadeDirections: hillshadeDirections, rasterImage: rasterImage,
+    /* and the lineament candidates' two (PLAN.md step 4.2) */
+    lineamentMap: lineamentMap, lineamentRose: lineamentRose,
     rampColour: rampColour, colourRamps: COLOUR_RAMPS, colourBar: colourBar,
     testOverview: testOverview, cooperJacob: cooperJacob,
     recovery: recoveryPlot, stepTest: stepTestPlot, diagnostic: diagnosticPlot,

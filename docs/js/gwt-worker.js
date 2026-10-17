@@ -172,13 +172,21 @@
      * cropped to the square shown and thinned to at most 1,024 cells a
      * side, the core at full size so that the page traces the lines again
      * for a new drainage threshold, the lines, the summary and the
-     * captions. The rest of the analysis (the filled surface, the
-     * gradients, the layers at full size) stays here. The read comes with
-     * its grid set to null: the grid is sent once, as payload.grid. */
+     * captions; and the lineament candidates found in it (PLAN.md step
+     * 4.2), with their captions, the last 15% of the bar. The rest of the
+     * analysis (the filled surface, the gradients, the layers at full
+     * size) stays here, and is let go before the candidates are sought:
+     * they read only the heights, the classes, the row metric and the
+     * settings, and the layers they would otherwise be sought beside
+     * raised the worker's peak by about 90 MB at the cap. The read comes
+     * with its grid set to null: the grid is sent once, as payload.grid. */
     analyseTerrain: function (payload, progress) {
       var C = GWT.core, grid = payload.grid;
-      var analysis = C.analyseTerrain(grid, payload.cfg, progress, 'float32', grid.shown);
-      return {
+      var part = function (from, width) {
+        return function (fraction, label) { if (progress) progress(from + width * fraction, label); };
+      };
+      var analysis = C.analyseTerrain(grid, payload.cfg, part(0, 0.85), 'float32', grid.shown);
+      var answer = {
         display: C.terrainDisplayLayers(analysis, grid, 1024),
         core: C.terrainCore(analysis),
         links: analysis.links,
@@ -186,7 +194,14 @@
         summary: analysis.summary,
         captions: C.terrainCaptions(analysis, payload.read, payload.where),
         kCells: analysis.kCells,
+        lineaments: null,
+        lineamentCaptions: null,
       };
+      var kept = { grid: analysis.grid, core: analysis.core, metric: analysis.metric, settings: analysis.settings };
+      analysis = null;
+      answer.lineaments = C.lineamentCandidates(kept, null, part(0.85, 0.15));
+      answer.lineamentCaptions = C.lineamentCaptions(answer.lineaments, payload.where);
+      return answer;
     },
   };
 
