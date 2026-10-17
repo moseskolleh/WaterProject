@@ -108,6 +108,22 @@ def parse_depth_interval(value) -> tuple[float, float] | None:
     return top, bottom
 
 
+def sum_in_order(values: Iterable[float]) -> float:
+    """A sum taken one value at a time from 0, as the browser engine takes it.
+
+    From Python 3.12 the built-in ``sum()`` compensates a sum of floats, so it
+    can differ from ``gwt-core.js``, and from Python 3.10 and 3.11, in the last
+    bit, which a value on a rounding tie then prints differently.
+
+    >>> sum_in_order([2.7619047619047623, 0.6095238095238095, 1.1785714285714284])
+    4.550000000000001
+    """
+    total = 0.0
+    for value in values:
+        total = total + value
+    return total
+
+
 def round_sig(value: float, sig: int = 3) -> float:
     """Round ``value`` to ``sig`` significant figures.
 

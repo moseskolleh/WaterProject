@@ -72,6 +72,7 @@ from scipy.special import exp1, k0e, k1e
 
 from ..config import PumpingConfig
 from ..text import phrase, phrase_table
+from ..utils import sum_in_order
 
 MIN_PER_DAY = 1440.0
 
@@ -586,7 +587,7 @@ def bootstrap_fit(analysis, method: str, config: PumpingConfig | None = None) ->
         out.reason = "too_few"
         return out
     residuals = [float(v) for v in (y - fitted)]
-    mean = sum(residuals) / n
+    mean = sum_in_order(residuals) / n
     # Centred, and scaled up by sqrt(n / (n - 2)): a fit of two parameters
     # leaves residuals smaller than the reading errors behind them by that
     # factor on average (Davison and Hinkley 1997, on resampling the
@@ -687,9 +688,9 @@ def _local_slopes(times: list[float], values: list[float], window: float) -> lis
             slopes.append(None)
             continue
         n = len(xs)
-        sx, sy = sum(xs), sum(ys)
-        sxx = sum(v * v for v in xs)
-        sxy = sum(a * b for a, b in zip(xs, ys, strict=True))
+        sx, sy = sum_in_order(xs), sum_in_order(ys)
+        sxx = sum_in_order(v * v for v in xs)
+        sxy = sum_in_order(a * b for a, b in zip(xs, ys, strict=True))
         den = n * sxx - sx * sx
         slopes.append((n * sxy - sx * sy) / den if den > 0 else None)
     return slopes

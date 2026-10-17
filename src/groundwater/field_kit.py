@@ -74,6 +74,7 @@ from .models import SiteMetadata
 from .reporting.citations import references_for
 from .supervision.field_checks import disinfection_dose
 from .text import phrase, render_text
+from .utils import sum_in_order
 from .ves.interpret import depth_of_investigation
 
 __all__ = [
@@ -263,7 +264,7 @@ def airlift_yield(method: str, *, volume_l: float | None = None,
                 or not all(_positive(t) for t in times)):
             raise ValueError("a timed container needs its volume and at least one "
                              "time, each more than zero")
-        mean = sum(times) / len(times)
+        mean = sum_in_order(times) / len(times)
         q = float(volume_l) / mean
         basis = phrase("drilling_copilot.airlift_bucket",
                        volume=float(volume_l), mean=mean, n=len(times))

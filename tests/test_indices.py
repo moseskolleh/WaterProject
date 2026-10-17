@@ -42,6 +42,18 @@ def test_health_risk_flags_arsenic():
     assert any(f.code in ("hazard_index", "cancer_risk") for f in hr.flags)
 
 
+def test_hazard_index_added_as_the_browser_adds_it():
+    # 4.55 exactly, a tie at one decimal: added one quotient at a time, as
+    # gwt-core.js and Python 3.10 and 3.11 add them, the index comes to
+    # 4.550000000000001 and prints 4.6, where the compensated sum() of
+    # Python 3.12 came to 4.55 and printed 4.5
+    sample = _sample(**{"Chromium (total)": 0.064, "Copper": 1.65, "Arsenic": 0.029})
+    hr = assess_health_risk(sample)
+    assert hr is not None
+    flag = next(f for f in hr.flags if f.code == "hazard_index")
+    assert flag.message.startswith("Non-carcinogenic Hazard Index 4.6 is at or above 1")
+
+
 def test_health_risk_acceptable_for_clean_water():
     sample = _sample(**{"Arsenic": 0.001, "Fluoride": 0.3, "Nitrate (as NO3)": 5.0})
     hr = assess_health_risk(sample)

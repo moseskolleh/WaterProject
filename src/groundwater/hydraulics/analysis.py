@@ -33,7 +33,7 @@ from scipy.special import exp1
 
 from ..config import PumpingConfig
 from ..models import DataFlag, PumpingTest, step_durations_min
-from ..utils import plural
+from ..utils import plural, sum_in_order
 from .spread import (
     Diagnostic,
     PapadopulosCooperResult,
@@ -717,7 +717,7 @@ def equivalent_pumping_time_min(test: PumpingTest) -> tuple[float | None, bool]:
         return test.pumping_duration_min, False
     q_last = float(steps[-1].discharge_m3_per_h)
     durations, _ = step_durations_min(steps)
-    volume = sum(
+    volume = sum_in_order(
         float(step.discharge_m3_per_h) * dt
         for step, dt in zip(steps, durations, strict=True)
     )
@@ -1469,7 +1469,7 @@ def analyse_pumping_test(
                     f"{'its' if one else 'their'} times are read as counted from "
                     f"the start of {'the' if one else 'each'} step rather than from "
                     "the start of the test: each step's own last reading is taken "
-                    f"as its length, and the steps pumped for {sum(step_durations):g} "
+                    f"as its length, and the steps pumped for {sum_in_order(step_durations):g} "
                     f"minutes in all{recorded}. Check the times on the sheet.",
                 )
             )
@@ -1502,7 +1502,7 @@ def analyse_pumping_test(
                     f"The recovery is read against an equivalent pumping time of "
                     f"{t_pump:.0f} minutes at the last rate of {q_rec:g} m3/h "
                     f"(the volume pumped over all the steps at that rate), not "
-                    f"the {sum(step_durations):g} minutes the test ran.",
+                    f"the {sum_in_order(step_durations):g} minutes the test ran.",
                 )
             )
         if rec is not None and rec.intercept_fraction > config.recovery_intercept_max_fraction:

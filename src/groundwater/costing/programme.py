@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from ..utils import sum_in_order
 from .model import (
     CostEstimate,
     CostingInputs,
@@ -146,10 +147,10 @@ def estimate_programme_cost(
         kwargs["exchange_rate_sle_per_usd"] = exchange_rate_sle_per_usd
     well = estimate_borehole_cost(well_inputs, rates, **kwargs)
 
-    dry_cost = sum(v for s, v in well.by_stage() if s in _DRY_STAGES)
+    dry_cost = sum_in_order(v for s, v in well.by_stage() if s in _DRY_STAGES)
 
     km_rates = [r for r in rates if r.quantity_basis == "per_km_round_trip"]
-    km_rate = sum(r.unit_cost_usd for r in km_rates)
+    km_rate = sum_in_order(r.unit_cost_usd for r in km_rates)
     transport_km = 2.0 * per_well.mobilisation_distance_km \
         + max(0, n_attempted - 1) * inter_site_distance_km
     transport = km_rate * transport_km

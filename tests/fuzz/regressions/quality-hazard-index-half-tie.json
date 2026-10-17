@@ -1,0 +1,20 @@
+{
+ "note": "Found by the nightly fuzz run on 2026-10-17. Chromium 0.064, copper 1.65 and arsenic 0.029 mg/L give a Hazard Index of 4.55 exactly, a tie at one decimal. Python's sum(), which from 3.12 compensates a sum of floats, came to 4.55 and printed '4.5'; the browser, adding the quotients one at a time, came to 4.550000000000001 and printed '4.6', as Python 3.10 and 3.11 did. Python was put right: every built-in sum() of floats that gwt-core.js mirrors now goes through utils.sum_in_order, which adds one value at a time as the browser does.",
+ "first_divergence": ["assessment.flags[2][2]", "Non-carcinogenic Hazard Index 4.6 is at or above 1 (dominated by arsenic); chronic ingestion poses a potential health concern.", "Non-carcinogenic Hazard Index 4.5 is at or above 1 (dominated by arsenic); chronic ingestion poses a potential health concern."],
+ "kind": "quality",
+ "options": {},
+ "sheets": [
+  {"name": "Water Quality", "rows": [
+   ["WATER QUALITY LABORATORY RESULTS", null, null, null, null],
+   ["Community", "Rokel", null, "Client", null],
+   ["Sample ID", "WQ-BH1-01", null, "Borehole Ref. No.", "BH-1"],
+   ["Sample date", null, null, "Laboratory", "Example Laboratory, Freetown"],
+   ["District", "Port Loko", null, "Project", "Borehole completion"],
+   [null, null, null, null, null],
+   ["Parameter", "Unit", "Value", "Method", null],
+   ["Chromium (total)", "mg/L", 0.064, null, null],
+   ["Copper", "mg/L", 1.65, null, null],
+   ["Arsenic", "mg/L", 0.029, null, null]
+  ]}
+ ]
+}
