@@ -35,6 +35,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from collections.abc import Iterable
 
+from .utils import sum_in_order
+
 __all__ = [
     "Certificate",
     "Contract",
@@ -139,7 +141,7 @@ class Contract:
 
     @property
     def sum_usd(self) -> float:
-        return sum(line.amount_usd for line in self.lines)
+        return sum_in_order(line.amount_usd for line in self.lines)
 
     @property
     def advance_usd(self) -> float:
@@ -428,7 +430,7 @@ class Certificate:
     @property
     def gross_usd(self) -> float:
         """Value of authorised work done to date, before anything is taken off."""
-        return sum(line.payable_amount_usd for line in self.lines)
+        return sum_in_order(line.payable_amount_usd for line in self.lines)
 
     @property
     def contract_sum_usd(self) -> float:
@@ -436,8 +438,8 @@ class Certificate:
 
     @property
     def variation_usd(self) -> float:
-        return sum(line.authorised_amount_usd - line.contract_amount_usd
-                   for line in self.lines)
+        return sum_in_order(line.authorised_amount_usd - line.contract_amount_usd
+                            for line in self.lines)
 
     @property
     def revised_sum_usd(self) -> float:
@@ -486,7 +488,7 @@ class Certificate:
 
     @property
     def overmeasure_usd(self) -> float:
-        return sum(line.overmeasure_amount_usd for line in self.lines)
+        return sum_in_order(line.overmeasure_amount_usd for line in self.lines)
 
     @property
     def summary(self) -> str:

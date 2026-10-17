@@ -24,7 +24,7 @@ import numpy as np
 
 from ..config import VESConfig
 from ..models import DataFlag, LayeredModel, VESSounding
-from ..utils import and_join, fmt_num, ordinal
+from ..utils import and_join, fmt_num, ordinal, sum_in_order
 from .classify import classify_curve, describe_curve_type
 from .inversion import inversion_readings
 
@@ -259,7 +259,7 @@ def interpret_model(
     if bedrock_unseen:
         depth_to_basement = None
 
-    aquifer_thickness = sum(b - t for t, b in zones)
+    aquifer_thickness = sum_in_order(b - t for t, b in zones)
 
     # ---- recommended maximum drilling depth ---------------------------------
     # deepest target zone plus a margin, but never past the depth the

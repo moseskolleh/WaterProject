@@ -21,6 +21,7 @@ from ..mapping import (
     plot_study_area_map,
 )
 from ..models import SiteMetadata
+from ..utils import sum_in_order
 
 
 def _figures_dir(figures_dir, out_path) -> Path:
@@ -80,7 +81,7 @@ def study_area_radius_km(site: SiteMetadata | None, points: list[dict] | None,
     if site is not None and site.latlon is not None:
         centre_lat, centre_lon = site.latlon
     else:
-        centre_lat, centre_lon = sum(lats) / len(lats), sum(lons) / len(lons)
+        centre_lat, centre_lon = sum_in_order(lats) / len(lats), sum_in_order(lons) / len(lons)
     cos_lat = math.cos(math.radians(centre_lat))
     farthest = max(
         math.hypot((lat - centre_lat) * 111.32, (lon - centre_lon) * 111.32 * cos_lat)

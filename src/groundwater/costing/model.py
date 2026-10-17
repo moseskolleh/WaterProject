@@ -30,7 +30,7 @@ from pathlib import Path
 from .._resources import bundled_text
 from ..config import DesignRules
 from ..models import DataFlag
-from ..utils import fmt_num
+from ..utils import fmt_num, sum_in_order
 
 # Canonical stage order for tables and charts (the six RWSN cost
 # components, with development and test pumping kept separate and the
@@ -364,7 +364,7 @@ class CostEstimate:
 
     @property
     def direct_cost_usd(self) -> float:
-        return sum(i.amount_usd for i in self.items)
+        return sum_in_order(i.amount_usd for i in self.items)
 
     @property
     def overheads_usd(self) -> float:

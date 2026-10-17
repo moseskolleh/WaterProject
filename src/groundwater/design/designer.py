@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 
 from ..config import DesignRules
 from ..models import DataFlag, DrillingLog
+from ..utils import sum_in_order
 from ..ves.interpret import SiteInterpretation
 from .lithology import is_clayey, read_fractures
 
@@ -100,7 +101,7 @@ class BoreholeDesign:
 
     @property
     def total_screen_length_m(self) -> float:
-        return sum(s.length_m for s in self.screens)
+        return sum_in_order(s.length_m for s in self.screens)
 
     @property
     def annular_fill_label(self) -> str:
@@ -547,7 +548,7 @@ def design_borehole(
         )
 
     # trim overall screen length to a sensible share of the hole
-    total_screen = sum(b - t for t, b in screens)
+    total_screen = sum_in_order(b - t for t, b in screens)
     if total_screen > 0.6 * total_depth_m:
         # keep the deepest sections, which sit in the main fractured zone
         keep: list[tuple[float, float]] = []

@@ -26736,7 +26736,7 @@
     }, 0);
     var sum = contractSum(contract);
     var variationValue = valued.lines.reduce(function (t, l) {
-      return t + l.authorised_amount_usd - l.contract_amount_usd;
+      return t + (l.authorised_amount_usd - l.contract_amount_usd);
     }, 0);
     var revised = sum + variationValue;
     var held = gross * (contract.retention_percent || 0) / 100;

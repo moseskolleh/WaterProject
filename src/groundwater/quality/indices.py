@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..models import DataFlag, WaterQualitySample
+from ..utils import sum_in_order
 from .standards import (
     Limit,
     StandardEntry,
@@ -184,7 +185,7 @@ def assess_health_risk(sample: WaterQualitySample) -> HealthRiskAssessment | Non
             hq[key] = cdi / rfd
     if not hq:
         return None
-    hazard_index = sum(hq.values())
+    hazard_index = sum_in_order(hq.values())
     cancer_risk = None
     if "arsenic" in values:
         cdi_as = values["arsenic"] * intake_factor

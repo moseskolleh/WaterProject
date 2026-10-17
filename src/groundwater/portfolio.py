@@ -19,6 +19,7 @@ from .site_status import (
     classify_text,
     status_label,
 )
+from .utils import sum_in_order
 
 __all__ = [
     "STATUS_COLORS",
@@ -286,8 +287,8 @@ def portfolio_stats(summaries: list[dict]) -> dict:
         "n_successful": n_successful,
         "n_status_unrecognised": n_unrecognised,
         "success_rate": (n_successful / len(drilled) * 100.0) if drilled else None,
-        "mean_safe_yield_m3_per_h": (sum(yields) / len(yields)) if yields else None,
-        "mean_cost_per_meter_usd": (sum(costs) / len(costs)) if costs else None,
+        "mean_safe_yield_m3_per_h": (sum_in_order(yields) / len(yields)) if yields else None,
+        "mean_cost_per_meter_usd": (sum_in_order(costs) / len(costs)) if costs else None,
         "n_wq_assessed": assessed,
         "wq_counts": counts,
         # meets every health AND national limit; aesthetic reservations only

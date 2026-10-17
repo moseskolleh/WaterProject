@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..models import DataFlag, WaterQualitySample
+from ..utils import sum_in_order
 from .standards import canonical_values, normalise_parameter
 
 # meq per mg: charge / molar mass
@@ -98,8 +99,8 @@ def ionic_balance(sample: WaterQualitySample) -> IonicBalanceResult | None:
     ):
         return None
 
-    total_cat = sum(cations.values())
-    total_an = sum(anions.values())
+    total_cat = sum_in_order(cations.values())
+    total_an = sum_in_order(anions.values())
     if total_cat + total_an <= 0:
         return None
     error = 100.0 * (total_cat - total_an) / (total_cat + total_an)
