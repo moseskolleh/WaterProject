@@ -397,6 +397,38 @@ class TerrainConfig:
     lineament_link_angle_deg: float = _TERRAIN["lineament_link_angle_deg"]
     lineament_link_offset_m: float = _TERRAIN["lineament_link_offset_m"]
     lineament_link_gap_m: float = _TERRAIN["lineament_link_gap_m"]
+    # The survey plan (PLAN.md step 4.3), laid inside the service radius of
+    # waterpoints.SERVICE_RADIUS_M. Every value is a provisional choice for a
+    # hydrogeologist to confirm. The most profiling lines a plan lays, one
+    # across each of the candidates nearest the site: two lines and their six
+    # soundings are about a day for a crew with one resistivity meter.
+    survey_lines: int = _TERRAIN["survey_lines"]
+    # How long a line is, when the service radius leaves room for it: 200 m
+    # either side of the candidate, so the profile reads the ground beside
+    # the zone as well as the zone.
+    survey_line_m: float = _TERRAIN["survey_line_m"]
+    # The spacing of the profile's stations: a third of a cell at 1
+    # arc-second, so a zone a cell wide is read at three stations.
+    survey_station_m: float = _TERRAIN["survey_station_m"]
+    # The flank soundings' distance either side of the crossing, along the
+    # line: the candidate is placed from the terrain to within a cell or two
+    # and the smoothing, about 65 m, so a zone that lies beside the crossing
+    # still falls under a sounding.
+    survey_flank_m: float = _TERRAIN["survey_flank_m"]
+    # The furthest a sounding is moved along its line to clear a separation
+    # ring: a sounding on a stream that crosses its line at right angles
+    # moves just clear of the stream's 20 m. Under half of survey_flank_m,
+    # so that soundings keep their order along the line.
+    survey_move_m: float = _TERRAIN["survey_move_m"]
+    # A line counts as crossing another candidate at right angles when the
+    # two candidates' strikes differ by no more than this: at 20 degrees the
+    # line runs across the second zone for about 6% more than its width.
+    survey_cross_within_deg: float = _TERRAIN["survey_cross_within_deg"]
+    # The depth each sounding is planned to see to, by the
+    # depth-of-investigation rule: past the 35 m at which
+    # success_evidence.yaml's deep weathered band begins, with 25 m more for
+    # the fresh rock beneath to show on the curve.
+    survey_target_depth_m: float = _TERRAIN["survey_target_depth_m"]
 
 
 # ---------------------------------------------------------------------------

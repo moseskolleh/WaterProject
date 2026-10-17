@@ -720,9 +720,88 @@
     return project;
   }
 
+  /* --------------------------------------------- the survey plan (step 4.3) */
+
+  /* The plan's layers, back to front, by the `layer` each feature of
+   * C.surveyPlanGeoJson names, each with its kind and the simplestyle
+   * colours the plan figure draws it in: geolibre._PLAN_LAYERS. */
+  var PLAN_LAYERS = [
+    ['clearance', 'Separation rings', 'polygon',
+      { fill: '#8A5A2B', 'fill-opacity': 0.0, stroke: '#8A5A2B', 'stroke-width': 1.2 }],
+    ['service_radius', 'Service radius', 'polygon',
+      { fill: '#333333', 'fill-opacity': 0.0, stroke: '#333333', 'stroke-width': 1.5 }],
+    ['line', 'Profiling lines', 'line', { stroke: '#5B2A86', 'stroke-width': 3 }],
+    ['station', 'Profile stations', 'point', { 'marker-color': '#5B2A86', fill: '#5B2A86', stroke: '#FFFFFF' }],
+    ['sounding', 'Proposed soundings', 'point', { 'marker-color': '#FFFFFF', fill: '#FFFFFF', stroke: '#5B2A86' }],
+  ];
+  var CANDIDATE_COLOURS = { valley: '#1D4E89', ridge: '#C15A2A' };
+
+  /* The survey plan as a GeoLibre project: geolibre.survey_plan_project.
+   * `planGeoJson` is C.surveyPlanGeoJson's text, whose features name their
+   * layer and are taken apart into layers here; with `lineamentGeoJson`
+   * the candidates that reach within twice the service radius are drawn
+   * under them, with `waterPoints` the mapped water points within it, and
+   * with `site` ({lat, lon, label}) the site. It opens on the service
+   * radius. */
+  function surveyPlanProject(options) {
+    var opts = options || {};
+    var collection = JSON.parse(opts.planGeoJson);
+    var lon = collection.site[0], lat = collection.site[1];
+    var win = windowAround(lat, lon, 2.0 * Number(collection.radius_m) / 1000.0);
+    var grouped = {};
+    collection.features.forEach(function (f) {
+      (grouped[f.properties.layer] = grouped[f.properties.layer] || []).push(f);
+    });
+    var layers = [];
+    if (opts.lineamentGeoJson) {
+      var candidates = featuresWithin(JSON.parse(opts.lineamentGeoJson).features, win).map(function (f) {
+        return feature(f.geometry, Object.assign({}, f.properties, {
+          stroke: CANDIDATE_COLOURS[f.properties.kind] || '#6B7785', 'stroke-width': 2,
+        }));
+      });
+      layers.push(layer('Lineament candidates', candidates,
+        { kind: 'line', color: '#1D4E89', stroke: '#1D4E89', strokeWidth: 2.0 }));
+    }
+    if (opts.waterPoints && opts.waterPoints.length) {
+      layers.push(layer('Existing water points', waterPointFeatures(pointsWithinWindow(opts.waterPoints, win)),
+        { radius: 6.0, attribution: CREDITS.waterPoints }));
+    }
+    PLAN_LAYERS.forEach(function (entry) {
+      var style = /** @type {Record<string, any>} */ (entry[3]);
+      var features = (grouped[entry[0]] || []).map(function (f) {
+        return feature(f.geometry, Object.assign({}, f.properties, style));
+      });
+      layers.push(layer(entry[1], features, {
+        kind: entry[2], color: style.fill || style.stroke, stroke: style.stroke, fillOpacity: 0.0,
+        strokeWidth: style['stroke-width'] == null ? 1.0 : style['stroke-width'],
+        radius: entry[0] === 'station' ? 4.0 : 7.0,
+      }));
+    });
+    var site = opts.site;
+    if (site && site.lat != null && site.lon != null) {
+      layers.push(layer('Site', [pointFeature(site.lon, site.lat, clean({
+        label: site.label || 'Site', 'marker-color': '#B23A2E', fill: '#B23A2E', stroke: '#FFFFFF',
+      }))], { radius: 10.0, color: '#B23A2E' }));
+    }
+    var metadata = Object.assign({}, opts.metadata || {});
+    if (metadata.about === undefined) metadata.about = collection.description;
+    var name = opts.name || ['Survey plan', site && site.label ? site.label : ''].filter(Boolean).join(' - ');
+    return buildProject(name, layers, { metadata: metadata, frameOn: ['Service radius'] });
+  }
+
+  /* The plan's project, saved as survey_plan.geolibre.json, as the Python
+   * app names it. */
+  function saveSurveyPlan(input) {
+    var project = surveyPlanProject(input);
+    GWT.support.download('survey_plan.geolibre.json', stringify(project), 'application/geo+json');
+    return project;
+  }
+
   GWT.geolibre = {
     WEB_APP: WEB_APP,
     saveForSite: saveForSite,
+    surveyPlanProject: surveyPlanProject,
+    saveSurveyPlan: saveSurveyPlan,
     PROJECT_FORMAT_VERSION: PROJECT_FORMAT_VERSION,
     CREDITS: CREDITS,
     slug: slug,

@@ -4533,7 +4533,9 @@ await withPage(async (page, base, consoleErrors) => {
       const r = app.terrainSession().result;
       return JSON.stringify({ links: r.links, parts: r.parts, summary: r.summary, captions: r.captions,
         geojson: r.geojson, lineaments: Object.assign({}, r.lineaments, { settings: null }),
-        lineamentCaptions: r.lineamentCaptions, lineamentGeojson: r.lineamentGeojson });
+        lineamentCaptions: r.lineamentCaptions, lineamentGeojson: r.lineamentGeojson,
+        plan: r.plan ? Object.assign({}, r.plan, { settings: null }) : null, planCaptions: r.planCaptions,
+        planGpx: r.planGpx, planGeoJson: r.planGeoJson });
     };
     window.__terrainWant = (areaKm2) => {
       const C = window.GWT.core, read = app.terrainSession().read, grid = window.__grid, cfg = app.config();
@@ -4550,12 +4552,25 @@ await withPage(async (page, base, consoleErrors) => {
       const lineamentGeojson = C.lineamentGeoJson(lineaments, read.grid.lons, read.grid.lats, {
         label: read.grid.label, figure_credit: read.figureCredit, notice: read.notice, surface: read.surface,
         radius: read.plan.radiusKm, centre: read.centre });
+      /* the survey plan laid across them round the site (PLAN.md step
+       * 4.3), keeping clear of the drainage lines at this threshold; no
+       * water points are loaded */
+      const result = app.terrainSession().result, site = result ? result.site : null;
+      const plan = site ? C.surveyPlan(lineaments, a.core, a.parts, [site.lon, site.lat], null, cfg.terrain, cfg.ves)
+        : null;
+      const laid = !!plan && plan.basis !== 'none';
+      const told = { where: read.centre.label, label: read.grid.label,
+        site_label: app.store.get('site.community') || 'Site' };
       return JSON.stringify({ links: a.links, parts: a.parts, summary: a.summary,
         captions: C.terrainCaptions(a, read, read.centre.label), geojson,
         /* the settings the candidates carry name the threshold, which no
          * candidate depends on */
         lineaments: Object.assign({}, lineaments, { settings: null }),
-        lineamentCaptions: C.lineamentCaptions(lineaments, read.centre.label), lineamentGeojson });
+        lineamentCaptions: C.lineamentCaptions(lineaments, read.centre.label), lineamentGeojson,
+        plan: plan ? Object.assign({}, plan, { settings: null }) : null,
+        planCaptions: C.surveyPlanCaptions(plan, read.centre.label),
+        planGpx: laid ? C.surveyPlanGpx(plan, a.core.lons, a.core.lats, told) : null,
+        planGeoJson: laid ? C.surveyPlanGeoJson(plan, a.core.lons, a.core.lats, told) : null });
     };
     window.__until = async (test, ms) => {
       const began = performance.now();
@@ -4666,14 +4681,16 @@ await withPage(async (page, base, consoleErrors) => {
     const links = (svg) => (svg ? Array.from(new Set(Array.from(svg.querySelectorAll('path[data-link]'))
       .map((p) => Number(p.getAttribute('data-link'))))).sort((a, b) => a - b).join() : null);
     const shown = Array.from(document.querySelectorAll('[data-item="terrain"] figure.figure'));
-    /* the four, and the lineament map and, where there is a candidate, the rose */
+    /* the four, the lineament map and, where there is a candidate, the
+     * rose, and the survey plan where it lays a line */
     const all = ['relief', 'wetness', 'curvature', 'directions', 'lineaments']
-      .concat(s.result.lineaments.lineaments.length ? ['rose'] : []);
+      .concat(s.result.lineaments.lineaments.length ? ['rose'] : []).concat(s.result.planGpx ? ['plan'] : []);
     return { asked: window.GWT.engine.history().length - window.__mark, areaKm2: s.result.areaKm2,
       figures, drawn: Object.keys(was).filter((key) => was[key]), all,
       relief: !!now.relief && now.relief !== was.relief && links(now.relief) === Array.from(new Set(
         s.result.parts.filter((p) => p.vertices.length > 1).map((p) => p.id))).sort((a, b) => a - b).join() &&
         links(now.relief) !== links(was.relief),
+      plan: !!now.plan && now.plan !== was.plan,
       shown: shown.map((f) => Object.keys(now).find((key) => now[key] === f.querySelector('svg'))),
       shownCaption: shown.length ? (shown[0].querySelector('figcaption span') || {}).textContent : null,
       got: window.__terrainGot(), want: window.__terrainWant(2), caption: s.result.captions.relief };
@@ -4691,12 +4708,13 @@ await withPage(async (page, base, consoleErrors) => {
     retraced.got === retraced.want && retraced.back === retraced.first &&
     retraced.caption.includes('where more than 2 km² drains'),
     JSON.stringify([retraced.caption, retraced.got.slice(0, 300), retraced.want.slice(0, 300)]));
-  check('terrain threshold: of the figures, only the relief is drawn again, with the lines and the caption ' +
-    'at the new threshold',
-    retraced.all.length === 6 && retraced.drawn.join() === retraced.all.join() && retraced.relief &&
-    retraced.figures.join() === retraced.all.slice(1).join() &&
+  check('terrain threshold: of the figures, only the relief and the survey plan, which keeps clear of the ' +
+    'lines, are drawn again, the relief with the lines and the caption at the new threshold',
+    retraced.all.length === 7 && retraced.drawn.join() === retraced.all.join() && retraced.relief &&
+    retraced.plan && retraced.figures.join() === retraced.all.slice(1, -1).join() &&
     retraced.shown.join() === retraced.all.join() && retraced.shownCaption === retraced.caption,
-    JSON.stringify([retraced.all, retraced.drawn, retraced.relief, retraced.figures, retraced.shown]));
+    JSON.stringify([retraced.all, retraced.drawn, retraced.relief, retraced.plan, retraced.figures,
+      retraced.shown]));
 
   /* a threshold changed while the analysis runs is traced from its answer */
   await setField('Radius of the square shown (km)', '3');
@@ -4931,10 +4949,11 @@ await withPage(async (page, base, consoleErrors) => {
     const s = app.terrainSession(), want = JSON.parse(window.__terrainWant(0.5));
     const layers = { relief: ['relief'], wetness: ['wetness'], curvature: ['profile', 'tangential'],
       directions: s.result.cfg.terrain.hillshade_panel_azimuths_deg.map((a) => 'hillshade-' + a),
-      lineaments: ['lineaments'], rose: [] };
-    /* the lineament figures' captions, and the note they carry with the caveat */
+      lineaments: ['lineaments'], rose: [], plan: ['plan'] };
+    /* the lineament figures' captions, and the note they carry with the
+     * caveat; the plan's, and its own note */
     const lineament = (name) => name === 'lineaments' || name === 'rose';
-    const captions = Object.assign({}, want.captions, want.lineamentCaptions);
+    const captions = Object.assign({}, want.captions, want.lineamentCaptions, want.planCaptions);
     const flat = (text) => String(text).replace(/\s+/g, ' ').trim();
     const label = app.store.get('site.community') || 'Site';
     const figures = Array.from(document.querySelectorAll('[data-item="terrain"] figure.figure')).map((node) => {
@@ -4944,38 +4963,47 @@ await withPage(async (page, base, consoleErrors) => {
       const note = (kind) => flat(Array.from(svg.querySelectorAll(`text[data-note="${kind}"]`))
         .map((t) => t.textContent).join(' '));
       return { name, caption: (node.querySelector('figcaption span') || {}).textContent,
-        want: (lineament(name) ? want.lineamentCaptions : want.captions)[name],
+        want: (name === 'plan' ? want.planCaptions : lineament(name) ? want.lineamentCaptions : want.captions)[name],
         layers: Array.from(svg.querySelectorAll('image'))
           .map((image) => image.getAttribute('data-layer')).join() === (layers[name] || []).join(),
         title: flat(texts.join(' ')).includes(flat(captions['title_' + name])),
         credit: note('credit') === flat(s.read.figureCredit),
         caveat: note('caveat') === flat(lineament(name) ? captions.figure_note + ' ' + captions.figure_caveat
-          : captions.figure_caveat),
+          : name === 'plan' ? captions.plan_note + ' ' + captions.figure_caveat : captions.figure_caveat),
         stars: svg.querySelectorAll('[data-site]').length === (layers[name] || []).length &&
           (name === 'rose' || texts.includes(label)),
         buttons: Array.from(node.querySelectorAll('.figure-actions button')).map((b) => b.textContent).join() };
     });
     const count = (text) => Array.from(document.querySelectorAll('[data-item="terrain"] button'))
       .filter((b) => b.textContent === text).length;
+    const rows = Array.from(document.querySelectorAll('[data-item="terrain"] table.data tbody tr'))
+      .map((tr) => tr.querySelector('td').textContent);
     return { done, figures, ran: window.__lastTerrain(), readNotice: s.read.notice,
       candidates: s.result.lineaments.lineaments.length,
+      plan: [s.result.plan.basis, s.result.plan.lines.length, s.result.plan.soundings.length],
+      table: rows.join() === s.result.plan.soundings.map((x) => 'VES ' + x.id).join(),
       notices: document.querySelectorAll('[data-item="terrain"] .terrain-notice').length,
-      geojson: [count('Drainage lines (GeoJSON)'), count('Lineament candidates (GeoJSON)')].join() };
+      geojson: [count('Drainage lines (GeoJSON)'), count('Lineament candidates (GeoJSON)'),
+        count('Survey plan (GPX)'), count('Survey plan (GeoLibre)')].join() };
   });
-  check('terrain figures on the card: the four and the lineament candidates\' map and rose, each drawn from ' +
-    'the worker\'s answer with its layers, title, credit, caveat and the site starred on every map, and the ' +
-    'engine\'s captions under it',
+  check('terrain figures on the card: the four, the lineament candidates\' map and rose and the survey plan, ' +
+    'each drawn from the worker\'s answer with its layers, title, credit, caveat and the site starred on every ' +
+    'map, and the engine\'s captions under it',
     drawn.done && JSON.stringify(drawn.ran) ===
       '[["readElevation","worker","done",true],["analyseTerrain","worker","done",true]]' &&
     drawn.candidates > 0 &&
-    drawn.figures.map((f) => f.name).join() === 'relief,wetness,curvature,directions,lineaments,rose' &&
+    drawn.figures.map((f) => f.name).join() === 'relief,wetness,curvature,directions,lineaments,rose,plan' &&
     drawn.figures.every((f) => f.caption === f.want && f.layers && f.title && f.credit && f.caveat && f.stars),
     JSON.stringify([drawn.done, drawn.ran, drawn.candidates, drawn.figures]));
   check('terrain figures on the card: each with its PNG and SVG buttons, the lines\' and the candidates\' ' +
-    'GeoJSON after them, and no liability sentence for a set holding no Copernicus tile',
-    drawn.figures.every((f) => f.buttons === 'PNG,SVG') && drawn.geojson === '1,1' && drawn.readNotice === null &&
-    drawn.notices === 0, JSON.stringify([drawn.figures.map((f) => f.buttons), drawn.geojson, drawn.readNotice,
-      drawn.notices]));
+    'GeoJSON and the plan\'s GPX and GeoLibre project after them, and no liability sentence for a set holding ' +
+    'no Copernicus tile',
+    drawn.figures.every((f) => f.buttons === 'PNG,SVG') && drawn.geojson === '1,1,1,1' &&
+    drawn.readNotice === null && drawn.notices === 0, JSON.stringify([drawn.figures.map((f) => f.buttons),
+      drawn.geojson, drawn.readNotice, drawn.notices]));
+  check('terrain figures on the card: the valley is found only 1.8 km south of the site, beyond the 500 m it ' +
+    'serves, so the survey plan crosses the strike through the site and proposes no sounding',
+    drawn.plan.join() === 'strike,1,0' && drawn.table, JSON.stringify([drawn.plan, drawn.table]));
 
   /* the theme changed to light and back: the figures are drawn again in
    * the page's new colours each time, as every other figure is */
@@ -4998,12 +5026,13 @@ await withPage(async (page, base, consoleErrors) => {
     return { was, light: light.grounds, dark: dark.grounds, back: back.grounds,
       redrawn: [light.svgs.length, light.svgs.filter((svg, i) => svg !== dark.svgs[i]).length,
         back.svgs.filter((svg, i) => svg !== light.svgs[i]).length].join(), kept: kept(back.svgs),
-      painted: light.grounds === Array(6).fill(light.surface).join() && light.grounds !== dark.grounds &&
+      painted: light.grounds === Array(7).fill(light.surface).join() && light.grounds !== dark.grounds &&
         back.grounds === dark.grounds };
   });
   check('terrain figures on the card: a new theme draws them again in its colours',
-    themed.was === 'dark' && themed.redrawn === '6,6,6' &&
-    themed.kept === 'relief,wetness,curvature,directions,lineaments,rose' && themed.painted, JSON.stringify(themed));
+    themed.was === 'dark' && themed.redrawn === '7,7,7' &&
+    themed.kept === 'relief,wetness,curvature,directions,lineaments,rose,plan' && themed.painted,
+    JSON.stringify(themed));
 
   /* what each button saves, kept instead of handed to the browser */
   const saved = await page.evaluate(async () => {
@@ -5021,7 +5050,8 @@ await withPage(async (page, base, consoleErrors) => {
         await window.__until(() => got.length > count, 20000);
       }
     }
-    for (const text of ['Drainage lines (GeoJSON)', 'Lineament candidates (GeoJSON)']) {
+    for (const text of ['Drainage lines (GeoJSON)', 'Lineament candidates (GeoJSON)', 'Survey plan (GPX)',
+      'Survey plan (GeoLibre)']) {
       const lineButton = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === text);
       if (lineButton) lineButton.click();
     }
@@ -5075,12 +5105,26 @@ await withPage(async (page, base, consoleErrors) => {
       features: found.features.length === s.result.lineaments.lineaments.length && found.features.length > 0,
       attribution: found.attribution === s.read.figureCredit, notice: 'notice' in found,
       described: found.description.includes('not confirmed by geophysics') };
+    /* the survey plan's GPX, as the engine writes it, and its GeoLibre
+     * project, opening on the service radius */
+    const gpx = got.slice(2 * figures.length)[2] || {}, plan = s.result.plan;
+    const doc = new DOMParser().parseFromString(gpx.data || '', 'application/xml');
+    const ns = 'http://www.topografix.com/GPX/1/1';
+    out.gpx = { name: gpx.name, mime: gpx.mime, same: gpx.data === s.result.planGpx && gpx.data === want.planGpx,
+      parsed: !doc.querySelector('parsererror') && doc.documentElement.namespaceURI === ns,
+      waypoints: doc.getElementsByTagNameNS(ns, 'wpt').length === 1 + plan.soundings.length + 2 * plan.lines.length,
+      stations: doc.getElementsByTagNameNS(ns, 'rtept').length ===
+        plan.lines.reduce((n, line) => n + line.last - line.first + 1, 0) };
+    const project = got.slice(2 * figures.length)[3] || {};
+    const layers = JSON.parse(project.data || '{"layers":[]}').layers.map((layer) => layer.name);
+    out.geolibre = { name: project.name, layers: layers.join(), plan: s.result.planGeoJson === want.planGeoJson };
     return out;
   });
   check('terrain downloads: each figure saves as a PNG with its maps painted and an SVG of what the page ' +
     'draws, under the Python app\'s names',
-    saved.names.join() === ['relief', 'wetness', 'curvature', 'directions', 'lineaments', 'rose']
-      .map((n) => `terrain_${n}.png,terrain_${n}.svg`).join() + ',drainage_lines.geojson,lineament_candidates.geojson' &&
+    saved.names.join() === ['relief', 'wetness', 'curvature', 'directions', 'lineaments', 'rose', 'plan']
+      .map((n) => `terrain_${n}.png,terrain_${n}.svg`).join() + ',drainage_lines.geojson,lineament_candidates.geojson' +
+      ',survey_plan.gpx,survey_plan.geolibre.json' &&
     saved.figures.every((f) => f.png[0] === 'image/png' && f.png[1] === f.png[3] && f.png[2] === f.png[4] &&
       (f.painted.length > 0 || f.rose > 0) && f.painted.every((share) => share > 0.6) &&
       JSON.stringify(f.svg) === '["image/svg+xml;charset=utf-8","svg",true,true,true]'),
@@ -5093,6 +5137,59 @@ await withPage(async (page, base, consoleErrors) => {
     'described as not confirmed by geophysics',
     JSON.stringify(saved.lineaments) === JSON.stringify({ mime: 'application/geo+json', same: true, features: true,
       attribution: true, notice: false, described: true }), JSON.stringify(saved.lineaments));
+  check('terrain downloads: the survey plan saves as the GPX the engine writes, a waypoint at the site, each ' +
+    'sounding and each line\'s ends and a route point at each station, and as a GeoLibre project of its layers',
+    JSON.stringify(saved.gpx) === JSON.stringify({ name: 'survey_plan.gpx', mime: 'application/gpx+xml',
+      same: true, parsed: true, waypoints: true, stations: true }) &&
+    JSON.stringify(saved.geolibre) === JSON.stringify({ name: 'survey_plan.geolibre.json',
+      layers: 'Service radius,Profiling lines,Profile stations,Site', plan: true }),
+    JSON.stringify([saved.gpx, saved.geolibre]));
+
+  /* the site moved 2.8 km south, beside the stretch of the valley the
+   * candidates hold: the plan crosses it, with three soundings listed
+   * under the figure and saved as the engine writes them */
+  const beside = await page.evaluate(async () => {
+    const app = window.GWT.app, store = app.store, support = window.GWT.support;
+    store.set('site.northing', 8.475);
+    Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+      .find((b) => b.textContent === 'Analyse the terrain').click();
+    const done = await window.__until(window.__settled);
+    const s = app.terrainSession(), plan = s.result.plan, want = JSON.parse(window.__terrainWant(0.5));
+    const host = document.querySelector('[data-item="terrain"]');
+    const figure = s.figures && s.figures.plan;
+    const rows = Array.from(host.querySelectorAll('table.data tbody tr')).map((tr) =>
+      Array.from(tr.querySelectorAll('td')).map((td) => td.textContent));
+    const got = [];
+    const download = support.download;
+    support.download = (name, data, mime) => { got.push({ name, data, mime }); };
+    for (const text of ['Survey plan (GPX)', 'Survey plan (GeoLibre)']) {
+      Array.from(host.querySelectorAll('button')).find((b) => b.textContent === text).click();
+    }
+    support.download = download;
+    const ns = 'http://www.topografix.com/GPX/1/1';
+    const doc = new DOMParser().parseFromString(got[0].data, 'application/xml');
+    const names = Array.from(doc.getElementsByTagNameNS(ns, 'wpt')).map((w) =>
+      w.getElementsByTagNameNS(ns, 'name')[0].textContent);
+    const project = JSON.parse(got[1].data);
+    store.set('site.northing', 8.5);
+    return { done, plan: [plan.basis, plan.lines.length, plan.soundings.length].join(),
+      same: s.result.planGpx === want.planGpx && s.result.planGeoJson === want.planGeoJson &&
+        JSON.stringify(s.result.planCaptions) === JSON.stringify(want.planCaptions),
+      figure: figure ? [figure.querySelectorAll('[data-plan-line]').length,
+        figure.querySelectorAll('circle[data-sounding]').length, figure.querySelectorAll('[data-radius]').length,
+        figure.querySelectorAll('circle[data-station]').length].join() : null,
+      stations: plan.lines[0].last - plan.lines[0].first + 1,
+      rows: rows.map((row) => row[0]).join(), described: rows.every((row) => row[5].includes('AB/2 to 120 m')),
+      names: names.join(), label: store.get('site.community') || 'Site',
+      layers: project.layers.map((layer) => layer.name).join() };
+  });
+  check('terrain survey plan: beside the valley the plan crosses it with a line and three soundings, as the ' +
+    'engine lays it, drawn, listed under the figure and saved as GPX and a GeoLibre project',
+    beside.done && beside.plan === 'candidates,1,3' && beside.same &&
+    beside.figure === `1,3,1,${beside.stations}` && beside.rows === 'VES 1,VES 2,VES 3' && beside.described &&
+    beside.names === `${beside.label},VES 1,VES 2,VES 3,Line 1 start,Line 1 end` &&
+    beside.layers === 'Lineament candidates,Service radius,Profiling lines,Profile stations,Proposed soundings,Site',
+    JSON.stringify(beside));
 
   /* a Copernicus set: the three tiles around a missing fourth, declared
    * Copernicus GLO-30, at 8 N, 12 W */

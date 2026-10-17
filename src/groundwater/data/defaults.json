@@ -119,6 +119,13 @@
     "lineament_min_length_m": 600.0,
     "lineament_link_angle_deg": 10.0,
     "lineament_link_offset_m": 90.0,
-    "lineament_link_gap_m": 300.0
+    "lineament_link_gap_m": 300.0,
+    "survey_lines": 2,
+    "survey_line_m": 400.0,
+    "survey_station_m": 10.0,
+    "survey_flank_m": 50.0,
+    "survey_move_m": 20.0,
+    "survey_cross_within_deg": 20.0,
+    "survey_target_depth_m": 60.0
   }
 }
