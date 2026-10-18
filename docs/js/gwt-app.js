@@ -297,6 +297,8 @@
     waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
     waterPointsSkipped: null,
     portfolio: null, extraction: null,
+    /* the ledgers of the portfolio's files, by the index of their summaries */
+    portfolioLedgers: null,
   };
 
   /* ------------------------------------------------------------------ chrome */
@@ -886,8 +888,9 @@
     state.extraction = Object.assign({}, state.extraction || {});
     delete state.extraction.apiKey;
     /* the ledger goes at the top of the file, where the Python app writes
-     * and reads it, and not twice */
-    var ledger = C.cleanLedger(state.ledger);
+     * and reads it, and not twice, with the borehole's outcome as the
+     * project now holds it: a corrected log corrects it */
+    var ledger = currentLedger();
     delete state.ledger;
     return {
       format: 'groundwater-toolkit-project',
@@ -1360,6 +1363,109 @@
     var first = C.assessSiting(derived.interpretations, config().ves)[0].index;
     return { odds: surveyOdds()[first] || null,
       range: rangeFor((derived.inversions || [])[first]) };
+  }
+
+  /* --- the ledger of predictions and outcomes (PLAN.md step 5.1) --------- */
+
+  /* The project's ledger with the completion it holds attached to the point
+   * it was drilled at; with none, the outcomes the ledger already has. */
+  function currentLedger() {
+    var cfg = config();
+    return C.attachOutcome(store.get('ledger'),
+      C.completionOutcome(derived.log || null, derived.analysis || null, cfg), cfg);
+  }
+
+  /* The place a survey's points are recorded under: the project's community
+   * and district, each the survey's own where the site details leave it
+   * blank, and the survey's zone. */
+  function ledgerSite() {
+    var project = store.get('site') || {};
+    var survey = (((derived.soundings || [])[0]) || {}).site || {};
+    return { community: project.community || survey.community || '',
+      district: project.district || survey.district || '',
+      utm_zone: survey.utm_zone || Number(project.utm_zone) || null };
+  }
+
+  /* Today, as the device's calendar has it. */
+  function localDate() {
+    var now = new Date();
+    var two = function (n) { return (n < 10 ? '0' : '') + n; };
+    return now.getFullYear() + '-' + two(now.getMonth() + 1) + '-' + two(now.getDate());
+  }
+
+  /* The survey's predictions written into the ledger, as recorded before
+   * drilling unless the project holds a drilling log; the ids of the points
+   * whose forecast was kept as it was made. */
+  function recordSurveyPredictions() {
+    var interps = derived.interpretations || [];
+    if (!interps.length) return [];
+    var predictions = C.surveyPredictions(interps, (derived.inversions || []).map(rangeFor),
+      surveyOdds(), ledgerSite(), config());
+    var got = C.recordPredictions(currentLedger(), predictions, localDate(), !!derived.log,
+      (GWT.data || {}).version || '');
+    store.set('ledger', got.ledger);
+    return got.kept;
+  }
+
+  /* How the borehole was matched to the point it was drilled at. */
+  var LEDGER_PAIRED = {
+    chosen: 'chosen on this page',
+    nearest: 'the nearest point recorded, {d} m from the log\'s position',
+    only: 'the survey\'s only point',
+  };
+
+  function ledgerEntryLabel(entry) {
+    return entry.point.sounding_id + ' (recorded ' + entry.recorded_on + ', ' +
+      (entry.before_outcome ? 'before' : 'after') + ' drilling)';
+  }
+
+  function ledgerCard() {
+    var ledger = currentLedger();
+    var entries = ledger.entries;
+    var body = [
+      el('p.muted', 'What the survey predicts at each point, written down now, so it can be set ' +
+        'beside what the borehole finds and the method can learn from the holes drilled with ' +
+        'it. A prediction recorded before drilling is kept as it was made; one recorded once a ' +
+        'drilling log is loaded is marked as recorded after drilling. Building the geophysical ' +
+        'report records its predictions too. The ledger is saved in the project file, and the ' +
+        'Portfolio page pools it across projects.'),
+      el('div.btn-row', [button('Record the survey\'s predictions', function () {
+        var n = (derived.interpretations || []).length;
+        var kept = recordSurveyPredictions();
+        S.toast('Recorded the predictions at ' + n + ' point(s).' + (kept.length
+          ? ' ' + kept.length + ' point(s) kept the forecast recorded before drilling.' : ''), 'ok');
+        render();
+      })]),
+    ];
+    if (!entries.length) {
+      body.push(el('p.muted', 'No prediction is recorded yet.'));
+      return card('Predictions and outcomes', body);
+    }
+    body.push(field('Point drilled', S.selectInput(ledger.drilled || '',
+      [{ value: '', label: 'Decide from the drilling log\'s position' }].concat(entries.map(
+        function (entry) { return { value: entry.id, label: ledgerEntryLabel(entry) }; })),
+      function (value) {
+        store.set('ledger', Object.assign({}, store.get('ledger') || {}, { drilled: value || null }));
+        render();
+      }, { 'data-ledger-drilled': '' })));
+    var drilled = entries.filter(function (entry) { return entry.outcome !== null; })[0];
+    if (!derived.log && !drilled) {
+      body.push(el('p.muted', 'No drilling log is loaded: the outcome is set beside the ' +
+        'prediction once it is.'));
+    } else if (!drilled) {
+      body.push(el('div.callout.callout-warn', el('p', 'The borehole could not be matched to a ' +
+        'point: its log has no position near a point recorded. Choose the point drilled above.')));
+    } else {
+      body.push(el('p', [el('strong', drilled.point.sounding_id), ' - ' +
+        LEDGER_PAIRED[drilled.pairing.how].replace('{d}',
+          C.fmtNum(drilled.pairing.distance_m || 0.0)) + '.']));
+      body.push(S.table(C.entryHeader(), C.entryRows(drilled)));
+    }
+    body.push(S.table(['Point', 'Recorded', 'When', 'Drilled'], entries.map(function (entry) {
+      return [entry.point.sounding_id, entry.recorded_on,
+        entry.before_outcome ? 'Before drilling' : 'After drilling', entry.outcome ? 'Yes' : ''];
+    })));
+    return card('Predictions and outcomes', body);
   }
 
   /* The planning figure beside the bill of quantities (PLAN.md step 3.4):
@@ -3462,6 +3568,8 @@
         : el('p.muted', 'Add GPS coordinates to the VES points to draw the ' +
           'drill-target map.'),
     ]));
+
+    nodes.push(ledgerCard());
 
     nodes.push(reportCard('Geophysical survey report', 'geophysical',
       'Introduction, geology, field work, per-sounding interpretation, the ranked ' +
@@ -6401,6 +6509,12 @@
    * from both. An older file without a summary falls back to its site inputs,
    * which is all the map and the status column need. */
   function summaryFromProjectFile(name, text) {
+    return projectFileEntry(name, text).summary;
+  }
+
+  /* A saved project file's summary and its ledger of predictions and
+   * outcomes (PLAN.md step 5.1), from either app's file. */
+  function projectFileEntry(name, text) {
     var payload;
     if (/\.ya?ml$/i.test(name)) {
       payload = S.parseYaml(text);
@@ -6408,6 +6522,11 @@
       payload = JSON.parse(text);
     }
     if (!payload || typeof payload !== 'object') throw new Error('not a project file');
+    return { summary: summaryFromPayload(payload),
+      ledger: C.cleanLedger(C.migratePayload(payload).ledger) };
+  }
+
+  function summaryFromPayload(payload) {
     var summary = payload.summary;
     if (summary && typeof summary === 'object' && Object.keys(summary).length) {
       return summary;
@@ -6753,31 +6872,37 @@
             var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
             if (!list || !list.length) return;
             var loaded = derived.portfolio ? derived.portfolio.slice() : [];
+            var ledgers = portfolioLedgers().slice();
             var skipped = 0;
             for (var i = 0; i < list.length; i++) {
               try {
                 var text = await S.readFile(list[i], 'text');
-                loaded.push(summaryFromProjectFile(list[i].name, text));
+                var entry = projectFileEntry(list[i].name, text);
+                loaded.push(entry.summary);
+                ledgers.push(entry.ledger);
               } catch (e) { skipped += 1; }
             }
             derived.portfolio = loaded;
+            derived.portfolioLedgers = ledgers;
             S.toast(loaded.length + ' ' + S.plural(loaded.length, 'project') +
               ' loaded' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
             skipped ? 'warn' : 'ok');
             render();
           }),
           summaries.length ? button('Add this project', function () {
+            derived.portfolioLedgers = portfolioLedgers().concat([currentLedger()]);
             derived.portfolio = (derived.portfolio || []).concat([projectSummary()]);
             render();
           }, { variant: 'ghost' }) : null,
           summaries.length ? button('Clear', function () {
-            derived.portfolio = null; render();
+            derived.portfolio = null; derived.portfolioLedgers = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         !summaries.length ? el('p.muted', 'Nothing loaded yet. You can also ' +
           'start with the project open in this window:') : null,
         !summaries.length ? button('Start from the open project', function () {
           derived.portfolio = [projectSummary()];
+          derived.portfolioLedgers = [currentLedger()];
           render();
         }, { variant: 'ghost' }) : null,
       ]),
@@ -6883,8 +7008,35 @@
         }),
       ]),
     ]));
+
+    /* the files' ledgers of predictions and outcomes, pooled (PLAN.md step
+     * 5.1): each point once, the drilled ones beside what was found */
+    var ledgers = portfolioLedgers();
+    var pooled = C.poolLedgers(summaries.map(function (s, i) {
+      return [C.portfolioSiteLabel(s), ledgers[i] || null];
+    }));
+    var table = C.ledgerRows(pooled);
+    nodes.push(card('Predictions and outcomes', [
+      el('p.muted', C.ledgerSummary(pooled)),
+      table.rows.length ? S.table(table.header, table.rows) : null,
+      pooled.length ? el('div.btn-row', [
+        /* every entry with its numbers, for the calibration that learns
+         * from them (PLAN.md step 5.2); the Python app writes the same file */
+        button('Download the pooled ledger (.json)', function () {
+          S.download('pooled_ledger.json', JSON.stringify(pooled, null, 1), 'application/json');
+        }),
+      ]) : null,
+    ].filter(Boolean)));
     return nodes;
   };
+
+  /* The ledgers of the project files on the Portfolio page, by the index of
+   * their summaries; a summary added before ledgers were kept has none. */
+  function portfolioLedgers() {
+    var summaries = derived.portfolio || [];
+    var ledgers = derived.portfolioLedgers || [];
+    return summaries.map(function (_, i) { return ledgers[i] || null; });
+  }
 
   /* --- settings ------------------------------------------------------------- */
 
@@ -7986,6 +8138,8 @@
 
         var filename = S.slug(siteLabel()) + '_' + kind + '_report.docx';
         await builder.save(filename);
+        /* what the report predicts goes into the ledger as it is issued */
+        if (kind === 'geophysical') recordSurveyPredictions();
         S.toast('Saved ' + filename, 'ok');
       });
     } catch (e) {

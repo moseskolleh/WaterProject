@@ -20,7 +20,7 @@ from shared import (
     figure,
     kept_upload,
     offer_download,
-    project_summaries,
+    project_files,
     workdir,
 )
 
@@ -38,7 +38,8 @@ def render() -> None:
         "Saved project files (.yaml or .gwt.json)", "portfolio_upload",
         type=["yaml", "yml", "json"], accept_multiple_files=True,
     )
-    summaries, skipped = project_summaries(f.getvalue() for f in files or [])
+    read, skipped = project_files(f.getvalue() for f in files or [])
+    summaries = [summary for summary, _ in read]
     if skipped:
         st.warning(f"{skipped} file(s) could not be read as a project and were skipped.")
     if not summaries:
@@ -106,6 +107,29 @@ def render() -> None:
         )
 
         _site_detail(summaries)
+        _pooled_ledger(read)
+
+
+def _pooled_ledger(read) -> None:
+    """The files' ledgers of predictions and outcomes, pooled (PLAN.md step
+    5.1): each point once, the drilled ones listed beside what was found."""
+    import json
+
+    from groundwater.ledger import ledger_rows, ledger_summary, pool_ledgers
+
+    st.subheader("Predictions and outcomes")
+    pooled = pool_ledgers([(site_label(summary), ledger) for summary, ledger in read])
+    st.caption(ledger_summary(pooled))
+    header, rows = ledger_rows(pooled)
+    if rows:
+        st.dataframe([dict(zip(header, row, strict=True)) for row in rows], hide_index=True,
+                     width="stretch")
+    if pooled:
+        # every entry with its numbers, for the calibration that learns from
+        # them (PLAN.md step 5.2); the browser app writes the same file
+        path = workdir() / "pooled_ledger.json"
+        path.write_text(json.dumps(pooled, indent=1, ensure_ascii=False), encoding="utf-8")
+        offer_download(path, "Download the pooled ledger (.json)", keep=False)
 
 
 @st.fragment

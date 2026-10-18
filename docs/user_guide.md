@@ -1250,7 +1250,13 @@ means higher priority.
 programme view: a status map, headline figures (success rate, mean cost
 per metre), a comparison table and a one-page brief for any single
 site. Files saved by either app are accepted, so a programme run across
-both still pools into one view.
+both still pools into one view. At its foot, **Predictions and
+outcomes** pools the files' ledgers (section 11): how many survey
+points were predicted and how many drilled, a table of the drilled ones
+with the depth to basement predicted and found and the chance predicted
+beside the outcome, and the whole pooled ledger as a `.json` file for
+the calibration that will learn from it. A point found in two files (two
+copies of one project) counts once.
 
 ## 11. Saving your work
 
@@ -1281,17 +1287,40 @@ inversion is checked on the way back in by fitting its model to the
 readings again, and a range could only be taken on trust, so it is
 sampled again when it is asked for.
 
-A project file also has room for a **ledger of predictions and
-outcomes** (PLAN.md step 5.1): what the survey predicted at each
-point, written down when it was predicted, beside what the borehole
-drilled there found. It is how the toolkit will one day learn from the
-holes drilled with it, and both apps' portfolios will pool it across
-projects. The file format went to schema 2 to carry it. Either app
-opens a file saved before that with an empty ledger, and a file of a
-later schema than the app knows still opens, with a warning that what
-the app does not recognise is not restored. Neither app writes into
-the ledger yet; a file that already holds one keeps it through every
-save, and loading another project replaces it with that project's own.
+A project file also carries a **ledger of predictions and outcomes**
+(PLAN.md step 5.1): what the survey predicted at each point, written
+down when it was predicted, beside what the borehole drilled there
+found. It is how the toolkit will learn from the holes drilled with it.
+
+- **Recording.** On the VES page (*Geophysics (VES)* in the Streamlit
+  app), *Predictions and outcomes*, below the drill-target suitability,
+  has *Record the survey's predictions*, and
+  building the geophysical report records them too. Each point's depth
+  to basement, water-bearing zones, drilling depth and chance of success
+  are written down, with their bands where the range of models was
+  sampled first: sample it before recording if you want the bands kept.
+- **Before and after drilling.** A prediction recorded before a
+  drilling log is loaded is a forecast, and once a log is loaded it is
+  kept as it was made, whatever is recorded later. One recorded after a
+  log is loaded is marked "after drilling", so it is never counted as a
+  forecast.
+- **The point drilled.** The borehole's outcome goes to the point it
+  was drilled at: the one chosen under *Point drilled*, else the nearest
+  point within 50 m of the drilling log's GPS position, else the
+  survey's only point. Where none of these says, the page asks you to
+  choose; the survey's recommended point is never assumed.
+- **The outcome** is what the log and the pumping test say, worked out
+  again whenever the project is saved, so a corrected log corrects it:
+  the depth to fresh rock, the water strikes, the total depth, the
+  tested yield and whether it succeeded (a tested safe yield of at least
+  1 m3/h, or the driller's recorded status where there is no test).
+  The page sets it beside the prediction, row by row.
+
+The file format went to schema 2 to carry the ledger. Either app opens
+a file saved before that with an empty ledger, and a file of a later
+schema than the app knows still opens, with a warning that what the app
+does not recognise is not restored. Loading another project replaces
+the ledger with that project's own.
 
 ## 12. Scanned sheets
 

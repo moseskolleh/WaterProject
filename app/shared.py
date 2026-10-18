@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -460,10 +461,18 @@ def project_summaries(files) -> tuple[list[dict], int]:
     """The summaries of saved project files (their bytes), and how many
     could not be read as a project: the Portfolio page's table and the
     desk study's earlier projects alike."""
+    read, skipped = project_files(files)
+    return [summary for summary, _ in read], skipped
+
+
+def project_files(files) -> tuple[list[tuple[dict, dict]], int]:
+    """Each saved project file's summary and its ledger of predictions and
+    outcomes (PLAN.md step 5.1), and how many could not be read as a
+    project."""
     from groundwater.geo import parse_utm_zone
     from groundwater.project_io import deserialize_project
 
-    summaries, skipped = [], 0
+    read, skipped = [], 0
     for data in files:
         try:
             updates = deserialize_project(data)
@@ -484,8 +493,8 @@ def project_summaries(files) -> tuple[list[dict], int]:
                 # than taking the page down or standing in a default 29N
                 "utm_zone": parse_utm_zone(updates.get("meta_zone")),
             }
-        summaries.append(summary)
-    return summaries, skipped
+        read.append((summary, updates["prediction_ledger"]))
+    return read, skipped
 
 
 def kept_portfolio() -> list[dict] | None:
@@ -926,7 +935,48 @@ def project_file_bytes() -> bytes:
     session = {key: value for key, value in st.session_state.items()
                if key not in UNSAVED_BUTTONS}
     session["inversion_cache"] = _inversion_cache_now()
+    # the ledger goes out with the borehole's outcome as the project now
+    # holds it: a corrected log corrects it
+    session["prediction_ledger"] = current_ledger()
     return serialize_project(session, groundwater.__version__)
+
+
+def current_ledger() -> dict:
+    """The project's ledger of predictions and outcomes (PLAN.md step 5.1),
+    with the completion the project holds attached to the point it was
+    drilled at; with none, the outcomes the ledger already has."""
+    from groundwater.ledger import attach_outcome, completion_outcome
+
+    config = app_config()
+    outcome = completion_outcome(st.session_state.get("drilling_log"),
+                                 st.session_state.get("pump_analysis"), config)
+    return attach_outcome(st.session_state.get("prediction_ledger"), outcome, config)
+
+
+def ledger_site(soundings) -> SimpleNamespace:
+    """The place a survey's points are recorded under: the project's
+    community and district from the site details, each the survey's own
+    where the details leave it blank, and the survey's zone."""
+    project, survey = site_from_state(), soundings[0].site
+    return SimpleNamespace(community=project.community or survey.community,
+                           district=project.district or survey.district,
+                           utm_zone=survey.utm_zone or project.utm_zone)
+
+
+def record_survey_predictions(soundings, interps, ranges, odds) -> list[str]:
+    """Write the survey's predictions into the project's ledger, as recorded
+    before drilling unless the project holds a drilling log, and return the
+    ids of the points whose forecast was kept as it was made."""
+    import datetime
+
+    from groundwater.ledger import record_predictions, survey_predictions
+
+    predictions = survey_predictions(interps, ranges, odds, ledger_site(soundings), app_config())
+    ledger, kept = record_predictions(current_ledger(), predictions, datetime.date.today().isoformat(),
+                                      st.session_state.get("drilling_log") is not None,
+                                      groundwater.__version__)
+    st.session_state["prediction_ledger"] = ledger
+    return kept
 
 
 def _load_project() -> None:

@@ -17,7 +17,8 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from conftest import goto  # noqa: E402
 
-APP = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+REPO = Path(__file__).resolve().parents[1]
+APP = str(REPO / "app" / "streamlit_app.py")
 
 # Each AppTest executes the whole app script, several times over: this module
 # is a quarter of the suite's running time, so pull request CI runs it on one
@@ -1424,6 +1425,100 @@ def test_the_field_kit_box_offers_a_loaded_test_and_keeps_what_was_typed(sample_
     goto(at, "Pumping test")
     assert at.text_area(key="pump_fieldkit_boreholes").value == "TYPED-1\nTYPED-2"
     assert not at.exception, at.exception
+
+
+def test_the_survey_s_predictions_meet_the_borehole_in_the_ledger(app):
+    """PLAN.md step 5.1: the Geophysics page records the survey's
+    predictions, a drilling log's outcome goes to the point chosen as drilled,
+    a forecast is kept as it was made, and building the report records too."""
+    from groundwater.ingestion import read_drilling_workbook
+
+    goto(app, "Geophysics (VES)")
+    app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+    app.run()
+    app.button(key="run_ves").click()
+    app.run()
+    assert not app.exception
+    assert "No prediction is recorded yet." in [str(i.value) for i in app.info]
+    app.button(key="record_predictions").click()
+    app.run()
+    assert not app.exception, app.exception
+    ledger = app.session_state["prediction_ledger"]
+    assert [e["point"]["sounding_id"] for e in ledger["entries"]] == ["A (1)", "B (2)"]
+    assert all(e["before_outcome"] for e in ledger["entries"])
+    assert all(e["prediction"]["odds"] is not None for e in ledger["entries"])
+    # no range was sampled, and the prediction says so
+    assert not any(e["prediction"]["range_sampled"] for e in ledger["entries"])
+
+    # Dr Timbo's log carries no position: with two points it cannot be paired
+    app.session_state["drilling_log"] = read_drilling_workbook(
+        REPO / "examples" / "data" / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    app.run()
+    assert not app.exception
+    assert any("could not be matched to a point" in str(w.value) for w in app.warning)
+    drilled = ledger["entries"][1]["id"]
+    app.selectbox(key="ledger_drilled_pick").select(drilled)
+    app.run()
+    assert not app.exception, app.exception
+    assert app.session_state["prediction_ledger"]["drilled"] == drilled
+    assert any("B (2)" in str(m.value) and "chosen on this page" in str(m.value) for m in app.markdown)
+    shown = " ".join(" ".join(t.value.astype(str).to_numpy().ravel()) for t in app.table)
+    assert "Water struck at 12, 30 m" in shown and "Drilled to 70 m" in shown
+
+    # once drilled, the forecasts are kept as they were made, by the button
+    # and by the report alike
+    app.button(key="record_predictions").click()
+    app.run()
+    assert any("2 point(s) kept the forecast" in str(i.value) for i in app.info)
+    app.button(key="build_geo_report").click()
+    app.run()
+    assert not app.exception
+    after = app.session_state["prediction_ledger"]
+    assert [e["recorded_on"] for e in after["entries"]] == [e["recorded_on"] for e in ledger["entries"]]
+    assert all(e["before_outcome"] for e in after["entries"])
+
+
+def test_the_portfolio_pools_the_projects_ledgers(sample_data):
+    """PLAN.md step 5.1: the Portfolio page pools the ledgers of the files
+    it is given, each point once, and offers them as one file."""
+    from types import SimpleNamespace
+
+    from groundwater import ledger as L
+    from groundwater.project_io import serialize_project
+
+    def saved(community, easting, status):
+        site = SimpleNamespace(community=community, district="Port Loko", utm_zone=28)
+        interp = SimpleNamespace(
+            sounding_id="VES 1", depth_to_basement_m=28.4, basement_not_resolved=False,
+            investigation_depth_m=60.0, water_zones=[(8.0, 20.0)], aquifer_thickness_m=12.0,
+            max_drilling_depth_m=35.0, drilling_depth_capped=False, fit_error_percent=3.2,
+            site_easting=easting, site_northing=926355.0)
+        ledger, _ = L.record_predictions(L.empty_ledger(), L.survey_predictions([interp], None, None, site),
+                                         "2026-10-01", False, "0.3.0")
+        log = SimpleNamespace(borehole_ref="BH-1", total_depth_m=45.0, intervals=[], water_strikes_m=[],
+                              status=status, completion_date="",
+                              site=SimpleNamespace(easting=None, northing=None, utm_zone=None))
+        ledger = L.attach_outcome(ledger, L.completion_outcome(log, None))
+        return serialize_project({"project_summary": {"community": community, "district": "Port Loko",
+                                                      "status": status},
+                                  "prediction_ledger": ledger}, "0.3.0")
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Portfolio"
+    at.run()
+    rokel = saved("Rokel", 708958.0, "Successful")
+    at.file_uploader(key="portfolio_upload").set_value([
+        ("rokel.yaml", rokel, "application/x-yaml"),
+        ("rokel_copy.yaml", rokel, "application/x-yaml"),
+        ("kuntolo.yaml", saved("Kuntolo", 709500.0, "Dry hole"), "application/x-yaml"),
+    ])
+    at.run()
+    assert not at.exception, at.exception
+    assert any("2 survey points predicted in 2 projects, 2 of them drilled" in str(c.value)
+               for c in at.caption)
+    table = next(d.value for d in at.dataframe if "Basement predicted" in d.value.columns)
+    assert list(table["Project"]) == ["Rokel (Port Loko)", "Kuntolo (Port Loko)"]
+    assert any(b.label == "Download the pooled ledger (.json)" for b in at.download_button)
 
 
 def test_portfolio_drilldown_flow(sample_data):
