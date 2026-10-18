@@ -3899,6 +3899,109 @@ await withPage(async (page, base, consoleErrors) => {
     });
   }
 
+  // --- The ledger of predictions and outcomes (PLAN.md step 5.1) ---
+  // The twins of groundwater/ledger.py on make_reference.py's cases:
+  // predictions over every kind of point and range, outcomes over every
+  // kind of log and test, scenarios of recording, pairing and attaching run
+  // step by step, hand-edited ledgers cleaned, the comparison's words,
+  // pooling, point identifiers, the project file's schema and its
+  // migration, all held whole; and the real Rokel survey, from the
+  // browser's own inversions.
+  {
+    const LG = R.ledger;
+    const ledgerJs = await page.evaluate(async ({ LG, short, rokelOdds }) => {
+      const C = GWT.core, D = GWT.data;
+      const cfg = C.defaultConfig();
+      const wider = C.withConfig({ odds: { success_yield_m3_per_h: 3.6 } });
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      const run = (ops) => {
+        let held = C.emptyLedger();
+        return ops.map((op) => {
+          const conf = op.within === undefined || op.within === null ? cfg
+            : C.withConfig({ ledger: { pair_within_m: op.within } });
+          if (op.op === 'record') {
+            const got = C.recordPredictions(held, op.predictions, op.on, op.known, '0.3.0');
+            held = got.ledger;
+            return { ledger: held, kept: got.kept };
+          }
+          if (op.op === 'choose') {
+            const id = op.id === null || typeof op.id === 'string' ? op.id : held.entries[op.id].id;
+            held = Object.assign({}, held, { drilled: id });
+            return { ledger: C.cleanLedger(held) };
+          }
+          if (op.op === 'pair') return C.pairDrilled(held, op.outcome, conf);
+          held = C.attachOutcome(held, op.outcome, conf);
+          return { ledger: held };
+        });
+      };
+      const sheets = await GWT.support.readXlsx(GWT.support.base64ToBytes(D.samples.rokel.files.ves.b64));
+      const soundings = C.readVesSheets(sheets, 'rokel_ves.xlsx');
+      const interps = soundings.map((s) => C.interpretModel(s, C.invertSounding(s).model));
+      return {
+        predictions: LG.predictions.map((p) => attempt(() => C.pointPrediction(LG.interps[p.interp],
+          LG.ranges[p.range], p.odds ? LG.odds : null, cfg))),
+        outcomes: LG.outcomes.map((o) => attempt(() => C.completionOutcome(LG.logs[o.log],
+          LG.analyses[o.analysis], o.wider ? wider : cfg))),
+        scenarios: Object.fromEntries(Object.entries(LG.scenarios).map(([name, s]) =>
+          [name, attempt(() => run(s.ops))])),
+        texts: LG.texts.map((t) => attempt(() => {
+          const prediction = LG.predictions[t.prediction].expect;
+          const outcome = t.outcome < 0 ? null : LG.outcomes[t.outcome].expect;
+          return { check: C.basementCheck(prediction, outcome), outcome_text: C.outcomeText(outcome),
+            rows: C.entryRows({ prediction: prediction, outcome: outcome }) };
+        })),
+        dirty: LG.dirty.map((d) => attempt(() => C.cleanLedger(d.raw))),
+        pool: attempt(() => {
+          const pooled = C.poolLedgers(LG.pool.items);
+          const table = C.ledgerRows(pooled), none = C.ledgerRows([]);
+          return { pooled: pooled, counts: C.ledgerCounts(pooled), header: table.header,
+            rows: table.rows, none: [none.header, none.rows], entry_header: C.entryHeader(),
+            summary: C.ledgerSummary(pooled), summary_none: C.ledgerSummary([]) };
+        }),
+        ids: LG.ids.map((c) => attempt(() => C.pointId.apply(null, c.args))),
+        schemas: LG.schemas.map((c) => attempt(() => ({ schema: C.payloadSchema(c.payload),
+          migrated: C.migratePayload(c.payload) }))),
+        rokel: attempt(() => C.surveyPredictions(interps, short, rokelOdds, soundings[0].site, cfg)),
+        file: attempt(() => C.cleanLedger(GWT.support.parseYaml(LG.file.yaml).ledger)),
+      };
+    }, { LG, short: R.ves_range.short, rokelOdds: R.odds.rokel.map((r) => r.odds) });
+    const held = (label, got, want) => {
+      if (!got || got.threw) {
+        check(label, false, got ? `threw ${got.threw}` : 'no answer');
+        return;
+      }
+      const found = firstDifference(got.ok, want);
+      check(label, !found, found);
+    };
+    const each = (label, gots, wants) => {
+      const failed = wants.map((want, i) => {
+        const got = gots[i];
+        if (!got || got.threw) return `[${i}] threw ${got ? got.threw : 'no answer'}`;
+        const found = firstDifference(got.ok, want, `[${i}]`);
+        return found;
+      }).filter(Boolean);
+      check(`${label} (${wants.length})`, failed.length === 0, failed.slice(0, 3).join('\n     '));
+    };
+    each('ledger: each point\'s prediction', ledgerJs.predictions, LG.predictions.map((p) => p.expect));
+    each('ledger: each borehole\'s outcome', ledgerJs.outcomes, LG.outcomes.map((o) => o.expect));
+    Object.keys(LG.scenarios).forEach((name) => {
+      held(`ledger: the "${name}" scenario, step by step`, ledgerJs.scenarios[name], LG.scenarios[name].expect);
+    });
+    each('ledger: the comparison\'s words', ledgerJs.texts, LG.texts.map((t) => ({ check: t.check,
+      outcome_text: t.outcome_text, rows: t.rows })));
+    each('ledger: hand-edited ledgers cleaned', ledgerJs.dirty, LG.dirty.map((d) => d.expect));
+    held('ledger: pooled over files, counted and tabled', ledgerJs.pool, { pooled: LG.pool.pooled,
+      counts: LG.pool.counts, header: LG.pool.header, rows: LG.pool.rows, none: LG.pool.none,
+      entry_header: LG.pool.entry_header, summary: LG.pool.summary, summary_none: LG.pool.summary_none });
+    each('ledger: point identifiers', ledgerJs.ids, LG.ids.map((c) => c.expect));
+    each('project file: schema read and migrated', ledgerJs.schemas, LG.schemas.map((c) => ({
+      schema: c.schema, migrated: c.migrated })));
+    held('ledger: the Rokel survey\'s predictions from the browser\'s own inversions', ledgerJs.rokel, LG.rokel);
+    held('ledger: read out of a Streamlit project file as Python reads it', ledgerJs.file, LG.file.expect);
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 

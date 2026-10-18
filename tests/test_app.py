@@ -1156,6 +1156,42 @@ def test_a_project_load_takes_the_site_maps_off_the_deliverables(sample_data):
     assert "📦 Deliverables" not in [str(h.value) for h in at.subheader], "nothing else was built"
 
 
+def test_a_loaded_projects_ledger_is_kept_and_the_next_load_replaces_it(app):
+    """PLAN.md step 5.1: the ledger of predictions and outcomes rides in the
+    project file. The app keeps a loaded file's ledger for its next save,
+    and a project loaded after it brings its own, empty or not, never the
+    outgoing one's."""
+    from types import SimpleNamespace
+
+    import yaml
+
+    import groundwater
+    from groundwater import ledger as L
+    from groundwater.project_io import serialize_project
+
+    interp = SimpleNamespace(
+        sounding_id="VES 1", depth_to_basement_m=28.4, basement_not_resolved=False,
+        investigation_depth_m=60.0, water_zones=[(8.0, 20.0)], aquifer_thickness_m=12.0,
+        max_drilling_depth_m=35.0, drilling_depth_capped=False, fit_error_percent=3.2,
+        site_easting=708958.0, site_northing=926355.0)
+    site = SimpleNamespace(community="Rokel", district="Port Loko", utm_zone=28)
+    ledger, _ = L.record_predictions(L.empty_ledger(), L.survey_predictions([interp], None, None, site),
+                                     "2026-10-01", False, groundwater.__version__)
+    at = app
+    for name, held in (("rokel", ledger), ("kuntolo", None)):
+        saved = serialize_project({"meta_community": name, "prediction_ledger": held}, groundwater.__version__)
+        at.file_uploader(key="project_upload").set_value((f"{name}_project.yaml", saved, "application/x-yaml"))
+        at.run()
+        at.button(key="project_load").click()
+        at.run()
+        assert not at.exception, at.exception
+        assert at.session_state["prediction_ledger"] == L.clean_ledger(held), name
+        # the key serialize_project reads, so the next save writes it again
+        resaved = serialize_project({"prediction_ledger": at.session_state["prediction_ledger"]},
+                                    groundwater.__version__)
+        assert yaml.safe_load(resaved)["ledger"] == L.clean_ledger(held), name
+
+
 def test_project_state_tracked(app):
     """The state the project file persists is maintained by the app."""
     assert "rates_overrides" in app.session_state

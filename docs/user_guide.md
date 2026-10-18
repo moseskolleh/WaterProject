@@ -1281,6 +1281,18 @@ inversion is checked on the way back in by fitting its model to the
 readings again, and a range could only be taken on trust, so it is
 sampled again when it is asked for.
 
+A project file also has room for a **ledger of predictions and
+outcomes** (PLAN.md step 5.1): what the survey predicted at each
+point, written down when it was predicted, beside what the borehole
+drilled there found. It is how the toolkit will one day learn from the
+holes drilled with it, and both apps' portfolios will pool it across
+projects. The file format went to schema 2 to carry it. Either app
+opens a file saved before that with an empty ledger, and a file of a
+later schema than the app knows still opens, with a warning that what
+the app does not recognise is not restored. Neither app writes into
+the ledger yet; a file that already holds one keeps it through every
+save, and loading another project replaces it with that project's own.
+
 ## 12. Scanned sheets
 
 In the browser app: [`#/extract`](index.html#/extract).

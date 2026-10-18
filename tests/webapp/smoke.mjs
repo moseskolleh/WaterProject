@@ -1574,6 +1574,47 @@ await withPage(async (page, base, consoleErrors) => {
   }, fixtureJpeg.toString('base64'));
   check('photo evidence: an older project opens and says its photographs have no recorded provenance',
     old.shows && old.held && old.report && !old.invented, JSON.stringify(old));
+
+  // the ledger of predictions and outcomes (PLAN.md step 5.1): saved at the
+  // top of the project file, where the Python app writes it, under schema 2;
+  // opened again into the session; empty from a file of schema 1; and a
+  // file of a later schema says so as it opens
+  const ledgerTrip = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, S = window.GWT.support;
+    const interp = { sounding_id: 'VES 1', depth_to_basement_m: 28.4, basement_not_resolved: false,
+      investigation_depth_m: 60, water_zones: [[8, 20]], aquifer_thickness_m: 12,
+      max_drilling_depth_m: 35, drilling_depth_capped: false, fit_error_percent: 3.2,
+      site_easting: 708958, site_northing: 926355 };
+    const survey = C.surveyPredictions([interp], null, null,
+      { community: 'Rokel', district: 'Port Loko', utm_zone: 28 });
+    const recorded = C.recordPredictions(C.emptyLedger(), survey, '2026-10-01', false, '0.3.0').ledger;
+    app.store.set('ledger', recorded);
+    const payload = JSON.parse(JSON.stringify(app.projectPayload()));
+    const toasts = [];
+    const toast = S.toast;
+    S.toast = (message, tone) => { toasts.push([message, tone]); };
+    try {
+      app.store.set('ledger', C.emptyLedger());
+      await app.loadProject(JSON.stringify(payload));
+      const back = app.store.get('ledger');
+      await app.loadProject(JSON.stringify({ format: 'groundwater-toolkit-project', version: 1,
+        state: Object.assign({}, payload.state, { ledger: recorded }) }));
+      const old = app.store.get('ledger');
+      await app.loadProject(JSON.stringify(Object.assign({}, payload, { schema: C.PROJECT_SCHEMA + 1 })));
+      const same = (a) => JSON.stringify(C.cleanLedger(a)) === JSON.stringify(C.cleanLedger(recorded));
+      return { schema: payload.schema, version: payload.version, top: same(payload.ledger),
+        inState: 'ledger' in payload.state, back: same(back), entries: recorded.entries.length,
+        old: old, later: toasts[toasts.length - 1] };
+    } finally {
+      S.toast = toast;
+    }
+  });
+  check('ledger: the project file carries it at its top level, at schema 2, and opens with it',
+    ledgerTrip.schema === 2 && ledgerTrip.version === undefined && !ledgerTrip.inState &&
+    ledgerTrip.top && ledgerTrip.back && ledgerTrip.entries === 1, JSON.stringify(ledgerTrip).slice(0, 600));
+  check('ledger: a file of schema 1 opens with an empty one, and a later schema says so',
+    ledgerTrip.old.entries.length === 0 && ledgerTrip.later[1] === 'warn' &&
+    /format 3; this app reads format 2/.test(ledgerTrip.later[0]), JSON.stringify(ledgerTrip.later));
   await page.evaluate(async (saved) => {
     window.GWT.app.store.replace(JSON.parse(saved));
     await window.GWT.app.recompute();

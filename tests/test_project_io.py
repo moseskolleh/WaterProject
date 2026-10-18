@@ -303,7 +303,8 @@ def test_a_hand_edited_project_file_fails_as_a_message_not_a_traceback():
     back = deserialize_project(saved)
     assert back["meta_easting"] == 778000.0 and back["fx_rate"] == 23
     assert "warnings" not in back
-    assert b"schema: 1" in saved and b"format: groundwater-toolkit-project" in saved
+    assert f"schema: {PROJECT_SCHEMA}".encode() in saved
+    assert b"format: groundwater-toolkit-project" in saved
 
 
 def test_a_browser_app_project_file_yields_its_summary():
