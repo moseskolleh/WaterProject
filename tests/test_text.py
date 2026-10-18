@@ -440,7 +440,7 @@ def test_no_engine_types_out_a_configuration_default():
     fields = re.findall(r"^    (\w+): (\w+) = (.*)$", source, re.MULTILINE)
     assert fields
     for name, _kind, default in fields:
-        if name in {"style", "ves", "pumping", "design", "ves_range", "odds",
+        if name in {"style", "ves", "pumping", "design", "ves_range", "odds", "ledger",
                     "cost_range", "terrain"}:
             continue
         assert re.match(r"(tuple\()?_[A-Z]+\[\"" + name + r"\"\]", default), (

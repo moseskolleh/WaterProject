@@ -1,0 +1,86 @@
+# The ledger of predictions and outcomes (PLAN.md step 5.1): what the survey
+# predicted at each point beside what the borehole drilled there found.
+# Written by ledger.py and by the ledger functions of gwt-core.js. Every
+# entry is read by its quoted id in both engines, never by an id built from
+# pieces. Depths are in metres below ground and yields in m3/h; {zones} and
+# {strikes} are lists the code has already written out. The template rules
+# are in src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# The comparison of one point, as a table of four columns.
+col_quantity: Quantity
+col_predicted: Predicted
+col_found: Found
+col_check: How they compare
+
+row_basement: Depth to basement
+row_zones: Water
+row_depth: Drilling depth
+row_odds: Chance of success
+
+# What the survey predicted.
+basement_best: "{d:num} m"
+basement_band: "{d:num} m ({low:num} to {high:num} m over the models that fit)"
+basement_none: "Not resolved within {doi:num} m"
+basement_none_band: "Not resolved by the best fit; {low:num} to {high:num} m over the models that fit"
+
+zones: "Water-bearing at {zones} m"
+zones_none: No water-bearing zone predicted
+
+depth_about: "About {d:num} m"
+depth_least: "At least {d:num} m"
+depth_band: "{depth} ({low:num} to {high:num} m over the models that fit)"
+depth_band_flat: "{depth} ({low:num} m over every model that fits)"
+
+odds_short: "{p} percent ({low} to {high})"
+odds_none: Not worked out
+
+# What the borehole found.
+not_drilled: Not drilled yet
+
+found_basement: "{d:num} m"
+found_basement_unreached: "Not reached by {td:num} m"
+found_basement_no_depth: Not reached; the total depth is not recorded
+
+strikes: "Water struck at {strikes} m"
+strikes_none: No water strike logged
+
+drilled_to: "Drilled to {td:num} m"
+drilled_no_depth: The total depth is not recorded
+
+# How the borehole turned out, by what says so.
+outcome_success_tested: "Successful: {y:num} m3/h tested"
+outcome_short_tested: "{y:num} m3/h tested, short of the {t:num} m3/h counted as success"
+outcome_failure_recorded: "Not successful, as the driller recorded it ({status})"
+outcome_success_recorded: "Successful, as the driller recorded it ({status}); not tested"
+outcome_unknown: Not known yet
+
+# How the depth to basement found compares with the predicted band.
+basement_check:
+  inside: Inside the band
+  deeper: Deeper than the band
+  shallower: Shallower than the band
+  unreached_allowed: Not reached yet, as the band allows
+  no_band: No band to compare it with
+
+strikes_in_zones: "{k:g} of {n:g} {n:plural:strike|strikes} in a predicted zone"
+
+# When the prediction was recorded, against the borehole.
+recorded_before: Before drilling
+recorded_after: After drilling
+
+# The ledger pooled over a portfolio, as a table.
+pool_col_project: Project
+pool_col_point: Point
+pool_col_recorded: Prediction recorded
+pool_col_basement: Basement predicted
+pool_col_found: Basement found
+pool_col_check: Basement against the band
+pool_col_odds: Chance predicted
+pool_col_outcome: Outcome
+
+pool_counts: >-
+  {points:g} survey {points:plural:point|points} predicted in {projects:g}
+  {projects:plural:project|projects}, {drilled:g} of them drilled; {forecast:g} of the
+  drilled points had their prediction recorded before drilling.
+
+pool_none: No project file loaded holds a ledger entry yet.

@@ -868,23 +868,63 @@
   /* ---------------------------------------------------------------- YAML
    *
    * Enough of YAML to read a project file the Streamlit app saved: block
-   * mappings, block sequences, quoted and plain scalars, and the line folding
-   * PyYAML applies to long plain scalars. Flow style, anchors, tags, multiple
+   * mappings, block sequences (a sequence in a sequence too, "- - 8.0", as
+   * PyYAML writes the ledger's zones and bands of rock), quoted and plain
+   * scalars with every escape PyYAML writes in double quotes (a name with an
+   * accent comes out "Kp\xE8t\xE8ma"), and the line folding PyYAML applies
+   * to long scalars, quoted or not. Flow style, anchors, tags, multiple
    * documents and block scalars are not supported and raise, because a reader
    * that half-understands a file is worse than one that says it cannot read it
    * - the caller reports the file as skipped rather than importing nonsense.
    */
   function parseYaml(text) {
     var lines = String(text).replace(/\r\n?/g, '\n').split('\n');
-    var clean = [];
-    lines.forEach(function (raw) {
-      if (/^\s*#/.test(raw) || !raw.trim()) return;
-      if (/^(---|\.\.\.)\s*$/.test(raw)) return;
-      clean.push(raw);
-    });
     var at = 0;
 
+    /* A blank line, a comment or a document marker, between the values: a
+     * line inside a quoted scalar is never one, whatever it holds. */
+    function skippable(line) {
+      return !line.trim() || /^\s*#/.test(line) || /^(---|\.\.\.)\s*$/.test(line);
+    }
+
+    /* The next line that holds a value, or null at the end. */
+    function current() {
+      while (at < lines.length && skippable(lines[at])) at += 1;
+      return at < lines.length ? lines[at] : null;
+    }
+
     function indentOf(line) { return /^ */.exec(line)[0].length; }
+
+    var ESCAPES = { '0': '\0', a: '\x07', b: '\b', t: '\t', '\t': '\t', n: '\n', v: '\v',
+      f: '\f', r: '\r', e: '\x1b', ' ': ' ', '"': '"', '/': '/', '\\': '\\', N: '\x85',
+      _: '\xa0', L: ' ', P: ' ' };
+    var HEX_ESCAPES = { x: 2, u: 4, U: 8 };
+
+    /* The body of a double-quoted scalar, its escapes read one at a time
+     * from the left, so "\\n" is a backslash and an n, not a line break. */
+    function unescapeDouble(body) {
+      var out = '';
+      for (var i = 0; i < body.length; i++) {
+        var ch = body.charAt(i);
+        if (ch !== '\\') { out += ch; continue; }
+        var next = body.charAt(i + 1);
+        if (Object.prototype.hasOwnProperty.call(HEX_ESCAPES, next)) {
+          var digits = body.substr(i + 2, HEX_ESCAPES[next]);
+          if (digits.length !== HEX_ESCAPES[next] || !/^[0-9A-Fa-f]+$/.test(digits)) {
+            throw new Error('unreadable YAML escape: \\' + next + digits);
+          }
+          out += String.fromCodePoint(parseInt(digits, 16));
+          i += 1 + HEX_ESCAPES[next];
+          continue;
+        }
+        if (!Object.prototype.hasOwnProperty.call(ESCAPES, next)) {
+          throw new Error('unreadable YAML escape: \\' + next);
+        }
+        out += ESCAPES[next];
+        i += 1;
+      }
+      return out;
+    }
 
     function scalar(token) {
       var s = String(token).trim();
@@ -892,9 +932,7 @@
       if (s === 'true' || s === 'True') return true;
       if (s === 'false' || s === 'False') return false;
       if (s.charAt(0) === '"' && s.charAt(s.length - 1) === '"' && s.length > 1) {
-        return s.slice(1, -1)
-          .replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"')
-          .replace(/\\\\/g, '\\');
+        return unescapeDouble(s.slice(1, -1));
       }
       if (s.charAt(0) === "'" && s.charAt(s.length - 1) === "'" && s.length > 1) {
         return s.slice(1, -1).replace(/''/g, "'");
@@ -916,87 +954,185 @@
           s.charAt(0) === '>') {
         throw new Error('unsupported YAML construct: ' + s.slice(0, 12));
       }
-      if (/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(s)) return Number(s);
+      /* numbers as YAML 1.1 reads them, which is how PyYAML reads and writes
+       * them: a float has a point ("1e3" is text, and PyYAML writes it so,
+       * unquoted), digits may be grouped with underscores, and .inf and .nan
+       * are words of their own */
+      if (/^[-+]?(0|[1-9][0-9_]*)$/.test(s) ||
+          /^[-+]?([0-9][0-9_]*)?\.[0-9_]*([eE][-+][0-9]+)?$/.test(s) && /[0-9]/.test(s)) {
+        return Number(s.replace(/_/g, ''));
+      }
+      if (/^[-+]?\.(inf|Inf|INF)$/.test(s)) return s.charAt(0) === '-' ? -Infinity : Infinity;
+      if (/^\.(nan|NaN|NAN)$/.test(s)) return NaN;
       return s;
+    }
+
+    /* Where a quoted scalar that opens at the start of text closes, or -1
+     * where it runs on past it. */
+    function closing(text, quote) {
+      for (var i = 1; i < text.length; i++) {
+        var c = text.charAt(i);
+        if (quote === '"' && c === '\\') { i += 1; continue; }
+        if (c === quote) {
+          if (quote === "'" && text.charAt(i + 1) === "'") { i += 1; continue; }
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    /* Trailing white space, except, in double quotes, a space an odd run of
+     * backslashes escapes ("\ "). */
+    function trimEnd(text, quote) {
+      var m = /[ \t]+$/.exec(text);
+      if (!m) return text;
+      var cut = text.length - m[0].length;
+      var slashes = quote === '"' ? /\\*$/.exec(text.slice(0, cut))[0].length : 0;
+      return slashes % 2 === 1 ? text.slice(0, cut + 1) : text.slice(0, cut);
+    }
+
+    /* A quoted scalar PyYAML wrapped over several lines. Every line until it
+     * closes is part of it, blank or not, whatever its indent. A line break
+     * folds into one space, a blank line into a line break, and in double
+     * quotes a line that ends in an odd backslash runs straight on to the
+     * next, whose leading space is written "\ " where it has one. */
+    function quotedScalar(first) {
+      var quote = first.charAt(0);
+      var body = first;
+      var breaks = 0;
+      while (closing(body, quote) < 0) {
+        if (at >= lines.length) throw new Error('unclosed YAML quote');
+        var raw = lines[at];
+        at += 1;
+        if (!raw.trim()) { breaks += 1; continue; }
+        var part = raw.replace(/^[ \t]+/, '');
+        var slashes = /\\*$/.exec(body)[0].length;
+        if (quote === '"' && breaks === 0 && slashes % 2 === 1) {
+          body = body.slice(0, -1) + part;
+        } else {
+          body = trimEnd(body, quote) + (breaks ? new Array(breaks + 1).join('\n') : ' ') + part;
+        }
+        breaks = 0;
+      }
+      var end = closing(body, quote);
+      if (body.slice(end + 1).trim()) throw new Error('unreadable YAML after a quote: ' + body.slice(end + 1, end + 21));
+      return scalar(body.slice(0, end + 1));
     }
 
     /* PyYAML folds a long plain scalar across lines. Once a key has a value on
      * its own line, anything indented deeper belongs to that value and joins
      * with a single space - there is nothing else a deeper line could be. */
     function foldedScalar(first, indent) {
-      var parts = [first];
-      while (at < clean.length && indentOf(clean[at]) > indent) {
-        parts.push(clean[at].trim());
+      var parts = [first.trim()];
+      for (var line = current(); line !== null && indentOf(line) > indent; line = current()) {
+        parts.push(line.trim());
         at += 1;
       }
+      /* a plain scalar holds no ": " and no " #", which would make it a
+       * mapping or a comment: PyYAML refuses such a file, and so does this */
+      parts.forEach(function (part) {
+        if (/:(\s|$)/.test(part) || /\s#/.test(part)) {
+          throw new Error('unreadable YAML line: ' + part.slice(0, 40));
+        }
+      });
       return parts.join(' ');
     }
 
+    function value(rest, indent) {
+      var first = rest.replace(/^[ \t]+/, '');
+      if (first.charAt(0) === '"' || first.charAt(0) === "'") {
+        return quotedScalar(trimEnd(first, first.charAt(0)));
+      }
+      return scalar(foldedScalar(rest, indent));
+    }
+
+    /* The key a line of a mapping starts with, and the rest of the line, or
+     * null where the line is not "key: value": a plain key ends at the first
+     * colon followed by a space or the line's end ("x:y: 1" is the key x:y),
+     * and a quoted one at its closing quote. */
+    function mappingKey(body) {
+      var quote = body.charAt(0);
+      if (quote === '"' || quote === "'") {
+        var end = closing(body, quote);
+        if (end < 0 || body.charAt(end + 1) !== ':' || !/^(\s|$)/.test(body.slice(end + 2))) return null;
+        return { key: String(scalar(body.slice(0, end + 1))), rest: body.slice(end + 2) };
+      }
+      var colon = /:(\s|$)/.exec(body);
+      if (!colon || colon.index === 0) return null;
+      return { key: String(scalar(body.slice(0, colon.index))), rest: body.slice(colon.index + 1) };
+    }
+
     function parseBlock(indent) {
-      var line = clean[at];
-      if (/^\s*-\s*/.test(line)) return parseSequence(indent);
+      if (/^\s*-(\s|$)/.test(current() || '')) return parseSequence(indent);
       return parseMapping(indent);
     }
 
     function parseSequence(indent) {
       var out = [];
-      while (at < clean.length) {
-        var line = clean[at];
+      for (var line = current(); line !== null; line = current()) {
         var here = indentOf(line);
         if (here < indent || !/^\s*-(\s|$)/.test(line)) break;
         if (here > indent) throw new Error('inconsistent YAML indentation');
         var rest = line.slice(here + 1).replace(/^ /, '');
         at += 1;
         if (!rest.trim()) {
-          out.push(at < clean.length && indentOf(clean[at]) > here
-            ? parseBlock(indentOf(clean[at])) : null);
+          var next = current();
+          out.push(next !== null && indentOf(next) > here ? parseBlock(indentOf(next)) : null);
           continue;
         }
-        if (/^[^:]+:(\s|$)/.test(rest)) {
+        if (/^-(\s|$)/.test(rest)) {
+          /* "- - item" starts a sequence in this one, whose dashes align
+           * after the outer dash */
+          lines[at - 1] = new Array(here + 3).join(' ') + rest;
+          at -= 1;
+          out.push(parseSequence(here + 2));
+          continue;
+        }
+        if (mappingKey(rest)) {
           /* "- key: value" starts a mapping whose keys align after the dash */
-          clean[at - 1] = new Array(here + 3).join(' ') + rest;
+          lines[at - 1] = new Array(here + 3).join(' ') + rest;
           at -= 1;
           out.push(parseMapping(here + 2));
           continue;
         }
-        out.push(scalar(foldedScalar(rest, here)));
+        out.push(value(rest, here));
       }
       return out;
     }
 
     function parseMapping(indent) {
       var out = {};
-      while (at < clean.length) {
-        var line = clean[at];
+      for (var line = current(); line !== null; line = current()) {
         var here = indentOf(line);
         if (here < indent) break;
         if (here > indent) throw new Error('inconsistent YAML indentation');
         var body = line.slice(here);
-        var split = /^((?:"[^"]*")|(?:'[^']*')|(?:[^:]+)):(?:\s+(.*))?$/.exec(body);
+        var split = mappingKey(body);
         if (!split) throw new Error('unreadable YAML line: ' + body.slice(0, 40));
-        var key = String(scalar(split[1]));
-        var rest = split[2] === undefined ? '' : split[2];
+        var key = split.key;
+        var rest = split.rest;
         at += 1;
         if (rest.trim() === '') {
-          if (at < clean.length && indentOf(clean[at]) > here) {
-            out[key] = parseBlock(indentOf(clean[at]));
-          } else if (at < clean.length && indentOf(clean[at]) === here &&
-                     /^\s*-(\s|$)/.test(clean[at])) {
+          var next = current();
+          if (next !== null && indentOf(next) > here) {
+            out[key] = parseBlock(indentOf(next));
+          } else if (next !== null && indentOf(next) === here && /^\s*-(\s|$)/.test(next)) {
             out[key] = parseSequence(here);
           } else {
             out[key] = null;
           }
           continue;
         }
-        out[key] = scalar(foldedScalar(rest, here));
+        out[key] = value(rest, here);
       }
       return out;
     }
 
-    if (!clean.length) return null;
-    var value = parseBlock(indentOf(clean[0]));
-    if (at < clean.length) throw new Error('trailing YAML content');
-    return value;
+    var start = current();
+    if (start === null) return null;
+    var parsed = parseBlock(indentOf(start));
+    if (current() !== null) throw new Error('trailing YAML content');
+    return parsed;
   }
 
   function toCsv(rows, header) {

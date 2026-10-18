@@ -18,7 +18,7 @@ import pytest
 import groundwater.recompute as recompute_module
 import groundwater.ves.cache as cache_module
 from groundwater.config import Config
-from groundwater.project_io import deserialize_project, serialize_project
+from groundwater.project_io import PROJECT_SCHEMA, deserialize_project, serialize_project
 from groundwater.recompute import recompute_results
 from groundwater.ves import invert_sounding
 from groundwater.ves.cache import (
@@ -88,8 +88,9 @@ def test_a_saved_survey_carries_an_entry_per_sounding(first_load):
     assert len(out["inversion_cache"]) == len(soundings) == 2
     updates = deserialize_project(raw)
     assert updates["inversion_cache"] == out["inversion_cache"]
-    # the file layout is unchanged otherwise: the same schema, one new key
-    assert b"schema: 1\n" in raw
+    # the cache is a key of its own, not a schema of its own: the file is of
+    # the schema every project file is (raised for the ledger, step 5.1)
+    assert f"schema: {PROJECT_SCHEMA}\n".encode() in raw
 
 
 def test_reopening_a_saved_survey_inverts_nothing(first_load, counted, sample_data, tmp_path):

@@ -25,6 +25,7 @@ _STYLE, _VES, _PUMPING, _DESIGN = (
 )
 _RANGE = _DEFAULTS["ves_range"]
 _ODDS = _DEFAULTS["odds"]
+_LEDGER = _DEFAULTS["ledger"]
 _COSTS = _DEFAULTS["cost_range"]
 _TERRAIN = _DEFAULTS["terrain"]
 
@@ -263,6 +264,21 @@ class OddsConfig:
 
 
 # ---------------------------------------------------------------------------
+# The ledger of predictions and outcomes (PLAN.md step 5.1, ledger.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class LedgerConfig:
+    # A borehole is paired with the survey point nearest its logged position
+    # when one lies this close. A handheld GPS reads to about 5 m, and a rig
+    # is often set up some metres off the peg for access; a point farther
+    # away than this is not taken to be the one drilled unless a person
+    # says so, since a wrong pairing would mislead the calibration that
+    # learns from the ledger. Provisional.
+    pair_within_m: float = _LEDGER["pair_within_m"]
+
+
+# ---------------------------------------------------------------------------
 # The cost as a distribution (PLAN.md step 3.4, costing/distribution.py)
 # ---------------------------------------------------------------------------
 
@@ -463,6 +479,7 @@ class Config:
     design: DesignRules = field(default_factory=DesignRules)
     ves_range: VESRangeConfig = field(default_factory=VESRangeConfig)
     odds: OddsConfig = field(default_factory=OddsConfig)
+    ledger: LedgerConfig = field(default_factory=LedgerConfig)
     cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
     terrain: TerrainConfig = field(default_factory=TerrainConfig)
 
@@ -484,6 +501,7 @@ class Config:
             ("design", cfg.design),
             ("ves_range", cfg.ves_range),
             ("odds", cfg.odds),
+            ("ledger", cfg.ledger),
             ("cost_range", cfg.cost_range),
             ("terrain", cfg.terrain),
         ):
@@ -501,11 +519,11 @@ class Config:
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
             if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
-                           "cost_range", "terrain"):
+                           "ledger", "cost_range", "terrain"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
                     "(expected style, ves, pumping, design, ves_range, odds, "
-                    "cost_range or terrain)",
+                    "ledger, cost_range or terrain)",
                     stacklevel=2,
                 )
         return cfg

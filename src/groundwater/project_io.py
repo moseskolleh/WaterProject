@@ -27,6 +27,8 @@ import math
 
 import yaml
 
+from .ledger import clean_ledger
+
 # session-state key prefixes that hold saveable manual inputs. "q_" holds
 # pumping-test step discharges and "design_" the borehole-design static water
 # level, both needed to recompute the analyses from the saved data files.
@@ -64,9 +66,10 @@ RESET_ON_LOAD_PREFIXES = (
 # (geolibre_portfolio) is of the pooled sites rather than of one, and stays.
 # An elevation model is not saved in a project, so left behind it would draw
 # the incoming site's topographic map from tiles of somewhere else, credited
-# as though they were its own.
+# as though they were its own. The ledger of predictions and outcomes is the
+# outgoing survey's record; the incoming file brings its own.
 RESET_ON_LOAD_KEYS = (
-    "design_swl", "asset_record", "inversion_cache", "sup_evidence",
+    "design_swl", "asset_record", "inversion_cache", "sup_evidence", "prediction_ledger",
     "topo_path", "topo_source", "topo_report", "topo_inputs", "terrain_result", "profile_path",
     "map_paths", "subsurface_paths", "section_path", "pseudosection_path",
     "traverse", "geolibre_path", "geolibre_area", "geolibre_layers",
@@ -153,7 +156,46 @@ def committee_records(data) -> list[dict]:
 
 
 PROJECT_FORMAT = "groundwater-toolkit-project"
-PROJECT_SCHEMA = 1
+#: 2 from PLAN.md step 5.1: the file carries the ledger of predictions and
+#: outcomes. The schema was raised for it, where the saved inversions and the
+#: supervision photographs came in as keys an older toolkit ignores, because
+#: the ledger is a record rather than a cache: an older toolkit that loads a
+#: file of schema 2 says it does not restore everything in it, rather than
+#: dropping the record on its next save without a word.
+PROJECT_SCHEMA = 2
+
+
+def _schema_1_to_2(payload: dict) -> dict:
+    """Schema 1 had no ledger: a file of it loads with an empty one."""
+    from .ledger import empty_ledger
+
+    return dict(payload, schema=2, ledger=empty_ledger())
+
+
+#: The step from each schema to the next, applied in turn on load.
+_MIGRATIONS = {1: _schema_1_to_2}
+
+
+def payload_schema(payload: dict) -> int:
+    """The schema a project file was saved in. A file without one is of
+    schema 1: the Python app's files before the schema was written, and the
+    browser app's, which wrote ``version: 1`` until schema 2."""
+    schema = payload.get("schema")
+    if (isinstance(schema, bool) or not isinstance(schema, (int, float))
+            or not math.isfinite(schema) or schema < 1):
+        return 1
+    return int(schema)
+
+
+def migrate_payload(payload: dict) -> dict:
+    """A project file's payload brought up to :data:`PROJECT_SCHEMA`, one
+    schema at a time. A file of a newer schema than this toolkit knows is
+    returned as it is, and the loader warns about it."""
+    schema = payload_schema(payload)
+    while schema < PROJECT_SCHEMA:
+        payload = _MIGRATIONS[schema](payload)
+        schema += 1
+    return payload
 
 
 def _plain_scalar(value):
@@ -204,6 +246,10 @@ def serialize_project(session: dict, version: str) -> bytes:
         # and carried into the field, and an event stream that only exists
         # in one browser's storage is one bad phone away from gone.
         "asset": asset if isinstance(asset, dict) else {},
+        # the survey's predictions beside what the borehole found (PLAN.md
+        # step 5.1), written even when empty so the schema it belongs to
+        # always shows it
+        "ledger": clean_ledger(session.get("prediction_ledger")),
         "state": state,
     }
     cache = _inversion_cache(session.get("inversion_cache"))
@@ -285,13 +331,14 @@ def deserialize_project(raw: bytes) -> dict:
 def _updates_from_payload(payload: dict) -> dict:
     updates: dict = {}
     warnings: list[str] = []
-    schema = payload.get("schema")
-    if isinstance(schema, (int, float)) and schema > PROJECT_SCHEMA:
+    schema = payload_schema(payload)
+    if schema > PROJECT_SCHEMA:
         warnings.append(
-            f"This file was saved in project format {int(schema)}; this "
+            f"This file was saved in project format {schema}; this "
             f"toolkit reads format {PROJECT_SCHEMA}. Inputs it does not "
             "recognise are not restored."
         )
+    payload = migrate_payload(payload)
     for key, value in payload["state"].items():
         # a hand-edited file can carry an integer key, which has no
         # startswith(); str() keeps the check honest instead of crashing it
@@ -347,6 +394,10 @@ def _updates_from_payload(payload: dict) -> dict:
     evidence = _evidence(payload.get("evidence"))
     if evidence:
         updates["evidence"] = evidence
+
+    # always, so a loaded project never keeps the outgoing one's ledger; a
+    # hand-edited entry is dropped or blanked, not raised
+    updates["prediction_ledger"] = clean_ledger(payload.get("ledger"))
 
     asset = payload.get("asset")
     if isinstance(asset, dict) and asset.get("asset_id"):

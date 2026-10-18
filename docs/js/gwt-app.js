@@ -140,6 +140,11 @@
        * again. A cache the app may use and may throw away, never a result:
        * see runInversions. */
       inversionCache: {},
+      /* the survey's predictions beside what the borehole found (PLAN.md
+       * step 5.1): C.cleanLedger's shape. The project file carries it at its
+       * top level, as the Python app's file does, so either app's portfolio
+       * can pool it. */
+      ledger: { drilled: null, entries: [] },
     };
   }
 
@@ -880,11 +885,16 @@
     var state = Object.assign({}, store.state);
     state.extraction = Object.assign({}, state.extraction || {});
     delete state.extraction.apiKey;
+    /* the ledger goes at the top of the file, where the Python app writes
+     * and reads it, and not twice */
+    var ledger = C.cleanLedger(state.ledger);
+    delete state.ledger;
     return {
       format: 'groundwater-toolkit-project',
-      version: 1,
+      schema: C.PROJECT_SCHEMA,
       saved: new Date().toISOString(),
       summary: projectSummary(),
+      ledger: ledger,
       state: state,
     };
   }
@@ -941,6 +951,11 @@
     var payload = JSON.parse(text);
     var state = payload.state || payload;
     if (!state || typeof state !== 'object') throw new Error('not a project file');
+    var schema = payload.state ? C.payloadSchema(payload) : 1;
+    /* a file of a later schema says so instead of half-loading in silence */
+    var newer = schema > C.PROJECT_SCHEMA;
+    /* the ledger is at the file's top level; a bare state carries its own */
+    state.ledger = C.cleanLedger(payload.state ? C.migratePayload(payload).ledger : state.ledger);
     /* A hand-edited or old-build project file can carry a key; it must
      * never be adopted into this session's storage. The key held for this
      * tab is untouched - it belongs to this browser, not to the file. */
@@ -955,7 +970,9 @@
     await recompute();
     renderChrome();
     render();
-    S.toast('Project loaded.', 'ok');
+    S.toast(newer ? 'Project loaded. This file was saved in project format ' + schema +
+      '; this app reads format ' + C.PROJECT_SCHEMA + '. What it does not recognise is not ' +
+      'restored.' : 'Project loaded.', newer ? 'warn' : 'ok');
     await inversionsSettled();
   }
 
