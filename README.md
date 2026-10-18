@@ -68,12 +68,14 @@ water quality guidelines.
    Group - and what that rock means for a borehole. It annotates rather
    than reclassifies: the polygon is still the 1:5,000,000 one, and where
    the two sources disagree the figure says both
-10. Ten documents: geophysical survey, borehole completion, pumping
+10. Eleven documents: geophysical survey, borehole completion, pumping
     test, water quality, project handover, cost estimate, supervision
-    checklist record, interim payment certificate, borehole asset record
-    and the laminated identification plate for the headworks. Every one
-    of the reports opens on a map of the area; the plate is a single
-    laminated sheet and carries the asset QR code instead. The web app
+    checklist record, interim payment certificate, borehole asset record,
+    the laminated identification plate for the headworks, and the desk
+    study, put together before anyone travels to the site and stamped as a
+    pre-field document. Every one of the reports opens on a map of the
+    area; the plate is a single laminated sheet and carries the asset QR
+    code instead. The web app
     saves and reloads the whole working state as a project file
 11. A rehabilitate-or-drill check: existing water points near the site
     from the Water Point Data Exchange (WPdx+, CC BY 4.0), turned into a

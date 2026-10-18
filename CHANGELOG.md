@@ -159,6 +159,28 @@ Each section says what it waits for where something is missing: no position, no 
 
 `tests/test_desk_study.py` holds each rule, and holds the browser's engine to Python's in a Node vm on 60 seeded cases, with a test that they reach every rule. Because `gwt-core.js` changed, each saved inversion is re-run once when its project is reopened. The 5 km, the 15 water points listed, the stamp's words, the checks and showing the prior before any survey want the owner's confirmation.
 
+### The desk study, the eleventh document (PLAN.md step 4.4, part b)
+
+Both apps now write the desk study: *Build the desk study (.docx)*, at the foot of the Site maps page in the Python app (under the four tabs) and as the last card of the browser's Site page. `reporting.desk_study.build_desk_study_report` and `GWT.docx.deskStudyReport` lay out part a's content and nothing else:
+
+- the cover, with the site's names and its position in degrees and UTM;
+- the stamp, "PRE-FIELD DOCUMENT - NOT A SURVEY RESULT", on the page after the cover on every copy. It is the new `pre_field_stamp` / `preFieldStamp` in each engine's report builder, which no readiness takes away;
+- the table of contents and the executive summary;
+- the area maps every report opens on, with the aquifer and geology maps;
+- the seven sections, each with its paragraphs, figures, tables (at set column widths) and bullets;
+- the references.
+
+**Where the terrain figures come from.** In the Python app they are the PNGs the last *Analyse the terrain* press drew, and the press now also keeps what the desk study says of the terrain (`desk_study_terrain`, a few kilobytes) beside them, since the analysis is not kept. The browser draws the relief, the candidates, their rose and the plan again for paper, one at a time, from the analysis on show, without touching the card's own figures. A figure the content names that was not drawn is left out, and its section's text stands. Water points come from the Water points page, within the radius it searched; earlier projects from the files the Portfolio page holds. The page's portfolio reader is now `shared.project_summaries`, shared with the desk study. A site with no name is "an unnamed site" (the new catalogue entry `desk_study.where_unnamed`, in both engines). The terrain card's note now says the relief, the candidates and the plan go into the desk study and the other reports carry none of the terrain yet.
+
+**Memory.** The desk study peaks at 360 to 496 MB in the Streamlit server at the cap, far under the 690 MB rule, and takes 3.2 to 3.8 s. The rule's two presses still hold on the branch (first press 559 to 608 MB, second 643 to 657 MB, three servers). But a desk study leaves the server 50 to 70 MB higher, and a second press from another session after one can go over the rule: 703 MB in one of five servers. The page's existing *Generate area maps* button does the same, and worse (702 to 731 MB in three of three), since it draws the same maps; `bench/README.md` has the table. Python-docx is imported only when the button is pressed, so a page shown without it does not load it.
+
+**Tests.** `tests/test_desk_study.py` adds three tests:
+- the document laid out in the content's order, the stamp after the cover, the figures placed where they were drawn, and the tables;
+- a document with no terrain and no position;
+- the unnamed site.
+
+The seeded browser cases now include unnamed sites. `tests/test_app.py` presses the terrain analysis, then the desk study, on the committed Copernicus tiles and reads the document back; it also builds one with no elevation model. `smoke.mjs` builds it beside the valley and reads it back for the stamp, the terrain, the plan's soundings and the figures, and has the site moved off the plan leave the terrain out (342 checks). README counts eleven documents, and the user guide's Site maps section describes the desk study.
+
 ### What is still open from these steps
 
 - A page with no service worker yet (a first visit, or `file://`) fetches its bundles on demand, so a deploy landing between first paint and a later bundle could mix two releases in one tab. A release query on the bundle URLs would close it; the service worker already matches with `ignoreSearch`.
@@ -188,7 +210,7 @@ Each section says what it waits for where something is missing: no position, no 
 - The cost distribution does not carry the uncertainty of step 3.3's odds into the dry-hole draw, has no correlation between spread groups, gives a programme one depth and one survey point for every site, draws the outer 5 percent of depth evenly out to the extreme kept models (fattening the tails of a skewed range), and has not been calibrated against real Sierra Leone tenders or outturn costs.
 - The value of one more measurement does not model where the extra sounding goes or how it correlates with the first, treats the alternative site as an endless supply at its odds, and has no likelihood ratios of its own for a profiling line.
 - The unlabelled yield envelope still appears in the yield tables and the gate's yield detail; the app pages show the decision lines only in reports and gates; the pumping figures have no fan, because the bootstrap does not keep its refits.
-- Neither app saves an elevation model, its analysis or its figures with a project, and neither report carries the topographic map or the terrain figures; both reports still say that no elevation model was supplied even when tiles were analysed on Site & maps. Step 4.4 designs the save and the report.
+- Neither app saves an elevation model, its analysis or its figures with a project. The desk study (step 4.4) carries the relief, the lineament candidates, their rose and the survey plan from the press on show; the other reports carry none of the terrain figures nor the topographic map, and the geophysical reports still say that no elevation model was supplied even when tiles were analysed on Site & maps.
 - `.asc` and `.xyz` grids are read only by the Python app, one file at a time and whole; a whole-file read of a GeoTIFF (the command line and the tests) is not capped as a window read is.
 - The browser's PDF reader still inflates with DecompressionStream and refuses LZW; the synchronous decoders could replace both.
 - The reader's and the terrain card's figures are from Chromium and Node only; Firefox and Safari are untested (the figures' PNG export rasterises an SVG that holds an embedded image, tested in Chromium only), and no phone has read a tile or analysed one.
@@ -196,13 +218,13 @@ Each section says what it waits for where something is missing: no position, no 
 - The Streamlit server keeps 30 to 90 MB from each press of *Analyse the terrain*, and a later session's upload adds more, so presses in one server creep upward: four at the 1,500,000-cell cap peaked at 535, 630, 680 and 694 MB. The cap's rule covers two presses; a per-session release (dropping a closed session's upload and figures, or the allocator's arenas) was not measured.
 - The fill caption's share of drainage-line cells routed across flats can still print 0% or 100% at the extremes; the raised share now says "less than 1%" with the count of cells.
 - The whole-press memory measure in the Streamlit server, the browser's memory probe and the ad hoc Pyodide run were made with scratch scripts that are not committed; `bench/README.md` gives the method by hand.
-- Neither report carries the lineament candidates or their rose, as neither carries the terrain figures; step 4.4 designs the reports' terrain.
 - Nothing tells a lineament candidate that follows a fracture from a straight valley the relief made by chance: in fractal terrain, besides the ten valleys planted in each window, the method found 80 to 160 other candidates in each window about 20 km square. Checking the candidates against mapped fractures, dykes and contacts, and the settings with them, wants a geologist and a geological map.
 - The rose counts every strike within the square shown alike, so a window much longer one way than the other favours lines along its long side; the windows the planner makes are square.
 - A drainage threshold of 0 km², which only a direct call to the Python API can ask for (the controls part c adds start at 0.05 km²), makes every land cell a line: at the cap, 1.25 million lines in about 22 s and 1.9 GB, the cost of the objects the API returns.
 - The survey plan keeps clear of the water points loaded when the terrain is analysed; water points loaded afterwards need another press in either app. It knows of no latrine, building, refuse dump or burial ground, the separation table records no source for its distances, and WPDx does not map every well, so every peg is a proposal for the field.
-- Neither report carries the survey plan, and neither app saves it with the project; step 4.4 designs the desk study report. The site project of the Interactive tab does not carry the plan's layers; the plan has a project of its own.
-- The desk study's content (step 4.4, part a) is in both engines, but no document lays it out and neither app offers it until part b. The WPdx+ inventory as read here carries no depth or yield, so the depths and yields near a site are only the earlier projects' in the portfolio loaded; a national borehole register would fill the gap.
+- Only the desk study carries the survey plan, and neither app saves it with the project. The site project of the Interactive tab does not carry the plan's layers; the plan has a project of its own.
+- The WPdx+ inventory as read here carries no depth or yield, so the desk study's depths and yields near a site are only the earlier projects' in the portfolio loaded; a national borehole register would fill the gap. The desk study is built from what the session holds, so it is not saved with the project either, and the browser app keeps the water points and the portfolio across a project load (the desk study measures them from the site, so another site's are left out unless they lie within reach).
+- Drawing the four area maps leaves the Streamlit server 50 to 70 MB higher, and a terrain press at the cap from another session after it can go over the 690 MB rule (702 to 731 MB after *Generate area maps*, 703 MB in one of five servers after a desk study; `bench/README.md`). The rule's two presses alone hold; what the area maps keep wants its own change.
 - The GPX was checked by parsing it as GPX 1.1; no phone app has imported it and walked to a peg.
 - A candidate and a drainage line are placed from a model of 30 m cells or coarser, so a peg moved to clear a 20 m stream ring is cleared from the line the model draws, which may lie a cell or more from the stream on the ground.
 

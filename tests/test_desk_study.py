@@ -456,7 +456,9 @@ def _case(seed: int) -> dict:
                 portfolio.append(summary)
     return {"site": {"community": ["Rokel", "", "Kamaranka"][seed % 3], "chiefdom": ["Maforki", ""][seed % 2],
                      "district": ["Port Loko", "", "Bo"][seed % 3]},
-            "where": "Kakua", "latlon": latlon, "water": water, "radius": [1000.0, 500.0, 1500.0][seed % 3],
+            # now and then no name at all, which is an unnamed site
+            "where": "" if seed % 7 == 3 else "Kakua", "latlon": latlon, "water": water,
+            "radius": [1000.0, 500.0, 1500.0][seed % 3],
             "portfolio": portfolio, "terrain": _terrain(rng, latlon)}
 
 
@@ -493,3 +495,93 @@ def test_the_seeded_cases_reach_every_rule():
                    "no profiling line could be laid", "was analysed over the square",
                    "and no lineament candidate was found", "drilled,", "Bullom Group", "Precambrian basement"]:
         assert marker in told, marker
+
+
+# ------------------------------------------------------------- the document
+
+def _document_text(path) -> tuple[list[str], object]:
+    import docx
+
+    doc = docx.Document(str(path))
+    return [p.text for p in doc.paragraphs if p.text.strip()], doc
+
+
+def _png(path: Path) -> Path:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(2, 2))
+    ax.plot([0, 1], [0, 1])
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
+def test_the_document_lays_the_content_out_in_order(l1, tmp_path):
+    from groundwater.models import SiteMetadata
+    from groundwater.reporting.desk_study import DeskStudyInputs, build_desk_study_report
+
+    mr, a, lin = l1
+    terrain = mr._desk_terrain(a, lin, mr.LINEAMENT_GENERATED, mr.PLAN_CASES[1])
+    lat, lon = terrain["site"]
+    u = geographic_to_utm(lat, lon)
+    site = SiteMetadata(community="Rokel", district="Port Loko", easting=u.easting, northing=u.northing,
+                        utm_zone=u.zone)
+    figures = {key: _png(tmp_path / f"{key}.png") for key in ("relief", "lineaments", "plan")}
+    out = build_desk_study_report(
+        DeskStudyInputs(site=site, where="Rokel", water_points=parse_wpdx_records(_wpdx_round(lat, lon)),
+                        portfolio=[], terrain=terrain, figures=figures, figures_dir=tmp_path / "maps"),
+        tmp_path / "desk.docx")
+    lines, doc = _document_text(out)
+    content = desk_study_content(site, "Rokel", (lat, lon),
+                                 water_points=parse_wpdx_records(_wpdx_round(lat, lon)), portfolio=[],
+                                 terrain=terrain)
+    # the cover, then the stamp on the page after it, before the contents
+    assert lines[0] == content["title"] and lines[1] == content["subtitle"]
+    stamp = lines.index(content["stamp"]["title"])
+    assert lines[stamp + 1] == content["stamp"]["lead"]
+    assert stamp < lines.index("Table of Contents") < lines.index("Executive Summary")
+    for sentence in content["summary"]:
+        assert sentence in lines
+    # every heading, in the content's order, after the area maps
+    headings = [lines.index(s["heading"], lines.index("Executive Summary")) for s in content["sections"]]
+    assert headings == sorted(headings) and headings[0] > lines.index(content["site_heading"], stamp)
+    # the four area maps, then each figure the content names that was drawn:
+    # the lineaments and the plan (L1's terrain names no relief); the rose
+    # was not drawn here, so it is left out and its section stands
+    named = [f["key"] for section in content["sections"] for f in section["figures"]]
+    assert named == ["lineaments", "rose", "plan"]
+    assert len(doc.inline_shapes) == 4 + 2
+    captions = [line for line in lines if line.startswith("Figure ")]
+    assert captions[4].endswith(terrain["captions"]["lineaments"])
+    assert not any(line.endswith(terrain["captions"]["rose"]) for line in captions)
+    # the tables: the ground, the water points, the lines and the soundings
+    assert len(doc.tables) == 4
+    assert [c.text for c in doc.tables[-1].rows[0].cells][0] == phrase("desk_study.plan_col_sounding")
+    assert lines[-len(content["references"]):] == content["references"]
+
+
+def _wpdx_round(lat: float, lon: float) -> list[dict]:
+    return [_point(lat + 0.001, lon, "Functional", "Borehole", "Hand Pump", 2012, "a"),
+            _point(lat - 0.002, lon, "Non-Functional", "Protected Shallow Well", "", None, "b")]
+
+
+def test_the_document_without_terrain_or_position(tmp_path):
+    from groundwater.models import SiteMetadata
+    from groundwater.reporting.desk_study import DeskStudyInputs, build_desk_study_report
+
+    out = build_desk_study_report(DeskStudyInputs(site=SiteMetadata(district="Bo"), figures_dir=tmp_path),
+                                  tmp_path / "desk.docx")
+    lines, doc = _document_text(out)
+    assert lines[0] == phrase("desk_study.title", where=phrase("desk_study.where_unnamed"))
+    assert phrase("desk_study.stamp_title") in lines
+    assert phrase("desk_study.terrain_none") in lines and phrase("desk_study.ground_no_position") in lines
+    # no position, so no ground table: only what the sections hold
+    assert len(doc.tables) == 0
+
+
+def test_an_empty_name_is_an_unnamed_site():
+    assert desk_study_content(SimpleNamespace(), "  ", None)["title"] == phrase(
+        "desk_study.title", where=phrase("desk_study.where_unnamed"))

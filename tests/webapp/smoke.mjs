@@ -5191,6 +5191,60 @@ await withPage(async (page, base, consoleErrors) => {
     beside.layers === 'Lineament candidates,Service radius,Profiling lines,Profile stations,Proposed soundings,Site',
     JSON.stringify(beside));
 
+  /* the desk study (PLAN.md step 4.4) beside the valley: the eleventh
+   * document carries the pre-field stamp after its cover, the terrain the
+   * card found and its plan's soundings, and the figures the card names,
+   * drawn again for paper; with the site moved off the plan it leaves the
+   * terrain out and says so */
+  const desk = await page.evaluate(async () => {
+    const app = window.GWT.app, store = app.store, support = window.GWT.support, C = window.GWT.core;
+    const host = Array.from(document.querySelectorAll('.card')).find((card) =>
+      (card.querySelector('h2, h3') || {}).textContent === 'Desk study');
+    const button = host && Array.from(host.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Build the desk study (.docx)');
+    const build = async () => {
+      const got = [];
+      const download = support.download;
+      support.download = (name, data) => { got.push({ name, data }); };
+      try {
+        await app.buildDeskStudy(button);
+      } finally {
+        support.download = download;
+      }
+      if (!got.length) return null;
+      const bytes = new Uint8Array(await got[0].data.arrayBuffer());
+      const files = await support.unzip(bytes);
+      const xml = new DOMParser().parseFromString(new TextDecoder().decode(files['word/document.xml']),
+        'application/xml');
+      const text = Array.from(xml.getElementsByTagName('w:p')).map((para) =>
+        Array.from(para.getElementsByTagName('w:t')).map((t) => t.textContent).join('')).join('\n');
+      return { name: got[0].name, text: text,
+        media: Object.keys(files).filter((n) => n.startsWith('word/media/')).length };
+    };
+    store.set('site.northing', 8.475);
+    const here = await build();
+    store.set('site.northing', 8.5);
+    const moved = await build();
+    const s = app.terrainSession();
+    return { card: !!button, here: here && { name: here.name, media: here.media,
+      stamp: here.text.includes(C.phrase('desk_study.stamp_title')),
+      order: here.text.indexOf(C.phrase('desk_study.stamp_title')) < here.text.indexOf('Executive Summary'),
+      terrain: here.text.includes(C.phrase('desk_study.terrain_heading')) &&
+        !here.text.includes(C.phrase('desk_study.terrain_elsewhere')),
+      soundings: s.result.desk.soundings.every((row) => here.text.includes(row[4])),
+      sounded: s.result.desk.soundings.length, rose: s.result.lineaments.lineaments.length > 0 },
+      moved: moved && moved.text.includes(C.phrase('desk_study.terrain_elsewhere')) };
+  });
+  /* the area maps (the locator, the aquifer and the geology maps), then the
+   * relief, the candidates, their rose and the plan */
+  check('desk study: beside the valley it saves Desk_Study.docx, stamped pre-field after the cover, with the ' +
+    'terrain, the plan\'s soundings and the figures the card names; with the site moved off the plan it leaves ' +
+    'the terrain out and says so',
+    desk.card && !!desk.here && desk.here.name === 'Desk_Study.docx' && desk.here.stamp && desk.here.order &&
+    desk.here.terrain && desk.here.sounded === 3 && desk.here.soundings &&
+    desk.here.media === 3 + 2 + (desk.here.rose ? 1 : 0) + 1 && desk.moved,
+    JSON.stringify(desk));
+
   /* a Copernicus set: the three tiles around a missing fourth, declared
    * Copernicus GLO-30, at 8 N, 12 W */
   const holesSite = () => page.evaluate(() => {

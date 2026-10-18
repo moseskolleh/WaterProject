@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import streamlit as st
 
+from groundwater.desk_study import desk_study_terrain
 from groundwater.geo import infer_zone_for_sierra_leone
 from groundwater.mapping import (
     apparent_resistivity_pseudosection,
@@ -64,14 +65,17 @@ from groundwater.mapping.lineaments import lineament_lonlat
 from groundwater.mapping.terrain import geojson_meta, grid_analysis_window, uncovered_cells, uncovered_note
 from groundwater.siting import assess_siting
 from groundwater.text import phrase
+from groundwater.waterpoints import DEFAULT_SEARCH_RADIUS_M
 
 from shared import (
     app_config,
     discard_terrain_result,
     _file_stem,
+    kept_portfolio,
     kept_upload,
     KeptPath,
     offer_download,
+    _working,
     _offer_raster,
     save_upload,
     site_from_state,
@@ -269,8 +273,12 @@ def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, decl
         # stopped or failed part-way: nothing of this run is kept
         shutil.rmtree(folder, ignore_errors=True)
         raise
+    # what the desk study says of it (PLAN.md step 4.4), kept small, since
+    # the analysis is not
+    desk = desk_study_terrain(lineaments, plan, analysis.core.lons, analysis.core.lats, captions, meta["label"])
     return {"figures": figures, "geojson": str(geojson), "lineament_geojson": str(lines), "folder": str(folder),
-            "summary": dict(analysis.summary), "captions": captions, "notes": notes, "notice": notice, **plan_files}
+            "summary": dict(analysis.summary), "captions": captions, "notes": notes, "notice": notice,
+            "desk": desk, **plan_files}
 
 
 def _give_back_memory() -> None:
@@ -878,3 +886,41 @@ def render() -> None:
                 "Layer attributions travel inside the file - the aquifer layer is "
                 "CC BY-SA 4.0, so a project carrying it inherits ShareAlike."
             )
+
+    # -- the desk study (PLAN.md step 4.4) ---------------------------------
+    st.divider()
+    st.subheader("Desk study")
+    st.caption(
+        "The eleventh document, put together before anyone goes to the site: "
+        "the geology and aquifer class under it, the terrain, its lineament "
+        "candidates and the survey plan from the last terrain analysis on "
+        "the Topography tab, the water points the Water points page holds, "
+        "the earlier projects the Portfolio page holds within 5 km, and the "
+        "odds of a working borehole from the ground alone. Every copy is "
+        "stamped as a pre-field document."
+    )
+    if st.button("Build the desk study (.docx)", key="build_desk_study"):
+        # the document writer is imported here, not with the page, so that
+        # a page shown without this press does not load python-docx
+        from groundwater.reporting.desk_study import DeskStudyInputs, build_desk_study_report
+
+        _kept = st.session_state.get("terrain_result")
+        _wp = st.session_state.get("wp_result")
+        with _working("Building the desk study - drawing the area maps and "
+                      "writing the document..."):
+            _desk_path = build_desk_study_report(
+                DeskStudyInputs(
+                    site=site,
+                    where=site.community or site.chiefdom or site.district or "",
+                    water_points=_wp.get("points") if _wp else None,
+                    search_radius_m=float(((_wp or {}).get("decision") or {}).get("search_radius_m")
+                                          or DEFAULT_SEARCH_RADIUS_M),
+                    portfolio=kept_portfolio(),
+                    terrain=_kept.get("desk") if _kept else None,
+                    figures={key: png for key, png, _ in _kept["figures"]} if _kept else {},
+                    figures_dir=workdir() / "desk_study",
+                ),
+                workdir() / "Desk_Study.docx",
+                app_config(),
+            )
+        offer_download(_desk_path, "Download the desk study (.docx)")

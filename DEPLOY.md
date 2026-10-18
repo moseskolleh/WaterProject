@@ -169,7 +169,7 @@ text PDFs through `pdfplumber`.
   Cooper-Jacob/Theis/recovery/step analyses, the yield recommendation,
   the water quality assessment and the borehole design all agree, and
   the generated report prose matches character for character.
-- The ten .docx reports the app writes were opened with `python-docx`
+- The eleven .docx reports the app writes were opened with `python-docx`
   (a strict OOXML reader): headings, tables and embedded figures all
   parse, and the BoQ workbook reads back through `openpyxl`.
 - Every page of the standalone app was driven in headless Chromium

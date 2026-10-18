@@ -11,6 +11,9 @@
 
 title: "Desk study - {where}"
 
+# {where} for a site with no community, chiefdom or district named
+where_unnamed: an unnamed site
+
 subtitle: A pre-field siting report
 
 # The stamp on the page after the cover, on every desk study: it is never a

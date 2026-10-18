@@ -1087,15 +1087,50 @@ point within reach, the lines, their stations and the soundings, over
 the candidates and the water points near the site, and opens on the
 service radius.
 
-**Nothing is saved with the project, and nothing goes into a report
-yet.** The tiles, the radius and threshold chosen on the page, the
-figures and the drainage lines belong to the session: loading a project
-drops them in both apps, as opening a sample project or *Reset
-everything* on the Settings page does in the browser app, so add the
-tiles again to work the terrain out afresh; the same files and settings
-give the same figures. The topographic map and the terrain figures are
-not carried into any report yet, and both apps say so on the page;
-download the figures to use them.
+**Nothing is saved with the project.** The tiles, the radius and
+threshold chosen on the page, the figures and the drainage lines belong
+to the session: loading a project drops them in both apps, as opening a
+sample project or *Reset everything* on the Settings page does in the
+browser app, so add the tiles again to work the terrain out afresh; the
+same files and settings give the same figures. The relief, the lineament
+candidates, their rose and the survey plan go into the desk study, below;
+the topographic map and the terrain figures are not carried into the
+other reports yet, and both apps say so on the page.
+
+**The desk study.** *Build the desk study (.docx)*, at the foot of the
+page in both apps (under the four tabs in the Python app, the last card
+on the browser's Site page), writes the eleventh document: what is known
+of the site before anyone travels to it. Every copy carries the stamp
+*PRE-FIELD DOCUMENT - NOT A SURVEY RESULT* on the page after its cover,
+whatever the project holds, since nothing in it was measured on the
+ground. It holds:
+
+- the site's names and its position, in degrees and in UTM, on the cover;
+- the area maps every report opens on, with the aquifer and geology maps;
+- the geology and the aquifer class under the site, the formation the
+  crosswalk names and what that rock means for a borehole, and the
+  class's published yield range;
+- the terrain and its lineament candidates, from the last *Analyse the
+  terrain* press: how many, how long, the 10° band of strike that holds
+  the most of them, how many come within the 500 m the site serves, and
+  the relief, the candidates and their rose as the press drew them;
+- the water points the Water points page holds, within the radius it
+  searched: how many are working, whether a working improved source lies
+  within the 500 m the site serves, the broken ones there to assess for
+  rehabilitation, and the nearest 15 in a table. The WPdx+ inventory as
+  read here records no depth or yield, and the document says so;
+- the earlier projects the Portfolio page holds within 5 km, nearest
+  first, with their status, depth, safe yield and water quality;
+- the odds of a working borehole from the ground alone, before any
+  survey, in the words of the geophysical report's odds;
+- the survey plan's lines and soundings, with its figure;
+- what the field visit is to check.
+
+Each part says what it waits for where the page holds nothing for it: no
+GPS position, no water points loaded, no portfolio loaded, or no
+elevation model analysed. A desk study built after the site has moved
+more than a metre from where the terrain was analysed leaves the terrain
+and the plan out, and says to analyse the terrain again.
 
 **On a phone, and from a copy opened as a file.** If the browser app's
 background engine stops partway through the terrain, most likely for

@@ -456,6 +456,48 @@ def show_flags(flags, collapse_after: int = 4) -> None:
         _render(flags)
 
 
+def project_summaries(files) -> tuple[list[dict], int]:
+    """The summaries of saved project files (their bytes), and how many
+    could not be read as a project: the Portfolio page's table and the
+    desk study's earlier projects alike."""
+    from groundwater.geo import parse_utm_zone
+    from groundwater.project_io import deserialize_project
+
+    summaries, skipped = [], 0
+    for data in files:
+        try:
+            updates = deserialize_project(data)
+        except Exception:  # noqa: BLE001 - a bad file is skipped and counted
+            skipped += 1
+            continue
+        summary = updates.get("summary")
+        if not isinstance(summary, dict) or not summary:
+            # an older project file without a summary: fall back to site inputs
+            summary = {
+                "community": updates.get("meta_community"),
+                "district": updates.get("meta_district"),
+                "easting": updates.get("meta_easting"),
+                "northing": updates.get("meta_northing"),
+                # a hand-edited zone that is not a zone ("Zone 28" reads as
+                # 28, "708958" reads as nothing) leaves the field unrecorded,
+                # where portfolio_stats infers it from the easting, rather
+                # than taking the page down or standing in a default 29N
+                "utm_zone": parse_utm_zone(updates.get("meta_zone")),
+            }
+        summaries.append(summary)
+    return summaries, skipped
+
+
+def kept_portfolio() -> list[dict] | None:
+    """The summaries of the project files the Portfolio page holds, or
+    None where it holds none: the desk study's earlier projects."""
+    kept = st.session_state.get("portfolio_upload_kept") or {}
+    files = kept.get("files") or []
+    if not files:
+        return None
+    return project_summaries(data for _, data in files)[0]
+
+
 def offer_download(path: Path, label: str, keep: bool = True) -> None:
     """Download button for a produced file, and remember it as a deliverable.
 

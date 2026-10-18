@@ -223,6 +223,17 @@
     return this;
   };
 
+  /* Say on the page after the cover that this document was put together
+   * before anyone went to the site: docx_utils.ReportBuilder.pre_field_stamp.
+   * Unlike provisionalStamp it is on every copy, since a desk study (PLAN.md
+   * step 4.4) is never a certification, whatever the project holds. */
+  ReportBuilder.prototype.preFieldStamp = function (title, lead) {
+    this.paragraph(title, { bold: true, size: 13, align: 'center', color: 'B23A2E' });
+    this.paragraph(lead, { italic: true, align: 'justify' });
+    this.pageBreak();
+    return this;
+  };
+
   ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings, decisions) {
     var self = this;
     this.heading('Executive Summary', 1, false);
@@ -3105,9 +3116,57 @@
     return b;
   }
 
+  /* --- the desk study -------------------------------------------------------
+   * reporting/desk_study.py (PLAN.md step 4.4): C.deskStudyContent laid out,
+   * the cover with the site's names and position, the pre-field stamp on the
+   * page after it on every copy, the summary, the area maps, then each
+   * section with its paragraphs, figures, tables and bullets, and the
+   * references. The words and the numbers are all in the content, which
+   * parity holds to the Python engine's; this only places them.
+   * context.figures holds the terrain figures the card drew, rasterised, by
+   * their keys; a figure the content names and the card did not draw is left
+   * out, its section's text standing.
+   * ---------------------------------------------------------------------- */
+
+  /* each section's tables, by its key, with their columns' printed widths
+   * (reporting/desk_study.py _WIDTHS) */
+  var DESK_WIDTHS = {
+    ground: [[3.6, 4.4, 8.0]],
+    water_points: [[2.6, 2.8, 7.4, 3.2]],
+    projects: [[4.4, 2.2, 2.8, 2.0, 2.2, 2.4]],
+    plan: [[1.8, 1.8, 2.0, 5.2, 5.2], [1.8, 1.2, 2.0, 3.8, 7.2]],
+  };
+
+  function deskStudyReport(context) {
+    var content = context.content;
+    var b = new ReportBuilder({ style: context.style, title: content.title });
+    b.cover([content.title], [content.subtitle], content.site_rows);
+    b.preFieldStamp(content.stamp.title, content.stamp.lead);
+    b.tableOfContents();
+    b.executiveSummary(content.summary);
+    b.heading(content.site_heading, 1);
+    areaSection(b, context, null);
+    var figures = context.figures || {};
+    content.sections.forEach(function (section) {
+      b.heading(section.heading, 1);
+      section.paragraphs.forEach(function (text) { b.paragraph(text, { align: 'justify' }); });
+      section.figures.forEach(function (fig) {
+        if (figures[fig.key]) b.figure(figures[fig.key], fig.caption, 15);
+      });
+      var widths = DESK_WIDTHS[section.key] || [];
+      section.tables.forEach(function (t, k) {
+        b.table(t.rows, { header: t.header, caption: t.caption, colWidthsCm: widths[k], fontSize: 9 });
+      });
+      if (section.bullets.length) b.bullets(section.bullets);
+    });
+    b.references(content.references);
+    return b;
+  }
+
   GWT.docx = {
     ReportBuilder: ReportBuilder,
     fieldKit: fieldKit,
+    deskStudyReport: deskStudyReport,
     geophysicalReport: geophysicalReport,
     completionReport: completionReport,
     pumpingReport: pumpingReport,

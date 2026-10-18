@@ -6,7 +6,6 @@ from pathlib import Path
 
 import streamlit as st
 
-from groundwater.geo import parse_utm_zone
 from groundwater.mapping import geolibre, load_admin, plot_portfolio_map
 from groundwater.portfolio import (
     portfolio_points,
@@ -16,13 +15,12 @@ from groundwater.portfolio import (
     site_label,
     site_one_pager,
 )
-from groundwater.project_io import deserialize_project
-
 from shared import (
     app_config,
     figure,
     kept_upload,
     offer_download,
+    project_summaries,
     workdir,
 )
 
@@ -40,29 +38,7 @@ def render() -> None:
         "Saved project files (.yaml or .gwt.json)", "portfolio_upload",
         type=["yaml", "yml", "json"], accept_multiple_files=True,
     )
-    summaries = []
-    skipped = 0
-    for uploaded in files or []:
-        try:
-            updates = deserialize_project(uploaded.getvalue())
-        except Exception:  # noqa: BLE001 - a bad file is skipped and counted
-            skipped += 1
-            continue
-        summary = updates.get("summary")
-        if not isinstance(summary, dict) or not summary:
-            # an older project file without a summary: fall back to site inputs
-            summary = {
-                "community": updates.get("meta_community"),
-                "district": updates.get("meta_district"),
-                "easting": updates.get("meta_easting"),
-                "northing": updates.get("meta_northing"),
-                # a hand-edited zone that is not a zone ("Zone 28" reads as
-                # 28, "708958" reads as nothing) leaves the field unrecorded,
-                # where portfolio_stats infers it from the easting, rather
-                # than taking the page down or standing in a default 29N
-                "utm_zone": parse_utm_zone(updates.get("meta_zone")),
-            }
-        summaries.append(summary)
+    summaries, skipped = project_summaries(f.getvalue() for f in files or [])
     if skipped:
         st.warning(f"{skipped} file(s) could not be read as a project and were skipped.")
     if not summaries:

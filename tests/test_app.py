@@ -6,6 +6,7 @@ real app script. Only the page on screen runs (PLAN.md step 1.1), so each
 test opens its page first, with ``goto``, as the sidebar navigation does.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -733,8 +734,10 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
 
     result = at.session_state["terrain_result"]
     assert set(result) == {"figures", "geojson", "lineament_geojson", "folder", "summary", "captions", "notes",
-                           "notice", "inputs", "plan_gpx", "plan_geolibre", "plan_rows"}
+                           "notice", "inputs", "plan_gpx", "plan_geolibre", "plan_rows", "desk"}
     assert not _analysis_kept(at), "the analysis's layers are dropped"
+    # what the desk study says of the terrain is kept beside the figures
+    assert result["desk"]["candidates"] == 1 and len(result["desk"]["soundings"]) == 3
     assert len(pickle.dumps(result)) < 200_000, "the result holds paths and sentences alone"
     candidates = json.loads(Path(result["lineament_geojson"]).read_text(encoding="utf-8"))
     # the tiles hold one valley within 500 m of the fix: one line across it
@@ -825,6 +828,57 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
     status, = at.status
     assert status.state == "error" and status.label == phrase("terrain.stage_read")
     assert [child.type for child in status.children.values()] == ["progress"]
+
+
+def _desk_study_text(at: AppTest) -> tuple[str, int]:
+    """Press "Build the desk study (.docx)" and give its text, paragraphs
+    and table cells in order, and how many pictures it holds."""
+    import docx
+
+    at.button(key="build_desk_study").click()
+    at.run()
+    assert not at.exception, at.exception
+    doc = docx.Document(at.session_state["artifacts"]["Download the desk study (.docx)"])
+    cells = [cell.text for table in doc.tables for row in table.rows for cell in row.cells]
+    return "\n".join([p.text for p in doc.paragraphs] + cells), len(doc.inline_shapes)
+
+
+def test_the_desk_study_carries_the_terrain_press(sample_data):
+    """PLAN.md step 4.4: after a terrain press, the desk study on Site maps
+    carries what the press found, its figures, and the plan's tables, with
+    the pre-field stamp on the page after the cover; the press keeps what
+    the desk study says of the terrain, small, beside its figures."""
+    from groundwater.text import phrase
+
+    at = _terrain_page(_tiles())
+    result = _analyse(at)
+    desk = result["desk"]
+    assert desk["site"] is not None and desk["label"]
+    assert len(json.dumps(desk)) < 20000
+    text, pictures = _desk_study_text(at)
+    assert phrase("desk_study.stamp_title") in text
+    assert phrase("desk_study.terrain_heading") in text
+    assert phrase("desk_study.terrain_none") not in text
+    drawn = {key for key, _, _ in result["figures"]}
+    # the four area maps, and each terrain figure the content names that the press drew
+    named = {"relief", "lineaments"} | ({"rose"} if desk["candidates"] else set()) | (
+        {"plan"} if desk["lines"] else set())
+    assert pictures == 4 + len(named & drawn)
+    if desk["soundings"]:
+        assert desk["soundings"][0][0] in text
+    assert "Earlier projects within 5 km" in text and phrase("desk_study.projects_not_loaded") in text
+
+
+def test_the_desk_study_without_an_elevation_model(sample_data):
+    """With no terrain analysed, the desk study still gives the ground, the
+    odds and the area maps, and says the terrain and plan wait for one."""
+    from groundwater.text import phrase
+
+    at = _terrain_page([])
+    text, pictures = _desk_study_text(at)
+    assert phrase("desk_study.terrain_none") in text and phrase("desk_study.plan_no_terrain") in text
+    assert phrase("desk_study.water_not_loaded") in text
+    assert "USGS Geologic Map of Africa" in text and pictures == 4
 
 
 def test_the_topography_tab_analyses_an_ascii_grid_in_a_window_of_its_own(sample_data):
