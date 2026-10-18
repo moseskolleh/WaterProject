@@ -734,8 +734,10 @@ def test_the_topography_tab_analyses_a_geotiff_and_offers_its_downloads(sample_d
 
     result = at.session_state["terrain_result"]
     assert set(result) == {"figures", "geojson", "lineament_geojson", "folder", "summary", "captions", "notes",
-                           "notice", "inputs", "plan_gpx", "plan_geolibre", "plan_rows"}
+                           "notice", "inputs", "plan_gpx", "plan_geolibre", "plan_rows", "desk"}
     assert not _analysis_kept(at), "the analysis's layers are dropped"
+    # what the desk study says of the terrain is kept beside the figures
+    assert result["desk"]["candidates"] == 1 and len(result["desk"]["soundings"]) == 3
     assert len(pickle.dumps(result)) < 200_000, "the result holds paths and sentences alone"
     candidates = json.loads(Path(result["lineament_geojson"]).read_text(encoding="utf-8"))
     # the tiles hold one valley within 500 m of the fix: one line across it
