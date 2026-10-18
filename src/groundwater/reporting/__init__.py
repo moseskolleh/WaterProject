@@ -2,12 +2,12 @@
 
 Every builder the toolkit has is named here, so ``from
 groundwater.reporting import X`` works for all of them rather than for
-four out of ten.
+four out of twelve.
 
 None of them is imported until it is read. The .docx writer pulls
 python-docx, and the geophysical report pulls the map and VES plotting
 stacks with it, so a caller after one report should not pay for the
-other ten. Deferring also keeps a half-finished builder from blocking
+other eleven. Deferring also keeps a half-finished builder from blocking
 the rest, which is why the Phase 2 ones were deferred to begin with.
 """
 
@@ -19,6 +19,7 @@ __all__ = [
     "build_asset_record",
     "build_completion_report",
     "build_cost_report",
+    "build_desk_study_report",
     "build_field_kit",
     "build_geophysical_report",
     "build_handover_report",
@@ -34,6 +35,7 @@ _LAZY = {
     "build_asset_record": ".registry",
     "build_completion_report": ".completion",
     "build_cost_report": ".costing",
+    "build_desk_study_report": ".desk_study",
     "build_field_kit": ".field_kit",
     "build_geophysical_report": ".geophysical",
     "build_handover_report": ".handover",
@@ -57,6 +59,7 @@ _LAZY_MODULES = (
     "supervision",
     "registry",
     "field_kit",
+    "desk_study",
     "citations",
     "context",
 )

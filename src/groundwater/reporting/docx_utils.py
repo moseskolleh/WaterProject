@@ -240,6 +240,23 @@ class ReportBuilder:
             self.bullets(lines)
         self.page_break()
 
+    def pre_field_stamp(self, title: str, lead: str) -> None:
+        """Say on the page after the cover that this document was put
+        together before anyone went to the site.
+
+        Unlike :meth:`provisional_stamp`, it is on every copy: a desk study
+        (PLAN.md step 4.4) is never a certification, whatever the project
+        holds, so no readiness takes it away.
+        """
+        para = self.doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = para.add_run(_clean(title))
+        run.font.size = Pt(13)
+        run.font.bold = True
+        run.font.color.rgb = _hex_to_rgb("#B23A2E")
+        self.paragraph(lead, italic=True, align="justify")
+        self.page_break()
+
     def table_of_contents(self) -> None:
         """A table of contents that reads before Word has updated anything.
 

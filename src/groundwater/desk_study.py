@@ -387,6 +387,7 @@ def desk_study_content(site, where: str, latlon, *, water_points: Iterable | Non
     draws, and a caption) and bullets.
     """
     config = config or Config()
+    where = str(where or "").strip() or phrase("desk_study.where_unnamed")
     district = str(getattr(site, "district", "") or "")
     ground = site_ground(latlon, district)
     odds = prior_odds(ground["bgs_code"] or None, ground["glg"] or None, config)

@@ -776,6 +776,14 @@ def _report_measures() -> list[Measure]:
         inputs = AssetReportInputs(asset=asset, figures_dir=tmp, today=today)
         return lambda: build_asset_record(inputs, tmp / "record.docx", INPUTS.config)
 
+    def desk_study(tmp):
+        # at the Rokel survey's site, before any terrain, water point or
+        # earlier project is loaded: the ground, the odds and the area maps
+        from groundwater.reporting.desk_study import DeskStudyInputs, build_desk_study_report
+        site = INPUTS.rokel()["soundings"][0].site
+        inputs = DeskStudyInputs(site=site, where=site.community, figures_dir=tmp)
+        return lambda: build_desk_study_report(inputs, tmp / "desk_study.docx", INPUTS.config)
+
     return [
         Measure("reports", "geophysical survey (rokel)", geophysical),
         Measure("reports", "pumping test (kuntolo)", pumping),
@@ -787,6 +795,7 @@ def _report_measures() -> list[Measure]:
         Measure("reports", "supervision (dr_timbo)", supervision),
         Measure("reports", "asset placard", placard),
         Measure("reports", "asset record", record),
+        Measure("reports", "desk study (rokel)", desk_study),
     ]
 
 

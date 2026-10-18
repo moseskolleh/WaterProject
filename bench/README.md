@@ -162,8 +162,10 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   beforehand, written with its figures into a temporary folder: the
   geophysical, pumping, completion, water quality, handover, cost
   estimate, payment certificate, supervision, asset placard and asset
-  record reports. Analyses are not in these times; drawing the figures
-  and maps is.
+  record reports, and the desk study at the Rokel survey's site, with no
+  terrain, water point or earlier project loaded, so its time is the
+  ground, the odds and the four area maps. Analyses are not in these
+  times; drawing the figures and maps is.
 - `recompute/*` - `groundwater recompute` on each example saved as the
   apps save a project (`src_*` entries pointing at the bundled
   samples), reading of the project file included. The Rokel one inverts
@@ -560,6 +562,35 @@ In the browser the plan is laid on the page from the worker's answer:
 seven, Node 22, the real tile's default window, 187 candidates), against
 0.18 s in Python. `web.mjs --only terrain` sets no site, so its figures
 above do not include the plan.
+
+The desk study (PLAN.md step 4.4) joined the page on 18 October 2026.
+The press now also keeps what the desk study says of the terrain, a few
+kilobytes beside its figures, and *Build the desk study (.docx)* lays the
+document out from them and draws the four area maps. It was measured the
+same way: the real tile, the fix at its centre, the cap, the same
+machine, three fresh servers each.
+
+| | first press | second press, another session | desk study after it | desk study, click to download |
+|---|---|---|---|---|
+| the two presses alone | 559, 579, 608 MB | 643, 650, 657 MB | | |
+| a desk study after each press | 554, 570, 605 MB | 667, 668, 673 MB | 360 to 368 MB, then 436 to 455 MB | 3.2 to 3.8 s |
+| again, two more servers | 571, 582 MB | 673, 703 MB | 365, 396 MB, then 459, 496 MB | 3.3 to 3.7 s |
+| *Generate area maps* after each press, in its place | 578, 578, 592 MB | 702, 715, 731 MB | 395 to 429 MB, then 460 to 515 MB | 2.8 to 3.9 s |
+
+The two presses alone stay under 690 MB, inside what main gave (560 to
+602 and 650 to 673 MB): the rule holds. The desk study itself peaks far
+below it, at 360 to 496 MB, since it draws no terrain. But it leaves the
+server 50 to 70 MB higher than the press did, and a second press from
+another session after it can go over the rule: 703 MB in one of five
+servers. This is not the desk study's own: the page's *Generate area
+maps* button, which main has, draws the same four maps from the same
+cached layers, and a second press after it went over in each of three
+servers (702 to 731 MB). In one process the desk study keeps 27 MB once
+collected and trimmed, against 23 MB for the four area maps alone; the
+rest is the allocator. Calling `_give_back_memory` after the desk study,
+as the press does, did not help (695 to 719 MB, three servers), so it is
+not called. What the area maps keep, and the rule's two presses with one
+of them between, is left for its own change.
 
 The synthetic tile looks like ground, which is the easy case. Surfaces
 built to be hard, each 1414 by 1414 cells (1,999,396, just under the cap),

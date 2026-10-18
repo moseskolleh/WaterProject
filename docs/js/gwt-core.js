@@ -30119,6 +30119,7 @@
   function deskStudyContent(site, where, latlon, options) {
     var opts = options || {};
     var cfg = opts.config || defaultConfig();
+    where = String(where || '').trim() || phrase('desk_study.where_unnamed');
     var radiusM = opts.searchRadiusM === undefined || opts.searchRadiusM === null
       ? DEFAULT_SEARCH_RADIUS_M : Number(opts.searchRadiusM);
     var terrain = opts.terrain || null;
