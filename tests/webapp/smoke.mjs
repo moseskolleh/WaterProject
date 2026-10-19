@@ -5616,11 +5616,16 @@ await withPage(async (page, base, consoleErrors) => {
       .find((c) => (c.querySelector('.card-title') || {}).textContent === title);
     const press = (title, label) => [...named(title).querySelectorAll('button')]
       .find((b) => b.textContent === label).click();
+    // the Rokel sheets name no field supervisor, so the project's is the
+    // survey team; the project's drilling contractor wins over the log's
+    app.store.set('site.supervisor', '  R.  Conteh ');
+    app.store.set('site.contractor', ' Sierra  Drilling ');
     await app.goto('ves');
     const out = { empty: named('Predictions and outcomes').textContent.includes('No prediction is recorded yet.') };
     press('Predictions and outcomes', 'Record the survey\'s predictions');
     const recorded = app.store.get('ledger');
-    out.entries = recorded.entries.map((e) => [e.point.sounding_id, e.before_outcome, !!e.prediction.odds]);
+    out.entries = recorded.entries.map((e) => [e.point.sounding_id, e.before_outcome, !!e.prediction.odds,
+      e.prediction.survey_team]);
     const timbo = window.GWT.data.samples.dr_timbo.files.drilling;
     app.store.set('sources.drilling', { name: timbo.name, b64: timbo.b64, sample: timbo.path || timbo.name });
     await app.recompute();
@@ -5634,7 +5639,7 @@ await withPage(async (page, base, consoleErrors) => {
     out.shown = ['chosen on this page', 'Water struck at 12, 30 m', 'Drilled to 70 m']
       .map((text) => shown.includes(text));
     const saved = app.projectPayload().ledger.entries[1].outcome;
-    out.saved = saved ? [saved.borehole_ref, saved.basement_m, saved.success_basis] : null;
+    out.saved = saved ? [saved.borehole_ref, saved.basement_m, saved.success_basis, saved.contractor] : null;
     press('Predictions and outcomes', 'Record the survey\'s predictions');
     out.kept = app.store.get('ledger').entries.map((e) => [e.recorded_on === recorded.entries[0].recorded_on,
       e.before_outcome]);
@@ -5647,11 +5652,13 @@ await withPage(async (page, base, consoleErrors) => {
     return out;
   });
   check('ledger: the VES page records the survey\'s predictions at each point, before drilling',
-    ledgerFlow.empty && JSON.stringify(ledgerFlow.entries) === '[["A (1)",true,true],["B (2)",true,true]]',
+    ledgerFlow.empty && JSON.stringify(ledgerFlow.entries) ===
+      '[["A (1)",true,true,"R. Conteh"],["B (2)",true,true,"R. Conteh"]]',
     JSON.stringify(ledgerFlow));
   check('ledger: a log with no position is matched to the point chosen, and saved with the project',
     ledgerFlow.unpaired && ledgerFlow.chosen && ledgerFlow.shown.every(Boolean) &&
-    JSON.stringify(ledgerFlow.saved) === '["BH-1",40,"recorded_success"]', JSON.stringify(ledgerFlow));
+    JSON.stringify(ledgerFlow.saved) === '["BH-1",40,"recorded_success","Sierra Drilling"]',
+    JSON.stringify(ledgerFlow));
   check('ledger: once drilled, the forecasts are kept, and the Portfolio pools the project once',
     JSON.stringify(ledgerFlow.kept) === '[[true,true],[true,true]]' &&
     ledgerFlow.pooled.includes('2 survey points predicted in 1 project, 1 of them drilled'),

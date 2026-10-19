@@ -1,0 +1,214 @@
+# The calibration report (PLAN.md step 5.2): the forecasts in the pooled
+# ledgers of predictions and outcomes, scored against what was drilled.
+# Written by calibration.py and by the calibration functions of gwt-core.js.
+# Every entry is read by its quoted id in both engines, never by an id built
+# from pieces. Depths are in metres below ground. A {share}, {p} or {skill}
+# is a whole percentage the code has already written out ("62", "under 1").
+# The template rules are in src/groundwater/text.py; CONTRIBUTING.md says
+# how to add an entry.
+
+title: Calibration report
+subtitle: The survey's forecasts against what was drilled
+
+# The cover's details.
+row_projects: Projects pooled
+row_points: Survey points predicted
+row_drilled: Points drilled
+row_forecasts: Drilled points forecast before drilling
+row_issued: Issued
+
+# The summary, after the ledger's own sentence of what it holds.
+summary_scored: >-
+  Only the {forecast:g} {forecast:plural:prediction|predictions} recorded
+  before drilling {forecast:plural:is|are} scored: a prediction recorded
+  after its borehole was drilled may have been made knowing what the borehole
+  found.
+summary_nothing: >-
+  None of the drilled points had its prediction recorded before drilling, so
+  there is no forecast to score yet.
+summary_depth_too_few: >-
+  Depth to basement: too few boreholes to judge. {judged:g} can be judged
+  against a band, and at least {minimum:g} are needed.
+summary_depth_calibrated: >-
+  Depth to basement: {inside:g} of {judged:g} found basement inside the P10
+  to P90 band ({share} percent), where a calibrated band would hold between
+  {low:g} and {high:g}. The band reads as calibrated.
+summary_depth_narrow: >-
+  Depth to basement: {inside:g} of {judged:g} found basement inside the P10
+  to P90 band ({share} percent), where a calibrated band would hold between
+  {low:g} and {high:g}. The band is too narrow or off centre.
+summary_depth_wide: >-
+  Depth to basement: {inside:g} of {judged:g} found basement inside the P10
+  to P90 band ({share} percent), where a calibrated band would hold between
+  {low:g} and {high:g}. The band is wider than the ground needs.
+summary_odds_too_few: >-
+  Chance of success: too few boreholes to judge. {n:g}
+  {n:plural:forecast|forecasts} can be scored, and at least {minimum:g} are
+  needed.
+summary_odds: >-
+  Chance of success: a Brier score of {bs:.3f} over {n:g}
+  {n:plural:forecast|forecasts}, against {bs0:.3f} for the prior alone
+  (lower is better).
+summary_odds_no_prior: >-
+  Chance of success: a Brier score of {bs:.3f} over {n:g}
+  {n:plural:forecast|forecasts} (lower is better).
+summary_hits: >-
+  Hit rates are given by geology unit, survey team and contractor wherever a
+  group has at least {minimum:g} boreholes whose outcome is known.
+
+# The depth to basement.
+depth_heading: Depth to basement
+depth_intro: >-
+  Where the range of models was sampled, the survey gives the depth to
+  basement a band: the 10th to the 90th percentile (P10 to P90) of the models
+  that fit. A calibrated band holds the depth found four times in five, so
+  about 80 percent of the boreholes should find basement inside it, about 10
+  percent above it and about 10 percent below it.
+depth_counts: >-
+  Of the {drilled:g} {drilled:plural:borehole|boreholes} drilled at forecast
+  points, {inside:g} found basement inside the band, {shallower:g} above it
+  and {deeper:g} below it. {unreached:g} stopped short of basement where the
+  band allows it to lie deeper still, and {no_band:g} had no band to compare
+  with; neither of these can be judged.
+depth_too_few: >-
+  Too few boreholes to judge: {judged:g} can be judged against a band, and at
+  least {minimum:g} are needed.
+depth_judged: >-
+  {inside:g} of the {judged:g} judged, {share} percent, found basement inside
+  the band. A calibrated band would hold between {low:g} and {high:g} of
+  {judged:g} at least nine times in ten.
+depth_calibrated: That is as many as a calibrated band would hold.
+depth_narrow: >-
+  That is fewer than a calibrated band would hold: the band is too narrow or
+  off centre. Basement was found above it {shallower:g}
+  {shallower:plural:time|times} and below it {deeper:g}
+  {deeper:plural:time|times}.
+depth_wide: >-
+  That is more than a calibrated band would hold: the band is wider than the
+  ground needs.
+depth_bias_deeper: >-
+  Where basement was found, it lay on average {bias:num} m deeper than the
+  best-fitting model put it, and {mae:num} m from it either way, over {n:g}
+  {n:plural:borehole|boreholes}.
+depth_bias_shallower: >-
+  Where basement was found, it lay on average {bias:num} m shallower than the
+  best-fitting model put it, and {mae:num} m from it either way, over {n:g}
+  {n:plural:borehole|boreholes}.
+depth_bias_none: >-
+  Where basement was found, it lay on average where the best-fitting model
+  put it, and {mae:num} m from it either way, over {n:g}
+  {n:plural:borehole|boreholes}.
+depth_figure: >-
+  The depth to basement found against the depth the best-fitting model gave,
+  with the P10 to P90 band where one was sampled. A borehole that stopped
+  short of basement is drawn at its total depth, pointing down.
+depth_table: The boreholes drilled at forecast points, with the depth to basement predicted and found.
+
+# The chance of success.
+odds_heading: The chance of success
+odds_intro: >-
+  Each forecast gave the chance that a borehole at its point would succeed,
+  as the odds define success: a tested yield of at least {rate:num} m3/h. A
+  forecast is scored where its borehole's outcome is known, from a pumping
+  test or from the status the driller recorded.
+odds_left_out: >-
+  {no_odds:g} drilled forecast {no_odds:plural:point had|points had} no
+  chance worked out, and {unknown:g} {unknown:plural:has|have} no known
+  outcome yet; neither is scored.
+odds_too_few: >-
+  Too few boreholes to judge: {n:g} {n:plural:forecast|forecasts} can be
+  scored ({success:g} successful, {failure:g} not), and at least {minimum:g}
+  are needed.
+odds_bases: >-
+  Of the {n:g} {n:plural:outcome|outcomes} scored, {tested:g} {tested:plural:rests|rest}
+  on a pumping test, {failure:g} on a failure the driller recorded and
+  {success:g} on the driller's word of success without a test.
+odds_mean: >-
+  The forecasts gave on average {p} percent, and {k:g} of the {n:g}
+  boreholes succeeded, {share} percent.
+odds_brier: >-
+  The Brier score is {bs:.3f}: the mean of the squared difference between
+  each forecast chance and its outcome, 1 or 0 (Brier, 1950). Zero is
+  perfect, and an even chance forecast every time scores 0.250.
+odds_skill_better: >-
+  The prior alone, the chance before any survey, would have scored
+  {bs0:.3f}, so the survey's evidence improved on it by {skill} percent.
+odds_skill_worse: >-
+  The prior alone, the chance before any survey, would have scored
+  {bs0:.3f}, so the survey's evidence made the forecasts {skill} percent
+  worse than it.
+odds_skill_same: >-
+  The prior alone, the chance before any survey, would have scored the same,
+  {bs0:.3f}: the survey's evidence neither improved nor worsened it.
+odds_reliability: >-
+  The reliability diagram sets the share that succeeded in each band of
+  forecast chance beside the band's mean forecast (Murphy and Winkler, 1977).
+  Calibrated forecasts lie on the diagonal; a band holding few forecasts says
+  little.
+odds_figure: >-
+  The share of boreholes that succeeded against the forecast chance, in bands
+  of {width} percentage points, with the number of forecasts in each.
+odds_table: The forecasts by their chance of success.
+odds_col_band: Forecast chance
+odds_col_n: Forecasts
+odds_col_mean: Mean forecast
+odds_col_found: Successful
+odds_band: "{low} to {high} percent"
+odds_found: "{k:g} of {n:g}, {share} percent"
+percent: "{p} percent"
+none: None
+
+# The hit rates.
+hits_heading: Hit rates
+hits_intro: >-
+  A hit rate is the share of boreholes that succeeded, of those whose outcome
+  is known. It is given for each geology unit, survey team and contractor
+  with at least {minimum:g} such boreholes, and below that the table says
+  there are too few to judge. Every drilled point counts here, whenever its
+  prediction was recorded. The last column is the mean chance forecast before
+  drilling, over the boreholes with a known outcome, to set beside the rate.
+hits_none: No point in the ledgers given has been drilled, so there is no hit rate yet.
+hits_geology: "By geology unit: the BGS aquifer class and the USGS unit under the point, as its odds read them."
+hits_team: "By survey team: the field supervisor the point's VES sheet names, else the project's."
+hits_contractor: "By contractor: the project's drilling contractor, else the one the drilling log names."
+hits_col_geology: Geology
+hits_col_team: Survey team
+hits_col_contractor: Contractor
+hits_col_drilled: Drilled
+hits_col_success: Successful
+hits_col_failure: Not successful
+hits_col_unknown: Not known
+hits_col_rate: Hit rate
+hits_col_forecast: Chance forecast
+hits_too_few: Too few to judge
+hits_forecast: "{p} percent, over {n:g}"
+hits_not_forecast: No forecast
+
+# The groups.
+geology: "{code} on {glg}"
+geology_class: "{code}, with no USGS unit"
+geology_no_class: No BGS class at the point
+not_recorded: Not recorded
+
+# What the report leaves out.
+limits_heading: What this report does not say
+limit_files: >-
+  It pools only the project files it was given; a borehole whose file is not
+  among them is not counted.
+limit_after: >-
+  {after:g} drilled {after:plural:point was|points were} predicted after
+  drilling. {after:plural:It is|They are} left out of the band and the odds,
+  though counted in the hit rates.
+limit_driller: >-
+  Without a pumping test, success is the status the driller recorded, and a
+  borehole recorded as successful may not reach the yield the odds count as
+  success.
+limit_names: >-
+  Names are grouped as they were written, so two spellings of one team or
+  contractor make two groups.
+limit_minimum: >-
+  The minimum numbers of boreholes, {minimum:g} for the band and the odds and
+  {group:g} for a hit rate, are provisional.
+limit_changes: >-
+  It changes nothing the toolkit predicts: the priors and the bands stay as
+  they are until a named person adopts a new calibration.

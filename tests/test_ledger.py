@@ -464,8 +464,8 @@ for await (const line of createInterface({ input: process.stdin })) {
   let answer;
   try {
     const cfg = C.withConfig({ odds: { success_yield_m3_per_h: r.success }, ledger: { pair_within_m: r.within } });
-    const survey = C.surveyPredictions(r.interps, r.ranges, r.odds, r.site, cfg);
-    const outcome = C.completionOutcome(r.log, r.analysis, cfg);
+    const survey = C.surveyPredictions(r.interps, r.ranges, r.odds, r.site, cfg, r.teams);
+    const outcome = C.completionOutcome(r.log, r.analysis, cfg, r.contractor);
     let held = C.recordPredictions(r.held, survey, '2026-10-01', r.known, '0.3.0');
     const kept = held.kept;
     held = C.attachOutcome(Object.assign({}, held.ledger, { drilled: r.drilled }), outcome, cfg);
@@ -574,7 +574,12 @@ def _case(seed: int) -> dict:
             "safe_yield_low_m3_per_h": None if rng.random() < 0.2 else _round(rng, 0.1, 1.0),
             "safe_yield_high_m3_per_h": None if rng.random() < 0.3 else _round(rng, 1.0, 5.0),
             "holds_at_dry_season": bool(rng.random() < 0.5)}}
-    site = {"community": ["Rokel", "", "Kpètèma"][seed % 3], "district": ["Port Loko", ""][seed % 2], "utm_zone": 28}
+    site = {"community": ["Rokel", "", "Kpètèma"][seed % 3], "district": ["Port Loko", ""][seed % 2], "utm_zone": 28,
+            "supervisor": ["", "  R.  Conteh ", None][seed % 3]}
+    if log is not None:
+        log["site"]["contractor"] = ["WiNGiN Heavy Duty", "", " Kaba\tDrilling "][seed % 3]
+    teams = [None, ["  A.  Kamara", ""], ["B. Sesay"] * n][seed % 3]
+    contractor = ["", "  Sierra   Drilling ", ""][(seed // 3) % 3]
     earlier = {"drilled": None, "entries": []}
     if seed % 4 == 1:
         # an earlier recording of the same survey, made before drilling
@@ -584,6 +589,7 @@ def _case(seed: int) -> dict:
              "point": {"sounding_id": i["sounding_id"]}, "prediction": {"depth_to_basement_m": 1.0},
              "before_outcome": True, "recorded_on": "2026-09-01", "toolkit": "0.2.0"} for i in interps]}
     return {"interps": interps, "ranges": ranges, "odds": odds, "site": site, "log": log, "analysis": analysis,
+            "teams": teams, "contractor": contractor,
             "held": earlier, "known": log is not None and seed % 3 == 0,
             "drilled": None, "success": [1.0, 3.6][seed % 2], "within": [50.0, 400.0, 5.0][seed % 3],
             "dirty": [None, "x", earlier,
@@ -595,8 +601,9 @@ def _python(case: dict) -> dict:
     config = Config()
     config.odds.success_yield_m3_per_h = case["success"]
     config.ledger.pair_within_m = case["within"]
-    survey = L.survey_predictions(ns(case["interps"]), ns(case["ranges"]), ns(case["odds"]), ns(case["site"]), config)
-    outcome = L.completion_outcome(ns(case["log"]), ns(case["analysis"]), config)
+    survey = L.survey_predictions(ns(case["interps"]), ns(case["ranges"]), ns(case["odds"]), ns(case["site"]), config,
+                                  case["teams"])
+    outcome = L.completion_outcome(ns(case["log"]), ns(case["analysis"]), config, case["contractor"])
     held, kept = L.record_predictions(case["held"], survey, "2026-10-01", case["known"], "0.3.0")
     held = L.attach_outcome(dict(held, drilled=case["drilled"]), outcome, config)
     pooled = L.pool_ledgers([("A", held), ("B", case["held"])])
@@ -633,3 +640,7 @@ def test_the_seeded_cases_reach_every_rule():
     assert {"inside", "deeper", "shallower", "unreached_allowed", "no_band", None} <= checks
     assert any(t["outcome"] and t["outcome"]["safe_yield_band_m3_per_h"] for t in told)
     assert any(t["outcome"] and t["outcome"]["basement_m"] is None for t in told)
+    teams = {s["prediction"]["survey_team"] for t in told for s in t["survey"]}
+    assert {"A. Kamara", "R. Conteh", "B. Sesay", ""} <= teams
+    contractors = {t["outcome"]["contractor"] for t in told if t["outcome"]}
+    assert {"WiNGiN Heavy Duty", "Kaba Drilling", "Sierra Drilling", ""} <= contractors
