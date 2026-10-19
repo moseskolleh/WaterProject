@@ -130,6 +130,47 @@ def _pooled_ledger(read) -> None:
         path = workdir() / "pooled_ledger.json"
         path.write_text(json.dumps(pooled, indent=1, ensure_ascii=False), encoding="utf-8")
         offer_download(path, "Download the pooled ledger (.json)", keep=False)
+        _calibration(pooled)
+
+
+def _calibration(pooled) -> None:
+    """The calibration report over the pooled ledgers (PLAN.md step 5.2):
+    its summary and its two figures on the page, and the whole report, with
+    the band, the odds and the hit rates, as a Word document."""
+    import datetime
+    import hashlib
+    import json
+
+    from groundwater.calibration import calibration_content, depth_scores, odds_scores
+    from groundwater.calibration_plots import plot_depth_calibration, plot_reliability
+    from groundwater.reporting.calibration import build_calibration_report, figure_keys
+
+    st.subheader("Calibration")
+    config = app_config()
+    issued = datetime.date.today().isoformat()
+    content = calibration_content(pooled, issued, config)
+    for text in content["summary"][1:]:
+        st.markdown(text)
+    keys = figure_keys(content)
+    if "depth" in keys:
+        st.image(str(figure(plot_depth_calibration, depth_scores(pooled, config), style=config.style,
+                            file_name="calibration_depth.png")))
+    if "reliability" in keys:
+        st.image(str(figure(plot_reliability, odds_scores(pooled, config), style=config.style,
+                            file_name="calibration_reliability.png")))
+    # the report is offered while the files it was built from are the ones
+    # on the page; another set of files wants it built again
+    pooled_sig = hashlib.sha256(json.dumps(pooled, sort_keys=True).encode("utf-8")).hexdigest()
+    if st.button("Build the calibration report (.docx)", key="build_calibration",
+                 help="The band, the odds and the hit rates by geology, survey team and contractor"):
+        path = build_calibration_report(pooled, workdir() / "Calibration_Report.docx", issued, config,
+                                        figures_dir=workdir() / "calibration_figures")
+        st.session_state["calibration_report"] = {"path": str(path), "pooled": pooled_sig}
+    built = st.session_state.get("calibration_report")
+    if built and built["pooled"] == pooled_sig:
+        # not kept among the session's deliverables, which would go on
+        # offering it once other files are on the page
+        offer_download(Path(built["path"]), "Download the calibration report (.docx)", keep=False)
 
 
 @st.fragment

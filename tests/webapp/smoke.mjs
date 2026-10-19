@@ -5647,6 +5647,52 @@ await withPage(async (page, base, consoleErrors) => {
     press('Saved projects', 'Start from the open project');
     press('Saved projects', 'Add this project');
     out.pooled = named('Predictions and outcomes').textContent;
+    /* the calibration report (PLAN.md step 5.2) over the pooled ledgers: its
+     * card on the page, and the document with the figures its content names */
+    const C = window.GWT.core, support = window.GWT.support;
+    const calibrate = async () => {
+      const cal = named('Calibration');
+      const pooled = C.poolLedgers(app.derived.portfolio.map((s, i) => [C.portfolioSiteLabel(s),
+        app.derived.portfolioLedgers[i] || null]));
+      const content = C.calibrationContent(pooled, '', app.config());
+      const got = [];
+      const download = support.download;
+      support.download = (name, data) => { got.push({ name, data }); };
+      try {
+        await app.buildCalibration(pooled, [...cal.querySelectorAll('button')]
+          .find((b) => b.textContent === 'Build the calibration report (.docx)'));
+      } finally {
+        support.download = download;
+      }
+      if (!got.length) return null;
+      const files = await support.unzip(new Uint8Array(await got[0].data.arrayBuffer()));
+      const xml = new DOMParser().parseFromString(new TextDecoder().decode(files['word/document.xml']),
+        'application/xml');
+      const text = Array.from(xml.getElementsByTagName('w:t')).map((t) => t.textContent).join(' ');
+      return { name: got[0].name,
+        card: cal.textContent.includes(C.phrase('calibration.summary_hits', { minimum: 5 })),
+        shown: cal.querySelectorAll('svg').length,
+        headings: ['calibration.depth_heading', 'calibration.odds_heading', 'calibration.hits_heading',
+          'calibration.limits_heading'].every((id) => text.includes(C.phrase(id))),
+        media: Object.keys(files).filter((n) => n.startsWith('word/media/')).length,
+        named: content.sections.reduce((n, sec) => n + sec.figures.length, 0) };
+    };
+    out.rokelReport = await calibrate();
+    /* and twelve forecasts with bands and chances, which the report judges
+     * and draws both figures for */
+    const entries = [];
+    for (let k = 0; k < 12; k++) {
+      entries.push({ id: 'cal' + k, before_outcome: true, recorded_on: '2026-03-01', toolkit: 'smoke',
+        point: { sounding_id: 'VES ' + k },
+        prediction: { depth_to_basement_m: 20 + k, basement_band_m: [16 + k, 20 + k, 26 + k],
+          survey_team: 'A. Kamara', odds: { probability: (k + 0.5) / 12, prior: 0.55, bgs_code: 'B-L', glg: 'pCm' } },
+        outcome: { basement_m: k === 3 ? null : 19 + k + (k % 4 === 0 ? 9 : 0), total_depth_m: 30 + k,
+          success: k % 3 !== 0, success_basis: 'tested', contractor: 'Kaba Drilling' } });
+    }
+    app.derived.portfolio = [{ community: 'Calibration', district: 'Port Loko' }];
+    app.derived.portfolioLedgers = [{ drilled: null, entries: entries }];
+    app.render();
+    out.report = await calibrate();
     window.GWT.app.derived.portfolio = null;
     window.GWT.app.derived.portfolioLedgers = null;
     return out;
@@ -5663,6 +5709,13 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(ledgerFlow.kept) === '[[true,true],[true,true]]' &&
     ledgerFlow.pooled.includes('2 survey points predicted in 1 project, 1 of them drilled'),
     JSON.stringify(ledgerFlow));
+  check('calibration: the Portfolio page sums up the pooled ledgers and saves Calibration_Report.docx with ' +
+    'its four sections; the Rokel project, its one drilled point predicted without a band, has no figure to ' +
+    'draw, and twelve forecasts with bands and chances have both, on the card and in the document',
+    [ledgerFlow.rokelReport, ledgerFlow.report].every((r) => r && r.name === 'Calibration_Report.docx' &&
+      r.card && r.headings && r.media === r.named && r.shown === r.named) &&
+    ledgerFlow.rokelReport.named === 0 && ledgerFlow.report.named === 2,
+    JSON.stringify([ledgerFlow.rokelReport, ledgerFlow.report]));
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

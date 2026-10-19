@@ -349,3 +349,65 @@ def test_the_seeded_cases_reach_every_rule():
     assert any(t["odds"]["brier"] is not None and t["odds"]["brier_prior"] is None for t in told)
     rates = [g["rate"] for t in told for groups in t["hits"] for g in groups]
     assert None in rates and any(r is not None for r in rates)
+
+
+# ------------------------------------------------- the document and its figures
+
+def _portfolio(n: int = 12) -> list[dict]:
+    """Forecasts with bands and chances: some inside the band, some outside,
+    one short of basement, one with no band."""
+    entries = []
+    for k in range(n):
+        found = None if k == 3 else 19.0 + k + (9.0 if k % 4 == 0 else 0.0)
+        entries.append(_entry(k, band=None if k == 5 else (16.0 + k, 20.0 + k, 26.0 + k), best=20.0 + k,
+                              found=found, total=30.0 + k, p=(k + 0.5) / n, success=k % 3 != 0,
+                              team="A. Kamara", contractor="Kaba Drilling"))
+    return entries
+
+
+def test_the_report_lays_out_its_content_with_the_figures_it_names(tmp_path):
+    from docx import Document
+
+    from groundwater.reporting.calibration import build_calibration_report, figure_keys
+
+    pooled = _portfolio()
+    content = K.calibration_content(pooled, "2026-10-19")
+    assert figure_keys(content) == ["depth", "reliability"]
+    path = build_calibration_report(pooled, tmp_path / "Calibration_Report.docx", "2026-10-19",
+                                    figures_dir=tmp_path / "figures")
+    doc = Document(str(path))
+    text = "\n".join(para.text for para in doc.paragraphs)
+    for section in content["sections"]:
+        assert section["heading"] in text
+    assert len(doc.inline_shapes) == 2
+    assert sorted(p.name for p in (tmp_path / "figures").glob("*.png")) == [
+        "calibration_depth.png", "calibration_reliability.png"]
+    # the depth points, the bins and the three groupings of hit rates
+    assert len(doc.tables) >= 1 + 1 + 3
+    assert content["references"][0] in text
+
+
+def test_a_portfolio_with_nothing_drilled_builds_a_report_without_figures(tmp_path):
+    from docx import Document
+
+    from groundwater.reporting.calibration import build_calibration_report
+
+    path = build_calibration_report([_entry(1, drilled=False)], tmp_path / "r.docx")
+    doc = Document(str(path))
+    assert len(doc.inline_shapes) == 0
+    assert phrase("calibration.hits_none") in "\n".join(para.text for para in doc.paragraphs)
+    assert not list(tmp_path.glob("*.png"))
+
+
+def test_the_figures_draw_every_kind_of_point_and_an_empty_bin(tmp_path):
+    from groundwater.calibration_plots import plot_depth_calibration, plot_reliability
+
+    pooled = _portfolio() + [_entry(50, best=None, found=30.0), _entry(51, best=None, band=None, found=30.0),
+                             _entry(52, found=12.0), _entry(53, found=None, total=27.0)]
+    depth = K.depth_scores(pooled)
+    assert {p["check"] for p in depth["points"]} == {"inside", "shallower", "deeper", "unreached_allowed",
+                                                     "no_band"}
+    assert plot_depth_calibration(depth, tmp_path / "depth.png").stat().st_size > 0
+    odds = K.odds_scores([_entry(1, p=0.1), _entry(2, p=0.9, success=False)])
+    assert [b["n"] for b in odds["bins"]] == [1, 0, 0, 0, 1]
+    assert plot_reliability(odds, tmp_path / "reliability.png").stat().st_size > 0

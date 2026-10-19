@@ -1254,9 +1254,38 @@ both still pools into one view. At its foot, **Predictions and
 outcomes** pools the files' ledgers (section 11): how many survey
 points were predicted and how many drilled, a table of the drilled ones
 with the depth to basement predicted and found and the chance predicted
-beside the outcome, and the whole pooled ledger as a `.json` file for
-the calibration that will learn from it. A point found in two files (two
-copies of one project) counts once.
+beside the outcome, and the whole pooled ledger as a `.json` file. A
+point found in two files (two copies of one project) counts once.
+
+Under it, **Calibration** scores the pooled forecasts against what was
+drilled (PLAN.md step 5.2), and *Build the calibration report (.docx)*
+writes them up as a Word document. Only predictions recorded before
+their borehole was drilled are scored.
+
+- **The depth to basement.** A calibrated P10 to P90 band holds the
+  depth found about four times in five. The report counts how many
+  boreholes found basement inside the band, above it and below it, and
+  says whether that count is within what a calibrated band would give
+  nine times in ten on as many boreholes (6 to 10 of 10), or shows a
+  band too narrow or too wide. A borehole that stopped short of basement
+  is judged only once it has passed the band's P90. The figure sets each
+  depth found against the depth predicted, with its band.
+- **The chance of success.** The Brier score of the forecasts (0 is
+  perfect; an even chance every time scores 0.25) beside the score of
+  the prior alone, and a reliability diagram: in each band of forecast
+  chance, the share that succeeded. On calibrated forecasts the points
+  lie on the diagonal.
+- **Hit rates** by geology unit, survey team and contractor: the share
+  of drilled boreholes that succeeded, with the mean chance forecast
+  beside it.
+- **Too few to judge.** Under 10 boreholes for the band or the odds,
+  and under 5 known outcomes for a hit rate, the report says there are
+  too few boreholes to judge and gives the counts. Both numbers are
+  settings (`ledger.min_boreholes`, `ledger.min_group`).
+
+The report changes nothing the toolkit predicts. In the Streamlit app
+the download is offered for the files on the page when it was built;
+change the files and build it again.
 
 ## 11. Saving your work
 
@@ -1320,8 +1349,9 @@ found. It is how the toolkit will learn from the holes drilled with it.
   supervisor in the site details. Each outcome records the contractor
   who drilled: the drilling contractor in the site details, else the
   one on the drilling log. Fill them in where you can: the calibration
-  report the apps are about to gain gives hit rates by survey team and
-  by contractor, and counts a borehole without them as "Not recorded".
+  report on the Portfolio page (section 10a) gives hit rates by survey
+  team and by contractor, and counts a borehole without them as "Not
+  recorded".
 
 The file format went to schema 2 to carry the ledger. Either app opens
 a file saved before that with an empty ledger, and a file of a later

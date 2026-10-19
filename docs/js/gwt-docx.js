@@ -3163,10 +3163,51 @@
     return b;
   }
 
+  /* --- the calibration report ---------------------------------------------
+   * reporting/calibration.py (PLAN.md step 5.2): C.calibrationContent laid
+   * out over the pooled ledgers, the cover with what they hold, the summary,
+   * then each section with its paragraphs, figures, tables and bullets, and
+   * the references. context.figures holds the two figures the Portfolio card
+   * drew, rasterised, by their keys (depth, reliability).
+   * ---------------------------------------------------------------------- */
+
+  /* each section's tables, by its key, with their columns' printed widths
+   * (reporting/calibration.py _WIDTHS) */
+  var CALIBRATION_WIDTHS = {
+    depth: [[3.0, 2.0, 5.0, 3.0, 3.0]],
+    odds: [[4.0, 2.6, 3.4, 6.0]],
+    hits: [[4.2, 1.6, 1.9, 1.9, 1.6, 2.2, 2.6], [4.2, 1.6, 1.9, 1.9, 1.6, 2.2, 2.6],
+      [4.2, 1.6, 1.9, 1.9, 1.6, 2.2, 2.6]],
+  };
+
+  function calibrationReport(context) {
+    var content = context.content;
+    var b = new ReportBuilder({ style: context.style, title: content.title });
+    b.cover([content.title], [content.subtitle], content.rows);
+    b.tableOfContents();
+    b.executiveSummary(content.summary);
+    var figures = context.figures || {};
+    content.sections.forEach(function (section) {
+      b.heading(section.heading, 1);
+      section.paragraphs.forEach(function (text) { b.paragraph(text, { align: 'justify' }); });
+      section.figures.forEach(function (fig) {
+        if (figures[fig.key]) b.figure(figures[fig.key], fig.caption, 15);
+      });
+      var widths = CALIBRATION_WIDTHS[section.key] || [];
+      section.tables.forEach(function (t, k) {
+        b.table(t.rows, { header: t.header, caption: t.caption, colWidthsCm: widths[k], fontSize: 9 });
+      });
+      if (section.bullets.length) b.bullets(section.bullets);
+    });
+    b.references(content.references);
+    return b;
+  }
+
   GWT.docx = {
     ReportBuilder: ReportBuilder,
     fieldKit: fieldKit,
     deskStudyReport: deskStudyReport,
+    calibrationReport: calibrationReport,
     geophysicalReport: geophysicalReport,
     completionReport: completionReport,
     pumpingReport: pumpingReport,
