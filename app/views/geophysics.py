@@ -43,11 +43,13 @@ from shared import (
     _band,
     choose_input,
     cost_spread_for,
+    current_ledger,
     figure,
     _next_step,
     offer_download,
     _offer_raster,
     parse_source,
+    record_survey_predictions,
     report_gate,
     run_ves_inversion,
     show_flags,
@@ -57,6 +59,74 @@ from shared import (
     workdir,
     _working,
 )
+
+
+#: How the borehole was matched to the point it was drilled at.
+_PAIRED = {
+    "chosen": "chosen on this page",
+    "nearest": "the nearest point recorded, {d} m from the log's position",
+    "only": "the survey's only point",
+}
+
+
+def _entry_label(entry: dict) -> str:
+    when = "before drilling" if entry["before_outcome"] else "after drilling"
+    return f"{entry['point']['sounding_id']} (recorded {entry['recorded_on']}, {when})"
+
+
+def _choose_drilled() -> None:
+    """The point drilled, as picked on the page, into the ledger."""
+    ledger = dict(st.session_state.get("prediction_ledger") or {})
+    ledger["drilled"] = st.session_state.get("ledger_drilled_pick")
+    st.session_state["prediction_ledger"] = ledger
+
+
+def _ledger_section(soundings, interps, ranges, odds) -> None:
+    """The ledger of predictions and outcomes (PLAN.md step 5.1): record the
+    survey's predictions, say which point was drilled where the log's
+    position does not, and set each beside what the borehole found."""
+    from groundwater.ledger import entry_header, entry_rows
+    from groundwater.utils import fmt_num
+
+    with st.expander("📒 Predictions and outcomes", expanded=False):
+        st.caption(
+            "What the survey predicts at each point, written down now, so it can be set beside "
+            "what the borehole finds and the method can learn from the holes drilled with it. A "
+            "prediction recorded before drilling is kept as it was made; one recorded once a "
+            "drilling log is loaded is marked as recorded after drilling. Building the "
+            "geophysical report records its predictions too. The ledger is saved in the project "
+            "file, and the Portfolio page pools it across projects."
+        )
+        if st.button("Record the survey's predictions", key="record_predictions"):
+            kept = record_survey_predictions(soundings, interps, ranges, odds)
+            st.success(f"Recorded the predictions at {len(interps)} point(s).")
+            if kept:
+                st.info(f"{len(kept)} point(s) kept the forecast recorded before drilling.")
+        ledger = current_ledger()
+        entries = ledger["entries"]
+        if not entries:
+            st.info("No prediction is recorded yet.")
+            return
+        options = [None] + [entry["id"] for entry in entries]
+        labels = {entry["id"]: _entry_label(entry) for entry in entries}
+        st.session_state["ledger_drilled_pick"] = ledger["drilled"]
+        st.selectbox("Point drilled", options, key="ledger_drilled_pick", on_change=_choose_drilled,
+                     format_func=lambda pid: labels.get(pid, "Decide from the drilling log's position"))
+        drilled = next((entry for entry in entries if entry["outcome"] is not None), None)
+        if st.session_state.get("drilling_log") is None and drilled is None:
+            st.caption("No drilling log is loaded: the outcome is set beside the prediction once it is.")
+        elif drilled is None:
+            st.warning("The borehole could not be matched to a point: its log has no position near "
+                       "a point recorded. Choose the point drilled above.")
+        else:
+            how = _PAIRED[drilled["pairing"]["how"]].format(
+                d=fmt_num(drilled["pairing"]["distance_m"] or 0.0))
+            st.markdown(f"**{_html.escape(drilled['point']['sounding_id'])}** - {how}.")
+            st.table([dict(zip(entry_header(), row, strict=True)) for row in entry_rows(drilled)])
+        st.dataframe([{"Point": entry["point"]["sounding_id"], "Recorded": entry["recorded_on"],
+                       "When": "Before drilling" if entry["before_outcome"] else "After drilling",
+                       "Drilled": "Yes" if entry["outcome"] is not None else ""} for entry in entries],
+                     hide_index=True, width="stretch")
 
 
 def _cost_distribution():
@@ -279,6 +349,8 @@ def render() -> None:
                     "details) to draw the drill-target map."
                 )
 
+        _ledger_section(soundings, interps, ranges, odds)
+
         # the gate reads the decision numbers from what the report prints
         # them from, at the points it recommends (PLAN.md step 3.6)
         _geo_gate = report_gate("geophysical", decided={
@@ -302,6 +374,8 @@ def render() -> None:
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),
             )
+            # what the report predicts goes into the ledger as it is issued
+            record_survey_predictions(soundings, interps, ranges, odds)
           offer_download(report_path, "Download geophysical survey report (.docx)")
 
     _next_step("Cost this borehole →", "Costing & BoQ",

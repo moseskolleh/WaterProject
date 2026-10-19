@@ -70,6 +70,7 @@ RESET_ON_LOAD_PREFIXES = (
 # outgoing survey's record; the incoming file brings its own.
 RESET_ON_LOAD_KEYS = (
     "design_swl", "asset_record", "inversion_cache", "sup_evidence", "prediction_ledger",
+    "ledger_drilled_pick",
     "topo_path", "topo_source", "topo_report", "topo_inputs", "terrain_result", "profile_path",
     "map_paths", "subsurface_paths", "section_path", "pseudosection_path",
     "traverse", "geolibre_path", "geolibre_area", "geolibre_layers",
