@@ -5684,7 +5684,8 @@ await withPage(async (page, base, consoleErrors) => {
     for (let k = 0; k < 12; k++) {
       entries.push({ id: 'cal' + k, before_outcome: true, recorded_on: '2026-03-01', toolkit: 'smoke',
         point: { sounding_id: 'VES ' + k },
-        prediction: { depth_to_basement_m: 20 + k, basement_band_m: [16 + k, 20 + k, 26 + k],
+        /* one whose best fit resolved no basement, drawn hollow at its P50 */
+        prediction: { depth_to_basement_m: k === 7 ? null : 20 + k, basement_band_m: [16 + k, 20 + k, 26 + k],
           survey_team: 'A. Kamara', odds: { probability: (k + 0.5) / 12, prior: 0.55, bgs_code: 'B-L', glg: 'pCm' } },
         outcome: { basement_m: k === 3 ? null : 19 + k + (k % 4 === 0 ? 9 : 0), total_depth_m: 30 + k,
           success: k % 3 !== 0, success_basis: 'tested', contractor: 'Kaba Drilling' } });

@@ -411,3 +411,12 @@ def test_the_figures_draw_every_kind_of_point_and_an_empty_bin(tmp_path):
     odds = K.odds_scores([_entry(1, p=0.1), _entry(2, p=0.9, success=False)])
     assert [b["n"] for b in odds["bins"]] == [1, 0, 0, 0, 1]
     assert plot_reliability(odds, tmp_path / "reliability.png").stat().st_size > 0
+
+
+def test_a_point_without_a_best_fit_is_placed_at_its_band_s_p50_and_says_so():
+    from groundwater.calibration_plots import _where
+
+    depth = K.depth_scores([_entry(1, best=None, found=24.0), _entry(2, best=21.0, found=None, total=27.0),
+                            _entry(3, best=None, band=None, found=24.0)])
+    assert [_where(p) for p in depth["points"]] == [(25.0, 24.0, False, True), (21.0, 27.0, True, False),
+                                                    (None, 24.0, False, True)]

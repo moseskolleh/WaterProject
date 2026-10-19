@@ -502,6 +502,8 @@
         }));
       } else if (entry.kind === 'down') {
         g.appendChild(downMark(x + 8, ly - 4, entry.colour, f.palette.surface));
+      } else if (entry.kind === 'hollow') {
+        g.appendChild(marker(x + 8, ly - 4, 'circle', f.palette.surface, entry.colour));
       } else {
         g.appendChild(marker(x + 8, ly - 4, entry.kind || 'circle', entry.colour,
           f.palette.surface));
@@ -2480,12 +2482,14 @@
    * diagram, from C.oddsScores. */
 
   /* a point's place: the depth predicted (the best fit's, else the band's
-   * P50), the depth found or, short of basement, the total depth */
+   * P50, which the figure draws hollow), the depth found or, short of
+   * basement, the total depth */
   function calibrationWhere(point) {
     var band = point.band;
-    var x = point.predicted !== null ? point.predicted : (band ? band[1] : null);
-    if (point.found !== null) return { x: x, y: point.found, short: false };
-    return { x: x, y: point.total_depth_m, short: true };
+    var fallback = point.predicted === null;
+    var x = !fallback ? point.predicted : (band ? band[1] : null);
+    if (point.found !== null) return { x: x, y: point.found, short: false, fallback: fallback };
+    return { x: x, y: point.total_depth_m, short: true, fallback: fallback };
   }
 
   /* a triangle pointing down: basement lies deeper than the mark */
@@ -2503,7 +2507,9 @@
     var drawn = [];
     depth.points.forEach(function (point) {
       var at = calibrationWhere(point);
-      if (at.x !== null && at.y !== null) drawn.push({ point: point, x: at.x, y: at.y, short: at.short });
+      if (at.x !== null && at.y !== null) {
+        drawn.push({ point: point, x: at.x, y: at.y, short: at.short, fallback: at.fallback });
+      }
     });
     var values = [1.0];
     drawn.forEach(function (d) {
@@ -2524,7 +2530,7 @@
       stroke: p.neutral, 'stroke-width': 1, 'stroke-dasharray': '5 4' }));
     var kinds = { inside: [p.accent, 'Inside the band'], outside: [p.secondary, 'Outside the band'],
       unjudged: [p.neutral, 'Not judged'] };
-    var present = {}, anyShort = false, marks = [];
+    var present = {}, anyShort = false, anyFallback = false, marks = [];
     drawn.forEach(function (d) {
       var check = d.point.check;
       var kind = check === 'inside' ? 'inside'
@@ -2536,9 +2542,11 @@
         f.plot.appendChild(svgEl('line', { x1: f.fx(d.point.band[0]), y1: py, x2: f.fx(d.point.band[2]),
           y2: py, stroke: colour, 'stroke-width': 1.4, 'stroke-opacity': 0.7 }));
       }
-      f.plot.appendChild(d.short ? downMark(px, py, colour, p.surface)
-        : marker(px, py, 'circle', colour, p.surface, 4.5));
+      /* hollow where the depth predicted is the band's P50, not a best fit's */
+      var fill = d.fallback ? p.surface : colour, ring = d.fallback ? colour : p.surface;
+      f.plot.appendChild(d.short ? downMark(px, py, fill, ring) : marker(px, py, 'circle', fill, ring, 4.5));
       if (d.short) anyShort = true;
+      if (d.fallback) anyFallback = true;
       marks.push({ px: px, py: py });
     });
     /** @type {Array<{kind: string, colour: string, label: string, dash?: string}>} */
@@ -2549,6 +2557,7 @@
     if (anyShort) {
       entries.push({ kind: 'down', colour: p.neutral, label: 'Stopped short of basement, at its total depth' });
     }
+    if (anyFallback) entries.push({ kind: 'hollow', colour: p.neutral, label: 'No best fit: at the band\'s P50' });
     legend(f, entries, { avoid: marks });
     return f.svg;
   }

@@ -1269,7 +1269,9 @@ their borehole was drilled are scored.
   nine times in ten on as many boreholes (6 to 10 of 10), or shows a
   band too narrow or too wide. A borehole that stopped short of basement
   is judged only once it has passed the band's P90. The figure sets each
-  depth found against the depth predicted, with its band.
+  depth found against the depth the best fit predicted, with its band; a
+  point whose best fit resolved no basement is drawn hollow at the
+  middle of its band (P50) instead.
 - **The chance of success.** The Brier score of the forecasts (0 is
   perfect; an even chance every time scores 0.25) beside the score of
   the prior alone, and a reliability diagram: in each band of forecast
