@@ -276,6 +276,22 @@ class LedgerConfig:
     # says so, since a wrong pairing would mislead the calibration that
     # learns from the ledger. Provisional.
     pair_within_m: float = _LEDGER["pair_within_m"]
+    # The calibration report (PLAN.md step 5.2, calibration.py) judges the
+    # band and the odds only on at least this many boreholes drilled at
+    # forecast points, and below it says there are too few and gives the
+    # counts. With ten boreholes a calibrated P10 to P90 band holds between
+    # six and ten of them at least nine times in ten, so fewer can hardly
+    # tell a good band from a bad one. Provisional.
+    min_boreholes: int = _LEDGER["min_boreholes"]
+    # A hit rate is given for a geology unit, survey team or contractor only
+    # on at least this many boreholes whose outcome is known; the plan's
+    # contractor scorecards (step 6.3) never rank on fewer than five either.
+    # Provisional.
+    min_group: int = _LEDGER["min_group"]
+    # The reliability diagram groups the forecast chances into this many
+    # equal bins between 0 and 1: fifths, which a few dozen forecasts can
+    # fill.
+    reliability_bins: int = _LEDGER["reliability_bins"]
 
 
 # ---------------------------------------------------------------------------

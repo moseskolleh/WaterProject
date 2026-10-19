@@ -38,6 +38,8 @@ _REFERENCES_FOR = {
     # the maps the ground is read from, the guide the prior's yields come
     # from, and the water point inventory
     "desk_study": ["usgs_geology", "salwaco_geology", "bgs_atlas", "bgs_guide", "wpdx"],
+    # the score and the diagram the odds are judged by
+    "calibration": ["brier", "murphy_winkler"],
 }
 
 

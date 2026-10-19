@@ -1371,19 +1371,34 @@
    * it was drilled at; with none, the outcomes the ledger already has. */
   function currentLedger() {
     var cfg = config();
+    /* the project's drilling contractor wins over the log's own, as the site
+     * details win over every sheet's in the reports' headers */
     return C.attachOutcome(store.get('ledger'),
-      C.completionOutcome(derived.log || null, derived.analysis || null, cfg), cfg);
+      C.completionOutcome(derived.log || null, derived.analysis || null, cfg,
+        String((store.get('site') || {}).contractor || '')), cfg);
   }
 
   /* The place a survey's points are recorded under: the project's community
    * and district, each the survey's own where the site details leave it
-   * blank, and the survey's zone. */
+   * blank, and the survey's zone; and the project's field supervisor, the
+   * survey team of a point whose own sheet names none. */
   function ledgerSite() {
     var project = store.get('site') || {};
     var survey = (((derived.soundings || [])[0]) || {}).site || {};
     return { community: project.community || survey.community || '',
       district: project.district || survey.district || '',
-      utm_zone: survey.utm_zone || Number(project.utm_zone) || null };
+      utm_zone: survey.utm_zone || Number(project.utm_zone) || null,
+      supervisor: String(project.supervisor || '') };
+  }
+
+  /* The field supervisor each point's own sheet names, found by its id as
+   * the range sampler finds the sounding. */
+  function surveyTeams(interps) {
+    var soundings = derived.soundings || [];
+    return interps.map(function (interp) {
+      var sounding = soundings.filter(function (s) { return s.sounding_id === interp.sounding_id; })[0];
+      return sounding && sounding.site ? String(sounding.site.supervisor || '') : '';
+    });
   }
 
   /* Today, as the device's calendar has it. */
@@ -1400,7 +1415,7 @@
     var interps = derived.interpretations || [];
     if (!interps.length) return [];
     var predictions = C.surveyPredictions(interps, (derived.inversions || []).map(rangeFor),
-      surveyOdds(), ledgerSite(), config());
+      surveyOdds(), ledgerSite(), config(), surveyTeams(interps));
     var got = C.recordPredictions(currentLedger(), predictions, localDate(), !!derived.log,
       (GWT.data || {}).version || '');
     store.set('ledger', got.ledger);

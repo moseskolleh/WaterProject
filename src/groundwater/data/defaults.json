@@ -89,7 +89,10 @@
     "success_yield_m3_per_h": 1.0
   },
   "ledger": {
-    "pair_within_m": 50.0
+    "pair_within_m": 50.0,
+    "min_boreholes": 10,
+    "min_group": 5,
+    "reliability_bins": 5
   },
   "cost_range": {
     "seed": 1,

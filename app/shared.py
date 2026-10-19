@@ -948,19 +948,25 @@ def current_ledger() -> dict:
     from groundwater.ledger import attach_outcome, completion_outcome
 
     config = app_config()
+    # the project's drilling contractor wins over the log's own, as the
+    # site details win over every sheet's in the reports' headers
     outcome = completion_outcome(st.session_state.get("drilling_log"),
-                                 st.session_state.get("pump_analysis"), config)
+                                 st.session_state.get("pump_analysis"), config,
+                                 contractor=site_from_state().contractor)
     return attach_outcome(st.session_state.get("prediction_ledger"), outcome, config)
 
 
 def ledger_site(soundings) -> SimpleNamespace:
     """The place a survey's points are recorded under: the project's
     community and district from the site details, each the survey's own
-    where the details leave it blank, and the survey's zone."""
+    where the details leave it blank, and the survey's zone; and the
+    project's field supervisor, the survey team of a point whose own sheet
+    names none."""
     project, survey = site_from_state(), soundings[0].site
     return SimpleNamespace(community=project.community or survey.community,
                            district=project.district or survey.district,
-                           utm_zone=survey.utm_zone or project.utm_zone)
+                           utm_zone=survey.utm_zone or project.utm_zone,
+                           supervisor=project.supervisor)
 
 
 def record_survey_predictions(soundings, interps, ranges, odds) -> list[str]:
@@ -971,7 +977,8 @@ def record_survey_predictions(soundings, interps, ranges, odds) -> list[str]:
 
     from groundwater.ledger import record_predictions, survey_predictions
 
-    predictions = survey_predictions(interps, ranges, odds, ledger_site(soundings), app_config())
+    predictions = survey_predictions(interps, ranges, odds, ledger_site(soundings), app_config(),
+                                     teams=[sounding.site.supervisor for sounding in soundings])
     ledger, kept = record_predictions(current_ledger(), predictions, datetime.date.today().isoformat(),
                                       st.session_state.get("drilling_log") is not None,
                                       groundwater.__version__)

@@ -3943,7 +3943,10 @@ await withPage(async (page, base, consoleErrors) => {
         predictions: LG.predictions.map((p) => attempt(() => C.pointPrediction(LG.interps[p.interp],
           LG.ranges[p.range], p.odds ? LG.odds : null, cfg))),
         outcomes: LG.outcomes.map((o) => attempt(() => C.completionOutcome(LG.logs[o.log],
-          LG.analyses[o.analysis], o.wider ? wider : cfg))),
+          LG.analyses[o.analysis], o.wider ? wider : cfg, o.contractor))),
+        surveys: LG.surveys.map((v) => attempt(() => C.surveyPredictions(
+          ['resolved', 'unresolved', 'dry'].map((k) => LG.interps[k]), [LG.ranges.band, null, null],
+          [LG.odds, LG.odds, null], v.site, cfg, v.teams))),
         scenarios: Object.fromEntries(Object.entries(LG.scenarios).map(([name, s]) =>
           [name, attempt(() => run(s.ops))])),
         texts: LG.texts.map((t) => attempt(() => {
@@ -3986,6 +3989,7 @@ await withPage(async (page, base, consoleErrors) => {
     };
     each('ledger: each point\'s prediction', ledgerJs.predictions, LG.predictions.map((p) => p.expect));
     each('ledger: each borehole\'s outcome', ledgerJs.outcomes, LG.outcomes.map((o) => o.expect));
+    each('ledger: a survey\'s points with their teams', ledgerJs.surveys, LG.surveys.map((v) => v.expect));
     Object.keys(LG.scenarios).forEach((name) => {
       held(`ledger: the "${name}" scenario, step by step`, ledgerJs.scenarios[name], LG.scenarios[name].expect);
     });
@@ -4000,6 +4004,46 @@ await withPage(async (page, base, consoleErrors) => {
       schema: c.schema, migrated: c.migrated })));
     held('ledger: the Rokel survey\'s predictions from the browser\'s own inversions', ledgerJs.rokel, LG.rokel);
     held('ledger: read out of a Streamlit project file as Python reads it', ledgerJs.file, LG.file.expect);
+  }
+
+  // --- The calibration report (PLAN.md step 5.2) ---
+  // The twins of groundwater/calibration.py on make_reference.py's pooled
+  // portfolios, each under three settings: the band's verdict, the Brier
+  // scores and reliability bins, the hit rates by geology, team and
+  // contractor, and the report's content, all held whole; and the binomial
+  // range the band's count is judged by.
+  {
+    const CB = R.calibration;
+    const calJs = await page.evaluate(({ CB }) => {
+      const C = GWT.core;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      return {
+        cases: CB.cases.map((c) => attempt(() => {
+          const cfg = C.withConfig({ ledger: c.settings });
+          const pooled = C.poolLedgers(CB.portfolios[c.portfolio]);
+          return { depth: C.depthScores(pooled, cfg), odds: C.oddsScores(pooled, cfg),
+            hits: { geology: C.hitRates(pooled, 'geology', cfg), team: C.hitRates(pooled, 'team', cfg),
+              contractor: C.hitRates(pooled, 'contractor', cfg) },
+            content: C.calibrationContent(pooled, c.issued, cfg) };
+        })),
+        ranges: CB.ranges.map((r) => attempt(() => C.binomialRange(r.n, r.p))),
+      };
+    }, { CB });
+    const failed = CB.cases.map((c, i) => {
+      const got = calJs.cases[i];
+      if (!got || got.threw) return `[${c.portfolio}] threw ${got ? got.threw : 'no answer'}`;
+      return firstDifference(got.ok, c.expect, `[${c.portfolio} ${JSON.stringify(c.settings)}]`);
+    }).filter(Boolean);
+    check(`calibration: the band, the odds, the hit rates and the report (${CB.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const wrong = CB.ranges.map((r, i) => {
+      const got = calJs.ranges[i];
+      if (!got || got.threw) return `[${r.n}, ${r.p}] threw ${got ? got.threw : 'no answer'}`;
+      return firstDifference(got.ok, r.expect, `[${r.n}, ${r.p}]`);
+    }).filter(Boolean);
+    check(`calibration: the binomial range (${CB.ranges.length})`, wrong.length === 0, wrong.slice(0, 3).join('\n     '));
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

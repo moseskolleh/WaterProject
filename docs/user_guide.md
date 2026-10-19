@@ -1315,6 +1315,13 @@ found. It is how the toolkit will learn from the holes drilled with it.
   tested yield and whether it succeeded (a tested safe yield of at least
   1 m3/h, or the driller's recorded status where there is no test).
   The page sets it beside the prediction, row by row.
+- **Who.** Each prediction records the survey team that made it: the
+  *Field Supervisor* on that point's VES sheet, else the field
+  supervisor in the site details. Each outcome records the contractor
+  who drilled: the drilling contractor in the site details, else the
+  one on the drilling log. Fill them in where you can: the calibration
+  report the apps are about to gain gives hit rates by survey team and
+  by contractor, and counts a borehole without them as "Not recorded".
 
 The file format went to schema 2 to carry the ledger. Either app opens
 a file saved before that with an empty ledger, and a file of a later

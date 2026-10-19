@@ -1681,6 +1681,7 @@ def build() -> dict:
     out["ledger"] = ledger_reference(rokel_interps, [sd.site for sd in soundings],
                                      out["ves_range"]["short"],
                                      [r["odds"] for r in out["odds"]["rokel"]])
+    out["calibration"] = calibration_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -3808,7 +3809,7 @@ def _ledger_logs() -> dict:
         "water_strikes_m": clean(log.water_strikes_m), "status": log.status,
         "completion_date": log.completion_date,
         "site": {"easting": clean(log.site.easting), "northing": clean(log.site.northing),
-                 "utm_zone": log.site.utm_zone},
+                 "utm_zone": log.site.utm_zone, "contractor": log.site.contractor},
     }
     return {
         "timbo": timbo,
@@ -3828,7 +3829,7 @@ def _ledger_logs() -> dict:
                                     {"top_m": 40.0, "bottom_m": 62.5, "description": "Fresh granite"}],
                       "water_strikes_m": [21.0, 41.5], "status": "Abandoned",
                       "completion_date": "", "site": {"easting": 169600.4, "northing": 930929.4,
-                                                      "utm_zone": 29}},
+                                                      "utm_zone": 29, "contractor": " Kaba \t Drilling\n"}},
     }
 
 
@@ -3860,10 +3861,12 @@ LEDGER_DIRTY = [
         {"id": "a1", "point": "here", "prediction": {}},
         {"id": "a2", "point": {"sounding_id": 3, "easting": "708958", "northing": True, "utm_zone": 28.5},
          "prediction": {"depth_to_basement_m": "28", "basement_resolved": 1, "water_zones_m": [[8, 20], [24], "x"],
+                        "survey_team": 5,
                         "basement_band_m": [1, 2], "drilling_depth_band_m": [30, None],
                         "odds": {"probability": None, "low": 0.2}},
          "before_outcome": "yes", "recorded_on": 20261018,
          "outcome": {"intervals": [[0, 5, "topsoil"], [5, "x", "clay"], [5, 9]], "water_strikes_m": [12, "15"],
+                     "contractor": "  WiNGiN \u00a0 Heavy  Duty ",
                      "safe_yield_band_m3_per_h": [0.5], "success": "true", "success_basis": "tested",
                      "status_class": "wet", "utm_zone": 29.0},
          "pairing": {"how": "guessed"}},
@@ -3948,12 +3951,23 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
     for aname in ("tested", "short"):
         outcomes.append({"log": "timbo", "analysis": aname, "wider": True,
                          "expect": L.completion_outcome(_ns(logs["timbo"]), _ns(LEDGER_ANALYSES[aname]), wider)})
+    # the project's drilling contractor, which wins over the log's own
+    for lname, log in logs.items():
+        outcomes.append({"log": lname, "analysis": "none", "wider": False, "contractor": "  Sierra   Drilling ",
+                         "expect": L.completion_outcome(_ns(log), None, config, contractor="  Sierra   Drilling ")})
 
     site = {"community": "Rokel", "district": "Port Loko", "utm_zone": 28}
-    survey = L.survey_predictions(
-        [_ns(LEDGER_INTERPS[k]) for k in ("resolved", "unresolved", "dry")],
-        [_ns(LEDGER_RANGES["band"]), None, None], [_ns(LEDGER_ODDS), _ns(LEDGER_ODDS), None],
-        _ns(site), config)
+    # each point's survey team: its own sheet's field supervisor, else the
+    # project's, written as typed with its white space tidied
+    surveys = []
+    for teams in (None, ["  A.  Kamara\t", "", None], ["B. Sesay"]):
+        for supervisor in (None, "  R.  Conteh ", 7):
+            where = site if supervisor is None else dict(site, supervisor=supervisor)
+            surveys.append({"teams": teams, "site": where, "expect": L.survey_predictions(
+                [_ns(LEDGER_INTERPS[k]) for k in ("resolved", "unresolved", "dry")],
+                [_ns(LEDGER_RANGES["band"]), None, None], [_ns(LEDGER_ODDS), _ns(LEDGER_ODDS), None],
+                _ns(where), config, teams)})
+    survey = surveys[4]["expect"]
     resurvey = L.survey_predictions(
         [_ns(LEDGER_INTERPS[k]) for k in ("resolved", "unresolved")],
         [_ns(LEDGER_RANGES["old"]), _ns(LEDGER_RANGES["rarely"])], None, _ns(site), config)
@@ -4032,6 +4046,7 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
         "logs": logs, "analyses": LEDGER_ANALYSES,
         "outcomes": outcomes,
         "site": site,
+        "surveys": surveys,
         "scenarios": {name: {"ops": ops, "expect": scenario_out[name]} for name, ops in scenarios.items()},
         "texts": texts,
         "dirty": [{"raw": raw, "expect": L.clean_ledger(raw)} for raw in LEDGER_DIRTY],
@@ -4049,6 +4064,145 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
                     for p in LEDGER_SCHEMAS],
         "rokel": rokel_survey,
     }
+
+
+# ------------------------- the calibration report (PLAN.md step 5.2)
+
+#: Survey teams and contractors as typed: one name in two spacings, a name
+#: with an accent, letters beyond the Basic Multilingual Plane and a
+#: full-width one (which JavaScript's < orders the other way round), a name
+#: that is a number, one that is an object's key in JavaScript, and none.
+CALIBRATION_TEAMS = ["A. Kamara", "  A.  Kamara", "B. Sesay", "", "Ñdoye", "\U0001d4b5 Team", "ｱ Team",
+                     "1", "__proto__"]
+CALIBRATION_CONTRACTORS = ["WiNGiN", "Kaba Drilling", "", "Kaba  Drilling ", "\U0001d4b5 Drill", "ｱ Drill"]
+#: The ground under a point as its odds read it: a class and a unit, a class
+#: alone, no class.
+CALIBRATION_GROUND = [("B-L", "pCm"), ("B-L", None), ("CSF-L/M", "pCm"), (None, None), ("U-M/H", "Qe")]
+#: Chances on the reliability bins' edges, and two a hand-edited file holds
+#: outside 0 to 1.
+CALIBRATION_EDGES = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.5, -0.1]
+
+
+def _pick(rng, values):
+    """One of ``values``, by random() alone, whose stream every Python keeps."""
+    return values[min(len(values) - 1, int(rng.random() * len(values)))]
+
+
+def _calibration_entry(rng, k: int, inside_share: float, skill: str, priors: bool) -> dict:
+    """A ledger entry as a file holds it: a band the depth found falls in
+    ``inside_share`` of the time, a chance of success that is informative,
+    contrary or the prior itself (``skill``), and the rest drawn."""
+    p10 = round(8.0 + 30.0 * rng.random(), 1)
+    band = [p10, round(p10 + 4.0, 1), round(p10 + 4.0 + 6.0 * rng.random(), 1)]
+    has_band = rng.random() > 0.1
+    best = None if rng.random() < 0.08 else round(band[1] + 3.0 * (rng.random() - 0.5), 1)
+    total = round(band[2] + 20.0 * rng.random() - 8.0, 1)
+    u = rng.random()
+    if u < inside_share:
+        found = round(band[0] + (band[2] - band[0]) * rng.random(), 1)
+    elif u < inside_share + (1.0 - inside_share) / 2.0:
+        found = round(max(0.5, band[0] - 1.0 - 6.0 * rng.random()), 1)
+    else:
+        found = round(band[2] + 1.0 + 8.0 * rng.random(), 1)
+    if found > total or rng.random() < 0.1:
+        found = None
+    prior = 0.55 if priors else (None if rng.random() < 0.3 else 0.55)
+    chance = round(rng.random(), 3) if rng.random() > 0.15 else _pick(rng, CALIBRATION_EDGES)
+    succeeds = rng.random() < (min(1.0, max(0.0, chance)) if skill == "better" else
+                               1.0 - min(1.0, max(0.0, chance)) if skill == "worse" else 0.55)
+    if skill == "same":
+        chance = prior if prior is not None else 0.55
+    success = None if rng.random() < 0.08 else succeeds
+    basis = None if success is None else _pick(rng, ["tested", "recorded_failure" if not success
+                                                     else "recorded_success"])
+    code, glg = _pick(rng, CALIBRATION_GROUND)
+    drilled = rng.random() < 0.85
+    return {
+        "id": f"cal{k:04d}",
+        "before_outcome": rng.random() < 0.85,
+        "recorded_on": "2026-03-01",
+        "toolkit": "0.3.0",
+        "point": {"sounding_id": f"VES {k}", "community": "", "district": "", "easting": None,
+                  "northing": None, "utm_zone": None},
+        "prediction": {
+            "depth_to_basement_m": best, "basement_resolved": best is not None,
+            "investigation_depth_m": 60.0, "water_zones_m": [], "drilling_depth_m": 40.0,
+            "drilling_depth_minimum": False, "basement_band_m": band if has_band else None,
+            "survey_team": _pick(rng, CALIBRATION_TEAMS),
+            "odds": None if rng.random() < 0.08 else {
+                "probability": chance, "low": 0.1, "high": 0.9, "prior": prior, "bgs_code": code, "glg": glg,
+                "status": "provisional", "matched": "class"},
+        },
+        "outcome": None if not drilled else {
+            "basement_m": found, "total_depth_m": None if rng.random() < 0.05 else total,
+            "status": "Successful" if success else "Dry", "success": success, "success_basis": basis,
+            "safe_yield_m3_per_h": None, "success_yield_m3_per_h": 1.0,
+            "contractor": _pick(rng, CALIBRATION_CONTRACTORS)},
+        "pairing": None,
+    }
+
+
+def _calibration_portfolio(seed: int, n: int, inside_share: float, skill: str, priors: bool = True) -> list:
+    import random
+
+    rng = random.Random(seed)
+    items, k = [], 0
+    for project in ("Rokel", "Kuntolo", "Dr Timbo"):
+        entries = []
+        for _ in range(n // 3):
+            entries.append(_calibration_entry(rng, k, inside_share, skill, priors))
+            k += 1
+        items.append([project, {"drilled": None, "entries": entries}])
+    # a copy of the first project's file, pooled once
+    items.append(["Rokel copy", copy.deepcopy(items[0][1])])
+    return items
+
+
+def calibration_reference() -> dict:
+    """The calibration report (PLAN.md step 5.2) on pooled portfolios built
+    to give each verdict: a band that holds about four in five, one too
+    narrow and one too wide; odds that beat the prior, odds that lose to it
+    and odds that are the prior; a portfolio too small to judge, one with
+    nothing forecast, one with nothing drilled and none at all; each under
+    the default settings and others. And the binomial range the band's
+    count is judged by (tests/test_calibration.py holds it to scipy's)."""
+    from groundwater import calibration as K
+    from groundwater import ledger as L
+
+    portfolios = {
+        "calibrated": _calibration_portfolio(1, 45, 0.8, "better"),
+        "narrow": _calibration_portfolio(2, 36, 0.45, "worse"),
+        "wide": _calibration_portfolio(3, 45, 1.0, "same"),
+        "priorless": _calibration_portfolio(4, 24, 0.8, "better", priors=False),
+        "few": _calibration_portfolio(5, 9, 0.8, "better"),
+        "after": [["Rokel", {"entries": [dict(e, before_outcome=False) for e in
+                                         _calibration_portfolio(6, 18, 0.8, "better")[0][1]["entries"]]}]],
+        "undrilled": [["Rokel", {"entries": [dict(e, outcome=None) for e in
+                                             _calibration_portfolio(7, 18, 0.8, "better")[0][1]["entries"]]}]],
+        "empty": [],
+    }
+    settings = [{}, {"min_boreholes": 3, "min_group": 2, "reliability_bins": 3},
+                {"min_boreholes": 40, "min_group": 12, "reliability_bins": 10}]
+    # every portfolio under the defaults, and some under each of the others
+    others = {1: ("calibrated", "narrow", "few"), 2: ("wide", "priorless")}
+    cases = []
+    for name, items in portfolios.items():
+        for k, overrides in enumerate(settings):
+            if k and name not in others[k]:
+                continue
+            config = Config()
+            for key, value in overrides.items():
+                setattr(config.ledger, key, value)
+            pooled = L.pool_ledgers([tuple(item) for item in items])
+            cases.append({"portfolio": name, "settings": overrides, "issued": "  2026-10-19 " if k else "",
+                          "expect": {
+                              "depth": K.depth_scores(pooled, config),
+                              "odds": K.odds_scores(pooled, config),
+                              "hits": {by: K.hit_rates(pooled, by, config) for by in K.GROUPINGS},
+                              "content": K.calibration_content(pooled, "  2026-10-19 " if k else "", config)}})
+    ranges = [{"n": n, "p": p, "expect": list(K.binomial_range(n, p))}
+              for n in (0, 1, 2, 5, 10, 11, 30, 97, 400, 2500) for p in (0.8, 0.5, 0.05)]
+    return {"portfolios": portfolios, "cases": cases, "ranges": ranges}
 
 
 # ----------------------------------------------- airlift yield (step 2.3)

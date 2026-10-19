@@ -16,6 +16,10 @@ holds no completion, and ``before_outcome`` says whether it was recorded
 before the borehole was drilled, so a prediction written down afterwards is
 never read as a forecast.
 
+Each prediction names the survey team that made it, and each outcome the
+contractor who drilled, so the calibration of step 5.2 can give hit rates for
+each.
+
 The outcome is what the borehole drilled at the point found: the depth to
 basement in the log, its bands of rock, the water strikes, the total depth,
 the tested yield, and whether it succeeded as the odds define success. It is
@@ -36,6 +40,7 @@ from __future__ import annotations
 import hashlib
 import math
 import numbers
+import re
 from collections.abc import Iterable
 
 from .config import Config
@@ -86,6 +91,17 @@ def _band(band, digits: int = 1) -> list[float | None] | None:
     return [_num(band.p10, digits), _num(band.p50, digits), _num(band.p90, digits)]
 
 
+#: The white space a name is collapsed over and trimmed of: ASCII only, as
+#: the field kit's codes are, so the two engines write the same name.
+_SPACE = re.compile(r"[ \t\n\r\f\v]+")
+
+
+def _name(value) -> str:
+    """A person's or firm's name as typed, with its runs of white space made
+    one space and its ends trimmed; "" for anything but text."""
+    return _SPACE.sub(" ", value).strip(" ") if isinstance(value, str) else ""
+
+
 def _zone(value) -> int | None:
     """A UTM zone number, or None."""
     if isinstance(value, bool):
@@ -134,12 +150,13 @@ def _odds(odds) -> dict | None:
     }
 
 
-def point_prediction(interp, model_range, odds, config: Config | None = None) -> dict:
+def point_prediction(interp, model_range, odds, config: Config | None = None, team: str = "") -> dict:
     """What the survey predicts at one point, as plain numbers.
 
     ``interp`` is the point's interpretation, ``model_range`` its sampled
     range of models (None where none was sampled) and ``odds`` its chance of
-    a working borehole (None where it was not worked out). The drilling
+    a working borehole (None where it was not worked out); ``team`` is the
+    survey team that made it, "" where none is recorded. The drilling
     depth's band is the one the reports print (decisions.depth_decision).
     """
     from .costing.distribution import depth_spread
@@ -170,19 +187,25 @@ def point_prediction(interp, model_range, odds, config: Config | None = None) ->
         "weathered_band_m": weathered_band,
         "drilling_depth_band_m": depth_band,
         "odds": _odds(odds),
+        "survey_team": _name(team),
     }
 
 
-def survey_predictions(interps, ranges, odds, site, config: Config | None = None) -> list[dict]:
+def survey_predictions(interps, ranges, odds, site, config: Config | None = None,
+                       teams: list[str] | None = None) -> list[dict]:
     """Each point's place and prediction, in the survey's order.
 
     ``ranges`` and ``odds`` go with ``interps`` by position (two points can
     share an id), None where a point has none; ``site`` is the project's
-    site, for its zone and its place.
+    site, for its zone, its place and its field supervisor. ``teams`` go by
+    position too: the field supervisor each point's own sheet names. A
+    point's survey team is its sheet's, as the geophysical report prints it
+    over the sounding, else the project's field supervisor.
     """
     zone = _zone(getattr(site, "utm_zone", None))
     community = str(getattr(site, "community", "") or "")
     district = str(getattr(site, "district", "") or "")
+    supervisor = _name(getattr(site, "supervisor", ""))
     out = []
     for k, interp in enumerate(interps):
         point = {
@@ -195,14 +218,20 @@ def survey_predictions(interps, ranges, odds, site, config: Config | None = None
         }
         model_range = ranges[k] if ranges is not None and k < len(ranges) else None
         chance = odds[k] if odds is not None and k < len(odds) else None
-        out.append({"point": point, "prediction": point_prediction(interp, model_range, chance, config)})
+        team = (_name(teams[k]) if teams is not None and k < len(teams) else "") or supervisor
+        out.append({"point": point, "prediction": point_prediction(interp, model_range, chance, config, team)})
     return out
 
 
 # ------------------------------------------------------------------ outcome
 
-def completion_outcome(log, analysis=None, config: Config | None = None) -> dict | None:
+def completion_outcome(log, analysis=None, config: Config | None = None, contractor: str = "") -> dict | None:
     """What the borehole found, or None where the project holds no log.
+
+    ``contractor`` is the project's drilling contractor, from its site
+    details; it wins over the log's own, as the project's details win over
+    every sheet's in the reports' headers, and the log's is taken where the
+    details leave it blank.
 
     The depth to basement is the top of the log's first band of basement
     rock, in the one class table every drawing uses; none in the log means
@@ -248,6 +277,7 @@ def completion_outcome(log, analysis=None, config: Config | None = None) -> dict
     site = log.site
     return {
         "borehole_ref": str(log.borehole_ref or ""),
+        "contractor": _name(contractor) or _name(getattr(site, "contractor", "")),
         "easting": _num(site.easting, 1),
         "northing": _num(site.northing, 1),
         "utm_zone": _zone(site.utm_zone),
@@ -418,6 +448,7 @@ def _clean_prediction(raw) -> dict | None:
     out: dict = {key: _num(raw.get(key), digits) for key, digits in _PREDICTION_NUMBERS}
     for key in _PREDICTION_FLAGS:
         out[key] = raw.get(key) is True
+    out["survey_team"] = _name(raw.get("survey_team"))
     zones = raw.get("water_zones_m")
     out["water_zones_m"] = [pair for pair in (_numbers(z, 2, 1) for z in zones) if pair is not None] \
         if isinstance(zones, list) else []
@@ -440,6 +471,7 @@ def _clean_outcome(raw) -> dict | None:
         return None
     out: dict = {key: _num(raw.get(key), digits) for key, digits in _OUTCOME_NUMBERS}
     out.update({key: _text(raw.get(key)) for key in _OUTCOME_TEXTS})
+    out["contractor"] = _name(raw.get("contractor"))
     for key, allowed in _OUTCOME_KEYS.items():
         out[key] = raw.get(key) if raw.get(key) in allowed else None
     out["utm_zone"] = _zone(raw.get("utm_zone"))

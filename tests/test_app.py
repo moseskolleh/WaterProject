@@ -1440,11 +1440,14 @@ def test_the_survey_s_predictions_meet_the_borehole_in_the_ledger(app):
     app.run()
     assert not app.exception
     assert "No prediction is recorded yet." in [str(i.value) for i in app.info]
+    # the Rokel sheets name no field supervisor, so the project's is the team
+    app.session_state["meta_supervisor"] = "  R.  Conteh "
     app.button(key="record_predictions").click()
     app.run()
     assert not app.exception, app.exception
     ledger = app.session_state["prediction_ledger"]
     assert [e["point"]["sounding_id"] for e in ledger["entries"]] == ["A (1)", "B (2)"]
+    assert [e["prediction"]["survey_team"] for e in ledger["entries"]] == ["R. Conteh", "R. Conteh"]
     assert all(e["before_outcome"] for e in ledger["entries"])
     assert all(e["prediction"]["odds"] is not None for e in ledger["entries"])
     # no range was sampled, and the prediction says so
