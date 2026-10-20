@@ -292,6 +292,19 @@ class LedgerConfig:
     # equal bins between 0 and 1: fifths, which a few dozen forecasts can
     # fill.
     reliability_bins: int = _LEDGER["reliability_bins"]
+    # A calibration set (PLAN.md step 5.3, calibration_sets.py) fits a row
+    # of the prior table, or a resistivity edge of a geology unit, only from
+    # at least this many boreholes; below it the provisional value stays, as
+    # a hit rate is given only on min_group. The fitted prior is a weighted
+    # mean in which the provisional rate counts as its ten boreholes' worth,
+    # so five boreholes move it a third of the way from the provisional
+    # rate to theirs. Provisional.
+    fit_min_boreholes: int = _LEDGER["fit_min_boreholes"]
+    # The suitability score's weights are fitted only once at least this
+    # many boreholes succeeded and this many failed, each with the score's
+    # parts recorded: the fit ranks every pair of a success and a failure,
+    # and with fewer of either a handful of holes decides it. Provisional.
+    fit_weights_min_each: int = _LEDGER["fit_weights_min_each"]
 
 
 # ---------------------------------------------------------------------------

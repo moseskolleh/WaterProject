@@ -976,9 +976,12 @@ def record_survey_predictions(soundings, interps, ranges, odds) -> list[str]:
     import datetime
 
     from groundwater.ledger import record_predictions, survey_predictions
+    from groundwater.siting import assess_siting
 
-    predictions = survey_predictions(interps, ranges, odds, ledger_site(soundings), app_config(),
-                                     teams=[sounding.site.supervisor for sounding in soundings])
+    config = app_config()
+    predictions = survey_predictions(interps, ranges, odds, ledger_site(soundings), config,
+                                     teams=[sounding.site.supervisor for sounding in soundings],
+                                     siting=assess_siting(interps, config.ves))
     ledger, kept = record_predictions(current_ledger(), predictions, datetime.date.today().isoformat(),
                                       st.session_state.get("drilling_log") is not None,
                                       groundwater.__version__)

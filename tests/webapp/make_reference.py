@@ -1682,6 +1682,7 @@ def build() -> dict:
                                      out["ves_range"]["short"],
                                      [r["odds"] for r in out["odds"]["rokel"]])
     out["calibration"] = calibration_reference()
+    out["calibration_sets"] = calibration_sets_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -3758,11 +3759,16 @@ LEDGER_INTERPS = {
     "resolved": {"sounding_id": "VES 1", "depth_to_basement_m": 28.37, "basement_not_resolved": False,
                  "investigation_depth_m": 60.0, "water_zones": [[8.0, 20.0], [24.0, 28.0]],
                  "aquifer_thickness_m": 16.0, "max_drilling_depth_m": 35.0, "drilling_depth_capped": False,
-                 "fit_error_percent": 3.456, "site_easting": 708958.4, "site_northing": 926355.5},
+                 "fit_error_percent": 3.456, "site_easting": 708958.4, "site_northing": 926355.5,
+                 "layers": [{"top_m": 0.0, "bottom_m": 2.35, "rho": 812.449},
+                            {"top_m": 2.35, "bottom_m": 28.37, "rho": 96.05},
+                            {"top_m": 28.37, "bottom_m": None, "rho": 4210.0}]},
     "unresolved": {"sounding_id": "VES 2", "depth_to_basement_m": None, "basement_not_resolved": True,
                    "investigation_depth_m": 40.0, "water_zones": [[8.0, 40.0]],
                    "aquifer_thickness_m": 32.0, "max_drilling_depth_m": 40.0, "drilling_depth_capped": True,
-                   "fit_error_percent": 13.35, "site_easting": 708990.0, "site_northing": 926370.0},
+                   "fit_error_percent": 13.35, "site_easting": 708990.0, "site_northing": 926370.0,
+                   "layers": [{"top_m": 0.0, "bottom_m": 8.0, "rho": 15.25},
+                              {"top_m": 8.0, "bottom_m": None, "rho": 47.0}]},
     "dry": {"sounding_id": "Kpètèma 3", "depth_to_basement_m": 6.05, "basement_not_resolved": False,
             "investigation_depth_m": 30.0, "water_zones": [], "aquifer_thickness_m": 0.0,
             "max_drilling_depth_m": 15.0, "drilling_depth_capped": False, "fit_error_percent": 2.0,
@@ -3788,6 +3794,14 @@ LEDGER_RANGES = {
             "weathered_m": {"p10": 10.0, "p50": 12.0, "p90": 15.0}, "investigation_depth_m": 60.0,
             "drilling_depth_quantiles_m": []},
 }
+
+#: The suitability score's parts as the ledger reads them, and a ranked
+#: siting (as assess_siting returns it) that gives the second and first
+#: points theirs, in that order, and the third none.
+LEDGER_PARTS = {"aquifer_thickness": 0.64, "resistivity_fit": 0.81234, "overburden": 1.0, "basal_fracture": 0.5}
+LEDGER_SITING = [{"index": 1, "components": {"aquifer_thickness": 1.0, "resistivity_fit": 0.4425,
+                                              "overburden": 0.5, "basal_fracture": 0.5}},
+                 {"index": 0, "components": LEDGER_PARTS}, {"index": None, "components": LEDGER_PARTS}]
 
 #: A chance of success as the ledger reads it.
 LEDGER_ODDS = {
@@ -3940,8 +3954,12 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
         for rname, r in LEDGER_RANGES.items():
             for with_odds in (False, True):
                 odds = LEDGER_ODDS if with_odds else None
-                predictions.append({"interp": iname, "range": rname, "odds": with_odds,
-                                    "expect": L.point_prediction(_ns(interp), _ns(r), _ns(odds), config)})
+                # the score's parts with the odds, so each kind of point is
+                # recorded both with and without them
+                parts = LEDGER_PARTS if with_odds else None
+                predictions.append({"interp": iname, "range": rname, "odds": with_odds, "parts": with_odds,
+                                    "expect": L.point_prediction(_ns(interp), _ns(r), _ns(odds), config, "",
+                                                                 _ns(parts))})
     logs = _ledger_logs()
     outcomes = []
     for lname, log in logs.items():
@@ -3963,10 +3981,12 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
     for teams in (None, ["  A.  Kamara\t", "", None], ["B. Sesay"]):
         for supervisor in (None, "  R.  Conteh ", 7):
             where = site if supervisor is None else dict(site, supervisor=supervisor)
-            surveys.append({"teams": teams, "site": where, "expect": L.survey_predictions(
+            # the ranked siting with the first site only
+            siting = LEDGER_SITING if supervisor is None else None
+            surveys.append({"teams": teams, "site": where, "siting": siting, "expect": L.survey_predictions(
                 [_ns(LEDGER_INTERPS[k]) for k in ("resolved", "unresolved", "dry")],
                 [_ns(LEDGER_RANGES["band"]), None, None], [_ns(LEDGER_ODDS), _ns(LEDGER_ODDS), None],
-                _ns(where), config, teams)})
+                _ns(where), config, teams, _ns(siting))})
     survey = surveys[4]["expect"]
     resurvey = L.survey_predictions(
         [_ns(LEDGER_INTERPS[k]) for k in ("resolved", "unresolved")],
@@ -4042,7 +4062,7 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
         rokel_sites[0], config)
     return {
         "predictions": predictions,
-        "interps": LEDGER_INTERPS, "ranges": LEDGER_RANGES, "odds": LEDGER_ODDS,
+        "interps": LEDGER_INTERPS, "ranges": LEDGER_RANGES, "odds": LEDGER_ODDS, "parts": LEDGER_PARTS,
         "logs": logs, "analyses": LEDGER_ANALYSES,
         "outcomes": outcomes,
         "site": site,
@@ -4203,6 +4223,162 @@ def calibration_reference() -> dict:
     ranges = [{"n": n, "p": p, "expect": list(K.binomial_range(n, p))}
               for n in (0, 1, 2, 5, 10, 11, 30, 97, 400, 2500) for p in (0.8, 0.5, 0.05)]
     return {"portfolios": portfolios, "cases": cases, "ranges": ranges}
+
+
+# ----------------------------------------------- calibration sets (step 5.3)
+
+def _set_entry(rng, k: int, unit: str, code: str, success_share: float, judged_at: float = 1.0) -> dict:
+    """A ledger entry a calibration set is fitted from: a best fit of a
+    clay, a weathered and a basement layer, the log that drilled through
+    them, the score's parts and the chance recorded with them. Basement
+    reads under 3,000 ohm-m in about half the holes, so its edge moves;
+    the holes with a fracture at the contact succeed more often."""
+    clay_base = round(rng.uniform(4.0, 9.0), 1)
+    basement = round(rng.uniform(clay_base + 12.0, 38.0), 1)
+    fracture = round(rng.uniform(0.0, 1.0), 3)
+    success = rng.random() < success_share * (0.6 + 0.8 * fracture)
+    chance = round(rng.uniform(0.25, 0.85), 3)
+    return {
+        "id": f"set{k:03d}", "before_outcome": rng.random() < 0.85, "recorded_on": "2026-04-01",
+        "toolkit": "0.3.0", "point": {"sounding_id": f"VES {k}"},
+        "prediction": {
+            "investigation_depth_m": rng.choice([60.0, 45.0, 80.0]),
+            "layers": [[0.0, 1.5, round(rng.uniform(300.0, 1500.0), 1)],
+                       [1.5, clay_base, round(rng.uniform(6.0, 28.0), 1)],
+                       [clay_base, basement, round(rng.uniform(22.0, 420.0), 1)],
+                       [basement, None, round(rng.uniform(1100.0, 6500.0), 1)]],
+            "suitability": {"aquifer_thickness": round(rng.random(), 3), "resistivity_fit": round(rng.random(), 3),
+                            "overburden": round(rng.random(), 3), "basal_fracture": fracture},
+            "odds": {"probability": chance, "prior": rng.choice([0.428, 0.428, 0.5, 0.966]), "bgs_code": code,
+                     "glg": unit, "low": 0.2, "high": 0.9, "effective_n": 10.0, "status": "provisional",
+                     "matched": "combination", "success_yield_m3_per_h": judged_at, "calibration": "x"}},
+        "outcome": {"total_depth_m": round(basement + rng.uniform(4.0, 25.0), 1),
+                    "intervals": [[0.0, 1.5, "laterite"], [1.5, clay_base, "clay"],
+                                  [clay_base, basement, rng.choice(["weathered", "weathered", "saprolite", "sand"])],
+                                  [basement, 100.0, "basement"]],
+                    "success": success, "success_basis": "tested", "success_yield_m3_per_h": judged_at,
+                    "safe_yield_m3_per_h": 2.0 if success else 0.4},
+    }
+
+
+def _set_portfolio(seed: int, n: int) -> list:
+    import random
+
+    rng = random.Random(seed)
+    grounds = [("pCm", "B-L"), ("Pi", "I-L"), ("Qe", "U-M/H"), ("Mi", "B-L")]
+    items, k = [], 0
+    for project in ("Rokel", "Kuntolo", "Dr Timbo"):
+        entries = []
+        for _ in range(n // 3):
+            unit, code = grounds[k % len(grounds)]
+            entries.append(_set_entry(rng, k, unit, code, 0.55))
+            k += 1
+        items.append([project, {"drilled": None, "entries": entries}])
+    items.append(["Rokel copy", copy.deepcopy(items[0][1])])
+    return items
+
+
+def calibration_sets_reference() -> dict:
+    """Calibration sets (PLAN.md step 5.3) fitted to pooled portfolios: one
+    with enough boreholes to fit every row, edge and weight, one too small to
+    fit any, one whose boreholes were judged at another definition of
+    success, did not say whether they succeeded, recorded no odds or no
+    layers, or stand on ground with no cited rate, and none at all; each
+    under the default settings and others. Each set adopted, named, written
+    to its file and read back, and hand-edited files read or refused."""
+    from groundwater import calibration_sets as CS
+    from groundwater import ledger as L
+
+    import random
+
+    rng = random.Random(53)
+    mixed = []
+    for k, (unit, code) in enumerate([("pCm", "B-L")] * 6 + [("Pi", None)] * 2 + [(None, "n/a")] * 2):
+        entry = _set_entry(rng, 500 + k, unit, code, 0.5, judged_at=3.6 if k == 1 else 1.0)
+        if k == 2:
+            entry["outcome"]["success"] = None
+        if k == 3:
+            entry["prediction"]["odds"] = None
+        if k == 4:
+            entry["prediction"]["layers"] = []
+            entry["prediction"]["suitability"] = None
+        if k == 5:
+            entry["outcome"] = None
+        mixed.append(entry)
+    portfolios = {
+        "fit": _set_portfolio(1, 36),
+        "few": _set_portfolio(2, 9),
+        "mixed": [["Kpètèma", {"drilled": None, "entries": mixed}]],
+        "empty": [],
+    }
+    settings = [{}, {"ledger": {"fit_min_boreholes": 2, "fit_weights_min_each": 3}},
+                {"ledger": {"fit_min_boreholes": 2, "fit_weights_min_each": 2},
+                 "ves": {"clay_max_rho": 35.0, "fresh_basement_min_rho": 1500.0}},
+                {"ledger": {"fit_min_boreholes": 2, "fit_weights_min_each": 2},
+                 "odds": {"success_yield_m3_per_h": 3.6}}]
+    earlier = CS.adopt_set(CS.fit_set([], "2026-01-01"), "Earlier Person", "2026-01-02")
+    cases = []
+    for name, items in portfolios.items():
+        for k, overrides in enumerate(settings):
+            # the mixed portfolio under every setting, the others under the
+            # ones that change what they fit (another definition of success
+            # leaves out all but the mixed portfolio's one borehole judged at
+            # it)
+            if name != "mixed" and k not in {"fit": (0, 2), "few": (0, 1), "empty": (0,)}[name]:
+                continue
+            config = Config()
+            for section, values in overrides.items():
+                for key, value in values.items():
+                    setattr(getattr(config, section), key, value)
+            pooled = L.pool_ledgers([tuple(item) for item in items])
+            fitted = CS.fit_set(pooled, "2026-10-20", config)
+            adopted = CS.adopt_set(fitted, "  A.\tKamara ", "2026-10-21", earlier if k == 2 else None)
+            # the rows are the set's; the ids behind each fitted one are not
+            # in it, and are held here
+            # (by their positions as text, as JSON keys them)
+            used = json.loads(json.dumps([CS.fit_prior(pooled, config)[1], CS.fit_edges(pooled, config)[1],
+                                          CS.fit_weights(pooled, config)[1]]))
+            cases.append({"portfolio": name, "settings": overrides, "in_force": k == 2, "expect": {
+                "used": used, "set": fitted, "adopted": adopted,
+                "names": [CS.set_name(fitted), CS.set_name(adopted)], "yaml": CS.set_yaml(adopted)}})
+    # the mixed portfolio's set with every kind of row fitted, the smallest
+    good = json.loads(json.dumps(next(c for c in cases if c["portfolio"] == "mixed"
+                                      and c["settings"] == settings[1])["expect"]["adopted"]))
+
+    def broken(change):
+        raw = copy.deepcopy(good)
+        change(raw)
+        return raw
+
+    hand = [good, None, [good], dict(good, format="a list of boreholes"), dict(good, format_version=2),
+            dict(good, version=None), dict(good, adopted_by=" "), dict(good, version=-1),
+            broken(lambda r: r.pop("edges")), broken(lambda r: r["prior"][0].update(rate=0.0)),
+            broken(lambda r: r["prior"][0].update(fitted=False, rate=None, effective_n=None)),
+            broken(lambda r: r["edges"][1].update(misread=1.5)),
+            broken(lambda r: r["weights"]["value"].update(overburden=0.5)),
+            broken(lambda r: r["boreholes"][0].update(uses=["prior", "laterite_min_rho"])),
+            broken(lambda r: r["boreholes"][1].update(id="")),
+            broken(lambda r: r["replaces"].update(version="0")),
+            broken(lambda r: r.update(adopted_by="  B.   Sesay  "))]
+    read = []
+    for raw in hand:
+        try:
+            read.append({"ok": CS.clean_set(raw)})
+        except ValueError as exc:
+            read.append({"threw": str(exc)})
+    refusals = []
+    for who in ("", " \t ", None):
+        try:
+            CS.adopt_set(cases[0]["expect"]["set"], who, "2026-10-21")
+        except ValueError as exc:
+            refusals.append(str(exc))
+    try:
+        CS.adopt_set(cases[0]["expect"]["adopted"], "B. Sesay", "2026-10-22")
+    except ValueError as exc:
+        refusals.append(str(exc))
+    return {"portfolios": portfolios, "earlier": earlier, "cases": cases, "hand": hand, "read": read,
+            "refusals": refusals, "default": CS.default_set(), "default_name": CS.set_name(CS.default_set()),
+            "default_yaml": CS.set_yaml(CS.default_set())}
 
 
 # ----------------------------------------------- airlift yield (step 2.3)

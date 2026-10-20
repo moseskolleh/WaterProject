@@ -22723,15 +22723,42 @@
     };
   }
 
+  /* ledger.SUITABILITY_PARTS: the four parts of the suitability score, in
+   * the order the score adds them */
+  var SUITABILITY_PARTS = ['aquifer_thickness', 'resistivity_fit', 'overburden', 'basal_fracture'];
+
+  /* the best fit's layers as [top, bottom, resistivity], the half-space's
+   * bottom null: what step 5.3 pairs with the log's bands of rock */
+  function ledgerLayers(interp) {
+    return (interp.layers || []).map(function (layer) {
+      return [ledgerNum(layer.top_m, 1), ledgerNum(layer.bottom_m, 1), ledgerNum(layer.rho, 1)];
+    });
+  }
+
+  /* the suitability score's four parts, each 0 to 1, or null */
+  function ledgerSuitability(components) {
+    if (!components) return null;
+    var out = {};
+    for (var k = 0; k < SUITABILITY_PARTS.length; k++) {
+      var key = SUITABILITY_PARTS[k];
+      out[key] = ledgerNum(components[key], 3);
+      if (out[key] === null) return null;
+    }
+    return out;
+  }
+
   /** ledger.point_prediction: what the survey predicts at one point, as
    * plain numbers. The drilling depth's band is the one the reports print.
+   * The layers and the suitability score's parts are what a calibration set
+   * (PLAN.md step 5.3) is fitted from.
    * @param {Interpretation} interp
    * @param {Rec|null} range the point's sampled range of models, or null
    * @param {Rec|null} odds the point's chance of a working borehole, or null
    * @param {Config} [config]
    * @param {string} [team] the survey team that made it, '' where none is recorded
+   * @param {Rec|null} [suitability] the parts of its suitability score (assessSiting's components), or null
    * @returns {Rec} */
-  function pointPrediction(interp, range, odds, config, team) {
+  function pointPrediction(interp, range, odds, config, team, suitability) {
     var cfg = config || defaultConfig();
     var basementBand = null, weatheredBand = null, depthBand = null, unresolved = null;
     if (range) {
@@ -22761,25 +22788,34 @@
       drilling_depth_band_m: depthBand,
       odds: ledgerOdds(odds),
       survey_team: ledgerName(team),
+      layers: ledgerLayers(interp),
+      suitability: ledgerSuitability(suitability || null),
     };
   }
 
   /** ledger.survey_predictions: each point's place and prediction, in the
    * survey's order. ranges, odds and teams go with interps by position; a
    * point's survey team is the field supervisor its own sheet names, else
-   * the project's.
+   * the project's. siting is what assessSiting returned for interps, each
+   * result found by the index it carries, since it comes back ranked.
    * @param {Interpretation[]} interps
    * @param {Array<Rec|null>|null} ranges
    * @param {Array<Rec|null>|null} odds
    * @param {Rec} site the project's site, for its zone, its place and its field supervisor
    * @param {Config} [config]
    * @param {Array<string>|null} [teams] the field supervisor each point's sheet names
+   * @param {Array<Rec>|null} [siting] assessSiting's results for interps
    * @returns {Rec[]} */
-  function surveyPredictions(interps, ranges, odds, site, config, teams) {
+  function surveyPredictions(interps, ranges, odds, site, config, teams, siting) {
     var where = site || {};
     var zone = ledgerZone(where.utm_zone);
     var community = String(where.community || ''), district = String(where.district || '');
     var supervisor = ledgerName(where.supervisor);
+    /** @type {Object<string, Rec>} */
+    var parts = {};
+    (siting || []).forEach(function (r) {
+      if (r.index !== null && r.index !== undefined) parts[r.index] = r.components;
+    });
     return interps.map(function (interp, k) {
       var point = {
         sounding_id: String(interp.sounding_id || ''),
@@ -22793,7 +22829,8 @@
       var chance = odds && k < odds.length ? odds[k] : null;
       var team = (teams && k < teams.length ? ledgerName(teams[k]) : '') || supervisor;
       return { point: point,
-        prediction: pointPrediction(interp, range || null, chance || null, config, team) };
+        prediction: pointPrediction(interp, range || null, chance || null, config, team,
+          parts[k] || null) };
     });
   }
 
@@ -23025,6 +23062,15 @@
     LEDGER_PREDICTION_BANDS.forEach(function (pair) {
       out[pair[0]] = ledgerNumbers(raw[pair[0]], /** @type {number} */ (pair[1]), 1);
     });
+    out.layers = Array.isArray(raw.layers)
+      ? raw.layers.filter(function (layer) {
+        return Array.isArray(layer) && layer.length === 3 && ledgerNum(layer[0], 1) !== null &&
+          ledgerNum(layer[2], 1) !== null && (layer[1] === null || ledgerNum(layer[1], 1) !== null);
+      }).map(function (layer) {
+        return [ledgerNum(layer[0], 1), ledgerNum(layer[1], 1), ledgerNum(layer[2], 1)];
+      })
+      : [];
+    out.suitability = isRecord(raw.suitability) ? ledgerSuitability(raw.suitability) : null;
     var odds = raw.odds;
     if (isRecord(odds)) {
       /** @type {Rec} */
@@ -23922,6 +23968,663 @@
     BAND_COVERAGE: BAND_COVERAGE, forecastEntries: forecastEntries, binomialRange: binomialRange,
     depthScores: depthScores, oddsScores: oddsScores, hitRates: hitRates,
     calibrationContent: calibrationContent,
+  });
+
+  /* ======================================================= calibration sets
+   * groundwater/calibration_sets.py (PLAN.md step 5.3). The prior table's
+   * rates, the resistivity edges of each geology unit and the suitability
+   * weights, fitted to the boreholes of a pooled ledger, and adopted by a
+   * named person before anything changes. Every fit starts from the
+   * provisional default, and uses only sums, products, quotients and square
+   * roots, so the two engines agree to the bit.
+   */
+
+  /* calibration_sets.FORMAT and FORMAT_VERSION: what a set file says it is */
+  var SET_FORMAT = 'groundwater calibration set';
+  var SET_FORMAT_VERSION = 1;
+  /* calibration_sets.EDGES: the resistivity edges a set fits, in its order */
+  var SET_EDGES = ['clay_max_rho', 'fresh_basement_min_rho'];
+  /* the classes of rock under and over each edge */
+  var SET_SIDES = {
+    clay_max_rho: [['clay'], ['sand', 'weathered', 'fracture']],
+    fresh_basement_min_rho: [['clay', 'saprolite', 'sand', 'weathered', 'fracture'], ['basement']],
+  };
+  var SET_CHANCE_BOUND = 0.0005;
+  var SET_RATE_BOUND = 0.0001;
+  var SET_STEPS = 20;
+
+  /* the drilled entries whose success is known at the definition in force,
+   * and how many drilled entries were left out and why */
+  function setJudged(pooled, cfg) {
+    var kept = [], unknown = 0, definition = 0;
+    var rate = pyRound(cfg.odds.success_yield_m3_per_h, 3);
+    pooled.forEach(function (entry) {
+      var outcome = entry.outcome;
+      if (!outcome) return;
+      if (outcome.success === null || outcome.success === undefined) {
+        unknown += 1;
+      } else if (outcome.success_yield_m3_per_h === null ||
+          !(Math.abs(outcome.success_yield_m3_per_h - rate) < 1e-9)) {
+        definition += 1;
+      } else {
+        kept.push(entry);
+      }
+    });
+    return { kept: kept, leftOut: { unknown: unknown, definition: definition } };
+  }
+
+  /* how far the survey evidence moved a recorded chance: its odds over the
+   * odds of the prior it started from */
+  function setFactor(odds) {
+    var p = odds.probability, q = odds.prior;
+    if (p === null || p === undefined || q === null || q === undefined) return null;
+    p = Math.min(Math.max(p, SET_CHANCE_BOUND), 1.0 - SET_CHANCE_BOUND);
+    q = Math.min(Math.max(q, SET_CHANCE_BOUND), 1.0 - SET_CHANCE_BOUND);
+    return (p / (1.0 - p)) / (q / (1.0 - q));
+  }
+
+  /** calibration_sets.evidence_rate: the rate for the ground at which
+   * boreholes whose evidence moved their odds by factors would expect
+   * successes successes, by a hundred halvings of [0, 1].
+   * @param {number[]} factors
+   * @param {number} successes
+   * @returns {number} */
+  function evidenceRate(factors, successes) {
+    var lo = 0.0, hi = 1.0;
+    for (var i = 0; i < 100; i++) {
+      var mid = 0.5 * (lo + hi);
+      var expected = 0.0;
+      for (var k = 0; k < factors.length; k++) {
+        var f = factors[k];
+        expected = expected + mid * f / (mid * f + 1.0 - mid);
+      }
+      if (expected < successes) lo = mid; else hi = mid;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  /** calibration_sets.fit_prior: the rows of the prior table the boreholes
+   * fall in, each fitted where it holds ledger.fit_min_boreholes, and the
+   * ids of the boreholes in each fitted row by the row's position.
+   * @param {Rec[]} pooled
+   * @param {Config} [config]
+   * @returns {{rows: Rec[], used: Object<string, string[]>}} */
+  function fitPrior(pooled, config) {
+    var cfg = config || defaultConfig();
+    var rateM3h = Number(cfg.odds.success_yield_m3_per_h);
+    var judged = setJudged(pooled, cfg).kept;
+    var table = oddsTables().prior;
+    /** @type {Object<string, Rec[]>} */
+    var members = {};
+    judged.forEach(function (entry) {
+      var odds = entry.prediction.odds;
+      if (!odds || !odds.bgs_code || setFactor(odds) === null) return;
+      var row = priorFor(odds.bgs_code, odds.glg, rateM3h);
+      if (row.matched === 'fallback') return;
+      for (var k = 0; k < table.length; k++) {
+        if (table[k].bgs_code === row.bgs_code && table[k].glg === row.glg) {
+          (members[k] = members[k] || []).push(entry);
+          break;
+        }
+      }
+    });
+    /** @type {Rec[]} */
+    var rows = [];
+    /** @type {Object<string, string[]>} */
+    var used = {};
+    table.forEach(function (base, k) {
+      var entries = members[k];
+      if (!entries) return;
+      var baseRate = priorFor(base.bgs_code, base.glg !== '*' ? base.glg : null, rateM3h).rate;
+      var baseN = Number(base.effective_n);
+      var m = entries.length;
+      var successes = entries.filter(function (e) { return e.outcome.success; }).length;
+      var factors = /** @type {number[]} */ (entries.map(function (e) { return setFactor(e.prediction.odds); }));
+      var expected = m * evidenceRate(factors, successes);
+      var fitted = m >= cfg.ledger.fit_min_boreholes;
+      var rate = (baseN * baseRate + expected) / (baseN + m);
+      if (fitted) used[rows.length] = entries.map(function (e) { return e.id; });
+      rows.push({
+        bgs_code: base.bgs_code,
+        glg: base.glg,
+        boreholes: m,
+        successes: successes,
+        expected: pyRound(expected, 2),
+        base_rate: pyRound(baseRate, 4),
+        base_n: baseN,
+        fitted: fitted,
+        rate: fitted ? Math.min(Math.max(pyRound(rate, 4), SET_RATE_BOUND), 1.0 - SET_RATE_BOUND) : null,
+        effective_n: fitted ? baseN + m : null,
+      });
+    });
+    return { rows: rows, used: used };
+  }
+
+  /** calibration_sets.layer_class: the class of rock the log gives a layer
+   * of the best fit, the one that fills at least half of it down to the
+   * log's total depth and the depth of investigation, and at least a metre
+   * thick there; null where no class does.
+   * @param {Array<number|null>} layer [top, bottom, resistivity]
+   * @param {Rec} prediction
+   * @param {Rec} outcome
+   * @returns {string|null} */
+  function layerClass(layer, prediction, outcome) {
+    var top = /** @type {number} */ (layer[0]), bottom = layer[1];
+    var total = outcome.total_depth_m;
+    if (total === null || total === undefined) return null;
+    var end = total;
+    [bottom, prediction.investigation_depth_m].forEach(function (limit) {
+      if (limit !== null && limit !== undefined && limit < end) end = limit;
+    });
+    var span = end - top;
+    if (span < 1.0) return null;
+    /** @type {Object<string, number>} */
+    var overlap = {};
+    /** @type {string[]} */
+    var order = [];
+    outcome.intervals.forEach(function (iv) {
+      var lo = Math.max(iv[0], top), hi = Math.min(iv[1], end);
+      if (hi > lo) {
+        if (!(iv[2] in overlap)) { overlap[iv[2]] = 0.0; order.push(iv[2]); }
+        overlap[iv[2]] = overlap[iv[2]] + (hi - lo);
+      }
+    });
+    /** @type {string|null} */
+    var best = null;
+    for (var k = 0; k < order.length; k++) {
+      if (best === null || overlap[order[k]] > overlap[best]) best = order[k];
+    }
+    if (best === null || 2.0 * overlap[best] < span) return null;
+    return best;
+  }
+
+  /* how many layers an edge at value reads as the wrong side: clay at or
+   * under clay_max_rho, fresh basement at or over fresh_basement_min_rho */
+  function setMisread(edge, value, below, above) {
+    var n = 0;
+    if (edge === 'clay_max_rho') {
+      below.forEach(function (r) { if (r > value) n += 1; });
+      above.forEach(function (r) { if (r <= value) n += 1; });
+    } else {
+      below.forEach(function (r) { if (r >= value) n += 1; });
+      above.forEach(function (r) { if (r < value) n += 1; });
+    }
+    return n;
+  }
+
+  /* the edge that misreads the fewest layers, among the edge in force and
+   * the geometric midpoints of each two resistivities next to each other
+   * between floor and ceiling; a tie goes to the edge nearest the one in
+   * force, by ratio, and then to the lower */
+  function setBestEdge(edge, base, below, above, floor, ceiling) {
+    var seen = {};
+    var values = below.concat(above).filter(function (v) {
+      if (seen[String(v)]) return false;
+      seen[String(v)] = true;
+      return true;
+    }).sort(function (a, b) { return a - b; });
+    var best = base, bestMiss = setMisread(edge, base, below, above), bestRatio = 1.0;
+    for (var i = 0; i + 1 < values.length; i++) {
+      var c = pyRound(Math.sqrt(values[i] * values[i + 1]), 1);
+      if (!(c > floor) || (ceiling !== null && !(c < ceiling))) continue;
+      var miss = setMisread(edge, c, below, above);
+      var ratio = Math.max(c / base, base / c);
+      if (miss < bestMiss || miss === bestMiss && (ratio < bestRatio || ratio === bestRatio && c < best)) {
+        best = c; bestMiss = miss; bestRatio = ratio;
+      }
+    }
+    return [best, bestMiss];
+  }
+
+  /** calibration_sets.fit_edges: the resistivity edges of each geology unit
+   * the boreholes were drilled in, each fitted where fit_min_boreholes
+   * boreholes give it a layer and it has layers on both sides, by unit in
+   * code-point order, clay first; and the ids behind each fitted edge.
+   * @param {Rec[]} pooled
+   * @param {Config} [config]
+   * @returns {{rows: Rec[], used: Object<string, string[]>}} */
+  function fitEdges(pooled, config) {
+    var cfg = config || defaultConfig();
+    var judged = setJudged(pooled, cfg).kept;
+    /** @type {Object<string, Object<string, Array<Array<*>>>>} */
+    var sides = {};
+    judged.forEach(function (entry) {
+      var prediction = entry.prediction, outcome = entry.outcome;
+      var odds = prediction.odds;
+      if (!odds || !odds.glg) return;
+      if (!sides[odds.glg]) {
+        sides[odds.glg] = {};
+        SET_EDGES.forEach(function (edge) { sides[odds.glg][edge] = [[], [], []]; });
+      }
+      var unit = sides[odds.glg];
+      prediction.layers.forEach(function (layer) {
+        var klass = layerClass(layer, prediction, outcome);
+        if (klass === null) return;
+        SET_EDGES.forEach(function (edge) {
+          var held = unit[edge];
+          if (SET_SIDES[edge][0].indexOf(klass) >= 0) held[0].push(layer[2]);
+          else if (SET_SIDES[edge][1].indexOf(klass) >= 0) held[1].push(layer[2]);
+          else return;
+          if (held[2].indexOf(entry.id) < 0) held[2].push(entry.id);
+        });
+      });
+    });
+    /** @type {Rec[]} */
+    var rows = [];
+    /** @type {Object<string, string[]>} */
+    var used = {};
+    var base = { clay_max_rho: Number(cfg.ves.clay_max_rho),
+      fresh_basement_min_rho: Number(cfg.ves.fresh_basement_min_rho) };
+    Object.keys(sides).sort(codePointCompare).forEach(function (glg) {
+      var clay = base.clay_max_rho;
+      SET_EDGES.forEach(function (edge) {
+        var held = sides[glg][edge];
+        var below = held[0], above = held[1], ids = held[2];
+        if (!ids.length) return;
+        var fitted = ids.length >= cfg.ledger.fit_min_boreholes && below.length > 0 && above.length > 0;
+        var row = { glg: glg, edge: edge, boreholes: ids.length, below: below.length,
+          above: above.length, base: base[edge], misread_base: setMisread(edge, base[edge], below, above),
+          fitted: fitted, value: null, misread: null };
+        if (fitted) {
+          var got = edge === 'clay_max_rho'
+            ? setBestEdge(edge, base[edge], below, above, 0.0, Number(cfg.ves.fractured_zone_rho[1]))
+            : setBestEdge(edge, base[edge], below, above, clay, null);
+          if (edge === 'clay_max_rho') clay = got[0];
+          row.value = got[0];
+          row.misread = got[1];
+          used[rows.length] = ids.slice();
+        }
+        rows.push(row);
+      });
+    });
+    return { rows: rows, used: used };
+  }
+
+  /* twice the pairs of a success and a failure the scores rank the right
+   * way round, a tie counting once */
+  function setPairsRight(successes, failures) {
+    var ordered = failures.slice().sort(function (a, b) { return a - b; });
+    function bound(x, strict) {
+      var lo = 0, hi = ordered.length;
+      while (lo < hi) {
+        var mid = (lo + hi) >> 1;
+        if (strict ? ordered[mid] < x : ordered[mid] <= x) lo = mid + 1; else hi = mid;
+      }
+      return lo;
+    }
+    var total = 0;
+    successes.forEach(function (s) {
+      var lower = bound(s, true);
+      total += 2 * lower + (bound(s, false) - lower);
+    });
+    return total;
+  }
+
+  function setScores(parts, w) {
+    return parts.map(function (p) { return w[0] * p[0] + w[1] * p[1] + w[2] * p[2] + w[3] * p[3]; });
+  }
+
+  /** calibration_sets.fit_weights: the suitability score's weights fitted in
+   * twentieths to the boreholes whose score's parts were recorded, once
+   * fit_weights_min_each succeeded and as many failed; and their ids where
+   * they were fitted.
+   * @param {Rec[]} pooled
+   * @param {Config} [config]
+   * @returns {{weights: Rec, used: string[]}} */
+  function fitWeights(pooled, config) {
+    var cfg = config || defaultConfig();
+    var judged = setJudged(pooled, cfg).kept;
+    var won = [], lost = [], ids = [];
+    judged.forEach(function (entry) {
+      var parts = entry.prediction.suitability;
+      if (!parts) return;
+      var row = SUITABILITY_PARTS.map(function (key) { return pyRound(parts[key] * 1000, 0); });
+      (entry.outcome.success ? won : lost).push(row);
+      ids.push(entry.id);
+    });
+    var base = SUITABILITY_PARTS.map(function (key) { return pyRound(SUITABILITY_WEIGHTS[key] * SET_STEPS, 0); });
+    var pairs = won.length * lost.length;
+    /** @type {Rec} */
+    var baseTable = {};
+    SUITABILITY_PARTS.forEach(function (key, k) { baseTable[key] = base[k] / SET_STEPS; });
+    var minimum = cfg.ledger.fit_weights_min_each;
+    /** @type {Rec} */
+    var out = {
+      successes: won.length,
+      failures: lost.length,
+      base: baseTable,
+      right_base: pairs ? pyRound(setPairsRight(setScores(won, base), setScores(lost, base)) / (2 * pairs), 4)
+        : null,
+      fitted: won.length >= minimum && lost.length >= minimum,
+      value: null,
+      right: null,
+    };
+    if (!out.fitted) return { weights: out, used: [] };
+    var best = null, bestRight = -1, bestDistance = 0;
+    for (var a = 0; a <= SET_STEPS; a++) {
+      for (var b = 0; b <= SET_STEPS - a; b++) {
+        for (var c = 0; c <= SET_STEPS - a - b; c++) {
+          var w = [a, b, c, SET_STEPS - a - b - c];
+          var right = setPairsRight(setScores(won, w), setScores(lost, w));
+          var distance = 0;
+          for (var k = 0; k < 4; k++) distance += Math.abs(w[k] - base[k]);
+          if (right > bestRight || right === bestRight && distance < bestDistance) {
+            best = w; bestRight = right; bestDistance = distance;
+          }
+        }
+      }
+    }
+    /** @type {Rec} */
+    var value = {};
+    SUITABILITY_PARTS.forEach(function (key, k) { value[key] = /** @type {number[]} */ (best)[k] / SET_STEPS; });
+    out.value = value;
+    out.right = pyRound(bestRight / (2 * pairs), 4);
+    return { weights: out, used: ids };
+  }
+
+  /** calibration_sets.default_set: the set the toolkit ships, adopted by
+   * no one.
+   * @returns {Rec} */
+  function defaultSet() {
+    return {
+      format: SET_FORMAT,
+      format_version: SET_FORMAT_VERSION,
+      version: 0,
+      fitted_on: '',
+      adopted_by: '',
+      adopted_on: '',
+      replaces: null,
+      success_yield_m3_per_h: null,
+      boreholes: [],
+      left_out: { unknown: 0, definition: 0 },
+      prior: [],
+      edges: [],
+      weights: null,
+    };
+  }
+
+  /** calibration_sets.fit_set: a calibration set fitted to the pooled
+   * ledger's boreholes, numbered and adopted by no one yet.
+   * @param {Rec[]} pooled
+   * @param {string} fittedOn
+   * @param {Config} [config]
+   * @returns {Rec} */
+  function fitSet(pooled, fittedOn, config) {
+    var cfg = config || defaultConfig();
+    var leftOut = setJudged(pooled, cfg).leftOut;
+    var prior = fitPrior(pooled, cfg), edges = fitEdges(pooled, cfg), weights = fitWeights(pooled, cfg);
+    /** @type {Object<string, string[]>} */
+    var uses = {};
+    function use(id, name) {
+      if (!uses[id]) uses[id] = [];
+      if (uses[id].indexOf(name) < 0) uses[id].push(name);
+    }
+    Object.keys(prior.used).forEach(function (k) {
+      prior.used[k].forEach(function (id) { use(id, 'prior'); });
+    });
+    Object.keys(edges.used).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) {
+      edges.used[k].forEach(function (id) { use(id, edges.rows[k].edge); });
+    });
+    weights.used.forEach(function (id) { use(id, 'weights'); });
+    var order = ['prior'].concat(SET_EDGES, ['weights']);
+    var boreholes = [];
+    pooled.forEach(function (entry) {
+      if (!Object.prototype.hasOwnProperty.call(uses, entry.id)) return;
+      boreholes.push({ id: entry.id, success: entry.outcome.success, forecast: entry.before_outcome,
+        uses: uses[entry.id].slice().sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); }) });
+      delete uses[entry.id];
+    });
+    return Object.assign(defaultSet(), {
+      version: null, fitted_on: String(fittedOn),
+      success_yield_m3_per_h: pyRound(cfg.odds.success_yield_m3_per_h, 3),
+      boreholes: boreholes, left_out: leftOut, prior: prior.rows, edges: edges.rows,
+      weights: weights.weights,
+    });
+  }
+
+  /** calibration_sets.adopt_set: candidate adopted by a named person on a
+   * date, numbered one after the set in force, which it names as the set it
+   * replaces. A blank name, or a set adopted already, throws the sentence
+   * the app shows.
+   * @param {Rec} candidate
+   * @param {string} adoptedBy
+   * @param {string} adoptedOn
+   * @param {Rec|null} [inForce]
+   * @returns {Rec} */
+  function adoptSet(candidate, adoptedBy, adoptedOn, inForce) {
+    var who = ledgerName(adoptedBy);
+    if (!who) throw new Error(phrase('calibration_sets.adopt_unnamed'));
+    if (candidate.adopted_by) {
+      throw new Error(phrase('calibration_sets.adopt_again', { by: candidate.adopted_by,
+        on: candidate.adopted_on }));
+    }
+    var force = inForce || defaultSet();
+    return Object.assign({}, candidate, {
+      version: force.version + 1,
+      adopted_by: who,
+      adopted_on: String(adoptedOn),
+      replaces: { version: force.version, fitted_on: force.fitted_on, adopted_by: force.adopted_by,
+        adopted_on: force.adopted_on },
+    });
+  }
+
+  /** calibration_sets.set_name: the set as a report names it.
+   * @param {Rec} s
+   * @returns {string} */
+  function setName(s) {
+    if (s.version === 0) return phrase('calibration_sets.name_default');
+    var n = s.boreholes.length;
+    if (s.adopted_by) {
+      return phrase('calibration_sets.name_adopted', { version: s.version, fitted_on: s.fitted_on, n: n,
+        by: s.adopted_by, on: s.adopted_on });
+    }
+    return phrase('calibration_sets.name_candidate', { fitted_on: s.fitted_on, n: n });
+  }
+
+  function setUnreadable(why) {
+    return new Error(phrase('calibration_sets.unreadable', { why: why }));
+  }
+
+  function setIsInt(v) { return typeof v === 'number' && Number.isInteger(v); }
+  function setIsNum(v) { return typeof v === 'number' && isFinite(v); }
+  function setText(v) { return typeof v === 'string'; }
+  function setCount(v) { return setIsInt(v) && v >= 0; }
+  function setPositive(v) { return setIsNum(v) && v > 0; }
+  function setRate(v) { return setIsNum(v) && v > 0 && v < 1; }
+  function setFlag(v) { return typeof v === 'boolean'; }
+  function setMaybe(check) { return function (v) { return v === null || check(v); }; }
+
+  /* raw[key] where check passes it, else the reason the file cannot be
+   * read, naming the field */
+  function setField(raw, key, check, where) {
+    if (!isRecord(raw) || !Object.prototype.hasOwnProperty.call(raw, key) || !check(raw[key])) {
+      throw setUnreadable(phrase('calibration_sets.why_field', { field: (where || '') + key }));
+    }
+    return raw[key];
+  }
+
+  function setWeightTable(v) {
+    return isRecord(v) && SUITABILITY_PARTS.every(function (key) { return setIsNum(v[key]) && v[key] >= 0; });
+  }
+
+  function setCleanWeights(raw) {
+    if (raw === null) return null;
+    var fitted = setField(raw, 'fitted', setFlag, 'weights.');
+    var base = setField(raw, 'base', setWeightTable, 'weights.');
+    var value = setField(raw, 'value', fitted ? setWeightTable : setMaybe(setWeightTable), 'weights.');
+    if (value !== null) {
+      var sum = 0;
+      SUITABILITY_PARTS.forEach(function (key) { sum += value[key]; });
+      if (Math.abs(sum - 1.0) > 1e-9) throw setUnreadable(phrase('calibration_sets.why_weights'));
+    }
+    function table(t) {
+      /** @type {Rec} */
+      var out = {};
+      SUITABILITY_PARTS.forEach(function (key) { out[key] = t[key]; });
+      return out;
+    }
+    return {
+      successes: setField(raw, 'successes', setCount, 'weights.'),
+      failures: setField(raw, 'failures', setCount, 'weights.'),
+      base: table(base),
+      right_base: setField(raw, 'right_base', setMaybe(setIsNum), 'weights.'),
+      fitted: fitted,
+      value: value !== null ? table(value) : null,
+      right: setField(raw, 'right', fitted ? setIsNum : setMaybe(setIsNum), 'weights.'),
+    };
+  }
+
+  /** calibration_sets.clean_set: a set read from a file, in the shape the
+   * functions here write, or an Error with the sentence the app shows. A
+   * file is read whole or not at all.
+   * @param {*} raw
+   * @returns {Rec} */
+  function cleanSet(raw) {
+    if (!isRecord(raw)) throw setUnreadable(phrase('calibration_sets.why_not_mapping'));
+    if (raw.format !== SET_FORMAT || raw.format_version !== SET_FORMAT_VERSION) {
+      throw setUnreadable(phrase('calibration_sets.why_format', { expected: SET_FORMAT_VERSION }));
+    }
+    var version = setField(raw, 'version', setMaybe(setCount));
+    /** @type {Rec} */
+    var out = { format: SET_FORMAT, format_version: SET_FORMAT_VERSION, version: version };
+    ['fitted_on', 'adopted_by', 'adopted_on'].forEach(function (key) { out[key] = setField(raw, key, setText); });
+    out.adopted_by = ledgerName(out.adopted_by);
+    if ((version !== null && version > 0) !== !!out.adopted_by) {
+      throw setUnreadable(phrase('calibration_sets.why_unadopted'));
+    }
+    var replaces = setField(raw, 'replaces', function (v) { return v === null || isRecord(v); });
+    if (replaces !== null) {
+      replaces = {
+        version: setField(replaces, 'version', setCount, 'replaces.'),
+        fitted_on: setField(replaces, 'fitted_on', setText, 'replaces.'),
+        adopted_by: setField(replaces, 'adopted_by', setText, 'replaces.'),
+        adopted_on: setField(replaces, 'adopted_on', setText, 'replaces.'),
+      };
+    }
+    out.replaces = replaces;
+    out.success_yield_m3_per_h = setField(raw, 'success_yield_m3_per_h', setMaybe(setPositive));
+    var uses = ['prior'].concat(SET_EDGES, ['weights']);
+    out.boreholes = setField(raw, 'boreholes', Array.isArray).map(function (item) {
+      return {
+        id: setField(item, 'id', function (v) { return typeof v === 'string' && v.length > 0; }, 'boreholes.'),
+        success: setField(item, 'success', setFlag, 'boreholes.'),
+        forecast: setField(item, 'forecast', setFlag, 'boreholes.'),
+        uses: setField(item, 'uses', function (v) {
+          return Array.isArray(v) && v.every(function (u) { return uses.indexOf(u) >= 0; });
+        }, 'boreholes.').slice(),
+      };
+    });
+    var left = setField(raw, 'left_out', isRecord);
+    out.left_out = { unknown: setField(left, 'unknown', setCount, 'left_out.'),
+      definition: setField(left, 'definition', setCount, 'left_out.') };
+    out.prior = setField(raw, 'prior', Array.isArray).map(function (row) {
+      var fitted = setField(row, 'fitted', setFlag, 'prior.');
+      return {
+        bgs_code: setField(row, 'bgs_code', setText, 'prior.'),
+        glg: setField(row, 'glg', setText, 'prior.'),
+        boreholes: setField(row, 'boreholes', setCount, 'prior.'),
+        successes: setField(row, 'successes', setCount, 'prior.'),
+        expected: setField(row, 'expected', setIsNum, 'prior.'),
+        base_rate: setField(row, 'base_rate', setIsNum, 'prior.'),
+        base_n: setField(row, 'base_n', setPositive, 'prior.'),
+        fitted: fitted,
+        rate: setField(row, 'rate', fitted ? setRate : setMaybe(setRate), 'prior.'),
+        effective_n: setField(row, 'effective_n', fitted ? setPositive : setMaybe(setPositive), 'prior.'),
+      };
+    });
+    out.edges = setField(raw, 'edges', Array.isArray).map(function (row) {
+      var fitted = setField(row, 'fitted', setFlag, 'edges.');
+      return {
+        glg: setField(row, 'glg', setText, 'edges.'),
+        edge: setField(row, 'edge', function (v) { return SET_EDGES.indexOf(v) >= 0; }, 'edges.'),
+        boreholes: setField(row, 'boreholes', setCount, 'edges.'),
+        below: setField(row, 'below', setCount, 'edges.'),
+        above: setField(row, 'above', setCount, 'edges.'),
+        base: setField(row, 'base', setPositive, 'edges.'),
+        misread_base: setField(row, 'misread_base', setCount, 'edges.'),
+        fitted: fitted,
+        value: setField(row, 'value', fitted ? setPositive : setMaybe(setPositive), 'edges.'),
+        misread: setField(row, 'misread', fitted ? setCount : setMaybe(setCount), 'edges.'),
+      };
+    });
+    out.weights = setCleanWeights(setField(raw, 'weights', function (v) { return v === null || isRecord(v); }));
+    return out;
+  }
+
+  /* one value as the set file writes it: text in double quotes, a whole
+   * number without a point, any other number as the shortest text that
+   * reads back to it */
+  function setScalar(value) {
+    if (value === null || value === undefined) return 'null';
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'number') return String(value);
+    var out = '', text = String(value);
+    for (var i = 0; i < text.length;) {
+      /* by code point, as Python reads a string: a lone surrogate is one */
+      var code = /** @type {number} */ (text.codePointAt(i));
+      var ch = String.fromCodePoint(code);
+      i += code > 0xffff ? 2 : 1;
+      if (ch === '"' || ch === '\\') {
+        out += '\\' + ch;
+      } else if (code < 0x20 || code >= 0x7f && code <= 0x9f) {
+        out += '\\x' + (code < 16 ? '0' : '') + code.toString(16).toUpperCase();
+      } else if (code === 0x2028 || code === 0x2029 || code === 0xfeff || code === 0xfffe ||
+          code === 0xffff || code >= 0xd800 && code <= 0xdfff) {
+        /* YAML breaks a line at the two separators, and refuses the rest */
+        out += '\\u' + ('000' + code.toString(16).toUpperCase()).slice(-4);
+      } else {
+        out += ch;
+      }
+    }
+    return '"' + out + '"';
+  }
+
+  function setEmpty(v) {
+    return Array.isArray(v) ? v.length === 0 : isRecord(v) && Object.keys(v).length === 0;
+  }
+
+  function setEmit(value, indent, lines) {
+    var pad = new Array(indent + 1).join(' ');
+    if (!Array.isArray(value)) {
+      Object.keys(value).forEach(function (key) {
+        var item = value[key];
+        if ((Array.isArray(item) || isRecord(item)) && !setEmpty(item)) {
+          lines.push(pad + key + ':');
+          setEmit(item, indent + 2, lines);
+        } else {
+          lines.push(pad + key + ': ' + (Array.isArray(item) ? '[]' : isRecord(item) ? '{}' : setScalar(item)));
+        }
+      });
+      return;
+    }
+    value.forEach(function (item) {
+      if (isRecord(item) && !setEmpty(item)) {
+        var nested = [];
+        setEmit(item, indent + 2, nested);
+        lines.push(pad + '- ' + nested[0].slice(indent + 2));
+        for (var i = 1; i < nested.length; i++) lines.push(nested[i]);
+      } else {
+        lines.push(pad + '- ' + setScalar(item));
+      }
+    });
+  }
+
+  /** calibration_sets.set_yaml: the set as its calibration.yaml, byte for
+   * byte as the Python engine writes it.
+   * @param {Rec} s
+   * @returns {string} */
+  function setYaml(s) {
+    var lines = ['# A calibration set of the groundwater toolkit (PLAN.md step 5.3).'];
+    setEmit(s, 0, lines);
+    return lines.join('\n') + '\n';
+  }
+
+  Object.assign(C, {
+    SET_FORMAT: SET_FORMAT, SET_FORMAT_VERSION: SET_FORMAT_VERSION, SET_EDGES: SET_EDGES,
+    SUITABILITY_PARTS: SUITABILITY_PARTS,
+    evidenceRate: evidenceRate, fitPrior: fitPrior, layerClass: layerClass, fitEdges: fitEdges,
+    fitWeights: fitWeights, defaultSet: defaultSet, fitSet: fitSet, adoptSet: adoptSet,
+    setName: setName, cleanSet: cleanSet, setYaml: setYaml,
   });
 
   /* ================================================================= photos

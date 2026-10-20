@@ -150,14 +150,43 @@ def _odds(odds) -> dict | None:
     }
 
 
-def point_prediction(interp, model_range, odds, config: Config | None = None, team: str = "") -> dict:
+#: The four parts of the suitability score (siting/suitability.py), in the
+#: order the score adds them.
+SUITABILITY_PARTS = ("aquifer_thickness", "resistivity_fit", "overburden", "basal_fracture")
+
+
+def _layers(interp) -> list[list[float | None]]:
+    """The best fit's layers as [top, bottom, resistivity], the half-space's
+    bottom None: what step 5.3 pairs with the log's bands of rock to fit the
+    resistivity edges of each geology unit."""
+    out = []
+    for layer in getattr(interp, "layers", None) or []:
+        bottom = _num(layer.bottom_m, 1)
+        out.append([_num(layer.top_m, 1), bottom, _num(layer.rho, 1)])
+    return out
+
+
+def _suitability(components) -> dict | None:
+    """The suitability score's four parts, each 0 to 1, or None."""
+    if components is None:
+        return None
+    out = {key: _num(getattr(components, key, None), 3) for key in SUITABILITY_PARTS}
+    return None if None in out.values() else out
+
+
+def point_prediction(interp, model_range, odds, config: Config | None = None, team: str = "",
+                     suitability=None) -> dict:
     """What the survey predicts at one point, as plain numbers.
 
     ``interp`` is the point's interpretation, ``model_range`` its sampled
     range of models (None where none was sampled) and ``odds`` its chance of
     a working borehole (None where it was not worked out); ``team`` is the
-    survey team that made it, "" where none is recorded. The drilling
+    survey team that made it, "" where none is recorded, and ``suitability``
+    the parts of its suitability score (the ``components`` of
+    siting.assess_siting), None where none was worked out. The drilling
     depth's band is the one the reports print (decisions.depth_decision).
+    The layers and the score's parts are what a calibration set (PLAN.md
+    step 5.3) is fitted from.
     """
     from .costing.distribution import depth_spread
     from .ves.model_range import quoted_basement_band
@@ -188,11 +217,13 @@ def point_prediction(interp, model_range, odds, config: Config | None = None, te
         "drilling_depth_band_m": depth_band,
         "odds": _odds(odds),
         "survey_team": _name(team),
+        "layers": _layers(interp),
+        "suitability": _suitability(suitability),
     }
 
 
 def survey_predictions(interps, ranges, odds, site, config: Config | None = None,
-                       teams: list[str] | None = None) -> list[dict]:
+                       teams: list[str] | None = None, siting=None) -> list[dict]:
     """Each point's place and prediction, in the survey's order.
 
     ``ranges`` and ``odds`` go with ``interps`` by position (two points can
@@ -200,12 +231,15 @@ def survey_predictions(interps, ranges, odds, site, config: Config | None = None
     site, for its zone, its place and its field supervisor. ``teams`` go by
     position too: the field supervisor each point's own sheet names. A
     point's survey team is its sheet's, as the geophysical report prints it
-    over the sounding, else the project's field supervisor.
+    over the sounding, else the project's field supervisor. ``siting`` is
+    what siting.assess_siting returned for ``interps``, each result found
+    by the ``index`` it carries, since it comes back ranked.
     """
     zone = _zone(getattr(site, "utm_zone", None))
     community = str(getattr(site, "community", "") or "")
     district = str(getattr(site, "district", "") or "")
     supervisor = _name(getattr(site, "supervisor", ""))
+    parts = {r.index: r.components for r in siting or [] if getattr(r, "index", None) is not None}
     out = []
     for k, interp in enumerate(interps):
         point = {
@@ -219,7 +253,8 @@ def survey_predictions(interps, ranges, odds, site, config: Config | None = None
         model_range = ranges[k] if ranges is not None and k < len(ranges) else None
         chance = odds[k] if odds is not None and k < len(odds) else None
         team = (_name(teams[k]) if teams is not None and k < len(teams) else "") or supervisor
-        out.append({"point": point, "prediction": point_prediction(interp, model_range, chance, config, team)})
+        out.append({"point": point, "prediction": point_prediction(interp, model_range, chance, config, team,
+                                                                   parts.get(k))})
     return out
 
 
@@ -454,6 +489,15 @@ def _clean_prediction(raw) -> dict | None:
         if isinstance(zones, list) else []
     for key, length in _PREDICTION_BANDS:
         out[key] = _numbers(raw.get(key), length, 1)
+    layers = raw.get("layers")
+    out["layers"] = [
+        [_num(layer[0], 1), _num(layer[1], 1), _num(layer[2], 1)] for layer in layers
+        if isinstance(layer, list) and len(layer) == 3 and _num(layer[0], 1) is not None
+        and _num(layer[2], 1) is not None and (layer[1] is None or _num(layer[1], 1) is not None)
+    ] if isinstance(layers, list) else []
+    parts = raw.get("suitability")
+    clean_parts = {key: _num(parts.get(key), 3) for key in SUITABILITY_PARTS} if isinstance(parts, dict) else None
+    out["suitability"] = clean_parts if clean_parts is not None and None not in clean_parts.values() else None
     odds = raw.get("odds")
     if isinstance(odds, dict):
         clean: dict = {key: _num(odds.get(key), 3) for key in _ODDS_NUMBERS}
