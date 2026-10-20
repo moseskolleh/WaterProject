@@ -3941,12 +3941,12 @@ await withPage(async (page, base, consoleErrors) => {
       const interps = soundings.map((s) => C.interpretModel(s, C.invertSounding(s).model));
       return {
         predictions: LG.predictions.map((p) => attempt(() => C.pointPrediction(LG.interps[p.interp],
-          LG.ranges[p.range], p.odds ? LG.odds : null, cfg))),
+          LG.ranges[p.range], p.odds ? LG.odds : null, cfg, '', p.parts ? LG.parts : null))),
         outcomes: LG.outcomes.map((o) => attempt(() => C.completionOutcome(LG.logs[o.log],
           LG.analyses[o.analysis], o.wider ? wider : cfg, o.contractor))),
         surveys: LG.surveys.map((v) => attempt(() => C.surveyPredictions(
           ['resolved', 'unresolved', 'dry'].map((k) => LG.interps[k]), [LG.ranges.band, null, null],
-          [LG.odds, LG.odds, null], v.site, cfg, v.teams))),
+          [LG.odds, LG.odds, null], v.site, cfg, v.teams, v.siting))),
         scenarios: Object.fromEntries(Object.entries(LG.scenarios).map(([name, s]) =>
           [name, attempt(() => run(s.ops))])),
         texts: LG.texts.map((t) => attempt(() => {
@@ -4044,6 +4044,64 @@ await withPage(async (page, base, consoleErrors) => {
       return firstDifference(got.ok, r.expect, `[${r.n}, ${r.p}]`);
     }).filter(Boolean);
     check(`calibration: the binomial range (${CB.ranges.length})`, wrong.length === 0, wrong.slice(0, 3).join('\n     '));
+  }
+
+  // --- Calibration sets (PLAN.md step 5.3) ---
+  // The twins of groundwater/calibration_sets.py on make_reference.py's
+  // pooled portfolios, each under three settings: the prior's rows, the
+  // resistivity edges, the suitability weights and the set they make, held
+  // whole; the set adopted and named; its file written byte for byte as
+  // Python writes it and read back by the browser's YAML reader; hand-edited
+  // files read or refused in the same words, and adoption refused.
+  {
+    const CS = R.calibration_sets;
+    const setsJs = await page.evaluate(({ CS }) => {
+      const C = GWT.core, S = GWT.support;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.message || e) }; }
+      };
+      return {
+        cases: CS.cases.map((c) => attempt(() => {
+          const cfg = C.withConfig(c.settings);
+          const pooled = C.poolLedgers(CS.portfolios[c.portfolio]);
+          const prior = C.fitPrior(pooled, cfg), edges = C.fitEdges(pooled, cfg);
+          const weights = C.fitWeights(pooled, cfg);
+          const fitted = C.fitSet(pooled, '2026-10-20', cfg);
+          const adopted = C.adoptSet(fitted, '  A.\tKamara ', '2026-10-21', c.in_force ? CS.earlier : null);
+          return { used: [prior.used, edges.used, weights.used], set: fitted, adopted: adopted,
+            names: [C.setName(fitted), C.setName(adopted)], yaml: C.setYaml(adopted),
+            back: C.cleanSet(S.parseYaml(c.expect.yaml)),
+            rows: [prior.rows, edges.rows, weights.weights] };
+        })),
+        read: CS.hand.map((raw) => attempt(() => C.cleanSet(raw))),
+        refusals: ['', ' \t ', null].map((who) => attempt(() => C.adoptSet(CS.cases[0].expect.set, who,
+          '2026-10-21'))).concat([attempt(() => C.adoptSet(CS.cases[0].expect.adopted, 'B. Sesay', '2026-10-22'))]),
+        defaults: { set: C.defaultSet(), name: C.setName(C.defaultSet()), yaml: C.setYaml(C.defaultSet()) },
+      };
+    }, { CS });
+    const failed = CS.cases.map((c, i) => {
+      const got = setsJs.cases[i];
+      if (!got || got.threw) return `[${c.portfolio}] threw ${got ? got.threw : 'no answer'}`;
+      const { back, rows, ...rest } = got.ok;
+      return firstDifference(rest, c.expect, `[${c.portfolio} ${JSON.stringify(c.settings)}]`) ||
+        firstDifference(rows, [c.expect.set.prior, c.expect.set.edges, c.expect.set.weights],
+          `[${c.portfolio}] each fit alone`) ||
+        firstDifference(back, c.expect.adopted, `[${c.portfolio}] read back`);
+    }).filter(Boolean);
+    check(`calibration sets: fitted, adopted, named, written and read back (${CS.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const misread = CS.read.map((want, i) => {
+      const got = setsJs.read[i];
+      if (want.threw) return got.threw === want.threw ? null : `[${i}] js ${JSON.stringify(got)} vs py ${want.threw}`;
+      return got.threw ? `[${i}] threw ${got.threw}` : firstDifference(got.ok, want.ok, `[${i}]`);
+    }).filter(Boolean);
+    check(`calibration sets: hand-edited files read or refused (${CS.read.length})`, misread.length === 0,
+      misread.slice(0, 3).join('\n     '));
+    const refused = setsJs.refusals.map((got, i) => got.threw === CS.refusals[i] ? null
+      : `[${i}] js ${JSON.stringify(got)} vs py ${CS.refusals[i]}`).filter(Boolean);
+    check('calibration sets: adoption refused without a name or twice', refused.length === 0, refused.join('\n     '));
+    const found = firstDifference(setsJs.defaults, { set: CS.default, name: CS.default_name, yaml: CS.default_yaml });
+    check('calibration sets: the provisional default, its name and its file', !found, found);
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

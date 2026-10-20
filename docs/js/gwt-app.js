@@ -1414,8 +1414,9 @@
   function recordSurveyPredictions() {
     var interps = derived.interpretations || [];
     if (!interps.length) return [];
+    var cfg = config();
     var predictions = C.surveyPredictions(interps, (derived.inversions || []).map(rangeFor),
-      surveyOdds(), ledgerSite(), config(), surveyTeams(interps));
+      surveyOdds(), ledgerSite(), cfg, surveyTeams(interps), C.assessSiting(interps, cfg.ves));
     var got = C.recordPredictions(currentLedger(), predictions, localDate(), !!derived.log,
       (GWT.data || {}).version || '');
     store.set('ledger', got.ledger);

@@ -92,7 +92,9 @@
     "pair_within_m": 50.0,
     "min_boreholes": 10,
     "min_group": 5,
-    "reliability_bins": 5
+    "reliability_bins": 5,
+    "fit_min_boreholes": 5,
+    "fit_weights_min_each": 10
   },
   "cost_range": {
     "seed": 1,

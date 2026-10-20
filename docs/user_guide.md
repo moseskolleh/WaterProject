@@ -1330,6 +1330,10 @@ found. It is how the toolkit will learn from the holes drilled with it.
   to basement, water-bearing zones, drilling depth and chance of success
   are written down, with their bands where the range of models was
   sampled first: sample it before recording if you want the bands kept.
+  So are the best fit's layers and the four parts of its suitability
+  score, which a calibration set (PLAN.md step 5.3) is fitted from: the
+  layers against the bands of rock in the drilling log, the parts
+  against whether the borehole succeeded.
 - **Before and after drilling.** A prediction recorded before a
   drilling log is loaded is a forecast, and once a log is loaded it is
   kept as it was made, whatever is recorded later. One recorded after a

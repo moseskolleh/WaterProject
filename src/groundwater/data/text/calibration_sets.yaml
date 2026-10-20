@@ -1,0 +1,36 @@
+# Calibration sets (PLAN.md step 5.3): what the toolkit's priors, resistivity
+# edges and suitability weights are fitted to from the pooled ledgers, and who
+# adopted them. Written by calibration_sets.py and by the calibration set
+# functions of gwt-core.js. Every entry is read by its quoted id in both
+# engines, never by an id built from pieces. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# The set in force, as every report names it. The provisional default is
+# the one the toolkit ships, step 3.3's.
+name_default: >-
+  the toolkit's provisional default from PLAN.md step 3.3, adopted by no
+  named person and not calibrated against drilled outcomes
+name_adopted: >-
+  calibration set {version:g}, fitted on {fitted_on} to {n:g}
+  {n:plural:borehole|boreholes} and adopted by {by} on {on}
+name_candidate: >-
+  a calibration set fitted on {fitted_on} to {n:g}
+  {n:plural:borehole|boreholes}, not adopted by anyone
+
+# Adopting a set.
+adopt_unnamed: >-
+  A calibration set is adopted by a named person: type the name of whoever
+  adopts it.
+adopt_again: >-
+  This calibration set was adopted by {by} on {on} already; fit a new one to
+  adopt it again.
+
+# A set file that cannot be read. {why} is one of the reasons below.
+unreadable: "This is not a calibration set the toolkit can read: {why}."
+why_not_mapping: the file does not hold a calibration set
+why_format: it does not say it is a calibration set of format {expected:g}
+why_field: 'the field "{field}" is missing or holds the wrong kind of value'
+why_unadopted: >-
+  its number and who adopted it disagree, and a set is numbered only when a
+  named person adopts it
+why_weights: its fitted suitability weights do not add up to 1
