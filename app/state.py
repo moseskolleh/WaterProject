@@ -29,7 +29,10 @@ Results (plain state, written by a page or by the recompute on load)
     ``subsurface_paths``, ``section_path``, ``pseudosection_path``,
     ``profile_path``, ``topo_path``, ``traverse``, ``geolibre_path``,
     ``geolibre_area``, ``geolibre_layers``; the Portfolio page's own
-    ``geolibre_portfolio``), the topographic map's source and read report
+    ``geolibre_portfolio``), the Portfolio page's calibration report
+    (``calibration_report``: its path and a digest of the pooled ledgers it
+    was built from, offered only while they are the ones on the page), the
+    topographic map's source and read report
     (``topo_source``, ``topo_report``) and what it was drawn from
     (``topo_inputs``: the elevation files' upload ids and the source
     declared for them; the map is shown only while they still hold), the

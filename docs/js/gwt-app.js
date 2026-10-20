@@ -7042,8 +7042,73 @@
         }),
       ]) : null,
     ].filter(Boolean)));
+    if (pooled.length) nodes.push(calibrationCard(pooled));
     return nodes;
   };
+
+  /* The calibration report over the pooled ledgers (PLAN.md step 5.2): its
+   * summary and two figures on the page, and the whole report, with the
+   * band, the odds and the hit rates, as a Word document. */
+  function calibrationCard(pooled) {
+    var cfg = config();
+    var content = C.calibrationContent(pooled, localDate(), cfg);
+    var figures = calibrationFigureList(pooled, content, cfg);
+    return card('Calibration', [
+      content.summary.slice(1).map(function (text) { return el('p', text); }),
+      figures.map(function (fig) {
+        return charts.figure(fig.draw(), fig.caption, { filename: 'calibration_' + fig.key });
+      }),
+      el('div.btn-row', [
+        button('Build the calibration report (.docx)', function (event) {
+          buildCalibration(pooled, event.target);
+        }),
+      ]),
+    ].flat());
+  }
+
+  /* the figures the report's content names, each with what draws it */
+  function calibrationFigureList(pooled, content, cfg) {
+    var draws = {
+      depth: function () { return charts.depthCalibration(C.depthScores(pooled, cfg)); },
+      reliability: function () { return charts.reliabilityDiagram(C.oddsScores(pooled, cfg)); },
+    };
+    var out = [];
+    content.sections.forEach(function (section) {
+      section.figures.forEach(function (fig) {
+        out.push({ key: fig.key, caption: fig.caption, draw: draws[fig.key] });
+      });
+    });
+    return out;
+  }
+
+  async function buildCalibration(pooled, node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    try {
+      await need(REPORT_BUNDLES);
+    } catch (e) {
+      S.toast('Could not build the calibration report: ' + e.message, 'error');
+      return;
+    }
+    charts.usePrintPalette(true);
+    try {
+      await S.withBusy(host, 'Building the calibration report…', async function () {
+        var cfg = config();
+        var content = C.calibrationContent(pooled, localDate(), cfg);
+        var figures = {};
+        var list = calibrationFigureList(pooled, content, cfg);
+        /* one at a time, so that no more than one figure's canvas is held */
+        for (var i = 0; i < list.length; i++) figures[list[i].key] = await charts.toPng(list[i].draw());
+        await GWT.docx.calibrationReport({ style: cfg.style, content: content, figures: figures })
+          .save('Calibration_Report.docx');
+        S.toast('Saved Calibration_Report.docx', 'ok');
+      });
+    } catch (e) {
+      S.toast('Could not build the calibration report: ' + e.message, 'error');
+      console.error(e);
+    } finally {
+      charts.usePrintPalette(false);
+    }
+  }
 
   /* The ledgers of the project files on the Portfolio page, by the index of
    * their summaries; a summary added before ledgers were kept has none. */
@@ -8546,6 +8611,7 @@
     inversionsSettled: inversionsSettled, loadProject: loadProject,
     reanalyseTest: reanalyseTest, cancelWork: cancelWork, working: working,
     blankState: blankState, PAGES: PAGES, buildReport: buildReport, buildDeskStudy: buildDeskStudy,
+    buildCalibration: buildCalibration,
     siteLatLon: siteLatLon, utmToLatLon: utmToLatLon,
     templates: TEMPLATE_SPECS, recomputeState: recomputeState,
     loadSample: loadSample, uploadZone: uploadZone,

@@ -1523,6 +1523,29 @@ def test_the_portfolio_pools_the_projects_ledgers(sample_data):
     assert list(table["Project"]) == ["Rokel (Port Loko)", "Kuntolo (Port Loko)"]
     assert any(b.label == "Download the pooled ledger (.json)" for b in at.download_button)
 
+    # PLAN.md step 5.2: the calibration report over the pooled ledgers, its
+    # summary on the page and the report offered for these files only
+    from groundwater.text import phrase
+
+    assert "Calibration" in [str(h.value) for h in at.subheader]
+    shown = [str(m.value) for m in at.markdown]
+    assert phrase("calibration.summary_scored", forecast=2) in shown
+    assert phrase("calibration.summary_depth_too_few", judged=0, minimum=10) in shown
+    at.button(key="build_calibration").click()
+    at.run()
+    assert not at.exception, at.exception
+    built = at.session_state["calibration_report"]
+    from docx import Document
+
+    text = "\n".join(para.text for para in Document(built["path"]).paragraphs)
+    assert phrase("calibration.title") in text and phrase("calibration.hits_heading") in text
+    assert any(b.label == "Download the calibration report (.docx)" for b in at.download_button)
+    # another set of files wants the report built again
+    at.file_uploader(key="portfolio_upload").set_value([("rokel.yaml", rokel, "application/x-yaml")])
+    at.run()
+    assert not at.exception, at.exception
+    assert not any(b.label == "Download the calibration report (.docx)" for b in at.download_button)
+
 
 def test_portfolio_drilldown_flow(sample_data):
     """Upload saved projects, then drill into one site for its detail and

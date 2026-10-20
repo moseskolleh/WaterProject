@@ -500,6 +500,10 @@
           x1: x, y1: ly - 4, x2: x + 16, y2: ly - 4, stroke: entry.colour,
           'stroke-width': 2, 'stroke-dasharray': entry.dash || null,
         }));
+      } else if (entry.kind === 'down') {
+        g.appendChild(downMark(x + 8, ly - 4, entry.colour, f.palette.surface));
+      } else if (entry.kind === 'hollow') {
+        g.appendChild(marker(x + 8, ly - 4, 'circle', f.palette.surface, entry.colour));
       } else {
         g.appendChild(marker(x + 8, ly - 4, entry.kind || 'circle', entry.colour,
           f.palette.surface));
@@ -2469,6 +2473,125 @@
         text: label,
       }));
     });
+    return f.svg;
+  }
+
+  /* --- the calibration report's two figures (PLAN.md step 5.2) ------------
+   * calibration_plots.py's twins: the depth to basement found against the
+   * depth the best fit gave, from C.depthScores, and the reliability
+   * diagram, from C.oddsScores. */
+
+  /* a point's place: the depth predicted (the best fit's, else the band's
+   * P50, which the figure draws hollow), the depth found or, short of
+   * basement, the total depth */
+  function calibrationWhere(point) {
+    var band = point.band;
+    var fallback = point.predicted === null;
+    var x = !fallback ? point.predicted : (band ? band[1] : null);
+    if (point.found !== null) return { x: x, y: point.found, short: false, fallback: fallback };
+    return { x: x, y: point.total_depth_m, short: true, fallback: fallback };
+  }
+
+  /* a triangle pointing down: basement lies deeper than the mark */
+  function downMark(x, y, colour, ring) {
+    var r = 5;
+    return svgEl('path', {
+      d: 'M' + (x - r * 1.1) + ' ' + (y - r * 0.8) + 'L' + (x + r * 1.1) + ' ' + (y - r * 0.8) +
+        'L' + x + ' ' + (y + r * 1.2) + 'Z',
+      fill: colour, stroke: ring, 'stroke-width': 1.6, 'stroke-linejoin': 'round',
+    });
+  }
+
+  function depthCalibration(depth, options) {
+    var opts = options || {};
+    var drawn = [];
+    depth.points.forEach(function (point) {
+      var at = calibrationWhere(point);
+      if (at.x !== null && at.y !== null) {
+        drawn.push({ point: point, x: at.x, y: at.y, short: at.short, fallback: at.fallback });
+      }
+    });
+    var values = [1.0];
+    drawn.forEach(function (d) {
+      values.push(d.x, d.y);
+      if (d.point.band) values.push(d.point.band[0], d.point.band[2]);
+    });
+    var top = Math.max.apply(null, values) * 1.08;
+    var f = frame({
+      width: opts.width || 640, height: opts.height || 460,
+      margin: { top: 34, right: 26, bottom: 52, left: 66 },
+      xDomain: [0, top], yDomain: [0, top], yDown: true,
+      title: opts.title === undefined ? 'Depth to basement, predicted and found' : opts.title,
+      xLabel: 'Depth to basement predicted by the best fit (m)',
+      yLabel: 'Depth to basement found (m)',
+    });
+    var p = f.palette;
+    f.plot.appendChild(svgEl('line', { x1: f.fx(0), y1: f.fy(0), x2: f.fx(top), y2: f.fy(top),
+      stroke: p.neutral, 'stroke-width': 1, 'stroke-dasharray': '5 4' }));
+    var kinds = { inside: [p.accent, 'Inside the band'], outside: [p.secondary, 'Outside the band'],
+      unjudged: [p.neutral, 'Not judged'] };
+    var present = {}, anyShort = false, anyFallback = false, marks = [];
+    drawn.forEach(function (d) {
+      var check = d.point.check;
+      var kind = check === 'inside' ? 'inside'
+        : (check === 'shallower' || check === 'deeper' ? 'outside' : 'unjudged');
+      present[kind] = true;
+      var colour = kinds[kind][0];
+      var px = f.fx(d.x), py = f.fy(d.y);
+      if (d.point.band) {
+        f.plot.appendChild(svgEl('line', { x1: f.fx(d.point.band[0]), y1: py, x2: f.fx(d.point.band[2]),
+          y2: py, stroke: colour, 'stroke-width': 1.4, 'stroke-opacity': 0.7 }));
+      }
+      /* hollow where the depth predicted is the band's P50, not a best fit's */
+      var fill = d.fallback ? p.surface : colour, ring = d.fallback ? colour : p.surface;
+      f.plot.appendChild(d.short ? downMark(px, py, fill, ring) : marker(px, py, 'circle', fill, ring, 4.5));
+      if (d.short) anyShort = true;
+      if (d.fallback) anyFallback = true;
+      marks.push({ px: px, py: py });
+    });
+    /** @type {Array<{kind: string, colour: string, label: string, dash?: string}>} */
+    var entries = [{ kind: 'line', colour: p.neutral, dash: '5 4', label: 'Found where predicted' }];
+    ['inside', 'outside', 'unjudged'].forEach(function (kind) {
+      if (present[kind]) entries.push({ kind: 'circle', colour: kinds[kind][0], label: kinds[kind][1] });
+    });
+    if (anyShort) {
+      entries.push({ kind: 'down', colour: p.neutral, label: 'Stopped short of basement, at its total depth' });
+    }
+    if (anyFallback) entries.push({ kind: 'hollow', colour: p.neutral, label: 'No best fit: at the band\'s P50' });
+    legend(f, entries, { avoid: marks });
+    return f.svg;
+  }
+
+  function reliabilityDiagram(odds, options) {
+    var opts = options || {};
+    var f = frame({
+      width: opts.width || 640, height: opts.height || 460,
+      margin: { top: 34, right: 26, bottom: 52, left: 66 },
+      xDomain: [0, 100], yDomain: [0, 100],
+      xTicks: [0, 20, 40, 60, 80, 100], yTicks: [0, 20, 40, 60, 80, 100],
+      title: opts.title === undefined ? 'Reliability of the chance of success' : opts.title,
+      xLabel: 'Mean chance forecast (%)', yLabel: 'Boreholes that succeeded (%)',
+    });
+    var p = f.palette;
+    odds.bins.slice(1).forEach(function (b) {
+      var x = f.fx(100 * b.low);
+      f.plot.appendChild(svgEl('line', { x1: x, y1: f.fy(0), x2: x, y2: f.fy(100), stroke: p.grid,
+        'stroke-width': 1 }));
+    });
+    f.plot.appendChild(svgEl('line', { x1: f.fx(0), y1: f.fy(0), x2: f.fx(100), y2: f.fy(100),
+      stroke: p.neutral, 'stroke-width': 1, 'stroke-dasharray': '5 4' }));
+    var shown = odds.bins.filter(function (b) { return b.n; });
+    var pts = shown.map(function (b) { return [f.fx(100 * b.mean_p), f.fy(100 * b.observed)]; });
+    if (pts.length > 1) f.plot.appendChild(polyline(pts, { stroke: p.accent, 'stroke-width': 2 }));
+    var marks = [];
+    shown.forEach(function (b, i) {
+      f.plot.appendChild(marker(pts[i][0], pts[i][1], 'circle', p.accent, p.surface, 4.5));
+      f.plot.appendChild(svgEl('text', { x: pts[i][0] + 7, y: pts[i][1] + (b.observed > 0.88 ? 14 : -7),
+        'font-size': 10.5, fill: p.neutral, text: String(b.n) }));
+      marks.push({ px: pts[i][0], py: pts[i][1] });
+    });
+    legend(f, [{ kind: 'line', colour: p.neutral, dash: '5 4', label: 'Calibrated' },
+      { kind: 'circle', colour: p.accent, label: 'Forecasts, by band of chance' }], { avoid: marks });
     return f.svg;
   }
 
@@ -6891,6 +7014,8 @@
     depthSpine: depthSpine, guidelineSpine: guidelineSpine,
     costBreakdown: costBreakdown, programmeGantt: programmeGantt,
     costDistribution: costDistribution,
+    /* the calibration report's two (PLAN.md step 5.2) */
+    depthCalibration: depthCalibration, reliabilityDiagram: reliabilityDiagram,
     choropleth: choropleth, siteMap: siteMap, thematicMap: thematicMap,
     studyAreaMap: studyAreaMap, studyAreaRadiusKm: studyAreaRadiusKm,
     chiefdomLabel: chiefdomLabel, relativeLuminance: relativeLuminance,
