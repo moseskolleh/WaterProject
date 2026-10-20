@@ -378,6 +378,14 @@ in `groundwater/config.py` and can be overridden per project by a
 `config.yaml` in the project folder. The WHO/national standards table
 is an editable CSV (`groundwater/data/who_guidelines.csv`).
 
+A calibration set (PLAN.md step 5.3) fitted to a programme's drilled
+boreholes and adopted by a named person is put in force by naming its
+file in the same `config.yaml`, as `calibration: calibration.yaml`
+beside it. It replaces the prior of each ground it fitted, the
+resistivity edges of each geology unit and the suitability weights, and
+every report that prints the odds names it. A set nobody adopted is
+refused.
+
 Its `sl_source` column records where each national value came from.
 Every one of them currently reads `provisional`: they are WHO guideline
 figures carried across, or limits taken from regional practice, and

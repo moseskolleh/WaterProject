@@ -100,6 +100,13 @@ class VESConfig:
     # this are indistinguishable on geophysical grounds, and the report says
     # so instead of printing 1st and 2nd.
     ranking_tie_points: float = _VES["ranking_tie_points"]
+    # The suitability score's weights on its four parts (siting/suitability.py),
+    # adding to 1. They are a defensible default, not a calibrated model, and
+    # they used to be hard-coded there; a calibration set (PLAN.md step 5.3)
+    # that fits them puts its own in force here once a named person adopts
+    # it. They have nothing to do with the inversion, so the cache key of a
+    # saved inversion (ves/cache.py) leaves them out.
+    suitability_weights: dict = field(default_factory=lambda: dict(_VES["suitability_weights"]))
 
 
 # ---------------------------------------------------------------------------
@@ -511,10 +518,19 @@ class Config:
     ledger: LedgerConfig = field(default_factory=LedgerConfig)
     cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
     terrain: TerrainConfig = field(default_factory=TerrainConfig)
+    # The calibration set in force (PLAN.md step 5.3, calibration_sets.py),
+    # as clean_set reads it, or None for the toolkit's provisional default.
+    # Put one in force with calibration_sets.apply_set, which refuses a set
+    # no named person has adopted, or name its file in config.yaml as
+    # ``calibration: calibration.yaml``, beside the config file.
+    calibration: dict | None = None
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
-        """Load configuration, overlaying a YAML file if provided."""
+        """Load configuration, overlaying a YAML file if provided.
+
+        A top-level ``calibration`` names the calibration set to put in force,
+        a file found beside the config file unless the path is absolute."""
         cfg = cls()
         if path is None:
             return cfg
@@ -548,13 +564,24 @@ class Config:
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
             if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
-                           "ledger", "cost_range", "terrain"):
+                           "ledger", "cost_range", "terrain", "calibration"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
                     "(expected style, ves, pumping, design, ves_range, odds, "
-                    "ledger, cost_range or terrain)",
+                    "ledger, cost_range, terrain or calibration)",
                     stacklevel=2,
                 )
+        named = data.get("calibration")
+        if named:
+            from .calibration_sets import apply_set, clean_set, read_set
+
+            if isinstance(named, dict):
+                # the set itself, as dump() writes a config with one in force
+                cfg = apply_set(cfg, clean_set(named))
+            else:
+                where = Path(str(named))
+                where = where if where.is_absolute() else path.parent / where
+                cfg = apply_set(cfg, read_set(where.read_text(encoding="utf-8")))
         return cfg
 
     def dump(self, path: str | Path) -> None:

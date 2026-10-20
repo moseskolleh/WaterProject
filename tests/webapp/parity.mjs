@@ -4104,6 +4104,87 @@ await withPage(async (page, base, consoleErrors) => {
     check('calibration sets: the provisional default, its name and its file', !found, found);
   }
 
+  // --- A calibration set in force (PLAN.md step 5.3, part b) ---
+  // withConfig puts make_reference.py's sets in force, or refuses one nobody
+  // adopted, in the words Python does: the odds at each kind of ground with
+  // the set's fitted prior or the table's, their sentences and the basis
+  // naming the set; each unit's edges, the soundings read by them and the
+  // models interpreted with them; the suitability weights; and what the set
+  // changes, all held whole.
+  {
+    const IF = R.calibration_in_force;
+    const forceJs = await page.evaluate(({ IF }) => {
+      const C = GWT.core;
+      return IF.cases.map((c) => {
+        let cfg;
+        try {
+          cfg = C.withConfig(Object.assign({}, c.settings, c.set ? { calibration: c.set } : {}));
+        } catch (e) {
+          return { ok: { refused: String(e && e.message || e) } };
+        }
+        try {
+          const interps = IF.models.map((m, k) => C.interpretModel(null, C.layeredModel(m[0], m[1]),
+            C.configForUnit(cfg, IF.units[k % IF.units.length])));
+          return { ok: {
+            weights: cfg.ves.suitability_weights, calibration: cfg.calibration || null,
+            odds: IF.grounds.map((g) => {
+              const o = C.priorOdds(g[0], g[1], cfg);
+              return { odds: o, headline: C.oddsHeadline(o), prior: C.oddsPriorText(o), basis: C.oddsBasisText(o) };
+            }),
+            success: interps.map((interp, k) => {
+              const g = IF.grounds[k % IF.grounds.length];
+              const o = C.successOdds(interp, null, g[0], g[1], cfg);
+              return { odds: o, text: C.oddsText(o) };
+            }),
+            units: IF.units.map((glg) => {
+              const v = C.configForUnit(cfg, glg).ves;
+              return [v.clay_max_rho, v.fresh_basement_min_rho];
+            }),
+            sounding: IF.positions.map((p) => C.configForSounding(cfg, { site: { easting: p[0], northing: p[1],
+              utm_zone: p[2] } }).ves.fresh_basement_min_rho),
+            interps: interps.map((i) => [i.depth_to_basement_m, i.layers.map((l) => l.unit)]),
+            siting: C.assessSiting(interps, cfg.ves).map((s) => [s.index, s.suitability, s.rank]),
+            changes: C.setChanges(C.inForce(cfg)),
+          } };
+        } catch (e) {
+          return { threw: String(e && e.stack || e) };
+        }
+      });
+    }, { IF });
+    // numbers to 1e-9 relative (the odds' lognormal and Beta percentiles
+    // take logarithms, which the engines need not round alike), keys and
+    // everything else exactly
+    const apart = (a, b, path) => {
+      if (typeof a === 'number' && typeof b === 'number') {
+        return close(a, b, 1e-9) ? null : `${path}: js ${a} vs py ${b}`;
+      }
+      if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) return `${path}: js ${a.length} items vs py ${b.length}`;
+        for (let i = 0; i < a.length; i++) {
+          const d = apart(a[i], b[i], `${path}[${i}]`);
+          if (d) return d;
+        }
+        return null;
+      }
+      if (a && b && typeof a === 'object' && typeof b === 'object') {
+        for (const k of Array.from(new Set(Object.keys(a).concat(Object.keys(b)))).sort()) {
+          if (!(k in a) || !(k in b)) return `${path}.${k}: in one engine only`;
+          const d = apart(a[k], b[k], `${path}.${k}`);
+          if (d) return d;
+        }
+        return null;
+      }
+      return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+    };
+    const failed = IF.cases.map((c, i) => {
+      const got = forceJs[i];
+      if (!got || got.threw) return `[${c.name}] threw ${got ? got.threw : 'no answer'}`;
+      return apart(got.ok, c.expect, `[${c.name}]`);
+    }).filter(Boolean);
+    check(`calibration in force: the odds, the edges, the weights and the words (${IF.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 

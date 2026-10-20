@@ -5,7 +5,8 @@ and the code that runs it, and it is the one slow step in reopening a
 project. So each result is saved beside the project's data under a key:
 the SHA-256 of a canonical encoding of everything the inversion reads (the
 sounding's name, array type, AB/2, MN and apparent resistivities), the
-whole :class:`~groundwater.config.VESConfig`, and the engine that ran it.
+:class:`~groundwater.config.VESConfig` less the suitability weights, which
+the inversion never reads, and the engine that ran it.
 
 The saved results are a cache, never a source of truth. A loader may use
 one and may always throw it away and invert again. Nothing is trusted
@@ -134,6 +135,16 @@ def inversion_key(sounding: VESSounding, config: VESConfig | None = None) -> str
         return None
 
 
+#: Settings in VESConfig that nothing in the inversion reads, left out of
+#: the key so that a calibration set (PLAN.md step 5.3) changing them does
+#: not invert a survey again: the suitability score's weights.
+_NOT_INVERSION = ("suitability_weights",)
+
+
+def _inversion_settings(config: VESConfig) -> dict:
+    return {key: value for key, value in asdict(config).items() if key not in _NOT_INVERSION}
+
+
 def _key(engine: str, sounding: VESSounding, config: VESConfig | None) -> str:
     payload = {
         "cache": CACHE_FORMAT,
@@ -145,7 +156,7 @@ def _key(engine: str, sounding: VESSounding, config: VESConfig | None) -> str:
             "mn": _floats(sounding.mn),
             "rho_app": _floats(sounding.rho_app),
         },
-        "config": asdict(config or VESConfig()),
+        "config": _inversion_settings(config or VESConfig()),
     }
     return hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
 

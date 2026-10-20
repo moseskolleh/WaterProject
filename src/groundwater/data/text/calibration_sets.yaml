@@ -17,6 +17,22 @@ name_candidate: >-
   a calibration set fitted on {fitted_on} to {n:g}
   {n:plural:borehole|boreholes}, not adopted by anyone
 
+# What a set in force changes besides the priors, which each point's prior
+# names: the basis of the odds prints these after the set's name.
+changes_edges: >-
+  Calibration set {version:g} reads the USGS unit {glg} with {edges}.
+edge_clay: "clay up to {value:num} ohm-m"
+edge_basement: "fresh basement from {value:num} ohm-m"
+changes_weights: >-
+  Calibration set {version:g} weights the suitability score's parts
+  {thickness:g} (aquifer thickness), {fit:g} (resistivity fit), {overburden:g}
+  (overburden) and {fracture:g} (basal fracture).
+
+# Putting a set in force.
+not_adopted: >-
+  This calibration set has not been adopted by anyone, so it cannot be put
+  in force: nothing changes until a named person adopts it.
+
 # Adopting a set.
 adopt_unnamed: >-
   A calibration set is adopted by a named person: type the name of whoever

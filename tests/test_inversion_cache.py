@@ -277,7 +277,7 @@ def test_every_input_of_the_inversion_is_in_the_key(change):
 
 
 @pytest.mark.parametrize("field", [
-    f.name for f in dataclasses.fields(Config().ves)
+    f.name for f in dataclasses.fields(Config().ves) if f.name != "suitability_weights"
 ])
 def test_every_setting_is_in_the_key(field):
     config = Config().ves
@@ -285,6 +285,16 @@ def test_every_setting_is_in_the_key(field):
     other = (value[0] * 1.5, value[1]) if isinstance(value, tuple) else value * 2 + 1
     changed = dataclasses.replace(config, **{field: other})
     assert inversion_key(_sounding(), changed) != inversion_key(_sounding(), config)
+
+
+def test_the_suitability_weights_are_not_in_the_key():
+    """The inversion never reads them, and a calibration set that fits them
+    (PLAN.md step 5.3) must not invert a survey again; with the default
+    weights the key is the one saved before they were a setting."""
+    config = Config().ves
+    changed = dataclasses.replace(config, suitability_weights={
+        "aquifer_thickness": 0.25, "resistivity_fit": 0.0, "overburden": 0.1, "basal_fracture": 0.65})
+    assert inversion_key(_sounding(), changed) == inversion_key(_sounding(), config)
 
 
 def test_a_sounding_the_cache_cannot_key_is_inverted_not_lost(

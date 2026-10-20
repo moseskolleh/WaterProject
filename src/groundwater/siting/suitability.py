@@ -14,9 +14,11 @@ hydrogeologist weighs in crystalline basement terrain:
 * basal fracture      - a water zone at or just above the weathered/fresh
                         basement contact, the prime basement target.
 
-The weights are explicit and configurable. They are a defensible default,
-not a calibrated model; the intended upgrade path is to fit them against
-real drilling outcomes as a programme accumulates them.
+The weights are explicit and configurable (``VESConfig.suitability_weights``,
+from ``data/defaults.json``). They are a defensible default, not a calibrated
+model. A calibration set (PLAN.md step 5.3, calibration_sets.py) fits them
+against the boreholes a programme has drilled, and puts its own in force once
+a named person adopts it.
 """
 
 from __future__ import annotations
@@ -27,13 +29,6 @@ from dataclasses import dataclass
 from ..config import VESConfig
 from ..ves.interpret import SiteInterpretation
 
-# component weights (must sum to 1.0)
-_WEIGHTS = {
-    "aquifer_thickness": 0.35,
-    "resistivity_fit": 0.25,
-    "overburden": 0.20,
-    "basal_fracture": 0.20,
-}
 _THICKNESS_TARGET_M = 25.0  # aquifer thickness scoring saturates here
 
 
@@ -277,11 +272,12 @@ def assess_siting(
             overburden=_overburden_score(interp),
             basal_fracture=_basal_fracture_score(interp),
         )
+        weights = config.suitability_weights
         score = 100.0 * (
-            _WEIGHTS["aquifer_thickness"] * comp.aquifer_thickness
-            + _WEIGHTS["resistivity_fit"] * comp.resistivity_fit
-            + _WEIGHTS["overburden"] * comp.overburden
-            + _WEIGHTS["basal_fracture"] * comp.basal_fracture
+            weights["aquifer_thickness"] * comp.aquifer_thickness
+            + weights["resistivity_fit"] * comp.resistivity_fit
+            + weights["overburden"] * comp.overburden
+            + weights["basal_fracture"] * comp.basal_fracture
         )
         results.append(
             SitingSuitability(
