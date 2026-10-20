@@ -53,6 +53,7 @@ from dataclasses import dataclass
 import yaml
 
 from .._resources import bundled_text
+from ..calibration_sets import fitted_prior, in_force, set_changes, set_name
 from ..config import Config
 from ..text import phrase, phrase_table
 from ..ves.model_range import _share, quoted_basement_band
@@ -236,13 +237,19 @@ def _inside(p: float) -> float:
 # ----------------------------------------------------------------- the prior
 
 def prior_for(bgs_code: str | None, glg: str | None,
-              success_yield_m3_per_h: float) -> dict:
+              success_yield_m3_per_h: float, calibration: dict | None = None) -> dict:
     """The prior table's row for this ground, and the rate it gives.
 
     The most specific row wins: the class and the geology unit, then the
     class on any unit, then the fallback. Returns the row's fields with
     ``matched`` ("combination", "class" or "fallback") and ``rate``, the
     prior success rate at ``success_yield_m3_per_h``.
+
+    Where ``calibration``, the set in force (calibration_sets.py), fitted
+    the row, its rate and effective size replace the table's: ``status`` is
+    then "calibrated", ``base_rate`` the table's rate, and
+    ``fitted_boreholes``, ``fitted_successes`` and ``set_version`` say what
+    it was fitted to. A fallback row is never fitted.
     """
     if not success_yield_m3_per_h > 0.0:
         raise ValueError("odds.success_yield_m3_per_h must be above zero, not "
@@ -271,6 +278,13 @@ def prior_for(bgs_code: str | None, glg: str | None,
         rate = row["rate"]
     # a Beta prior needs a rate strictly inside (0, 1)
     rate = _inside(rate)
+    fitted = (fitted_prior(calibration, row["bgs_code"], row["glg"], success_yield_m3_per_h)
+              if calibration is not None and matched != "fallback" else None)
+    if calibration is not None and fitted is not None:
+        return {**row, "matched": matched, "rate": _inside(float(fitted["rate"])),
+                "effective_n": float(fitted["effective_n"]), "status": "calibrated", "base_rate": rate,
+                "fitted_boreholes": fitted["boreholes"], "fitted_successes": fitted["successes"],
+                "set_version": calibration["version"]}
     return {**row, "matched": matched, "rate": rate}
 
 
@@ -393,7 +407,23 @@ class SuccessOdds:
     low: float
     high: float
     range_sampled: bool
+    #: the calibration set in force, as the reports name it, and what else it
+    #: changes (its resistivity edges and suitability weights), "" for none
     calibration: str = ""
+    calibration_note: str = ""
+    #: where the set in force fitted the prior: the table's rate it started
+    #: from, the boreholes it was fitted to, how many of them succeeded, and
+    #: the set's number
+    base_rate: float | None = None
+    fitted_boreholes: int | None = None
+    fitted_successes: int | None = None
+    set_version: int | None = None
+
+
+def _calibration_fields(row: dict, held: dict) -> dict:
+    return {"calibration": set_name(held), "calibration_note": " ".join(set_changes(held)),
+            "base_rate": row.get("base_rate"), "fitted_boreholes": row.get("fitted_boreholes"),
+            "fitted_successes": row.get("fitted_successes"), "set_version": row.get("set_version")}
 
 
 def success_odds(interp, model_range, bgs_code: str | None, glg: str | None,
@@ -408,7 +438,8 @@ def success_odds(interp, model_range, bgs_code: str | None, glg: str | None,
     config = config or Config()
     tables = odds_tables()
     rate_m3h = float(config.odds.success_yield_m3_per_h)
-    row, p0, n, prior_low, prior_high = _prior_band(bgs_code, glg, rate_m3h)
+    held = in_force(config)
+    row, p0, n, prior_low, prior_high = _prior_band(bgs_code, glg, rate_m3h, getattr(config, "calibration", None))
     prior_odds = _odds(p0)
 
     survey = _survey_evidence(interp, model_range)
@@ -450,14 +481,15 @@ def success_odds(interp, model_range, bgs_code: str | None, glg: str | None,
         probability=_probability(odds),
         low=carried(prior_low), high=carried(prior_high),
         range_sampled=model_range is not None,
-        calibration=" ".join(str(tables["evidence"]["calibration"]).split()),
+        **_calibration_fields(row, held),
     )
 
 
-def _prior_band(bgs_code: str | None, glg: str | None, rate_m3h: float):
-    """The prior table's row for this ground, its rate and effective size,
-    and the 10th and 90th percentiles of its Beta."""
-    row = prior_for(bgs_code, glg, rate_m3h)
+def _prior_band(bgs_code: str | None, glg: str | None, rate_m3h: float, calibration: dict | None = None):
+    """The prior table's row for this ground (or the set in force's fit of
+    it), its rate and effective size, and the 10th and 90th percentiles of
+    its Beta."""
+    row = prior_for(bgs_code, glg, rate_m3h, calibration)
     p0 = row["rate"]
     n = row["effective_n"]
     alpha, beta = p0 * n, (1.0 - p0) * n
@@ -478,9 +510,8 @@ def prior_odds(bgs_code: str | None, glg: str | None,
     :func:`odds_prior_text`. A desk study (PLAN.md step 4.4) gives it.
     """
     config = config or Config()
-    tables = odds_tables()
     rate_m3h = float(config.odds.success_yield_m3_per_h)
-    row, p0, n, prior_low, prior_high = _prior_band(bgs_code, glg, rate_m3h)
+    row, p0, n, prior_low, prior_high = _prior_band(bgs_code, glg, rate_m3h, getattr(config, "calibration", None))
     odds = _odds(p0)
     return SuccessOdds(
         sounding_id="",
@@ -496,7 +527,7 @@ def prior_odds(bgs_code: str | None, glg: str | None,
         probability=_probability(odds),
         low=_probability(_odds(prior_low)), high=_probability(_odds(prior_high)),
         range_sampled=False,
-        calibration=" ".join(str(tables["evidence"]["calibration"]).split()),
+        **_calibration_fields(row, in_force(config)),
     )
 
 
@@ -567,8 +598,11 @@ def _percent(p: float) -> str:
 def odds_headline(o: SuccessOdds) -> str:
     """The plan's sentence: about so many percent, between so many, that a
     borehole here yields enough for a handpump through the dry season."""
-    status = phrase("odds.status_fallback" if o.matched == "fallback"
-                    else "odds.status_provisional")
+    if o.status == "calibrated":
+        status = phrase("odds.status_calibrated", version=o.set_version)
+    else:
+        status = phrase("odds.status_fallback" if o.matched == "fallback"
+                        else "odds.status_provisional")
     return phrase("odds.headline", p=_percent(o.probability), low=_percent(o.low),
                   high=_percent(o.high), status=status)
 
@@ -592,6 +626,11 @@ def odds_prior_text(o: SuccessOdds) -> str:
                  high=_percent(o.prior_high), n=o.effective_n, basis=o.basis)
     if o.matched == "fallback":
         return phrase("odds.prior_fallback", **prior)
+    if o.status == "calibrated":
+        return phrase(
+            "odds.prior_fitted_combination" if o.matched == "combination" else "odds.prior_fitted_class",
+            ground=_ground_text(o), base=_percent(float(o.base_rate or 0.0)), m=o.fitted_boreholes,
+            k=o.fitted_successes, version=o.set_version, **prior)
     return phrase(
         "odds.prior_combination" if o.matched == "combination" else "odds.prior_class",
         ground=_ground_text(o), q1=o.yield_q1_l_per_s, q3=o.yield_q3_l_per_s,
@@ -611,9 +650,10 @@ def odds_point_text(o: SuccessOdds) -> list[str]:
 def odds_basis_text(o: SuccessOdds) -> list[str]:
     """What success means and what the odds rest on, the same at every
     point of a survey."""
+    basis = phrase("odds.basis", calibration=o.calibration)
     return [phrase("odds.definition", rate=o.success_yield_m3_per_h,
                    ls=o.success_yield_m3_per_h / 3.6),
-            phrase("odds.basis", calibration=o.calibration)]
+            basis + " " + o.calibration_note if o.calibration_note else basis]
 
 
 def odds_text(o: SuccessOdds) -> list[str]:

@@ -31,6 +31,8 @@ status_provisional: Provisional prior.
 
 status_fallback: Placeholder prior, with no cited rate behind it.
 
+status_calibrated: "Prior fitted in calibration set {version:g}."
+
 definition: >-
   Success means a yield of at least {rate:num} m3/h ({ls:.2f} L/s) at the
   dry-season water level, the handpump design rate in the configuration.
@@ -49,6 +51,24 @@ prior_class: >-
   L/s put {p} percent of boreholes at or above {ls:.2f} L/s. It is held as
   firmly as {n:g} boreholes would hold it, and has not been calibrated
   against boreholes drilled here.
+
+# The prior where the calibration set in force (PLAN.md step 5.3) fitted
+# it: {base} is the table's rate it started from, {m} the boreholes it was
+# fitted to and {k} how many of them succeeded.
+prior_fitted_combination: >-
+  The prior is {p} percent (between {low} and {high}), for {ground}: the
+  table's {base} percent ({basis}), fitted to {m:g}
+  {m:plural:borehole|boreholes} drilled there, {k:g} of which succeeded, in
+  calibration set {version:g}. It is held as firmly as {n:g} boreholes would
+  hold it.
+
+prior_fitted_class: >-
+  The prior is {p} percent (between {low} and {high}), for {ground}, which
+  the prior table does not list on its own, so the class's row applies: the
+  table's {base} percent ({basis}), fitted to {m:g}
+  {m:plural:borehole|boreholes} drilled on the class, {k:g} of which
+  succeeded, in calibration set {version:g}. It is held as firmly as {n:g}
+  boreholes would hold it.
 
 prior_fallback: >-
   The prior is {p} percent (between {low} and {high}), a placeholder held as

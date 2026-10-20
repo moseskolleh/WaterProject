@@ -1683,6 +1683,7 @@ def build() -> dict:
                                      [r["odds"] for r in out["odds"]["rokel"]])
     out["calibration"] = calibration_reference()
     out["calibration_sets"] = calibration_sets_reference()
+    out["calibration_in_force"] = calibration_in_force_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -4379,6 +4380,114 @@ def calibration_sets_reference() -> dict:
     return {"portfolios": portfolios, "earlier": earlier, "cases": cases, "hand": hand, "read": read,
             "refusals": refusals, "default": CS.default_set(), "default_name": CS.set_name(CS.default_set()),
             "default_yaml": CS.set_yaml(CS.default_set())}
+
+
+# ----------------------------------------- a calibration set in force (5.3b)
+
+#: A set adopted to be put in force: the prior of B-L on pCm and of I-L on
+#: any unit fitted, CSF-L/M on pCm counted and not; both edges of pCm fitted
+#: and none of Qe's; and the suitability weights.
+IN_FORCE_SET = {
+    "format": "groundwater calibration set", "format_version": 1, "version": 3, "fitted_on": "2027-03-01",
+    "adopted_by": "A. Kamara", "adopted_on": "2027-03-02",
+    "replaces": {"version": 2, "fitted_on": "2026-11-01", "adopted_by": "B. Sesay", "adopted_on": "2026-11-02"},
+    "success_yield_m3_per_h": 1.0,
+    "boreholes": [{"id": f"b{k}", "success": k % 2 == 0, "forecast": True, "uses": ["prior"]} for k in range(12)],
+    "left_out": {"unknown": 0, "definition": 0},
+    "prior": [
+        {"bgs_code": "B-L", "glg": "pCm", "boreholes": 12, "successes": 9, "expected": 8.2, "base_rate": 0.4279,
+         "base_n": 10.0, "fitted": True, "rate": 0.6123, "effective_n": 22.0},
+        {"bgs_code": "I-L", "glg": "*", "boreholes": 6, "successes": 1, "expected": 1.0, "base_rate": 0.4279,
+         "base_n": 10.0, "fitted": True, "rate": 0.3299, "effective_n": 16.0},
+        {"bgs_code": "CSF-L/M", "glg": "pCm", "boreholes": 3, "successes": 3, "expected": 3.0, "base_rate": 0.7,
+         "base_n": 10.0, "fitted": False, "rate": None, "effective_n": None},
+    ],
+    "edges": [
+        {"glg": "pCm", "edge": "clay_max_rho", "boreholes": 8, "below": 8, "above": 20, "base": 20.0,
+         "misread_base": 3, "fitted": True, "value": 31.5, "misread": 1},
+        {"glg": "pCm", "edge": "fresh_basement_min_rho", "boreholes": 8, "below": 28, "above": 8, "base": 3000.0,
+         "misread_base": 4, "fitted": True, "value": 1500.0, "misread": 0},
+        {"glg": "Qe", "edge": "fresh_basement_min_rho", "boreholes": 2, "below": 3, "above": 2, "base": 3000.0,
+         "misread_base": 1, "fitted": False, "value": None, "misread": None},
+    ],
+    "weights": {"successes": 12, "failures": 11,
+                "base": {"aquifer_thickness": 0.35, "resistivity_fit": 0.25, "overburden": 0.2, "basal_fracture": 0.2},
+                "right_base": 0.61, "fitted": True,
+                "value": {"aquifer_thickness": 0.25, "resistivity_fit": 0.1, "overburden": 0.1, "basal_fracture": 0.55},
+                "right": 0.74},
+}
+
+#: The grounds the odds are asked about, the units the edges are asked for,
+#: sounding positions (Kpètèma on pCm, Rokel on Qe, none, and one whose zone
+#: its easting implies) and models to interpret by each unit's edges.
+IN_FORCE_GROUNDS = [["B-L", "pCm"], ["B-L", "Pi"], ["I-L", "Pi"], ["I-L", "Mi"], ["CSF-L/M", "pCm"],
+                    ["U-M/H", "Qe"], ["n/a", None], [None, None], ["B-L", None]]
+IN_FORCE_UNITS = ["pCm", "Qe", "Pi", None]
+IN_FORCE_POSITIONS = [[166030.0, 930010.0, 29], [708958.4, 926355.5, 28], [None, None, None],
+                      [250000.0, 900000.0, None]]
+IN_FORCE_MODELS = [[[400.0, 90.0, 2000.0, 5000.0], [2.0, 18.0, 10.0]], [[300.0, 25.0, 140.0, 4000.0], [1.5, 6.0, 20.0]],
+                   [[600.0, 120.0, 1200.0], [3.0, 30.0]], [[250.0, 12.0, 2500.0], [2.0, 10.0]]]
+
+
+def calibration_in_force_reference() -> dict:
+    """A calibration set in force (PLAN.md step 5.3, part b): the odds at
+    each kind of ground with its fitted prior, or the table's where it fitted
+    none, and their sentences; each unit's edges and the soundings read by
+    them; the suitability weights; what the set changes; under the default,
+    the set, the set without weights at another definition of success, and
+    a set nobody adopted, which is refused."""
+    from groundwater import calibration_sets as CS
+    from groundwater.models import LayeredModel
+    from groundwater.siting import assess_siting
+    from groundwater.siting.odds import (
+        odds_basis_text, odds_headline, odds_prior_text, odds_text, prior_odds, success_odds,
+    )
+    from groundwater.ves.interpret import interpret_model
+
+    unweighed = dict(IN_FORCE_SET, weights=None, success_yield_m3_per_h=3.6)
+    candidate = dict(IN_FORCE_SET, version=None, adopted_by="", adopted_on="", replaces=None)
+    variants = [{"name": "default", "set": None, "settings": {}},
+                {"name": "set", "set": IN_FORCE_SET, "settings": {}},
+                {"name": "set at 3.6", "set": IN_FORCE_SET, "settings": {"odds": {"success_yield_m3_per_h": 3.6}}},
+                {"name": "unweighed", "set": unweighed, "settings": {"odds": {"success_yield_m3_per_h": 3.6}}},
+                {"name": "candidate", "set": candidate, "settings": {}}]
+    cases = []
+    for v in variants:
+        config = Config()
+        for section, values in v["settings"].items():
+            for key, value in values.items():
+                setattr(getattr(config, section), key, value)
+        try:
+            config = CS.apply_set(config, v["set"]) if v["set"] else config
+        except ValueError as exc:
+            cases.append(dict(v, expect={"refused": str(exc)}))
+            continue
+        interps = [interpret_model(None, LayeredModel(resistivities=m[0], thicknesses=m[1]),
+                                   CS.config_for_unit(config, IN_FORCE_UNITS[k % len(IN_FORCE_UNITS)]).ves)
+                   for k, m in enumerate(IN_FORCE_MODELS)]
+        odds = []
+        for code, glg in IN_FORCE_GROUNDS:
+            o = prior_odds(code, glg, config)
+            odds.append({"odds": dataclasses.asdict(o), "headline": odds_headline(o), "prior": odds_prior_text(o),
+                         "basis": odds_basis_text(o)})
+        success = []
+        for k, interp in enumerate(interps):
+            code, glg = IN_FORCE_GROUNDS[k % len(IN_FORCE_GROUNDS)]
+            o = success_odds(interp, None, code, glg, config)
+            success.append({"odds": dataclasses.asdict(o), "text": odds_text(o)})
+        cases.append(dict(v, expect={
+            "weights": config.ves.suitability_weights, "calibration": config.calibration, "odds": odds,
+            "success": success,
+            "units": [[CS.config_for_unit(config, glg).ves.clay_max_rho,
+                       CS.config_for_unit(config, glg).ves.fresh_basement_min_rho] for glg in IN_FORCE_UNITS],
+            "sounding": [CS.config_for_sounding(config, _ns({"site": {"easting": p[0], "northing": p[1],
+                                                                      "utm_zone": p[2]}})).ves.fresh_basement_min_rho
+                         for p in IN_FORCE_POSITIONS],
+            "interps": [[i.depth_to_basement_m, [layer.unit for layer in i.layers]] for i in interps],
+            "siting": [[r.index, r.suitability, r.rank] for r in assess_siting(interps, config.ves)],
+            "changes": CS.set_changes(CS.in_force(config))}))
+    return {"grounds": IN_FORCE_GROUNDS, "units": IN_FORCE_UNITS, "positions": IN_FORCE_POSITIONS,
+            "models": IN_FORCE_MODELS, "cases": cases}
 
 
 # ----------------------------------------------- airlift yield (step 2.3)

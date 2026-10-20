@@ -471,8 +471,8 @@ datasets:
           RECORDED for these spreads: they are provisional choices, for an
           engineer with current quotations to confirm or replace.
       - path: src/groundwater/data/success_evidence.yaml
-        bytes: 5754
-        sha256: 9ea42c688edb48aa21f5ffd941cfa517569e61a6f3749c468cf47bcb67d51016
+        bytes: 5708
+        sha256: c1ad7a3c98899c8e79dcbef80aa2961d5a71ab73484ae3dfec06e396bbb4e0fd
         note: >-
           The likelihood ratios and fit weights of the chance of a working
           borehole, each with the reasoning behind it. NO SOURCE IS RECORDED

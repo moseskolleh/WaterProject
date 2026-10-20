@@ -323,10 +323,10 @@ def test_every_report_can_name_the_set():
         "calibration set 1, fitted on 2026-10-20 to 30 boreholes and adopted by A. Kamara on 2026-10-21")
 
 
-def test_the_default_names_the_provisional_calibration_the_odds_name_today():
-    from groundwater.siting.odds import odds_tables
-
-    assert CS.set_name(CS.default_set()) == " ".join(str(odds_tables()["evidence"]["calibration"]).split())
+def test_the_default_names_the_provisional_calibration_as_the_odds_named_it():
+    assert CS.set_name(CS.default_set()) == (
+        "the toolkit's provisional default from PLAN.md step 3.3, adopted by no named person and not "
+        "calibrated against drilled outcomes")
 
 
 # --------------------------------------------------------------- the file
