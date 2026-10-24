@@ -50,13 +50,15 @@ quotients and square roots, so the two engines agree to the bit.
 
 from __future__ import annotations
 
+import copy
+import dataclasses
 import math
 import numbers
 from bisect import bisect_left, bisect_right
 
 import yaml
 
-from .config import Config
+from .config import Config, VESConfig
 from .ledger import SUITABILITY_PARTS, _name
 from .text import phrase
 
@@ -65,17 +67,25 @@ __all__ = [
     "FORMAT",
     "FORMAT_VERSION",
     "adopt_set",
+    "apply_set",
+    "check_in_force",
     "clean_set",
+    "config_for_sounding",
+    "config_for_unit",
     "default_set",
     "evidence_rate",
     "fit_edges",
     "fit_prior",
     "fit_set",
     "fit_weights",
+    "fitted_prior",
+    "in_force",
     "layer_class",
     "read_set",
+    "set_changes",
     "set_name",
     "set_yaml",
+    "unit_edges",
 ]
 
 #: What a set file says it is, and the version of its layout.
@@ -283,7 +293,8 @@ def fit_edges(pooled: list[dict], config: Config | None = None) -> tuple[list[di
     behind each fitted edge, by its position.
 
     The unit is the one recorded with the point's odds. The edges in force
-    are ``config.ves``'s; the clay edge stays under the top of the
+    are ``config.ves``'s, or the calibration set in force's for the unit
+    where it fitted them; the clay edge stays under the top of the
     water-bearing window and the basement edge over the unit's clay edge.
     Returns the edges by unit, in code-point order, clay first.
     """
@@ -314,23 +325,25 @@ def fit_edges(pooled: list[dict], config: Config | None = None) -> tuple[list[di
     rows, used = [], {}
     base = {"clay_max_rho": float(config.ves.clay_max_rho),
             "fresh_basement_min_rho": float(config.ves.fresh_basement_min_rho)}
+    held = in_force(config)
     for glg in sorted(sides):
-        clay = base["clay_max_rho"]
+        here = dict(base, **unit_edges(held, glg))
+        clay = here["clay_max_rho"]
         for edge in EDGES:
             below, above, ids = sides[glg][edge]
             if not ids:
                 continue
             fitted = len(ids) >= int(config.ledger.fit_min_boreholes) and bool(below) and bool(above)
             row = {"glg": glg, "edge": edge, "boreholes": len(ids), "below": len(below), "above": len(above),
-                   "base": base[edge], "misread_base": _misread(edge, base[edge], below, above),
+                   "base": here[edge], "misread_base": _misread(edge, here[edge], below, above),
                    "fitted": fitted, "value": None, "misread": None}
             if fitted:
                 if edge == "clay_max_rho":
-                    value, miss = _best_edge(edge, base[edge], below, above, 0.0,
+                    value, miss = _best_edge(edge, here[edge], below, above, 0.0,
                                              float(config.ves.fractured_zone_rho[1]))
                     clay = value
                 else:
-                    value, miss = _best_edge(edge, base[edge], below, above, clay, None)
+                    value, miss = _best_edge(edge, here[edge], below, above, clay, None)
                 row["value"], row["misread"] = value, miss
                 used[len(rows)] = list(ids)
             rows.append(row)
@@ -350,7 +363,17 @@ def _pairs_right(successes: list[int], failures: list[int]) -> int:
     return total
 
 
-def _scores(parts: list[list[int]], weights: tuple[int, ...]) -> list[int]:
+def _in_twentieths(weights: dict) -> tuple:
+    """Weights in twentieths: whole numbers where they fall on the grid, as
+    every fitted set's do, so their scores stay exact."""
+    out = []
+    for key in SUITABILITY_PARTS:
+        k = float(weights[key]) * _STEPS
+        out.append(int(round(k)) if abs(k - round(k)) < 1e-9 else k)
+    return tuple(out)
+
+
+def _scores(parts: list[list[int]], weights: tuple) -> list:
     return [weights[0] * p[0] + weights[1] * p[1] + weights[2] * p[2] + weights[3] * p[3] for p in parts]
 
 
@@ -363,10 +386,10 @@ def fit_weights(pooled: list[dict], config: Config | None = None) -> tuple[dict,
     ranks the most pairs of a success and a failure the right way round, a
     tie going to the weights nearest those in force and then to the first in
     order. The parts are taken to thousandths, as the ledger keeps them, so
-    the scores are whole numbers and the ranking is exact.
+    the scores are whole numbers and the ranking is exact. The weights in
+    force are ``config.ves.suitability_weights``: the configuration's, or
+    those of the calibration set in force where it fitted them.
     """
-    from .siting.suitability import _WEIGHTS
-
     config = config or Config()
     judged, _ = _judged(pooled, config)
     won, lost, ids = [], [], []
@@ -377,12 +400,13 @@ def fit_weights(pooled: list[dict], config: Config | None = None) -> tuple[dict,
         row = [int(round(parts[key] * 1000)) for key in SUITABILITY_PARTS]
         (won if entry["outcome"]["success"] else lost).append(row)
         ids.append(entry["id"])
-    base = tuple(int(round(_WEIGHTS[key] * _STEPS)) for key in SUITABILITY_PARTS)
+    in_use = config.ves.suitability_weights
+    base = _in_twentieths(in_use)
     pairs = len(won) * len(lost)
     out = {
         "successes": len(won),
         "failures": len(lost),
-        "base": {key: base[k] / _STEPS for k, key in enumerate(SUITABILITY_PARTS)},
+        "base": {key: float(in_use[key]) for key in SUITABILITY_PARTS},
         "right_base": _round(_pairs_right(_scores(won, base), _scores(lost, base)) / (2 * pairs), 4)
         if pairs else None,
         "fitted": len(won) >= int(config.ledger.fit_weights_min_each)
@@ -494,6 +518,116 @@ def set_name(s: dict) -> str:
         return phrase("calibration_sets.name_adopted", version=s["version"], fitted_on=s["fitted_on"], n=n,
                       by=s["adopted_by"], on=s["adopted_on"])
     return phrase("calibration_sets.name_candidate", fitted_on=s["fitted_on"], n=n)
+
+
+# ------------------------------------------------------------ in force
+
+def in_force(config: Config | None) -> dict:
+    """The calibration set in force: the configuration's, else the
+    provisional default."""
+    held = getattr(config, "calibration", None)
+    return held if held is not None else default_set()
+
+
+def check_in_force(s) -> dict:
+    """``s`` as a set to put in force: read whole (:func:`clean_set`), and
+    refused with ValueError unless it is the provisional default or a named
+    person adopted it. Nothing changes until someone does."""
+    s = clean_set(s)
+    if s["version"] is None:
+        raise ValueError(phrase("calibration_sets.not_adopted"))
+    return s
+
+
+def apply_set(config: Config, s) -> Config:
+    """A copy of ``config`` with the set ``s`` in force.
+
+    The copy's ``calibration`` is the set (None for the provisional
+    default), and its suitability weights are the set's where it fitted
+    them. A set that fits none leaves the configuration's weights, or the
+    toolkit's where the set it replaces had put its own in force. The
+    priors and the edges are read from ``calibration`` where they are used
+    (:func:`fitted_prior`, :func:`config_for_sounding`).
+    """
+    s = check_in_force(s)
+    out = copy.deepcopy(config)
+    previous = in_force(config)["weights"]
+    if s["weights"] is not None and s["weights"]["fitted"]:
+        out.ves.suitability_weights = dict(s["weights"]["value"])
+    elif previous is not None and previous["fitted"]:
+        out.ves.suitability_weights = dict(VESConfig().suitability_weights)
+    out.calibration = None if s["version"] == 0 else s
+    return out
+
+
+def fitted_prior(s: dict, bgs_code: str, glg: str, success_yield_m3_per_h: float) -> dict | None:
+    """The set's fitted row for the prior table's row ``bgs_code`` and
+    ``glg`` (``*`` for a class's row), or None. A set fitted at another
+    definition of success fits nothing here, since its rates are the shares
+    that reached its yield, not this one."""
+    judged = s["success_yield_m3_per_h"]
+    if judged is None or abs(judged - _round(success_yield_m3_per_h, 3)) >= 1e-9:
+        return None
+    return next((row for row in s["prior"] if row["fitted"] and row["bgs_code"] == bgs_code
+                 and row["glg"] == glg), None)
+
+
+def unit_edges(s: dict, glg: str | None) -> dict:
+    """The resistivity edges the set fitted for a geology unit, by name."""
+    return {row["edge"]: float(row["value"]) for row in s["edges"] if row["fitted"] and row["glg"] == glg}
+
+
+def config_for_unit(config: Config, glg: str | None) -> Config:
+    """``config`` with the set in force's edges for a geology unit in its
+    VES settings, or ``config`` itself where the set fitted none there."""
+    edges = unit_edges(in_force(config), glg)
+    if not edges:
+        return config
+    return dataclasses.replace(config, ves=dataclasses.replace(config.ves, **edges))
+
+
+def config_for_sounding(config: Config, sounding, zone: int | None = None, fallback=None) -> Config:
+    """The configuration a sounding is interpreted with: ``config`` with the
+    edges the set in force fitted for the geology unit under the sounding,
+    found from its own position (in ``zone``, else its sheet's, else the
+    zone its easting implies) or ``fallback``, the site's. Where the set
+    fitted no edge, nothing is looked up and ``config`` comes back."""
+    if not any(row["fitted"] for row in in_force(config)["edges"]):
+        return config
+    from types import SimpleNamespace
+
+    from .siting.odds import ground_at, point_latlon
+
+    site = getattr(sounding, "site", None)
+    where = SimpleNamespace(site_easting=getattr(site, "easting", None),
+                            site_northing=getattr(site, "northing", None))
+    _, glg = ground_at(point_latlon(where, zone if zone is not None else getattr(site, "utm_zone", None),
+                                    fallback))
+    return config_for_unit(config, glg)
+
+
+def set_changes(s: dict) -> list[str]:
+    """What the set changes besides the priors, which each point's prior
+    names: the edges it reads each geology unit by, and the suitability
+    weights. Nothing for the provisional default or a set that fits
+    neither."""
+    out = []
+    for glg in sorted({row["glg"] for row in s["edges"] if row["fitted"]}):
+        edges = unit_edges(s, glg)
+        parts = []
+        if "clay_max_rho" in edges:
+            parts.append(phrase("calibration_sets.edge_clay", value=edges["clay_max_rho"]))
+        if "fresh_basement_min_rho" in edges:
+            parts.append(phrase("calibration_sets.edge_basement", value=edges["fresh_basement_min_rho"]))
+        out.append(phrase("calibration_sets.changes_edges", version=s["version"], glg=glg,
+                          edges=" and ".join(parts)))
+    weights = s["weights"]
+    if weights is not None and weights["fitted"]:
+        value = weights["value"]
+        out.append(phrase("calibration_sets.changes_weights", version=s["version"],
+                          thickness=value["aquifer_thickness"], fit=value["resistivity_fit"],
+                          overburden=value["overburden"], fracture=value["basal_fracture"]))
+    return out
 
 
 # ------------------------------------------------------------- the file

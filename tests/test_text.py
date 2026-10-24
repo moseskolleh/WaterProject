@@ -416,14 +416,18 @@ def test_the_defaults_file_is_the_configuration():
 
     defaults = _defaults_json()
     config = Config()
-    assert list(defaults) == [f.name for f in dataclasses.fields(Config)]
-    kinds = {"int": int, "float": float, "str": str, "tuple": list}
+    # the calibration set in force is not a setting with a default: None is
+    # the provisional default (calibration_sets.py)
+    assert list(defaults) == [f.name for f in dataclasses.fields(Config) if f.name != "calibration"]
+    kinds = {"int": int, "float": float, "str": str, "tuple": list, "dict": dict}
     for section, values in defaults.items():
         fields = dataclasses.fields(getattr(config, section))
         assert list(values) == [f.name for f in fields], section
         for f in fields:
             assert type(values[f.name]) is kinds[f.type], f"{section}.{f.name}"
-    assert json.loads(json.dumps(dataclasses.asdict(config))) == defaults
+    held = json.loads(json.dumps(dataclasses.asdict(config)))
+    assert held.pop("calibration") is None
+    assert held == defaults
 
 
 def test_no_engine_types_out_a_configuration_default():
@@ -443,13 +447,18 @@ def test_no_engine_types_out_a_configuration_default():
         if name in {"style", "ves", "pumping", "design", "ves_range", "odds", "ledger",
                     "cost_range", "terrain"}:
             continue
-        assert re.match(r"(tuple\()?_[A-Z]+\[\"" + name + r"\"\]", default), (
+        assert re.match(r"(tuple\(|field\(default_factory=lambda: dict\()?_[A-Z]+\[\"" + name + r"\"\]",
+                        default), (
             f"config.py types out the default of {name}: {default}")
 
     allowed = {"borehole_diameter_in", "casing_diameter_in"}
     js = _js_source()
     for section, values in _defaults_json().items():
+        # a table of defaults (the suitability weights) is held entry by entry
+        flat = {}
         for key, value in values.items():
+            flat.update(value if isinstance(value, dict) else {key: value})
+        for key, value in flat.items():
             if isinstance(value, list) or value == "":
                 continue
             if isinstance(value, str):

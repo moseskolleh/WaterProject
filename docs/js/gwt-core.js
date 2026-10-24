@@ -113,10 +113,15 @@
       if (!over) return;
       Object.keys(over).forEach(function (key) {
         if (key in cfg[section] && over[key] !== null && over[key] !== undefined) {
-          cfg[section][key] = over[key];
+          /* a table (the suitability weights) is copied, so the overrides
+           * stay the caller's own */
+          cfg[section][key] = isRecord(over[key]) ? Object.assign({}, over[key]) : over[key];
         }
       });
     });
+    /* the calibration set in force, refused unless a named person adopted
+     * it (calibration_sets.apply_set) */
+    if (overrides.calibration) return applySet(cfg, overrides.calibration);
     return cfg;
   }
 
@@ -2082,8 +2087,21 @@
         array_type: sounding.array_type || 'schlumberger',
         ab2: sounding.ab2, mn: sounding.mn || [], rho_app: sounding.rho_app,
       },
-      config: (config || defaultConfig()).ves,
+      config: inversionSettings((config || defaultConfig()).ves),
     }));
+  }
+
+  /* The VES settings an inversion reads: all but the suitability weights,
+   * which nothing in it reads, so that a calibration set (PLAN.md step 5.3)
+   * changing them does not invert a survey again (ves/cache.py
+   * _inversion_settings). */
+  function inversionSettings(ves) {
+    /** @type {Rec} */
+    var out = {};
+    Object.keys(ves).forEach(function (key) {
+      if (key !== 'suitability_weights') out[key] = ves[key];
+    });
+    return out;
   }
 
   function inversionDigest(key, record) {
@@ -20381,15 +20399,13 @@
    * hydrogeologist weighs in crystalline basement terrain: interpreted aquifer
    * thickness, how central the water-zone resistivity sits in the productive
    * window, the weathered profile, and whether a fracture sits at the basement
-   * contact. The weights are explicit and a defensible default, not a
-   * calibrated model; the upgrade path is to fit them against real drilling
-   * outcomes as a programme accumulates them.
+   * contact. The weights are explicit (the VES configuration's
+   * suitability_weights, from defaults.json) and a defensible default, not a
+   * calibrated model; a calibration set (PLAN.md step 5.3) fits them against
+   * the boreholes drilled and puts its own in force once a named person
+   * adopts it.
    */
 
-  var SUITABILITY_WEIGHTS = {
-    aquifer_thickness: 0.35, resistivity_fit: 0.25,
-    overburden: 0.20, basal_fracture: 0.20,
-  };
   var THICKNESS_TARGET_M = 25.0;
 
   /**
@@ -20593,11 +20609,12 @@
         overburden: overburdenScore(interp),
         basal_fracture: basalFractureScore(interp),
       };
+      var weights = cfg.suitability_weights;
       var score = 100.0 * (
-        SUITABILITY_WEIGHTS.aquifer_thickness * comp.aquifer_thickness +
-        SUITABILITY_WEIGHTS.resistivity_fit * comp.resistivity_fit +
-        SUITABILITY_WEIGHTS.overburden * comp.overburden +
-        SUITABILITY_WEIGHTS.basal_fracture * comp.basal_fracture);
+        weights.aquifer_thickness * comp.aquifer_thickness +
+        weights.resistivity_fit * comp.resistivity_fit +
+        weights.overburden * comp.overburden +
+        weights.basal_fracture * comp.basal_fracture);
       return {
         sounding_id: interp.sounding_id,
         suitability: pyRound(score, 1),
@@ -20624,7 +20641,7 @@
   }
 
   Object.assign(C, {
-    SUITABILITY_WEIGHTS: SUITABILITY_WEIGHTS, assessSiting: assessSiting,
+    assessSiting: assessSiting,
     suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
     rankingTie: rankingTie, tiedLeaders: tiedLeaders,
     suitabilityVerdict: suitabilityVerdict,
@@ -20768,12 +20785,14 @@
   }
 
   /** The prior table's row for this ground, and the rate it gives:
-   * prior_for. The most specific row wins.
+   * prior_for. The most specific row wins, and the set in force's fit of it
+   * where it fitted one.
    * @param {string|null} bgsCode
    * @param {string|null} glg
    * @param {number} successYieldM3h
+   * @param {Rec|null} [calibration] the calibration set in force, or null
    * @returns {Rec} */
-  function priorFor(bgsCode, glg, successYieldM3h) {
+  function priorFor(bgsCode, glg, successYieldM3h, calibration) {
     if (!(successYieldM3h > 0.0)) {
       throw new Error('odds.success_yield_m3_per_h must be above zero, not ' +
         String(successYieldM3h));
@@ -20798,6 +20817,17 @@
       : row.rate;
     /* a Beta prior needs a rate strictly inside (0, 1) */
     rate = oddsInside(rate);
+    /* the set in force's fit of the row, where it fitted one; a fallback row
+     * is never fitted */
+    var held = calibration || null;
+    var fitted = held && matched !== 'fallback'
+      ? fittedPrior(held, row.bgs_code, row.glg, successYieldM3h) : null;
+    if (held && fitted) {
+      return Object.assign({}, row, { matched: matched, rate: oddsInside(Number(fitted.rate)),
+        effective_n: Number(fitted.effective_n), status: 'calibrated', base_rate: rate,
+        fitted_boreholes: fitted.boreholes, fitted_successes: fitted.successes,
+        set_version: held.version });
+    }
     return Object.assign({}, row, { matched: matched, rate: rate });
   }
 
@@ -20878,7 +20908,7 @@
     var cfg = config || defaultConfig();
     var tables = oddsTables();
     var rateM3h = Number(cfg.odds.success_yield_m3_per_h);
-    var band = oddsPriorBand(bgsCode, glg, rateM3h);
+    var band = oddsPriorBand(bgsCode, glg, rateM3h, cfg.calibration || null);
     var row = band.row, p0 = band.p0, n = band.n;
     var priorLow = band.low, priorHigh = band.high;
     var priorOdds = oddsOf(p0);
@@ -20908,7 +20938,7 @@
       after: oddsProbability(odds), weight: weight });
     var total = product * fitFactor;
     function carried(p) { return oddsProbability(oddsOf(p) * total); }
-    return {
+    return Object.assign({
       sounding_id: interp.sounding_id,
       success_yield_m3_per_h: rateM3h,
       bgs_code: bgsCode || null, glg: glg || null,
@@ -20921,15 +20951,24 @@
       probability: oddsProbability(odds),
       low: carried(priorLow), high: carried(priorHigh),
       range_sampled: !!range,
-      calibration: String(tables.evidence.calibration).split(/\s+/)
-        .filter(Boolean).join(' '),
-    };
+      calibration: '', calibration_note: '', base_rate: null, fitted_boreholes: null,
+      fitted_successes: null, set_version: null,
+    }, oddsCalibrationFields(row, inForce(cfg)));
+  }
+
+  /* _calibration_fields: the set in force as the reports name it, what else
+   * it changes, and what the set fitted the prior to */
+  function oddsCalibrationFields(row, held) {
+    var pick = function (key) { return row[key] === undefined ? null : row[key]; };
+    return { calibration: setName(held), calibration_note: setChanges(held).join(' '),
+      base_rate: pick('base_rate'), fitted_boreholes: pick('fitted_boreholes'),
+      fitted_successes: pick('fitted_successes'), set_version: pick('set_version') };
   }
 
   /* The prior table's row for this ground, its rate and effective size, and
    * the 10th and 90th percentiles of its Beta: _prior_band. */
-  function oddsPriorBand(bgsCode, glg, rateM3h) {
-    var row = priorFor(bgsCode || null, glg || null, rateM3h);
+  function oddsPriorBand(bgsCode, glg, rateM3h, calibration) {
+    var row = priorFor(bgsCode || null, glg || null, rateM3h, calibration || null);
     var p0 = row.rate, n = row.effective_n;
     var alpha = p0 * n, beta = (1.0 - p0) * n;
     /* held inside (0, 1) as the rate is: a percentile that rounded to
@@ -20946,11 +20985,10 @@
    * @returns {Rec} */
   function priorOdds(bgsCode, glg, config) {
     var cfg = config || defaultConfig();
-    var tables = oddsTables();
     var rateM3h = Number(cfg.odds.success_yield_m3_per_h);
-    var band = oddsPriorBand(bgsCode, glg, rateM3h);
+    var band = oddsPriorBand(bgsCode, glg, rateM3h, cfg.calibration || null);
     var row = band.row, odds = oddsOf(band.p0);
-    return {
+    return Object.assign({
       sounding_id: '',
       success_yield_m3_per_h: rateM3h,
       bgs_code: bgsCode || null, glg: glg || null,
@@ -20963,9 +21001,9 @@
       probability: oddsProbability(odds),
       low: oddsProbability(oddsOf(band.low)), high: oddsProbability(oddsOf(band.high)),
       range_sampled: false,
-      calibration: String(tables.evidence.calibration).split(/\s+/)
-        .filter(Boolean).join(' '),
-    };
+      calibration: '', calibration_note: '', base_rate: null, fitted_boreholes: null,
+      fitted_successes: null, set_version: null,
+    }, oddsCalibrationFields(row, inForce(cfg)));
   }
 
   /** Where the point is: its own easting and northing in zone (or the zone
@@ -21012,8 +21050,9 @@
    * @param {Rec} o what successOdds returns
    * @returns {string} */
   function oddsHeadline(o) {
-    var status = phrase(o.matched === 'fallback' ? 'odds.status_fallback'
-      : 'odds.status_provisional');
+    var status = o.status === 'calibrated'
+      ? phrase('odds.status_calibrated', { version: o.set_version })
+      : phrase(o.matched === 'fallback' ? 'odds.status_fallback' : 'odds.status_provisional');
     return phrase('odds.headline', { p: rangeShare(o.probability),
       low: rangeShare(o.low), high: rangeShare(o.high), status: status });
   }
@@ -21031,6 +21070,12 @@
     var prior = { p: rangeShare(o.prior), low: rangeShare(o.prior_low),
       high: rangeShare(o.prior_high), n: o.effective_n, basis: o.basis };
     if (o.matched === 'fallback') return phrase('odds.prior_fallback', prior);
+    if (o.status === 'calibrated') {
+      return phrase(o.matched === 'combination' ? 'odds.prior_fitted_combination'
+        : 'odds.prior_fitted_class', Object.assign({ ground: oddsGround(o),
+        base: rangeShare(Number(o.base_rate || 0.0)), m: o.fitted_boreholes, k: o.fitted_successes,
+        version: o.set_version }, prior));
+    }
     return phrase(o.matched === 'combination' ? 'odds.prior_combination'
       : 'odds.prior_class', Object.assign({ ground: oddsGround(o),
       q1: o.yield_q1_l_per_s, q3: o.yield_q3_l_per_s,
@@ -21052,9 +21097,10 @@
    * @param {Rec} o what successOdds returns
    * @returns {string[]} */
   function oddsBasisText(o) {
+    var basis = phrase('odds.basis', { calibration: o.calibration });
     return [phrase('odds.definition', { rate: o.success_yield_m3_per_h,
       ls: o.success_yield_m3_per_h / 3.6 }),
-    phrase('odds.basis', { calibration: o.calibration })];
+    o.calibration_note ? basis + ' ' + o.calibration_note : basis];
   }
 
   /** The odds in sentences: odds_text.
@@ -24059,7 +24105,7 @@
     judged.forEach(function (entry) {
       var odds = entry.prediction.odds;
       if (!odds || !odds.bgs_code || setFactor(odds) === null) return;
-      var row = priorFor(odds.bgs_code, odds.glg, rateM3h);
+      var row = priorFor(odds.bgs_code, odds.glg, rateM3h, null);
       if (row.matched === 'fallback') return;
       for (var k = 0; k < table.length; k++) {
         if (table[k].bgs_code === row.bgs_code && table[k].glg === row.glg) {
@@ -24075,7 +24121,8 @@
     table.forEach(function (base, k) {
       var entries = members[k];
       if (!entries) return;
-      var baseRate = priorFor(base.bgs_code, base.glg !== '*' ? base.glg : null, rateM3h).rate;
+      /* every fit starts from the provisional table, never the set in force */
+      var baseRate = priorFor(base.bgs_code, base.glg !== '*' ? base.glg : null, rateM3h, null).rate;
       var baseN = Number(base.effective_n);
       var m = entries.length;
       var successes = entries.filter(function (e) { return e.outcome.success; }).length;
@@ -24215,20 +24262,24 @@
     var used = {};
     var base = { clay_max_rho: Number(cfg.ves.clay_max_rho),
       fresh_basement_min_rho: Number(cfg.ves.fresh_basement_min_rho) };
+    var force = inForce(cfg);
     Object.keys(sides).sort(codePointCompare).forEach(function (glg) {
-      var clay = base.clay_max_rho;
+      /* the edges in force here: the configuration's, or the set in force's
+       * for the unit */
+      var here = Object.assign({}, base, unitEdges(force, glg));
+      var clay = here.clay_max_rho;
       SET_EDGES.forEach(function (edge) {
         var held = sides[glg][edge];
         var below = held[0], above = held[1], ids = held[2];
         if (!ids.length) return;
         var fitted = ids.length >= cfg.ledger.fit_min_boreholes && below.length > 0 && above.length > 0;
         var row = { glg: glg, edge: edge, boreholes: ids.length, below: below.length,
-          above: above.length, base: base[edge], misread_base: setMisread(edge, base[edge], below, above),
+          above: above.length, base: here[edge], misread_base: setMisread(edge, here[edge], below, above),
           fitted: fitted, value: null, misread: null };
         if (fitted) {
           var got = edge === 'clay_max_rho'
-            ? setBestEdge(edge, base[edge], below, above, 0.0, Number(cfg.ves.fractured_zone_rho[1]))
-            : setBestEdge(edge, base[edge], below, above, clay, null);
+            ? setBestEdge(edge, here[edge], below, above, 0.0, Number(cfg.ves.fractured_zone_rho[1]))
+            : setBestEdge(edge, here[edge], below, above, clay, null);
           if (edge === 'clay_max_rho') clay = got[0];
           row.value = got[0];
           row.misread = got[1];
@@ -24260,6 +24311,15 @@
     return total;
   }
 
+  /* weights in twentieths: whole numbers where they fall on the grid, as
+   * every fitted set's do, so their scores stay exact */
+  function setInTwentieths(weights) {
+    return SUITABILITY_PARTS.map(function (key) {
+      var k = Number(weights[key]) * SET_STEPS, r = pyRound(k, 0);
+      return Math.abs(k - r) < 1e-9 ? r : k;
+    });
+  }
+
   function setScores(parts, w) {
     return parts.map(function (p) { return w[0] * p[0] + w[1] * p[1] + w[2] * p[2] + w[3] * p[3]; });
   }
@@ -24282,11 +24342,13 @@
       (entry.outcome.success ? won : lost).push(row);
       ids.push(entry.id);
     });
-    var base = SUITABILITY_PARTS.map(function (key) { return pyRound(SUITABILITY_WEIGHTS[key] * SET_STEPS, 0); });
+    /* the weights in force: the configuration's, or the set in force's */
+    var inUse = cfg.ves.suitability_weights;
+    var base = setInTwentieths(inUse);
     var pairs = won.length * lost.length;
     /** @type {Rec} */
     var baseTable = {};
-    SUITABILITY_PARTS.forEach(function (key, k) { baseTable[key] = base[k] / SET_STEPS; });
+    SUITABILITY_PARTS.forEach(function (key) { baseTable[key] = Number(inUse[key]); });
     var minimum = cfg.ledger.fit_weights_min_each;
     /** @type {Rec} */
     var out = {
@@ -24419,6 +24481,130 @@
         by: s.adopted_by, on: s.adopted_on });
     }
     return phrase('calibration_sets.name_candidate', { fitted_on: s.fitted_on, n: n });
+  }
+
+  /** calibration_sets.in_force: the calibration set in force, the
+   * configuration's, else the provisional default.
+   * @param {Config|null} [config]
+   * @returns {Rec} */
+  function inForce(config) {
+    return config && config.calibration ? config.calibration : defaultSet();
+  }
+
+  /** calibration_sets.check_in_force: a set read whole and refused unless it
+   * is the provisional default or a named person adopted it.
+   * @param {*} raw
+   * @returns {Rec} */
+  function checkInForce(raw) {
+    var s = cleanSet(raw);
+    if (s.version === null) throw new Error(phrase('calibration_sets.not_adopted'));
+    return s;
+  }
+
+  /** calibration_sets.apply_set: a copy of config with the set in force, its
+   * suitability weights the set's where it fitted them.
+   * @param {Config} config
+   * @param {*} raw
+   * @returns {Config} */
+  function applySet(config, raw) {
+    var s = checkInForce(raw);
+    var out = JSON.parse(JSON.stringify(config));
+    var previous = inForce(config).weights;
+    if (s.weights !== null && s.weights.fitted) {
+      out.ves.suitability_weights = Object.assign({}, s.weights.value);
+    } else if (previous !== null && previous.fitted) {
+      out.ves.suitability_weights = Object.assign({}, configDefaults().ves.suitability_weights);
+    }
+    out.calibration = s.version === 0 ? null : s;
+    return out;
+  }
+
+  /** calibration_sets.fitted_prior: the set's fitted row for the prior
+   * table's row bgsCode and glg ('*' for a class's row), or null; nothing
+   * where the set was fitted at another definition of success.
+   * @param {Rec} s
+   * @param {string} bgsCode
+   * @param {string} glg
+   * @param {number} successYieldM3h
+   * @returns {Rec|null} */
+  function fittedPrior(s, bgsCode, glg, successYieldM3h) {
+    var judged = s.success_yield_m3_per_h;
+    if (judged === null || judged === undefined ||
+        !(Math.abs(judged - pyRound(successYieldM3h, 3)) < 1e-9)) return null;
+    for (var i = 0; i < s.prior.length; i++) {
+      var row = s.prior[i];
+      if (row.fitted && row.bgs_code === bgsCode && row.glg === glg) return row;
+    }
+    return null;
+  }
+
+  /** calibration_sets.unit_edges: the resistivity edges the set fitted for a
+   * geology unit, by name.
+   * @param {Rec} s
+   * @param {string|null} glg
+   * @returns {Object<string, number>} */
+  function unitEdges(s, glg) {
+    /** @type {Object<string, number>} */
+    var out = {};
+    s.edges.forEach(function (row) {
+      if (row.fitted && row.glg === glg) out[row.edge] = Number(row.value);
+    });
+    return out;
+  }
+
+  /** calibration_sets.config_for_unit: config with the set in force's edges
+   * for a geology unit in its VES settings, or config itself.
+   * @param {Config} config
+   * @param {string|null} glg
+   * @returns {Config} */
+  function configForUnit(config, glg) {
+    var edges = unitEdges(inForce(config), glg);
+    if (!Object.keys(edges).length) return config;
+    return Object.assign({}, config, { ves: Object.assign({}, config.ves, edges) });
+  }
+
+  /** calibration_sets.config_for_sounding: the configuration a sounding is
+   * interpreted with, the set in force's edges for the geology unit under
+   * it; config itself, with nothing looked up, where the set fitted none.
+   * @param {Config} config
+   * @param {Sounding} sounding
+   * @param {number|null} [zone]
+   * @param {{lat: number, lon: number}|null} [fallback] the site's position
+   * @returns {Config} */
+  function configForSounding(config, sounding, zone, fallback) {
+    if (!inForce(config).edges.some(function (row) { return row.fitted; })) return config;
+    var site = sounding.site || {};
+    var where = { site_easting: site.easting, site_northing: site.northing };
+    var held = zone !== null && zone !== undefined ? zone : (site.utm_zone === undefined ? null : site.utm_zone);
+    var ground = groundAt(pointLatLon(/** @type {*} */ (where), held, fallback || null));
+    return configForUnit(config, ground[1]);
+  }
+
+  /** calibration_sets.set_changes: what the set changes besides the priors,
+   * the edges it reads each geology unit by and the suitability weights.
+   * @param {Rec} s
+   * @returns {string[]} */
+  function setChanges(s) {
+    /** @type {string[]} */
+    var units = [];
+    s.edges.forEach(function (row) {
+      if (row.fitted && units.indexOf(row.glg) < 0) units.push(row.glg);
+    });
+    var out = units.sort(codePointCompare).map(function (glg) {
+      var edges = unitEdges(s, glg), parts = [];
+      if ('clay_max_rho' in edges) parts.push(phrase('calibration_sets.edge_clay', { value: edges.clay_max_rho }));
+      if ('fresh_basement_min_rho' in edges) {
+        parts.push(phrase('calibration_sets.edge_basement', { value: edges.fresh_basement_min_rho }));
+      }
+      return phrase('calibration_sets.changes_edges', { version: s.version, glg: glg, edges: parts.join(' and ') });
+    });
+    if (s.weights !== null && s.weights.fitted) {
+      var value = s.weights.value;
+      out.push(phrase('calibration_sets.changes_weights', { version: s.version,
+        thickness: value.aquifer_thickness, fit: value.resistivity_fit, overburden: value.overburden,
+        fracture: value.basal_fracture }));
+    }
+    return out;
   }
 
   function setUnreadable(why) {
@@ -24625,6 +24811,9 @@
     evidenceRate: evidenceRate, fitPrior: fitPrior, layerClass: layerClass, fitEdges: fitEdges,
     fitWeights: fitWeights, defaultSet: defaultSet, fitSet: fitSet, adoptSet: adoptSet,
     setName: setName, cleanSet: cleanSet, setYaml: setYaml,
+    inForce: inForce, checkInForce: checkInForce, applySet: applySet, fittedPrior: fittedPrior,
+    unitEdges: unitEdges, configForUnit: configForUnit, configForSounding: configForSounding,
+    setChanges: setChanges,
   });
 
   /* ================================================================= photos

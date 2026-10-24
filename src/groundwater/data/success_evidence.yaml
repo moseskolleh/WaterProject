@@ -14,11 +14,9 @@
 # times every ratio, so the breakdown a report prints multiplies back to the
 # answer.
 
-# Named on every report that prints the odds (PLAN.md rule 4: every report
-# names the calibration it used).
-calibration: >-
-  the toolkit's provisional default from PLAN.md step 3.3, adopted by no
-  named person and not calibrated against drilled outcomes
+# Every report that prints the odds names the calibration it used (PLAN.md
+# rule 4): the calibration set in force, or the toolkit's provisional default
+# (calibration_sets.py, data/text/calibration_sets.yaml).
 
 # The depth to basement, as the P50 of the band the range of models quotes
 # (groundwater.ves.model_range.quoted_basement_band). In basement terrain

@@ -40,6 +40,7 @@ from .ingestion import (
     read_ves_workbook,
 )
 from .quality import assess_sample
+from .calibration_sets import config_for_sounding
 from .ves import interpret_model, invert_sounding
 from .ves.cache import cache_entry, cached_inversion, inversion_key
 from .ves.interpret import rank_interpretations
@@ -233,7 +234,10 @@ def recompute_results(
                     entry = cache_entry(key, result) if key else None
                     if entry is not None:
                         entries[key] = entry
-                    interps.append(interpret_model(sounding, result.model, config.ves))
+                    # read by the edges the calibration set in force fitted
+                    # for the geology unit under the sounding, if any
+                    interps.append(interpret_model(sounding, result.model,
+                                                   config_for_sounding(config, sounding).ves))
                     results.append(result)
                     kept.append(sounding)
                 except Exception as exc:  # noqa: BLE001

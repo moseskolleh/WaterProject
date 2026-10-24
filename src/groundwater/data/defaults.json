@@ -30,7 +30,13 @@
     "unreliable_fit_percent": 20.0,
     "fit_confidence_floor": 0.5,
     "unresolved_basement_confidence": 0.85,
-    "ranking_tie_points": 3.0
+    "ranking_tie_points": 3.0,
+    "suitability_weights": {
+      "aquifer_thickness": 0.35,
+      "resistivity_fit": 0.25,
+      "overburden": 0.2,
+      "basal_fracture": 0.2
+    }
   },
   "pumping": {
     "safety_factor": 1.5,
