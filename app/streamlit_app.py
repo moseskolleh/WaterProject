@@ -60,7 +60,6 @@ from shared import (
     _BRAND_DIR,
     _ICON,
     _LOGO,
-    CONFIG,
     DEFAULT_PAGE,
     IN_BROWSER,
     NAV_GROUPS,
@@ -72,6 +71,7 @@ from shared import (
     _project_state,
     _project_summary,
     _status_chip,
+    app_config,
     cached_districts,
     fill_defaults,
     project_file_bytes,
@@ -488,7 +488,8 @@ if st.session_state.pop("_recompute_pending", False):
                         _sources,
                         discharges=_discharges,
                         design_swl=st.session_state.get("design_swl"),
-                        config=CONFIG,
+                        # the calibration set in force reads the survey
+                        config=app_config(),
                         sample_root=sample_data_dir(),
                         tmp_dir=workdir(),
                         # the inversions the file carried: a survey saved

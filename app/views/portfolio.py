@@ -15,12 +15,14 @@ from groundwater.portfolio import (
     site_label,
     site_one_pager,
 )
+from groundwater.text import phrase
 from shared import (
     app_config,
     figure,
     kept_upload,
     offer_download,
     project_files,
+    put_set_in_force,
     workdir,
 )
 
@@ -42,6 +44,7 @@ def render() -> None:
     summaries = [summary for summary, _ in read]
     if skipped:
         st.warning(f"{skipped} file(s) could not be read as a project and were skipped.")
+    pooled: list = []
     if not summaries:
         st.info("Upload two or more saved project files to build the portfolio.")
     else:
@@ -107,12 +110,14 @@ def render() -> None:
         )
 
         _site_detail(summaries)
-        _pooled_ledger(read)
+        pooled = _pooled_ledger(read)
+    _calibration_sets(pooled)
 
 
-def _pooled_ledger(read) -> None:
+def _pooled_ledger(read) -> list:
     """The files' ledgers of predictions and outcomes, pooled (PLAN.md step
-    5.1): each point once, the drilled ones listed beside what was found."""
+    5.1): each point once, the drilled ones listed beside what was found.
+    Returns the pooled entries."""
     import json
 
     from groundwater.ledger import ledger_rows, ledger_summary, pool_ledgers
@@ -131,6 +136,7 @@ def _pooled_ledger(read) -> None:
         path.write_text(json.dumps(pooled, indent=1, ensure_ascii=False), encoding="utf-8")
         offer_download(path, "Download the pooled ledger (.json)", keep=False)
         _calibration(pooled)
+    return pooled
 
 
 def _calibration(pooled) -> None:
@@ -171,6 +177,124 @@ def _calibration(pooled) -> None:
         # not kept among the session's deliverables, which would go on
         # offering it once other files are on the page
         offer_download(Path(built["path"]), "Download the calibration report (.docx)", keep=False)
+
+
+def _calibration_sets(pooled) -> None:
+    """The calibration set in force for the session (PLAN.md step 5.3): its
+    name and what it changes, to download, to replace with a file or to
+    return to the provisional default; and with pooled ledgers, a set fitted
+    to them and reviewed beside it, for a named person to adopt and put in
+    force. Nothing changes until someone does."""
+    import datetime
+    import hashlib
+    import json
+
+    from groundwater.calibration_sets import (
+        fit_set,
+        in_force,
+        set_changes,
+        set_name,
+        set_review,
+        set_yaml,
+    )
+
+    st.subheader(phrase("calibration_sets.page_heading"))
+    st.caption(phrase("calibration_sets.page_lead"))
+    told = st.session_state.pop("calibration_told", None)
+    if told is not None:
+        (st.success if told[0] == "ok" else st.error)(told[1])
+    config = app_config()
+    held = in_force(config)
+    st.markdown(phrase("calibration_sets.page_in_force", name=set_name(held)))
+    for line in set_changes(held):
+        st.markdown(f"- {line}")
+    path = workdir() / "calibration.yaml"
+    path.write_text(set_yaml(held), encoding="utf-8")
+    offer_download(path, phrase("calibration_sets.page_download"), keep=False)
+    upload = st.file_uploader(phrase("calibration_sets.page_load"), type=["yaml", "yml"],
+                              key="calibration_upload")
+    st.button(phrase("calibration_sets.page_load_button"), key="calibration_load", disabled=upload is None,
+              on_click=_load_set)
+    if held["version"] != 0:
+        st.button(phrase("calibration_sets.page_default"), key="calibration_default",
+                  on_click=_return_to_default)
+    if not pooled:
+        st.info(phrase("calibration_sets.page_fit_none"))
+        return
+    today = datetime.date.today().isoformat()
+    # a fit is reviewed while the files it was fitted to and the set it
+    # was fitted under are the ones on the page
+    basis = hashlib.sha256(json.dumps([pooled, held], sort_keys=True).encode("utf-8")).hexdigest()
+    if st.button(phrase("calibration_sets.page_fit"), key="calibration_fit",
+                 help=phrase("calibration_sets.page_fit_help")):
+        st.session_state["calibration_candidate"] = {"set": fit_set(pooled, today, config), "basis": basis}
+    fitted = st.session_state.get("calibration_candidate")
+    if not fitted or fitted["basis"] != basis:
+        return
+    review = set_review(fitted["set"], config)
+    with st.container(border=True):
+        st.markdown(f"**{review['title']}**")
+        for line in review["summary"]:
+            st.markdown(line)
+        for table in review["tables"]:
+            st.caption(table["caption"])
+            st.dataframe([dict(zip(table["header"], row, strict=True)) for row in table["rows"]],
+                         hide_index=True, width="stretch")
+        if review["adoptable"]:
+            st.text_input(phrase("calibration_sets.page_adopter"), key="calibration_adopter",
+                          help=phrase("calibration_sets.page_adopter_help"))
+            st.button(phrase("calibration_sets.page_adopt"), key="calibration_adopt", type="primary",
+                      on_click=_adopt, args=(fitted["set"], held, today))
+
+
+def _put_in_force(s) -> bool:
+    """Put ``s`` in force (a button's callback, run before the page), and
+    say so on the page, or why not."""
+    from groundwater.calibration_sets import set_name
+
+    try:
+        put_set_in_force(s)
+    except ValueError as exc:
+        st.session_state["calibration_told"] = ("error", str(exc))
+        return False
+    st.session_state["calibration_told"] = (
+        "ok", phrase("calibration_sets.page_put_in_force", name=set_name(s)))
+    return True
+
+
+def _return_to_default() -> None:
+    """Put the provisional default back in force."""
+    from groundwater.calibration_sets import default_set
+
+    _put_in_force(default_set())
+
+
+def _load_set() -> None:
+    """Put the uploaded calibration.yaml in force, read whole or refused."""
+    from groundwater.calibration_sets import read_set
+
+    upload = st.session_state.get("calibration_upload")
+    if upload is None:
+        return
+    try:
+        s = read_set(upload.getvalue().decode("utf-8", errors="replace"))
+    except ValueError as exc:
+        st.session_state["calibration_told"] = ("error", str(exc))
+        return
+    _put_in_force(s)
+
+
+def _adopt(candidate, held, today) -> None:
+    """Adopt the fitted set in the name typed beside it and put it in force."""
+    from groundwater.calibration_sets import adopt_set
+
+    try:
+        adopted = adopt_set(candidate, st.session_state.get("calibration_adopter", ""), today, held)
+    except ValueError as exc:
+        st.session_state["calibration_told"] = ("error", str(exc))
+        return
+    if _put_in_force(adopted):
+        st.session_state.pop("calibration_candidate", None)
 
 
 @st.fragment

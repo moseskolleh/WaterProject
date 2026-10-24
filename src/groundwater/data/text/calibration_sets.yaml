@@ -50,3 +50,102 @@ why_unadopted: >-
   its number and who adopted it disagree, and a set is numbered only when a
   named person adopts it
 why_weights: its fitted suitability weights do not add up to 1
+
+# The review of a fitted set, before anyone adopts it, against the set in
+# force: what it was fitted to and what adopting it would change.
+review_title: "Calibration set fitted on {fitted_on}"
+review_lead: >-
+  It uses {n:g} {n:plural:borehole|boreholes} from the pooled ledgers: drilled
+  points whose success is known, judged at a yield of {rate:num} m3/h, in a
+  row or at an edge that holds enough of them to fit. Every fit starts from
+  the provisional default, so no borehole counts twice.
+review_left_out: >-
+  Left out: {unknown:g} drilled {unknown:plural:point|points} whose success is
+  not known, and {definition:g} judged at another definition of success.
+review_fitted: >-
+  It fits {priors:g} of the {rows:g} prior {rows:plural:row|rows} its
+  boreholes fall in and {edges:g} of {edge_rows:g} resistivity
+  {edge_rows:plural:edge|edges}; a row or an edge needs {minimum:g}
+  boreholes.
+review_weights: >-
+  It fits the suitability weights: they rank {right} percent of the
+  {pairs:g} {pairs:plural:pair|pairs} of a borehole that succeeded and one
+  that failed the right way round, against {right_base} percent for the
+  weights in force.
+review_weights_few: >-
+  It leaves the suitability weights as they are: {successes:g}
+  {successes:plural:borehole|boreholes} succeeded and {failures:g} failed,
+  and the weights need {minimum:g} of each.
+review_in_force: "In force now: {name}."
+review_adopt: >-
+  Nothing changes until a named person adopts it. Adopting it numbers it
+  after the set in force and puts it in force in place of that set.
+review_nothing: >-
+  It fits nothing yet, so there is nothing to adopt: the set in force stays
+  in force until more drilled points are in the ledgers.
+
+# The review's tables.
+prior_caption: The prior of each ground the boreholes fall in
+prior_col_ground: Ground
+prior_col_boreholes: Boreholes
+prior_col_succeeded: Succeeded
+prior_col_table: Provisional table
+prior_col_in_force: In force
+prior_col_fitted: Fitted
+ground_combination: "{code} on {glg}"
+ground_class: "{code} on any unit without a row of its own"
+cell_rate: "{p} percent"
+cell_rate_worth: "{p} percent, worth {n:g} boreholes"
+cell_too_few: "too few ({m:g} of {minimum:g})"
+edges_caption: The resistivity edges of each geology unit, from the layers the logs read
+edges_col_unit: USGS unit
+edges_col_edge: Edge
+edges_col_layers: Layers under and over it
+edges_col_in_force: In force
+edges_col_fitted: Fitted
+edge_names:
+  clay_max_rho: "Clay, up to"
+  fresh_basement_min_rho: "Fresh basement, from"
+cell_layers: "{below:g} and {above:g}"
+cell_edge: "{value:num} ohm-m, {misread:g} misread"
+cell_edge_too_few: "too few ({m:g} of {minimum:g}), or no layer on one side"
+weights_caption: The suitability score's weights
+weights_col_part: Part
+weights_col_in_force: In force
+weights_col_fitted: Fitted
+part_names:
+  aquifer_thickness: Aquifer thickness
+  resistivity_fit: Resistivity fit
+  overburden: Overburden
+  basal_fracture: Basal fracture
+cell_weight: "{w:g}"
+cell_not_fitted: not fitted
+
+# The Portfolio page's section, in both apps.
+page_heading: Calibration sets
+page_lead: >-
+  Every report reads its priors, its resistivity edges and its suitability
+  weights from the calibration set in force. A set fitted to the pooled
+  ledgers changes nothing until a named person adopts it here. It is then in
+  force for every project opened in this session (in the browser app, in
+  this browser), and travels in no project file: download it to keep it or
+  pass it on.
+page_in_force: "In force: {name}."
+page_download: Download the set in force (calibration.yaml)
+page_load: A calibration.yaml to put in force
+page_load_button: Put it in force
+page_default: Return to the provisional default
+page_put_in_force: >-
+  In force now: {name}. Every page reads by it from here, and a survey
+  already inverted is read by it again.
+page_fit: Fit a set to the pooled ledgers
+page_fit_help: >-
+  Fit the priors, the resistivity edges and the suitability weights to the
+  drilled points in the pooled ledgers, for you to review before anyone
+  adopts the set.
+page_fit_none: Pool saved project files above to fit a set to their drilled points.
+page_adopter: Adopted by
+page_adopter_help: >-
+  The name of the person who adopts the set: it goes in the file and in
+  every report that reads it.
+page_adopt: Adopt the set and put it in force

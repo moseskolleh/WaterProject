@@ -1547,6 +1547,152 @@ def test_the_portfolio_pools_the_projects_ledgers(sample_data):
     assert not any(b.label == "Download the calibration report (.docx)" for b in at.download_button)
 
 
+def _drilled_project(glg: str = "pCm", code: str = "B-L") -> bytes:
+    """A saved project whose ledger holds 30 drilled points on one geology
+    unit, two in three of them successful, logged with basement from 22 m
+    where the survey read 2,400 ohm-m: enough to fit a set, whose basement
+    edge moves from 3,000 to 579.7 ohm-m, the geometric midpoint of
+    140 and 2,400."""
+    from groundwater.project_io import serialize_project
+
+    log = [[0.0, 2.0, "laterite"], [2.0, 8.0, "clay"], [8.0, 22.0, "weathered"], [22.0, 50.0, "basement"]]
+    layers = [[0.0, 2.0, 900.0], [2.0, 8.0, 12.0], [8.0, 22.0, 140.0], [22.0, None, 2400.0]]
+    entries = []
+    for k in range(30):
+        success = k % 3 != 0
+        entries.append({
+            "id": f"e{k:03d}", "before_outcome": True, "recorded_on": "2026-03-01", "toolkit": "0.3.0",
+            "point": {"sounding_id": f"VES {k}"},
+            "prediction": {"investigation_depth_m": 60.0, "layers": layers,
+                           "suitability": {"aquifer_thickness": 0.5, "resistivity_fit": 0.5, "overburden": 0.5,
+                                           "basal_fracture": 0.9 if success else 0.1},
+                           "odds": {"probability": 0.6, "prior": 0.55, "bgs_code": code, "glg": glg}},
+            "outcome": {"total_depth_m": 50.0, "success": success, "success_yield_m3_per_h": 1.0,
+                        "success_basis": "tested", "intervals": log}})
+    return serialize_project({"project_summary": {"community": "Rokel", "district": "Port Loko",
+                                                  "status": "Successful"},
+                              "prediction_ledger": {"entries": entries}}, "0.3.0")
+
+
+def test_the_portfolio_fits_a_calibration_set_for_a_named_person_to_adopt(sample_data):
+    """PLAN.md step 5.3: a set fitted to the pooled ledgers is reviewed
+    beside the set in force, changes nothing until a named person adopts it,
+    and is then in force for the session, to download, replace or drop."""
+    from groundwater import calibration_sets as CS
+    from groundwater.project_io import PERSIST_PREFIXES, stale_on_load
+    from groundwater.text import phrase
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Portfolio"
+    at.run()
+    assert not at.exception, at.exception
+    # with no files the set in force is still shown, and can be replaced
+    assert phrase("calibration_sets.page_heading") in [str(h.value) for h in at.subheader]
+    default = phrase("calibration_sets.page_in_force", name=CS.set_name(CS.default_set()))
+    assert default in [str(m.value) for m in at.markdown]
+    assert phrase("calibration_sets.page_fit_none") in [str(i.value) for i in at.info]
+    assert any(b.label == phrase("calibration_sets.page_download") for b in at.download_button)
+
+    at.file_uploader(key="portfolio_upload").set_value([("rokel.yaml", _drilled_project(), "application/x-yaml")])
+    at.run()
+    at.button(key="calibration_fit").click()
+    at.run()
+    assert not at.exception, at.exception
+    shown = [str(m.value) for m in at.markdown]
+    assert any(text.startswith("It uses 30 boreholes from the pooled ledgers") for text in shown)
+    edges = next(d.value for d in at.dataframe if phrase("calibration_sets.edges_col_layers") in d.value.columns)
+    assert list(edges[phrase("calibration_sets.edges_col_fitted")]) == ["20 ohm-m, 0 misread",
+                                                                       "580 ohm-m, 0 misread"]
+    # nothing is in force until a named person adopts it
+    assert "calibration_set" not in at.session_state
+    at.button(key="calibration_adopt").click()
+    at.run()
+    assert [str(e.value) for e in at.error] == [phrase("calibration_sets.adopt_unnamed")]
+    at.text_input(key="calibration_adopter").set_value("  A. Kamara ")
+    at.button(key="calibration_adopt").click()
+    at.run()
+    assert not at.exception, at.exception
+    held = at.session_state["calibration_set"]
+    assert (held["version"], held["adopted_by"]) == (1, "A. Kamara")
+    name = CS.set_name(held)
+    assert phrase("calibration_sets.page_put_in_force", name=name) in [str(m.value) for m in at.success]
+    shown = [str(m.value) for m in at.markdown]
+    assert phrase("calibration_sets.page_in_force", name=name) in shown
+    assert "- " + CS.set_changes(held)[0] in shown
+    # the review is of a set no longer on offer
+    assert not any(text.startswith("It uses 30 boreholes") for text in shown)
+
+    # back to the default, and the adopted set's file put in force again
+    at.button(key="calibration_default").click()
+    at.run()
+    assert at.session_state["calibration_set"] is None
+    at.file_uploader(key="calibration_upload").set_value(
+        ("calibration.yaml", CS.set_yaml(held).encode("utf-8"), "application/x-yaml"))
+    at.run()
+    at.button(key="calibration_load").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert at.session_state["calibration_set"] == held
+    # a set nobody adopted is refused, and the one in force stays
+    candidate = CS.fit_set([], "2026-10-24")
+    at.file_uploader(key="calibration_upload").set_value(
+        ("calibration.yaml", CS.set_yaml(candidate).encode("utf-8"), "application/x-yaml"))
+    at.run()
+    at.button(key="calibration_load").click()
+    at.run()
+    assert [str(e.value) for e in at.error] == [phrase("calibration_sets.not_adopted")]
+    assert at.session_state["calibration_set"] == held
+    # the set is the session's: no project file carries it, and opening one
+    # leaves it in force
+    assert not "calibration_set".startswith(PERSIST_PREFIXES)
+    assert "calibration_set" not in stale_on_load({"calibration_set": held})
+
+
+def test_a_set_put_in_force_reads_the_survey_on_show_again(sample_data):
+    """The survey already inverted is read by the set put in force: each
+    sounding by the edges the set fitted for the unit under it, its range of
+    models dropped where those edges are not the ones it was sampled with."""
+    from groundwater.calibration_sets import config_for_sounding
+    from groundwater.config import Config
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    goto(at, "Geophysics (VES)")
+    at.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+    at.run()
+    at.button(key="run_ves").click()
+    at.run()
+    at.button(key="ves_range").click()
+    at.run()
+    assert not at.exception, at.exception
+    soundings, results, before = at.session_state["ves_results"]
+    # both soundings sit on the Quaternary sands, U-M/H on Qe
+    assert before[0].depth_to_basement_m is None
+
+    goto(at, "Portfolio")
+    at.file_uploader(key="portfolio_upload").set_value(
+        [("rokel.yaml", _drilled_project("Qe", "U-M/H"), "application/x-yaml")])
+    at.run()
+    at.button(key="calibration_fit").click()
+    at.run()
+    at.text_input(key="calibration_adopter").set_value("A. Kamara")
+    at.button(key="calibration_adopt").click()
+    at.run()
+    assert not at.exception, at.exception
+    held = at.session_state["calibration_set"]
+    kept, again, after = at.session_state["ves_results"]
+    assert kept is soundings and again is results
+    config = config_for_sounding(Config(calibration=held), soundings[0])
+    assert config.ves.fresh_basement_min_rho == 579.7
+    # read by the set's basement edge, the 1,638 ohm-m layer is basement now
+    assert after[0].depth_to_basement_m == pytest.approx(1.02, abs=0.01)
+    assert "ves_ranges" not in at.session_state
+
+    at.button(key="calibration_default").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert at.session_state["ves_results"][2][0].depth_to_basement_m is None
+
+
 def test_portfolio_drilldown_flow(sample_data):
     """Upload saved projects, then drill into one site for its detail and
     the one-page brief."""

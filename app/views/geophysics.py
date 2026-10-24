@@ -6,6 +6,7 @@ import html as _html
 
 import streamlit as st
 
+from groundwater.calibration_sets import config_for_sounding
 from groundwater.decisions import recommended_points
 from groundwater.geo import infer_zone_for_sierra_leone
 from groundwater.ingestion import check_all
@@ -161,7 +162,8 @@ def _sample_ranges(soundings, results) -> list:
         def told(fraction, _label, i=i, sid=sounding.sounding_id):
             progress.progress(min((i + fraction) / len(results), 1.0),
                               text=f"Sampling the range of models: {sid}")
-        ranges.append(sample_model_range(sounding, result, app_config(), told))
+        # the models read by the edges the sounding itself is read by
+        ranges.append(sample_model_range(sounding, result, config_for_sounding(app_config(), sounding), told))
     progress.empty()
     st.session_state.ves_ranges = (results, ranges)
     return ranges
@@ -287,7 +289,7 @@ def render() -> None:
                 "drill?' and, as real drilling outcomes accumulate, the weights "
                 "can be replaced by a fitted model."
             )
-            suitability = assess_siting(interps)
+            suitability = assess_siting(interps, app_config().ves)
             # the chance of a working borehole beside the score (PLAN.md
             # step 3.3), placed as the report places it, and paired with its
             # row by position: two points can share an id

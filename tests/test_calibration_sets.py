@@ -329,6 +329,55 @@ def test_the_default_names_the_provisional_calibration_as_the_odds_named_it():
         "calibrated against drilled outcomes")
 
 
+# ------------------------------------------------------------- the review
+
+def test_a_fitted_set_is_reviewed_beside_the_set_in_force_before_anyone_adopts_it():
+    review = CS.set_review(_fitted())
+    assert review["title"] == "Calibration set fitted on 2026-10-20" and review["adoptable"]
+    lead, left, fits, weights, now, adopt = review["summary"]
+    assert lead.startswith("It uses 30 boreholes from the pooled ledgers") and "1 m3/h" in lead
+    assert left == ("Left out: 1 drilled point whose success is not known, and 0 judged at another "
+                    "definition of success.")
+    assert fits == ("It fits 1 of the 1 prior row its boreholes fall in and 2 of 2 resistivity edges; a row or "
+                    "an edge needs 5 boreholes.")
+    assert "200 pairs" in weights
+    assert now == "In force now: " + CS.set_name(CS.default_set()) + "."
+    assert adopt.startswith("Nothing changes until a named person adopts it.")
+    prior, edges, parts = review["tables"]
+    assert [prior["key"], edges["key"], parts["key"]] == ["prior", "edges", "weights"]
+    assert prior["rows"] == [["B-L on pCm", "30", "20", "43 percent", "43 percent",
+                              "57 percent, worth 40 boreholes"]]
+    assert edges["rows"][1] == ["pCm", "Fresh basement, from", "60 and 30", "3,000 ohm-m, 30 misread",
+                                "580 ohm-m, 0 misread"]
+    assert [row[0] for row in parts["rows"]] == ["Aquifer thickness", "Resistivity fit", "Overburden",
+                                                 "Basal fracture"]
+    assert all(len(row) == len(table["header"]) for table in review["tables"] for row in table["rows"])
+
+
+def test_the_review_reads_the_set_in_force_it_was_fitted_under():
+    config = CS.apply_set(Config(), CS.adopt_set(_fitted(), "A. Kamara", "2026-10-21"))
+    pooled = [_entry(k, success=k % 3 != 0, parts=_parts(0.5, 0.5, 0.5, 0.9 if k % 3 else 0.1)) for k in range(30)]
+    review = CS.set_review(CS.fit_set(pooled, "2026-11-02", config), config)
+    assert review["summary"][-2].startswith("In force now: calibration set 1, fitted on 2026-10-20")
+    prior, edges, _ = review["tables"]
+    # the table's 43 percent, set 1's 57 in force, and the fit from the table again
+    assert prior["rows"][0][3:] == ["43 percent", "57 percent", "57 percent, worth 40 boreholes"]
+    assert edges["rows"][1][3] == "580 ohm-m, 0 misread"
+
+
+def test_a_set_that_fits_nothing_has_nothing_to_adopt():
+    pooled = [_entry(k, success=k != 0, parts=_PARTS) for k in range(3)]
+    review = CS.set_review(CS.fit_set(pooled, "2026-11-02"))
+    assert not review["adoptable"]
+    assert review["summary"][0].startswith("It uses 0 boreholes")
+    assert "need 10 of each" in review["summary"][2]
+    assert review["summary"][-1].startswith("It fits nothing yet, so there is nothing to adopt")
+    prior, edges, parts = review["tables"]
+    assert prior["rows"][0][5] == "too few (3 of 5)"
+    assert edges["rows"][0][4] == "too few (3 of 5), or no layer on one side"
+    assert {row[2] for row in parts["rows"]} == {"not fitted"}
+
+
 # --------------------------------------------------------------- the file
 
 def test_a_set_file_reads_back_as_it_was_written():
@@ -408,6 +457,8 @@ process.stdout.write(JSON.stringify(cases.map((r) => {
       hand: r.hand.map((raw) => attempt(() => C.cleanSet(raw))),
       classes: r.layers.map((q) => C.layerClass(q[0], q[1], q[2])),
       rates: r.rates.map((q) => C.evidenceRate(q[0], q[1])),
+      review: C.setReview(fitted, cfg),
+      review_adopted: adopted.ok ? C.setReview(fitted, C.applySet(cfg, adopted.ok)) : null,
     } };
   } catch (e) {
     return { threw: String(e && e.stack || e) };
@@ -526,7 +577,8 @@ def _python(case: dict) -> dict:
         "name": CS.set_name(shown), "yaml": text, "read": _attempt(lambda: CS.read_set(text)),
         "hand": [_attempt(lambda raw=raw: CS.clean_set(raw)) for raw in _hand(random.Random(case["seed"]), good)],
         "classes": [CS.layer_class(*q) for q in case["layers"]],
-        "rates": [CS.evidence_rate(*q) for q in case["rates"]]}))
+        "rates": [CS.evidence_rate(*q) for q in case["rates"]], "review": CS.set_review(fitted, config),
+        "review_adopted": CS.set_review(fitted, CS.apply_set(config, adopted["ok"])) if "ok" in adopted else None}))
 
 
 SEEDS = range(24)

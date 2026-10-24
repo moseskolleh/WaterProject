@@ -59,8 +59,8 @@ from bisect import bisect_left, bisect_right
 import yaml
 
 from .config import Config, VESConfig
-from .ledger import SUITABILITY_PARTS, _name
-from .text import phrase
+from .ledger import SUITABILITY_PARTS, _name, _share
+from .text import phrase, phrase_table
 
 __all__ = [
     "EDGES",
@@ -84,6 +84,7 @@ __all__ = [
     "read_set",
     "set_changes",
     "set_name",
+    "set_review",
     "set_yaml",
     "unit_edges",
 ]
@@ -628,6 +629,88 @@ def set_changes(s: dict) -> list[str]:
                           thickness=value["aquifer_thickness"], fit=value["resistivity_fit"],
                           overburden=value["overburden"], fracture=value["basal_fracture"]))
     return out
+
+
+def set_review(candidate: dict, config: Config | None = None) -> dict:
+    """What a fitted set holds, before anyone adopts it, set beside the set
+    in force: what it was fitted to and left out, what it fits, and a table
+    each of the priors, the edges and the weights, in force and fitted.
+
+    The apps show it on the Portfolio page above the name its adopter
+    types. ``config`` is the configuration it was fitted with, whose set in
+    force the fit started its edges and weights from. Returns ``title``,
+    ``summary`` (sentences), ``tables`` (each with ``key``, ``caption``,
+    ``header`` and ``rows`` of text) and ``adoptable``: whether it fits
+    anything, and so whether there is anything to adopt.
+    """
+    from .siting.odds import prior_for
+
+    config = config or Config()
+    held = in_force(config)
+    minimum = int(config.ledger.fit_min_boreholes)
+    prior, edges, weights = candidate["prior"], candidate["edges"], candidate["weights"]
+    summary = [phrase("calibration_sets.review_lead", n=len(candidate["boreholes"]),
+                      rate=candidate["success_yield_m3_per_h"] or 0.0)]
+    left = candidate["left_out"]
+    if left["unknown"] or left["definition"]:
+        summary.append(phrase("calibration_sets.review_left_out", unknown=left["unknown"],
+                              definition=left["definition"]))
+    summary.append(phrase("calibration_sets.review_fitted", priors=sum(1 for r in prior if r["fitted"]),
+                          rows=len(prior), edges=sum(1 for r in edges if r["fitted"]), edge_rows=len(edges),
+                          minimum=minimum))
+    if weights is not None and weights["fitted"]:
+        summary.append(phrase("calibration_sets.review_weights", right=_share(weights["right"]),
+                              pairs=weights["successes"] * weights["failures"],
+                              right_base=_share(weights["right_base"] or 0.0)))
+    elif weights is not None:
+        summary.append(phrase("calibration_sets.review_weights_few", successes=weights["successes"],
+                              failures=weights["failures"], minimum=int(config.ledger.fit_weights_min_each)))
+    adoptable = any(r["fitted"] for r in prior + edges) or bool(weights is not None and weights["fitted"])
+    summary.append(phrase("calibration_sets.review_in_force", name=set_name(held)))
+    summary.append(phrase("calibration_sets.review_adopt" if adoptable else "calibration_sets.review_nothing"))
+
+    rate = float(config.odds.success_yield_m3_per_h)
+    prior_rows = []
+    for row in prior:
+        ground = (phrase("calibration_sets.ground_class", code=row["bgs_code"]) if row["glg"] == "*"
+                  else phrase("calibration_sets.ground_combination", code=row["bgs_code"], glg=row["glg"]))
+        now = prior_for(row["bgs_code"], row["glg"] if row["glg"] != "*" else None, rate, config.calibration)
+        fitted = (phrase("calibration_sets.cell_rate_worth", p=_share(row["rate"]), n=row["effective_n"])
+                  if row["fitted"] else phrase("calibration_sets.cell_too_few", m=row["boreholes"], minimum=minimum))
+        prior_rows.append([ground, str(row["boreholes"]), str(row["successes"]),
+                           phrase("calibration_sets.cell_rate", p=_share(row["base_rate"])),
+                           phrase("calibration_sets.cell_rate", p=_share(now["rate"])), fitted])
+    tables = [{"key": "prior", "caption": phrase("calibration_sets.prior_caption"),
+               "header": [phrase("calibration_sets.prior_col_ground"), phrase("calibration_sets.prior_col_boreholes"),
+                          phrase("calibration_sets.prior_col_succeeded"), phrase("calibration_sets.prior_col_table"),
+                          phrase("calibration_sets.prior_col_in_force"), phrase("calibration_sets.prior_col_fitted")],
+               "rows": prior_rows}]
+    names = phrase_table("calibration_sets.edge_names")
+    edge_rows = []
+    for row in edges:
+        fitted = (phrase("calibration_sets.cell_edge", value=row["value"], misread=row["misread"]) if row["fitted"]
+                  else phrase("calibration_sets.cell_edge_too_few", m=row["boreholes"], minimum=minimum))
+        edge_rows.append([row["glg"], names[row["edge"]],
+                          phrase("calibration_sets.cell_layers", below=row["below"], above=row["above"]),
+                          phrase("calibration_sets.cell_edge", value=row["base"], misread=row["misread_base"]), fitted])
+    tables.append({"key": "edges", "caption": phrase("calibration_sets.edges_caption"),
+                   "header": [phrase("calibration_sets.edges_col_unit"), phrase("calibration_sets.edges_col_edge"),
+                              phrase("calibration_sets.edges_col_layers"),
+                              phrase("calibration_sets.edges_col_in_force"),
+                              phrase("calibration_sets.edges_col_fitted")],
+                   "rows": edge_rows})
+    if weights is not None:
+        parts = phrase_table("calibration_sets.part_names")
+        tables.append({"key": "weights", "caption": phrase("calibration_sets.weights_caption"),
+                       "header": [phrase("calibration_sets.weights_col_part"),
+                                  phrase("calibration_sets.weights_col_in_force"),
+                                  phrase("calibration_sets.weights_col_fitted")],
+                       "rows": [[parts[key], phrase("calibration_sets.cell_weight", w=weights["base"][key]),
+                                 phrase("calibration_sets.cell_weight", w=weights["value"][key])
+                                 if weights["fitted"] else phrase("calibration_sets.cell_not_fitted")]
+                                for key in SUITABILITY_PARTS]})
+    return {"title": phrase("calibration_sets.review_title", fitted_on=candidate["fitted_on"]),
+            "summary": summary, "tables": tables, "adoptable": adoptable}
 
 
 # ------------------------------------------------------------- the file

@@ -107,6 +107,9 @@
         date: '', supervisor: '', contractor: '', country: 'Sierra Leone',
       },
       config: {},
+      /* the calibration set in force in this browser (PLAN.md step 5.3),
+       * null for the provisional default: see keepBrowserState */
+      calibration: null,
       sources: {},
       ves: { preferredOrder: [] },
       pumping: { manualDischarges: {} },
@@ -299,6 +302,9 @@
     portfolio: null, extraction: null,
     /* the ledgers of the portfolio's files, by the index of their summaries */
     portfolioLedgers: null,
+    /* a calibration set fitted on the Portfolio page and under review: the
+     * set and what it was fitted from (calibrationSetsCard) */
+    calibrationCandidate: null,
   };
 
   /* ------------------------------------------------------------------ chrome */
@@ -538,7 +544,11 @@
   /* ------------------------------------------------------------- computation */
 
   function config() {
-    return C.withConfig(store.get('config'));
+    /* the calibration set in force, refused unless a named person adopted
+     * it, as a project file's own settings are not */
+    var held = store.get('calibration');
+    return C.withConfig(held ? Object.assign({}, store.get('config'), { calibration: held })
+      : store.get('config'));
   }
 
   /* Rebuild every derived result from the stored sources. Called after any
@@ -892,6 +902,8 @@
      * project now holds it: a corrected log corrects it */
     var ledger = currentLedger();
     delete state.ledger;
+    /* the calibration set in force belongs to this browser, not the project */
+    delete state.calibration;
     return {
       format: 'groundwater-toolkit-project',
       schema: C.PROJECT_SCHEMA,
@@ -925,13 +937,19 @@
    * sample must not be what ends it: readings taken at the well, the peg or
    * the rig cannot be taken again once the crew has packed up. The one on this device is carried into the project opened, even over
    * one the project file brings, since the file is still on disk and the
-   * test here is not. Only "Reset everything" clears it. */
+   * test here is not. Only "Reset everything" clears it.
+   *
+   * The calibration set in force (PLAN.md step 5.3) belongs to this browser
+   * too, and stays in force for every project or sample opened. A project
+   * file never brings one: a set is put in force only on the Portfolio
+   * page, where a named person adopts it. */
   var FIELD_SESSIONS = ['pumpCopilot', 'vesCopilot', 'drillCopilot'];
 
-  function keepFieldSessions(next) {
+  function keepBrowserState(next) {
     FIELD_SESSIONS.forEach(function (key) {
       if (store.state[key]) next[key] = store.state[key];
     });
+    next.calibration = store.state.calibration || null;
     return next;
   }
 
@@ -965,7 +983,7 @@
     if (state.extraction) delete state.extraction.apiKey;
     stopInversionsForNewProject();
     forgetTerrain();
-    store.replace(keepFieldSessions(migrateLoadedState(Object.assign(blankState(), state))));
+    store.replace(keepBrowserState(migrateLoadedState(Object.assign(blankState(), state))));
     applyTheme();
     inversionsStopped = false;
     /* any inversion still needed is started in here, before the page is
@@ -1011,7 +1029,7 @@
     });
     stopInversionsForNewProject();
     forgetTerrain();
-    store.replace(keepFieldSessions(fresh));
+    store.replace(keepBrowserState(fresh));
     inversionsStopped = false;
     await recompute();
     renderChrome();
@@ -1144,11 +1162,14 @@
       var outcome = outcomes[i];
       if (!outcome || !outcome.result) return;
       results.push(outcome.result);
-      interpretations.push(C.interpretModel(sounding, outcome.result.model, cfg));
+      /* read by the edges the calibration set in force fitted for the
+       * geology unit under the sounding, if any */
+      interpretations.push(C.interpretModel(sounding, outcome.result.model,
+        C.configForSounding(cfg, sounding)));
     });
     derived.inversions = results;
     derived.interpretations = interpretations;
-    C.rankInterpretations(interpretations, store.get('ves.preferredOrder'));
+    C.rankInterpretations(interpretations, store.get('ves.preferredOrder'), cfg.ves);
   }
 
   /* After a recompute has read the soundings: put the cache's inversions of
@@ -1325,7 +1346,8 @@
         var which = id + (n > 1 ? ' (' + (t + 1) + ' of ' + n + ')' : '');
         workProgress(job, t / n, which);
         try {
-          var range = await engine.sampleRange(sounding, inversion, cfg, {
+          /* the models read by the edges the sounding itself is read by */
+          var range = await engine.sampleRange(sounding, inversion, C.configForSounding(cfg, sounding), {
             onProgress: function (fraction, label) {
               workProgress(job, (t + fraction) / n, which + ', ' + label);
             },
@@ -3497,7 +3519,8 @@
           function (value) {
             store.set('ves.preferredOrder', value.split(',')
               .map(function (s) { return s.trim(); }).filter(Boolean));
-            C.rankInterpretations(derived.interpretations, store.get('ves.preferredOrder'));
+            C.rankInterpretations(derived.interpretations, store.get('ves.preferredOrder'),
+              config().ves);
             render();
           })),
     ]));
@@ -6927,6 +6950,7 @@
     if (!summaries.length) {
       nodes.push(S.empty('Load two or more saved project files to build the ' +
         'portfolio: a status map, a comparison table and the programme figures.'));
+      nodes.push(calibrationSetsCard([]));
       return nodes;
     }
 
@@ -7044,8 +7068,115 @@
       ]) : null,
     ].filter(Boolean)));
     if (pooled.length) nodes.push(calibrationCard(pooled));
+    nodes.push(calibrationSetsCard(pooled));
     return nodes;
   };
+
+  /* The calibration set in force in this browser (PLAN.md step 5.3): its
+   * name and what it changes, to download, to replace with a file or to
+   * return to the provisional default; and with pooled ledgers, a set fitted
+   * to them and reviewed beside it, for a named person to adopt and put in
+   * force. Nothing changes until someone does. */
+  function calibrationSetsCard(pooled) {
+    var cfg = config();
+    var held = C.inForce(cfg);
+    var changes = C.setChanges(held);
+    /** @type {Array<Node|null>} */
+    var body = [
+      el('p.muted', C.phrase('calibration_sets.page_lead')),
+      el('p', C.phrase('calibration_sets.page_in_force', { name: C.setName(held) })),
+      changes.length ? el('ul', changes.map(function (line) { return el('li', line); })) : null,
+      el('div.btn-row', [
+        button(C.phrase('calibration_sets.page_download'), function () {
+          S.download('calibration.yaml', C.setYaml(held), 'application/x-yaml');
+        }),
+        held.version !== 0 ? button(C.phrase('calibration_sets.page_default'), function () {
+          putSetInForce(C.defaultSet());
+        }, { variant: 'ghost' }) : null,
+      ]),
+      field(C.phrase('calibration_sets.page_load'), button(C.phrase('calibration_sets.page_load_button'),
+        loadSetFile, { variant: 'ghost' })),
+    ];
+    if (!pooled.length) {
+      body.push(el('p.muted', C.phrase('calibration_sets.page_fit_none')));
+      return card(C.phrase('calibration_sets.page_heading'), body.filter(Boolean));
+    }
+    /* a fit is reviewed while the files it was fitted to and the set it was
+     * fitted under are the ones on the page */
+    var basis = JSON.stringify([pooled, held]);
+    body.push(el('div.btn-row', [
+      button(C.phrase('calibration_sets.page_fit'), function () {
+        derived.calibrationCandidate = { set: C.fitSet(pooled, localDate(), cfg), basis: basis };
+        render();
+      }, { title: C.phrase('calibration_sets.page_fit_help') }),
+    ]));
+    var fitted = derived.calibrationCandidate;
+    if (fitted && fitted.basis === basis) body.push(setReviewNode(fitted.set, held, cfg));
+    return card(C.phrase('calibration_sets.page_heading'), body.filter(Boolean));
+  }
+
+  /* A fitted set's review beside the set in force, and where it fits
+   * anything, the name of whoever adopts it and the button that does. */
+  function setReviewNode(candidate, held, cfg) {
+    var review = C.setReview(candidate, cfg);
+    var adopter = S.textInput('', function () {},
+      { 'aria-label': C.phrase('calibration_sets.page_adopter') });
+    return el('div.calibration-review', [
+      el('h3', review.title),
+      review.summary.map(function (text) { return el('p', text); }),
+      review.tables.map(function (table) {
+        return [el('p.muted', table.caption), S.table(table.header, table.rows)];
+      }).flat(),
+      review.adoptable ? field(C.phrase('calibration_sets.page_adopter'), adopter,
+        C.phrase('calibration_sets.page_adopter_help')) : null,
+      review.adoptable ? el('div.btn-row', [
+        button(C.phrase('calibration_sets.page_adopt'), function () {
+          var adopted;
+          try {
+            adopted = C.adoptSet(candidate, /** @type {HTMLInputElement} */ (adopter).value,
+              localDate(), held);
+          } catch (e) {
+            S.toast(e.message, 'error');
+            return;
+          }
+          if (putSetInForce(adopted)) derived.calibrationCandidate = null;
+        }),
+      ]) : null,
+    ].flat().filter(Boolean));
+  }
+
+  /* Put the set s in force in this browser, or say why not; true where it
+   * is. Every page reads by it from here, and the survey already inverted is
+   * read by it again. */
+  function putSetInForce(s) {
+    var checked;
+    try {
+      checked = C.checkInForce(s);
+    } catch (e) {
+      S.toast(e.message, 'error');
+      return false;
+    }
+    store.set('calibration', checked.version === 0 ? null : checked);
+    S.toast(C.phrase('calibration_sets.page_put_in_force', { name: C.setName(checked) }), 'ok');
+    recompute().then(render);
+    render();
+    return true;
+  }
+
+  /* A calibration.yaml, read whole or refused, put in force. */
+  async function loadSetFile() {
+    var file = await S.pickFile('.yaml,.yml');
+    if (!file) return;
+    var raw;
+    try {
+      raw = S.parseYaml(await S.readFile(file, 'text'));
+    } catch (e) {
+      S.toast(C.phrase('calibration_sets.unreadable',
+        { why: C.phrase('calibration_sets.why_not_mapping') }), 'error');
+      return;
+    }
+    putSetInForce(raw);
+  }
 
   /* The calibration report over the pooled ledgers (PLAN.md step 5.2): its
    * summary and two figures on the page, and the whole report, with the

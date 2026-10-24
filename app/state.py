@@ -31,7 +31,11 @@ Results (plain state, written by a page or by the recompute on load)
     ``geolibre_area``, ``geolibre_layers``; the Portfolio page's own
     ``geolibre_portfolio``), the Portfolio page's calibration report
     (``calibration_report``: its path and a digest of the pooled ledgers it
-    was built from, offered only while they are the ones on the page), the
+    was built from, offered only while they are the ones on the page), its
+    calibration set fitted and under review (``calibration_candidate``: the
+    set and a digest of the pooled ledgers and the set in force it was
+    fitted under, reviewed only while both hold) and the sentence its last
+    put-in-force left for the next run (``calibration_told``), the
     topographic map's source and read report
     (``topo_source``, ``topo_report``) and what it was drawn from
     (``topo_inputs``: the elevation files' upload ids and the source
@@ -45,6 +49,13 @@ Results (plain state, written by a page or by the recompute on load)
     ``proc_variations``, ``artifacts`` (built files, label -> path; a
     project load takes the outgoing site's maps off it),
     ``project_summary``, ``inversion_cache`` and ``recompute_diagnostics``.
+
+The calibration set in force (session-wide, PLAN.md step 5.3)
+    ``calibration_set`` (``shared.CALIBRATION_SET``): the set a named
+    person adopted, or loaded from a calibration.yaml, on the Portfolio
+    page; absent or None for the provisional default. ``shared.app_config``
+    puts it in force on every page. It belongs to the session, not to a
+    project: no project file carries it, and opening one leaves it in force.
 
 Project inputs (saved in the project file)
     Every key starting with one of ``groundwater.project_io.PERSIST_PREFIXES``

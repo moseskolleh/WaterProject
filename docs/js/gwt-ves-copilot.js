@@ -475,7 +475,7 @@
       if (run !== preview.run) return;
       preview.result = result;
       preview.resultKey = key;
-      preview.interp = C.interpretModel(target, result.model, cfg);
+      preview.interp = C.interpretModel(target, result.model, C.configForSounding(cfg, target));
       preview.status = 'done';
       drawPreview();
       drawCurve();

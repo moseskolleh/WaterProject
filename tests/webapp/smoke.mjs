@@ -5718,6 +5718,110 @@ await withPage(async (page, base, consoleErrors) => {
     ledgerFlow.rokelReport.named === 0 && ledgerFlow.report.named === 2,
     JSON.stringify([ledgerFlow.rokelReport, ledgerFlow.report]));
 
+  // Calibration sets (PLAN.md step 5.3) on the Portfolio page: a set fitted
+  // to pooled ledgers on the Rokel survey's geology unit, reviewed, refused
+  // without a name, adopted by one and put in force; the Rokel survey read
+  // by it again; the set kept out of project files and over a project
+  // opened; downloaded, dropped for the default and loaded back from its
+  // file, and a set nobody adopted refused.
+  const sets = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const named = (title) => [...document.querySelectorAll('#page-host .card')]
+      .find((c) => (c.querySelector('.card-title') || {}).textContent === title);
+    const press = (label) => [...named(C.phrase('calibration_sets.page_heading')).querySelectorAll('button')]
+      .find((b) => b.textContent === label).click();
+    const basement = () => (app.derived.interpretations || [])
+      .filter((i) => i.sounding_id === 'A (1)').map((i) => i.depth_to_basement_m)[0];
+    const settled = async (want) => {
+      for (let t = 0; t < 400 && !(basement() !== undefined && want(basement())); t++) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      return basement();
+    };
+    const log = [[0, 2, 'laterite'], [2, 8, 'clay'], [8, 22, 'weathered'], [22, 50, 'basement']];
+    const layers = [[0, 2, 900], [2, 8, 12], [8, 22, 140], [22, null, 2400]];
+    const entries = [];
+    for (let k = 0; k < 30; k++) {
+      const success = k % 3 !== 0;
+      entries.push({ id: 'set' + k, before_outcome: true, recorded_on: '2026-03-01', toolkit: 'smoke',
+        point: { sounding_id: 'VES ' + k },
+        prediction: { investigation_depth_m: 60, layers: layers,
+          suitability: { aquifer_thickness: 0.5, resistivity_fit: 0.5, overburden: 0.5,
+            basal_fracture: success ? 0.9 : 0.1 },
+          odds: { probability: 0.6, prior: 0.55, bgs_code: 'U-M/H', glg: 'Qe' } },
+        outcome: { total_depth_m: 50, success: success, success_yield_m3_per_h: 1, success_basis: 'tested',
+          intervals: log } });
+    }
+    const toasts = [], got = [];
+    const toast = support.toast, download = support.download, pickFile = support.pickFile;
+    support.toast = (message, tone) => { toasts.push([message, tone]); };
+    support.download = (name, data) => { got.push({ name, data }); };
+    const out = {};
+    try {
+      out.before = await settled(() => true);
+      await app.goto('portfolio');
+      const card = () => named(C.phrase('calibration_sets.page_heading'));
+      out.empty = card().textContent.includes(C.phrase('calibration_sets.page_fit_none')) &&
+        card().textContent.includes(C.phrase('calibration_sets.page_in_force', { name: C.setName(C.defaultSet()) }));
+      app.derived.portfolio = [{ community: 'Sets', district: 'Port Loko' }];
+      app.derived.portfolioLedgers = [{ drilled: null, entries: entries }];
+      app.render();
+      press(C.phrase('calibration_sets.page_fit'));
+      out.review = card().textContent.includes('It uses 30 boreholes from the pooled ledgers') &&
+        card().textContent.includes('580 ohm-m, 0 misread');
+      press(C.phrase('calibration_sets.page_adopt'));
+      out.unnamed = [app.store.get('calibration'), toasts[toasts.length - 1]];
+      card().querySelector('.calibration-review input').value = '  A. Kamara ';
+      press(C.phrase('calibration_sets.page_adopt'));
+      const held = app.store.get('calibration');
+      out.adopted = held && [held.version, held.adopted_by];
+      out.after = await settled((v) => v !== null);
+      out.shown = card().textContent.includes(C.phrase('calibration_sets.page_in_force', { name: C.setName(held) }));
+      out.notSaved = !('calibration' in app.projectPayload().state);
+      const payload = app.projectPayload();
+      payload.state.calibration = C.fitSet([], '2026-01-01');
+      await app.loadProject(JSON.stringify(payload));
+      out.keptOverLoad = app.store.get('calibration') && app.store.get('calibration').version === 1;
+      await app.goto('portfolio');
+      app.derived.portfolio = [{ community: 'Sets', district: 'Port Loko' }];
+      app.derived.portfolioLedgers = [{ drilled: null, entries: entries }];
+      app.render();
+      press(C.phrase('calibration_sets.page_download'));
+      out.file = got.length && got[0].name === 'calibration.yaml' && got[0].data === C.setYaml(held);
+      press(C.phrase('calibration_sets.page_default'));
+      out.dropped = app.store.get('calibration') === null;
+      out.back = await settled((v) => v === null);
+      support.pickFile = async () => new File([C.setYaml(held)], 'calibration.yaml');
+      press(C.phrase('calibration_sets.page_load_button'));
+      for (let t = 0; t < 200 && !app.store.get('calibration'); t++) await new Promise((r) => setTimeout(r, 25));
+      out.loaded = JSON.stringify(app.store.get('calibration')) === JSON.stringify(held);
+      support.pickFile = async () => new File([C.setYaml(C.fitSet([], '2026-01-01'))], 'calibration.yaml');
+      const said = toasts.length;
+      press(C.phrase('calibration_sets.page_load_button'));
+      for (let t = 0; t < 200 && toasts.length === said; t++) await new Promise((r) => setTimeout(r, 25));
+      out.refused = [toasts[toasts.length - 1], app.store.get('calibration').version];
+    } finally {
+      app.store.set('calibration', null);
+      await app.recompute();
+      support.toast = toast;
+      support.download = download;
+      support.pickFile = pickFile;
+      app.derived.portfolio = null;
+      app.derived.portfolioLedgers = null;
+    }
+    return out;
+  });
+  check('calibration sets: a set fitted on the Portfolio page is reviewed, and nothing changes until a ' +
+    'named person adopts it; then it is in force, and the Rokel survey is read by its basement edge',
+    sets.empty && sets.review && sets.unnamed[0] === null && sets.unnamed[1][1] === 'error' &&
+    JSON.stringify(sets.adopted) === '[1,"A. Kamara"]' && sets.shown &&
+    sets.before === null && Math.abs(sets.after - 1.02) < 0.01, JSON.stringify(sets));
+  check('calibration sets: the set in force belongs to this browser: no project file carries it, opening ' +
+    'one keeps it, and it is downloaded, dropped and loaded back from calibration.yaml; a set nobody ' +
+    'adopted is refused',
+    sets.notSaved && sets.keptOverLoad && sets.file && sets.dropped && sets.back === null && sets.loaded &&
+    sets.refused[1] === 1 && sets.refused[0][1] === 'error', JSON.stringify(sets));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

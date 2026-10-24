@@ -830,7 +830,7 @@ def render() -> None:
             )
         elif st.button("Build GeoLibre project", key="run_geolibre"):
             survey = st.session_state.get("ves_results")
-            suitability = assess_siting(survey[2]) if survey else None
+            suitability = assess_siting(survey[2], app_config().ves) if survey else None
             wp = st.session_state.get("wp_result") or {}
             radius = float(st.session_state.get("map_radius") or 40)
             project = geolibre.site_project(
