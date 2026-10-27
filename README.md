@@ -138,7 +138,14 @@ water quality guidelines.
     derived condition and overdue dates. Nothing is assumed working - a
     borehole nobody has reported on is unknown, not functional, and the
     functionality rate is only ever computed over the points whose
-    condition is actually known
+    condition is actually known. A sanitary inspection is recorded there
+    on WHO's ten-question form for a borehole with a handpump and read
+    with the E. coli count of the latest water sample into one risk
+    statement with its action priority, naming both dates. A question left
+    unanswered is not a no, so an incomplete form gives a range; a side
+    that is not known is said to be unknown and gives no priority. The
+    form's wording and the matrix's cells, which are a choice made here,
+    are listed in `QUESTIONS.md` for checking
 18. The survey as an interactive map, not only as a picture: both apps
     write a [GeoLibre](https://geolibre.app) project file - an open,
     plain-JSON map format - carrying the site, the scored drill targets,
@@ -331,6 +338,8 @@ groundwater/
     procurement.py  contract, variation orders, measurement and the interim
                   payment certificate
     registry.py   asset identifiers, maintenance events, derived condition
+    sanitary.py   the sanitary inspection form, scored and read with the
+                  E. coli count into one risk statement
     qr.py         a dependency-free QR encoder for the headworks plate
 ```
 

@@ -1,0 +1,133 @@
+# The sanitary inspection (PLAN.md step 7.5): a WHO form for a borehole with
+# a handpump, scored, and read with the latest E. coli count into one risk
+# statement. Written by sanitary.py and by the sanitary functions of
+# gwt-core.js, and the asset record report in both engines. Every entry is
+# read by its quoted id in both engines. The tables the words go with
+# (questions, bands, grades and the matrix) are data:
+# sanitary_inspection.csv and sanitary_risk.yaml. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# How an answer is shown, by the letter it is stored as.
+answer:
+  "Y": "Yes"
+  "N": "No"
+  "-": Not answered
+
+# The names of the score bands, by their key in sanitary_risk.yaml.
+band:
+  low: low
+  intermediate: intermediate
+  high: high
+  very_high: very high
+
+# What each E. coli grade means, in WHO's (1997) words for it.
+grade:
+  A: in conformity with the WHO guideline value
+  B: low risk
+  C: intermediate risk
+  D: high risk
+  E: very high risk
+
+# The action priority, after the legend of WHO's risk-to-health matrix, as
+# a sentence ends with it and as a short label.
+priority:
+  low: low risk, low action priority
+  higher: intermediate to high risk, higher action priority
+  urgent: very high risk, urgent action
+priority_short:
+  low: Low action priority
+  higher: Higher action priority
+  urgent: Urgent action
+priority_level:
+  low: low
+  higher: higher
+  urgent: urgent
+
+# Two ends of a range: two bands, two grades, two priorities.
+span: "{low} to {high}"
+dated_by: "{date} by {by}"
+
+# The inspection.
+inspection_complete: >-
+  Sanitary inspection of {when}: {yes:g} of {n:g} risks present, which the
+  form rates {band}.
+inspection_incomplete: >-
+  Sanitary inspection of {when}: {answered:g} of the form's {n:g} questions
+  answered, {yes:g} of them with the risk present, so the score is between
+  {low:g} and {high:g} of {n:g}, which the form rates {band}. The form is
+  incomplete, and a question left unanswered is not counted as a no.
+inspection_blank: >-
+  Sanitary inspection of {when}: none of the form's questions was answered,
+  so it gives no score.
+inspection_unreadable: >-
+  Sanitary inspection of {when}: its recorded answers do not fit a form this
+  toolkit has, so it gives no score.
+inspection_none: >-
+  No sanitary inspection with the form filled in is on record, so the
+  sanitary side of the risk is not known.
+inspection_later: >-
+  A later inspection, of {when}, has no answers to the form that can be
+  scored.
+inspection_several: >-
+  {count:g} forms were recorded on {date}; the one showing the most risk is
+  used.
+
+# The E. coli count, from the water quality sample.
+ecoli_counted: >-
+  {parameter} in the water sample ({date}): {count:g} per 100 mL, grade
+  {grade} ({words}).
+ecoli_none_found: >-
+  {parameter} in the water sample ({date}): none found in 100 mL, grade A
+  ({words}).
+ecoli_over: >-
+  {parameter} in the water sample ({date}): more than {bound:g} per 100 mL,
+  not counted, so grade {grades}.
+ecoli_at_least: >-
+  {parameter} in the water sample ({date}): at least {bound:g} per 100 mL,
+  not counted, so grade {grades}.
+ecoli_detected: >-
+  {parameter} in the water sample ({date}): found but not counted, so grade
+  {grades}.
+ecoli_unit: >-
+  {parameter} in the water sample ({date}) could not be graded: its unit,
+  {unit}, is not a count per 100 mL.
+ecoli_ungraded: >-
+  {parameter} in the water sample ({date}) could not be graded: {reason}.
+ecoli_missing: >-
+  The water sample ({date}) has no E. coli or thermotolerant coliform
+  result, so the microbiological side of the risk is not known.
+no_sample: >-
+  No water sample is on record for this borehole, so the microbiological
+  side of the risk is not known.
+undated: date not recorded
+
+# The two read together in the risk-to-health matrix (sanitary_risk.yaml).
+together: >-
+  Read together in the risk-to-health matrix: {priority}.
+together_range: >-
+  Read together in the risk-to-health matrix, the action priority is between
+  {low} and {high} on what is known, and it is taken at the worse until the
+  rest is known: {priority}.
+together_unknown: >-
+  The risk-to-health matrix needs both sides, so no action priority can be
+  read from it yet.
+together_floor: >-
+  The risk-to-health matrix needs both sides, so no action priority can be
+  read from it yet; on the side that is known it is at least {priority}.
+
+# The rest of the laboratory's verdict, which the matrix does not read.
+verdict: >-
+  The matrix reads faecal contamination only; the sample's verdict on
+  everything it tested is: {verdict}.
+
+# The asset record report's section.
+heading: Sanitary risk
+form_caption: "The sanitary inspection of {when}, as recorded on the form."
+col_number: "No."
+col_question: Question
+col_answer: Answer
+basis: >-
+  The form is the WHO form for a tubewell with a handpump, scored as the
+  number of risks present; the grades of E. coli are WHO's. Where the two
+  meet, each cell of the matrix is the worse of the two sides' own risk
+  words, a choice made in this toolkit rather than a copy of WHO's figure.

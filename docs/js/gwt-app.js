@@ -6724,6 +6724,8 @@
         ]),
       ]));
 
+      nodes.push(sanitaryCard(asset));
+
       if ((asset.events || []).length) {
         nodes.push(card('History', [
           S.table(['Date', 'Event', 'Note', 'Recorded by'],
@@ -6768,6 +6770,69 @@
     nodes.push(registryCard());
     return nodes;
   };
+
+  /* The WHO form for a borehole with a handpump, and the risk statement that
+   * reads the latest inspection with the E. coli count of the water quality
+   * sample on show (PLAN.md step 7.5). An inspection is recorded against the
+   * borehole like any other visit, so it is saved with the project and
+   * merges by content when two phones meet. */
+  function sanitaryCard(asset) {
+    var today = new Date().toISOString().slice(0, 10);
+    var risk = C.sanitaryRisk(asset, today, derived.assessment || null);
+    var words = C.phraseTable('sanitary.answer');
+    var questions = C.formQuestions();
+    var draft = { when: today, by: '', note: '',
+      answers: questions.map(function () { return '-'; }) };
+    var tone = risk.action === 'urgent' ? 'bad'
+      : (risk.action === 'higher' ? 'warn' : 'info');
+    var choices = ['-', 'Y', 'N'].map(function (k) { return { value: k, label: words[k] }; });
+    return card(C.phrase('sanitary.heading'), [
+      risk.action ? S.statRow([S.stat('Action priority',
+        C.phraseTable('sanitary.priority_short')[risk.action])]) : null,
+      el('div.callout.callout-' + tone, el('p.sanitary-statement', risk.statement)),
+      risk.inspection ? el('p.muted', C.phrase('sanitary.form_caption',
+        { when: risk.inspection.label })) : null,
+      risk.inspection ? S.table([C.phrase('sanitary.col_number'),
+        C.phrase('sanitary.col_question'), C.phrase('sanitary.col_answer')],
+      C.formRows(risk.inspection.answers, risk.inspection.form)) : null,
+      el('p.muted', C.phrase('sanitary.basis')),
+      el('h3', 'Record a sanitary inspection'),
+      el('p.muted', 'Answer each question as found at the wellhead: yes where ' +
+        'the risk is present. A question left unanswered is not counted as a ' +
+        'no, so an incomplete form gives a range of scores. The Streamlit app ' +
+        'has the same form on its Asset registry page.'),
+      el('div.field-row', [
+        field('Date of the inspection', S.textInput(draft.when, function (v) {
+          draft.when = String(v).trim();
+        }, { placeholder: 'YYYY-MM-DD', 'data-sanitary': 'when' }), ''),
+        field('Inspected by', S.textInput('', function (v) {
+          draft.by = String(v).trim();
+        }, { placeholder: 'Inspector' }), ''),
+      ]),
+    ].concat(questions.map(function (question, i) {
+      return field((i + 1) + '. ' + question, S.selectInput('-', choices, function (v) {
+        draft.answers[i] = v;
+      }, { 'data-sanitary': 'q' + (i + 1) }), '');
+    })).concat([
+      field('Note', S.textInput('', function (v) { draft.note = String(v); },
+        { placeholder: 'Anything else seen' }), ''),
+      el('div.btn-row', [
+        button('Record the inspection', function () {
+          if (C.isoDay(draft.when) === null) {
+            S.toast('The date should be written YYYY-MM-DD.', 'warn');
+            return;
+          }
+          var next = Object.assign({}, asset, {
+            events: C.mergeEvents(asset.asset_id, asset.events || [],
+              [C.inspectionEvent(draft.when, draft.answers.join(''), draft.by,
+                draft.note)]),
+          });
+          saveAsset(next);
+          S.toast('Recorded.', 'ok');
+        }),
+      ]),
+    ]));
+  }
 
   function lookupResult(typed) {
     if (!typed) return null;
@@ -6877,6 +6942,8 @@
            * repair team, so it says where to send it */
           context.areaNote = await areaNoteFor(asset);
           context.areaMaps = await areaFiguresFor(asset);
+          /* the sample whose E. coli count the sanitary risk reads */
+          context.assessment = derived.assessment || null;
         }
         var builder = kind === 'placard'
           ? await GWT.docx.assetPlacard(context)

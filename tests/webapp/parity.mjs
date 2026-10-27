@@ -4185,6 +4185,48 @@ await withPage(async (page, base, consoleErrors) => {
       failed.length === 0, failed.slice(0, 3).join('\n     '));
   }
 
+  // --- Sanitary inspection (PLAN.md step 7.5) ---
+  // The twins of groundwater/sanitary.py on make_reference.py's cases: the
+  // form, its bands, the grades and the matrix as the bundle carries them;
+  // forms scored and laid out; counts graded; and the latest inspection read
+  // with a sample's E. coli count into one statement, with the events as the
+  // registry merges them, all held whole.
+  {
+    const SN = R.sanitary;
+    const sanJs = await page.evaluate(({ SN }) => {
+      const C = GWT.core;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      return {
+        tables: GWT.data.sanitary, questions: C.formQuestions(),
+        cases: SN.cases.map((c) => attempt(() => {
+          const assessment = c.sample ? C.assessSample(c.sample) : null;
+          return { risk: C.sanitaryRisk({ asset_id: SN.asset_id, events: c.events }, c.today, assessment),
+            merged: C.mergeEvents(SN.asset_id, c.events) };
+        })),
+        forms: SN.forms.map((f) => attempt(() => ({ score: C.scoreAnswers(f.answers),
+          rows: C.formRows(f.answers) }))),
+        grades: SN.grades.map((g) => attempt(() => ({ grade: C.ecoliGrade(g.count),
+          above: C.ecoliGradesAbove(g.count, false), above_inclusive: C.ecoliGradesAbove(g.count, true) }))),
+      };
+    }, { SN });
+    const same = firstDifference({ tables: sanJs.tables, questions: sanJs.questions },
+      { tables: SN.tables, questions: SN.questions });
+    check('sanitary: the form, the bands, the grades and the matrix', !same, same);
+    const held = (label, got, list) => {
+      const failed = list.map((c, i) => {
+        const g = got[i];
+        if (!g || g.threw) return `[${c.name || i}] threw ${g ? g.threw : 'no answer'}`;
+        return firstDifference(g.ok, c.expect, `[${c.name || i}]`);
+      }).filter(Boolean);
+      check(`${label} (${list.length})`, failed.length === 0, failed.slice(0, 3).join('\n     '));
+    };
+    held('sanitary: forms scored and laid out', sanJs.forms, SN.forms);
+    held('sanitary: counts graded', sanJs.grades, SN.grades);
+    held('sanitary: the risk statement and the merged events', sanJs.cases, SN.cases);
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 

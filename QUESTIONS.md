@@ -101,3 +101,25 @@ need real project inputs or decisions to finish calibrating it.
    distances table mirrors regional practice (FGN/NWRI 2010) and
    should be checked against the Sierra Leone Ministry of Water
    Resources requirements.
+
+11. **The sanitary inspection form, the E. coli grades and the risk
+   matrix (added with PLAN.md step 7.5).** The form in
+   `groundwater/data/sanitary_inspection.csv` is WHO's ten-question form
+   for a tubewell with a handpump (Guidelines for Drinking-water Quality,
+   2nd edition, Volume 3, 1997). Nobody working on the toolkit had a copy
+   of the volume, so the wording was written from the form as field
+   manuals commonly reproduce it. Four things need someone with the
+   documents: (a) check the questions against the volume, against WHO's
+   newer sanitary inspection packages for small water supplies, which
+   revised the forms, and against any form the Ministry of Water
+   Resources or the district councils use, and say which one Sierra Leone
+   programmes should fill in; (b) confirm the score bands (0 to 2 low, 3
+   to 5 intermediate, 6 to 8 high, 9 and 10 very high) and the grades of
+   an E. coli count per 100 mL (A none, B 1 to 10, C 11 to 100, D 101 to
+   1000, E over 1000) in `sanitary_risk.yaml`; (c) check the cells of the
+   risk-to-health matrix in the same file against WHO's figure. They are a
+   choice made here, each the worse of the two sides' own risk words, and
+   the toolkit never states "no risk"; correct a cell and both apps
+   follow; (d) say whether forms for other sources (a protected spring, a
+   hand-dug well, a piped scheme) are wanted, since only the tubewell form
+   is bundled.

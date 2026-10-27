@@ -723,6 +723,58 @@ on the other pages - the borehole design, the pumping test and the
 water quality verdict - attach to the report automatically; the page
 shows what is attached before you build it.
 
+## 9a. Sanitary inspection
+
+In the browser app: [`#/registry`](index.html#/registry). In the
+Streamlit app: the Asset registry page.
+
+Once the borehole has an identifier (it needs a recorded position), the
+Asset registry page carries the **sanitary inspection** form: WHO's ten
+questions for a tubewell (a drilled borehole) with a handpump, such as
+whether a latrine is within 10 m, whether the apron is cracked and whether
+the pump is loose on its base. Answer each question as you find it at the
+wellhead: *Yes* where the risk is present, *No* where it is not. Leave a
+question *Not answered* if you could not see; it is not counted as a no.
+Enter the date and who inspected, then press *Record the inspection*. The
+inspection goes into the borehole's history like any other visit, so it is
+saved with the project, and the same form recorded on two phones merges
+into one record.
+
+The score is the number of risks present: 0 to 2 is low, 3 to 5
+intermediate, 6 to 8 high and 9 or 10 very high. A form with questions
+left open gives a range ("between 3 and 5 of 10") and says it is
+incomplete.
+
+Under the form, one statement reads the latest inspection with the
+E. coli (or thermotolerant coliform) count of the water quality sample
+loaded on the Water quality page, and names the date of each. The count
+is graded A (none in 100 mL), B (1 to 10), C (11 to 100), D (101 to 1000)
+or E (over 1000). The two are then read together in a risk-to-health
+matrix to give an action priority: low, higher or urgent. Three things
+to know when you read it:
+
+- **A side that is not known gives no priority.** With no sample loaded,
+  or no E. coli result in it, the statement says the microbiological side
+  is not known. With no inspection on the form, it says the sanitary side
+  is not known. The priority is given only where every possible answer on
+  the unknown side would give the same one (a count over 1000 is urgent
+  whatever the inspection says).
+- **A range is taken at its worse end.** An incomplete form, or a count
+  the laboratory did not put a number to ("TNTC", ">50"), can fall in
+  more than one cell; the statement says so and takes the worse until the
+  form is finished or the count is known.
+- **The matrix reads faecal contamination only.** The statement ends
+  with the sample's verdict on everything it tested, so an arsenic or
+  manganese failure is not hidden behind a low sanitary priority.
+
+The form's wording was written from WHO's 1997 surveillance volume as field
+manuals reproduce it, not checked against the volume. The cells of the
+matrix are a choice made in this toolkit (each is the worse of the two
+sides' own WHO risk words), not a copy of WHO's figure. Both are listed in
+`QUESTIONS.md` for someone with the documents to check. The asset record
+(.docx) carries the statement, the latest form as recorded and the
+reference.
+
 ## 10. Site maps
 
 In the browser app: [`#/site`](index.html#/site), and the terrain

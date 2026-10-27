@@ -35,6 +35,9 @@ from ..registry import (
     qr_payload,
 )
 from ..models import SiteMetadata
+from ..sanitary import form_rows, sanitary_risk
+from ..text import phrase
+from .citations import references_for
 from .context import add_area_section
 from .docx_utils import ReportBuilder
 
@@ -66,6 +69,10 @@ class AssetReportInputs:
     schedule: Schedule | None = None
     prepared_by: str = ""
     readiness: Any = None
+    #: The water quality assessment of the borehole's latest sample, whose
+    #: E. coli count the sanitary risk reads (PLAN.md step 7.5); None when
+    #: the project holds none.
+    quality: Any = None
 
 
 def _state(inputs: AssetReportInputs) -> AssetState:
@@ -162,6 +169,8 @@ def build_asset_record(inputs: AssetReportInputs, out_path: str | Path,
         else:
             rb.paragraph("Nothing is outstanding.")
 
+    _sanitary_section(rb, asset, today, inputs.quality)
+
     rb.heading("History")
     if asset.events:
         rows = []
@@ -181,4 +190,20 @@ def build_asset_record(inputs: AssetReportInputs, out_path: str | Path,
         rb.paragraph(
             "Nothing has ever been recorded against this borehole. That is "
             "not the same as nothing having happened to it.", bold=True)
+    rb.references(references_for("asset"))
     return rb.save(out_path)
+
+
+def _sanitary_section(rb: ReportBuilder, asset: Asset, today: date, quality) -> None:
+    """The sanitary risk statement, and the form it rests on as recorded."""
+    risk = sanitary_risk(asset, today, quality)
+    rb.heading(phrase("sanitary.heading"))
+    rb.paragraph(risk["statement"])
+    inspection = risk["inspection"]
+    if inspection is not None:
+        rb.table(form_rows(inspection["answers"], inspection["form"]),
+                 header=[phrase("sanitary.col_number"), phrase("sanitary.col_question"),
+                         phrase("sanitary.col_answer")],
+                 caption=phrase("sanitary.form_caption", when=inspection["label"]),
+                 col_widths_cm=[1.2, 11.0, 3.0])
+    rb.paragraph(phrase("sanitary.basis"), italic=True)

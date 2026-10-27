@@ -239,6 +239,54 @@ datasets:
         bytes: 4205
         sha256: dcad80623a886abf3b36ed763f1450f4ae399ef15d35abdc7c6de49a72608db9
 
+  - id: who_sanitary_inspection
+    name: WHO sanitary inspection form - tubewell with handpump
+    source: >-
+      The sanitary inspection form for a tubewell with a handpump, its risk
+      score bands, the grades of an E. coli count and the action priorities
+      of the risk-to-health matrix, from WHO's surveillance volume (PLAN.md
+      step 7.5).
+    reference: >-
+      World Health Organization (1997). Guidelines for Drinking-water
+      Quality, 2nd edition. Volume 3: Surveillance and Control of Community
+      Supplies. Geneva: WHO.
+    url: ""
+    version: "2nd ed., Vol. 3 (1997)"
+    retrieved: unrecorded
+    licence: unverified
+    licence_evidence: >-
+      No copy of the volume is committed here and its terms were not
+      checked. The form's ten questions were written from the form as field
+      manuals commonly reproduce it, not checked against the volume; the
+      bands and grades are short factual figures. Confirm the wording and
+      the terms before the form is printed under WHO's name.
+    attribution: >-
+      After World Health Organization, Guidelines for Drinking-water
+      Quality, 2nd edition, Volume 3 (1997).
+    share_alike: false
+    changes_made: >-
+      The questions written into a CSV, one row each; the bands, the grades
+      and a risk-to-health matrix into a YAML file. THE MATRIX'S CELLS ARE
+      THIS TOOLKIT'S CHOICE, not a transcription of WHO's figure: each is the
+      worse of the two sides' own WHO risk words, as the file says. Both
+      files say what of them was checked, and QUESTIONS.md item 11 asks for
+      the checks.
+    files:
+      - path: src/groundwater/data/sanitary_inspection.csv
+        bytes: 2232
+        sha256: 3195a209dd799a0a0978e55f1444ab633cab11ccd382f358dc2340958ab4dfd4
+        note: >-
+          The ten questions of the tubewell with handpump form, in order,
+          each answered yes where the risk is present.
+      - path: src/groundwater/data/sanitary_risk.yaml
+        bytes: 3053
+        sha256: e48dae5d46455ea7a9963240c80141f7632816fd18e292b5e701bb830a679985
+        note: >-
+          The form's score bands, the grades A to E of a count per 100 mL,
+          and the action priority of each grade and score. The bands and
+          grades are WHO's figures, not checked against the volume here; the
+          matrix's cells are a choice made here.
+
   - id: wpdx
     name: Water Point Data Exchange (WPdx+)
     source: WPdx+ dataset, fetched at runtime

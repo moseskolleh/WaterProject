@@ -2939,6 +2939,21 @@
       b.paragraph('Nothing is outstanding.');
     }
 
+    /* the sanitary risk statement, and the form it rests on as recorded
+     * (PLAN.md step 7.5) */
+    var risk = C.sanitaryRisk(asset, today, context.assessment || null);
+    b.heading(C.phrase('sanitary.heading'), 1);
+    b.paragraph(risk.statement);
+    if (risk.inspection) {
+      b.table(C.formRows(risk.inspection.answers, risk.inspection.form), {
+        header: [C.phrase('sanitary.col_number'), C.phrase('sanitary.col_question'),
+          C.phrase('sanitary.col_answer')],
+        caption: C.phrase('sanitary.form_caption', { when: risk.inspection.label }),
+        colWidthsCm: [1.2, 11.0, 3.0],
+      });
+    }
+    b.paragraph(C.phrase('sanitary.basis'), { italic: true });
+
     b.heading('History', 1);
     var events = (asset.events || []).slice().sort(function (a, c) {
       var aw = a.when || '9999', cw = c.when || '9999';
@@ -2961,6 +2976,7 @@
       b.paragraph('Nothing has ever been recorded against this borehole. That ' +
         'is not the same as nothing having happened to it.', { bold: true });
     }
+    b.references([REFERENCES.who_surveillance_1997]);
     return b;
   }
 

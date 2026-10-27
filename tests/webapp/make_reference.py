@@ -1684,6 +1684,7 @@ def build() -> dict:
     out["calibration"] = calibration_reference()
     out["calibration_sets"] = calibration_sets_reference()
     out["calibration_in_force"] = calibration_in_force_reference()
+    out["sanitary"] = sanitary_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -4427,6 +4428,107 @@ IN_FORCE_POSITIONS = [[166030.0, 930010.0, 29], [708958.4, 926355.5, 28], [None,
                       [250000.0, 900000.0, None]]
 IN_FORCE_MODELS = [[[400.0, 90.0, 2000.0, 5000.0], [2.0, 18.0, 10.0]], [[300.0, 25.0, 140.0, 4000.0], [1.5, 6.0, 20.0]],
                    [[600.0, 120.0, 1200.0], [3.0, 30.0]], [[250.0, 12.0, 2500.0], [2.0, 10.0]]]
+
+
+def sanitary_reference() -> dict:
+    """Sanitary inspection (PLAN.md step 7.5): forms scored and laid out as a
+    table, counts graded, and the latest inspection read with the E. coli
+    count of a sample into one statement, over every way each side can be
+    known, partly known or unknown. The cases carry their own inputs, so
+    parity.mjs gives the browser exactly these."""
+    from groundwater import sanitary as SAN
+    from groundwater.registry import Asset, merge_events
+
+    asset_id = "SL-WAR-8FEEVKQ-T"
+    forms = ["YNNYNNYNYN", "YNN--NYN-N", "----------", "NNNNNNNNNN", "YYYYYYYYYY",
+             "yn", "YNY?nnnnnN", ""]
+    counts = [0, 0.5, 1, 10, 10.5, 11, 100, 101, 1000, 1000.5, 25000]
+
+    def form(when, answers, by="", note=""):
+        return SAN.inspection_event(when, answers, by=by, note=note).as_dict()
+
+    inspections = {
+        "none": [],
+        "complete": [form("2024-05-20", "NNYNNNNNNN", by="A. Bangura")],
+        "intermediate": [form("2024-05-20", "YNNYNNYNYN", by=" M. Kolleh ")],
+        "very_high": [form("2024-05-20", "YYYYYYYYYN")],
+        "incomplete": [form("2024-05-20", "YNN--NYN-N")],
+        "nearly_blank": [form("2024-05-20", "Y---------")],
+        # the latest that scores, a later visit with no form after it, and a
+        # form dated after today
+        "later_unscored": [form("2023-11-02", "YYYYYYNNNN"), form("2024-02-01", "YNNNNNNNNN"),
+                           {"when": "2024-04-11", "kind": "inspection", "note": "looked"},
+                           form("2099-01-01", "YYYYYYYYYY")],
+        "same_day": [form("2024-05-20", "NNNNNNNNNN", by="A"), form("2024-05-20", "YYYNNNNNNN", by="B"),
+                     form("2024-05-20", "YYYNNNNNNN", by="C")],
+        "blank": [form("2024-05-20", "----------")],
+        "unreadable": [{"when": "2024-05-20", "kind": "inspection", "form": "tubewell_handpump",
+                        "answers": "YN"},
+                       {"when": "2024-05-21", "kind": "inspection", "form": "hand_dug_well",
+                        "answers": "YNNYNNYNYN"}],
+        "note_only": [{"when": "2024-05-20", "kind": "inspection", "note": "apron cracked"},
+                      {"when": "bad date", "kind": "inspection", "form": "tubewell_handpump",
+                       "answers": "YYYYYYYYYY"}],
+    }
+    panel = [{"parameter": "Arsenic", "value": 0.001, "unit": "mg/L"},
+             {"parameter": "Fluoride", "value": 0.3, "unit": "mg/L"},
+             {"parameter": "Nitrate (as NO3)", "value": 5.0, "unit": "mg/L"}]
+
+    def sample(*ecoli, when="2024-05-21"):
+        return {"site": {"community": "Ref"}, "flags": [], "sample_date": when,
+                "results": [dict(r) for r in ecoli] + [dict(r) for r in panel]}
+
+    def ecoli(value=None, unit="CFU/100 mL", parameter="E. coli", **kw):
+        return {"parameter": parameter, "value": value, "unit": unit, **kw}
+
+    samples = {
+        "none": None,
+        "clean": sample(ecoli(0.0)),
+        "counted": sample(ecoli(40.0)),
+        "heavy": sample(ecoli(2400.0)),
+        "below": sample(ecoli(None, below_detection=True, detection_limit=1.0)),
+        "absent": sample(ecoli(None, below_detection=True)),
+        "over": sample(ecoli(None, greater_than=50.0)),
+        "at_least": sample(ecoli(None, greater_than=1000.0, greater_than_inclusive=True)),
+        "present": sample(ecoli(None, greater_than=0.0)),
+        "coarse": sample(ecoli(None, below_detection=True, detection_limit=10.0)),
+        "missing": sample(),
+        "per_ml": sample(ecoli(2.0, unit="CFU/mL", parameter="Thermotolerant coliforms")),
+        "two_rows": sample(ecoli(0.0), ecoli(150.0, parameter="Faecal coliforms")),
+        "undated": sample(ecoli(3.0), when=""),
+        "bad_unit": sample(ecoli(3.0, unit="wibbles")),
+        "chemistry": sample(ecoli(0.0), {"parameter": "Arsenic", "value": 0.05, "unit": "mg/L"}),
+    }
+    pairs = ([(name, "clean") for name in inspections] + [(name, "none") for name in inspections]
+             + [("complete", name) for name in samples] + [("incomplete", name) for name in samples]
+             + [("none", name) for name in samples])
+    cases = []
+    for inspection, which in pairs:
+        raw = samples[which]
+        assessment = None
+        if raw is not None:
+            assessment = assess_sample(WaterQualitySample(
+                site=SiteMetadata(community="Ref"), sample_date=raw["sample_date"],
+                results=[WaterQualityResult(**r) for r in raw["results"]]))
+        events = inspections[inspection]
+        asset = Asset(asset_id=asset_id, events=merge_events(asset_id, events))
+        cases.append({
+            "name": f"{inspection}/{which}", "events": events, "sample": raw,
+            "today": "2024-06-01",
+            "expect": {"risk": SAN.sanitary_risk(asset, "2024-06-01", assessment),
+                       "merged": [e.as_dict() for e in merge_events(asset_id, events)]},
+        })
+    return clean({
+        "asset_id": asset_id,
+        "cases": cases,
+        "forms": [{"answers": a, "expect": {"score": SAN.score_answers(a), "rows": SAN.form_rows(a)}}
+                  for a in forms],
+        "grades": [{"count": c, "expect": {
+            "grade": SAN.ecoli_grade(c), "above": list(SAN.ecoli_grades_above(c, False)),
+            "above_inclusive": list(SAN.ecoli_grades_above(c, True))}} for c in counts],
+        "questions": SAN.form_questions(),
+        "tables": SAN.sanitary_tables(),
+    })
 
 
 def calibration_in_force_reference() -> dict:
