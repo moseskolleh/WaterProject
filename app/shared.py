@@ -16,6 +16,7 @@ import streamlit.components.v1 as components
 
 import groundwater
 import groundwater.ves as _ves
+from groundwater.calibration_sets import apply_set, check_in_force, config_for_sounding
 from groundwater.config import Config
 from groundwater.costing import (
     CostingInputs,
@@ -1234,12 +1235,52 @@ def _status_chip() -> tuple[str, str]:
     return label, css
 
 
+#: The session's key for the calibration set in force (PLAN.md step 5.3):
+#: one a named person adopted, put in force on the Portfolio page; absent
+#: or None for the provisional default.
+CALIBRATION_SET = "calibration_set"
+
+
 def app_config() -> Config:
-    """Config with the sidebar branding applied (per rerun, not global)."""
+    """Config with the sidebar branding applied (per rerun, not global), and
+    the calibration set in force for the session."""
     cfg = Config()
     cfg.style.organisation = st.session_state.get("org_name", "") or ""
     cfg.style.organisation_details = st.session_state.get("org_details", "") or ""
-    return cfg
+    held = st.session_state.get(CALIBRATION_SET)
+    return apply_set(cfg, held) if held is not None else cfg
+
+
+def _edges_read(config: Config, soundings) -> list:
+    """The resistivity edges each sounding is read by under ``config``."""
+    return [(c.ves.clay_max_rho, c.ves.fresh_basement_min_rho)
+            for c in (config_for_sounding(config, sounding) for sounding in soundings)]
+
+
+def put_set_in_force(s) -> None:
+    """Put the calibration set ``s`` in force for the session, or refuse it
+    with ValueError, in the sentence the page shows, unless a named person
+    adopted it or it is the provisional default.
+
+    The survey on show is read again by it: each sounding by the edges the
+    set fitted for the geology unit under it, and ranked by its weights. Its
+    sampled range of models is dropped where a sounding is read by other
+    edges than it was sampled with, to be sampled again on the VES page.
+    """
+    s = check_in_force(s)
+    before = app_config()
+    st.session_state[CALIBRATION_SET] = None if s["version"] == 0 else s
+    after = app_config()
+    held = st.session_state.get("ves_results")
+    if not held or not held[0]:
+        return
+    soundings, results, _ = held
+    interps = [_ves.interpret_model(sounding, result.model, config_for_sounding(after, sounding).ves)
+               for sounding, result in zip(soundings, results, strict=True)]
+    rank_interpretations(interps, config=after.ves)
+    st.session_state.ves_results = (soundings, results, interps)
+    if _edges_read(before, soundings) != _edges_read(after, soundings):
+        st.session_state.pop("ves_ranges", None)
 
 
 def reported_pump_intake(analysis) -> float | None:
@@ -1410,6 +1451,7 @@ def run_ves_inversion(soundings) -> None:
     """
     results = []
     interps = []
+    config = app_config()
     progress = st.progress(0.0)
     for i, sounding in enumerate(soundings):
         try:
@@ -1417,7 +1459,9 @@ def run_ves_inversion(soundings) -> None:
             # once: this module outlives a rerun, and the app's tests make
             # one sounding fail by patching groundwater.ves
             result = _ves.invert_sounding(sounding, CONFIG.ves)
-            interp = _ves.interpret_model(sounding, result.model, CONFIG.ves)
+            # read by the edges the calibration set in force fitted for the
+            # geology unit under the sounding, if any
+            interp = _ves.interpret_model(sounding, result.model, config_for_sounding(config, sounding).ves)
         except Exception as exc:  # noqa: BLE001 - one bad sounding is an error, not a crash
             # a bar left part full beside the error reads as a run still going
             progress.empty()
@@ -1435,7 +1479,7 @@ def run_ves_inversion(soundings) -> None:
     # rank before anything reads interp.rank: the Overview used to render
     # earlier in the run than the VES page that was the only thing ranking
     # them, so it named whichever sounding was parsed first as the drill target
-    rank_interpretations(interps)
+    rank_interpretations(interps, config=config.ves)
     st.session_state.ves_results = (soundings, results, interps)
     # only a stored siting result is a source change the wizard costing
     # prefill must follow; a failed run leaves a loaded project's grace
@@ -1470,7 +1514,7 @@ def first_point_survey():
     kept = st.session_state.get("ves_ranges")
     ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
     # by position, not id: two points can share an id
-    i = assess_siting(interps)[0].index
+    i = assess_siting(interps, app_config().ves)[0].index
     site = soundings[0].site
     odds = survey_odds([interps[i]], [ranges[i]], site.utm_zone, site.latlon, app_config())[0]
     return odds, ranges[i]
@@ -1492,7 +1536,7 @@ def survey_measurements(spread):
     ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
     site = soundings[0].site
     odds = survey_odds(interps, ranges, site.utm_zone, site.latlon, app_config())
-    ranking = [s.index for s in assess_siting(interps)]
+    ranking = [s.index for s in assess_siting(interps, app_config().ves)]
     return measurement_values(odds, ranking, spread.mean, spread.dry_mean)
 
 

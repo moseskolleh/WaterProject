@@ -252,7 +252,7 @@ def recompute_results(
                 # rank now: the dashboard reads interp.rank, and an unranked
                 # set leaves every rank None so "best" silently becomes
                 # "first parsed"
-                rank_interpretations(interps)
+                rank_interpretations(interps, config=config.ves)
                 out["ves_results"] = (kept, results, interps)
                 out["inversion_cache"] = entries
                 ok.append(ves_key)

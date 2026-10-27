@@ -24607,6 +24607,96 @@
     return out;
   }
 
+  /** calibration_sets.set_review: what a fitted set holds, before anyone
+   * adopts it, set beside the set in force: what it was fitted to and left
+   * out, what it fits, and a table each of the priors, the edges and the
+   * weights, in force and fitted; config is the one it was fitted with.
+   * @param {Rec} candidate
+   * @param {Config} [config]
+   * @returns {{title: string, summary: string[], tables: Rec[], adoptable: boolean}} */
+  function setReview(candidate, config) {
+    var cfg = config || defaultConfig();
+    var held = inForce(cfg);
+    var minimum = Math.trunc(Number(cfg.ledger.fit_min_boreholes));
+    var prior = candidate.prior, edges = candidate.edges, weights = candidate.weights;
+    var summary = [phrase('calibration_sets.review_lead', { n: candidate.boreholes.length,
+      rate: candidate.success_yield_m3_per_h || 0.0 })];
+    var left = candidate.left_out;
+    if (left.unknown || left.definition) {
+      summary.push(phrase('calibration_sets.review_left_out', { unknown: left.unknown,
+        definition: left.definition }));
+    }
+    function fittedCount(rows) { return rows.filter(function (r) { return r.fitted; }).length; }
+    summary.push(phrase('calibration_sets.review_fitted', { priors: fittedCount(prior),
+      rows: prior.length, edges: fittedCount(edges), edge_rows: edges.length, minimum: minimum }));
+    if (weights !== null && weights.fitted) {
+      summary.push(phrase('calibration_sets.review_weights', { right: rangeShare(weights.right),
+        pairs: weights.successes * weights.failures,
+        right_base: rangeShare(weights.right_base || 0.0) }));
+    } else if (weights !== null) {
+      summary.push(phrase('calibration_sets.review_weights_few', { successes: weights.successes,
+        failures: weights.failures, minimum: Math.trunc(Number(cfg.ledger.fit_weights_min_each)) }));
+    }
+    var adoptable = prior.concat(edges).some(function (r) { return r.fitted; }) ||
+      Boolean(weights !== null && weights.fitted);
+    summary.push(phrase('calibration_sets.review_in_force', { name: setName(held) }));
+    summary.push(phrase(adoptable ? 'calibration_sets.review_adopt'
+      : 'calibration_sets.review_nothing'));
+
+    var rate = Number(cfg.odds.success_yield_m3_per_h);
+    var calibration = cfg.calibration || null;
+    var priorRows = prior.map(function (row) {
+      var anyUnit = row.glg === '*';
+      var ground = anyUnit ? phrase('calibration_sets.ground_class', { code: row.bgs_code })
+        : phrase('calibration_sets.ground_combination', { code: row.bgs_code, glg: row.glg });
+      var now = priorFor(row.bgs_code, anyUnit ? null : row.glg, rate, calibration);
+      var fitted = row.fitted
+        ? phrase('calibration_sets.cell_rate_worth', { p: rangeShare(row.rate), n: row.effective_n })
+        : phrase('calibration_sets.cell_too_few', { m: row.boreholes, minimum: minimum });
+      return [ground, String(row.boreholes), String(row.successes),
+        phrase('calibration_sets.cell_rate', { p: rangeShare(row.base_rate) }),
+        phrase('calibration_sets.cell_rate', { p: rangeShare(now.rate) }), fitted];
+    });
+    /** @type {Rec[]} */
+    var tables = [{ key: 'prior', caption: phrase('calibration_sets.prior_caption'),
+      header: [
+        'calibration_sets.prior_col_ground', 'calibration_sets.prior_col_boreholes',
+        'calibration_sets.prior_col_succeeded', 'calibration_sets.prior_col_table',
+        'calibration_sets.prior_col_in_force', 'calibration_sets.prior_col_fitted'
+      ].map(function (id) { return phrase(id); }),
+      rows: priorRows }];
+    var names = phraseTable('calibration_sets.edge_names');
+    tables.push({ key: 'edges', caption: phrase('calibration_sets.edges_caption'),
+      header: [
+        'calibration_sets.edges_col_unit', 'calibration_sets.edges_col_edge',
+        'calibration_sets.edges_col_layers', 'calibration_sets.edges_col_in_force',
+        'calibration_sets.edges_col_fitted'
+      ].map(function (id) { return phrase(id); }),
+      rows: edges.map(function (row) {
+        var fitted = row.fitted
+          ? phrase('calibration_sets.cell_edge', { value: row.value, misread: row.misread })
+          : phrase('calibration_sets.cell_edge_too_few', { m: row.boreholes, minimum: minimum });
+        return [row.glg, names[row.edge],
+          phrase('calibration_sets.cell_layers', { below: row.below, above: row.above }),
+          phrase('calibration_sets.cell_edge', { value: row.base, misread: row.misread_base }), fitted];
+      }) });
+    if (weights !== null) {
+      var parts = phraseTable('calibration_sets.part_names');
+      tables.push({ key: 'weights', caption: phrase('calibration_sets.weights_caption'),
+        header: [
+          'calibration_sets.weights_col_part', 'calibration_sets.weights_col_in_force',
+          'calibration_sets.weights_col_fitted'
+        ].map(function (id) { return phrase(id); }),
+        rows: SUITABILITY_PARTS.map(function (key) {
+          return [parts[key], phrase('calibration_sets.cell_weight', { w: weights.base[key] }),
+            weights.fitted ? phrase('calibration_sets.cell_weight', { w: weights.value[key] })
+              : phrase('calibration_sets.cell_not_fitted')];
+        }) });
+    }
+    return { title: phrase('calibration_sets.review_title', { fitted_on: candidate.fitted_on }),
+      summary: summary, tables: tables, adoptable: adoptable };
+  }
+
   function setUnreadable(why) {
     return new Error(phrase('calibration_sets.unreadable', { why: why }));
   }
@@ -24814,6 +24904,7 @@
     inForce: inForce, checkInForce: checkInForce, applySet: applySet, fittedPrior: fittedPrior,
     unitEdges: unitEdges, configForUnit: configForUnit, configForSounding: configForSounding,
     setChanges: setChanges,
+    setReview: setReview,
   });
 
   /* ================================================================= photos

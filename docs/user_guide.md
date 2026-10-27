@@ -1289,6 +1289,52 @@ The report changes nothing the toolkit predicts. In the Streamlit app
 the download is offered for the files on the page when it was built;
 change the files and build it again.
 
+Last on the page, **Calibration sets** (PLAN.md step 5.3) is where the
+pooled ledgers start to change what the toolkit predicts, and only once a
+named person says so. It is shown even with no files on the page.
+
+- **The set in force.** Every report reads its priors (the chance of a
+  working borehole before the survey is counted), its resistivity edges
+  (the clay and fresh basement cut-offs, for each geology unit) and its
+  suitability weights from the calibration set in force. Until someone
+  adopts one, that is the toolkit's provisional default, adopted by no
+  one and not calibrated against drilled outcomes. The card names the
+  set in force and lists what it changes besides the priors.
+- **Fit a set to the pooled ledgers** fits all three to the drilled
+  points whose success is known, judged at the success yield in force.
+  Every fit starts from the provisional default, so a borehole is never
+  counted twice. A prior row, or an edge of a geology unit, needs 5
+  boreholes (`ledger.fit_min_boreholes`), and the weights need 10
+  boreholes that succeeded and 10 that failed
+  (`ledger.fit_weights_min_each`); the rest stay as they are.
+- **The review** sets the fitted set beside the set in force: how many
+  boreholes it used and left out, what it fits, and a table each of the
+  priors (the provisional table's rate, the rate in force and the
+  fitted one, with the number of boreholes it is worth), the edges (the
+  layers under and over each, and how many layers each edge misreads
+  against the drilling logs) and the weights. A set that fits nothing
+  has nothing to adopt.
+- **Adopt it.** Type the name of the person adopting it and press
+  *Adopt the set and put it in force*. It is numbered after the set in
+  force, names the set it replaces, and is in force from then on: every
+  page reads by it, and a survey already inverted is read by it again,
+  each sounding by the edges fitted for the geology unit under it. The
+  range of models of a sounding read by other edges is sampled again
+  when asked for. Without a name nothing is adopted.
+- **Keep it.** *Download the set in force (calibration.yaml)* saves it,
+  with the boreholes it used (by their ledger ids only), the date it was
+  fitted and who adopted it. *Put it in force* reads a calibration.yaml
+  back; a file that is not a set, or a set nobody adopted, is refused
+  and the set in force stays. *Return to the provisional default* drops
+  it. The same file, named in a `config.yaml` as `calibration:
+  calibration.yaml`, puts it in force for the Python package.
+- **Whose it is.** The set in force belongs to the session (the
+  Streamlit app) or to the browser (the standalone app), not to a
+  project: no project file carries one, and opening a project or a
+  sample leaves it in force. In the browser app it outlives a refresh,
+  and *Reset everything* returns it to the default; the Streamlit app
+  forgets it with the session, so download it to keep it.
+
 ## 11. Saving your work
 
 Everything you enter (site details, checklist answers, costing
