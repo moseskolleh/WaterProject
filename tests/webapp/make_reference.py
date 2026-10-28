@@ -1699,6 +1699,7 @@ def build() -> dict:
     out["sanitary"] = sanitary_reference()
     out["rising_main"] = rising_main_reference()
     out["rounds"] = rounds_reference()
+    out["survival"] = survival_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -4716,6 +4717,136 @@ def rounds_reference() -> dict:
                                                  {"inspection_months": 6.5}])
             assets.append(raw)
         case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2024-02-29"]), sheets=False)
+    return clean({"cases": cases})
+
+
+def survival_reference() -> dict:
+    """How long boreholes keep working (PLAN.md step 7.4): the time to the
+    first failure across a register as of a day, by pump type, contractor
+    and water chemistry, with the comparison, the words and the tables. Named
+    cases for each rule, then registers drawn from seeds. The cases carry
+    their own inputs, so parity.mjs gives the browser exactly these."""
+    import random as _random
+    from dataclasses import replace as _replace
+
+    from groundwater import survival as SV
+    from groundwater.config import Config, SurvivalConfig
+    from groundwater.registry import mint_asset_id
+
+    def ident(easting):
+        return mint_asset_id(SiteMetadata(district="Western Area Rural", easting=easting,
+                                          northing=938150.0, utm_zone=28))
+
+    def record(i, *events, **fields):
+        return {"asset_id": ident(690000.0 + 1000.0 * i), "community": "Case",
+                "district": "Western Area Rural", "easting": 690000.0 + 1000.0 * i,
+                "northing": 938150.0, "utm_zone": 28,
+                "events": [{"when": when, "kind": kind} for when, kind in events], **fields}
+
+    aggressive = {"material": "stainless steel", "inspection_months": 6, "chemistry": "aggressive"}
+    plain = {"material": "galvanised iron", "inspection_months": 12, "chemistry": "not_aggressive"}
+
+    def register(n_a, n_b, n_c=0, late=1500):
+        """two pump types (and a third), one failing early and one late"""
+        out = []
+        for i in range(n_a + n_b + n_c):
+            kind = "Afridev" if i < n_a else ("India Mark II" if i < n_a + n_b else "Kardia")
+            offset = 200 + 40 * i if i < n_a else late + 50 * i
+            year, rest = 2018 + offset // 365, offset % 365
+            when = f"{year}-{1 + rest // 31:02d}-{1 + rest % 28:02d}"
+            out.append(record(i, ("2018-01-10", "commissioned"),
+                              (when, "failure" if i % 3 else "routine_inspection"),
+                              pump_type=kind if i != 1 else kind.upper(),
+                              installed_by="Contractor A" if i % 2 else "",
+                              rising_main=aggressive if i % 2 else plain))
+        return out
+
+    named = {
+        "two_pumps": register(6, 7, 2),
+        "one_pump": register(6, 2),
+        # all fail where the other group has left the risk set
+        "one_at_risk": [record(i, ("2018-01-10", "commissioned"),
+                               ("2018-03-01", "routine_inspection"), pump_type="A")
+                        for i in range(5)]
+        + [record(10 + i, ("2018-01-10", "commissioned"), (f"2023-0{i + 1}-01", "failure"),
+                  pump_type="B") for i in range(5)],
+        # at risk together only on the day every borehole at risk failed
+        "singular": [record(i, ("2018-01-10", "commissioned"), ("2019-01-10", "failure"),
+                            pump_type="AB"[i % 2]) for i in range(10)],
+        # a pump type new this year, never at risk when an older one failed:
+        # left out of the test, which compares the other two without it
+        "new_pump": register(6, 7) + [
+            record(30 + i, ("2024-01-10", "commissioned"), ("2024-03-01", "routine_inspection"),
+                   pump_type="Kardia") for i in range(5)],
+        "no_failures": [record(i, ("2018-01-10", "commissioned"),
+                               (f"2022-01-1{i}", "water_sample"), pump_type="AB"[i % 2])
+                        for i in range(10)],
+        "rules": [record(0, ("2019-05-01", "failure"), ("2020-01-10", "commissioned"),
+                         ("x", "failure"), ("2021-01-10", "inspection")),
+                  record(1, ("2020-01-10", "commissioned"), ("2021-01-10", "repair")),
+                  record(2, ("2020-01-10", "commissioned"), ("2021-01-10", "restored")),
+                  record(3, ("2020-01-10", "commissioned"), ("2021-01-10", "decommissioned"),
+                         ("2021-01-10", "failure")),
+                  record(4, ("2020-01-10", "commissioned"), ("2021-06-01", "decommissioned")),
+                  record(5, ("2020-01-10", "commissioned")),
+                  record(6, ("2020-01-10", "commissioned"), ("2020-01-10", "failure")),
+                  record(7, ("2021-01-10", "routine_inspection")),
+                  record(8, ("2020-01-10", "commissioned"), ("2024-07-01", "failure")),
+                  {"asset_id": "not one"}],
+        # every one at risk fails: the estimate and its band close on nought
+        "all_fail": [record(i, ("2018-01-10", "commissioned"), (f"2019-0{1 + i % 3}-15", "failure"))
+                     for i in range(6)],
+        "empty": [],
+    }
+    cases = []
+
+    def case(name, assets, as_of="2024-06-01", settings=None):
+        section = {**SurvivalConfig().__dict__, **(settings or {})}
+        config = _replace(Config(), survival=SurvivalConfig(**section))
+        result = SV.survival_analysis(assets, as_of, config)
+        groups = [result["overall"]] + [g for grouping in result["groupings"] for g in grouping["groups"]]
+        cases.append({
+            "name": name, "assets": assets, "as_of": as_of, "settings": settings or {},
+            "expect": {"result": result, "words": SV.survival_text(result),
+                       "header": SV.survival_header(),
+                       "rows": [SV.survival_rows([result["overall"]])]
+                       + [SV.survival_rows(g["groups"]) for g in result["groupings"]],
+                       "at_risk": [SV.at_risk_header(result), SV.at_risk_rows(groups)]},
+        })
+
+    for name, assets in named.items():
+        case(name, assets)
+    case("settings", named["one_pump"], settings={"min_at_risk": 2, "at_risk_years": [0, 0.5, 4]})
+    case("earlier", named["two_pumps"], as_of="2020-06-30")
+    # registers drawn from seeds: pump types and contractors spelt in either
+    # case or not at all, rising mains that say nothing of the water, records
+    # of one borehole twice, and histories in any order
+    days = ["2015-03-01", "2016-06-15", "2017-01-10", "2018-02-28", "2018-11-30", "2019-07-04",
+            "2020-01-10", "2020-12-31", "2021-05-20", "2022-08-01", "2023-03-15", "2023-11-20",
+            "2024-05-31", "2024-06-01", "2024-09-01", "not written down"]
+    kinds = ["commissioned", "commissioned", "inspection", "routine_inspection", "water_sample",
+             "repair", "failure", "failure", "restored", "decommissioned", "note"]
+    for seed in range(6):
+        rng = _random.Random(f"survival reference {seed}")
+        assets, ids = [], []
+        for _ in range(rng.randint(10, 40)):
+            if ids and rng.random() < 0.1:
+                asset_id = rng.choice(ids)
+            else:
+                asset_id = ident(690000.0 + rng.randint(0, 4000) * 10.0)
+                ids.append(asset_id)
+            raw = {"asset_id": asset_id, "community": "Case", "district": "Western Area Rural",
+                   "pump_type": rng.choice(["India Mark II", "india mark ii", "Afridev", "", None]),
+                   "installed_by": rng.choice(["Contractor A", "Contractor B", ""]),
+                   "events": ([{"when": rng.choice(days[:10]), "kind": "commissioned"}]
+                              if rng.random() < 0.9 else [])
+                   + [{"when": rng.choice(days), "kind": rng.choice(kinds)}
+                      for _ in range(rng.choice([0, 1, 2, 3]))]}
+            rising = rng.choice([aggressive, plain, None, {"inspection_months": 9}])
+            if rising is not None:
+                raw["rising_main"] = rising
+            assets.append(raw)
+        case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2022-02-28"]))
     return clean({"cases": cases})
 
 

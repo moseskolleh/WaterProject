@@ -2569,6 +2569,83 @@ await withPage(async (page, base, consoleErrors) => {
     rounds.doc.includes('BOREHOLE ' + rounds.id) && rounds.doc.includes('Drawn up on 2024-06-01'),
     rounds.doc.length + ' chars');
 
+  // --- how long boreholes keep working (PLAN.md step 7.4) ------------------
+  // The register and this borehole read as a time to the first failure: the
+  // curve over them all and by pump type, a group too few to judge drawn as
+  // counts only, and the pump type named on this borehole's record joining
+  // it to its group and travelling in the project file.
+  const survival = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone];
+    const savedRegistry = d.registry;
+    site.easting = 694912; site.northing = 938150; site.utm_zone = 28;
+    app.store.set('asset', { asset_id: C.mintAssetId(site), community: 'This one',
+      district: site.district, easting: 694912, northing: 938150, utm_zone: 28,
+      events: [{ when: '2020-01-10', kind: 'commissioned' },
+        { when: '2022-03-01', kind: 'failure' }] });
+    const register = [];
+    for (let i = 0; i < 12; i++) {
+      const easting = 690000 + 1000 * i;
+      const when = C.dayToIso(C.isoDay('2018-01-10') + (i < 6 ? 300 + 90 * i : 1500 + 60 * i));
+      register.push(C.assetFromDict({
+        asset_id: C.mintAssetId({ district: 'Western Area Rural', easting: easting,
+          northing: 938150, utm_zone: 28 }),
+        community: 'Site ' + i, district: 'Western Area Rural', easting: easting,
+        northing: 938150, utm_zone: 28, pump_type: i < 6 ? 'Afridev' : 'India Mark II',
+        events: [{ when: '2018-01-10', kind: 'commissioned' },
+          { when: when, kind: i % 2 ? 'failure' : 'routine_inspection' }],
+      }));
+    }
+    d.registry = register;
+    app.store.set('survival.date', '2024-06-01');
+    app.goto('registry');
+    app.render();
+    const text = (selector) => Array.from(document.querySelectorAll('#page-host ' + selector))
+      .map((n) => n.textContent);
+    const card = document.querySelector('#page-host h3.survival-group')?.closest('.card');
+    const before = {
+      headings: text('h3.survival-group'),
+      lines: text('p.survival-line'),
+      figures: card ? card.querySelectorAll('figure svg').length : 0,
+    };
+    const fill = (name, value) => {
+      const input = document.querySelector('#page-host input[data-survival="' + name + '"]');
+      if (input) { input.value = value; input.dispatchEvent(new Event('change')); }
+      return !!input;
+    };
+    const typed = fill('pump', ' India Mark II ');
+    const btn = Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Save the pump and contractor');
+    if (btn) btn.click();
+    const stored = app.store.get('asset') || {};
+    const filed = app.projectPayload().state.asset || {};
+    const after = text('p.survival-line');
+    const expected = C.survivalText(C.survivalAnalysis([C.assetFromDict(stored)].concat(register),
+      '2024-06-01'));
+    app.store.set('asset', null);
+    app.store.set('survival.date', '');
+    d.registry = savedRegistry;
+    site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
+    app.render();
+    return { before, typed, pressed: !!btn, stored, filed, after, expected };
+  });
+  check('survival: the register is read over all boreholes and by each grouping',
+    JSON.stringify(survival.before.headings) === JSON.stringify(['All boreholes', 'By pump type',
+      'By contractor', 'By water chemistry']) && survival.before.figures === 4,
+  JSON.stringify(survival.before));
+  check('survival: a group too few to judge gives counts, never a curve',
+    survival.before.lines.some((l) => l.startsWith('Not recorded: too few boreholes to judge')) &&
+    survival.before.lines.some((l) => l.startsWith('Afridev: 6 followed')),
+  JSON.stringify(survival.before.lines));
+  check('survival: a pump named on the record joins its group, in the project file too',
+    survival.typed && survival.pressed && survival.stored.pump_type === 'India Mark II' &&
+    survival.filed.pump_type === 'India Mark II' &&
+    survival.after.some((l) => l.startsWith('India Mark II: 7 followed')) &&
+    JSON.stringify(survival.after.slice(0, 1)) ===
+      JSON.stringify(survival.expected.overall.lines),
+  JSON.stringify([survival.stored.pump_type, survival.after]));
+
   // --- the certification gate ---------------------------------------------
   // The gate never blocks a build: an interim report is a real need, and an
   // analyst who is refused one will produce the document some other way. So

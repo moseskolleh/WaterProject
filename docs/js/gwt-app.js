@@ -6742,6 +6742,7 @@
           return C.phrase('rounds.interval_line', { title: item.title, basis: item.basis });
         }).join(' ')),
         mechanicField(asset),
+        pumpField(asset),
       ])));
 
       var draft = { when: new Date().toISOString().slice(0, 10),
@@ -6825,8 +6826,100 @@
 
     nodes.push(registryCard());
     nodes.push(roundsCard(asset));
+    nodes.push(survivalCard(asset));
     return nodes;
   };
+
+  /* The pump type and the contractor named on this borehole's record, by
+   * which the time to the first failure is grouped (PLAN.md step 7.4).
+   * Named here, they travel in the project file. */
+  function pumpField(asset) {
+    var draft = { pump: asset.pump_type || '', by: asset.installed_by || '' };
+    return el('div', [
+      el('div.field-row', [
+        field('Pump type', S.textInput(draft.pump, function (v) {
+          draft.pump = String(v);
+        }, { placeholder: 'India Mark II', 'data-survival': 'pump' }),
+        'The pump installed, as the handover names it. The curves of how long boreholes ' +
+        'keep working are grouped by it.'),
+        field('Installed by', S.textInput(draft.by, function (v) {
+          draft.by = String(v);
+        }, { placeholder: 'Contractor', 'data-survival': 'contractor' }),
+        'The contractor who drilled and installed it: the site details’ contractor when ' +
+        'the record was drafted, and what is saved here after that.'),
+      ]),
+      el('div.btn-row', [button('Save the pump and contractor', function () {
+        saveAsset(Object.assign({}, asset, { events: asset.events || [],
+          pump_type: C.trimField(draft.pump), installed_by: C.trimField(draft.by) }));
+        S.toast('Saved on the borehole’s record.', 'ok');
+      }, { variant: 'ghost' })]),
+    ]);
+  }
+
+  /* How long the boreholes keep working (PLAN.md step 7.4): the time from
+   * commissioning to the first failure across this borehole and the
+   * register, over them all and by pump type, contractor and water
+   * chemistry, each as a curve with its band and a table. The day is the
+   * page's input, today unless another is written; the engine never reads
+   * the clock. */
+  function survivalCard(asset) {
+    var today = new Date().toISOString().slice(0, 10);
+    var when = store.get('survival.date', '') || today;
+    var nodes = [
+      el('p.muted', C.phrase('survival.intro') + ' The Streamlit app has the same curves ' +
+        'on its Asset registry page.'),
+      el('div.field-row', [
+        field('Analysed as of', S.textInput(when, function (v) {
+          store.set('survival.date', String(v).trim());
+          render();
+        }, { placeholder: 'YYYY-MM-DD', 'data-survival': 'date' }), ''),
+      ]),
+    ];
+    if (C.isoDay(when) === null) {
+      nodes.push(el('div.callout.callout-warn', el('p', 'The date should be written ' +
+        'YYYY-MM-DD.')));
+      return card(C.phrase('survival.heading'), nodes);
+    }
+    /* this borehole first, so its record, kept in step with the design,
+     * is the one read where the register holds the same borehole */
+    var assets = (asset ? [asset] : []).concat(derived.registry || []);
+    var result = C.survivalAnalysis(assets, when, config());
+    var words = C.survivalText(result);
+    nodes.push(el('div.survival-summary', words.summary.map(function (line) {
+      return el('p', line);
+    })));
+    if (!result.n_boreholes) return card(C.phrase('survival.heading'), nodes);
+    var sections = [{ by: null, told: words.overall, groups: [result.overall], comparison: [] }]
+      .concat(result.groupings.map(function (g, i) {
+        return { by: g.by, told: words.groupings[i], groups: g.groups,
+          comparison: words.groupings[i].comparison };
+      }));
+    sections.forEach(function (section) {
+      nodes.push(el('h3.survival-group', section.told.heading));
+      if (section.by) nodes.push(el('p.muted', section.told.intro));
+      if (section.groups.some(function (g) { return g.judged; })) {
+        var title = section.by ? C.phrase('survival.figure_by',
+          { by: C.phraseTable('survival.by')[section.by] }) : C.phrase('survival.figure_all');
+        nodes.push(charts.figure(charts.survivalCurves(section.groups, { title: title }), '',
+          { filename: 'survival_' + (section.by || 'all') }));
+      }
+      section.told.lines.forEach(function (line) { nodes.push(el('p.survival-line', line)); });
+      nodes.push(S.table(C.survivalHeader(), C.survivalRows(section.groups)));
+      var risk = C.atRiskRows(section.groups);
+      if (risk.length) nodes.push(S.table(C.atRiskHeader(result), risk));
+      section.comparison.forEach(function (line) {
+        nodes.push(el('p.muted.survival-comparison', line));
+      });
+    });
+    nodes.push(el('p.muted', C.phrase('survival.figure_caption')));
+    nodes.push(el('p.muted', C.phrase('survival.at_risk_caption')));
+    words.method.forEach(function (line) { nodes.push(el('p.muted', line)); });
+    nodes.push(el('h3', 'References'));
+    nodes.push(el('ul.survival-references', words.references.map(function (ref) {
+      return el('li', ref);
+    })));
+    return card(C.phrase('survival.heading'), nodes);
+  }
 
   /* The area mechanic named on this borehole's record, whose service round
    * it is on (PLAN.md step 7.3). Named here, it travels in the project file;

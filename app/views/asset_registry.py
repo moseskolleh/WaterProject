@@ -43,10 +43,19 @@ from groundwater.sanitary import (
     inspection_event,
     sanitary_risk,
 )
+from groundwater.survival import (
+    at_risk_header,
+    at_risk_rows,
+    survival_analysis,
+    survival_header,
+    survival_rows,
+    survival_text,
+)
 from groundwater.text import phrase, phrase_table
 
 from shared import (
     app_config,
+    figure,
     kept_upload,
     offer_download,
     _project_state,
@@ -110,6 +119,7 @@ def render() -> None:
                 st.caption(phrase("rounds.interval_line", title=_item.title,
                                   basis=_item.basis))
         _mechanic_field(_live)
+        _pump_field(_live)
 
         with st.form("asset_event_form", clear_on_submit=True):
             st.markdown("**Record what happened**")
@@ -231,6 +241,9 @@ def render() -> None:
     st.divider()
     _service_rounds(_live, _assets)
 
+    st.divider()
+    _survival(_live, _assets)
+
 
 def _mechanic_field(asset) -> None:
     """The area mechanic named on this borehole's record, whose service round
@@ -248,6 +261,89 @@ def _mechanic_field(asset) -> None:
             st.session_state["asset_record"] = asset.as_dict()
             st.success("Area mechanic named." if asset.area_mechanic
                        else "Area mechanic cleared.")
+
+
+def _pump_field(asset) -> None:
+    """The pump type and the contractor named on this borehole's record, by
+    which the time to the first failure is grouped (PLAN.md step 7.4).
+    Named here, they travel in the project file."""
+    # no keys: the fields start from the record shown, so another project's
+    # borehole does not inherit what was typed for this one
+    with st.form("asset_pump_form"):
+        _c1, _c2 = st.columns(2)
+        _pump = _c1.text_input(
+            "Pump type", value=asset.pump_type or "", placeholder="India Mark II",
+            help="The pump installed, as the handover names it. The curves of "
+                 "how long boreholes keep working are grouped by it.")
+        _contractor = _c2.text_input(
+            "Installed by", value=asset.installed_by or "", placeholder="Contractor",
+            help="The contractor who drilled and installed it: the site "
+                 "details' contractor when the record was drafted, and what is "
+                 "saved here after that.")
+        if st.form_submit_button("Save the pump and contractor"):
+            asset.pump_type = trim_field(_pump)
+            asset.installed_by = trim_field(_contractor)
+            st.session_state["asset_record"] = asset.as_dict()
+            st.success("Saved on the borehole's record.")
+
+
+def _plain(text: str) -> str:
+    """``text`` with the characters markdown would read escaped."""
+    return re.sub(r"([\\`*_\[\]<>#|~$])", r"\\\1", text)
+
+
+def _survival(asset, register) -> None:
+    """How long the boreholes keep working (PLAN.md step 7.4): the time from
+    commissioning to the first failure across this borehole and the
+    register, over them all and by pump type, contractor and water
+    chemistry, each as a curve with its band and a table. The day is the
+    page's input, today unless another is chosen; the engine never reads
+    the clock."""
+    from groundwater.survival_plots import plot_survival
+
+    st.subheader(phrase("survival.heading"))
+    st.caption(phrase("survival.intro") + " The browser app has the same curves "
+               "on its Asset registry page.")
+    _when = st.date_input("Analysed as of", value=date.today(), key="survival_date")
+    config = app_config()
+    # this borehole first, so its record, kept in step with the design, is
+    # the one read where the register holds the same borehole
+    _assets = ([asset] if asset is not None else []) + list(register)
+    result = survival_analysis(_assets, _when, config)
+    words = survival_text(result)
+    for _line in words["summary"]:
+        st.write(_line)
+    if not result["n_boreholes"]:
+        return
+    header = survival_header()
+    sections = [(None, words["overall"], [result["overall"]], None)] + [
+        (g["by"], told, g["groups"], told["comparison"])
+        for g, told in zip(result["groupings"], words["groupings"], strict=True)]
+    for by, told, groups, comparison in sections:
+        st.markdown(f"**{told['heading']}**")
+        if by is not None:
+            st.caption(told["intro"])
+        if any(g["judged"] for g in groups):
+            st.image(str(figure(plot_survival, groups, by=by, style=config.style,
+                                file_name=f"survival_{by or 'all'}.png")))
+        # a group's label is typed by a person: its markdown is escaped
+        for _line in told["lines"]:
+            st.markdown(_plain(_line))
+        st.dataframe([dict(zip(header, row, strict=True)) for row in survival_rows(groups)],
+                     hide_index=True, width="stretch")
+        risk = at_risk_rows(groups)
+        if risk:
+            st.dataframe([dict(zip(at_risk_header(result), row, strict=True)) for row in risk],
+                         hide_index=True, width="stretch")
+        for _line in comparison or []:
+            st.caption(_plain(_line))
+    st.caption(phrase("survival.figure_caption"))
+    st.caption(phrase("survival.at_risk_caption"))
+    for _line in words["method"]:
+        st.caption(_line)
+    with st.expander("References"):
+        for _ref in words["references"]:
+            st.markdown(f"- {_ref}")
 
 
 def _service_rounds(asset, register) -> None:
@@ -283,7 +379,7 @@ def _service_rounds(asset, register) -> None:
     for _one in _result["rounds"]:
         _lines = round_text(_one)
         # a mechanic's name is typed by a person: its markdown is escaped
-        st.markdown("**" + re.sub(r"([\\`*_\[\]<>#|~$])", r"\\\1", _lines[0]) + "**")
+        st.markdown("**" + _plain(_lines[0]) + "**")
         for _line in _lines[1:]:
             st.caption(_line)
         st.dataframe([dict(zip(round_header(), row, strict=True)) for row in round_rows(_one)],

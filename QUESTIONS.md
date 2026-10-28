@@ -171,3 +171,28 @@ need real project inputs or decisions to finish calibrating it.
    `readings_sample` and `readings_visit` in
    `groundwater/data/text/rounds.yaml`), which are this sheet's choice and
    follow no published form.
+
+14. **How the registry is read as a time to the first failure (added with
+   PLAN.md step 7.4).** Both apps' Asset registry pages estimate how long
+   boreholes keep working from their records by Kaplan and Meier's
+   method. The method and its band are published (the works are in
+   `groundwater/data/text/references.yaml`), but how the registry's records
+   are read into it is a choice made here, and so are two settings. Five
+   things need the programme or someone who keeps the records: (a) say
+   whether a repair or a return to service with no failure recorded before
+   it should count as the first failure, on its own date, as it does now,
+   or whether some repairs are preventive and should not; (b) say whether a
+   sanitary inspection, a routine inspection and a water sample should
+   each count as a report that the borehole was working, as they do now,
+   on the reasoning that a visit that found it broken would have recorded
+   the failure; (c) say whether a borehole decommissioned without a failure
+   recorded should be censored on that day, as it is now, or counted as a
+   failure; (d) confirm the minimum of five boreholes followed before a
+   group is judged (`survival.min_at_risk` in
+   `groundwater/data/defaults.json`), the same number the ledger's hit
+   rates use and the plan sets for the contractor scorecards; (e) confirm
+   the times the table of numbers at risk states (`survival.at_risk_years`:
+   0, 1, 2, 3, 5 and 10 years). The water chemistry grouping reads the
+   corrosivity each record carries from its design's rising main, so a
+   borehole whose project was saved before step 7.3 counts as "not known"
+   until its project is opened and saved again with its water sample.

@@ -150,5 +150,9 @@
     "sanitary_inspection_months": 6,
     "water_sample_months": 12,
     "grace_days": 30
+  },
+  "survival": {
+    "min_at_risk": 5,
+    "at_risk_years": [0, 1, 2, 3, 5, 10]
   }
 }

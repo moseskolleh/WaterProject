@@ -893,6 +893,86 @@ The browser app keeps the chiefdom table and the day with the project;
 the Streamlit app saves the chiefdom table with the project and starts
 the day at today each time the page is opened.
 
+## 9c. How long boreholes keep working
+
+In the browser app: [`#/registry`](index.html#/registry), the *How long
+boreholes keep working* card at the foot of the page. In the Streamlit
+app: the Asset registry page, after *Service rounds*.
+
+**What it reads.** This project's borehole and every borehole in the
+register above (*Many boreholes*), as of the day in *Analysed as of*
+(today unless you change it; records dated after it are not read). For
+each borehole it counts the time from its first *Commissioned* record to
+its first failure:
+
+- the first *Failure* recorded is the failure;
+- a *Repair* or *Returned to service* with no failure recorded before it
+  also counts as the first failure, on its own date: something had broken
+  by then, and its date is the latest the breakdown can have happened.
+  The summary says how many failures were found this way;
+- a borehole that has not failed is *censored*: counted as working up to
+  the last report of it working and not a day after. A report of working
+  is its commissioning, a *Sanitary inspection*, a *Routine inspection*
+  or a *Water sampled*: a visit that would have recorded a failure had it
+  found one. A *Note* says nothing either way, and a borehole nobody has
+  reported on since is not taken to be working;
+- a borehole *Decommissioned* without a failure is censored on that day;
+- a borehole with no report since its commissioning is censored at
+  commissioning and adds no time; one with no commissioning date has no
+  time to count from and is left out. The summary counts both.
+
+Of several records on one day, a failure is read first, then a repair or
+return to service, then a decommissioning. Records dated before the
+commissioning, and records whose date cannot be read, are not read, and
+the summary counts the boreholes that carry them.
+
+**What it shows.** Over all the boreholes, then by pump type, by
+contractor and by water chemistry: a curve of the share still working
+against years since commissioning (the Kaplan-Meier estimate), shaded
+with its 95 percent band, a tick where a borehole was censored; a line a
+group with its counts and the median time to the first failure with its
+band; a table of the same; and a table of the number still at risk and
+the share still working at 0, 1, 2, 3, 5 and 10 years. The band is
+pointwise, from Greenwood's variance on the log-log scale; there is none
+before the first failure. The median is the first time the estimate is
+at or below one half; where it never gets there the table says "not
+reached". The method's works are listed under *References*.
+
+**Too few to judge.** A group with fewer than five boreholes followed
+(the setting `survival.min_at_risk` in `groundwater/data/defaults.json`)
+says it is too few to judge and gives its counts, never a curve. The
+times the table states are the setting `survival.at_risk_years`. Both
+are choices made in this toolkit, not a standard (`QUESTIONS.md` item
+14).
+
+**The groups.** The pump type and the contractor are those named on each
+borehole's record: name this borehole's under *This borehole* (*Pump
+type* and *Installed by*) and press *Save the pump and contractor*; they
+are saved with the project. *Installed by* starts from the contractor in
+the site details when the record is first drafted. Names are matched
+with capital and small letters A to Z read alike and nothing else, so
+"India Mark II" and "india mark ii" are one group but "India Mk II" is
+another. The water chemistry is the corrosivity the record carries from
+its design's rising main (5, *The rising main the design specifies*):
+aggressive, not aggressive, or not known (no sample, a sample the
+indices could not be computed from, or a record with no rising main). A
+borehole loaded from another project file keeps what its file carries.
+Boreholes whose record names no pump type or contractor, or whose water
+is not known, are shown as a group of their own but never compared.
+
+**Comparing groups.** Where at least two groups that name a value each
+have five boreholes followed, they are compared by the log-rank test,
+which gives a chi-squared and its p-value. The p-value is how often
+curves at least this far apart would arise by chance if all the groups'
+boreholes failed at the same rate: it is not the chance that the groups
+differ, and it says nothing of why they might. A group none of whose
+boreholes was at risk when any borehole failed (a pump type introduced
+after the others' failures, say) has nothing to be compared on and is
+left out of the test, which says so.
+
+The browser app keeps the day with the project; the Streamlit app starts
+it at today each time the page is opened.
+
 ## 10. Site maps
 
 In the browser app: [`#/site`](index.html#/site), and the terrain

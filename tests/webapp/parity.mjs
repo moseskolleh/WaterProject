@@ -4372,6 +4372,58 @@ await withPage(async (page, base, consoleErrors) => {
     check('rounds: the cases reach every mechanic, every state and a stop with no position', reached);
   }
 
+  // --- How long boreholes keep working (PLAN.md step 7.4) ---
+  // The twins of groundwater/survival.py on make_reference.py's cases: each
+  // borehole's time from commissioning to its first failure or censoring,
+  // the Kaplan-Meier estimate with its band, median and numbers at risk over
+  // the register and by pump type, contractor and water chemistry, the
+  // log-rank comparison, the words and the tables, all held whole. The
+  // shares are rounded to four decimals and the p-value to six where the
+  // engines report them, so the two engines' logarithms need not agree to
+  // the last bit.
+  {
+    const SR = R.survival;
+    const srJs = await page.evaluate(({ SR }) => {
+      const C = GWT.core;
+      return SR.cases.map((c) => {
+        try {
+          const cfg = C.withConfig({ survival: c.settings || {} });
+          const result = C.survivalAnalysis(c.assets, c.as_of, cfg);
+          const groups = [result.overall].concat(result.groupings.flatMap((g) => g.groups));
+          return { ok: {
+            result, words: C.survivalText(result), header: C.survivalHeader(),
+            rows: [C.survivalRows([result.overall])]
+              .concat(result.groupings.map((g) => C.survivalRows(g.groups))),
+            at_risk: [C.atRiskHeader(result), C.atRiskRows(groups)],
+          } };
+        } catch (e) {
+          return { threw: String(e && e.stack || e) };
+        }
+      });
+    }, { SR });
+    const failed = SR.cases.map((c, i) => {
+      const g = srJs[i];
+      if (!g || g.threw) return `[${c.name}] threw ${g ? g.threw : 'no answer'}`;
+      return firstDifference(g.ok, c.expect, `[${c.name}]`);
+    }).filter(Boolean);
+    check(`survival: time to first failure, by group, compared, in words (${SR.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const results = SR.cases.map((c) => c.expect.result);
+    const ends = new Set(results.flatMap((r) => r.boreholes.map((b) => b.ends)));
+    const reasons = new Set(results.flatMap((r) => r.groupings.map((g) => g.comparison.reason)));
+    const groups = results.flatMap((r) => r.groupings.flatMap((g) => g.groups));
+    const reached = ['failure', 'repair', 'restored', 'decommissioned', 'report', 'commissioning',
+      'no_commissioning'].every((k) => ends.has(k)) &&
+      [null, 'fewer_than_two', 'no_failures', 'one_at_risk', 'singular']
+        .every((k) => reasons.has(k)) &&
+      results.some((r) => r.groupings.some((g) => g.comparison.reason === null &&
+        g.comparison.not_at_risk.length)) &&
+      groups.some((g) => g.judged) && groups.some((g) => !g.judged) &&
+      groups.some((g) => g.steps.some((s) => s.survival === 0));
+    check('survival: the cases reach every ending, every comparison, a group left out of the ' +
+      'test and a curve closing on nought', reached);
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 

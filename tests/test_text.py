@@ -164,7 +164,9 @@ def test_the_treatment_advice_is_keyed_by_standards_table_names():
 
 
 def test_every_citation_closes_some_report_and_every_cited_one_exists():
-    """The reference table holds what the reports cite and nothing else.
+    """The reference table holds what the reports cite and nothing else (and
+    the works the time-to-failure curves of the Asset registry pages cite,
+    listed under "survival" with the reports').
 
     citations.py drops a key it cannot find, and the browser would print
     "undefined" under References, so a misspelt key is caught here.
@@ -445,7 +447,7 @@ def test_no_engine_types_out_a_configuration_default():
     assert fields
     for name, _kind, default in fields:
         if name in {"style", "ves", "pumping", "design", "ves_range", "odds", "ledger",
-                    "cost_range", "terrain", "service"}:
+                    "cost_range", "terrain", "service", "survival"}:
             continue
         assert re.match(r"(tuple\(|field\(default_factory=lambda: dict\()?_[A-Z]+\[\"" + name + r"\"\]",
                         default), (
