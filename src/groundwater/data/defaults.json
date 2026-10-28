@@ -145,5 +145,10 @@
     "survey_move_m": 20.0,
     "survey_cross_within_deg": 20.0,
     "survey_target_depth_m": 60.0
+  },
+  "service": {
+    "sanitary_inspection_months": 6,
+    "water_sample_months": 12,
+    "grace_days": 30
   }
 }

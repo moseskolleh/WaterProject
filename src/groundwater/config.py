@@ -28,6 +28,7 @@ _ODDS = _DEFAULTS["odds"]
 _LEDGER = _DEFAULTS["ledger"]
 _COSTS = _DEFAULTS["cost_range"]
 _TERRAIN = _DEFAULTS["terrain"]
+_SERVICE = _DEFAULTS["service"]
 
 
 # ---------------------------------------------------------------------------
@@ -502,6 +503,32 @@ class TerrainConfig:
 
 
 # ---------------------------------------------------------------------------
+# How often a borehole in the asset registry is visited (registry.py, and
+# the service rounds of PLAN.md step 7.3 in rounds.py)
+#
+# These are a programme's choices, not a standard. Surveillance intervals for
+# rural point sources are set by the programme and the district, and vary
+# with how many people drink from the point and what the last result said; a
+# six-monthly sanitary inspection and an annual water sample is a common
+# baseline to start from and to argue with (QUESTIONS.md item 18). The
+# routine inspection of the pump and rising main is not here: its interval is
+# the one the borehole's design sets for its rising main (design.
+# rising_main_inspection_months and aggressive_rising_main_inspection_months,
+# PLAN.md step 7.2).
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ServiceConfig:
+    # A sanitary inspection (the WHO form of PLAN.md step 7.5), in months.
+    sanitary_inspection_months: int = _SERVICE["sanitary_inspection_months"]
+    # A water quality sample, in months.
+    water_sample_months: int = _SERVICE["water_sample_months"]
+    # How long past its due date before a visit stops being "due" and is
+    # "overdue": a visit is a journey, not a diary entry.
+    grace_days: int = _SERVICE["grace_days"]
+
+
+# ---------------------------------------------------------------------------
 # Top level configuration
 # ---------------------------------------------------------------------------
 
@@ -536,6 +563,7 @@ class Config:
     ledger: LedgerConfig = field(default_factory=LedgerConfig)
     cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
     terrain: TerrainConfig = field(default_factory=TerrainConfig)
+    service: ServiceConfig = field(default_factory=ServiceConfig)
     # The calibration set in force (PLAN.md step 5.3, calibration_sets.py),
     # as clean_set reads it, or None for the toolkit's provisional default.
     # Put one in force with calibration_sets.apply_set, which refuses a set
@@ -567,6 +595,7 @@ class Config:
             ("ledger", cfg.ledger),
             ("cost_range", cfg.cost_range),
             ("terrain", cfg.terrain),
+            ("service", cfg.service),
         ):
             overrides = data.get(section_name, {}) or {}
             for key, value in overrides.items():
@@ -582,11 +611,11 @@ class Config:
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
             if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
-                           "ledger", "cost_range", "terrain", "calibration"):
+                           "ledger", "cost_range", "terrain", "service", "calibration"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
                     "(expected style, ves, pumping, design, ves_range, odds, "
-                    "ledger, cost_range, terrain or calibration)",
+                    "ledger, cost_range, terrain, service or calibration)",
                     stacklevel=2,
                 )
         named = data.get("calibration")

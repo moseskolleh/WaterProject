@@ -920,10 +920,11 @@ await withPage(async (page, base, consoleErrors) => {
       out.asset_state[name] = {
         function: st.function, label: st.label, since: st.since,
         detail: st.detail, last_inspection: st.last_inspection,
-        last_sample: st.last_sample, commissioned: st.commissioned,
+        last_sample: st.last_sample, last_routine_inspection: st.last_routine_inspection,
+        commissioned: st.commissioned,
         days_out_of_service: st.days_out_of_service,
         due: st.due.map((d) => ({ key: d.key, title: d.title, state: d.state,
-          due_on: d.due_on, detail: d.detail })),
+          due_on: d.due_on, detail: d.detail, months: d.months, basis: d.basis })),
         undated_events: st.undated_events,
       };
     });
@@ -4594,6 +4595,56 @@ await withPage(async (page, base, consoleErrors) => {
     check('rising main: every state of the water is among the cases',
       ['aggressive', 'not_aggressive', 'incomplete', 'none'].every((k) => states.has(k)),
       JSON.stringify([...states]));
+  }
+
+  // --- Service rounds (PLAN.md step 7.3) ---
+  // The twins of groundwater/rounds.py on make_reference.py's cases: the area
+  // mechanics read from their lines, what is due at each borehole of the
+  // register on the day, the rounds by mechanic in the order of the walk with
+  // the legs between the stops, their words and the round sheet's parts, and
+  // each record's state with the routine inspection among its visits, all
+  // held whole.
+  {
+    const RS = R.rounds;
+    const rsJs = await page.evaluate(({ RS }) => {
+      const C = GWT.core;
+      return RS.cases.map((c) => {
+        try {
+          const plan = Object.assign(C.serviceSchedule(), c.schedule || {});
+          const parsed = C.parseAreaMechanics(c.mechanics);
+          const result = C.serviceRounds(c.assets, c.as_of, plan, parsed.entries);
+          const states = c.assets.map((raw) => {
+            const asset = C.assetFromDict(raw);
+            if (!asset) return null;
+            const st = C.assetState(asset, c.as_of, plan);
+            delete st.overdue;
+            delete st.is_working;
+            return st;
+          });
+          return { ok: {
+            parsed, result, words: C.roundsText(result),
+            rounds: result.rounds.map((one) => Object.assign(
+              { text: C.roundText(one), rows: C.roundRows(one) },
+              c.sheets ? { sheets: one.stops.map((stop) => C.stopSheet(stop)) } : {})),
+            states,
+          } };
+        } catch (e) {
+          return { threw: String(e && e.stack || e) };
+        }
+      });
+    }, { RS });
+    const failed = RS.cases.map((c, i) => {
+      const g = rsJs[i];
+      if (!g || g.threw) return `[${c.name}] threw ${g ? g.threw : 'no answer'}`;
+      return firstDifference(g.ok, c.expect, `[${c.name}]`);
+    }).filter(Boolean);
+    check(`rounds: what is due, by mechanic, in order, and the sheet (${RS.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const stops = RS.cases.flatMap((c) => c.expect.result.rounds.flatMap((r) => r.stops));
+    const reached = ['asset', 'chiefdom', 'none'].every((k) => stops.some((s) => s.mechanic_from === k)) &&
+      ['overdue', 'due', 'unknown'].every((k) => stops.some((s) => s.due.some((d) => d.state === k))) &&
+      stops.some((s) => !s.placed) && stops.some((s) => s.due.some((d) => d.key === 'routine_inspection'));
+    check('rounds: the cases reach every mechanic, every state and a stop with no position', reached);
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

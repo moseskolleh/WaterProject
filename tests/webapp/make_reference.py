@@ -1948,6 +1948,7 @@ def build() -> dict:
     out["calibration_in_force"] = calibration_in_force_reference()
     out["sanitary"] = sanitary_reference()
     out["rising_main"] = rising_main_reference()
+    out["rounds"] = rounds_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -4974,6 +4975,139 @@ def rising_main_reference() -> dict:
             },
         })
     return clean({"choices": choices, "bills": bills})
+
+
+def rounds_reference() -> dict:
+    """Service rounds (PLAN.md step 7.3): what is due at each borehole of a
+    register on a day, by area mechanic and in the order of the walk, with
+    the words and the round sheet's parts; and each record's state as the
+    registry reads it, the routine inspection among its visits. Named cases
+    for each rule, then registers drawn from seeds. The cases carry their
+    own inputs, so parity.mjs gives the browser exactly these."""
+    import random as _random
+    from dataclasses import asdict as _asdict
+    from datetime import date as _date
+
+    from groundwater import rounds as RD
+    from groundwater.registry import Schedule, asset_from_dict, asset_state, mint_asset_id
+
+    def ident(easting, northing=938150.0, zone=28, district="Western Area Rural"):
+        return mint_asset_id(SiteMetadata(district=district, easting=easting,
+                                          northing=northing, utm_zone=zone))
+
+    def record(easting, *events, northing=938150.0, **fields):
+        return {"asset_id": ident(easting, northing), "community": "Case",
+                "district": "Western Area Rural", "easting": easting, "northing": northing,
+                "utm_zone": 28, "events": list(events), **fields}
+
+    def ev(when, kind, **more):
+        return {"when": when, "kind": kind, **more}
+
+    old, late = ev("2019-01-10", "commissioned"), ev("2022-01-10", "commissioned")
+    aggressive = {"material": "stainless steel", "inspection_months": 6, "chemistry": "aggressive"}
+    plain = {"material": "galvanised iron", "inspection_months": 12, "chemistry": "not_aggressive"}
+    named = {
+        # four on a line at 0, 1, 3 and 6 km: the walk starts at the one due
+        # longest and goes to the nearest each time
+        "walk": [record(694000.0, late), record(695000.0, late), record(697000.0, old),
+                 record(700000.0, late)],
+        # equidistant either side of the start: the lower identifier first
+        "tie": [record(696000.0, late), record(694000.0, late), record(695000.0, old)],
+        "silent": [record(694000.0)],
+        "not_due_and_gone": [record(694000.0, ev("2024-05-20", "commissioned")),
+                             record(695000.0, late, ev("2022-08-01", "decommissioned")),
+                             record(696000.0, late)],
+        "routine_by_design": [record(694000.0, late, ev("2023-11-20", "routine_inspection"),
+                                     rising_main=aggressive),
+                              record(695000.0, late, ev("2023-11-20", "routine_inspection"),
+                                     rising_main=plain),
+                              record(696000.0, late, ev("2023-11-20", "repair"))],
+        "mechanics": [record(694000.0, late, chiefdom="Koya"),
+                      record(695000.0, late, chiefdom="KORI"),
+                      record(696000.0, late, chiefdom="Bo Town"),
+                      record(697000.0, late, chiefdom="koya", area_mechanic=" Zainab ")],
+        "merged": [record(694000.0, late), {**record(694000.0, ev("2024-05-30", "routine_inspection")),
+                                            "community": "", "area_mechanic": "A. Bangura",
+                                            "rising_main": aggressive},
+                   {"asset_id": "not one"}],
+        "unplaced": [record(694000.0, late), {**record(700000.0, late), "easting": None},
+                     {**record(690000.0, late), "easting": "690000"},
+                     {**record(698000.0, late), "utm_zone": "28"}],
+        "beyond": [record(694000.0, ev("9999-08-01", "commissioned"))],
+        "zones": [record(694000.0, late), {**record(280400.0, late, northing=925600.0),
+                                            "asset_id": ident(280400.0, 925600.0, 29, "Kailahun"),
+                                            "utm_zone": 29}],
+    }
+    table = "Koya: M. Kolleh\nkori: A. Bangura\nno colon\nKOYA: Someone Else\n: blank\n"
+    cases = []
+
+    def case(name, assets, as_of="2024-06-01", mechanics=table, schedule=None, sheets=True):
+        plan = Schedule(**{**_asdict(Schedule()), **(schedule or {})})
+        parsed = RD.parse_area_mechanics(mechanics)
+        result = RD.service_rounds(assets, as_of, plan, parsed["entries"])
+        states = []
+        for raw in assets:
+            asset = asset_from_dict(raw)
+            states.append(None if asset is None
+                          else asset_state(asset, _date.fromisoformat(as_of), plan).as_dict())
+        rounds = []
+        for one in result["rounds"]:
+            told = {"text": RD.round_text(one), "rows": RD.round_rows(one)}
+            if sheets:
+                told["sheets"] = [RD.stop_sheet(stop) for stop in one["stops"]]
+            rounds.append(told)
+        cases.append({
+            "name": name, "assets": assets, "as_of": as_of, "mechanics": mechanics,
+            "schedule": schedule or {}, "sheets": sheets,
+            "expect": {"parsed": parsed, "result": result, "words": RD.rounds_text(result),
+                       "rounds": rounds, "states": states},
+        })
+
+    # the round sheet's parts are held where they differ most: the three
+    # visits' boxes and bases, and merged records with a mechanic named
+    with_sheets = {"routine_by_design", "merged"}
+    for name, assets in named.items():
+        case(name, assets, as_of="9999-12-31" if name == "beyond" else "2024-06-01",
+             sheets=name in with_sheets)
+    case("empty", [])
+    case("schedule", named["routine_by_design"], sheets=False,
+         schedule={"water_sample_months": 3, "grace_days": 0, "routine_inspection_months": 24})
+    # registers drawn from seeds: a patch of zone 28 where legs tie and stops
+    # coincide, second records of one borehole, and positions, mechanics and
+    # rising mains that are not what they should be. The round sheet's parts
+    # are held on two named cases only, to keep this section small
+    # (tests/test_rounds.py holds them on its own seeded registers)
+    days = ["2019-03-01", "2020-01-10", "2022-08-01", "2023-05-20", "2023-11-20", "2023-12-01",
+            "2024-01-31", "2024-05-01", "2024-06-01", "2024-07-15", "2099-01-01", "not written"]
+    kinds = ["commissioned", "inspection", "routine_inspection", "water_sample", "repair",
+             "failure", "restored", "decommissioned", "note"]
+    for seed in range(6):
+        rng = _random.Random(f"rounds {seed}")
+        assets, ids = [], []
+        for _ in range(rng.randint(1, 9)):
+            easting = rng.choice([694000.0, 694500.0, 695000.0, 696000.0,
+                                  round(rng.uniform(690000.0, 700000.0), 1)])
+            northing = rng.choice([938150.0, round(rng.uniform(930000.0, 940000.0), 1)])
+            if ids and rng.random() < 0.2:
+                asset_id = rng.choice(ids)
+            else:
+                asset_id = ident(easting, northing)
+                ids.append(asset_id)
+            raw = {"asset_id": asset_id, "community": rng.choice(["Rokel", "", None]),
+                   "district": "Western Area Rural",
+                   "chiefdom": rng.choice(["Koya", "KORI", "", None, "Bumpe Ngao"]),
+                   "easting": rng.choice([easting] * 9 + [None]), "northing": northing,
+                   "utm_zone": rng.choice([28] * 9 + [None]),
+                   "events": [ev(rng.choice(days), rng.choice(kinds))
+                              for _ in range(rng.choice([0, 1, 2, 3, 5]))]}
+            if rng.random() < 0.4:
+                raw["area_mechanic"] = rng.choice(["A. Bangura", " M. Kolleh ", "", 7])
+            if rng.random() < 0.5:
+                raw["rising_main"] = rng.choice([aggressive, plain, {"inspection_months": 9},
+                                                 {"inspection_months": 6.5}])
+            assets.append(raw)
+        case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2024-02-29"]), sheets=False)
+    return clean({"cases": cases})
 
 
 def sanitary_reference() -> dict:

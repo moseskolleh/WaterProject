@@ -240,3 +240,25 @@ need real project inputs or decisions to finish calibrating it.
    survey dated after the year planned for is left out of the age and the
    recent count for that year, rather than the plan year being refused
    when it is earlier than the inventory's survey dates.
+
+18. **The service rounds' intervals, their order and the round sheet's
+   boxes (added with PLAN.md step 7.3).** The asset registry schedules a
+   sanitary inspection every 6 months and a water quality sample every 12
+   (`service.sanitary_inspection_months` and `service.water_sample_months`
+   in `groundwater/data/defaults.json`), and a routine inspection of the
+   pump and rising main at the interval item 13 sets for the rising main,
+   or at its shorter interval where a record carries none; a visit is
+   overdue 30 days after it falls due (`service.grace_days`). Each is a
+   choice made here, not a standard: the 6 and 12 months were the
+   registry's defaults before this step, and the 30 days its grace. Four
+   things need the programme: (a) confirm the intervals and the grace, or
+   give the ones its district surveillance plan sets; (b) say whether a
+   repair that pulled the pump and the rising main should count as a
+   routine inspection, as no repair does now; (c) say whether the order of
+   a round (a nearest-neighbour walk in straight lines from the stop due
+   the longest, ties to the lower identifier) is good enough, or whether
+   the mechanics' own route, or the roads, should set it; (d) confirm the
+   boxes the round sheet prints for each visit (`readings_routine`,
+   `readings_sample` and `readings_visit` in
+   `groundwater/data/text/rounds.yaml`), which are this sheet's choice and
+   follow no published form.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 
 import streamlit as st
@@ -12,6 +13,7 @@ from groundwater.registry import (
     asset_from_dict,
     asset_from_project,
     asset_state,
+    asset_with_rising_main,
     AssetEvent,
     EVENT_KINDS,
     is_legacy_asset_id,
@@ -19,12 +21,23 @@ from groundwater.registry import (
     parse_asset_id,
     registry_rows,
     registry_stats,
+    Schedule,
+    trim_field,
     validate_asset_id,
 )
 from groundwater.reporting.registry import (
     AssetReportInputs,
     build_asset_placard,
     build_asset_record,
+)
+from groundwater.reporting.rounds import build_round_sheet
+from groundwater.rounds import (
+    parse_area_mechanics,
+    round_header,
+    round_rows,
+    round_text,
+    rounds_text,
+    service_rounds,
 )
 from groundwater.sanitary import (
     form_questions,
@@ -58,6 +71,11 @@ def render() -> None:
     if not _asset and _draft is not None:
         _asset = _draft.as_dict()
     _live = asset_from_dict(_asset) if _asset else None
+    if _live is not None:
+        # the rising main of the design as it now stands, whose interval the
+        # routine inspection is due by (PLAN.md step 7.3)
+        _live = asset_with_rising_main(_live, getattr(
+            st.session_state.get("borehole_design"), "rising_main", None))
 
     st.subheader("This borehole")
     if _live is None:
@@ -76,7 +94,7 @@ def render() -> None:
                 "the sidebar."
             )
     else:
-        _state = asset_state(_live)
+        _state = asset_state(_live, schedule=Schedule.from_config(app_config()))
         _c1, _c2, _c3 = st.columns([2, 1, 1])
         _c1.metric("Identifier", _live.asset_id)
         _c2.metric("Status", _state.label)
@@ -99,6 +117,13 @@ def render() -> None:
         else:
             for _item in _state.due:
                 st.caption(_item.detail)
+        # the routine inspection's interval is the one that differs from
+        # borehole to borehole: it follows the design's rising main
+        for _item in _state.due:
+            if _item.key == "routine_inspection":
+                st.caption(phrase("rounds.interval_line", title=_item.title,
+                                  basis=_item.basis))
+        _mechanic_field(_live)
 
         with st.form("asset_event_form", clear_on_submit=True):
             st.markdown("**Record what happened**")
@@ -147,6 +172,7 @@ def render() -> None:
         if _r2.button("Build asset record (.docx)", key="asset_record_report"):
             _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
                                         readiness=report_gate("asset"),
+                                        schedule=Schedule.from_config(app_config()),
                                         quality=st.session_state.get("wq_assessment"))
             offer_download(
                 build_asset_record(_inputs,
@@ -187,7 +213,7 @@ def render() -> None:
     if not _assets:
         st.info("Upload saved project files that carry an asset record.")
     else:
-        _stats = registry_stats(_assets)
+        _stats = registry_stats(_assets, schedule=Schedule.from_config(app_config()))
         _s1, _s2, _s3, _s4 = st.columns(4)
         _s1.metric("Boreholes", _stats["n_assets"])
         _s2.metric("Working", _stats["n_functional"])
@@ -204,14 +230,87 @@ def render() -> None:
                 "against them at all. That is not the same as nothing having "
                 "happened to them."
             )
-        _chase = _stats["n_overdue_inspection"] + _stats["n_overdue_sample"]
+        _chase = (_stats["n_overdue_inspection"] + _stats["n_overdue_routine"]
+                  + _stats["n_overdue_sample"])
         if _chase:
             st.info(
                 f"{_stats['n_overdue_inspection']} overdue a sanitary "
+                f"inspection, {_stats['n_overdue_routine']} overdue a routine "
                 f"inspection, {_stats['n_overdue_sample']} overdue a water "
                 "quality sample."
             )
-        st.dataframe(registry_rows(_assets), hide_index=True, width="stretch")
+        st.dataframe(registry_rows(_assets, schedule=Schedule.from_config(app_config())),
+                     hide_index=True, width="stretch")
+
+    st.divider()
+    _service_rounds(_live, _assets)
+
+
+def _mechanic_field(asset) -> None:
+    """The area mechanic named on this borehole's record, whose service round
+    it is on (PLAN.md step 7.3). Named here, it travels in the project file;
+    a borehole with none named goes to the mechanic named for its chiefdom."""
+    # no key: the field starts from the record shown, so another project's
+    # borehole does not inherit the name typed for this one
+    with st.form("asset_mechanic_form"):
+        _name = st.text_input(
+            "Area mechanic", value=asset.area_mechanic, placeholder="Area mechanic",
+            help="Named on this borehole's record. With none named, the "
+                 "service rounds look the chiefdom up.")
+        if st.form_submit_button("Name the area mechanic"):
+            asset.area_mechanic = trim_field(_name)
+            st.session_state["asset_record"] = asset.as_dict()
+            st.success("Area mechanic named." if asset.area_mechanic
+                       else "Area mechanic cleared.")
+
+
+def _service_rounds(asset, register) -> None:
+    """What is due on a day at this borehole and at every borehole in the
+    register, by area mechanic and in order, with the round sheets to print
+    (PLAN.md step 7.3). The day is the page's input, today unless another is
+    chosen; the engine never reads the clock."""
+    st.subheader("Service rounds")
+    st.caption(
+        "What is due on the day below, at this borehole and at every borehole "
+        "in the register above: the sanitary inspection, the routine "
+        "inspection of the pump and rising main, and the water quality "
+        "sample. Each borehole goes to the area mechanic named on its record, "
+        "else to the one named for its chiefdom here. The browser app has the "
+        "same rounds on its Asset registry page."
+    )
+    _when = st.date_input("Round drawn up on", value=date.today(), key="rounds_date")
+    # org_ so it is saved with the project, as the browser keeps it in its store
+    _text = st.text_area(
+        "Area mechanics by chiefdom", key="org_area_mechanics", height=90,
+        placeholder="One chiefdom a line: the chiefdom, a colon and the mechanic's name")
+    _parsed = parse_area_mechanics(_text)
+    for _line in _parsed["skipped"]:
+        st.warning(_line)
+    # this borehole first, so its record, kept in step with the design, is
+    # the one read where the register holds the same borehole
+    _assets = ([asset] if asset is not None else []) + list(register)
+    _result = service_rounds(_assets, _when, Schedule.from_config(app_config()),
+                             _parsed["entries"])
+    _words = rounds_text(_result)
+    for _line in _words["summary"]:
+        st.write(_line)
+    for _one in _result["rounds"]:
+        _lines = round_text(_one)
+        # a mechanic's name is typed by a person: its markdown is escaped
+        st.markdown("**" + re.sub(r"([\\`*_\[\]<>#|~$])", r"\\\1", _lines[0]) + "**")
+        for _line in _lines[1:]:
+            st.caption(_line)
+        st.dataframe([dict(zip(round_header(), row, strict=True)) for row in round_rows(_one)],
+                     hide_index=True, width="stretch")
+    if _result["rounds"]:
+        st.caption(_words["method"])
+        st.caption(_words["intervals"])
+    if st.button("Build round sheets (.docx)", key="rounds_sheet",
+                 disabled=not _result["n_boreholes"]):
+        offer_download(
+            build_round_sheet(_result, workdir() / f"rounds_{_result['as_of']}.docx",
+                              app_config()),
+            "Round sheets")
 
 
 def _sanitary_inspection(asset) -> None:

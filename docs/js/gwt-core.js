@@ -107,7 +107,7 @@
     var cfg = defaultConfig();
     if (!overrides) return cfg;
     ['style', 'ves', 'pumping', 'design', 'ves_range', 'odds', 'ledger', 'cost_range',
-      'terrain']
+      'terrain', 'service']
       .forEach(function (section) {
       var over = overrides[section];
       if (!over) return;
@@ -28842,10 +28842,14 @@
       '. Something in it has been mistyped.' };
   }
 
-  /* kind -> [label, what it establishes about function, is it a service visit] */
+  /* kind -> [label, what it establishes about function, is it a service visit].
+   * A routine inspection is the area mechanic's visit to the pump and the
+   * rising main (PLAN.md step 7.3); an inspection is the sanitary inspection,
+   * as it always was. A repair is not counted as a routine inspection. */
   var EVENT_KINDS = {
     commissioned: ['Commissioned', 'functional', false],
     inspection: ['Sanitary inspection', null, true],
+    routine_inspection: ['Routine inspection', null, true],
     water_sample: ['Water sampled', null, false],
     repair: ['Repair', 'functional', true],
     failure: ['Failure', 'non_functional', true],
@@ -28998,6 +29002,7 @@
 
   /** Clamped rather than rolled over: six months from 31 August is 28
    * February, not 3 March, and a due date that drifts forward is missed.
+   * Null past the year 9999, the last a date can hold in either engine.
    * @param {string} iso
    * @param {number} months
    * @returns {string|null}
@@ -29009,6 +29014,7 @@
     var day = Number(match[3]);
     year += Math.floor(month / 12);
     month = ((month % 12) + 12) % 12 + 1;
+    if (year > 9999) return null;
     day = Math.min(day, daysInMonth(year, month));
     /* the year written in four digits, as Python's isoformat writes it, so
      * a due date counted from a day before the year 1000 still reads */
@@ -29118,34 +29124,139 @@
     return asset && asset.district ? place + ' (' + asset.district + ')' : place;
   }
 
-  var DEFAULT_SCHEDULE = {
-    inspection_months: 6, water_sample_months: 12, grace_days: 30
-  };
+  /** How often a point is visited (registry.Schedule.from_config): the
+   * configuration's service section, and its design rules' interval for a
+   * rising main in water whose corrosivity is not known, which is the routine
+   * inspection's interval for a record that carries no rising main. These
+   * are a programme's choices, not a standard.
+   * @param {Config|null} [cfg] a configuration; the defaults when not given
+   * @returns {Rec}
+   */
+  function serviceSchedule(cfg) {
+    var c = cfg || defaultConfig();
+    return {
+      sanitary_inspection_months: c.service.sanitary_inspection_months,
+      water_sample_months: c.service.water_sample_months,
+      grace_days: c.service.grace_days,
+      routine_inspection_months: c.design.aggressive_rising_main_inspection_months
+    };
+  }
 
-  function dueItem(key, title, last, commissioned, months, graceDays, today, why) {
+  /* registry._MAX_MONTHS: a hundred years, the longest interval a record may
+   * set; a longer one is not an interval anybody meant */
+  var MAX_MONTHS = 1200;
+
+  /* a number of months from 1 to 1200, or null: a whole number, as Python
+   * reads it too (5.0 is 5, true is not a number) */
+  function wholeMonths(value) {
+    return typeof value === 'number' && isFinite(value) && value === Math.floor(value) &&
+      value >= 1 && value <= MAX_MONTHS ? value : null;
+  }
+
+  /* registry.Schedule.__post_init__: an interval no due date can be counted
+   * with is refused, so a configuration that set one does not give a due
+   * date in one engine and nonsense in the other */
+  function checkSchedule(plan) {
+    ['sanitary_inspection_months', 'water_sample_months', 'routine_inspection_months']
+      .forEach(function (name) {
+        if (wholeMonths(plan[name]) === null) {
+          throw new Error('schedule: ' + name + ' must be a whole number of months from 1 to ' +
+            MAX_MONTHS);
+        }
+      });
+    var grace = plan.grace_days;
+    if (!(typeof grace === 'number' && isFinite(grace) && grace === Math.floor(grace) &&
+        grace >= 0)) {
+      throw new Error('schedule: grace_days must be a whole number of days, 0 or more');
+    }
+    return plan;
+  }
+
+  /* a text field of a record, trimmed, or blank when it is not text */
+  function textField(value) {
+    return typeof value === 'string' ? trimField(value) : '';
+  }
+
+  /** The rising main a record carries, as both engines keep it, or null
+   * (registry.clean_rising_main): the interval a whole number of months from
+   * 1 to 1200, or no rising main at all; the material trimmed; the chemistry
+   * kept only when it is a state the design names.
+   * @param {*} raw a design's rising main or a stored record's
+   * @returns {Rec|null}
+   */
+  function cleanRisingMain(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    var months = wholeMonths(raw.inspection_months);
+    if (months === null) return null;
+    var chemistry = textField(raw.chemistry);
+    return {
+      material: textField(raw.material), inspection_months: months,
+      chemistry: own(phraseTable('rounds.water'), chemistry) ? chemistry : ''
+    };
+  }
+
+  /** A copy of the record carrying the rising main of its project's design;
+   * the record as it is when the design gives none.
+   * @param {Rec} asset
+   * @param {*} risingMain a design's rising main
+   * @returns {Rec}
+   */
+  function assetWithRisingMain(asset, risingMain) {
+    var clean = cleanRisingMain(risingMain);
+    if (!clean) return asset;
+    return Object.assign({}, asset, { rising_main: clean });
+  }
+
+  function dueItem(key, title, last, commissioned, months, graceDays, today, why, basis) {
     var anchor = last || commissioned;
     if (!anchor) {
       return { key: key, title: title, due_on: null, state: 'unknown',
         detail: 'No ' + title.toLowerCase() + ' has been recorded, and there ' +
-          'is no commissioning date to count from. ' + why };
+          'is no commissioning date to count from. ' + why,
+        months: months, basis: basis };
     }
     var dueOn = addMonths(anchor, months);
+    if (dueOn === null) {
+      return { key: key, title: title, due_on: null, state: 'scheduled',
+        detail: phrase('rounds.beyond', { title: title.toLowerCase() }),
+        months: months, basis: basis };
+    }
     /* both are days that read: dueOn is counted from a recorded day that
      * did, and today is the clock's own date unless a caller passes one */
     var dueDay = /** @type {number} */ (isoDay(dueOn)),
       todayDay = /** @type {number} */ (isoDay(today));
-    if (todayDay > dueDay + graceDays) {
+    var late = todayDay - dueDay;
+    if (late > graceDays) {
       var never = last ? '' : 'has never been done; it ';
       return { key: key, title: title, due_on: dueOn, state: 'overdue',
         detail: title + ' ' + never + 'has been due since ' + dueOn + ', ' +
-          (todayDay - dueDay) + ' days ago. ' + why };
+          late + ' days ago. ' + why,
+        months: months, basis: basis };
     }
-    if (todayDay > dueDay) {
+    if (late > 0) {
       return { key: key, title: title, due_on: dueOn, state: 'due',
-        detail: title + ' fell due on ' + dueOn + '.' };
+        detail: title + ' fell due on ' + dueOn + '.', months: months, basis: basis };
     }
     return { key: key, title: title, due_on: dueOn, state: 'scheduled',
-      detail: 'Next ' + title.toLowerCase() + ' due ' + dueOn + '.' };
+      detail: 'Next ' + title.toLowerCase() + ' due ' + dueOn + '.',
+      months: months, basis: basis };
+  }
+
+  /* registry._routine_interval: the routine inspection's interval and where
+   * it comes from - the rising main the record carries from the design, else
+   * the schedule's interval for a record that carries none */
+  function routineInterval(asset, plan) {
+    var rising = cleanRisingMain(asset.rising_main);
+    if (!rising) {
+      return [plan.routine_inspection_months, phrase('rounds.basis_default',
+        { months: plan.routine_inspection_months })];
+    }
+    var months = rising.inspection_months;
+    if (rising.material && rising.chemistry) {
+      return [months, phrase('rounds.basis_design', { months: months,
+        material: rising.material, water: phraseTable('rounds.water')[rising.chemistry] })];
+    }
+    return [months, phrase('rounds.basis_record', { months: months })];
   }
 
   /**
@@ -29155,7 +29266,7 @@
    */
   function assetState(asset, today, schedule) {
     var when = today || new Date().toISOString().slice(0, 10);
-    var plan = Object.assign({}, DEFAULT_SCHEDULE, schedule || {});
+    var plan = checkSchedule(Object.assign({}, serviceSchedule(), schedule || {}));
     var events = mergeEvents(asset.asset_id, asset.events || []);
     /* the clock's own date unless the caller passes one */
     var todayDay = /** @type {number} */ (isoDay(when));
@@ -29166,7 +29277,7 @@
     var fn = 'unknown', since = null;
     var detail = 'Nothing has been recorded against this borehole, so whether ' +
       'it is working is not known.';
-    var commissioned = null, lastInspection = null, lastSample = null;
+    var commissioned = null, lastInspection = null, lastSample = null, lastRoutine = null;
     var afterDecommissioning = [];
     dated.forEach(function (event) {
       if (/** @type {number} */ (isoDay(event.when)) > todayDay) return;
@@ -29190,6 +29301,7 @@
       }
       if (event.kind === 'commissioned' && !commissioned) commissioned = event.when;
       if (event.kind === 'inspection') lastInspection = event.when;
+      if (event.kind === 'routine_inspection') lastRoutine = event.when;
       if (event.kind === 'water_sample') lastSample = event.when;
     });
 
@@ -29210,17 +29322,24 @@
     var due = [];
     if (fn !== 'decommissioned') {
       due.push(dueItem('inspection', 'Sanitary inspection', lastInspection,
-        commissioned, plan.inspection_months, plan.grace_days, when,
+        commissioned, plan.sanitary_inspection_months, plan.grace_days, when,
         'A sanitary inspection is what catches a cracked apron or a latrine ' +
-        'dug uphill before the water shows it.'));
+        'dug uphill before the water shows it.',
+        phrase('rounds.basis_sanitary', { months: plan.sanitary_inspection_months })));
+      var routine = routineInterval(asset, plan);
+      due.push(dueItem('routine_inspection', EVENT_KINDS.routine_inspection[0], lastRoutine,
+        commissioned, routine[0], plan.grace_days, when, phrase('rounds.routine_why'),
+        routine[1]));
       due.push(dueItem('water_sample', 'Water quality sample', lastSample,
         commissioned, plan.water_sample_months, plan.grace_days, when,
         'Water that was safe at handover is not evidence that it is safe now: ' +
-        'the aquifer, the headworks and the catchment all change.'));
+        'the aquifer, the headworks and the catchment all change.',
+        phrase('rounds.basis_sample', { months: plan.water_sample_months })));
     }
     return {
       function: fn, label: FUNCTION_LABELS[fn], since: since, detail: detail,
       last_inspection: lastInspection, last_sample: lastSample,
+      last_routine_inspection: lastRoutine,
       commissioned: commissioned, days_out_of_service: outFor,
       due: due, undated_events: undated,
       overdue: due.filter(function (item) { return item.state === 'overdue'; }),
@@ -29297,6 +29416,13 @@
       pump_type: payload.pump_type || '', installed_by: payload.installed_by || '',
       events: []
     };
+    /* only a record that has them carries them (PLAN.md step 7.3), so a
+     * project file with no mechanic named and no rising main is written as
+     * it was before */
+    var mechanic = textField(payload.area_mechanic);
+    if (mechanic) asset.area_mechanic = mechanic;
+    var rising = cleanRisingMain(payload.rising_main);
+    if (rising) asset.rising_main = rising;
     asset.events = mergeEvents(assetId, payload.events || []);
     return asset;
   }
@@ -29318,7 +29444,8 @@
     }
     var log = state.drilling_log, analysis = state.pump_analysis;
     var recommendation = analysis && analysis.yield_recommendation;
-    return {
+    /** @type {Rec} */
+    var asset = {
       asset_id: assetId, community: site.community || '',
       district: site.district || '', chiefdom: site.chiefdom || '',
       easting: site.easting, northing: site.northing,
@@ -29327,6 +29454,12 @@
       safe_yield_m3_per_h: recommendation ? recommendation.safe_yield_m3_per_h : null,
       pump_type: '', installed_by: site.contractor || '', events: []
     };
+    /* the rising main the design specifies, whose interval the routine
+     * inspection is due by (PLAN.md steps 7.2 and 7.3) */
+    var design = state.borehole_design;
+    var rising = cleanRisingMain(design ? design.rising_main : null);
+    if (rising) asset.rising_main = rising;
+    return asset;
   }
 
   /**
@@ -29379,6 +29512,7 @@
       n_unknown: counts.unknown,
       functionality_rate: known ? counts.functional / known * 100 : null,
       n_overdue_inspection: own(overdue, 'inspection') ? overdue.inspection : 0,
+      n_overdue_routine: own(overdue, 'routine_inspection') ? overdue.routine_inspection : 0,
       n_overdue_sample: own(overdue, 'water_sample') ? overdue.water_sample : 0,
       mean_days_out_of_service: outDays.length
         ? outDays.reduce(function (a, b) { return a + b; }, 0) / outDays.length : null
@@ -29388,7 +29522,8 @@
   Object.assign(C, {
     DISTRICT_CODES: DISTRICT_CODES, UNKNOWN_DISTRICT: UNKNOWN_DISTRICT,
     EVENT_KINDS: EVENT_KINDS, FUNCTION_LABELS: FUNCTION_LABELS,
-    FUNCTION_COLORS: FUNCTION_COLORS, DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
+    FUNCTION_COLORS: FUNCTION_COLORS, serviceSchedule: serviceSchedule,
+    cleanRisingMain: cleanRisingMain, assetWithRisingMain: assetWithRisingMain,
     checkCharacter: checkCharacter, legacyCheckCharacter: legacyCheckCharacter,
     mintAssetId: mintAssetId, isLegacyAssetId: isLegacyAssetId,
     parseAssetId: parseAssetId, validateAssetId: validateAssetId,
@@ -29867,6 +30002,430 @@
     inspectionEvent: inspectionEvent, ecoliGrade: ecoliGrade,
     ecoliGradesAbove: ecoliGradesAbove, microbiology: microbiology,
     latestInspection: latestInspection, sanitaryRisk: sanitaryRisk
+  });
+
+  /* ===================================================================
+   * Service rounds - a port of groundwater/rounds.py (PLAN.md 7.3)
+   *
+   * The register of many boreholes on a day: which have a visit due (the
+   * registry's sanitary inspection, routine inspection and water sample,
+   * due, overdue, or due now with nothing to count from), whose round each
+   * is on (the area mechanic named on the record, else the one named for its
+   * chiefdom, else none), and in what order: a nearest-neighbour walk from
+   * the stop due the longest, in straight lines on the ellipsoid to the
+   * metre, a tie going to the lower identifier. An order, not an optimal
+   * route. The day is an input, never the clock; the words are in
+   * text/rounds.yaml.
+   * =================================================================== */
+
+  var ROUND_STATES = ['overdue', 'due', 'unknown'];
+  /* rounds._MERGED_TEXT and _MERGED_VALUES: taken from the first record of a
+   * borehole that has one; a text field is had when it is text that is not
+   * blank once trimmed, any other when it is not missing */
+  var MERGED_TEXT = ['community', 'district', 'chiefdom', 'pump_type', 'installed_by',
+    'area_mechanic'];
+  var MERGED_VALUES = ['easting', 'northing', 'utm_zone', 'total_depth_m',
+    'safe_yield_m3_per_h', 'rising_main'];
+
+  /* the day the round is drawn up, as a day number; YYYY-MM-DD and nothing
+   * else, as iso_date reads it */
+  function roundDay(asOf) {
+    var day = isoDay(asOf);
+    if (day === null) throw new Error('a service round needs the day it is drawn up, as YYYY-MM-DD');
+    return day;
+  }
+
+  /* A to Z as a to z, nothing else changed, so both engines match exactly
+   * the same chiefdom names */
+  function foldAscii(text) {
+    return text.replace(/[A-Z]/g, function (c) { return c.toLowerCase(); });
+  }
+
+  function finiteNumber(value) {
+    return typeof value === 'number' && isFinite(value);
+  }
+
+  /** The area mechanics by chiefdom, from one line a chiefdom: the
+   * chiefdom, a colon and the mechanic's name (rounds.parse_area_mechanics).
+   * A line that cannot be read is left out and skipped says why; of two
+   * lines naming one chiefdom the first is used.
+   * @param {*} text
+   * @returns {{entries: Rec[], skipped: string[]}}
+   */
+  function parseAreaMechanics(text) {
+    /** @type {Rec[]} */
+    var entries = [];
+    /** @type {string[]} */
+    var skipped = [];
+    /** @type {Rec} */
+    var seen = {};
+    var raw = typeof text === 'string' ? text : '';
+    raw.split('\n').forEach(function (whole, i) {
+      var number = i + 1;
+      var line = trimField(whole);
+      if (!line) return;
+      var at = line.indexOf(':');
+      if (at < 0) {
+        skipped.push(phrase('rounds.mechanics_no_colon', { line: number }));
+        return;
+      }
+      var chiefdom = trimField(line.slice(0, at)), mechanic = trimField(line.slice(at + 1));
+      if (!chiefdom || !mechanic) {
+        skipped.push(phrase('rounds.mechanics_blank', { line: number }));
+        return;
+      }
+      var key = foldAscii(chiefdom);
+      if (own(seen, key)) {
+        skipped.push(phrase('rounds.mechanics_repeated', { line: number, chiefdom: chiefdom }));
+        return;
+      }
+      seen[key] = true;
+      entries.push({ chiefdom: chiefdom, mechanic: mechanic });
+    });
+    return { entries: entries, skipped: skipped };
+  }
+
+  /** The area mechanic whose round the borehole is on, and how that was
+   * found: asset (named on its record), chiefdom (named for its chiefdom)
+   * or none (rounds.mechanic_for).
+   * @param {Rec} asset
+   * @param {Rec[]|null} [mechanics] the entries parseAreaMechanics returns
+   * @returns {[string, string]}
+   */
+  function mechanicFor(asset, mechanics) {
+    var named = textField(asset.area_mechanic);
+    if (named) return [named, 'asset'];
+    var chiefdom = foldAscii(textField(asset.chiefdom));
+    if (chiefdom) {
+      var list = mechanics || [];
+      for (var i = 0; i < list.length; i++) {
+        var entry = list[i];
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        var mechanic = textField(entry.mechanic);
+        if (mechanic && foldAscii(textField(entry.chiefdom)) === chiefdom) {
+          return [mechanic, 'chiefdom'];
+        }
+      }
+    }
+    return ['', 'none'];
+  }
+
+  /* latitude and longitude from an easting and northing that are both
+   * finite numbers, each in its own zone (inferred from the easting where
+   * the record names no zone from 1 to 60), or null */
+  function roundPosition(asset) {
+    var easting = asset.easting, northing = asset.northing, zone = asset.utm_zone;
+    if (!finiteNumber(easting) || !finiteNumber(northing)) return null;
+    if (!(finiteNumber(zone) && zone === Math.floor(zone) && zone >= 1 && zone <= 60)) {
+      zone = inferZoneForSierraLeone(easting);
+    }
+    var fix = utmToGeographic(easting, northing, zone);
+    return fix ? [fix.lat, fix.lon] : null;
+  }
+
+  /* as the headworks plate's symbol writes a position */
+  function positionText(lat, lon) {
+    return pyFixed(Math.abs(lat), 5) + ' ' + (lat >= 0 ? 'N' : 'S') + ', ' +
+      pyFixed(Math.abs(lon), 5) + ' ' + (lon >= 0 ? 'E' : 'W');
+  }
+
+  function emptyField(value) {
+    return value === null || value === undefined || value === '';
+  }
+
+  /* the records read as assets, those of one borehole as one, with how many
+   * named a borehole already named and how many could not be read */
+  function roundRecords(assets) {
+    /** @type {Rec} */
+    var byId = {};
+    /** @type {Rec[]} */
+    var order = [];
+    var repeated = 0, unreadable = 0;
+    (assets || []).forEach(function (raw) {
+      var asset = assetFromDict(raw);
+      if (!asset) { unreadable += 1; return; }
+      if (!own(byId, asset.asset_id)) {
+        byId[asset.asset_id] = asset;
+        order.push(asset);
+        return;
+      }
+      repeated += 1;
+      var first = byId[asset.asset_id], next = asset;
+      MERGED_TEXT.forEach(function (name) {
+        if (!textField(first[name]) && textField(next[name])) first[name] = next[name];
+      });
+      MERGED_VALUES.forEach(function (name) {
+        if (emptyField(first[name]) && !emptyField(next[name])) first[name] = next[name];
+      });
+      first.events = mergeEvents(first.asset_id, first.events, next.events);
+    });
+    return { records: order, repeated: repeated, unreadable: unreadable };
+  }
+
+  function byAssetId(a, b) {
+    return a.asset_id < b.asset_id ? -1 : (a.asset_id > b.asset_id ? 1 : 0);
+  }
+
+  /* the stops in the order of a nearest-neighbour walk, each with the
+   * straight-line distance from the one before, in whole metres */
+  function roundWalk(stops) {
+    var placed = stops.filter(function (s) { return s.placed; });
+    var unplaced = stops.filter(function (s) { return !s.placed; }).sort(byAssetId);
+    /** @type {Rec[]} */
+    var order = [];
+    if (placed.length) {
+      var here = placed.reduce(function (best, s) {
+        return s._first < best._first || (s._first === best._first && byAssetId(s, best) < 0)
+          ? s : best;
+      });
+      here.leg_m = null;
+      order.push(here);
+      var left = placed.filter(function (s) { return s !== here; });
+      while (left.length) {
+        var from = here;
+        left.forEach(function (s) {
+          s._leg = pyRound(geodesicDistanceM(from._where[0], from._where[1],
+            s._where[0], s._where[1]));
+        });
+        here = left.reduce(function (best, s) {
+          return s._leg < best._leg || (s._leg === best._leg && byAssetId(s, best) < 0) ? s : best;
+        });
+        here.leg_m = here._leg;
+        order.push(here);
+        left = left.filter(function (s) { return s !== here; });
+      }
+    }
+    unplaced.forEach(function (s) { s.leg_m = null; order.push(s); });
+    order.forEach(function (s, i) {
+      s.order = i + 1;
+      /* the working values are not part of the answer: a latitude computed
+       * by two engines' trigonometry need not agree to the last bit */
+      delete s._leg;
+      delete s._first;
+      delete s._where;
+    });
+    return order;
+  }
+
+  /** The service rounds of a register of boreholes on the day asOf
+   * (rounds.service_rounds): each mechanic's round with its stops in order
+   * and the sum of the legs between them, the stops no mechanic is named
+   * for last; each stop with the borehole's identifier and what its plate's
+   * symbol begins with, where it is, its condition on record and the visits due.
+   * @param {Rec[]|null} assets registry records
+   * @param {string} asOf the day, YYYY-MM-DD; never read off the clock
+   * @param {Rec|null} [schedule] the intervals (serviceSchedule)
+   * @param {Rec[]|null} [mechanics] the area mechanics by chiefdom
+   * @returns {Rec}
+   */
+  function serviceRounds(assets, asOf, schedule, mechanics) {
+    var day = roundDay(asOf);
+    var today = /** @type {string} */ (dayToIso(day));
+    var plan = checkSchedule(Object.assign({}, serviceSchedule(), schedule || {}));
+    var read = roundRecords(assets);
+    /** @type {Rec} */
+    var groups = {};
+    var nothingDue = 0, decommissioned = 0;
+    read.records.forEach(function (asset) {
+      var state = assetState(asset, today, plan);
+      if (state.function === 'decommissioned') { decommissioned += 1; return; }
+      var due = state.due.filter(function (item) { return ROUND_STATES.indexOf(item.state) >= 0; });
+      if (!due.length) { nothingDue += 1; return; }
+      var who = mechanicFor(asset, mechanics);
+      var where = roundPosition(asset);
+      var first = Math.min.apply(null, due.map(function (item) {
+        return item.due_on === null ? day : /** @type {number} */ (isoDay(item.due_on));
+      }));
+      if (!own(groups, who[0])) groups[who[0]] = [];
+      var community = textField(asset.community), district = textField(asset.district);
+      var place = community || '(unnamed site)';
+      groups[who[0]].push({
+        order: 0,
+        asset_id: asset.asset_id,
+        plate: 'BOREHOLE ' + asset.asset_id,
+        /* as the registry labels a borehole, from the fields as read here */
+        label: district ? place + ' (' + district + ')' : place,
+        community: community,
+        chiefdom: textField(asset.chiefdom),
+        district: district,
+        placed: where !== null,
+        position: where ? positionText(where[0], where[1]) : '',
+        mechanic: who[0],
+        mechanic_from: who[1],
+        function: state.function,
+        condition: state.label,
+        condition_detail: state.detail,
+        due: due.map(function (item) {
+          return { key: item.key, title: item.title, state: item.state, due_on: item.due_on,
+            detail: item.detail, months: item.months, basis: item.basis };
+        }),
+        first_due: dayToIso(first),
+        leg_m: null,
+        _first: first,
+        _where: where,
+      });
+    });
+    var names = Object.keys(groups).filter(function (name) { return name; })
+      .sort(codePointCompare);
+    if (own(groups, '')) names.push('');
+    var rounds = names.map(function (name) {
+      var stops = roundWalk(groups[name]);
+      return {
+        mechanic: name,
+        stops: stops,
+        distance_m: stops.reduce(function (sum, s) { return sum + (s.leg_m === null ? 0 : s.leg_m); }, 0),
+        placed: stops.filter(function (s) { return s.placed; }).length,
+        unplaced: stops.filter(function (s) { return !s.placed; }).length,
+      };
+    });
+    return {
+      as_of: today,
+      rounds: rounds,
+      n_boreholes: read.records.length,
+      n_stops: rounds.reduce(function (sum, r) { return sum + r.stops.length; }, 0),
+      n_nothing_due: nothingDue,
+      n_decommissioned: decommissioned,
+      n_merged: read.repeated,
+      n_unreadable: read.unreadable,
+      schedule: {
+        sanitary_inspection_months: plan.sanitary_inspection_months,
+        water_sample_months: plan.water_sample_months,
+        grace_days: plan.grace_days,
+        routine_inspection_months: plan.routine_inspection_months
+      }
+    };
+  }
+
+  /** What the rounds say as a whole (rounds.rounds_text): the headline and
+   * the counts beside it, how a round is put in order, and what is due when.
+   * @param {Rec} result what serviceRounds returns
+   * @returns {{summary: string[], method: string, intervals: string}}
+   */
+  function roundsText(result) {
+    /** @type {string[]} */
+    var summary = [];
+    var total = result.n_boreholes, stops = result.n_stops;
+    if (!total) {
+      summary.push(phrase('rounds.empty'));
+    } else if (stops) {
+      summary.push(phrase('rounds.headline', { date: result.as_of, total: total, due: stops,
+        rounds: result.rounds.length }));
+    } else {
+      summary.push(phrase('rounds.headline_none', { date: result.as_of, total: total }));
+    }
+    if (stops && result.n_nothing_due) {
+      summary.push(phrase('rounds.nothing_due', { count: result.n_nothing_due }));
+    }
+    if (result.n_decommissioned) {
+      summary.push(phrase('rounds.decommissioned', { count: result.n_decommissioned }));
+    }
+    if (result.n_merged) summary.push(phrase('rounds.merged', { count: result.n_merged }));
+    if (result.n_unreadable) {
+      summary.push(phrase('rounds.unreadable', { count: result.n_unreadable }));
+    }
+    var plan = result.schedule;
+    return {
+      summary: summary,
+      method: phrase('rounds.method'),
+      intervals: phrase('rounds.intervals', { sanitary: plan.sanitary_inspection_months,
+        sample: plan.water_sample_months, routine: plan.routine_inspection_months,
+        grace: plan.grace_days })
+    };
+  }
+
+  /** What one round says of itself (rounds.round_text).
+   * @param {Rec} one a round of serviceRounds
+   * @returns {string[]}
+   */
+  function roundText(one) {
+    var name = one.mechanic || phrase('rounds.unassigned');
+    var out = [phrase('rounds.round_stops', { mechanic: name, stops: one.stops.length })];
+    if (one.placed > 1) out.push(phrase('rounds.round_distance', { km: one.distance_m / 1000 }));
+    if (one.unplaced) out.push(phrase('rounds.unplaced', { count: one.unplaced }));
+    if (!one.mechanic) out.push(phrase('rounds.round_unassigned'));
+    return out;
+  }
+
+  /** The labels of a round's table, in order (rounds.round_header).
+   * @returns {string[]}
+   */
+  function roundHeader() {
+    var table = phraseTable('rounds.columns');
+    return Object.keys(table).map(function (key) { return table[key]; });
+  }
+
+  /** A round's stops as the rows of its table (rounds.round_rows).
+   * @param {Rec} one a round of serviceRounds
+   * @returns {string[][]}
+   */
+  function roundRows(one) {
+    var states = phraseTable('rounds.state');
+    return one.stops.map(function (stop) {
+      return [String(stop.order), stop.asset_id, stop.community, stop.chiefdom, stop.condition,
+        stop.due.map(function (item) {
+          return phrase('rounds.due_short', { title: item.title, state: states[item.state] });
+        }).join('; '),
+        stop.leg_m === null ? '' : phrase('rounds.leg_km', { km: stop.leg_m / 1000 })];
+    });
+  }
+
+  /** What the round sheet prints for one stop (rounds.stop_sheet): its
+   * heading, the details, and for each visit due the sentence saying what
+   * is due and why with the boxes for its readings, then the boxes for the
+   * visit itself. A box is a row whose last cell is blank.
+   * @param {Rec} stop a stop of serviceRounds
+   * @returns {Rec}
+   */
+  function stopSheet(stop) {
+    var words = phraseTable('rounds.sheet_details');
+    var leg = stop.leg_m !== null ? phrase('rounds.sheet_leg', { km: stop.leg_m / 1000 })
+      : (!stop.placed ? phrase('rounds.sheet_no_position') : phrase('rounds.sheet_first'));
+    var mechanic = stop.mechanic
+      ? stop.mechanic + ' (' + phraseTable('rounds.mechanic_from')[stop.mechanic_from] + ')'
+      : phrase('rounds.unassigned');
+    var details = [
+      [words.identifier, stop.asset_id],
+      [words.plate, stop.plate],
+      [words.community, stop.community || '-'],
+      [words.chiefdom, stop.chiefdom || '-'],
+      [words.district, stop.district || '-'],
+      [words.position, stop.position || phrase('rounds.sheet_no_position')],
+      [words.condition, stop.condition + '. ' + stop.condition_detail],
+      [words.leg, leg],
+      [words.mechanic, mechanic],
+    ];
+    var states = phraseTable('rounds.state');
+    var value = phrase('rounds.sheet_value');
+    var rowsOf = function (table) {
+      return Object.keys(table).map(function (key) { return [table[key], '']; });
+    };
+    var visits = stop.due.map(function (item) {
+      var text = phrase('rounds.sheet_due', { title: item.title, state: states[item.state],
+        detail: item.detail, basis: item.basis });
+      if (item.key === 'inspection') {
+        return { text: text,
+          header: [phrase('sanitary.col_number'), phrase('sanitary.col_question'),
+            phrase('rounds.sheet_yes_no')],
+          rows: formQuestions().map(function (question, i) { return [String(i + 1), question, '']; }) };
+      }
+      return { text: text, header: [item.title, value],
+        rows: rowsOf(phraseTable(item.key === 'routine_inspection'
+          ? 'rounds.readings_routine' : 'rounds.readings_sample')) };
+    });
+    return {
+      heading: phrase('rounds.sheet_stop', { order: stop.order, place: stop.label }),
+      details: details,
+      visits: visits,
+      visit: { header: [phrase('rounds.sheet_visit'), value],
+        rows: rowsOf(phraseTable('rounds.readings_visit')) },
+    };
+  }
+
+  Object.assign(C, {
+    ROUND_STATES: ROUND_STATES, parseAreaMechanics: parseAreaMechanics,
+    mechanicFor: mechanicFor, serviceRounds: serviceRounds, roundsText: roundsText,
+    roundText: roundText, roundHeader: roundHeader, roundRows: roundRows,
+    stopSheet: stopSheet
   });
 
 

@@ -468,7 +468,8 @@ choice made in this toolkit, not a standard; `QUESTIONS.md` item 13 asks
 for them to be confirmed. The card reads only the one sample the project
 holds, so a sample from another borehole, or from another season, is
 read as this borehole's water. The completion and handover reports do
-not name the rising main yet.
+not name the rising main yet. The asset registry schedules the rising
+main's inspection at this interval, as the routine inspection (9b).
 
 ## 5a. Finding your way around
 
@@ -900,6 +901,75 @@ sides' own WHO risk words), not a copy of WHO's figure. Both are listed in
 `QUESTIONS.md` for someone with the documents to check. The asset record
 (.docx) carries the statement, the latest form as recorded and the
 reference.
+
+## 9b. Service rounds
+
+In the browser app: [`#/registry`](index.html#/registry), the *Service
+rounds* card at the foot of the page. In the Streamlit app: the Asset
+registry page, under *Many boreholes*.
+
+**What is due.** The registry schedules three visits for every borehole
+that is not decommissioned, and the page under *This borehole* lists them:
+
+- a **sanitary inspection** every 6 months (the form in 9a);
+- a **routine inspection** of the pump and rising main at the interval the
+  borehole's design sets for its rising main (5, *The rising main the
+  design specifies*): every 6 months in aggressive water or water nobody
+  has analysed, every 12 in water that is not aggressive, and every 6 for
+  a record that carries no rising main. Record one by choosing *Routine
+  inspection* under *Record what happened*; a repair is not counted as
+  one, since it records what was mended, not that the rest was looked at;
+- a **water quality sample** every 12 months.
+
+Each is counted from the last one recorded, or from commissioning where
+there is none. A visit is *due* the day after its due date and *overdue*
+30 days later; a borehole with no record to count from (nothing
+recorded, or no commissioning date) is *due now*, and its condition is
+"Not known", never "Working". These intervals are settings in
+`groundwater/data/defaults.json` (the `service` section, and the design
+rules' rising main intervals): choices made in this toolkit, not a
+standard, which `QUESTIONS.md` item 18 asks the programme to confirm.
+
+The borehole's record takes the rising main of this project's design
+whenever the design has one, on the page and in the saved project file,
+so load the water quality sheet before the record goes out. A borehole
+loaded from another project file keeps the rising main its file carries.
+
+**Whose round.** Name the borehole's area mechanic under *This borehole*
+and press *Name the area mechanic*; the name is saved with the project.
+A borehole with none named goes to the mechanic named for its chiefdom
+in *Area mechanics by chiefdom*, one chiefdom a line: the chiefdom, a
+colon and the name (`Koya: M. Kolleh`). Chiefdoms are matched with
+capital and small letters A to Z read alike; a line that cannot be read
+is listed and not used, and of two lines for one chiefdom the first is
+used. Boreholes with no mechanic either way are put on a round of their
+own, *No area mechanic assigned*, last.
+
+**Which boreholes.** This project's borehole and every borehole in the
+register above (*Many boreholes*), on the day in *Round drawn up on*
+(today unless you change it). Several files of one borehole are one
+stop, with their histories merged.
+
+**In what order.** Each round starts at the stop that has been due the
+longest and goes each time to the nearest stop not yet visited, measured
+in a straight line, a tie going to the lower identifier. This puts the
+stops in an order; it is not an optimal route and knows nothing of roads,
+rivers or the rains, so a mechanic who knows the way should take it.
+A borehole with no recorded position comes last.
+
+**The round sheets (.docx)** are one document with each mechanic's round
+from a new page. Each stop carries the identifier and the line a scan of
+the headworks plate begins with (check the two match before writing anything),
+where the borehole is, its condition on record and the distance from the
+stop before; then each visit due, with why and how often, and blank boxes
+for the readings: four for the routine inspection, the ten questions of
+the sanitary inspection form, four for the water sample, and the date,
+who visited and anything else found. Back from the round, record each
+visit on the Asset registry page with the date it was made.
+
+The browser app keeps the chiefdom table and the day with the project;
+the Streamlit app saves the chiefdom table with the project and starts
+the day at today each time the page is opened.
 
 ## 10. Site maps
 

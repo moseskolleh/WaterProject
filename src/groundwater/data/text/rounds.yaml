@@ -1,0 +1,168 @@
+# Service rounds (PLAN.md step 7.3): what is due at each borehole of the
+# asset registry on a day, grouped by area mechanic and put in an order, and
+# the round sheet a mechanic takes out. Written by registry.py, rounds.py and
+# reporting/rounds.py, and by their twins in gwt-core.js and gwt-docx.js.
+# Every entry is read by its quoted id in both engines. The template rules
+# are in src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# The routine inspection the registry schedules beside the sanitary
+# inspection and the water sample (registry.asset_state).
+routine_why: >-
+  A routine inspection of the pump and the rising main is what finds a
+  corroded main or a worn seal before the borehole stops.
+
+# How often each visit is due, and on what basis. The routine inspection
+# takes the interval the borehole's design sets for its rising main (PLAN.md
+# step 7.2), which the registry record carries.
+basis_sanitary: >-
+  every {months:g} months, the programme's interval for a sanitary
+  inspection
+basis_sample: >-
+  every {months:g} months, the programme's interval for a water quality
+  sample
+basis_design: >-
+  every {months:g} months, the interval the borehole's design sets for its
+  {material} rising main {water}
+basis_record: >-
+  every {months:g} months, the interval the borehole's record sets for its
+  rising main
+basis_default: >-
+  every {months:g} months, as for water nobody has analysed, since the
+  borehole's record names no rising main inspection interval
+# By the design's chemistry state (design/materials.py CHEMISTRY_STATES).
+water:
+  aggressive: in aggressive water
+  not_aggressive: in water that is not aggressive
+  incomplete: while its water's corrosivity is not known
+  none: while its water has not been analysed
+# A due date past the last day a date can hold.
+beyond: Next {title} due after 9999-12-31.
+# A visit's interval, as the Asset registry page shows it under the borehole.
+interval_line: "{title}: {basis}."
+
+# The area mechanics by chiefdom, one a line: the chiefdom, a colon and the
+# mechanic's name.
+mechanics_no_colon: >-
+  Line {line:g} is not read: write it as the chiefdom, a colon and the
+  mechanic's name.
+mechanics_blank: >-
+  Line {line:g} is not read: it names no chiefdom or no mechanic.
+mechanics_repeated: >-
+  Line {line:g} is not read: {chiefdom} is named on an earlier line, and
+  that line is the one used.
+
+# The rounds.
+headline: >-
+  Drawn up on {date}. Of the {total:g} {total:plural:borehole|boreholes} in
+  the register, {due:g} {due:plural:has|have} a visit due, on {rounds:g}
+  {rounds:plural:round|rounds}.
+headline_none: >-
+  Drawn up on {date}. None of the {total:g}
+  {total:plural:borehole|boreholes} in the register has a visit due.
+empty: There are no boreholes in the register to draw a round from.
+nothing_due: >-
+  {count:g} {count:plural:borehole has|boreholes have} nothing due on that
+  day.
+decommissioned: >-
+  {count:g} {count:plural:borehole is|boreholes are} decommissioned and not
+  visited.
+merged: >-
+  {count:g} {count:plural:record names|records name} a borehole that an
+  earlier record names too; the records of one borehole are read as one,
+  with their histories merged.
+unreadable: >-
+  {count:g} {count:plural:record carries|records carry} no identifier that
+  can be read, so {count:plural:it is|they are} left out.
+unassigned: No area mechanic assigned
+round_stops: "{mechanic}: {stops:g} {stops:plural:stop|stops}."
+round_distance: >-
+  About {km:.1f} km from the first stop to the last, in straight lines.
+round_unassigned: >-
+  Name the mechanic on each borehole's record, or by chiefdom, to put these
+  stops on a round.
+unplaced: >-
+  {count:g} {count:plural:stop has|stops have} no recorded position, so
+  {count:plural:it comes|they come} last, by identifier.
+method: >-
+  Each mechanic's round starts at the stop that has been due the longest (a
+  visit with nothing to count from is taken as due on the day the round is
+  drawn up) and goes each time to the nearest stop not yet visited, measured
+  in a straight line on the ellipsoid to the metre, a tie going to the lower
+  identifier. This puts the stops in an order; it is not an optimal route,
+  and it knows nothing of roads, rivers or the rains.
+intervals: >-
+  A sanitary inspection is due every {sanitary:g} months and a water quality
+  sample every {sample:g}, counted from the last one recorded or, where there
+  is none, from commissioning; a routine inspection of the pump and rising
+  main at the interval the borehole's design sets for its rising main, or
+  every {routine:g} months where the record carries none. A visit is overdue
+  {grace:g} days after it falls due, and a borehole with no record to count
+  from is due now. These intervals are the programme's settings, choices
+  made here and not a standard.
+# How a stop's mechanic was found.
+mechanic_from:
+  asset: named on the borehole's record
+  chiefdom: named for its chiefdom
+  none: none named
+# A visit's state on the round (registry.DueItem.state).
+state:
+  overdue: overdue
+  due: due
+  unknown: due now, nothing to count from
+due_short: "{title} ({state})"
+# The round's table, in the apps and on the sheet.
+columns:
+  order: Stop
+  identifier: Identifier
+  community: Community
+  chiefdom: Chiefdom
+  condition: Condition on record
+  due: Due
+  leg: From the previous stop (km)
+leg_km: "{km:.1f}"
+
+# The round sheet (.docx).
+sheet_title: SERVICE ROUND
+sheet_mechanic: "Area mechanic: {mechanic}"
+sheet_drawn: "Drawn up on {date}"
+sheet_check: >-
+  Check the identifier against the headworks plate before recording
+  anything: a visit recorded against another borehole is worse than none.
+sheet_stop: "Stop {order:g}: {place}"
+sheet_details:
+  identifier: Identifier
+  plate: A scan of the plate begins
+  community: Community
+  chiefdom: Chiefdom
+  district: District
+  position: Position
+  condition: Condition on record
+  leg: From the previous stop
+  mechanic: Area mechanic
+sheet_leg: "{km:.1f} km in a straight line"
+sheet_first: First stop
+sheet_no_position: No recorded position
+sheet_due: "{title}, {state}. {detail} Interval: {basis}."
+sheet_value: Written at the borehole
+sheet_yes_no: Yes or no
+sheet_visit: The visit
+# The boxes for each visit, filled in at the borehole. Which readings a
+# visit takes is a choice of this sheet, not a standard.
+readings_routine:
+  found: Found working (yes or no)
+  pulled: Rising main and rods pulled (yes or no)
+  condition: Condition of the rising main and rods
+  work: Work done and parts replaced
+readings_sample:
+  sample_id: Sample identifier
+  time: Time taken
+  field: Field readings taken, if any
+  laboratory: Laboratory it goes to
+readings_visit:
+  date: Date of the visit
+  by: Visited by
+  note: Anything else found
+sheet_after: >-
+  Back from the round, record each visit against its borehole on the Asset
+  registry page: a routine inspection, a sanitary inspection with its form,
+  or a water sample, with the date it was made.

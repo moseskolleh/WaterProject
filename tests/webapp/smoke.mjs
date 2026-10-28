@@ -2539,6 +2539,71 @@ await withPage(async (page, base, consoleErrors) => {
     sanitary.doc.includes('Surveillance and Control of Community Supplies'),
     sanitary.doc.length + ' chars');
 
+  // --- the service rounds (PLAN.md step 7.3) ------------------------------
+  // The routine inspection follows the design's rising main, the borehole
+  // goes to the mechanic named for its chiefdom until one is named on its
+  // record, the project file carries both, and the round sheet prints it.
+  const rounds = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone, site.chiefdom];
+    const savedDesign = d.design;
+    app.store.set('asset', null);
+    site.easting = 694912; site.northing = 938150; site.utm_zone = 28; site.chiefdom = 'Koya';
+    d.design = Object.assign({}, savedDesign || {}, { rising_main: { material: 'stainless steel',
+      inspection_months: 6, chemistry: 'aggressive', statement: '' } });
+    app.store.set('rounds.date', '2024-06-01');
+    app.goto('registry');
+    app.render();
+    const text = (selector) => Array.from(document.querySelectorAll('#page-host ' + selector))
+      .map((n) => n.textContent);
+    const interval = text('.rounds-interval').join(' ');
+    const chiefdoms = document.querySelector('#page-host textarea[data-rounds="chiefdoms"]');
+    if (chiefdoms) {
+      chiefdoms.value = 'koya: M. Kolleh\nno colon';
+      chiefdoms.dispatchEvent(new Event('change'));
+    }
+    const byChiefdom = text('h3.round-name');
+    const skipped = text('.callout p').filter((t) => t.startsWith('Line 2 is not read'));
+    const name = document.querySelector('#page-host input[data-rounds="mechanic"]');
+    if (name) { name.value = 'A. Bangura'; name.dispatchEvent(new Event('change')); }
+    const btn = Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Name the area mechanic');
+    if (btn) btn.click();
+    const byRecord = text('h3.round-name');
+    const stored = app.store.get('asset') || {};
+    const filed = app.projectPayload().state.asset || {};
+    const result = C.serviceRounds([C.assetFromDict(stored)], '2024-06-01', null, []);
+    const doc = await window.__docText(await (await window.GWT.docx.roundSheet({
+      rounds: result })).build());
+    app.store.set('asset', null);
+    app.store.set('rounds.mechanics', '');
+    app.store.set('rounds.date', '');
+    d.design = savedDesign;
+    site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
+    site.chiefdom = saved[3];
+    app.render();
+    return { interval, byChiefdom, skipped, pressed: !!btn, byRecord, stored, filed, doc,
+      id: result.rounds.length ? result.rounds[0].stops[0].asset_id : '' };
+  });
+  check('rounds: the routine inspection follows the design\'s rising main',
+    rounds.interval.includes('stainless steel rising main in aggressive water') &&
+    rounds.interval.includes('every 6 months'), rounds.interval);
+  check('rounds: the borehole goes to the mechanic named for its chiefdom',
+    JSON.stringify(rounds.byChiefdom) === JSON.stringify(['M. Kolleh: 1 stop.']) &&
+    rounds.skipped.length === 1, JSON.stringify([rounds.byChiefdom, rounds.skipped]));
+  check('rounds: a mechanic named on the record takes the borehole',
+    rounds.pressed && rounds.stored.area_mechanic === 'A. Bangura' &&
+    JSON.stringify(rounds.byRecord) === JSON.stringify(['A. Bangura: 1 stop.']),
+    JSON.stringify([rounds.byRecord, rounds.stored.area_mechanic]));
+  check('rounds: the project file carries the mechanic and the rising main',
+    rounds.filed.area_mechanic === 'A. Bangura' && rounds.filed.rising_main &&
+    rounds.filed.rising_main.inspection_months === 6, JSON.stringify(rounds.filed.rising_main));
+  check('rounds: the round sheet names the mechanic, the stop and its plate',
+    rounds.doc.includes('Area mechanic: A. Bangura') && rounds.doc.includes(rounds.id) &&
+    rounds.doc.includes('BOREHOLE ' + rounds.id) && rounds.doc.includes('Drawn up on 2024-06-01'),
+    rounds.doc.length + ' chars');
+
   // --- the certification gate ---------------------------------------------
   // The gate never blocks a build: an interim report is a real need, and an
   // analyst who is refused one will produce the document some other way. So
