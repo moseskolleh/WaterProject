@@ -22,3 +22,4 @@ WQL2,Water quality,consumables,Disinfection by chlorine shock dosing,lump sum,lu
 WHD1,Wellhead,consumables,Apron and drainage channel and soakaway materials,lump sum,lump_sum,260.00,221.00,338.00,wellhead,Cement and sand and aggregate and formwork
 WHD2,Wellhead,labour,Mason and wellhead construction labour,lump sum,lump_sum,120.00,102.00,156.00,wellhead,
 PMP1,Wellhead,equipment,Handpump supplied and installed,unit,per_handpump,950.00,855.00,1140.00,manufactured_materials,For example India Mark II with rods and rising main and installation
+RSM1,Wellhead,equipment,Stainless steel rising main and pump rods (grade 304 or 316) extra over PMP1,m,per_m_rising_main_stainless_steel,20.00,18.00,24.00,manufactured_materials,Placeholder rate with no quotation behind it: the extra per metre over the galvanised iron main and rods PMP1 includes. Priced only where the design specifies it for aggressive water

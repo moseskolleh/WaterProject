@@ -1,0 +1,29 @@
+# The sanitary inspection form for a tubewell (a drilled borehole) fitted
+# with a handpump: ten questions, each answered yes where the risk it names
+# is present. sanitary.py and its port in gwt-core.js read this file, the
+# browser through web/build_webapp_data.py, and both engines score a form
+# by counting its yes answers (PLAN.md step 7.5).
+#
+# Source: the ten-question form for a tubewell with a handpump among the
+# sanitary inspection forms of WHO, Guidelines for Drinking-water Quality,
+# 2nd edition, Volume 3, Surveillance and Control of Community Supplies
+# (1997), Annex 2. No copy of that volume is committed to this repository.
+# The wording below was written from the form as field manuals commonly
+# reproduce it, not checked against the volume, so read it as a stated
+# basis rather than as WHO's own text. WHO has since revised its forms in
+# its sanitary inspection packages for small water supplies, and the
+# Ministry of Water Resources may use a form of its own; QUESTIONS.md item
+# 11 asks for both checks. A question reworded here is reworded in both
+# apps. A form with another number of questions needs its own score bands
+# and matrix in sanitary_risk.yaml.
+form,number,question
+tubewell_handpump,1,"Is there a latrine within 10 m of the handpump?"
+tubewell_handpump,2,"Is the nearest latrine on higher ground than the handpump?"
+tubewell_handpump,3,"Is there any other source of pollution (for example animal excreta, rubbish or surface water) within 10 m of the handpump?"
+tubewell_handpump,4,"Is the drainage faulty, allowing ponding within 2 m of the handpump?"
+tubewell_handpump,5,"Is the handpump drainage channel faulty: broken, permitting ponding, or in need of cleaning?"
+tubewell_handpump,6,"Is the fencing around the handpump inadequate, allowing animals in?"
+tubewell_handpump,7,"Is the concrete floor less than 1 m in radius all around the handpump?"
+tubewell_handpump,8,"Is there any ponding on the concrete floor around the handpump?"
+tubewell_handpump,9,"Are there any cracks in the concrete floor around the handpump which could permit water to enter the well?"
+tubewell_handpump,10,"Is the handpump loose at the point of attachment to the base, so that water could enter the casing?"

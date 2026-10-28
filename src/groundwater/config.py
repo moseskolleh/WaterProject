@@ -218,6 +218,24 @@ class DesignRules:
     # 49-52 m") is screened with this much plain screen either side of it,
     # rather than the whole logged interval it was written on.
     fracture_zone_margin_m: float = _DESIGN["fracture_zone_margin_m"]
+    # The rising main (PLAN.md step 7.2, design/materials.py). The material
+    # of the one the handpump line of the cost catalogue includes (PMP1, for
+    # example an India Mark II with its rods and rising main): galvanised
+    # iron, which corrodes quickly in aggressive water.
+    rising_main_material: str = _DESIGN["rising_main_material"]
+    # What the design specifies in its place where the water is aggressive.
+    # A choice: the corrosivity note names uPVC or stainless steel, and
+    # stainless steel replaces the India Mark II's steel main and rods like
+    # for like. The catalogue prices it (RSM1); a material it has no rate for
+    # is flagged on the estimate rather than priced as galvanised iron.
+    aggressive_rising_main_material: str = _DESIGN["aggressive_rising_main_material"]
+    # How often the rising main is pulled and inspected, in months: in water
+    # that is not aggressive, and in water that is aggressive or whose
+    # chemistry is not known. Both are choices made here, not a standard,
+    # for the owner to confirm (QUESTIONS.md item 13); the service rounds of
+    # step 7.3 read them through the design's rising main.
+    rising_main_inspection_months: int = _DESIGN["rising_main_inspection_months"]
+    aggressive_rising_main_inspection_months: int = _DESIGN["aggressive_rising_main_inspection_months"]
 
 
 # ---------------------------------------------------------------------------

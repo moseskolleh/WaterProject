@@ -1,0 +1,56 @@
+# How a sanitary inspection and an E. coli count are read together
+# (PLAN.md step 7.5). sanitary.py and its port in gwt-core.js read this
+# file, the browser through web/build_webapp_data.py. The words each key
+# is printed with are in text/sanitary.yaml. Three tables, each with its
+# basis; WHO (1997) below is Guidelines for Drinking-water Quality, 2nd
+# edition, Volume 3, Surveillance and Control of Community Supplies, of
+# which no copy is committed here (sanitary_inspection.csv says what that
+# means for the form's wording).
+
+# The risk score bands of each form, over the number of yes answers: the
+# bands printed at the foot of WHO's (1997) ten-question form for a
+# tubewell with a handpump. They must cover every score from 0 to the
+# number of questions, in order, without a gap.
+bands:
+  tubewell_handpump:
+    - {key: low, min: 0, max: 2}
+    - {key: intermediate, min: 3, max: 5}
+    - {key: high, min: 6, max: 8}
+    - {key: very_high, min: 9, max: 10}
+
+# The grades of a count of E. coli or thermotolerant coliforms per 100 mL,
+# as WHO (1997) grades them: A for none, B for 1 to 10, C for 11 to 100, D
+# for 101 to 1000 and E for more than 1000. A count is read on a continuous
+# scale, so a most probable number of 0.5 is more than none and grade B,
+# and 10.5 is grade C. `max` is the highest count in the grade; the last
+# grade has none.
+grades:
+  - {grade: A, max: 0}
+  - {grade: B, max: 10}
+  - {grade: C, max: 100}
+  - {grade: D, max: 1000}
+  - {grade: E, max: null}
+
+# The action priority of each pairing, by E. coli grade (the rows) and
+# sanitary risk score (the columns, from 0 to the number of questions).
+# WHO (1997) sets the two side by side in a risk-to-health matrix; the
+# three priorities used here (low, higher, urgent) are its legend's.
+#
+# THE CELLS ARE A CHOICE MADE HERE, not a transcription of WHO's figure,
+# which nobody working on this toolkit could check. Each cell is the worse
+# of the two sides' own WHO risk words: the grade's (A in conformity with
+# the guideline, B low, C intermediate, D high, E very high) and the
+# score's band (low, intermediate, high, very high), with low read as a low
+# action priority, intermediate and high as a higher one, and very high as
+# urgent. So rows A and B are alike, and so are rows C and D. The legend's
+# "no risk" is never given: a score of 0 to 2 is WHO's low band, not none,
+# and a borehole inspected once is not shown to be free of risk.
+# QUESTIONS.md item 12 asks for the cells to be checked against the
+# figure; correct a cell here and both engines follow.
+matrix:
+  tubewell_handpump:
+    A: [low, low, low, higher, higher, higher, higher, higher, higher, urgent, urgent]
+    B: [low, low, low, higher, higher, higher, higher, higher, higher, urgent, urgent]
+    C: [higher, higher, higher, higher, higher, higher, higher, higher, higher, urgent, urgent]
+    D: [higher, higher, higher, higher, higher, higher, higher, higher, higher, urgent, urgent]
+    E: [urgent, urgent, urgent, urgent, urgent, urgent, urgent, urgent, urgent, urgent, urgent]

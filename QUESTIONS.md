@@ -101,3 +101,66 @@ need real project inputs or decisions to finish calibrating it.
    distances table mirrors regional practice (FGN/NWRI 2010) and
    should be checked against the Sierra Leone Ministry of Water
    Resources requirements.
+
+11. **Three choices in the VES inversion want a geophysicist's
+   confirmation (added with the VES audit).** None is a published
+   standard; each is stated where it is made
+   (`groundwater/ves/forward.py` and `groundwater/ves/inversion.py`)
+   with what it was measured to do. (a) The quadrature stops where the
+   tail it leaves is 1e-8 of the least resistivity in the model, which
+   left at most 3.1e-8 over 2932 models at 10 to 150,000 ohm-m. (b) A
+   fit is labelled converged when the Gauss-Newton step from where it
+   stopped would lower its sum of squared log residuals by at most
+   1e-6 of itself; the label errs towards "not converged" in an
+   equivalence valley. (c) A sounding is fitted with at most half as
+   many layers as it has spacings, so a model keeps one degree of
+   freedom; keeping two would refuse three layers to soundings of six
+   and seven spacings.
+
+12. **The sanitary inspection form, the E. coli grades and the risk
+   matrix (added with PLAN.md step 7.5).** The form in
+   `groundwater/data/sanitary_inspection.csv` is WHO's ten-question form
+   for a tubewell with a handpump (Guidelines for Drinking-water Quality,
+   2nd edition, Volume 3, 1997). Nobody working on the toolkit had a copy
+   of the volume, so the wording was written from the form as field
+   manuals commonly reproduce it. Four things need someone with the
+   documents: (a) check the questions against the volume, against WHO's
+   newer sanitary inspection packages for small water supplies, which
+   revised the forms, and against any form the Ministry of Water
+   Resources or the district councils use, and say which one Sierra Leone
+   programmes should fill in; (b) confirm the score bands (0 to 2 low, 3
+   to 5 intermediate, 6 to 8 high, 9 and 10 very high) and the grades of
+   an E. coli count per 100 mL (A none, B 1 to 10, C 11 to 100, D 101 to
+   1000, E over 1000) in `sanitary_risk.yaml`; (c) check the cells of the
+   risk-to-health matrix in the same file against WHO's figure. They are a
+   choice made here, each the worse of the two sides' own risk words, and
+   the toolkit never states "no risk"; correct a cell and both apps
+   follow; (d) say whether forms for other sources (a protected spring, a
+   hand-dug well, a piped scheme) are wanted, since only the tubewell form
+   is bundled.
+
+13. **The rising main material and its inspection intervals (added with
+   PLAN.md step 7.2).** Where the water is aggressive (by the corrosivity
+   classification, or a pH below 6.5) the design specifies a stainless
+   steel rising main in place of the galvanised iron one the handpump line
+   of the cost catalogue includes, and inspects it every 6 months rather
+   than every 12. All four values are settings in
+   `groundwater/data/defaults.json` (`design.rising_main_material`,
+   `aggressive_rising_main_material`, `rising_main_inspection_months` and
+   `aggressive_rising_main_inspection_months`), and each is a choice made
+   here, not a standard. Four things need the owner or someone with field
+   records: (a) confirm the two intervals, or give the ones the programme's
+   mechanics work to; (b) say whether a borehole whose water has not been
+   analysed should be inspected at the shorter interval, as it is now,
+   until a sample says otherwise; (c) say whether stainless steel (which
+   replaces the India Mark II's steel main and rods like for like) or uPVC
+   (for a pump made to take a uPVC main) should be the material the design
+   specifies and prices, since the catalogue prices only stainless steel and
+   a uPVC choice is flagged unpriced; (d) replace the placeholder rate of
+   row RSM1 in `groundwater/data/borehole_cost_items.csv` (USD 20 a metre,
+   extra over the handpump line, with no quotation behind it, as item 8
+   says of the other rates) with a current quotation, and add a uPVC row if
+   uPVC is wanted. The Ryznar classes and the aggressive-index cut the
+   classification uses are not cited in `references.yaml`, and the -0.5
+   margin on the Langelier index has no source in the toolkit; a reference
+   for each, or a corrected value, would close that too.

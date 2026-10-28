@@ -29,6 +29,7 @@ from ..models import DataFlag, DrillingLog
 from ..utils import sum_in_order
 from ..ves.interpret import SiteInterpretation
 from .lithology import is_clayey, read_fractures
+from .materials import rising_main_choice
 
 # Lithology phrases that mark an interval as a screening target, and phrases
 # that negate it. Matching is on whole words/phrases so a description like
@@ -94,6 +95,11 @@ class BoreholeDesign:
     # True when the screens are the ones recorded as installed on the log
     as_built: bool = False
     construction_note: str = DESIGN_NOTE
+    # What the design specifies for the rising main and how often it is
+    # inspected, from the water quality sample (design/materials.py,
+    # rising_main_choice). None on a design not built by design_borehole;
+    # the bill of quantities then prices the handpump line as it is.
+    rising_main: dict | None = None
 
     @property
     def screens(self) -> list[CasingSegment]:
@@ -430,6 +436,7 @@ def design_borehole(
     total_depth_m: float | None = None,
     screens_m: list[tuple[float, float]] | None = None,
     pump_intake_floor_m: float | None = None,
+    quality=None,
 ) -> BoreholeDesign:
     """Produce a construction design from the drilling log and/or VES model.
 
@@ -443,6 +450,11 @@ def design_borehole(
     for the intake (see :func:`pump_intake_floor`). An intake that falls in a
     screen is moved up into plain casing only as far as that; without it, it
     is moved down or not at all.
+
+    ``quality`` is the project's water quality assessment (or a bare
+    sample), from which the design chooses the rising main material and its
+    inspection interval (:func:`~groundwater.design.materials.rising_main_choice`);
+    without one the design says that choice rests on no chemistry.
     """
     rules = rules or DesignRules()
     flags: list[DataFlag] = []
@@ -485,6 +497,7 @@ def design_borehole(
             rules=rules,
             log=log,
             as_built=as_built,
+            quality=quality,
         )
 
     found = _target_zones(log, interpretation, swl, total_depth_m, rules)
@@ -582,6 +595,7 @@ def design_borehole(
         pump_intake_floor_m=pump_intake_floor_m,
         rules=rules,
         log=log,
+        quality=quality,
     )
 
 
@@ -685,6 +699,7 @@ def _assemble(
     log: DrillingLog | None,
     as_built: bool = False,
     pump_intake_floor_m: float | None = None,
+    quality=None,
 ) -> BoreholeDesign:
     """Build the casing string and annulus around a set of screen intervals."""
     segments: list[CasingSegment] = []
@@ -950,4 +965,5 @@ def _assemble(
         annulus_mm=annulus_mm,
         as_built=as_built,
         construction_note=AS_BUILT_NOTE if as_built else DESIGN_NOTE,
+        rising_main=rising_main_choice(quality, rules),
     )

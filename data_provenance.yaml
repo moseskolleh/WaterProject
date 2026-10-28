@@ -239,6 +239,54 @@ datasets:
         bytes: 4205
         sha256: dcad80623a886abf3b36ed763f1450f4ae399ef15d35abdc7c6de49a72608db9
 
+  - id: who_sanitary_inspection
+    name: WHO sanitary inspection form - tubewell with handpump
+    source: >-
+      The sanitary inspection form for a tubewell with a handpump, its risk
+      score bands, the grades of an E. coli count and the action priorities
+      of the risk-to-health matrix, from WHO's surveillance volume (PLAN.md
+      step 7.5).
+    reference: >-
+      World Health Organization (1997). Guidelines for Drinking-water
+      Quality, 2nd edition. Volume 3: Surveillance and Control of Community
+      Supplies. Geneva: WHO.
+    url: ""
+    version: "2nd ed., Vol. 3 (1997)"
+    retrieved: unrecorded
+    licence: unverified
+    licence_evidence: >-
+      No copy of the volume is committed here and its terms were not
+      checked. The form's ten questions were written from the form as field
+      manuals commonly reproduce it, not checked against the volume; the
+      bands and grades are short factual figures. Confirm the wording and
+      the terms before the form is printed under WHO's name.
+    attribution: >-
+      After World Health Organization, Guidelines for Drinking-water
+      Quality, 2nd edition, Volume 3 (1997).
+    share_alike: false
+    changes_made: >-
+      The questions written into a CSV, one row each; the bands, the grades
+      and a risk-to-health matrix into a YAML file. THE MATRIX'S CELLS ARE
+      THIS TOOLKIT'S CHOICE, not a transcription of WHO's figure: each is the
+      worse of the two sides' own WHO risk words, as the file says. Both
+      files say what of them was checked, and QUESTIONS.md item 12 asks for
+      the checks.
+    files:
+      - path: src/groundwater/data/sanitary_inspection.csv
+        bytes: 2232
+        sha256: 3195a209dd799a0a0978e55f1444ab633cab11ccd382f358dc2340958ab4dfd4
+        note: >-
+          The ten questions of the tubewell with handpump form, in order,
+          each answered yes where the risk is present.
+      - path: src/groundwater/data/sanitary_risk.yaml
+        bytes: 3053
+        sha256: 84dbc9a9fe5fddadcddafc1686b38e32bcfd2937c45da22e6fb21a1e81e48b97
+        note: >-
+          The form's score bands, the grades A to E of a count per 100 mL,
+          and the action priority of each grade and score. The bands and
+          grades are WHO's figures, not checked against the volume here; the
+          matrix's cells are a choice made here.
+
   - id: wpdx
     name: Water Point Data Exchange (WPdx+)
     source: WPdx+ dataset, fetched at runtime
@@ -351,8 +399,8 @@ datasets:
       a tender.
     files:
       - path: src/groundwater/data/borehole_cost_items.csv
-        bytes: 3882
-        sha256: a03f407840af07b5089337e1718fc2ba031184ed1680dcd73bf0c7dc762eb77e
+        bytes: 4243
+        sha256: 8e1aa64f6e3b9cd209da702f7f4ea72fe70abf3384f86e1dccbb69fba5611882
         note: >-
           Unit rates and quantity bases for a borehole bill of quantities,
           built from the costing guide's worked example. Example figures,
@@ -360,7 +408,11 @@ datasets:
           spread_group columns (PLAN.md step 3.4) are not from the guides:
           they are this toolkit's provisional spread around each rate,
           worked out from borehole_cost_spread.yaml, which records the
-          reason for each and that no source is recorded for any.
+          reason for each and that no source is recorded for any. The RSM1
+          row (PLAN.md step 7.2), a stainless steel rising main and rods
+          priced extra over the handpump line, is not from the guides
+          either: its USD 20 a metre is a placeholder with no quotation
+          behind it.
       - path: src/groundwater/data/supervision_checklists.csv
         bytes: 14751
         sha256: a763253bc3cc339a91ad3e0148110c60cab0363c04712926713931f9ce10d11f
@@ -462,8 +514,8 @@ datasets:
           No source separates the geology units within a class, and none is
           claimed to.
       - path: src/groundwater/data/borehole_cost_spread.yaml
-        bytes: 4759
-        sha256: 89a3daa4e581a7ae29aae7a2914ab6e1061e764aae8342b8b3401c4501af4589
+        bytes: 4789
+        sha256: 206a39edb2e26ed80ec0b3b2897668ddf23e165ea1f17d81edf0acde2f809ee1
         note: >-
           How far each unit rate of the cost catalogue may fall below or rise
           above its likely value, by group of rates that share a cause, each

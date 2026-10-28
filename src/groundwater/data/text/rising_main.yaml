@@ -1,0 +1,77 @@
+# The rising main material (PLAN.md step 7.2): what the design specifies for
+# the rising main, and how often it is inspected, from the corrosivity
+# indices and the pH of the project's water quality sample; and what the bill
+# of quantities says about pricing it. Written by design/materials.py and
+# costing/model.py, and by their twins in gwt-core.js (risingMainChoice,
+# resolveCostingInputs, estimateBoreholeCost). Every entry is read by its
+# quoted id in both engines. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# How the sample is named, after "The water sample": by its identifier and
+# its date as the laboratory sheet writes them.
+sample_named: "{id} of {date}"
+sample_undated: "{id}, which records no date,"
+sample_unnamed: "of {date}"
+sample_anonymous: with neither an identifier nor a date
+
+# What the water says. The thresholds are the toolkit's corrosivity
+# classification (quality/corrosivity.py) and the pH rule of the handpump
+# corrosion check (supervision/field_checks.py); none is set here.
+aggressive: >-
+  The water sample {sample} is chemically aggressive: Ryznar index {rsi:.2f},
+  Langelier index {lsi} and aggressive index {ai:.2f}, rated {classification}
+  by the toolkit's corrosivity classification, which counts water as
+  aggressive when the Ryznar index is above 7.0, the Langelier index below
+  -0.5 or the aggressive index below 10.
+ph_low: >-
+  The water sample {sample} has a pH of {ph}, below the 6.5 under which
+  galvanised iron rising mains and rods corrode quickly (RWSN, Stop the Rot).
+ph_low_indices: >-
+  Its corrosivity indices do not count it aggressive on their own: Ryznar
+  index {rsi:.2f}, Langelier index {lsi} and aggressive index {ai:.2f},
+  rated {classification}.
+ph_low_no_indices: >-
+  Its corrosivity indices could not be computed: they need its pH, calcium
+  and alkalinity, and it does not carry all three.
+not_aggressive: >-
+  The water sample {sample} is not aggressive: Ryznar index {rsi:.2f},
+  Langelier index {lsi} and aggressive index {ai:.2f}, rated {classification}
+  by the toolkit's corrosivity classification, and its pH of {ph} is not
+  below 6.5.
+no_indices: >-
+  The water sample {sample} gives no corrosivity indices: they need its pH,
+  calcium and alkalinity, and it does not carry all three, so the rising
+  main material rests on no corrosivity index.
+no_sample: >-
+  No water quality analysis is loaded, so the rising main material rests on
+  no chemistry.
+
+# What the design does about it.
+specified: >-
+  The design specifies a {material} rising main in place of the {standard}
+  one the handpump line includes, and it is inspected every {months:g}
+  months, against {usual:g} in water that is not aggressive.
+alternative: >-
+  The toolkit's materials advice for this water is stainless steel (grade
+  304 or 316) or uPVC; which of the two the design specifies is set in the
+  design rules.
+same_material: >-
+  The design rules name {material} for aggressive water as well, so the
+  design keeps it, and the rising main is inspected every {months:g} months.
+kept: >-
+  The design keeps the {standard} rising main the handpump line includes,
+  inspected every {months:g} months.
+kept_unknown: >-
+  The design keeps the {standard} rising main the handpump line includes, and
+  it is inspected every {months:g} months, as in aggressive water, until a
+  sample with its pH, calcium and alkalinity is analysed.
+
+# The bill of quantities.
+length_assumed: >-
+  Rising main taken as long as the hole, {depth:num} m, the most it can be,
+  because no pump intake depth is known; the pump intake from the pumping
+  test replaces it.
+unpriced: >-
+  The design specifies a {material} rising main and no rate in the catalogue
+  prices one, so the bill of quantities prices the rising main of the
+  handpump line as it is. Add a rate for it to the catalogue.

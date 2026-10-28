@@ -84,6 +84,14 @@ At every segment change (for example AB/2 = 3, 10, 40 and 70 m),
 repeat the same AB/2 with the old MN and again with the new MN. Both
 readings are used; do not delete either one.
 
+A sounding is inverted from four spacings up, and is fitted with no
+more layers than leave it one reading to spare: two layers below six
+spacings, three below eight, and four from eight. A sounding cut short
+at four or five spacings is therefore read as two layers, however many
+the ground has. A row whose AB/2 is 0 (a formula over a blank cell, or
+a placeholder) is kept as read, flagged "A spacing must be positive",
+and left out of the inversion.
+
 ## 2a. VES co-pilot (browser app, at the peg)
 
 The browser app has a page that checks a Schlumberger sounding as it is
@@ -389,6 +397,37 @@ in front of a regulator. The table is an editable CSV
 issuing specification in its `sl_source` column, and the warning drops
 away for that parameter.
 
+### The rising main the design specifies
+
+Galvanised iron rising mains and rods corrode quickly in aggressive
+water, and a corroded main is a common reason a handpump fails early. So
+the **Rising main** card on the Borehole design page (both apps) reads
+the sample on the Water quality page:
+
+- **Aggressive water** - the corrosivity classification on the Water
+  quality page counts it aggressive (a Ryznar index above 7.0, a
+  Langelier index below -0.5 or an aggressive index below 10), or its pH
+  is below 6.5, the limit of the supervision page's handpump corrosion
+  check. The design specifies a stainless steel rising main in place of
+  galvanised iron, inspected every 6 months. The card quotes the index
+  values or the pH and names the sample by its identifier and date.
+- **Water that is not aggressive** - galvanised iron, inspected every
+  12 months, with the index values that say so.
+- **No sample, or one that lacks pH, calcium or alkalinity** (and whose
+  pH, if it has one, is not below 6.5) - the card says the choice rests
+  on no chemistry, or on no corrosivity index. The design keeps
+  galvanised iron and the 6 month interval until a sample with all three
+  is analysed. Analyse one before the pump is ordered.
+
+The choice follows the sample: load or replace the water quality sheet
+and the design changes with it. The materials and both intervals are
+settings (`groundwater/data/defaults.json`), and the intervals are a
+choice made in this toolkit, not a standard; `QUESTIONS.md` item 13 asks
+for them to be confirmed. The card reads only the one sample the project
+holds, so a sample from another borehole, or from another season, is
+read as this borehole's water. The completion and handover reports do
+not name the rising main yet.
+
 ## 5a. Finding your way around
 
 The web interface is one workspace with a sidebar. The sidebar holds
@@ -585,6 +624,15 @@ contract price, and every rule of thumb applied is listed under
 - If a design was produced in the Borehole design page, switch on "Use
   the design" and the casing, screen and gravel quantities carry over
   automatically.
+- Where the design specifies a stainless steel rising main (see "The
+  rising main the design specifies"), the bill carries line RSM1, the
+  extra over the handpump line per metre of rising main, over the pump
+  intake depth; with no intake known it is taken as long as the hole, and
+  the assumptions say so. Its rate is a placeholder with no quotation
+  behind it: type a current price in the catalogue. A material the
+  catalogue has no rate for (uPVC) is not priced, and the estimate says
+  so in a warning. An estimate typed in without a design takes the
+  rising main from the water quality sample in the same way.
 - Download the bill of quantities (`.xlsx`, with live formulas the
   contractor can edit) or the full cost estimate report (`.docx`).
 - The programme estimate uses the siting success rate typed for it.
@@ -722,6 +770,66 @@ recommendations, and the three signatories. Results already produced
 on the other pages - the borehole design, the pumping test and the
 water quality verdict - attach to the report automatically; the page
 shows what is attached before you build it.
+
+## 9a. Sanitary inspection
+
+In the browser app: [`#/registry`](index.html#/registry). In the
+Streamlit app: the Asset registry page.
+
+Once the borehole has an identifier (it needs a recorded position), the
+Asset registry page carries the **sanitary inspection** form: WHO's ten
+questions for a tubewell (a drilled borehole) with a handpump, such as
+whether a latrine is within 10 m, whether the apron is cracked and whether
+the pump is loose on its base. Answer each question as you find it at the
+wellhead: *Yes* where the risk is present, *No* where it is not. Leave a
+question *Not answered* if you could not see; it is not counted as a no.
+Enter the date and who inspected, then press *Record the inspection*. The
+inspection goes into the borehole's history like any other visit, so it is
+saved with the project, and the same form recorded on two phones merges
+into one record.
+
+The score is the number of risks present: 0 to 2 is low, 3 to 5
+intermediate, 6 to 8 high and 9 or 10 very high. A form with questions
+left open gives a range ("between 3 and 5 of 10") and says it is
+incomplete.
+
+Under the form, one statement reads the latest inspection with the
+E. coli (or thermotolerant coliform) count of the water quality sample
+loaded on the Water quality page, and names the date of each. The count
+is graded A (none in 100 mL), B (1 to 10), C (11 to 100), D (101 to 1000)
+or E (over 1000). The two are then read together in a risk-to-health
+matrix to give an action priority: low, higher or urgent. Four things
+to know when you read it:
+
+- **A side that is not known gives no priority.** With no sample loaded,
+  or no E. coli result in it, the statement says the microbiological side
+  is not known. If the borehole's history records a water sample, the
+  statement names its date and says its results are not loaded; load that
+  sample's sheet on the Water quality page to bring it in. If the history
+  records a sample later than the one loaded, the statement names that
+  one too. With no inspection on the form, it says the sanitary side is
+  not known. The priority is given only where every possible answer on
+  the unknown side would give the same one (a count over 1000 is urgent
+  whatever the inspection says).
+- **Dates are read as YYYY-MM-DD and nothing else**, in both apps. A form
+  in a project file whose date is written another way (`20240520`,
+  `20/05/2024`) is kept in the history but not used, and the statement
+  says how many such forms there are.
+- **A range is taken at its worse end.** An incomplete form, or a count
+  the laboratory did not put a number to ("TNTC", ">50"), can fall in
+  more than one cell; the statement says so and takes the worse until the
+  form is finished or the count is known.
+- **The matrix reads faecal contamination only.** The statement ends
+  with the sample's verdict on everything it tested, so an arsenic or
+  manganese failure is not hidden behind a low sanitary priority.
+
+The form's wording was written from WHO's 1997 surveillance volume as field
+manuals reproduce it, not checked against the volume. The cells of the
+matrix are a choice made in this toolkit (each is the worse of the two
+sides' own WHO risk words), not a copy of WHO's figure. Both are listed in
+`QUESTIONS.md` for someone with the documents to check. The asset record
+(.docx) carries the statement, the latest form as recorded and the
+reference.
 
 ## 10. Site maps
 

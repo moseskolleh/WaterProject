@@ -70,6 +70,16 @@ committed file so a silent substitution is detectable.
 | **Required attribution** | "World Health Organization. Guidelines for Drinking-water Quality, 4th edition." |
 | **Notes** | The `sl_standard` column is marked `provisional` wherever it is a WHO figure carried across rather than a confirmed Sierra Leone Standards Bureau value; see `QUESTIONS.md`. |
 
+### WHO sanitary inspection form - tubewell with handpump · **unverified — needs confirmation**
+
+| | |
+|---|---|
+| **Files** | `src/groundwater/data/sanitary_inspection.csv`, `src/groundwater/data/sanitary_risk.yaml` |
+| **Source** | WHO Guidelines for Drinking-water Quality, 2nd edition, Volume 3: Surveillance and Control of Community Supplies (1997) |
+| **Licence** | Unverified. No copy of the volume is committed here. The ten questions were written from the form as field manuals commonly reproduce it, not checked against the volume, and the bands and grades are short factual figures. Confirm the wording and the terms before the form is printed under WHO's name. |
+| **Required attribution** | "After World Health Organization, Guidelines for Drinking-water Quality, 2nd edition, Volume 3 (1997)." |
+| **Notes** | The cells of the risk-to-health matrix in `sanitary_risk.yaml` are this toolkit's choice (the worse of the two sides' own WHO risk words), not a copy of WHO's figure. `QUESTIONS.md` item 12 asks for the checks. |
+
 ### Water Point Data Exchange (WPdx+) · **CC BY 4.0 (nothing committed)**
 
 | | |

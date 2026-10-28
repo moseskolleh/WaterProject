@@ -305,6 +305,7 @@ await withPage(async (page, base, consoleErrors) => {
     // the drill-target scorecard, over the real Rokel soundings
     const rokelSoundings = C.readVesSheets(vesSheets, 'rokel_ves.xlsx');
     const rokelInversions = rokelSoundings.map((s) => C.invertSounding(s));
+    out.rokel_stops = rokelInversions.map((r) => [r.model.sounding_id, r.converged, r.stopped]);
     const rokelInterps = rokelSoundings.map((s, k) =>
       C.interpretModel(s, rokelInversions[k].model));
     out.siting = C.assessSiting(rokelInterps).map((r) => ({
@@ -843,7 +844,7 @@ await withPage(async (page, base, consoleErrors) => {
     out.registry_rows = C.registryRows(Object.keys(assets).map((k) => assets[k]), today);
     out.registry_stats = C.registryStats(Object.keys(assets).map((k) => assets[k]), today);
     out.asset_months = [['2023-08-31', 6], ['2023-12-31', 2], ['2020-02-29', 12],
-      ['2023-01-31', 1], ['2023-03-30', 11], ['2024-02-29', 12]]
+      ['2023-01-31', 1], ['2023-03-30', 11], ['2024-02-29', 12], ['0024-08-31', 6]]
       .map(([from, months]) => ({ from, months, due: C.addMonths(from, months) }));
 
     out.seasonal_dates = ['10/05/2018', '25/04/2018', '04/25/2018', '2018-09-14',
@@ -2441,6 +2442,129 @@ await withPage(async (page, base, consoleErrors) => {
     check(`Bessel J${order} zeros, ${VB.zero_ranks.length} of the first ` +
       `${VB.zero_ranks[VB.zero_ranks.length - 1]}: within 1e-15 relative`,
     worst.gap <= 1e-15, `${worst.gap.toExponential(2)} at ${worst.where}`);
+  }
+
+  // --- the inversion's limits, held alike ---
+  // What an audit of the VES inversion found (make_reference.py says each):
+  // a short sounding is fitted with no more layers than leave it a degree of
+  // freedom, and a model it cannot determine is refused in the same words; a
+  // fit counts its iterations up to the cap and no further, and its own cache
+  // takes it back; a row at AB/2 = 0 is flagged and left out, and interp
+  // survives log 0 as numpy's does; and each fit says why it stopped and
+  // whether it converged by the stationarity test. Models to 1e-3, as the
+  // Rokel inversion is held; layer counts, trials, flags, stops and labels
+  // exactly.
+  const RF = R.ves_fit;
+  check('ves fit: the reference carries the section', !!RF,
+    'regenerate tests/webapp/reference.json with make_reference.py');
+  if (RF) {
+    const fitJs = await page.evaluate((RF) => {
+      const C = GWT.core, cfg = C.defaultConfig();
+      const sounding = (ab2, rho, id) => ({ sounding_id: id || 'F', ab2: ab2,
+        mn: ab2.map(() => NaN), rho_app: rho, array_type: 'schlumberger' });
+      const fitDict = (r) => ({ layers: r.model.n_layers, trials: r.trials.map((t) => t[0]),
+        rho: r.model.resistivities, h: r.model.thicknesses, err: r.fit_error_percent,
+        rho_factor: r.rho_uncertainty_factor, h_factor: r.h_uncertainty_factor,
+        converged: r.converged, stopped: r.stopped });
+      const short = RF.short.map((c) => {
+        const s = sounding(c.ab2, c.rho);
+        let refused = null;
+        try { C.invertSounding(s, { nLayers: c.asked }); } catch (e) { refused = String(e.message); }
+        return { refused: refused, fit: fitDict(C.invertSounding(s)) };
+      });
+      const start = C.startingModels(RF.capped_ab2, RF.capped_rho, 2)[0];
+      const capped = RF.capped.map((c) => {
+        const r = C.invertModel(RF.capped_ab2, RF.capped_rho, start.rho0, start.h0,
+          'schlumberger', cfg.ves.damping, c.cap);
+        return { iterations: r.iterations, converged: r.converged, stopped: r.stopped,
+          err: r.err, rho: r.rho, h: r.h };
+      });
+      /* a full inversion that runs to the cap, and the cache round trip it
+       * failed when the count ran one past */
+      const capSounding = { sounding_id: 'cap', ab2: [1, 2, 3, 3, 5, 8, 10, 15, 20, 30],
+        mn: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        rho_app: [120, 110, 90, 95, 60, 40, 35, 30, 32, 40], array_type: 'schlumberger' };
+      const atCap = C.invertSounding(capSounding, { config: cfg });
+      const key = C.inversionCacheKey(capSounding, cfg);
+      const entry = JSON.parse(JSON.stringify(C.inversionCacheEntry(key, capSounding, atCap)));
+      const back = C.inversionFromCache(entry, key, capSounding, cfg);
+      const zero = C.readVesSheets([{ name: 'Z', rows: RF.zero_rows }], 'x.xlsx')[0];
+      return {
+        short: short, capped: capped,
+        at_cap: { iterations: atCap.n_iterations, stopped: atCap.stopped,
+          converged: atCap.converged,
+          back: back && back.result ? { iterations: back.result.n_iterations,
+            stopped: back.result.stopped, converged: back.result.converged,
+            rho: back.result.model.resistivities } : null,
+          rho: atCap.model.resistivities },
+        zero_flags: zero.flags.map((f) => [f.level, f.code, f.message]),
+        zero_ab2: zero.ab2, zero_fit: fitDict(C.invertSounding(zero)),
+        interp: RF.interp.x.map((x) => C.interp(Math.log(x), RF.interp.xp_raw.map(Math.log),
+          RF.interp.fp.map(Math.log))),
+        max_iterations: cfg.ves.max_iterations,
+      };
+    }, RF);
+    const nums = (js, py, tol) => Array.isArray(js) && js.length === py.length &&
+      py.every((v, i) => close(js[i], v, tol));
+    const sameFit = (label, js, py) => {
+      check(`${label}: layers and trials`, js.layers === py.layers &&
+        JSON.stringify(js.trials) === JSON.stringify(py.trials),
+        `js ${js.layers} ${JSON.stringify(js.trials)} vs py ${py.layers} ${JSON.stringify(py.trials)}`);
+      if (js.layers !== py.layers) return;
+      check(`${label}: model within 1e-3`, nums(js.rho, py.rho, 1e-3) && nums(js.h, py.h, 1e-3) &&
+        close(js.err, py.err, 1e-3),
+      `js ${JSON.stringify([js.rho, js.h, js.err])}\n     py ${JSON.stringify([py.rho, py.h, py.err])}`);
+      check(`${label}: uncertainty factors within 1e-3`,
+        nums(js.rho_factor, py.rho_factor, 1e-3) && nums(js.h_factor, py.h_factor, 1e-3),
+        `js ${JSON.stringify([js.rho_factor, js.h_factor])}\n     py ` +
+        JSON.stringify([py.rho_factor, py.h_factor]));
+      check(`${label}: converged and stopped`, js.converged === py.converged &&
+        js.stopped === py.stopped,
+      `js ${js.converged} ${js.stopped} vs py ${py.converged} ${py.stopped}`);
+    };
+    RF.short.forEach((c, i) => {
+      const js = fitJs.short[i];
+      sameFit(`ves fit: ${c.ab2.length} readings`, js.fit, c.fit);
+      check(`ves fit: ${c.ab2.length} readings, ${c.asked} layers refused in Python's words`,
+        js.refused !== null && js.refused === c.refused, `js ${js.refused}\n     py ${c.refused}`);
+    });
+    RF.capped.forEach((c, i) => {
+      const js = fitJs.capped[i];
+      check(`ves fit: max_iterations ${c.cap}: ${c.iterations} counted, and why it stopped`,
+        js.iterations === c.iterations && js.stopped === c.stopped &&
+        js.converged === c.converged,
+        `js ${js.iterations} ${js.stopped} ${js.converged} vs py ${c.iterations} ` +
+        `${c.stopped} ${c.converged}`);
+      /* A fit stopped after a few iterations is not at a minimum, so the
+       * numerical Jacobian carries each platform's last-bit Math.exp/log
+       * differences forward, multiplied at every step: about 3e-10 after
+       * one iteration and 1.4e-6 after three, between Node 22's V8 and the
+       * CI Chromium, while a newer Chromium happened to land inside 1e-6.
+       * A different step path would differ by orders more than 1e-4. */
+      check(`ves fit: max_iterations ${c.cap}: the model within 1e-4`,
+        nums(js.rho, c.rho, 1e-4) && nums(js.h, c.h, 1e-4) && close(js.err, c.err, 1e-4),
+        `js ${JSON.stringify([js.rho, js.h, js.err])}\n     py ${JSON.stringify([c.rho, c.h, c.err])}`);
+    });
+    const cap = fitJs.at_cap;
+    check('ves fit: an inversion that runs to the cap counts the cap and no more',
+      cap.stopped === 'iteration cap' && cap.iterations === fitJs.max_iterations,
+      JSON.stringify(cap));
+    check('ves fit: and its own cache takes it back',
+      !!cap.back && cap.back.iterations === cap.iterations && cap.back.stopped === cap.stopped &&
+      cap.back.converged === cap.converged &&
+      JSON.stringify(cap.back.rho) === JSON.stringify(cap.rho), JSON.stringify(cap.back));
+    check('ves fit: a row at AB/2 = 0 is read, flagged, word for word',
+      JSON.stringify(fitJs.zero_flags) === JSON.stringify(RF.zero_flags) &&
+      JSON.stringify(fitJs.zero_ab2) === JSON.stringify(RF.zero_ab2),
+      `js ${JSON.stringify(fitJs.zero_flags)}\n     py ${JSON.stringify(RF.zero_flags)}`);
+    sameFit('ves fit: the sheet with a row at AB/2 = 0', fitJs.zero_fit, RF.zero_fit);
+    check('ves fit: interp over log abscissae with log 0 among them, as np.interp',
+      RF.interp.value.every((py, k) => (py === null ? Number.isNaN(fitJs.interp[k])
+        : fitJs.interp[k] === py)),
+      `js ${JSON.stringify(fitJs.interp)}\n     py ${JSON.stringify(RF.interp.value)}`);
+    check('ves fit: the Rokel inversions stop alike and are labelled alike',
+      JSON.stringify(parsed.rokel_stops) === JSON.stringify(RF.rokel_stops),
+      `js ${JSON.stringify(parsed.rokel_stops)}\n     py ${JSON.stringify(RF.rokel_stops)}`);
   }
 
   // --- the chance of a working borehole (PLAN.md step 3.3) ---
@@ -4183,6 +4307,142 @@ await withPage(async (page, base, consoleErrors) => {
     }).filter(Boolean);
     check(`calibration in force: the odds, the edges, the weights and the words (${IF.cases.length})`,
       failed.length === 0, failed.slice(0, 3).join('\n     '));
+  }
+
+  // --- Sanitary inspection (PLAN.md step 7.5) ---
+  // The twins of groundwater/sanitary.py on make_reference.py's cases: the
+  // form, its bands, the grades and the matrix as the bundle carries them;
+  // forms scored and laid out; counts graded; and the latest inspection read
+  // with a sample's E. coli count into one statement, with the events as the
+  // registry merges them, all held whole.
+  {
+    const SN = R.sanitary;
+    const sanJs = await page.evaluate(({ SN }) => {
+      const C = GWT.core;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      return {
+        tables: GWT.data.sanitary, questions: C.formQuestions(),
+        cases: SN.cases.map((c) => attempt(() => {
+          const assessment = c.sample ? C.assessSample(c.sample) : null;
+          return { risk: C.sanitaryRisk({ asset_id: SN.asset_id, events: c.events }, c.today, assessment),
+            merged: C.mergeEvents(SN.asset_id, c.events) };
+        })),
+        // today written as neither engine reads a day throws in both
+        todays: SN.todays.map((c) => {
+          const got = attempt(() => C.sanitaryRisk({ asset_id: SN.asset_id, events: c.events }, c.today,
+            C.assessSample(c.sample)));
+          return got.threw && /today's date/.test(got.threw) ? { ok: { throws: true } }
+            : (got.ok ? { ok: { risk: got.ok } } : got);
+        }),
+        days: SN.days.map((d) => attempt(() => ({ day: C.dayToIso(C.isoDay(d.text)) }))),
+        trims: SN.trims.map((t) => attempt(() => ({ trim: C.trimField(t.text),
+          answers: C.cleanAnswers(t.text), score: C.scoreAnswers(t.text) }))),
+        trimmed: (() => {
+          const out = [];
+          for (let c = 0; c < 0x10000; c++) {
+            if (C.trimField(String.fromCharCode(c) + 'x') === 'x') out.push(c);
+          }
+          return out;
+        })(),
+        forms: SN.forms.map((f) => attempt(() => ({ score: C.scoreAnswers(f.answers),
+          rows: C.formRows(f.answers) }))),
+        grades: SN.grades.map((g) => attempt(() => ({ grade: C.ecoliGrade(g.count),
+          above: C.ecoliGradesAbove(g.count, false), above_inclusive: C.ecoliGradesAbove(g.count, true) }))),
+      };
+    }, { SN });
+    const same = firstDifference({ tables: sanJs.tables, questions: sanJs.questions },
+      { tables: SN.tables, questions: SN.questions });
+    check('sanitary: the form, the bands, the grades and the matrix', !same, same);
+    const held = (label, got, list) => {
+      const failed = list.map((c, i) => {
+        const g = got[i];
+        if (!g || g.threw) return `[${c.name || i}] threw ${g ? g.threw : 'no answer'}`;
+        return firstDifference(g.ok, c.expect, `[${c.name || i}]`);
+      }).filter(Boolean);
+      check(`${label} (${list.length})`, failed.length === 0, failed.slice(0, 3).join('\n     '));
+    };
+    held('sanitary: forms scored and laid out', sanJs.forms, SN.forms);
+    held('sanitary: counts graded', sanJs.grades, SN.grades);
+    held('sanitary: the risk statement and the merged events', sanJs.cases, SN.cases);
+    held('sanitary: today read only as YYYY-MM-DD', sanJs.todays, SN.todays);
+    held('sanitary: days read alike (isoDay and iso_date)', sanJs.days, SN.days);
+    held('sanitary: ends of a field and of the answers trimmed alike', sanJs.trims, SN.trims);
+    const trimmedApart = firstDifference(sanJs.trimmed, SN.trimmed);
+    check(`sanitary: the characters a field's ends are trimmed of (${SN.trimmed.length})`,
+      !trimmedApart, trimmedApart);
+    const twice = sanJs.cases.concat(sanJs.todays).map((g, i) => g && g.ok && g.ok.risk
+      && g.ok.risk.statement.includes('..') ? `[${i}] ${g.ok.risk.statement}` : null)
+      .filter(Boolean);
+    check('sanitary: no statement ends a sentence twice', twice.length === 0,
+      twice.slice(0, 2).join('\n     '));
+  }
+
+  // --- The rising main at design time (PLAN.md step 7.2) ---
+  // The twin of groundwater/design/materials.py on make_reference.py's cases:
+  // what the design specifies for the rising main and how often it is
+  // inspected, over every state the water can be in and every rule set, from
+  // the assessment and from the bare sample; and the bill of quantities each
+  // design gives, all held whole.
+  {
+    const RM = R.rising_main;
+    const rmJs = await page.evaluate(({ RM }) => {
+      const C = GWT.core;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      const rules = (over) => Object.assign({}, C.defaultConfig().design, over || {});
+      const quality = (raw, bare) => (raw === null || raw === undefined ? null
+        : (bare ? raw : C.assessSample(raw)));
+      return {
+        choices: RM.choices.map((c) => attempt(() =>
+          C.risingMainChoice(quality(c.sample, c.bare), rules(c.rules)))),
+        bills: RM.bills.map((b) => attempt(() => {
+          const spec = b.spec;
+          const log = {
+            site: { community: 'Case' }, total_depth_m: spec.total, drilling_method: 'DTH',
+            intervals: spec.intervals.map((r) => ({ top_m: r[0], bottom_m: r[1], description: r[2] })),
+            water_strikes_m: [], grouting_depth_m: null, installed_screens_m: [],
+          };
+          const d = C.designBorehole({
+            log, staticWaterLevelM: 8.0, pumpIntakeM: spec.pump === undefined ? null : spec.pump,
+            rules: rules(spec.rules), screensM: spec.screens || null,
+            quality: quality(spec.raw, false),
+          });
+          const inputs = C.inputsFromDesign(d, { mobilisationDistanceKm: 50.0 });
+          inputs.handpumps = spec.handpumps === undefined ? 1 : spec.handpumps;
+          const rates = C.loadRates().filter((r) => r.code !== spec.drop);
+          const estimate = C.estimateBoreholeCost(inputs, rates);
+          return {
+            rising_main: d.rising_main, material: inputs.rising_main_material,
+            length: inputs.rising_main_m, boq: estimate.boq_rows(),
+            flags: estimate.flags.map((f) => [f.level, f.code, f.message]),
+            assumptions: estimate.assumptions, direct: estimate.direct_cost_usd,
+          };
+        })),
+        // rules saved before the rising main settings existed take the defaults
+        fallback: attempt(() => C.risingMainChoice(null, { casing_material: 'uPVC' })),
+        plain: attempt(() => C.risingMainChoice(null, C.defaultConfig().design)),
+      };
+    }, { RM });
+    const held = (label, got, list) => {
+      const failed = list.map((c, i) => {
+        const g = got[i];
+        if (!g || g.threw) return `[${c.name || (c.spec && c.spec.name) || i}] threw ${g ? g.threw : 'no answer'}`;
+        return firstDifference(g.ok, c.expect, `[${c.name || (c.spec && c.spec.name) || i}]`);
+      }).filter(Boolean);
+      check(`${label} (${list.length})`, failed.length === 0, failed.slice(0, 3).join('\n     '));
+    };
+    held('rising main: the material, the interval and the statement', rmJs.choices, RM.choices);
+    held('rising main: the design, its quantities and the bill', rmJs.bills, RM.bills);
+    const fallback = rmJs.fallback.ok && rmJs.plain.ok
+      ? firstDifference(rmJs.fallback.ok, rmJs.plain.ok) : String(rmJs.fallback.threw || rmJs.plain.threw);
+    check('rising main: rules without the settings take the defaults', !fallback, fallback);
+    const states = new Set(rmJs.choices.map((g) => g.ok && g.ok.chemistry));
+    check('rising main: every state of the water is among the cases',
+      ['aggressive', 'not_aggressive', 'incomplete', 'none'].every((k) => states.has(k)),
+      JSON.stringify([...states]));
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

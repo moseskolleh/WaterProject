@@ -42,7 +42,14 @@ water quality guidelines.
    ground to clip it to and none of them is a lower bound; otherwise it
    stays a picture, as the protective-capacity map, drawn in classes,
    always does
-3. To-scale borehole design drawings with lithology and construction columns
+3. To-scale borehole design drawings with lithology and construction columns,
+   and a rising main chosen from the water: where the sample's corrosivity
+   indices or its pH say the water is aggressive, the design specifies a
+   stainless steel rising main in place of galvanised iron, inspected every
+   6 months rather than 12, says why from the sample's index values, and the
+   bill of quantities prices it (at a placeholder rate). With no sample the
+   design says the choice rests on no chemistry. The intervals and the rate
+   are choices waiting on `QUESTIONS.md` item 13
 4. Pumping test analysis (Cooper-Jacob, Theis, recovery, step tests) with a
    recommended safe yield and pump setting depth
 5. Water quality assessment against WHO and national standards, with
@@ -138,7 +145,14 @@ water quality guidelines.
     derived condition and overdue dates. Nothing is assumed working - a
     borehole nobody has reported on is unknown, not functional, and the
     functionality rate is only ever computed over the points whose
-    condition is actually known
+    condition is actually known. A sanitary inspection is recorded there
+    on WHO's ten-question form for a borehole with a handpump and read
+    with the E. coli count of the latest water sample into one risk
+    statement with its action priority, naming both dates. A question left
+    unanswered is not a no, so an incomplete form gives a range; a side
+    that is not known is said to be unknown and gives no priority. The
+    form's wording and the matrix's cells, which are a choice made here,
+    are listed in `QUESTIONS.md` for checking
 18. The survey as an interactive map, not only as a picture: both apps
     write a [GeoLibre](https://geolibre.app) project file - an open,
     plain-JSON map format - carrying the site, the scored drill targets,
@@ -331,6 +345,8 @@ groundwater/
     procurement.py  contract, variation orders, measurement and the interim
                   payment certificate
     registry.py   asset identifiers, maintenance events, derived condition
+    sanitary.py   the sanitary inspection form, scored and read with the
+                  E. coli count into one risk statement
     qr.py         a dependency-free QR encoder for the headworks plate
 ```
 

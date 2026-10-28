@@ -55,8 +55,8 @@ def test_forward_stays_exact_when_the_spacing_dwarfs_the_layer(
 ):
     """The quadrature runs out to the largest tabulated Bessel zero.
 
-    A sounding needs panels out to 9 * (AB/2) / h_min, so the fixed 1200-zero
-    table covered spacings only up to about 419 times the thinnest layer.
+    A sounding needs panels out to at least 9 * (AB/2) / h1, so the fixed
+    1200-zero table covered spacings only up to about 419 times the top layer.
     Past that the integral was truncated part-way through an oscillation of
     J1, leaving a large spurious residue: 574 ohm-m instead of 30 at
     AB/2 = 1000 m over a 0.5 m layer. The inversion explores thin layers, so
@@ -705,9 +705,7 @@ def test_finite_mn_readings_answer_exactly_as_one_at_a_time():
         if not np.isfinite(b):
             alone = forward_schlumberger((rho, h), np.array([L]))[0]
         else:
-            f_in, f_out = forward._potential_integrals(
-                rho, h, np.array([L - b, L + b]), float(np.min(h))
-            )
+            f_in, f_out = forward._potential_integrals(rho, h, np.array([L - b, L + b]))
             alone = (L**2 - b**2) / (2.0 * b) * (f_in - f_out)
         assert batched[i] == alone
     with pytest.raises(ValueError, match="MN spacings"):
@@ -724,12 +722,12 @@ def test_a_grown_table_does_not_open_the_batch_to_far_reaching_models():
     """
     forward._table_for(1, 0.0)
     base = forward._BASE_REACH[1]
-    far = 1.5 * base / 18.0  # a decay scale whose quadrature reaches past it
+    far = 1.5 * base  # a cut past the base table's reach
     assert not forward._batchable(1, 5, far)
-    forward._table_for(1, 18.0 * far)  # what a far sounding does to the cache
-    assert forward._TABLES[1]["panel_ends"][-1] > 18.0 * far
+    forward._table_for(1, far)  # what a far sounding does to the cache
+    assert forward._TABLES[1]["panel_ends"][-1] > far
     assert not forward._batchable(1, 5, far)
-    assert forward._batchable(1, 5, 0.5 * base / 18.0)
+    assert forward._batchable(1, 5, 0.5 * base)
 
 
 def test_the_batched_jacobian_matches_a_column_by_column_one(rokel_ves_a):
@@ -806,7 +804,9 @@ def test_the_rokel_fit_stays_the_model_the_samples_were_built_from(rokel_ves_a):
     an order of magnitude out - is nowhere near that small.
     """
     result = invert_sounding(rokel_ves_a)
-    assert result.fit_error_percent == pytest.approx(13.3468506, rel=1e-6)
+    # moved by the quadrature's new cut (from 13.3468506 and 1105.5107779,
+    # 1637.7603910, 47.2797656 at 18 decay lengths of the thinnest layer)
+    assert result.fit_error_percent == pytest.approx(13.3467649, rel=1e-6)
     assert list(result.model.resistivities) == pytest.approx(
-        [1105.5107779, 1637.7603910, 47.2797656], rel=1e-6
+        [1104.9280801, 1637.1106957, 47.2778001], rel=1e-6
     )

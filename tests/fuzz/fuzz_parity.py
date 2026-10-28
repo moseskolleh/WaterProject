@@ -165,8 +165,10 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
     compared. The open cases these rules were written for (an unconverged
     inversion, equivalent models, a poorly resolved boundary) stopped
     diverging once the browser's Bessel tables and its interp were put
-    right. The first two were port defects and are now held to agreeing;
-    the third agrees by luck and is replayed under these rules. A generated
+    right. The first was a port defect and is held to agreeing. The
+    other two are replayed under these rules: the third agrees by luck,
+    and the second became a knife edge when the VES audit moved the
+    quadrature's cut (its note says how far one ulp moves it). A generated
     inversion that diverges anywhere else is put to ``knife_edge``, which
     asks the engines themselves whether the answer is one the last bit
     decides; these rules stay as they were.

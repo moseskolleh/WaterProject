@@ -46,7 +46,7 @@ from groundwater.ingestion import (
 from groundwater.waterpoints import parse_wpdx_csv, parse_wpdx_records
 from groundwater.geo import geographic_to_utm, parse_utm_zone, read_latlon
 from groundwater.hydraulics.analysis import pump_intake_depth
-from groundwater.design import design_borehole, pump_intake_floor
+from groundwater.design import design_borehole, pump_intake_floor, rising_main_choice
 from groundwater.models import SiteMetadata
 from groundwater.portfolio import classify_status, STATUS_LABELS, VERDICT_SCHEMA
 from groundwater.project_io import (
@@ -1343,6 +1343,8 @@ def page_design(log, analysis, swl_input):
         pump_intake_m=reported_pump_intake(analysis),
         pump_intake_floor_m=_intake_floor(analysis),
         rules=CONFIG.design,
+        # the rising main follows the Water quality page's sample
+        quality=st.session_state.get("wq_assessment"),
     )
 
 
@@ -1357,6 +1359,7 @@ def spine_design(log, analysis, placed):
         pump_intake_floor_m=_intake_floor(analysis),
         rules=CONFIG.design,
         screens_m=placed,
+        quality=st.session_state.get("wq_assessment"),
     )
 
 
@@ -1431,6 +1434,12 @@ def refresh_derived(page: str | None = None) -> None:
         placed = session.get(spine_screens_key(log))
         if placed and build_spine_view is not None:
             session["borehole_design"] = spine_design(log, analysis, placed)
+    # The rising main follows the sample on the Water quality page, which can
+    # change while no page that redesigns is on screen: a design restored
+    # from a project, or kept from an earlier run, takes the current one.
+    stored = session.get("borehole_design")
+    if stored is not None:
+        stored.rising_main = rising_main_choice(session.get("wq_assessment"), CONFIG.design)
 
     if page != "Costing & BoQ":
         design = session.get("borehole_design")
@@ -1494,10 +1503,14 @@ def _manual_costing_rules() -> dict:
     depth could disagree with the rules the design page draws by.
     """
     rules = CONFIG.design
+    # with no drawing the rising main still follows the water, priced over
+    # the whole depth (the estimate says so) since no intake is drawn
+    choice = rising_main_choice(st.session_state.get("wq_assessment"), rules)
     return {
         "borehole_diameter_in": rules.borehole_diameter_in,
         "casing_diameter_in": rules.casing_diameter_in,
         "sanitary_seal_m": rules.sanitary_seal_depth_m,
+        "rising_main_material": choice["material"] if choice["upgraded"] else "",
     }
 
 def first_point_survey():

@@ -126,6 +126,15 @@ citations:
   salwaco_geology: >-
     Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone.
     Freetown.
+  # The sanitary inspection form for a tubewell with a handpump, the E. coli
+  # grades and the risk-to-health matrix the asset record's sanitary risk
+  # reads (PLAN.md step 7.5; data/sanitary_inspection.csv and
+  # sanitary_risk.yaml say what of it was checked). Cited alike by both
+  # apps' asset records.
+  who_surveillance_1997: >-
+    World Health Organization (1997). Guidelines for Drinking-water Quality,
+    2nd edition. Volume 3: Surveillance and Control of Community Supplies.
+    Geneva: World Health Organization.
   # salwaco_geology, as the browser words it
   salwaco_geology_web: >-
     Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone.

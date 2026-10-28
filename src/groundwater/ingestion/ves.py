@@ -364,6 +364,20 @@ def _sounding_or_reason(
                 sounding.sounding_id,
             )
         )
+    # A spacing of 0 is a formula over a blank cell or a placeholder row; the
+    # reading is kept here, as read, and the inversion leaves it out.
+    bad_spacings = int(np.sum(~(sounding.ab2 > 0)))
+    if bad_spacings:
+        flags.append(
+            DataFlag(
+                "warning",
+                "nonpositive_spacing",
+                "A spacing must be positive; "
+                f"{plural(bad_spacings, 'reading')} at a spacing of 0 or less "
+                f"{'is' if bad_spacings == 1 else 'are'} left out of the inversion.",
+                sounding.sounding_id,
+            )
+        )
     if np.any(np.diff(sounding.ab2) < 0):
         flags.append(
             DataFlag(
