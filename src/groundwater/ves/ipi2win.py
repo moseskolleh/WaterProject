@@ -4,7 +4,11 @@ IPI2Win reports models as a table with columns N, rho, h and z, where
 z is the depth to the top of the layer, the first z prints as ``0/0``
 and the half space row has no thickness. The overall fit is reported
 as ``ERR = <percent>``. Interpretations already made in IPI2Win can be
-transcribed into a small Excel/CSV table and reused directly.
+transcribed into a small Excel/CSV table and reused directly. The
+resistivity column may be headed ``rho`` or IPI2Win's ``ρ``, and a column
+may carry its unit in brackets or after a comma (``ρ, Ohm.m``, ``h, m``);
+the ERR may be written in one cell or as its label with the value in the
+next cell (``ERR (%)`` | ``21.5``).
 
 Expected layout (one worksheet per sounding, or one CSV per sounding):
 
@@ -24,14 +28,22 @@ from pathlib import Path
 
 import numpy as np
 
-from ..models import LayeredModel
+from ..models import DataFlag, LayeredModel
 from ..utils import clean_text, parse_number
 
 # "ERR" / "Error" as a whole word, so it does not fire on unrelated words that
 # merely contain the letters e-r-r (Terrain, Errol, ...).
 _ERR_RE = re.compile(r"\berr(?:or)?\b", re.IGNORECASE)
+# A cell that holds the label and nothing else: "ERR", "ERR (%)", "Error, %:"
+_ERR_LABEL_RE = re.compile(r"^\s*err(?:or)?\s*(?:\(\s*%\s*\)|,?\s*%)?\s*[=:]?\s*$",
+                           re.IGNORECASE)
 
 __all__ = ["read_ipi2win_models", "model_from_rows"]
+
+
+# A unit after the name of a column, in brackets ("rho (ohm-m)", "h (m)") or
+# after a comma, as IPI2Win prints it ("ρ, Ohm.m", "h, m")
+_UNIT_RE = re.compile(r"\([^)]*\)|,.*$")
 
 
 def _find_table(grid: list[list]) -> tuple[int, dict] | None:
@@ -39,10 +51,13 @@ def _find_table(grid: list[list]) -> tuple[int, dict] | None:
         texts = [clean_text(c).lower().rstrip(".") for c in row]
         cols: dict[str, int] = {}
         for c, t in enumerate(texts):
-            base = t.replace("(m)", "").replace("(ohm-m)", "").strip()
+            base = _UNIT_RE.sub("", t).strip()
             if base in ("n", "no", "layer"):
                 cols["n"] = c
-            elif base in ("rho", "p", "resistivity") or "rho" in base or "resist" in base:
+            # IPI2Win heads the column with the Greek letter, "ρ", which a
+            # transcription keeps; it used to yield no model and no word
+            elif (base in ("rho", "p", "resistivity", "ρ", "ρa")
+                  or "rho" in base or "resist" in base):
                 cols.setdefault("rho", c)
             elif base in ("h", "thickness") or base.startswith("h "):
                 cols.setdefault("h", c)
@@ -54,8 +69,8 @@ def _find_table(grid: list[list]) -> tuple[int, dict] | None:
 
 
 def _find_err(grid: list[list]) -> float | None:
-    for row in grid:
-        for cell in row:
+    for r, row in enumerate(grid):
+        for c, cell in enumerate(row):
             text = clean_text(cell)
             if not text or not _ERR_RE.search(text):
                 continue
@@ -66,6 +81,26 @@ def _find_err(grid: list[list]) -> float | None:
             value = parse_number(tail)
             if value is not None:
                 return value
+            # A cell that is the label alone ("ERR", "ERR (%):") with its value
+            # in the next cell, the way the same sheet writes "Sounding Number"
+            # | 1: the value was lost, and a 21.5 percent fit read as one with
+            # no misfit recorded, rated "ok" at full confidence.
+            if _ERR_LABEL_RE.match(text):
+                value = _value_beside(grid, r, c)
+                if value is not None:
+                    return value
+    return None
+
+
+def _value_beside(grid: list[list], r: int, c: int) -> float | None:
+    """The number in the first non-empty cell right of ``(r, c)``, else in
+    the cell below it; None where that cell holds no number."""
+    row = grid[r]
+    for cell in row[c + 1:]:
+        if clean_text(cell):
+            return parse_number(cell)
+    if r + 1 < len(grid) and c < len(grid[r + 1]) and clean_text(grid[r + 1][c]):
+        return parse_number(grid[r + 1][c])
     return None
 
 
@@ -120,16 +155,37 @@ def _model_from_grid(grid: list[list], sounding_id: str) -> LayeredModel | None:
     return model_from_rows(rows, err=err, sounding_id=sounding_id)
 
 
-def read_ipi2win_models(path: str | Path) -> dict[str, LayeredModel]:
+#: Why a sheet gave no model, as ``read_ipi2win_models`` reports it
+NO_MODEL_TABLE = (
+    "no model table found: a header row needs a resistivity column (rho, ρ "
+    "or Resistivity) and a thickness (h) or depth (z) column, with a number "
+    "under the resistivity"
+)
+
+
+def read_ipi2win_models(
+    path: str | Path, skipped: list[DataFlag] | None = None
+) -> dict[str, LayeredModel]:
     """Read IPI2Win model tables from an Excel workbook or CSV file.
 
     Returns a mapping of sounding id (worksheet title or a "Sounding
     Number" header value, else the file stem) to the layered model.
+
+    A sheet (or CSV) that holds no model table is left out; pass
+    ``skipped`` to be told which and why, one warning flag each, as
+    :func:`groundwater.ingestion.ves.read_ves_workbook` does. A sheet whose
+    table could not be found used to vanish without a word.
     """
     from ..ingestion import common
 
     path = Path(path)
     models: dict[str, LayeredModel] = {}
+
+    def skip(what: str) -> None:
+        if skipped is not None:
+            skipped.append(DataFlag("warning", "sheet_skipped",
+                                    f"{what} was skipped: {NO_MODEL_TABLE}."))
+
     if path.suffix.lower() == ".csv":
         with open(path, newline="", encoding="utf-8-sig") as fh:
             grid = [[c if c != "" else None for c in row] for row in csv.reader(fh)]
@@ -138,6 +194,8 @@ def read_ipi2win_models(path: str | Path) -> dict[str, LayeredModel]:
         model = _model_from_grid(grid, sounding_id)
         if model is not None:
             models[sounding_id] = model
+        else:
+            skip(f"File '{path.name}'")
         return models
 
     for name in common.sheet_names(path):
@@ -147,4 +205,6 @@ def read_ipi2win_models(path: str | Path) -> dict[str, LayeredModel]:
         model = _model_from_grid(grid, sounding_id)
         if model is not None:
             models[sounding_id] = model
+        else:
+            skip(f"Sheet '{title}'")
     return models

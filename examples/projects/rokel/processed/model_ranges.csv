@@ -6,7 +6,7 @@ A (1),layer 2 resistivity (ohm-m),0.6279,1475,2902
 A (1),layer 3 resistivity (ohm-m),39.94,45.73,61.32
 A (1),base of layer 1 (m),0.6685,5.329,8.927
 A (1),base of layer 2 (m),5.785,8.448,9.154
-A (1),models with no basement in reach (percent),,91.2,
+A (1),models with no basement in reach (percent),,100.0,
 B (2),depth to basement (m),,,
 B (2),weathered zone thickness (m),31.17,31.93,32.54
 B (2),layer 1 resistivity (ohm-m),1070,1202,1356

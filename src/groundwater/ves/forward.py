@@ -84,14 +84,18 @@ def resistivity_transform(
 # exponentially decaying are computed in two sections:
 #
 # * x in (0, z1), z1 the first zero of Jn: composite Gauss-Legendre on
-#   (0, 1e-6) and on log-subdivided panels from 1e-6. The resistivity
-#   transform varies over about a decade of lambda, so sub-decade panels
-#   resolve it for any layer thickness / spacing ratio. The piece below
-#   1e-6 is about (rho_n - rho1) x 1e-6 for the potential (J0) integral,
-#   which a Wenner or finite-MN reading takes as a difference of two
-#   radii, so leaving it out, as the tables once did, left an error of
-#   (rho1 - rho_n) x 1e-6 ohm-m at every spacing: 5e-4 relative over
-#   5000 ohm-m on 10. For J1 it is of order 1e-19 and changes nothing.
+#   log-subdivided panels, which resolve the resistivity transform for any
+#   layer thickness / spacing ratio: it varies over about a decade of
+#   lambda, and no panel is wider than half a decade. The J1 table
+#   starts its panels at 1e-6, with one more on (0, 1e-6), where x J1(x)
+#   (T - rho1) adds less than 2e-19 times the largest resistivity to rho_a.
+#   The potential (J0) integral is not so damped: below
+#   x = r / (rho_n S), S the conductance sum h_i / rho_i over the basement,
+#   its integrand is the whole rho_n - rho1, and a Wenner or finite-MN
+#   reading, a difference of two radii, carries what falls there whole. So
+#   the J0 table's log panels run down to _J0_FLOOR, below every such point
+#   a model inside the inversion's bounds has, with one more on (0,
+#   _J0_FLOOR).
 # * x > z1: 10 point Gauss-Legendre panels between consecutive zeros
 #   of Jn. Within a half period the integrand is smooth, so each panel
 #   is near exact. The number of panels follows the exponential decay
@@ -104,17 +108,42 @@ def resistivity_transform(
 _N_ZEROS = 1200
 
 # The quadrature runs out to the largest tabulated Bessel zero. A sounding
-# needs panels out to n (AB/2) / (2 h1), n at least 18 (see _cut), so 1200
-# zeros (largest abscissa 3770.7) covers spacings up to about 419 times the
-# top layer at the least n. Beyond that the table is grown on demand:
-# truncating the integral part-way
-# through an oscillation of J1 leaves a large spurious residue - at AB/2 =
-# 1000 m over a 0.5 m layer the model returned 574 ohm-m instead of 30.
-# The inversion explores thin layers, so it can walk into that regime.
-# Growth ceiling. 60000 zeros reach x = 188495, covering spacings up to about
-# 20900 times the thinnest layer - far past anything a real sounding sees, and
-# bounded so the browser build cannot be made to allocate without limit.
+# needs panels out to n (AB/2) / (2 h1), n from _cut: never under 18, and at
+# _CUT_ERROR = 1e-8 in fact 20.4 or more, rising with the spacing and with
+# the contrast to the least resistivity (400,000 to 1 at the inversion's
+# bounds). So 1200 zeros (largest abscissa 3770.7, where n is 23 to 36)
+# cover spacings up to 210 to 330 times the top layer. Beyond that the table
+# is grown on demand: truncating the integral part-way through an
+# oscillation of J1 leaves a large spurious residue - at AB/2 = 1000 m over
+# a 0.5 m layer the model returned 574 ohm-m instead of 30. The inversion
+# explores thin layers, so it can walk into that regime.
+# Growth ceiling. 60000 zeros reach x = 188496, where n is 25 to 38, so they
+# cover spacings up to 10,000 to 15,000 times the top layer (AB/2 of 2000 to
+# 3000 m over the inversion's 0.2 m floor) - far past anything a real
+# sounding sees, and bounded so the browser build cannot be made to allocate
+# without limit.
 _MAX_ZEROS = 60_000
+
+# Where the J0 table's panels start, and how many share the decades from
+# there to 1e-6. Below x = r / (rho_n S), S = sum h_i / rho_i the conductance
+# over the basement, the potential integrand is the whole rho_n - rho1, so
+# the piece of the integral under the lowest panel is about (rho_n - rho1)
+# times its edge, and a Wenner or finite-MN reading carries it whole. One
+# GL-8 panel on (0, 1e-6) integrates that piece exactly only while T is
+# constant across it, that is while r / (rho_n S) stays well above 1e-6. A
+# 0.5 ohm-m top layer 300 m thick on 200,000 ohm-m puts it at 8e-9 for a
+# 1 m radius, and there Wenner at a = 1 m was 1.1e-3 out, and finite MN
+# (MN 0.4 m) 1.1e-3 at AB/2 = 1 m. Inside the inversion's bounds (0.5 to
+# 200,000 ohm-m, three layers of at most 300 m on the basement) rho_n S is
+# at most 3.6e8, so for any radius over 4 micrometres that point is above
+# 1e-14. Two panels a decade, as from 1e-6 up. Against a reference carried
+# down to 1e-20, Wenner and finite MN at the corners of those bounds are now
+# within 5.2e-9 and 6.1e-8 (they were 1.1e-3 and 1.15e-3), and on 900
+# random models across them within 9.2e-10 and 1.5e-8 (two had been over
+# 1e-6, at 4.3e-6 and 1.5e-5). The J1 table needs none of this: its
+# integrand carries x J1(x).
+_J0_FLOOR = 1e-14
+_J0_LOW_PANELS = 16
 
 # Floor on the layer thickness used to size the decay scale. The inversion
 # bounds thicknesses at 0.2 m; this only guards a hand-built degenerate model.
@@ -151,12 +180,14 @@ def _build_tables(order: int, n_zeros: int = _N_ZEROS):
     zeros = jn_zeros(order, n_zeros)
     bessel = j0 if order == 0 else j1
 
-    # section 1: GL-8 on (0, 1e-6) and on 14 log-spaced panels from 1e-6 to
-    # the first zero. A midpoint rule below 1e-6 is not enough: under a
-    # 0.5 ohm-m top layer on 200,000 ohm-m, T(lambda) falls by 4 percent
-    # inside (0, 1e-6) at a 1 m spacing.
+    # section 1: GL-8 on 14 log-spaced panels from 1e-6 to the first zero,
+    # and below them on (0, 1e-6) for J1; for J0, on _J0_LOW_PANELS more
+    # log-spaced panels down to _J0_FLOOR and then on (0, _J0_FLOOR)
     nodes8, weights8 = leggauss(8)
-    edges = np.concatenate([[0.0], np.geomspace(1e-6, zeros[0], 15)])
+    edges = np.geomspace(1e-6, zeros[0], 15)
+    if order == 0:
+        edges = np.concatenate([np.geomspace(_J0_FLOOR, 1e-6, _J0_LOW_PANELS + 1)[:-1], edges])
+    edges = np.concatenate([[0.0], edges])
     s1_nodes, s1_wb = [], []
     for lo, hi in zip(edges[:-1], edges[1:], strict=True):
         mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo)

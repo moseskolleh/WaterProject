@@ -1654,6 +1654,7 @@ def test_a_set_put_in_force_reads_the_survey_on_show_again(sample_data):
     models dropped where those edges are not the ones it was sampled with."""
     from groundwater.calibration_sets import config_for_sounding
     from groundwater.config import Config
+    from groundwater.text import phrase
 
     at = AppTest.from_file(APP, default_timeout=600)
     goto(at, "Geophysics (VES)")
@@ -1683,8 +1684,12 @@ def test_a_set_put_in_force_reads_the_survey_on_show_again(sample_data):
     assert kept is soundings and again is results
     config = config_for_sounding(Config(calibration=held), soundings[0])
     assert config.ves.fresh_basement_min_rho == 579.7
-    # read by the set's basement edge, the 1,638 ohm-m layer is basement now
-    assert after[0].depth_to_basement_m == pytest.approx(1.02, abs=0.01)
+    # read by the set's basement edge, the 1,637 ohm-m layer is as resistive
+    # as basement now; over the 47 ohm-m water zone it is a resistive cover,
+    # not bedrock (it used to be read as basement at 1.0 m)
+    assert before[0].layers[1].unit == "compact or dry weathered rock (regolith)"
+    assert after[0].layers[1].unit == phrase("ves.unit_resistive_cover")
+    assert after[0].depth_to_basement_m is None
     assert "ves_ranges" not in at.session_state
 
     at.button(key="calibration_default").click()

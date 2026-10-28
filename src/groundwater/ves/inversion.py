@@ -27,6 +27,7 @@ import numpy as np
 
 from ..config import VESConfig
 from ..models import LayeredModel, VESSounding
+from ..text import phrase
 from .forward import (
     forward_schlumberger,
     forward_schlumberger_models,
@@ -368,10 +369,7 @@ def most_layers(n_spacings: int) -> int:
 
 
 def _too_many_layers(n: int, n_spacings: int) -> str:
-    return (
-        f"Too few spacings for a {n}-layer model: its {2 * n - 1} parameters "
-        f"need at least {2 * n} spacings, and the sounding has {n_spacings}"
-    )
+    return phrase("ves.too_many_layers", layers=n, parameters=2 * n - 1, needed=2 * n, spacings=n_spacings)
 
 
 def invert_sounding(
