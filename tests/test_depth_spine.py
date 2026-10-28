@@ -90,6 +90,83 @@ def test_quality_keeps_the_three_kinds_of_exceedance(dr_timbo):
     assert quality["piper"]["percent"]["hco3"] > 0.5
 
 
+def test_a_value_outside_a_range_is_past_the_limit_on_either_side(dr_timbo):
+    """The ratio was the value over the top of every limit, ranges included,
+    so the sample's pH of 5.9, below the 6.5 to 8.5 range, was drawn at 0.69
+    times its limit - on the compliant side of the one line the chart says
+    separates compliant from not."""
+    from groundwater.depth_spine.view import _limit_ratio
+    from groundwater.quality.standards import Limit
+
+    ph = next(r for r in build_view(dr_timbo)["quality"]["rows"] if r["parameter"] == "pH")
+    assert ph["value"] == 5.9 and ph["status"] == "exceeds_aesthetic"
+    assert ph["limitKind"] == "range"
+    assert ph["ratio"] == pytest.approx(6.5 / 5.9, abs=1e-4) and ph["ratio"] > 1
+
+    ph_range = Limit(minimum=6.5, maximum=8.5)
+    assert _limit_ratio(5.4, ph_range) == pytest.approx(6.5 / 5.4)
+    assert _limit_ratio(9.5, ph_range) == pytest.approx(9.5 / 8.5)
+    assert _limit_ratio(7.0, ph_range) == pytest.approx(6.5 / 7.0)
+    assert _limit_ratio(7.0, ph_range) < 1
+    assert _limit_ratio(6.5, ph_range) == _limit_ratio(8.5, ph_range) == 1.0
+    # no multiple of the bottom of the range, so no position on the chart
+    assert _limit_ratio(0.0, ph_range) is None
+    # a maximum is unchanged
+    assert _limit_ratio(0.85, Limit(maximum=0.3)) == pytest.approx(0.85 / 0.3)
+
+
+def test_the_spine_prices_with_the_costing_pages_settings(dr_timbo):
+    """The Streamlit spine could not be given the Costing page's rates and
+    percentages, so it priced at the catalogue's and the defaults, and a
+    named person signed a price the Costing page did not show for the same
+    design."""
+    import dataclasses
+
+    from groundwater.costing.model import (
+        estimate_borehole_cost,
+        inputs_from_design,
+        load_rates,
+    )
+    from groundwater.depth_spine.view import SpineCosting
+    from groundwater.design.designer import pump_intake_floor
+
+    rates = load_rates()
+    edited = [r.with_likely(r.unit_cost_usd * 2) if k == 0 else r
+              for k, r in enumerate(rates)]
+    money = SpineCosting(
+        rates=edited, overheads_percent=25.0, margin_percent=10.0,
+        contingency_percent=5.0, vat_percent=15.0, exchange_rate_sle_per_usd=25.0,
+        overburden_m=12.0, wq_samples=2, handpumps=0, development_hours=8.0,
+        test_pumping_hours=36.0,
+    )
+    view = build_view(dataclasses.replace(
+        dr_timbo, mobilisation_distance_km=120.0, costing=money))
+
+    analysis, config = dr_timbo.analysis, Config()
+    design = design_borehole(
+        log=dr_timbo.log, static_water_level_m=analysis.test.static_water_level_m,
+        pump_intake_m=analysis.yield_recommendation.pump_installation_depth_m,
+        pump_intake_floor_m=pump_intake_floor(
+            analysis.yield_recommendation, config.pumping.pump_submergence_min_m),
+        rules=config.design,
+    )
+    inputs = inputs_from_design(design, mobilisation_distance_km=120.0, overburden_m=12.0)
+    inputs.wq_samples, inputs.handpumps = 2, 0
+    inputs.development_hours, inputs.test_pumping_hours = 8.0, 36.0
+    page = estimate_borehole_cost(
+        inputs, edited, overheads_percent=25.0, margin_percent=10.0,
+        contingency_percent=5.0, vat_percent=15.0, exchange_rate_sle_per_usd=25.0)
+
+    costing = view["costing"]
+    assert costing["price"] == round(page.price_usd, 2)
+    assert costing["vat"] == round(page.vat_usd, 2) > 0
+    assert costing["directCost"] == round(page.direct_cost_usd, 2)
+    assert costing["quantityBasis"]["overburdenM"] == 12.0
+    assert costing["exchangeRate"] == 25.0
+    # and the defaults are not that price
+    assert build_view(dr_timbo)["costing"]["price"] != costing["price"]
+
+
 def test_moving_a_screen_re_derives_the_design_and_the_boq(dr_timbo):
     before = build_view(dr_timbo)
     after = build_view(dr_timbo, screens_m=[(26.0, 40.0)])

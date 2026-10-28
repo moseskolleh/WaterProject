@@ -64,7 +64,12 @@ class ExtractedDocument:
 
     @property
     def review_items(self) -> list[str]:
-        items = [
+        # the sheet as a whole first: a review that lost every reading must
+        # say so before it lists the values it kept
+        from .review import sheet_review_items
+
+        items = sheet_review_items(self)
+        items += [
             f"header field '{f.name}' = '{f.value}' (confidence {f.confidence:.2f})"
             for f in self.header
             if f.needs_review

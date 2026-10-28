@@ -262,3 +262,26 @@ need real project inputs or decisions to finish calibrating it.
    `readings_sample` and `readings_visit` in
    `groundwater/data/text/rounds.yaml`), which are this sheet's choice and
    follow no published form.
+
+19. **Choices made in the sheet extraction, the Depth Spine and the
+   traverse (added with the fixes to them).** Each is stated where it is
+   applied and wants confirming: a cell under a numeric heading passes
+   the review only when it is one number with, at most, one of the units
+   m, cm, mm, min, s, h, hr, %, ohm, ohm-m, m3/h, l/s or m/min after it,
+   so "<0.01" and "45 ft" are held back for a person to confirm; a line of
+   one phrase is never part of a table, which keeps a caption and a note
+   out but would also split a table at a reading with only one cell
+   filled, or at a wrapped heading's second line; the filled VES template
+   carries a sheet's resistances, MN/2 and K under headings the VES reader
+   reads, rather than the extraction working out the apparent resistivity
+   itself, and a Wenner sheet is not put into the template (which is the
+   Schlumberger sheet); on the guideline chart a value below a range is
+   drawn at the bottom of the range over the value (pH 5.9 at 1.10 times
+   its limit), which is one way of putting it past the line, and a value
+   of zero or less under a range has no place on the chart; a traverse
+   within a degree of north-south runs northwards, and its bearing is
+   printed as 0 rather than 360 just west of north; and the two apps'
+   Costing pages start at different mobilisation distances (100 km in the
+   Streamlit app, 0 km in the browser), which the Depth Spine's price now
+   follows in each - whether they should start at the same distance is
+   the owner's call.

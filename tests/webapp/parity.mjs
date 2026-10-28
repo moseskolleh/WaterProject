@@ -43,7 +43,8 @@ await withPage(async (page, base, consoleErrors) => {
   await page.waitForFunction(() => window.GWT && window.GWT.core && window.GWT.data &&
     window.GWT.docx);
 
-  const parsed = await page.evaluate(async ([R_STREAMLIT_YAML, GATE_LOGS, WPDX_ROWS]) => {
+  const parsed = await page.evaluate(async ([R_STREAMLIT_YAML, GATE_LOGS, WPDX_ROWS,
+    SPINE_SETTINGS]) => {
     const S = GWT.support, C = GWT.core, D = GWT.data;
     async function grids(b64) {
       return GWT.support.readXlsx(S.base64ToBytes(b64));
@@ -287,6 +288,31 @@ await withPage(async (page, base, consoleErrors) => {
       edited_screens: spineEdited.design.screens.map((s) => [s.top, s.base]),
       edited_cost_direct: spineEdited.costing.directCost,
       edited: spineEdited.edited,
+    };
+
+    // priced with the Costing page's settings, the ones the reference used
+    const money = SPINE_SETTINGS;
+    const spineCosted = C.buildSpineView({
+      name: 'Dr Timbo', log, analysis, assessment: assessed,
+      mobilisationDistanceKm: money.mobilisation_km,
+      costing: {
+        rates: C.loadRates().map((r) => (r.code === money.rate[0]
+          ? C.rateWithLikely(r, money.rate[1]) : r)),
+        overheadsPercent: money.overheads, marginPercent: money.margin,
+        contingencyPercent: money.contingency, vatPercent: money.vat,
+        exchangeRate: money.exchange, overburdenM: money.overburden,
+        wqSamples: money.wq_samples, handpumps: money.handpumps,
+        developmentHours: money.development_hours,
+        testPumpingHours: money.test_pumping_hours,
+      },
+    });
+    out.spine_costed = {
+      money: Object.fromEntries(['directCost', 'overheads', 'totalCost', 'margin',
+        'price', 'vat', 'costPerMetre', 'overheadsPercent', 'marginPercent',
+        'contingencyPercent', 'vatPercent', 'exchangeRate']
+        .map((key) => [key, spineCosted.costing[key]])),
+      quantity_basis: spineCosted.costing.quantityBasis,
+      items: spineCosted.costing.items.map((i) => [i.code, i.quantity, i.unitCost, i.amount]),
     };
 
     // the portfolio view, over the same summaries the reference uses
@@ -686,6 +712,14 @@ await withPage(async (page, base, consoleErrors) => {
         { parameter: 'pH', value: ph }, { parameter: 'Calcium', value: 4.0 },
         { parameter: 'Alkalinity', value: 10.0 }, { parameter: 'TDS', value: 60.0 },
       )).verdict;
+    });
+
+    // a pH outside its range is past the limit line on either side of it
+    out.spine_range_ratio = {};
+    [5.9, 5.4, 6.5, 7.0, 8.5, 9.5, 0.0, -1.0].forEach((ph) => {
+      out.spine_range_ratio[ph.toFixed(1)] = C.spineQuality(C.assessSample(wq(
+        { parameter: 'pH', value: ph }))).rows
+        .filter((row) => row.parameter === 'pH')[0].ratio;
     });
 
     out.spine_quality = C.spineQuality(C.assessSample(wq(
@@ -1090,7 +1124,8 @@ await withPage(async (page, base, consoleErrors) => {
       one_pager: C.portfolioOnePager(summaries[1]),
     };
     return out;
-  }, [reference.streamlit_project_file.yaml, reference.gate_logs, reference.wpdx_reader_rows]);
+  }, [reference.streamlit_project_file.yaml, reference.gate_logs, reference.wpdx_reader_rows,
+    reference.spine_costed.settings]);
 
   // The designs and logs the borehole-design review found wanting, run from
   // the specs make_reference.py wrote, so both engines see the same input.
@@ -1572,6 +1607,34 @@ await withPage(async (page, base, consoleErrors) => {
       `js "${parsed.corrosivity_ph[ph]}"\n     py "${R.corrosivity_ph[ph]}"`);
   });
 
+  // --- The Depth Spine priced with the Costing page's settings ---
+  // The Streamlit spine had no way to take them, so the price a named person
+  // signed there was the catalogue's at the default percentages.
+  Object.keys(R.spine_costed.money).forEach((key) => {
+    check(`spine priced as the Costing page prices: ${key}`,
+      close(parsed.spine_costed.money[key], R.spine_costed.money[key], 1e-9),
+      `js ${parsed.spine_costed.money[key]} vs py ${R.spine_costed.money[key]}`);
+  });
+  check('spine priced as the Costing page prices: quantity basis',
+    Object.keys(R.spine_costed.quantity_basis).every((k) =>
+      close(parsed.spine_costed.quantity_basis[k], R.spine_costed.quantity_basis[k], 1e-9)),
+    `js ${JSON.stringify(parsed.spine_costed.quantity_basis)}\n     ` +
+    `py ${JSON.stringify(R.spine_costed.quantity_basis)}`);
+  check('spine priced as the Costing page prices: every line of the bill',
+    parsed.spine_costed.items.length === R.spine_costed.items.length &&
+    R.spine_costed.items.every((row, i) => parsed.spine_costed.items[i][0] === row[0] &&
+      row.slice(1).every((v, j) => close(parsed.spine_costed.items[i][j + 1], v, 1e-9))),
+    `js ${JSON.stringify(parsed.spine_costed.items)}\n     ` +
+    `py ${JSON.stringify(R.spine_costed.items)}`);
+
+  // --- The guideline chart's ratio against a range ---
+  Object.keys(R.spine_range_ratio).forEach((ph) => {
+    const js = parsed.spine_range_ratio[(Number(ph)).toFixed(1)];
+    const py = R.spine_range_ratio[ph];
+    check(`spine ratio at pH ${ph}`,
+      py === null ? js === null : close(js, py, 1e-9), `js ${js} vs py ${py}`);
+  });
+
   // --- The Depth Spine's guideline chart, on non-guideline units ---
   // The limit is in the guideline's unit, so the value has to be too. The
   // bundled sample reports everything in the guideline unit, which is why
@@ -1883,6 +1946,109 @@ await withPage(async (page, base, consoleErrors) => {
     pdf.uncertain === R.pdf_sheet.uncertain,
     `js ${pdf.uncertain} py ${R.pdf_sheet.uncertain}`);
 
+  // --- Reading field sheets: the cases each engine got wrong ---
+  // The grader on cells a scanner misreads, the VES template filled from
+  // tables headed the ways field sheets head them and read back, the replies
+  // an AI transcription can end with, and two PDFs: a sheet with a caption
+  // above its headings, a note under its readings and three misread cells,
+  // and one with no text layer. The template is the browser's own blank
+  // (gwt-app.js TEMPLATE_SPECS.ves, which smoke.mjs fills on the page).
+  const RX = R.extraction;
+  const extraction = await page.evaluate(async (RX) => {
+    const C = GWT.core, S = GWT.support;
+    const blank = [['SCHLUMBERGER ARRAY VES FIELD DATA'],
+      ['Client', '', 'Community', ''], ['Project', '', 'Sounding Number', 'VES 1'],
+      ['District', '', 'Chiefdom', ''],
+      ['GPS Coordinate East', '', 'GPS Coordinate North', ''],
+      ['Elevation', '', 'Date', ''], ['Field Supervisor', '', 'Instrument', ''], [],
+      ['No.', 'AB/2 (m)', 'MN (m)', 'Apparent Resistivity (ohm-m)'],
+      [1, 1.5, 0.5, ''], [2, 2, 0.5, '']];
+    const out = { cells: [], fills: {}, replies: {}, pdfs: {} };
+    RX.cells.forEach((row) => {
+      const graded = C.cellConfidence(row[0], 'Apparent Resistivity (ohm-m)');
+      out.cells.push([row[0], graded[0], graded[1], C.isWholeNumber(row[0])]);
+    });
+    Object.keys(RX.payloads).forEach((name) => {
+      const doc = C.extractionDocumentFrom(RX.payloads[name], 'scan.jpg');
+      const entry = { review: C.reviewItems(doc) };
+      out.fills[name] = entry;
+      if (!doc.tables.length) return;
+      try {
+        const grid = C.fillVesTemplateSheets(doc, blank)
+          .map((r) => r.map((c) => (c && typeof c === 'object' ? c.v : c)));
+        const s = C.readVesSheets([{ name: 'VES 1', rows: grid }], 'filled.xlsx')[0];
+        Object.assign(entry, {
+          ab2: s.ab2, mn: s.mn.map((v) => (isFinite(v) ? v : null)), rho: s.rho_app,
+          flags: s.flags.map((f) => f.code), id: s.sounding_id,
+          community: s.site.community, instrument: s.instrument || '',
+          array: s.array_type,
+        });
+      } catch (e) {
+        entry.refused = e.message;
+      }
+    });
+    Object.keys(RX.replies_in).forEach((name) => {
+      const [stop, content] = RX.replies_in[name];
+      try {
+        out.replies[name] = { kind: C.replyPayload({ stop_reason: stop, content }).document_kind };
+      } catch (e) {
+        out.replies[name] = { error: e.message };
+      }
+    });
+    for (const name of Object.keys(RX.pdfs)) {
+      try {
+        const doc = await C.extractPdfText(S.base64ToBytes(RX.pdfs[name].b64), name + '.pdf');
+        out.pdfs[name] = {
+          tables: doc.tables.map((t) => ({ columns: t.columns, rows: t.rows })),
+          uncertain: doc.uncertain_cells.map((c) => [c.table_index, c.row, c.column, c.reason]),
+          review: C.reviewItems(doc),
+        };
+      } catch (e) {
+        out.pdfs[name] = { error: e.message };
+      }
+    }
+    return out;
+  }, RX);
+
+  check('extraction: the grader on every cell',
+    JSON.stringify(extraction.cells) === JSON.stringify(RX.cells),
+    `js ${JSON.stringify(extraction.cells)}\n     py ${JSON.stringify(RX.cells)}`);
+  const sameNumbers = (a, b) => Array.isArray(a) && Array.isArray(b) &&
+    a.length === b.length && b.every((v, i) => (v === null ? a[i] === null : close(a[i], v, 1e-9)));
+  Object.keys(RX.fills).forEach((name) => {
+    const js = extraction.fills[name], py = RX.fills[name];
+    check(`extraction ${name}: the review items`,
+      JSON.stringify(js.review) === JSON.stringify(py.review),
+      `js ${JSON.stringify(js.review)}\n     py ${JSON.stringify(py.review)}`);
+    if (!('refused' in py) && !('ab2' in py)) return;
+    if ('refused' in py) {
+      check(`extraction ${name}: the template is refused, in the same words`,
+        js.refused === py.refused, `js ${js.refused || 'filled'}\n     py ${py.refused}`);
+      return;
+    }
+    check(`extraction ${name}: the filled template reads back the same readings`,
+      !js.refused && sameNumbers(js.ab2, py.ab2) && sameNumbers(js.mn, py.mn) &&
+      sameNumbers(js.rho, py.rho),
+      `js ${js.refused || JSON.stringify([js.ab2, js.mn, js.rho])}\n     ` +
+      `py ${JSON.stringify([py.ab2, py.mn, py.rho])}`);
+    check(`extraction ${name}: the same sounding, array and flags`,
+      JSON.stringify([js.flags, js.id, js.community, js.instrument, js.array]) ===
+      JSON.stringify([py.flags, py.id, py.community, py.instrument, py.array]),
+      `js ${JSON.stringify([js.flags, js.id, js.community, js.instrument, js.array])}\n     ` +
+      `py ${JSON.stringify([py.flags, py.id, py.community, py.instrument, py.array])}`);
+  });
+  Object.keys(RX.replies).forEach((name) => {
+    check(`extraction reply ${name}: the same outcome, in the same words`,
+      JSON.stringify(extraction.replies[name]) === JSON.stringify(RX.replies[name]),
+      `js ${JSON.stringify(extraction.replies[name])}\n     py ${JSON.stringify(RX.replies[name])}`);
+  });
+  Object.keys(RX.pdfs).forEach((name) => {
+    const { b64, ...py } = RX.pdfs[name];
+    check(`extraction pdf ${name}: the same tables, cells held back and review`,
+      JSON.stringify(extraction.pdfs[name]) === JSON.stringify(py),
+      `js ${JSON.stringify(extraction.pdfs[name])}\n     py ${JSON.stringify(py)}`);
+  });
+
   // --- pumping sheets at the edges ---
   // The two sample sheets are the ordinary case. These are the same sheets
   // with the cells rewritten that each hydraulics defect turned on: a rejected
@@ -2119,7 +2285,7 @@ await withPage(async (page, base, consoleErrors) => {
       return {
         reason: null, labels: profile.labels, chainage_m: profile.chainage_m,
         indices: profile.indices, length_m: profile.length_m,
-        bearing_deg: profile.bearing_deg,
+        bearing_deg: profile.bearing_deg, bearing_text: C.bearingText(profile.bearing_deg),
         // the model each column is drawn with, where the section is drawn
         layer2_rho: section.reason
           ? profile.indices.map((k) => interps[k].model.resistivities[1])

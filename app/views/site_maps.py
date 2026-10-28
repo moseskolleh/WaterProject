@@ -62,6 +62,7 @@ from groundwater.mapping import (
 )
 from groundwater.mapping.elevation import ElevationFile, file_notes, open_elevation_file, wgs84_cell_size
 from groundwater.mapping.lineaments import lineament_lonlat
+from groundwater.mapping.subsurface import bearing_text
 from groundwater.mapping.terrain import geojson_meta, grid_analysis_window, uncovered_cells, uncovered_note
 from groundwater.siting import assess_siting
 from groundwater.text import phrase
@@ -790,7 +791,7 @@ def render() -> None:
         if _traverse:
             st.caption(
                 f"Traverse {_traverse['length_m']:.0f} m long, bearing "
-                f"{_traverse['bearing_deg']:.0f} degrees; the soundings sit "
+                f"{bearing_text(_traverse['bearing_deg'])} degrees; the soundings sit "
                 f"up to {_traverse['max_offset_m']:.0f} m off the line "
                 f"({_traverse['straightness'] * 100:.0f}% of its length)."
             )

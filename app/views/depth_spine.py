@@ -17,6 +17,7 @@ from shared import (
     _spine_frame_height,
     _spine_iframe,
     _spine_screen_editor,
+    spine_costing,
     spine_screens_key,
     SpineInputs,
     static_build_available,
@@ -59,6 +60,8 @@ def render() -> None:
         spine_key = spine_screens_key(spine_log)
         placed = st.session_state.get(spine_key)
 
+        # priced as the Costing page prices it: the price is signed here
+        money, distance = spine_costing()
         spine_view = build_spine_view(
             SpineInputs(
                 name=spine_log.site.community or "Borehole",
@@ -66,6 +69,8 @@ def render() -> None:
                 analysis=analysis,
                 assessment=assessment,
                 config=CONFIG,
+                mobilisation_distance_km=distance,
+                costing=money,
             ),
             screens_m=placed,
         )

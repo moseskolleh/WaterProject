@@ -5999,7 +5999,10 @@
             S.toast('Could not write the review workbook: ' + e.message, 'error');
           }
         }),
-        doc.document_kind === 'ves' && doc.tables.length
+        /* a table whose readings the template cannot take is not offered as
+         * one: "Needs a human" says why */
+        doc.document_kind === 'ves' && doc.tables.length &&
+          !C.vesTemplateColumns(doc.tables[0]).missing.length
           ? button('Download filled VES template (.xlsx)', async function () {
             try {
               await buildFilledVesTemplate(doc);

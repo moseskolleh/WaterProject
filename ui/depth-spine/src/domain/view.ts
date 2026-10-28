@@ -163,7 +163,12 @@ export interface QualityRow {
   limitName: string;
   limitMax: number | null;
   limitMin: number | null;
-  /** Value as a multiple of the binding limit. Null when there is none. */
+  /**
+   * Value as a multiple of the binding limit, so 1 is the limit line.
+   * Against a range it is the larger of value / limitMax and
+   * limitMin / value, so a value outside the range is past the line on
+   * either side. Null when there is none.
+   */
   ratio: number | null;
 }
 

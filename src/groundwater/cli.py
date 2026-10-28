@@ -176,11 +176,18 @@ def cmd_extract(args: argparse.Namespace) -> int:
     review = write_review_workbook(document, out_dir / f"{source.stem}_review.xlsx")
     print(f"{document.document_kind}: review workbook {review}")
     if document.document_kind == "ves" and document.tables:
-        filled = fill_ves_template(document, out_dir / f"{source.stem}_ves.xlsx")
-        print(f"filled VES template {filled}")
-    flagged = sum(len(getattr(table, "uncertain_cells", ())) for table in document.tables)
+        try:
+            filled = fill_ves_template(document, out_dir / f"{source.stem}_ves.xlsx")
+        except ValueError as exc:
+            print(f"no filled VES template: {exc}")
+        else:
+            print(f"filled VES template {filled}")
+    # what the review workbook lists, the sheet as a whole included; the
+    # uncertain cells were looked for on the tables, which carry none, so a
+    # sheet with cells to check used to print nothing here
+    flagged = len(document.review_items)
     if flagged:
-        print(f"{flagged} cell(s) need checking; they are marked in the review workbook")
+        print(f"{flagged} item(s) need checking; they are listed in the review workbook")
     return 0
 
 

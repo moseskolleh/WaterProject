@@ -2000,6 +2000,73 @@ def test_depth_spine_page(app):
     )
 
 
+def test_the_depth_spine_prices_as_the_costing_page_does(sample_data):
+    """The spine signs a price on its "Costing & BoQ" stage, so it has to be
+    the Costing page's price for the design. The Streamlit spine priced at
+    the catalogue rates, the default percentages and no mobilisation, so with
+    the Costing page's overheads, VAT and distance changed the two disagreed.
+    """
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    assert not at.exception, at.exception
+    goto(at, "Borehole design")
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    goto(at, "Costing & BoQ")
+    for key, value in (("cost_overheads", 25.0), ("cost_vat", 15.0),
+                       ("cost_distance", 120.0), ("cost_samples", 2)):
+        at.number_input(key=key).set_value(value)
+    at.run()
+    at.button(key="run_cost").click()
+    at.run()
+    assert not at.exception, at.exception
+    estimate = at.session_state["cost_estimate"]
+
+    goto(at, "Depth Spine")
+    assert not at.exception, at.exception
+    [workspace] = at.get("component_instance")
+    costing = json.loads(workspace.proto.json_args)["view"]["costing"]
+    assert costing["price"] == pytest.approx(estimate.price_usd, abs=0.005)
+    assert costing["vat"] == pytest.approx(estimate.vat_usd, abs=0.005) and costing["vat"] > 0
+    assert costing["directCost"] == pytest.approx(estimate.direct_cost_usd, abs=0.005)
+    assert costing["overheadsPercent"] == 25.0
+
+
+def test_the_scanned_sheets_page_says_what_it_could_not_read(sample_data):
+    """An image-only PDF came back as an "unknown" sheet whose review said
+    every value had been extracted, and a VES table the template could not
+    take was written as a template that read back with no readings. The page
+    says each, in the engine's words."""
+    pytest.importorskip("pdfplumber")
+    from groundwater.text import phrase
+    from test_extraction import _pdf
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    goto(at, "Scanned sheets")
+    at.file_uploader(key="scan").set_value([("scan.pdf", _pdf([]), "application/pdf")])
+    at.run()
+    at.button(key="run_extract").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert [e.value for e in at.error] == [phrase("extraction.no_text_layer")]
+
+    placed = [(60, 760, "SCHLUMBERGER ARRAY VES FIELD DATA"),
+              (60, 650, "No."), (110, 650, "Spacing"), (200, 650, "Reading")]
+    for k, (spacing, reading) in enumerate((("1.5", "120.4"), ("2", "98.1"), ("3", "80.2"))):
+        placed += [(60, 630 - 18 * k, str(k + 1)), (110, 630 - 18 * k, spacing),
+                   (200, 630 - 18 * k, reading)]
+    at.file_uploader(key="scan").set_value([("sheet.pdf", _pdf(placed), "application/pdf")])
+    at.run()
+    at.button(key="run_extract").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert not at.error, [e.value for e in at.error]
+    warnings = [str(w.value) for w in at.warning]
+    assert any("cannot be placed in the VES template" in w for w in warnings), warnings
+    assert "1 item(s) to review" in " ".join(str(s.value) for s in at.success)
+
+
 def test_the_static_level_box_shows_the_level_the_design_uses(sample_data):
     """Open the app, then load the test and the log: the box said 0.0.
 

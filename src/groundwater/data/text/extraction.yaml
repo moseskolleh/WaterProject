@@ -1,0 +1,61 @@
+# Reading a field sheet that arrived as a PDF or a photograph: what the
+# text-layer reader, the AI transcription, the review workbook and the
+# filled VES template say. Both engines read this file:
+# groundwater/extraction/*.py and the extraction section of gwt-core.js.
+# The template rules are in src/groundwater/text.py; CONTRIBUTING.md says
+# how to add an entry.
+
+# A PDF from a scanner usually has no text layer at all. The text-layer
+# reader then has nothing to read, and says so rather than returning an
+# empty sheet whose review says nothing needs checking.
+no_text_layer: >-
+  That PDF carries no text layer - it is an image of a sheet rather than a
+  typed one. Use the AI assisted extraction instead.
+
+# The AI transcription's stop reasons. {stop_reason} is the API's own word
+# for why the reply ended. A reply cut off at the output limit is partial
+# JSON, which used to reach the parser and come back as "Unexpected end of
+# JSON input".
+declined: >-
+  The extraction request was declined by the model; check the document
+  content.
+no_transcription: >-
+  The model returned no transcription (stop reason: {stop_reason}). Try a
+  clearer scan.
+cut_off: >-
+  The transcription was cut off at the output limit (stop reason:
+  max_tokens) before the sheet was finished, so nothing was read from it.
+  Extract the sheet in parts: photograph or scan each table on its own.
+unreadable_reply: >-
+  The model's reply is not a complete transcription (stop reason:
+  {stop_reason}), so nothing was read from it. Try the extraction again.
+
+# Why the text-layer reader holds a cell in a numeric column back for
+# review. "partial" is a cell that holds a number and something else: a
+# scanner's letter O for a zero ("12O.4") reads as 12 to the lenient number
+# reader the parsers use, so the grader asks whether the number is all
+# there is.
+cell_reason:
+  empty: empty cell in a numeric column
+  unreadable: does not parse as a number
+  partial: contains characters other than a number
+
+# Review items that are about the whole sheet rather than one value. A
+# review that lost every reading used to say "None: all values extracted
+# with high confidence".
+no_table: >-
+  no table was found on the sheet, so no reading was extracted: enter the
+  readings by hand
+
+# The first table of a VES sheet is what the filled template carries, and
+# the VES reader reads it back by its column headings. {missing} is the
+# ves_missing rows that apply, joined by "; "; {headings} the headings as
+# read, each quoted.
+ves_unplaced: >-
+  table '{table}' cannot be placed in the VES template: {missing}. Headings
+  read: {headings}. Enter its readings by hand
+ves_missing:
+  spacing: no column is headed as the AB/2 spacing
+  wenner: its spacing column is the Wenner spacing a, and the template is a Schlumberger sheet
+  value: no column is headed as an apparent resistivity or a resistance
+  factor: its resistances need a K or an MN column to become apparent resistivities, and it has neither

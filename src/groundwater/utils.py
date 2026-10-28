@@ -63,18 +63,57 @@ def parse_number(value, default=None) -> float | None:
     text = str(value).strip()
     if not text:
         return default
-    if "," in text:
-        if "." in text and text.rfind(",") > text.rfind("."):
-            # 1.234,5 - point-grouped thousands with a decimal comma
-            text = text.replace(".", "").replace(",", ".")
-        else:
-            text = _THOUSANDS_RE.sub("", text)
-            text = _DECIMAL_COMMA_RE.sub(".", text)
-            text = text.replace(",", "")
-    match = _NUMBER_RE.search(text)
+    match = _NUMBER_RE.search(_without_commas(text))
     if match is None:
         return default
     return float(match.group(0))
+
+
+def _without_commas(text: str) -> str:
+    """``text`` with its commas read as parse_number reads them."""
+    if "," not in text:
+        return text
+    if "." in text and text.rfind(",") > text.rfind("."):
+        # 1.234,5 - point-grouped thousands with a decimal comma
+        return text.replace(".", "").replace(",", ".")
+    text = _THOUSANDS_RE.sub("", text)
+    text = _DECIMAL_COMMA_RE.sub(".", text)
+    return text.replace(",", "")
+
+
+# The whole of a cell that is one number: the number parse_number finds,
+# from its first character to its last, in ASCII digits.
+_WHOLE_NUMBER_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
+# The units a field sheet writes after a reading, and only those. A letter
+# that is not one of them is a misread rather than a unit: "12O" is 120 with
+# a scanner's letter O, not 12 of something. Ohms are written with the Greek
+# capital omega or with the ohm sign, which a text layer may carry instead.
+_UNIT_SUFFIX_RE = re.compile(
+    r"\s*(?:m|cm|mm|min|s|h|hr|%|ohm(?:[-. ]?m)?|[\u03a9\u2126](?:[-.\u00b7]?m)?|m3/h|l/s|m/min)$",
+    re.IGNORECASE,
+)
+
+
+def is_whole_number(value) -> bool:
+    """Whether a cell is one number and nothing else, bar a unit after it.
+
+    parse_number is lenient on purpose and takes the first number it finds,
+    which is what reading "80m" needs. It is also what reads a scanner's
+    "12O.4" (a letter O for a zero) as 12, "9B.1" as 9 and "1 234" as 1, so
+    a grader that asks whether a cell is a number asks this instead: the
+    number has to be all there is, read with the same commas, and a unit
+    after it is one a field sheet writes (m, cm, mm, min, s, h, hr, %, ohm,
+    ohm-m, m3/h, l/s, m/min).
+
+    >>> is_whole_number("078,7"), is_whole_number("80 m"), is_whole_number("12O.4")
+    (True, True, False)
+    """
+    if value is None or isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return math.isfinite(value)
+    text = _UNIT_SUFFIX_RE.sub("", str(value).strip(), count=1)
+    return _WHOLE_NUMBER_RE.fullmatch(_without_commas(text)) is not None
 
 
 # Each depth may carry a decimal comma, as parse_number reads one: without it
