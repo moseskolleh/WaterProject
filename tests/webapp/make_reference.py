@@ -642,7 +642,9 @@ def ves_range_reference(soundings, inversions) -> dict:
 # inversions met it only when a draw happened to land on such a sounding.
 # This grid holds each forward model the inversion uses to 1e-6 on every
 # pull request: two layers, the top 0.2 to 2 m thick at 4 to 200,000 ohm-m,
-# over 3.2 to 40 ohm-m.
+# over 3.2 to 40 ohm-m, and models of three and four layers whose thinnest
+# layer is not the top one, since the quadrature's cut follows the top
+# layer's thickness and the contrast to the least resistivity.
 # The starting models are held to 1e-12 on soundings whose first spacing
 # was read twice, where np.interp at the first abscissa reads the second
 # reading and the browser's interp used to read the first. interp itself is
@@ -653,6 +655,13 @@ FORWARD_MN = [0.4] * 4 + [1.0] * 4 + [4.0] * 4
 FORWARD_RHO1 = [4.0, 1e2, 1e3, 1e4, 1e5, 2e5]
 FORWARD_H1 = [0.2, 0.25, 0.5, 2.0]
 FORWARD_RHO2 = [3.2, 5.0, 40.0]
+#: (rho, h) of the layered models beside the grid
+FORWARD_LAYERED = [
+    ([300.0, 50.0, 5000.0, 2000.0], [5.0, 3.0, 0.5]),
+    ([10.0, 150000.0, 10.0], [3.0, 0.5]),
+    ([150000.0, 100.0, 10.0], [0.5, 15.0]),
+    ([0.5, 200000.0], [0.2]),
+]
 
 #: inversion_readings of regressions/ves-thin-resistive-top-layer.json and
 #: ves-equivalent-models.json: sorted by spacing, a repeat in sheet order
@@ -689,6 +698,14 @@ def ves_forward_reference() -> dict:
                     "finite_mn": clean(forward_schlumberger_finite_mn(model, ab2, mn)),
                     "wenner": clean(forward_wenner(model, ab2)),
                 })
+    for rho, h in FORWARD_LAYERED:
+        model = (np.array(rho), np.array(h))
+        models.append({
+            "rho": rho, "h": h,
+            "schlumberger": clean(forward_schlumberger(model, ab2)),
+            "finite_mn": clean(forward_schlumberger_finite_mn(model, ab2, mn)),
+            "wenner": clean(forward_wenner(model, ab2)),
+        })
     starts = []
     for readings, rho_app in STARTING_MODEL_CASES:
         for n in (2, 3, 4):
@@ -751,6 +768,100 @@ def ves_bessel_reference() -> dict:
         "zero_ranks": BESSEL_ZERO_RANKS,
         "zeros0": clean(zeros[0][np.array(BESSEL_ZERO_RANKS) - 1]),
         "zeros1": clean(zeros[1][np.array(BESSEL_ZERO_RANKS) - 1]),
+    }
+
+
+# ------------------------------------- the inversion's limits, held alike
+#
+# An audit of the VES inversion found four things parity never reached. A
+# sounding of four or five readings was fitted with a parameter per reading
+# and reported as fully resolved; the browser counted one iteration past the
+# cap, which its own cache then refused on every reload; a reading at AB/2 =
+# 0 went into the starting models' logarithms, which numpy's interp survived
+# and the browser's did not; and "converged" meant only that the damped step
+# search had given up. Each is held here: three short soundings' layer
+# counts, trials, models and uncertainty factors, and the refusal of a model
+# they cannot determine; fits run to caps of 0, 1 and 3 iterations, and why
+# each stopped; a sheet with a row at AB/2 = 0, its flags and its inversion;
+# interp over the logarithms of spacings with a 0 among them; and how the
+# Rokel pair's inversions stopped and whether they converged. How many
+# iterations a full inversion takes is not compared: the two engines' last
+# bits send the damped steps different ways, and they agree on the model.
+
+FIT_AB2 = [1.5, 3.0, 6.0, 10.0, 20.0, 40.0, 80.0]
+FIT_NOISE = [1.02, 0.97, 1.03, 0.98, 1.01, 0.99, 1.02]
+FIT_EARTH = ([800.0, 40.0, 2000.0], [3.0, 15.0])
+#: the sheet with a placeholder row at AB/2 = 0 ahead of its readings
+FIT_ZERO_SPACINGS = [1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0, 30.0, 50.0]
+FIT_ZERO_EARTH = ([400.0, 60.0, 1500.0], [2.0, 10.0])
+
+
+def _fit_dict(r) -> dict:
+    return {
+        "layers": r.model.n_layers, "trials": [n for n, _err in r.trials],
+        "rho": clean(r.model.resistivities), "h": clean(r.model.thicknesses),
+        "err": clean(r.fit_error_percent),
+        "rho_factor": clean(r.rho_uncertainty_factor),
+        "h_factor": clean(r.h_uncertainty_factor),
+        "converged": r.converged, "stopped": r.stopped,
+    }
+
+
+def ves_fit_reference(rokel_inversions) -> dict:
+    """The short soundings, the capped fits, the sheet with a zero spacing,
+    interp over log 0, and how the Rokel inversions stopped."""
+    from groundwater.ves.forward import forward_schlumberger
+    from groundwater.ves.inversion import _starting_models, invert_model, most_layers
+
+    earth = (np.array(FIT_EARTH[0]), np.array(FIT_EARTH[1]))
+    short = []
+    for n in (4, 5, 6):
+        ab2 = np.array(FIT_AB2[:n])
+        rho = forward_schlumberger(earth, ab2) * np.array(FIT_NOISE[:n])
+        sounding = VESSounding(SiteMetadata(), "F", ab2, np.full(n, np.nan), rho)
+        asked = most_layers(n) + 1
+        try:
+            invert_sounding(sounding, n_layers=asked)
+            refused = None
+        except ValueError as exc:
+            refused = str(exc)
+        short.append({"ab2": clean(ab2), "rho": clean(rho), "asked": asked,
+                      "refused": refused, "fit": _fit_dict(invert_sounding(sounding))})
+
+    ab2 = np.array(FIT_AB2)
+    rho = forward_schlumberger(earth, ab2) * np.array(FIT_NOISE)
+    rho0, h0 = _starting_models(ab2, rho, 2)[0]
+    capped = []
+    for cap in (0, 1, 3):
+        model, _calc, err, iterations, converged, stopped = invert_model(
+            ab2, rho, rho0, h0, "schlumberger", VESConfig().damping, cap)
+        capped.append({"cap": cap, "iterations": iterations, "converged": converged,
+                       "stopped": stopped, "err": clean(err),
+                       "rho": clean(model.resistivities), "h": clean(model.thicknesses)})
+
+    spacings = np.array(FIT_ZERO_SPACINGS)
+    noise = np.resize(np.array(FIT_NOISE), spacings.size)
+    readings = forward_schlumberger(
+        (np.array(FIT_ZERO_EARTH[0]), np.array(FIT_ZERO_EARTH[1])), spacings) * noise
+    rows = _ves_sheet("Z 1", "Schlumberger",
+                      ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+                      [[0.0, 0.4, 1150.0]]
+                      + [[float(a), 0.4, float(r)] for a, r in zip(spacings, readings, strict=True)])
+    zero, _reason = _sounding_or_reason(rows, source="x.xlsx", sheet_name="Z")
+
+    xp_raw, fp = [0.0, 1.0, 2.0, 3.0], [1150.0, 1165.0, 1193.0, 1303.0]
+    x = [-1.0, 0.5, 1.0, 1.5, 2.5, 5.0]
+    with np.errstate(divide="ignore", invalid="ignore"):  # log 0 and log -1
+        logs, probes = np.log(np.array(xp_raw)), np.log(np.array(x))
+    return {
+        "short": short,
+        "capped_ab2": FIT_AB2, "capped_rho": clean(rho), "capped": capped,
+        "zero_rows": clean(rows), "zero_flags": flags(zero.flags),
+        "zero_ab2": clean(zero.ab2), "zero_fit": _fit_dict(invert_sounding(zero)),
+        "interp": {"xp_raw": xp_raw, "fp": fp, "x": x,
+                   "value": clean(np.interp(probes, logs, np.log(fp)))},
+        "rokel_stops": [[inv.model.sounding_id, inv.converged, inv.stopped]
+                        for inv in rokel_inversions],
     }
 
 
@@ -2386,6 +2497,7 @@ def build() -> dict:
     out["pumping_spread"] = pumping_spread_reference()
     out["ves_forward"] = ves_forward_reference()
     out["ves_bessel"] = ves_bessel_reference()
+    out["ves_fit"] = ves_fit_reference(rokel_inversions)
     out["inflate"] = inflate_reference()
     out["geotiff"] = geotiff_reference()
     out["elevation_window"] = elevation_window_reference()

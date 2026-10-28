@@ -516,8 +516,20 @@
     }
     var span = xp[hi] - xp[lo];
     if (span === 0) return fp[lo];
+    /* at an abscissa itself numpy returns its value, whatever the slope */
+    if (xp[lo] === x) return fp[lo];
     /* numpy's order of operations, slope first, so the last bit is numpy's */
-    return (fp[hi] - fp[lo]) / span * (x - xp[lo]) + fp[lo];
+    var slope = (fp[hi] - fp[lo]) / span;
+    var value = slope * (x - xp[lo]) + fp[lo];
+    /* and numpy's fallback where that is NaN, an infinite abscissa or
+     * value: from the right-hand point, then the value itself where both
+     * ends hold it. Without it a reading at AB/2 = 0, log 0 = -Infinity,
+     * made every starting model's top layer NaN. */
+    if (Number.isNaN(value)) {
+      value = slope * (x - xp[hi]) + fp[hi];
+      if (Number.isNaN(value) && fp[lo] === fp[hi]) value = fp[lo];
+    }
+    return value;
   }
 
   /**
@@ -587,15 +599,47 @@
   var MAX_ZEROS = 60000;
   var MIN_DECAY_H = 0.02;
 
+  /* Where the quadrature stops (forward.py _cut, which sets the rule out).
+   * The integrand is bounded by 2 rho1 exp(-x / d) times the Bessel
+   * function, d = r / (2 h1), and no deeper layer slows that decay; stopping
+   * n decay lengths out leaves about 2 rho1 exp(-n) sqrt(2 n d / pi), and
+   * rho_a is no smaller than the least resistivity. So n solves
+   * n = ln(2 rho1 / (CUT_ERROR rho_min)) + 0.5 ln(2 n d / pi), by two
+   * fixed-point steps from MIN_CUT_DECAYS. The former cut, 18 decay lengths
+   * of the thinnest layer, was 2.7 percent out at 150,000 over 10 ohm-m and
+   * put slopes of +-17.7 into the Jacobian where it crossed a Bessel zero. */
+  var CUT_ERROR = 1e-8;
+  var MIN_CUT_DECAYS = 18.0;
+
+  /** @param {number} decay @param {number} ratio rho1 over the least rho */
+  function quadratureCut(decay, ratio) {
+    var d = Math.max(decay, 1.0), n = MIN_CUT_DECAYS;
+    for (var pass = 0; pass < 2; pass++) {
+      n = Math.max(MIN_CUT_DECAYS,
+        Math.log(2.0 * ratio / CUT_ERROR) + 0.5 * Math.log(2.0 * n * d / Math.PI));
+    }
+    return n * d;
+  }
+
+  /* the cut at radius r (an AB/2, or a potential electrode's distance) of
+   * one model: decay from the top layer, contrast from the least rho */
+  function cutFor(r, rho, h) {
+    var scale = 2.0 * Math.max(h.length ? h[0] : 1.0, MIN_DECAY_H);
+    return quadratureCut(r / scale, rho[0] / arrMin(rho));
+  }
+
   function buildTables(order, nZeros) {
     var zeros = besselZeros(order, nZeros);
     var bessel = order === 0 ? besselJ0 : besselJ1;
 
-    /* section 1: 14 log-spaced panels from 1e-6 to the first zero, GL-8 */
+    /* section 1: GL-8 on (0, 1e-6) and on 14 log-spaced panels from 1e-6 to
+     * the first zero. Starting at 1e-6, as the tables once did, left out
+     * (rho_n - rho1) x 1e-6 of the potential (J0) integral, an error of
+     * that many ohm-m in every Wenner and finite-MN reading. */
     var gl8 = gaussLegendre(8);
-    var edges = geomspace(1e-6, zeros[0], 15);
-    var s1n = new Float64Array(14 * 8), s1w = new Float64Array(14 * 8), at = 0;
-    for (var p = 0; p < 14; p++) {
+    var edges = [0.0].concat(geomspace(1e-6, zeros[0], 15));
+    var s1n = new Float64Array(15 * 8), s1w = new Float64Array(15 * 8), at = 0;
+    for (var p = 0; p < 15; p++) {
       var lo = edges[p], hi = edges[p + 1];
       var mid = 0.5 * (lo + hi), half = 0.5 * (hi - lo);
       for (var k = 0; k < 8; k++) {
@@ -678,9 +722,9 @@
     return T;
   }
 
-  /* Int_0^inf g(x) J_order(x) dx for smooth g decaying like exp(-x/xDecay). */
-  function hankelIntegral(g, order, xDecay) {
-    var xStop = 18.0 * Math.max(xDecay, 1.0);
+  /* Int_0^inf g(x) J_order(x) dx for smooth g, carried to the first Bessel
+   * zero at or past xStop (cutFor). */
+  function hankelIntegral(g, order, xStop) {
     var t = tableFor(order, xStop);
     var acc = 0.0, i;
     for (i = 0; i < t.s1n.length; i++) acc += g(t.s1n[i]) * t.s1w[i];
@@ -698,8 +742,6 @@
    * @returns {Float64Array}
    */
   function forwardSchlumberger(rho, h, ab2) {
-    var hMin = h.length ? arrMin(h) : 1.0;
-    var decayH = 2.0 * Math.max(hMin, MIN_DECAY_H);
     var out = new Float64Array(ab2.length);
     for (var i = 0; i < ab2.length; i++) {
       var L = ab2[i];
@@ -711,15 +753,15 @@
           return (resistivityTransform(x / LL, rho, h) - rho[0]) * x;
         };
       }(L));
-      out[i] = rho[0] + hankelIntegral(g, 1, L / decayH);
+      out[i] = rho[0] + hankelIntegral(g, 1, cutFor(L, rho, h));
     }
     return out;
   }
 
   /* F(r) = Int T(lam) J0(lam r) dlam, the surface potential kernel. */
-  function potentialIntegral(rho, h, r, hMin) {
+  function potentialIntegral(rho, h, r) {
     var g = function (x) { return resistivityTransform(x / r, rho, h) - rho[0]; };
-    return (rho[0] + hankelIntegral(g, 0, r / (2.0 * Math.max(hMin, MIN_DECAY_H)))) / r;
+    return (rho[0] + hankelIntegral(g, 0, cutFor(r, rho, h))) / r;
   }
 
   /** What the instrument actually measures at each (AB/2, MN) pair, including
@@ -731,7 +773,6 @@
    * @returns {Float64Array}
    */
   function forwardSchlumbergerFiniteMn(rho, h, ab2, mn) {
-    var hMin = h.length ? arrMin(h) : 1.0;
     var out = new Float64Array(ab2.length);
     for (var i = 0; i < ab2.length; i++) {
       var L = ab2[i], b = mn[i] / 2.0;
@@ -739,8 +780,8 @@
         out[i] = forwardSchlumberger(rho, h, [L])[0];
         continue;
       }
-      var fIn = potentialIntegral(rho, h, L - b, hMin);
-      var fOut = potentialIntegral(rho, h, L + b, hMin);
+      var fIn = potentialIntegral(rho, h, L - b);
+      var fOut = potentialIntegral(rho, h, L + b);
       out[i] = (L * L - b * b) / (2.0 * b) * (fIn - fOut);
     }
     return out;
@@ -753,12 +794,11 @@
    * @returns {Float64Array}
    */
   function forwardWenner(rho, h, a) {
-    var hMin = h.length ? arrMin(h) : 1.0;
     var out = new Float64Array(a.length);
     for (var i = 0; i < a.length; i++) {
       var s = a[i];
-      var f1 = potentialIntegral(rho, h, s, hMin);
-      var f2 = potentialIntegral(rho, h, 2.0 * s, hMin);
+      var f1 = potentialIntegral(rho, h, s);
+      var f2 = potentialIntegral(rho, h, 2.0 * s);
       out[i] = 2.0 * s * (f1 - f2);
     }
     return out;
@@ -909,6 +949,75 @@
   var RHO_BOUNDS = [0.5, 200000.0];
   var H_BOUNDS = [0.2, 300.0];
 
+  /* Why a fit's iterations stopped (inversion.py STOPS). */
+  var STOPS = ['exact fit', 'no improving step', 'iteration cap'];
+
+  /* inversion.py STATIONARY_DECREASE and _STATIONARY_RIDGE: a fit has
+   * converged where the Gauss-Newton step from it, over the parameters free
+   * to move within the bounds, would lower the sum of squared log residuals
+   * by no more than this share of it. A choice, not a standard; the ridge on
+   * the scaled unit diagonal is a numerical guard. */
+  var STATIONARY_DECREASE = 1e-6;
+  var STATIONARY_RIDGE = 1e-12;
+
+  /* inversion.py UNRESOLVED_FACTOR: the largest uncertainty factor
+   * reported, which reads as not resolved */
+  var UNRESOLVED_FACTOR = 10.0;
+
+  /** inversion.py most_layers: an n-layer model has 2n - 1 parameters, and
+   * with as many as there are spacings it passes through every reading
+   * whatever the earth, so a model keeps at least one degree of freedom.
+   * @param {number} nSpacings distinct spacings
+   * @returns {number}
+   */
+  function mostLayers(nSpacings) {
+    return Math.floor(nSpacings / 2);
+  }
+
+  function tooManyLayers(n, nSpacings) {
+    return 'Too few spacings for a ' + n + '-layer model: its ' + (2 * n - 1) +
+      ' parameters need at least ' + (2 * n) + ' spacings, and the sounding has ' +
+      nSpacings;
+  }
+
+  /* inversion.py _stationary: whether a fit stopped at theta is at a minimum
+   * within the bounds. JtJ and g = J'r are from the Jacobian at theta and
+   * cost is r'r there. A parameter at a bound the gradient pushes outward
+   * is held; over the others the Gauss-Newton step would lower the cost by
+   * g'(J'J)^-1 g, solved on normal equations scaled to a unit diagonal. */
+  function stationary(theta, JtJ, g, cost, nLayers) {
+    if (cost < 1e-10) return true;
+    var rLo = Math.log(RHO_BOUNDS[0]), rHi = Math.log(RHO_BOUNDS[1]);
+    var hLo = Math.log(H_BOUNDS[0]), hHi = Math.log(H_BOUNDS[1]);
+    var free = [];
+    for (var i = 0; i < theta.length; i++) {
+      var lo = i < nLayers ? rLo : hLo, hi = i < nLayers ? rHi : hHi;
+      var held = (theta[i] <= lo && g[i] > 0) || (theta[i] >= hi && g[i] < 0);
+      if (!held) free.push(i);
+    }
+    if (!free.length) return true;
+    var k = free.length;
+    var scale = free.map(function (a) {
+      var sa = Math.sqrt(JtJ[a][a]);
+      return sa === 0 ? 1.0 : sa;
+    });
+    var A = [], b = [];
+    for (var r = 0; r < k; r++) {
+      var row = [];
+      for (var c = 0; c < k; c++) {
+        row.push(JtJ[free[r]][free[c]] / (scale[r] * scale[c]) +
+          (r === c ? STATIONARY_RIDGE : 0));
+      }
+      A.push(row);
+      b.push(g[free[r]] / scale[r]);
+    }
+    var step = solveLinear(A, b);
+    if (!step) return false;
+    var decrease = 0;
+    for (var j = 0; j < k; j++) decrease += b[j] * step[j];
+    return decrease <= STATIONARY_DECREASE * cost;
+  }
+
   /**
    * @param {ArrayLike<number>} rhoObs
    * @param {ArrayLike<number>} rhoCalc
@@ -950,6 +1059,10 @@
 
   /** onIteration(done, maxIterations), when given, is told after every
    * iteration; it reads nothing back, so it cannot change the fit.
+   * iterations counts the iterations run, at most maxIterations, as
+   * Python's does; stopped is one of STOPS, and converged whether the
+   * returned model passes the stationarity test, which the stop alone does
+   * not say.
    * @param {number[]} ab2
    * @param {number[]} rhoApp
    * @param {ArrayLike<number>} rho0
@@ -984,27 +1097,23 @@
       return c;
     }
 
-    var cur = residuals(theta);
-    var res = cur.res, calc = cur.calc, cost = costOf(res);
-    var lam = damping, iterations = 0, converged = false;
-
-    for (iterations = 1; iterations <= maxIterations; iterations++) {
-      /* numerical Jacobian in log space */
+    /* the numerical Jacobian in log space at theta, as its normal equations
+     * J'J and its gradient J'r */
+    function normalEquations(t, r0) {
       var J = [];
       for (var i2 = 0; i2 < m; i2++) J.push(new Float64Array(p));
       var step = 1e-4;
       for (var j = 0; j < p; j++) {
-        var tp = Float64Array.from(theta);
+        var tp = Float64Array.from(t);
         tp[j] += step;
         var rp = residuals(tp).res;
-        for (var i3 = 0; i3 < m; i3++) J[i3][j] = (rp[i3] - res[i3]) / step;
+        for (var i3 = 0; i3 < m; i3++) J[i3][j] = (rp[i3] - r0[i3]) / step;
       }
-
       var JtJ = [], g = new Float64Array(p);
       for (var a = 0; a < p; a++) {
         JtJ.push(new Float64Array(p));
         var ga = 0;
-        for (var r = 0; r < m; r++) ga += J[r][a] * res[r];
+        for (var r = 0; r < m; r++) ga += J[r][a] * r0[r];
         g[a] = ga;
       }
       for (var a2 = 0; a2 < p; a2++) {
@@ -1015,6 +1124,21 @@
           JtJ[b2][a2] = s2;
         }
       }
+      return { JtJ: JtJ, g: g };
+    }
+
+    var cur = residuals(theta);
+    var res = cur.res, calc = cur.calc, cost = costOf(res);
+    var lam = damping, iterations = 0, stopped = 'iteration cap';
+    /** @type {{JtJ: Float64Array[], g: Float64Array}|null} */
+    var normal = null;
+
+    /* counted as Python's range() counts: a fit that runs out of iterations
+     * reports maxIterations, not one more, which the cache would refuse */
+    for (var it = 1; it <= maxIterations; it++) {
+      iterations = it;
+      normal = normalEquations(theta, res);
+      var JtJ = normal.JtJ, g = normal.g;
 
       var improved = false;
       for (var attempt = 0; attempt < 12; attempt++) {
@@ -1041,10 +1165,20 @@
         lam *= 10;
         if (lam > 1e8) break;
       }
-      if (!improved) { converged = true; break; }
-      if (cost < 1e-10) { converged = true; break; }
+      /* theta is where the Jacobian was taken */
+      if (!improved) { stopped = 'no improving step'; break; }
+      if (cost < 1e-10) { stopped = 'exact fit'; break; }
       if (onIteration) onIteration(iterations, maxIterations);
     }
+
+    /* The label, read off the returned point and nothing else, so it moves
+     * no fitted number. Only after a step that improved has theta moved
+     * since the last Jacobian. */
+    if ((stopped === 'iteration cap' && cost >= 1e-10) || !normal) {
+      normal = normalEquations(theta, res);
+    }
+    var converged = stopped === 'exact fit' ||
+      stationary(theta, normal.JtJ, normal.g, cost, nLayers);
 
     var final = unpackTheta(theta, nLayers);
     var err = fitErrorPercent(rhoApp, calc);
@@ -1055,6 +1189,7 @@
       err: err,
       iterations: iterations,
       converged: converged,
+      stopped: stopped,
     };
   }
 
@@ -1133,10 +1268,17 @@
       var rp = residuals(tp);
       for (var i3 = 0; i3 < m; i3++) J[i3][j] = (rp[i3] - res[i3]) / step;
     }
-    var dof = Math.max(m - p, 1);
+    /* with no more readings than parameters there is no residual variance
+     * to scale by: such a model passes through the readings whatever the
+     * earth, and nothing about it is resolved */
+    if (m <= p) {
+      var none = [];
+      for (var q = 0; q < p; q++) none.push(UNRESOLVED_FACTOR);
+      return { rho: none.slice(0, nLayers), h: none.slice(nLayers) };
+    }
     var ss = 0;
     for (var k = 0; k < m; k++) ss += res[k] * res[k];
-    var sigma2 = ss / dof;
+    var sigma2 = ss / (m - p);
     var JtJ = [];
     for (var a = 0; a < p; a++) {
       JtJ.push(new Array(p));
@@ -1159,16 +1301,17 @@
     var factors = [];
     for (var d = 0; d < p; d++) {
       var variance = cov ? Math.max(sigma2 * cov[d][d], 0) : Infinity;
-      factors.push(Math.min(Math.exp(Math.sqrt(variance)), 10.0));
+      factors.push(Math.min(Math.exp(Math.sqrt(variance)), UNRESOLVED_FACTOR));
     }
     return { rho: factors.slice(0, nLayers), h: factors.slice(nLayers) };
   }
 
   /** ves/inversion.py inversion_readings: the readings the inversion fits,
-   * spliced where the array has segments, sorted by spacing, and only the
-   * finite, positive apparent resistivities. The interpretation reads its
-   * depth of investigation from the same readings, so a last reading
-   * recorded as 0 cannot lend it a depth the model never saw.
+   * spliced where the array has segments, sorted by spacing, and only those
+   * with a finite, positive spacing and apparent resistivity. The
+   * interpretation reads its depth of investigation from the same readings,
+   * so a last reading recorded as 0 cannot lend it a depth the model never
+   * saw, and a spacing of 0 cannot reach the starting models' logarithms.
    * @param {Sounding} sounding
    * @param {Rec} [options] splice, spliceMode
    */
@@ -1189,8 +1332,10 @@
     }
     var ab2 = [], rho = [];
     for (var i = 0; i < spliced.ab2.length; i++) {
-      var value = spliced.rho[i];
-      if (isFinite(value) && value > 0) { ab2.push(spliced.ab2[i]); rho.push(value); }
+      var value = spliced.rho[i], spacing = spliced.ab2[i];
+      if (isFinite(value) && value > 0 && isFinite(spacing) && spacing > 0) {
+        ab2.push(spacing); rho.push(value);
+      }
     }
     return { ab2: ab2, rho: rho, shifts: spliced.shifts };
   }
@@ -1219,6 +1364,12 @@
      * different one. */
     var spacings = ab2.filter(function (v, k) { return ab2.indexOf(v) === k; });
     if (spacings.length < 4) throw new Error('Not enough readings to invert');
+    /* never more layers than the readings can determine (mostLayers); asked
+     * for more, by nLayers or initialModel, it refuses */
+    var most = mostLayers(spacings.length);
+    var asked = opts.initialModel ? opts.initialModel.resistivities.length
+      : (opts.nLayers || cfg.min_layers);
+    if (asked > most) throw new Error(tooManyLayers(asked, spacings.length));
 
     /* the iteration hook for trial si of nStarts at layer count li of nCounts */
     function iterationProgress(li, nCounts, si, nStarts, label) {
@@ -1242,7 +1393,7 @@
         ? [opts.nLayers]
         : (function () {
             var out = [];
-            for (var n = cfg.min_layers; n <= cfg.max_layers; n++) out.push(n);
+            for (var n = cfg.min_layers; n <= Math.min(cfg.max_layers, most); n++) out.push(n);
             return out;
           }());
       for (var li = 0; li < layerRange.length; li++) {
@@ -1337,6 +1488,7 @@
       fit_error_percent: chosen.err,
       n_iterations: chosen.iterations,
       converged: chosen.converged,
+      stopped: chosen.stopped,
       trials: trials,
       shifts: spliced.shifts,
       rho_uncertainty_factor: uncertainty.rho,
@@ -1346,10 +1498,11 @@
 
   /** ves/inversion.py restore_inversion: what invertSounding returned, rebuilt
    * from the model it chose. Only what the search alone can say is taken as
-   * given - the model, its iteration count, whether it converged and the
-   * layer counts tried. The readings fitted, the model's response, the misfit
-   * and the uncertainty factors are worked out again from the sounding, the
-   * same way the search does it, so they come out to the last bit.
+   * given - the model, its iteration count, whether it converged, why it
+   * stopped and the layer counts tried. The readings fitted, the model's
+   * response, the misfit and the uncertainty factors are worked out again
+   * from the sounding, the same way the search does it, so they come out to
+   * the last bit.
    * @param {Sounding} sounding
    * @param {Rec} stored an inversion cache record
    */
@@ -1361,7 +1514,8 @@
     var clamped = [];
     for (var i = 0; i < calc.length; i++) clamped.push(calc[i] > 1e-9 ? calc[i] : 1e-9);
     var chosen = { rho: rho, h: h, calc: clamped, err: fitErrorPercent(spliced.rho, clamped),
-      iterations: stored.n_iterations, converged: stored.converged };
+      iterations: stored.n_iterations, converged: stored.converged,
+      stopped: stored.stopped };
     var trials = stored.trials.map(function (t) { return [t[0], t[1]]; });
     return inversionResult(sounding, spliced, chosen, trials);
   }
@@ -1981,7 +2135,8 @@
    * this engine only. Worker and page run this same file, and smoke.mjs
    * holds them to the same answer to the last bit, so they share one cache. */
 
-  var INVERSION_CACHE_FORMAT = 1;
+  /* 2: the entry records why the fit stopped */
+  var INVERSION_CACHE_FORMAT = 2;
 
   /* SHA-256 of a string's UTF-8 bytes, or of the bytes themselves, as hex.
    * Written out because crypto.subtle answers only asynchronously and only
@@ -2127,6 +2282,7 @@
         thicknesses: Array.from(result.model.thicknesses),
         n_iterations: result.n_iterations,
         converged: !!result.converged,
+        stopped: String(result.stopped),
         trials: result.trials.map(function (t) { return [t[0], t[1]]; }),
       };
       var numbers = record.resistivities.concat(record.thicknesses,
@@ -2178,6 +2334,7 @@
             positiveList(h, rho.length - 1) &&
             isCount(record.n_iterations, 0, cfg.max_iterations) &&
             typeof record.converged === 'boolean' &&
+            STOPS.indexOf(record.stopped) >= 0 &&
             Array.isArray(trials) && trials.length)) return null;
       for (var i = 0; i < trials.length; i++) {
         var t = trials[i];
@@ -2185,6 +2342,11 @@
               isCount(t[0], cfg.min_layers, cfg.max_layers) && isFiniteNum(t[1]))) return null;
       }
       var result = restoreInversion(sounding, record);
+      /* no layer count the search would not have tried on these readings */
+      var most = mostLayers(result.ab2.filter(function (v, k) {
+        return result.ab2.indexOf(v) === k;
+      }).length);
+      if (trials.some(function (t1) { return t1[0] > most; })) return null;
       /* the model has to fit the readings as well as the search said it did */
       var recorded = trials.filter(function (t2) { return t2[0] === rho.length; });
       if (!recorded.length || Math.abs(recorded[0][1] - result.fit_error_percent) >
@@ -8824,6 +8986,7 @@
     fitErrorPercent: fitErrorPercent, invertModel: invertModel,
     invertSounding: invertSounding, layeredModel: layeredModel,
     inversionReadings: inversionReadings, restoreInversion: restoreInversion,
+    mostLayers: mostLayers,
     sha256Hex: sha256Hex, canonicalText: canonicalText,
     inversionEngine: inversionEngine, inversionCacheKey: inversionCacheKey,
     inversionCacheEntry: inversionCacheEntry, inversionFromCache: inversionFromCache,
@@ -16318,6 +16481,15 @@
     if (rho.some(function (v) { return v <= 0; })) {
       flags.push({ level: 'error', code: 'nonpositive_resistivity',
         message: 'Apparent resistivity values must be positive.', context: soundingId });
+    }
+    /* A spacing of 0 is a formula over a blank cell or a placeholder row; the
+     * reading is kept here, as read, and the inversion leaves it out. */
+    var badSpacings = ab2.filter(function (v) { return !(v > 0); }).length;
+    if (badSpacings) {
+      flags.push({ level: 'warning', code: 'nonpositive_spacing',
+        message: 'A spacing must be positive; ' + plural(badSpacings, 'reading') +
+          ' at a spacing of 0 or less ' + (badSpacings === 1 ? 'is' : 'are') +
+          ' left out of the inversion.', context: soundingId });
     }
     for (var d = 1; d < ab2.length; d++) {
       if (ab2[d] - ab2[d - 1] < 0) {

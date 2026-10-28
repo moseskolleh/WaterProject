@@ -21,11 +21,11 @@ because it is there:
   file anybody can open, and whoever can rewrite an entry can as easily
   rewrite the readings it was made from;
 - only what the search alone can say is stored: the chosen model, its
-  iteration count, whether it converged and the layer counts it tried. The
-  fitted readings, the model's response, the misfit and the uncertainty
-  factors are worked out again from the sounding on the way in
-  (:func:`~groundwater.ves.inversion.restore_inversion`), and the misfit
-  has to be the one the search recorded for that layer count.
+  iteration count, whether it converged, why it stopped and the layer
+  counts it tried. The fitted readings, the model's response, the misfit
+  and the uncertainty factors are worked out again from the sounding on
+  the way in (:func:`~groundwater.ves.inversion.restore_inversion`), and
+  the misfit has to be the one the search recorded for that layer count.
 
 The engine is named by the package version, the numpy and scipy versions
 (the forward model's Bessel functions and the solver's rounding come from
@@ -51,7 +51,7 @@ from importlib import resources
 
 from ..config import VESConfig
 from ..models import VESSounding
-from .inversion import InversionResult, restore_inversion
+from .inversion import STOPS, InversionResult, most_layers, restore_inversion
 
 __all__ = [
     "CACHE_FORMAT",
@@ -66,8 +66,9 @@ __all__ = [
 ENGINE = "groundwater-python"
 
 #: The layout of a key and an entry. A change to either is a new number, so
-#: an entry in the old layout is simply never found.
-CACHE_FORMAT = 1
+#: an entry in the old layout is simply never found. 2: the entry records
+#: why the fit stopped.
+CACHE_FORMAT = 2
 
 #: The modules whose code decides what an inversion returns, relative to the
 #: package. The configuration's values are in the key already.
@@ -177,6 +178,7 @@ def cache_entry(key: str, result: InversionResult) -> dict | None:
         "thicknesses": _floats(result.model.thicknesses),
         "n_iterations": int(result.n_iterations),
         "converged": bool(result.converged),
+        "stopped": str(result.stopped),
         "trials": [[int(n), float(err)] for n, err in result.trials],
     }
     numbers = record["resistivities"] + record["thicknesses"] + [
@@ -230,6 +232,7 @@ def cached_inversion(
     rho, h = record.get("resistivities"), record.get("thicknesses")
     trials = record.get("trials")
     iterations, converged = record.get("n_iterations"), record.get("converged")
+    stopped = record.get("stopped")
     if not (
         _positive_list(rho)
         and config.min_layers <= len(rho) <= config.max_layers
@@ -237,6 +240,7 @@ def cached_inversion(
         and isinstance(iterations, int) and not isinstance(iterations, bool)
         and 0 <= iterations <= config.max_iterations
         and isinstance(converged, bool)
+        and isinstance(stopped, str) and stopped in STOPS
         and isinstance(trials, list) and trials
     ):
         return None
@@ -250,10 +254,14 @@ def cached_inversion(
             return None
     try:
         result = restore_inversion(
-            sounding, rho, h, iterations, converged,
+            sounding, rho, h, iterations, converged, stopped,
             [(n, float(err)) for n, err in trials],
         )
     except Exception:  # noqa: BLE001 - an entry that will not rebuild is a miss
+        return None
+    # no layer count the search would not have tried on these readings
+    most = most_layers(len(set(result.ab2.tolist())))
+    if any(n > most for n, _err in result.trials):
         return None
     # the model has to fit the readings as well as the search said it did
     recorded = [err for n, err in result.trials if n == result.model.n_layers]
