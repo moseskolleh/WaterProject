@@ -24390,17 +24390,21 @@
   });
 
   /* ======================================================= calibration sets
-   * groundwater/calibration_sets.py (PLAN.md step 5.3). The prior table's
-   * rates, the resistivity edges of each geology unit and the suitability
-   * weights, fitted to the boreholes of a pooled ledger, and adopted by a
-   * named person before anything changes. Every fit starts from the
-   * provisional default, and uses only sums, products, quotients and square
-   * roots, so the two engines agree to the bit.
+   * groundwater/calibration_sets.py (PLAN.md steps 5.3 and 5.5). The prior
+   * table's rates, the resistivity edges of each geology unit and the
+   * suitability weights, fitted to the boreholes of a pooled ledger, and
+   * adopted by a named person before anything changes. Every fit starts
+   * from the provisional default, and uses only sums, products, quotients
+   * and square roots, so the two engines agree to the bit. A set file holds
+   * counts, not projects, and sets from several organisations are pooled
+   * (poolSets); a pooled edge is a mean of logarithms, rounded to 0.1 ohm-m.
    */
 
-  /* calibration_sets.FORMAT and FORMAT_VERSION: what a set file says it is */
+  /* calibration_sets.FORMAT and FORMAT_VERSION: what a set file says it is;
+   * format 1 (step 5.3) is still read, its ledger ids counted */
   var SET_FORMAT = 'groundwater calibration set';
-  var SET_FORMAT_VERSION = 1;
+  var SET_FORMAT_VERSION = 2;
+  var SET_READS = [1, 2];
   /* calibration_sets.EDGES: the resistivity edges a set fits, in its order */
   var SET_EDGES = ['clay_max_rho', 'fresh_basement_min_rho'];
   /* the classes of rock under and over each edge */
@@ -24500,7 +24504,9 @@
       var m = entries.length;
       var successes = entries.filter(function (e) { return e.outcome.success; }).length;
       var factors = /** @type {number[]} */ (entries.map(function (e) { return setFactor(e.prediction.odds); }));
-      var expected = m * evidenceRate(factors, successes);
+      /* the count the file holds, so that the rate is the one its counts
+       * give, whoever adds them up again (poolSets) */
+      var expected = pyRound(m * evidenceRate(factors, successes), 2);
       var fitted = m >= cfg.ledger.fit_min_boreholes;
       var rate = (baseN * baseRate + expected) / (baseN + m);
       if (fitted) used[rows.length] = entries.map(function (e) { return e.id; });
@@ -24509,7 +24515,7 @@
         glg: base.glg,
         boreholes: m,
         successes: successes,
-        expected: pyRound(expected, 2),
+        expected: expected,
         base_rate: pyRound(baseRate, 4),
         base_n: baseN,
         fitted: fitted,
@@ -24758,28 +24764,34 @@
   }
 
   /** calibration_sets.default_set: the set the toolkit ships, adopted by
-   * no one.
+   * no one, issued by no one and so under no licence.
    * @returns {Rec} */
   function defaultSet() {
     return {
       format: SET_FORMAT,
       format_version: SET_FORMAT_VERSION,
+      licence: '',
+      organisation: '',
+      contact: '',
       version: 0,
       fitted_on: '',
       adopted_by: '',
       adopted_on: '',
       replaces: null,
       success_yield_m3_per_h: null,
-      boreholes: [],
+      boreholes: 0,
       left_out: { unknown: 0, definition: 0 },
       prior: [],
       edges: [],
       weights: null,
+      sources: [],
     };
   }
 
   /** calibration_sets.fit_set: a calibration set fitted to the pooled
-   * ledger's boreholes, numbered and adopted by no one yet.
+   * ledger's boreholes, numbered and adopted by no one yet, to be issued
+   * under ledger.set_licence; it counts the boreholes it used and writes no
+   * ledger id.
    * @param {Rec[]} pooled
    * @param {string} fittedOn
    * @param {Config} [config]
@@ -24788,45 +24800,36 @@
     var cfg = config || defaultConfig();
     var leftOut = setJudged(pooled, cfg).leftOut;
     var prior = fitPrior(pooled, cfg), edges = fitEdges(pooled, cfg), weights = fitWeights(pooled, cfg);
-    /** @type {Object<string, string[]>} */
-    var uses = {};
-    function use(id, name) {
-      if (!uses[id]) uses[id] = [];
-      if (uses[id].indexOf(name) < 0) uses[id].push(name);
-    }
-    Object.keys(prior.used).forEach(function (k) {
-      prior.used[k].forEach(function (id) { use(id, 'prior'); });
+    /** @type {Object<string, boolean>} */
+    var used = {};
+    [prior.used, edges.used].forEach(function (byRow) {
+      Object.keys(byRow).forEach(function (k) {
+        byRow[k].forEach(function (id) { used[id] = true; });
+      });
     });
-    Object.keys(edges.used).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) {
-      edges.used[k].forEach(function (id) { use(id, edges.rows[k].edge); });
-    });
-    weights.used.forEach(function (id) { use(id, 'weights'); });
-    var order = ['prior'].concat(SET_EDGES, ['weights']);
-    var boreholes = [];
-    pooled.forEach(function (entry) {
-      if (!Object.prototype.hasOwnProperty.call(uses, entry.id)) return;
-      boreholes.push({ id: entry.id, success: entry.outcome.success, forecast: entry.before_outcome,
-        uses: uses[entry.id].slice().sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); }) });
-      delete uses[entry.id];
-    });
+    weights.used.forEach(function (id) { used[id] = true; });
     return Object.assign(defaultSet(), {
+      licence: ledgerName(cfg.ledger.set_licence),
       version: null, fitted_on: String(fittedOn),
       success_yield_m3_per_h: pyRound(cfg.odds.success_yield_m3_per_h, 3),
-      boreholes: boreholes, left_out: leftOut, prior: prior.rows, edges: edges.rows,
+      boreholes: Object.keys(used).length, left_out: leftOut, prior: prior.rows, edges: edges.rows,
       weights: weights.weights,
     });
   }
 
   /** calibration_sets.adopt_set: candidate adopted by a named person on a
    * date, numbered one after the set in force, which it names as the set it
-   * replaces. A blank name, or a set adopted already, throws the sentence
-   * the app shows.
+   * replaces, and issued in the name of organisation with contact, either
+   * of which may be blank. A blank name, or a set adopted already, throws
+   * the sentence the app shows.
    * @param {Rec} candidate
    * @param {string} adoptedBy
    * @param {string} adoptedOn
    * @param {Rec|null} [inForce]
+   * @param {string} [organisation]
+   * @param {string} [contact]
    * @returns {Rec} */
-  function adoptSet(candidate, adoptedBy, adoptedOn, inForce) {
+  function adoptSet(candidate, adoptedBy, adoptedOn, inForce, organisation, contact) {
     var who = ledgerName(adoptedBy);
     if (!who) throw new Error(phrase('calibration_sets.adopt_unnamed'));
     if (candidate.adopted_by) {
@@ -24835,6 +24838,8 @@
     }
     var force = inForce || defaultSet();
     return Object.assign({}, candidate, {
+      organisation: ledgerName(organisation),
+      contact: ledgerName(contact),
       version: force.version + 1,
       adopted_by: who,
       adopted_on: String(adoptedOn),
@@ -24843,17 +24848,30 @@
     });
   }
 
-  /** calibration_sets.set_name: the set as a report names it.
+  /* calibration_sets._called: a set's name from its number, dates, adopter,
+   * count of boreholes and count of sets it pooled */
+  function setCalled(version, fittedOn, n, by, on, sets) {
+    if (version === 0) return phrase('calibration_sets.name_default');
+    if (sets) {
+      if (by) {
+        return phrase('calibration_sets.name_pooled_adopted', { version: version, fitted_on: fittedOn, k: sets,
+          by: by, on: on });
+      }
+      return phrase('calibration_sets.name_pooled_candidate', { fitted_on: fittedOn, k: sets });
+    }
+    if (by) {
+      return phrase('calibration_sets.name_adopted', { version: version, fitted_on: fittedOn, n: n, by: by,
+        on: on });
+    }
+    return phrase('calibration_sets.name_candidate', { fitted_on: fittedOn, n: n });
+  }
+
+  /** calibration_sets.set_name: the set as a report names it; a pooled set
+   * by the number of sets it pools.
    * @param {Rec} s
    * @returns {string} */
   function setName(s) {
-    if (s.version === 0) return phrase('calibration_sets.name_default');
-    var n = s.boreholes.length;
-    if (s.adopted_by) {
-      return phrase('calibration_sets.name_adopted', { version: s.version, fitted_on: s.fitted_on, n: n,
-        by: s.adopted_by, on: s.adopted_on });
-    }
-    return phrase('calibration_sets.name_candidate', { fitted_on: s.fitted_on, n: n });
+    return setCalled(s.version, s.fitted_on, s.boreholes, s.adopted_by, s.adopted_on, s.sources.length);
   }
 
   /** calibration_sets.in_force: the calibration set in force, the
@@ -24983,7 +25001,9 @@
   /** calibration_sets.set_review: what a fitted set holds, before anyone
    * adopts it, set beside the set in force: what it was fitted to and left
    * out, what it fits, and a table each of the priors, the edges and the
-   * weights, in force and fitted; config is the one it was fitted with.
+   * weights, in force and fitted; config is the one it was fitted with. A
+   * pooled set (poolSets) has a table of the sets it pools first, its edges
+   * without the misread layers its sources did not carry, and no weights.
    * @param {Rec} candidate
    * @param {Config} [config]
    * @returns {{title: string, summary: string[], tables: Rec[], adoptable: boolean}} */
@@ -24992,8 +25012,14 @@
     var held = inForce(cfg);
     var minimum = Math.trunc(Number(cfg.ledger.fit_min_boreholes));
     var prior = candidate.prior, edges = candidate.edges, weights = candidate.weights;
-    var summary = [phrase('calibration_sets.review_lead', { n: candidate.boreholes.length,
-      rate: candidate.success_yield_m3_per_h || 0.0 })];
+    /** @type {Rec[]} */
+    var sources = candidate.sources;
+    var pooled = sources.length > 0;
+    var summary = [pooled
+      ? phrase('calibration_sets.review_lead_pooled', { k: sources.length,
+        rate: candidate.success_yield_m3_per_h || 0.0 })
+      : phrase('calibration_sets.review_lead', { n: candidate.boreholes,
+        rate: candidate.success_yield_m3_per_h || 0.0 })];
     var left = candidate.left_out;
     if (left.unknown || left.definition) {
       summary.push(phrase('calibration_sets.review_left_out', { unknown: left.unknown,
@@ -25002,7 +25028,18 @@
     function fittedCount(rows) { return rows.filter(function (r) { return r.fitted; }).length; }
     summary.push(phrase('calibration_sets.review_fitted', { priors: fittedCount(prior),
       rows: prior.length, edges: fittedCount(edges), edge_rows: edges.length, minimum: minimum }));
-    if (weights !== null && weights.fitted) {
+    if (pooled) {
+      summary.push(phrase('calibration_sets.review_weights_pooled'));
+      /** @type {Map<string, number>} */
+      var issued = new Map();
+      sources.forEach(function (source) {
+        if (source.organisation) issued.set(source.organisation, (issued.get(source.organisation) || 0) + 1);
+      });
+      Array.from(issued.keys()).sort(codePointCompare).forEach(function (name) {
+        var n = /** @type {number} */ (issued.get(name));
+        if (n > 1) summary.push(phrase('calibration_sets.review_same_organisation', { organisation: name, n: n }));
+      });
+    } else if (weights !== null && weights.fitted) {
       summary.push(phrase('calibration_sets.review_weights', { right: rangeShare(weights.right),
         pairs: weights.successes * weights.failures,
         right_base: rangeShare(weights.right_base || 0.0) }));
@@ -25015,7 +25052,28 @@
     summary.push(phrase('calibration_sets.review_in_force', { name: setName(held) }));
     summary.push(phrase(adoptable ? 'calibration_sets.review_adopt'
       : 'calibration_sets.review_nothing'));
+    if (adoptable) {
+      summary.push(candidate.licence
+        ? phrase('calibration_sets.review_licence', { licence: candidate.licence })
+        : phrase('calibration_sets.review_no_licence'));
+    }
 
+    /** @type {Rec[]} */
+    var tables = [];
+    if (pooled) {
+      var unnamed = phrase('calibration_sets.cell_not_named');
+      tables.push({ key: 'sources', caption: phrase('calibration_sets.sources_caption'),
+        header: [
+          'calibration_sets.sources_col_organisation', 'calibration_sets.sources_col_set',
+          'calibration_sets.sources_col_licence', 'calibration_sets.sources_col_contact'
+        ].map(function (id) { return phrase(id); }),
+        rows: sources.map(function (source) {
+          return [source.organisation || unnamed,
+            setCalled(source.version, source.fitted_on, source.boreholes, source.adopted_by, source.adopted_on,
+              source.sets),
+            source.licence, source.contact || unnamed];
+        }) });
+    }
     var rate = Number(cfg.odds.success_yield_m3_per_h);
     var calibration = cfg.calibration || null;
     var priorRows = prior.map(function (row) {
@@ -25030,14 +25088,13 @@
         phrase('calibration_sets.cell_rate', { p: rangeShare(row.base_rate) }),
         phrase('calibration_sets.cell_rate', { p: rangeShare(now.rate) }), fitted];
     });
-    /** @type {Rec[]} */
-    var tables = [{ key: 'prior', caption: phrase('calibration_sets.prior_caption'),
+    tables.push({ key: 'prior', caption: phrase('calibration_sets.prior_caption'),
       header: [
         'calibration_sets.prior_col_ground', 'calibration_sets.prior_col_boreholes',
         'calibration_sets.prior_col_succeeded', 'calibration_sets.prior_col_table',
         'calibration_sets.prior_col_in_force', 'calibration_sets.prior_col_fitted'
       ].map(function (id) { return phrase(id); }),
-      rows: priorRows }];
+      rows: priorRows });
     var names = phraseTable('calibration_sets.edge_names');
     tables.push({ key: 'edges', caption: phrase('calibration_sets.edges_caption'),
       header: [
@@ -25046,12 +25103,21 @@
         'calibration_sets.edges_col_fitted'
       ].map(function (id) { return phrase(id); }),
       rows: edges.map(function (row) {
-        var fitted = row.fitted
-          ? phrase('calibration_sets.cell_edge', { value: row.value, misread: row.misread })
-          : phrase('calibration_sets.cell_edge_too_few', { m: row.boreholes, minimum: minimum });
+        var now, fitted;
+        if (pooled) {
+          now = phrase('calibration_sets.cell_edge_value', { value: row.base });
+          fitted = row.fitted ? phrase('calibration_sets.cell_edge_pooled', { value: row.value, sets: row.sets })
+            : !row.sets ? phrase('calibration_sets.cell_edge_pooled_none')
+              : row.edge === 'clay_max_rho' ? phrase('calibration_sets.cell_edge_pooled_window')
+                : phrase('calibration_sets.cell_edge_pooled_clay');
+        } else {
+          now = phrase('calibration_sets.cell_edge', { value: row.base, misread: row.misread_base });
+          fitted = row.fitted
+            ? phrase('calibration_sets.cell_edge', { value: row.value, misread: row.misread })
+            : phrase('calibration_sets.cell_edge_too_few', { m: row.boreholes, minimum: minimum });
+        }
         return [row.glg, names[row.edge],
-          phrase('calibration_sets.cell_layers', { below: row.below, above: row.above }),
-          phrase('calibration_sets.cell_edge', { value: row.base, misread: row.misread_base }), fitted];
+          phrase('calibration_sets.cell_layers', { below: row.below, above: row.above }), now, fitted];
       }) });
     if (weights !== null) {
       var parts = phraseTable('calibration_sets.part_names');
@@ -25066,8 +25132,230 @@
               : phrase('calibration_sets.cell_not_fitted')];
         }) });
     }
-    return { title: phrase('calibration_sets.review_title', { fitted_on: candidate.fitted_on }),
-      summary: summary, tables: tables, adoptable: adoptable };
+    return { title: phrase(pooled ? 'calibration_sets.review_title_pooled' : 'calibration_sets.review_title',
+      { fitted_on: candidate.fitted_on }),
+    summary: summary, tables: tables, adoptable: adoptable };
+  }
+
+  /* ---------------------------------------------------------------- pooling */
+
+  /* calibration_sets._FINGERPRINTED: what a set counts and what it pooled,
+   * not who adopted it, when, or under which name or licence */
+  var SET_FINGERPRINTED = ['format', 'success_yield_m3_per_h', 'boreholes', 'left_out', 'prior', 'edges',
+    'weights', 'sources'];
+
+  /** calibration_sets.set_fingerprint: the SHA-256, in hex, of what the set
+   * counts, written as its file writes it; the set is read whole first, so
+   * a file of format 1 is fingerprinted as format 2 reads it.
+   * @param {*} raw
+   * @returns {string} */
+  function setFingerprint(raw) {
+    var s = cleanSet(raw);
+    /** @type {Rec} */
+    var part = {};
+    SET_FINGERPRINTED.forEach(function (key) { part[key] = s[key]; });
+    /** @type {string[]} */
+    var lines = [];
+    setEmit(part, 0, lines);
+    return sha256Hex(lines.join('\n') + '\n');
+  }
+
+  /* the fingerprints of the set and of every set it holds counts of */
+  function setChain(s, fingerprint) {
+    /** @type {Object<string, boolean>} */
+    var out = {};
+    out[fingerprint] = true;
+    s.sources.forEach(function (source) {
+      out[source.fingerprint] = true;
+      source.pools.forEach(function (p) { out[p] = true; });
+    });
+    return out;
+  }
+
+  /* the position of a set's prior row in the provisional table, or -1
+   * where the table has no such row or only its even-chance fallback */
+  function setTableRow(table, row) {
+    for (var k = 0; k < table.length; k++) {
+      var r = table[k];
+      if (r.bgs_code === row.bgs_code && r.glg === row.glg && r.status !== 'fallback') return k;
+    }
+    return -1;
+  }
+
+  function setCodeOrder(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+
+  /** calibration_sets.pool_sets: the calibration sets (as read from their
+   * files) pooled into one, numbered and adopted by no one yet, to be issued
+   * under ledger.set_licence. Each set must be read whole, adopted by a
+   * named person, issued under that same licence (which may not be blank)
+   * and judged at one definition of success; no two may be the same set or
+   * hold the counts of one same set;
+   * each prior row must start from this toolkit's provisional row. Anything
+   * else throws, naming the set by its label (its file, in the apps), else
+   * by its place. Each ground's counts are summed and its rate worked out
+   * from the provisional row, counted once; each edge is the mean of the
+   * logarithms of the sets' fitted edges weighted by the boreholes behind
+   * each, rounded to 0.1 ohm-m; the weights are not pooled. The sets are
+   * taken in the order of their fingerprints.
+   * @param {Array<*>} sets
+   * @param {string} pooledOn
+   * @param {Config} [config]
+   * @param {string[]|null} [labels]
+   * @returns {Rec} */
+  function poolSets(sets, pooledOn, config, labels) {
+    var cfg = config || defaultConfig();
+    var names = labels ? labels.map(String)
+      : sets.map(function (_, k) { return phrase('calibration_sets.pool_label', { k: k + 1 }); });
+    if (sets.length < 2) throw new Error(phrase('calibration_sets.pool_too_few'));
+    var licence = ledgerName(cfg.ledger.set_licence);
+    if (!licence) throw new Error(phrase('calibration_sets.pool_no_licence'));
+    /** @type {Rec[]} */
+    var clean = sets.map(function (raw, i) {
+      var label = names[i], s;
+      try {
+        s = cleanSet(raw);
+      } catch (e) {
+        throw new Error(phrase('calibration_sets.pool_file', { label: label,
+          reason: String(/** @type {*} */ (e).message) }));
+      }
+      if (s.version === 0) throw new Error(phrase('calibration_sets.pool_default', { label: label }));
+      if (s.version === null) throw new Error(phrase('calibration_sets.pool_unadopted', { label: label }));
+      if (!s.licence) throw new Error(phrase('calibration_sets.pool_unlicensed', { label: label }));
+      /* the toolkit cannot read what a licence allows, so it pools only sets
+       * issued under the one it issues the pooled set under */
+      if (s.licence !== licence) {
+        throw new Error(phrase('calibration_sets.pool_other_licence', { label: label, licence: s.licence,
+          ours: licence }));
+      }
+      if (s.success_yield_m3_per_h === null) {
+        throw new Error(phrase('calibration_sets.pool_no_definition', { label: label }));
+      }
+      return s;
+    });
+    var rateM3h = clean[0].success_yield_m3_per_h;
+    clean.slice(1).forEach(function (s, i) {
+      if (!(Math.abs(s.success_yield_m3_per_h - rateM3h) < 1e-9)) {
+        throw new Error(phrase('calibration_sets.pool_definition', { label: names[i + 1],
+          rate: s.success_yield_m3_per_h, first: names[0], first_rate: rateM3h }));
+      }
+    });
+    var prints = clean.map(setFingerprint);
+    var chains = clean.map(function (s, i) { return setChain(s, prints[i]); });
+    for (var j = 0; j < clean.length; j++) {
+      for (var i = 0; i < j; i++) {
+        if (prints[i] === prints[j]) {
+          throw new Error(phrase('calibration_sets.pool_same', { label: names[j], other: names[i] }));
+        }
+        var shared = Object.keys(chains[i]).some(function (p) { return chains[j][p] === true; });
+        if (shared) throw new Error(phrase('calibration_sets.pool_chain', { label: names[j], other: names[i] }));
+      }
+    }
+    var table = oddsTables().prior;
+    function provisional(k) {
+      var base = table[k];
+      return [priorFor(base.bgs_code, base.glg !== '*' ? base.glg : null, rateM3h, null).rate,
+        Number(base.effective_n)];
+    }
+    clean.forEach(function (s, i) {
+      s.prior.forEach(function (row) {
+        var k = setTableRow(table, row);
+        if (k < 0 || pyRound(provisional(k)[0], 4) !== row.base_rate || provisional(k)[1] !== row.base_n) {
+          var ground = row.glg === '*' ? phrase('calibration_sets.ground_class', { code: row.bgs_code })
+            : phrase('calibration_sets.ground_combination', { code: row.bgs_code, glg: row.glg });
+          throw new Error(phrase('calibration_sets.pool_table', { label: names[i], ground: ground }));
+        }
+      });
+    });
+
+    var order = clean.map(function (_, i) { return i; })
+      .sort(function (a, b) { return setCodeOrder(prints[a], prints[b]); });
+    /** @type {Object<string, number[]>} */
+    var counts = {};
+    /* by unit, then by edge; a Map, since a hand-edited unit may be named
+     * anything */
+    /** @type {Map<string, Map<string, Rec>>} */
+    var sides = new Map();
+    var left = { unknown: 0, definition: 0 };
+    order.forEach(function (i) {
+      var s = clean[i];
+      left.unknown += s.left_out.unknown;
+      left.definition += s.left_out.definition;
+      s.prior.forEach(function (row) {
+        var k = setTableRow(table, row);
+        var held = counts[k] || (counts[k] = [0, 0, 0.0]);
+        held[0] += row.boreholes;
+        held[1] += row.successes;
+        held[2] = held[2] + row.expected;
+      });
+      s.edges.forEach(function (row) {
+        if (!sides.has(row.glg)) sides.set(row.glg, new Map());
+        var unit = /** @type {Map<string, Rec>} */ (sides.get(row.glg));
+        if (!unit.has(row.edge)) unit.set(row.edge, { all: [0, 0, 0], fit: [0, 0, 0], sets: 0, logs: 0.0, weight: 0 });
+        var held = /** @type {Rec} */ (unit.get(row.edge));
+        [[held.all, true], [held.fit, row.fitted]].forEach(function (pair) {
+          if (!pair[1]) return;
+          pair[0][0] += row.boreholes;
+          pair[0][1] += row.below;
+          pair[0][2] += row.above;
+        });
+        if (row.fitted) {
+          held.sets += 1;
+          held.logs = held.logs + row.boreholes * Math.log(row.value);
+          held.weight += row.boreholes;
+        }
+      });
+    });
+
+    var minimum = cfg.ledger.fit_min_boreholes;
+    var prior = Object.keys(counts).map(Number).sort(function (a, b) { return a - b; }).map(function (k) {
+      var base = provisional(k), m = counts[k][0];
+      var expected = pyRound(counts[k][2], 2);
+      var fitted = m >= minimum;
+      var rate = (base[1] * base[0] + expected) / (base[1] + m);
+      return {
+        bgs_code: table[k].bgs_code, glg: table[k].glg, boreholes: m, successes: counts[k][1],
+        expected: expected, base_rate: pyRound(base[0], 4), base_n: base[1], fitted: fitted,
+        rate: fitted ? Math.min(Math.max(pyRound(rate, 4), SET_RATE_BOUND), 1.0 - SET_RATE_BOUND) : null,
+        effective_n: fitted ? base[1] + m : null,
+      };
+    });
+
+    /** @type {Rec[]} */
+    var edges = [];
+    var base = { clay_max_rho: Number(cfg.ves.clay_max_rho),
+      fresh_basement_min_rho: Number(cfg.ves.fresh_basement_min_rho) };
+    var force = inForce(cfg);
+    var ceiling = Number(cfg.ves.fractured_zone_rho[1]);
+    Array.from(sides.keys()).sort(codePointCompare).forEach(function (glg) {
+      var here = Object.assign({}, base, unitEdges(force, glg));
+      var unit = /** @type {Map<string, Rec>} */ (sides.get(glg));
+      /* in force, the pooled set replaces the set in force, so a unit whose
+       * clay edge it does not fit is read by the configuration's */
+      var clay = base.clay_max_rho;
+      SET_EDGES.forEach(function (edge) {
+        var held = unit.get(edge);
+        if (!held) return;
+        var value = held.sets ? pyRound(Math.exp(held.logs / held.weight), 1) : null;
+        var fitted = value !== null && (edge === 'clay_max_rho' ? value < ceiling : value > clay);
+        if (fitted && edge === 'clay_max_rho') clay = /** @type {number} */ (value);
+        var n = held.sets ? held.fit : held.all;
+        edges.push({ glg: glg, edge: edge, boreholes: n[0], below: n[1], above: n[2], base: here[edge],
+          misread_base: null, fitted: fitted, value: fitted ? value : null, misread: null, sets: held.sets });
+      });
+    });
+
+    var sources = order.map(function (i) {
+      var s = clean[i];
+      return { organisation: s.organisation, contact: s.contact, licence: s.licence, version: s.version,
+        fitted_on: s.fitted_on, adopted_by: s.adopted_by, adopted_on: s.adopted_on, boreholes: s.boreholes,
+        sets: s.sources.length, fingerprint: prints[i],
+        pools: Object.keys(chains[i]).filter(function (p) { return p !== prints[i]; }).sort(setCodeOrder) };
+    });
+    return Object.assign(defaultSet(), {
+      licence: licence, version: null, fitted_on: String(pooledOn),
+      success_yield_m3_per_h: rateM3h, boreholes: null, left_out: left, prior: prior, edges: edges,
+      weights: null, sources: sources,
+    });
   }
 
   function setUnreadable(why) {
@@ -25123,19 +25411,65 @@
     };
   }
 
+  function setNone(v) { return v === null; }
+  /* a SHA-256 in lower-case hex, as setFingerprint writes it */
+  function setHex(v) { return typeof v === 'string' && /^[0-9a-f]{64}$/.test(v); }
+
+  /* the boreholes a file of format 1 listed by their ledger ids, checked as
+   * that format was and counted: the ids are not kept */
+  function setListedBoreholes(raw) {
+    var uses = ['prior'].concat(SET_EDGES, ['weights']);
+    var listed = setField(raw, 'boreholes', Array.isArray);
+    listed.forEach(function (item) {
+      setField(item, 'id', function (v) { return typeof v === 'string' && v.length > 0; }, 'boreholes.');
+      setField(item, 'success', setFlag, 'boreholes.');
+      setField(item, 'forecast', setFlag, 'boreholes.');
+      setField(item, 'uses', function (v) {
+        return Array.isArray(v) && v.every(function (u) { return uses.indexOf(u) >= 0; });
+      }, 'boreholes.');
+    });
+    return listed.length;
+  }
+
+  /* one of a pooled set's sources, read whole */
+  function setCleanSource(item) {
+    /** @type {Rec} */
+    var out = {};
+    ['organisation', 'contact', 'licence'].forEach(function (key) {
+      out[key] = ledgerName(setField(item, key, setText, 'sources.'));
+    });
+    out.version = setField(item, 'version', function (v) { return setCount(v) && v > 0; }, 'sources.');
+    out.fitted_on = setField(item, 'fitted_on', setText, 'sources.');
+    out.adopted_by = ledgerName(setField(item, 'adopted_by', function (v) { return !!ledgerName(v); }, 'sources.'));
+    out.adopted_on = setField(item, 'adopted_on', setText, 'sources.');
+    out.boreholes = setField(item, 'boreholes', setMaybe(setCount), 'sources.');
+    out.sets = setField(item, 'sets', setCount, 'sources.');
+    if ((out.boreholes === null) !== (out.sets > 0)) throw setUnreadable(phrase('calibration_sets.why_pooled'));
+    out.fingerprint = setField(item, 'fingerprint', setHex, 'sources.');
+    out.pools = setField(item, 'pools', function (v) { return Array.isArray(v) && v.every(setHex); },
+      'sources.').slice();
+    return out;
+  }
+
   /** calibration_sets.clean_set: a set read from a file, in the shape the
    * functions here write, or an Error with the sentence the app shows. A
-   * file is read whole or not at all.
+   * file is read whole or not at all; a file of format 1 is read as format
+   * 2, its ledger ids counted and dropped.
    * @param {*} raw
    * @returns {Rec} */
   function cleanSet(raw) {
     if (!isRecord(raw)) throw setUnreadable(phrase('calibration_sets.why_not_mapping'));
-    if (raw.format !== SET_FORMAT || raw.format_version !== SET_FORMAT_VERSION) {
+    var old = raw.format_version === 1;
+    if (raw.format !== SET_FORMAT || !setIsInt(raw.format_version) || SET_READS.indexOf(raw.format_version) < 0) {
       throw setUnreadable(phrase('calibration_sets.why_format', { expected: SET_FORMAT_VERSION }));
     }
-    var version = setField(raw, 'version', setMaybe(setCount));
     /** @type {Rec} */
-    var out = { format: SET_FORMAT, format_version: SET_FORMAT_VERSION, version: version };
+    var out = { format: SET_FORMAT, format_version: SET_FORMAT_VERSION };
+    ['licence', 'organisation', 'contact'].forEach(function (key) {
+      out[key] = old ? '' : ledgerName(setField(raw, key, setText));
+    });
+    var version = setField(raw, 'version', setMaybe(setCount));
+    out.version = version;
     ['fitted_on', 'adopted_by', 'adopted_on'].forEach(function (key) { out[key] = setField(raw, key, setText); });
     out.adopted_by = ledgerName(out.adopted_by);
     if ((version !== null && version > 0) !== !!out.adopted_by) {
@@ -25152,23 +25486,19 @@
     }
     out.replaces = replaces;
     out.success_yield_m3_per_h = setField(raw, 'success_yield_m3_per_h', setMaybe(setPositive));
-    var uses = ['prior'].concat(SET_EDGES, ['weights']);
-    out.boreholes = setField(raw, 'boreholes', Array.isArray).map(function (item) {
-      return {
-        id: setField(item, 'id', function (v) { return typeof v === 'string' && v.length > 0; }, 'boreholes.'),
-        success: setField(item, 'success', setFlag, 'boreholes.'),
-        forecast: setField(item, 'forecast', setFlag, 'boreholes.'),
-        uses: setField(item, 'uses', function (v) {
-          return Array.isArray(v) && v.every(function (u) { return uses.indexOf(u) >= 0; });
-        }, 'boreholes.').slice(),
-      };
-    });
+    out.boreholes = old ? setListedBoreholes(raw) : setField(raw, 'boreholes', setMaybe(setCount));
     var left = setField(raw, 'left_out', isRecord);
     out.left_out = { unknown: setField(left, 'unknown', setCount, 'left_out.'),
       definition: setField(left, 'definition', setCount, 'left_out.') };
+    /** @type {Rec[]} */
+    var sources = old ? [] : setField(raw, 'sources', Array.isArray).map(setCleanSource);
+    var pooled = sources.length > 0;
+    if ((out.boreholes === null) !== pooled) throw setUnreadable(phrase('calibration_sets.why_pooled'));
+    /** @type {Object<string, boolean>} */
+    var grounds = {};
     out.prior = setField(raw, 'prior', Array.isArray).map(function (row) {
       var fitted = setField(row, 'fitted', setFlag, 'prior.');
-      return {
+      var clean = {
         bgs_code: setField(row, 'bgs_code', setText, 'prior.'),
         glg: setField(row, 'glg', setText, 'prior.'),
         boreholes: setField(row, 'boreholes', setCount, 'prior.'),
@@ -25180,23 +25510,50 @@
         rate: setField(row, 'rate', fitted ? setRate : setMaybe(setRate), 'prior.'),
         effective_n: setField(row, 'effective_n', fitted ? setPositive : setMaybe(setPositive), 'prior.'),
       };
+      if (!(clean.boreholes > 0) || clean.successes > clean.boreholes ||
+          !(clean.expected >= 0 && clean.expected <= clean.boreholes)) {
+        throw setUnreadable(phrase('calibration_sets.why_counts'));
+      }
+      var key = JSON.stringify([clean.bgs_code, clean.glg]);
+      if (grounds[key] === true) {
+        throw setUnreadable(phrase('calibration_sets.why_twice_prior', { code: clean.bgs_code, glg: clean.glg }));
+      }
+      grounds[key] = true;
+      return clean;
     });
+    /** @type {Object<string, boolean>} */
+    var seen = {};
     out.edges = setField(raw, 'edges', Array.isArray).map(function (row) {
       var fitted = setField(row, 'fitted', setFlag, 'edges.');
-      return {
+      /** @type {Rec} */
+      var clean = {
         glg: setField(row, 'glg', setText, 'edges.'),
         edge: setField(row, 'edge', function (v) { return SET_EDGES.indexOf(v) >= 0; }, 'edges.'),
         boreholes: setField(row, 'boreholes', setCount, 'edges.'),
         below: setField(row, 'below', setCount, 'edges.'),
         above: setField(row, 'above', setCount, 'edges.'),
         base: setField(row, 'base', setPositive, 'edges.'),
-        misread_base: setField(row, 'misread_base', setCount, 'edges.'),
+        /* a pooled set's sources did not carry their layers, so it cannot
+         * say how many its edges misread */
+        misread_base: setField(row, 'misread_base', pooled ? setNone : setCount, 'edges.'),
         fitted: fitted,
         value: setField(row, 'value', fitted ? setPositive : setMaybe(setPositive), 'edges.'),
-        misread: setField(row, 'misread', fitted ? setCount : setMaybe(setCount), 'edges.'),
+        misread: setField(row, 'misread', pooled ? setNone : fitted ? setCount : setMaybe(setCount), 'edges.'),
       };
+      if (pooled) {
+        clean.sets = setField(row, 'sets', function (v) { return setCount(v) && (v > 0 || !fitted); }, 'edges.');
+      }
+      if (!(clean.boreholes > 0)) throw setUnreadable(phrase('calibration_sets.why_counts'));
+      var key = JSON.stringify([clean.glg, clean.edge]);
+      if (seen[key] === true) {
+        throw setUnreadable(phrase('calibration_sets.why_twice_edge', { glg: clean.glg, edge: clean.edge }));
+      }
+      seen[key] = true;
+      return clean;
     });
     out.weights = setCleanWeights(setField(raw, 'weights', function (v) { return v === null || isRecord(v); }));
+    if (pooled && out.weights !== null) throw setUnreadable(phrase('calibration_sets.why_pooled'));
+    out.sources = sources;
     return out;
   }
 
@@ -25263,7 +25620,7 @@
    * @param {Rec} s
    * @returns {string} */
   function setYaml(s) {
-    var lines = ['# A calibration set of the groundwater toolkit (PLAN.md step 5.3).'];
+    var lines = ['# A calibration set of the groundwater toolkit (PLAN.md steps 5.3 and 5.5).'];
     setEmit(s, 0, lines);
     return lines.join('\n') + '\n';
   }
@@ -25278,6 +25635,7 @@
     unitEdges: unitEdges, configForUnit: configForUnit, configForSounding: configForSounding,
     setChanges: setChanges,
     setReview: setReview,
+    setFingerprint: setFingerprint, poolSets: poolSets,
   });
 
   /* ================================================================= photos

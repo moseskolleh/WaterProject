@@ -330,6 +330,13 @@ class LedgerConfig:
     # parts recorded: the fit ranks every pair of a success and a failure,
     # and with fewer of either a handful of holes decides it. Provisional.
     fit_weights_min_each: int = _LEDGER["fit_weights_min_each"]
+    # A calibration set is issued under this licence (PLAN.md step 5.5):
+    # Creative Commons Attribution 4.0, so that another organisation may
+    # pool it with its own as long as it credits the one that issued it,
+    # which a pooled set does by listing its sources. A choice of the
+    # toolkit's; an organisation may issue its sets under another, and a
+    # set whose licence is blank cannot be pooled.
+    set_licence: str = _LEDGER["set_licence"]
 
 
 # ---------------------------------------------------------------------------

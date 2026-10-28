@@ -5934,6 +5934,91 @@ await withPage(async (page, base, consoleErrors) => {
     sets.notSaved && sets.keptOverLoad && sets.file && sets.dropped && sets.back === null && sets.loaded &&
     sets.refused[1] === 1 && sets.refused[0][1] === 'error', JSON.stringify(sets));
 
+  // Pooling calibration sets from other organisations (PLAN.md step 5.5):
+  // two organisations' calibration.yaml files pooled on the Portfolio page
+  // with no project file there, reviewed with their sources, adopted by a
+  // named person for the organisation the reports are branded with; the
+  // same set twice refused by its file.
+  const pooling = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const named = (title) => [...document.querySelectorAll('#page-host .card')]
+      .find((c) => (c.querySelector('.card-title') || {}).textContent === title);
+    const card = () => named(C.phrase('calibration_sets.page_heading'));
+    const press = (label) => [...card().querySelectorAll('button')].find((b) => b.textContent === label).click();
+    const log = [[0, 2, 'laterite'], [2, 8, 'clay'], [8, 22, 'weathered'], [22, 50, 'basement']];
+    const layers = [[0, 2, 900], [2, 8, 12], [8, 22, 140], [22, null, 2400]];
+    const issued = (glg, code, organisation, on, start) => {
+      const entries = [];
+      for (let k = 0; k < 30; k++) {
+        entries.push({ id: 'o' + (start + k), before_outcome: true, recorded_on: '2026-03-01', toolkit: 'smoke',
+          point: { sounding_id: 'VES ' + k },
+          prediction: { investigation_depth_m: 60, layers: layers, suitability: null,
+            odds: { probability: 0.6, prior: 0.55, bgs_code: code, glg: glg } },
+          outcome: { total_depth_m: 50, success: k % 3 !== 0, success_yield_m3_per_h: 1, success_basis: 'tested',
+            intervals: log } });
+      }
+      const fitted = C.fitSet(C.poolLedgers([['theirs', { entries: entries }]]), on);
+      return C.setYaml(C.adoptSet(fitted, 'A. Kamara', on, null, organisation));
+    };
+    const trust = issued('pCm', 'B-L', 'Rural Water Trust', '2026-10-20', 0);
+    const kono = issued('Pi', 'I-L', 'Kono Wells', '2026-09-01', 100);
+    const toasts = [];
+    const toast = support.toast, pickFile = support.pickFile;
+    const brand = app.store.get('config.style.organisation');
+    support.toast = (message, tone) => { toasts.push([message, tone]); };
+    const out = {};
+    try {
+      app.store.set('config.style.organisation', 'Salone Water Forum');
+      await app.goto('portfolio');
+      out.offered = card().textContent.includes(C.phrase('calibration_sets.page_pool_help')) &&
+        card().textContent.includes(C.phrase('calibration_sets.page_share'));
+      const pool = async (files) => {
+        support.pickFile = async () => files.map((f) => new File([f[1]], f[0]));
+        const said = toasts.length;
+        press(C.phrase('calibration_sets.page_pool_button'));
+        for (let t = 0; t < 200 && !app.derived.calibrationPooled && toasts.length === said; t++) {
+          await new Promise((r) => setTimeout(r, 25));
+        }
+      };
+      await pool([['trust.yaml', trust], ['copy.yaml', trust.replace('Rural Water Trust', 'Someone Else')]]);
+      out.same = [toasts[toasts.length - 1], app.derived.calibrationPooled];
+      await pool([['trust.yaml', trust], ['kono.yaml', kono]]);
+      out.review = card().textContent.includes('It pools the 2 calibration sets below') &&
+        card().textContent.includes('Rural Water Trust') && card().textContent.includes('Kono Wells');
+      const inputs = () => [...card().querySelectorAll('.calibration-review input')];
+      out.prefilled = inputs().map((i) => i.value);
+      press(C.phrase('calibration_sets.page_adopt'));
+      out.unnamed = [app.store.get('calibration'), toasts[toasts.length - 1]];
+      inputs()[0].value = 'C. Conteh';
+      inputs()[2].value = 'forum@example.org';
+      press(C.phrase('calibration_sets.page_adopt'));
+      const held = app.store.get('calibration');
+      out.adopted = held && [held.version, held.adopted_by, held.organisation, held.contact,
+        held.sources.map((s) => s.organisation).sort()];
+      out.shown = card().textContent.includes(C.phrase('calibration_sets.page_in_force', { name: C.setName(held) }));
+      out.dropped = app.derived.calibrationPooled === null;
+    } finally {
+      app.store.set('calibration', null);
+      app.store.set('config.style.organisation', brand);
+      await app.recompute();
+      support.toast = toast;
+      support.pickFile = pickFile;
+      app.derived.calibrationPooled = null;
+    }
+    return out;
+  });
+  check('calibration sets: sets from other organisations are pooled with no project file on the page, ' +
+    'reviewed with their sources, refused by file when one is the other, and adopted by a named person ' +
+    'for the organisation the reports are branded with',
+    pooling.offered && pooling.same[0][1] === 'error' &&
+    pooling.same[0][0] === 'copy.yaml and trust.yaml are the same set, and pooling it twice would count its ' +
+      'boreholes twice.' && pooling.same[1] === null &&
+    pooling.review && JSON.stringify(pooling.prefilled) === '["","Salone Water Forum",""]' &&
+    pooling.unnamed[0] === null && pooling.unnamed[1][1] === 'error' &&
+    JSON.stringify(pooling.adopted) ===
+      '[1,"C. Conteh","Salone Water Forum","forum@example.org",["Kono Wells","Rural Water Trust"]]' &&
+    pooling.shown && pooling.dropped, JSON.stringify(pooling));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

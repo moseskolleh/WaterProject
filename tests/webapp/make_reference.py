@@ -1807,6 +1807,7 @@ def build() -> dict:
     out["calibration"] = calibration_reference()
     out["calibration_sets"] = calibration_sets_reference()
     out["calibration_in_force"] = calibration_in_force_reference()
+    out["calibration_pooling"] = calibration_pooling_reference()
     out["sanitary"] = sanitary_reference()
     out["rising_main"] = rising_main_reference()
 
@@ -4474,21 +4475,37 @@ def calibration_sets_reference() -> dict:
     good = json.loads(json.dumps(next(c for c in cases if c["portfolio"] == "mixed"
                                       and c["settings"] == settings[1])["expect"]["adopted"]))
 
-    def broken(change):
-        raw = copy.deepcopy(good)
+    def broken(change, base=None):
+        raw = copy.deepcopy(good if base is None else base)
         change(raw)
         return raw
 
-    hand = [good, None, [good], dict(good, format="a list of boreholes"), dict(good, format_version=2),
+    # the same set as a file of format 1 (step 5.3) held it: its boreholes
+    # listed by ledger id, and no licence, organisation, contact or sources
+    old = {key: value for key, value in good.items() if key not in ("licence", "organisation", "contact",
+                                                                   "sources")}
+    old.update(format_version=1, boreholes=[{"id": f"set{k:03d}", "success": k % 2 == 0, "forecast": True,
+                                             "uses": ["prior", "clay_max_rho"]} for k in range(good["boreholes"])])
+    hand = [good, None, [good], dict(good, format="a list of boreholes"), dict(good, format_version=3),
             dict(good, version=None), dict(good, adopted_by=" "), dict(good, version=-1),
             broken(lambda r: r.pop("edges")), broken(lambda r: r["prior"][0].update(rate=0.0)),
             broken(lambda r: r["prior"][0].update(fitted=False, rate=None, effective_n=None)),
             broken(lambda r: r["edges"][1].update(misread=1.5)),
             broken(lambda r: r["weights"]["value"].update(overburden=0.5)),
-            broken(lambda r: r["boreholes"][0].update(uses=["prior", "laterite_min_rho"])),
-            broken(lambda r: r["boreholes"][1].update(id="")),
             broken(lambda r: r["replaces"].update(version="0")),
-            broken(lambda r: r.update(adopted_by="  B.   Sesay  "))]
+            broken(lambda r: r.update(adopted_by="  B.   Sesay  ")),
+            # format 2's own fields, and the rows' counts
+            broken(lambda r: r.pop("licence")), broken(lambda r: r.update(boreholes=None)),
+            broken(lambda r: r.update(boreholes=[])), broken(lambda r: r.update(sources={})),
+            broken(lambda r: r.update(organisation="  Rural \t Water  ", contact=" x@y.z\n")),
+            broken(lambda r: r["prior"][0].update(successes=r["prior"][0]["boreholes"] + 1)),
+            broken(lambda r: r["prior"].append(dict(r["prior"][0]))),
+            broken(lambda r: r["edges"].append(dict(r["edges"][0]))),
+            broken(lambda r: r["edges"][0].update(boreholes=0)),
+            # format 1, read with its ids counted and dropped, or refused as
+            # it was
+            old, broken(lambda r: r["boreholes"][0].update(uses=["prior", "laterite_min_rho"]), old),
+            broken(lambda r: r["boreholes"][1].update(id=""), old), broken(lambda r: r.update(boreholes=3), old)]
     read = []
     for raw in hand:
         try:
@@ -4508,6 +4525,89 @@ def calibration_sets_reference() -> dict:
     return {"portfolios": portfolios, "earlier": earlier, "cases": cases, "hand": hand, "read": read,
             "refusals": refusals, "default": CS.default_set(), "default_name": CS.set_name(CS.default_set()),
             "default_yaml": CS.set_yaml(CS.default_set())}
+
+
+# ---------------------------------------- pooling calibration sets (5.5)
+
+def calibration_pooling_reference() -> dict:
+    """Calibration sets of several organisations (PLAN.md step 5.5), each
+    fitted to a portfolio of its own and adopted, pooled: two, three in
+    another order, a pooled set pooled again with a third, under the default
+    settings and others (a smaller minimum, the edges of another set in
+    force, a water-bearing window whose top the pooled clay edge reaches);
+    and every refusal: one set, a file that is not a set, the provisional
+    default, a set nobody adopted, a set of format 1 that declares no
+    licence, a set without a definition of success or with another, the
+    same set twice, a set and a pooled set that holds it, a prior fitted
+    from another provisional rate, a set under another licence than the
+    one a pooled set is issued under, and no licence set to issue it under. Each pooled set's review, its name
+    and file once adopted, and each set's fingerprint."""
+    from groundwater import calibration_sets as CS
+    from groundwater import ledger as L
+
+    def issued(seed, n, organisation, by, on, contact="", **settings):
+        config = Config()
+        for key, value in settings.items():
+            setattr(config.ledger, key, value)
+        fitted = CS.fit_set(L.pool_ledgers([tuple(item) for item in _set_portfolio(seed, n)]), on, config)
+        return json.loads(json.dumps(CS.adopt_set(fitted, by, on, organisation=organisation, contact=contact)))
+
+    trust = issued(11, 36, "Rural Water Trust", "A. Kamara", "2026-10-20", contact="wells@example.org")
+    kono = issued(12, 24, "Kono Wells", "B. Sesay", "2026-09-01")
+    bo = issued(13, 12, "", "F. Koroma", "2026-08-15", fit_min_boreholes=2)
+    late = issued(14, 9, "Rural Water Trust", "G. Sesay", "2026-10-25")
+    forum = json.loads(json.dumps(CS.adopt_set(CS.pool_sets([trust, kono], "2026-10-28"), "C. Conteh",
+                                               "2026-10-29", organisation="Salone Water Forum")))
+    old = {key: value for key, value in kono.items() if key not in ("licence", "organisation", "contact",
+                                                                   "sources")}
+    old.update(format_version=1, boreholes=[{"id": f"k{k}", "success": True, "forecast": True, "uses": ["prior"]}
+                                            for k in range(kono["boreholes"])])
+    other_table = copy.deepcopy(kono)
+    other_table["prior"][0]["base_rate"] = 0.5
+    window = {"ves": {"fractured_zone_rho": [20.0, 60.0]}}
+    groups = [
+        ([trust, kono], ["trust.yaml", "kono.yaml"], {}),
+        ([bo, kono, trust], None, {}),
+        ([trust, kono, bo, late], None, {"ledger": {"fit_min_boreholes": 2}}),
+        ([trust, kono], ["trust.yaml", "kono.yaml"], {"calibration": trust}),
+        ([kono, bo], None, window),
+        ([forum, bo], ["forum.yaml", "bo.yaml"], {}),
+        ([trust], ["trust.yaml"], {}),
+        ([trust, None], ["trust.yaml", "notes.yaml"], {}),
+        ([CS.default_set(), trust], None, {}),
+        ([trust, dict(kono, version=None, adopted_by="", adopted_on="", replaces=None)], None, {}),
+        ([trust, old], ["trust.yaml", "kono-2025.yaml"], {}),
+        ([trust, dict(kono, success_yield_m3_per_h=None)], None, {}),
+        ([trust, dict(kono, success_yield_m3_per_h=3.6)], ["trust.yaml", "kono.yaml"], {}),
+        ([trust, dict(trust, organisation="Renamed", adopted_by="H. Turay")], None, {}),
+        ([forum, kono], ["forum.yaml", "kono.yaml"], {}),
+        ([trust, other_table], None, {}),
+        ([trust, dict(kono, licence="CC BY-SA 4.0")], ["trust.yaml", "kono.yaml"], {}),
+        ([trust, kono], None, {"ledger": {"set_licence": " "}}),
+    ]
+    cases = []
+    for sets, labels, settings in groups:
+        config = Config()
+        for section, values in settings.items():
+            if section == "calibration":
+                config = CS.apply_set(config, values)
+                continue
+            for key, value in values.items():
+                setattr(getattr(config, section), key, value)
+        expect: dict
+        try:
+            pooled = CS.pool_sets(sets, "2026-10-28", config, labels)
+        except ValueError as exc:
+            expect = {"threw": str(exc)}
+        else:
+            adopted = CS.adopt_set(pooled, " C.\tConteh ", "2026-10-29", in_force=CS.in_force(config),
+                                   organisation="Salone Water Forum", contact="forum@example.org")
+            expect = {"set": pooled, "review": CS.set_review(pooled, config), "name": CS.set_name(adopted),
+                      "yaml": CS.set_yaml(adopted)}
+        cases.append({"sets": sets, "labels": labels, "settings": settings, "expect": json.loads(json.dumps(expect))})
+    prints = [{"set": s, "fingerprint": CS.set_fingerprint(s)}
+              for s in (trust, kono, bo, late, forum, old, dict(trust, organisation="Renamed"))]
+    return {"cases": cases, "fingerprints": prints}
 
 
 # ----------------------------------------- a calibration set in force (5.3b)

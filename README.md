@@ -404,10 +404,23 @@ the prior of each ground it fitted, the resistivity edges of each
 geology unit and the suitability weights, and every report that prints
 the odds names it. A set nobody adopted is refused.
 
-Its `sl_source` column records where each national value came from.
-Every one of them currently reads `provisional`: they are WHO guideline
-figures carried across, or limits taken from regional practice, and
-have not been checked against the Sierra Leone Standards Bureau
+A set file holds counts, not projects (PLAN.md step 5.5): how many
+boreholes on each ground and how many succeeded, each geology unit's
+edges, who adopted it, and the licence (CC BY 4.0, `ledger.set_licence`),
+organisation and contact it was issued under; no project, client, place,
+position or borehole name. So organisations can pass their sets to each
+other, and the Portfolio page's *Pool sets from other organisations*
+pools several into one (`calibration_sets.pool_sets`): each ground's
+counts summed over the provisional prior counted once, each edge the
+borehole-weighted geometric mean of the sets' edges, the sources
+listed, and the same set, or a set and a pooled set holding it,
+refused. The pooled set is adopted by a named person like any other.
+The user guide says what a set file does and does not reveal.
+
+The standards table's `sl_source` column records where each national
+value came from. Every one of them currently reads `provisional`: they
+are WHO guideline figures carried across, or limits taken from regional
+practice, and have not been checked against the Sierra Leone Standards Bureau
 drinking water specification. Both apps and the water quality report
 say so wherever a national verdict is shown, because failing an
 unconfirmed limit is a prompt to check the specification, not a

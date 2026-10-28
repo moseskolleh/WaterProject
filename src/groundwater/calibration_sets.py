@@ -35,23 +35,36 @@ Every fit starts from the provisional default with every borehole in the
 pooled ledger, never from the set in force, so no borehole is counted twice.
 A row or edge with fewer than ``ledger.fit_min_boreholes`` boreholes, and
 weights without ``ledger.fit_weights_min_each`` successes and failures, are
-not fitted, and the set says so. The set records the boreholes it used by
-their ledger ids only, so it can be shared without the projects behind it
-(step 5.5).
+not fitted, and the set says so.
 
 A fitted set changes nothing until a named person adopts it
-(:func:`adopt_set`), which numbers it one after the set it replaces. Every
-report names the set in force (:func:`set_name`).
+(:func:`adopt_set`), which numbers it one after the set it replaces, and
+issues it under the licence in ``ledger.set_licence`` (CC BY 4.0) in the
+name of the adopter's organisation. Every report names the set in force
+(:func:`set_name`).
+
+A set file is open (PLAN.md step 5.5): it holds the counts and edges a set
+is fitted to, who adopted it and when, and nothing of the projects behind
+it. It counts the boreholes it used; the ledger ids a file of format 1
+listed are read as their count, since each was a hash of a sounding's name,
+place and position that anyone who could guess the place could test
+positions against. Sets from several organisations are pooled
+(:func:`pool_sets`) by summing each ground's counts over the shared
+provisional prior, counted once, and taking each edge as the mean of the
+sets' edges weighted by the boreholes behind each. A pooled set lists its
+sources, and is adopted like any other.
 
 Every function here has a twin of the same name in camel case in
 gwt-core.js, held to it by parity. The fits use only sums, products,
-quotients and square roots, so the two engines agree to the bit.
+quotients and square roots, so the two engines agree to the bit; a pooled
+edge is a mean of logarithms, rounded to 0.1 ohm-m.
 """
 
 from __future__ import annotations
 
 import copy
 import dataclasses
+import hashlib
 import math
 import numbers
 from bisect import bisect_left, bisect_right
@@ -81,17 +94,22 @@ __all__ = [
     "fitted_prior",
     "in_force",
     "layer_class",
+    "pool_sets",
     "read_set",
     "set_changes",
+    "set_fingerprint",
     "set_name",
     "set_review",
     "set_yaml",
     "unit_edges",
 ]
 
-#: What a set file says it is, and the version of its layout.
+#: What a set file says it is, and the version of its layout. Format 1
+#: (step 5.3) listed the boreholes by their ledger ids and declared no
+#: licence; it is still read, as format 2 with the ids counted.
 FORMAT = "groundwater calibration set"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
+_READS = (1, 2)
 
 #: The resistivity edges a set fits, in the order it lists them.
 EDGES = ("clay_max_rho", "fresh_basement_min_rho")
@@ -205,7 +223,9 @@ def fit_prior(pooled: list[dict], config: Config | None = None) -> tuple[list[di
         m = len(entries)
         successes = sum(1 for e in entries if e["outcome"]["success"])
         factors = [factor for _, factor in members[k]]
-        expected = m * evidence_rate(factors, successes)
+        # the count the file holds, so that the rate is the one its counts
+        # give, whoever adds them up again (pool_sets)
+        expected = _round(m * evidence_rate(factors, successes), 2)
         fitted = m >= int(config.ledger.fit_min_boreholes)
         rate = (base_n * base_rate + expected) / (base_n + m)
         row = {
@@ -213,7 +233,7 @@ def fit_prior(pooled: list[dict], config: Config | None = None) -> tuple[list[di
             "glg": base["glg"],
             "boreholes": m,
             "successes": successes,
-            "expected": _round(expected, 2),
+            "expected": expected,
             "base_rate": _round(base_rate, 4),
             "base_n": base_n,
             "fitted": fitted,
@@ -436,66 +456,60 @@ def fit_weights(pooled: list[dict], config: Config | None = None) -> tuple[dict,
 
 def default_set() -> dict:
     """The set the toolkit ships: step 3.3's provisional tables, step 3.1's
-    edges and the suitability score's weights, adopted by no one."""
+    edges and the suitability score's weights, adopted by no one, issued by
+    no one and so under no licence."""
     return {
         "format": FORMAT,
         "format_version": FORMAT_VERSION,
+        "licence": "",
+        "organisation": "",
+        "contact": "",
         "version": 0,
         "fitted_on": "",
         "adopted_by": "",
         "adopted_on": "",
         "replaces": None,
         "success_yield_m3_per_h": None,
-        "boreholes": [],
+        "boreholes": 0,
         "left_out": {"unknown": 0, "definition": 0},
         "prior": [],
         "edges": [],
         "weights": None,
+        "sources": [],
     }
 
 
 def fit_set(pooled: list[dict], fitted_on: str, config: Config | None = None) -> dict:
     """A calibration set fitted to the pooled ledger's boreholes, numbered
-    and adopted by no one yet.
+    and adopted by no one yet, to be issued under ``ledger.set_licence``.
 
     ``pooled`` is :func:`groundwater.ledger.pool_ledgers`'s entries, and
-    ``fitted_on`` the date it was fitted, as text. Each borehole it used is
-    listed by its ledger id with what it was used for; the drilled points
-    whose success is not known, or was judged at another definition of
-    success, are counted in ``left_out``.
+    ``fitted_on`` the date it was fitted, as text. ``boreholes`` counts the
+    boreholes it used for anything, and each row says how many it used;
+    the drilled points whose success is not known, or was judged at another
+    definition of success, are counted in ``left_out``. No ledger id, and
+    nothing else of a project, is written.
     """
     config = config or Config()
     _, left_out = _judged(pooled, config)
     prior, prior_ids = fit_prior(pooled, config)
     edges, edge_ids = fit_edges(pooled, config)
     weights, weight_ids = fit_weights(pooled, config)
-    uses: dict[str, list[str]] = {}
-    for ids in prior_ids.values():
-        for pid in ids:
-            uses.setdefault(pid, []).append("prior")
-    for k, ids in edge_ids.items():
-        for pid in ids:
-            if edges[k]["edge"] not in uses.setdefault(pid, []):
-                uses[pid].append(edges[k]["edge"])
-    for pid in weight_ids:
-        uses.setdefault(pid, []).append("weights")
-    order = {name: k for k, name in enumerate(("prior",) + EDGES + ("weights",))}
-    boreholes = []
-    for entry in pooled:
-        if entry["id"] in uses:
-            boreholes.append({"id": entry["id"], "success": entry["outcome"]["success"],
-                              "forecast": entry["before_outcome"],
-                              "uses": sorted(uses.pop(entry["id"]), key=order.__getitem__)})
-    return dict(default_set(), version=None, fitted_on=str(fitted_on),
-                success_yield_m3_per_h=_round(config.odds.success_yield_m3_per_h, 3),
-                boreholes=boreholes, left_out=left_out, prior=prior, edges=edges, weights=weights)
+    used = {pid for ids in prior_ids.values() for pid in ids} | {pid for ids in edge_ids.values() for pid in ids}
+    used |= set(weight_ids)
+    return dict(default_set(), licence=_name(config.ledger.set_licence), version=None,
+                fitted_on=str(fitted_on), success_yield_m3_per_h=_round(config.odds.success_yield_m3_per_h, 3),
+                boreholes=len(used), left_out=left_out, prior=prior, edges=edges, weights=weights)
 
 
-def adopt_set(candidate: dict, adopted_by: str, adopted_on: str, in_force: dict | None = None) -> dict:
+def adopt_set(candidate: dict, adopted_by: str, adopted_on: str, in_force: dict | None = None,
+              organisation: str = "", contact: str = "") -> dict:
     """``candidate`` adopted by a named person on a date, numbered one after
     the set in force (the provisional default where none is given), which it
-    names as the set it replaces. A blank name, or a set adopted already,
-    raises ValueError with the sentence the app shows."""
+    names as the set it replaces, and issued in the name of ``organisation``
+    with ``contact`` (an address, telephone or the like), either of which
+    may be left blank. A blank name, or a set adopted already, raises
+    ValueError with the sentence the app shows."""
     who = _name(adopted_by)
     if not who:
         raise ValueError(phrase("calibration_sets.adopt_unnamed"))
@@ -505,20 +519,32 @@ def adopt_set(candidate: dict, adopted_by: str, adopted_on: str, in_force: dict 
     in_force = in_force or default_set()
     replaces = {"version": in_force["version"], "fitted_on": in_force["fitted_on"],
                 "adopted_by": in_force["adopted_by"], "adopted_on": in_force["adopted_on"]}
-    return dict(candidate, version=in_force["version"] + 1, adopted_by=who, adopted_on=str(adopted_on),
-                replaces=replaces)
+    return dict(candidate, organisation=_name(organisation), contact=_name(contact),
+                version=in_force["version"] + 1, adopted_by=who, adopted_on=str(adopted_on), replaces=replaces)
+
+
+def _called(version, fitted_on: str, n, by: str, on: str, sets: int) -> str:
+    """A set's name from its number, dates, adopter, count of boreholes and
+    count of sets it pooled: the provisional default, a set fitted or
+    pooled, adopted by a person or by nobody yet."""
+    if version == 0:
+        return phrase("calibration_sets.name_default")
+    if sets:
+        if by:
+            return phrase("calibration_sets.name_pooled_adopted", version=version, fitted_on=fitted_on, k=sets,
+                          by=by, on=on)
+        return phrase("calibration_sets.name_pooled_candidate", fitted_on=fitted_on, k=sets)
+    if by:
+        return phrase("calibration_sets.name_adopted", version=version, fitted_on=fitted_on, n=n, by=by, on=on)
+    return phrase("calibration_sets.name_candidate", fitted_on=fitted_on, n=n)
 
 
 def set_name(s: dict) -> str:
     """The set as a report names it: the provisional default, a set numbered
-    and adopted by a person, or a set nobody has adopted."""
-    if s["version"] == 0:
-        return phrase("calibration_sets.name_default")
-    n = len(s["boreholes"])
-    if s["adopted_by"]:
-        return phrase("calibration_sets.name_adopted", version=s["version"], fitted_on=s["fitted_on"], n=n,
-                      by=s["adopted_by"], on=s["adopted_on"])
-    return phrase("calibration_sets.name_candidate", fitted_on=s["fitted_on"], n=n)
+    and adopted by a person, or a set nobody has adopted; a pooled set by
+    the number of sets it pools."""
+    return _called(s["version"], s["fitted_on"], s["boreholes"], s["adopted_by"], s["adopted_on"],
+                   len(s["sources"]))
 
 
 # ------------------------------------------------------------ in force
@@ -642,6 +668,10 @@ def set_review(candidate: dict, config: Config | None = None) -> dict:
     ``summary`` (sentences), ``tables`` (each with ``key``, ``caption``,
     ``header`` and ``rows`` of text) and ``adoptable``: whether it fits
     anything, and so whether there is anything to adopt.
+
+    A pooled set (:func:`pool_sets`) is reviewed the same way, with a table
+    of the sets it pools first, its edges without the misread layers its
+    sources did not carry, and no weights.
     """
     from .siting.odds import prior_for
 
@@ -649,8 +679,13 @@ def set_review(candidate: dict, config: Config | None = None) -> dict:
     held = in_force(config)
     minimum = int(config.ledger.fit_min_boreholes)
     prior, edges, weights = candidate["prior"], candidate["edges"], candidate["weights"]
-    summary = [phrase("calibration_sets.review_lead", n=len(candidate["boreholes"]),
-                      rate=candidate["success_yield_m3_per_h"] or 0.0)]
+    sources = candidate["sources"]
+    if sources:
+        summary = [phrase("calibration_sets.review_lead_pooled", k=len(sources),
+                          rate=candidate["success_yield_m3_per_h"] or 0.0)]
+    else:
+        summary = [phrase("calibration_sets.review_lead", n=candidate["boreholes"],
+                          rate=candidate["success_yield_m3_per_h"] or 0.0)]
     left = candidate["left_out"]
     if left["unknown"] or left["definition"]:
         summary.append(phrase("calibration_sets.review_left_out", unknown=left["unknown"],
@@ -658,7 +693,17 @@ def set_review(candidate: dict, config: Config | None = None) -> dict:
     summary.append(phrase("calibration_sets.review_fitted", priors=sum(1 for r in prior if r["fitted"]),
                           rows=len(prior), edges=sum(1 for r in edges if r["fitted"]), edge_rows=len(edges),
                           minimum=minimum))
-    if weights is not None and weights["fitted"]:
+    if sources:
+        summary.append(phrase("calibration_sets.review_weights_pooled"))
+        issued: dict[str, int] = {}
+        for source in sources:
+            if source["organisation"]:
+                issued[source["organisation"]] = issued.get(source["organisation"], 0) + 1
+        for name in sorted(issued):
+            if issued[name] > 1:
+                summary.append(phrase("calibration_sets.review_same_organisation", organisation=name,
+                                      n=issued[name]))
+    elif weights is not None and weights["fitted"]:
         summary.append(phrase("calibration_sets.review_weights", right=_share(weights["right"]),
                               pairs=weights["successes"] * weights["failures"],
                               right_base=_share(weights["right_base"] or 0.0)))
@@ -668,7 +713,22 @@ def set_review(candidate: dict, config: Config | None = None) -> dict:
     adoptable = any(r["fitted"] for r in prior + edges) or bool(weights is not None and weights["fitted"])
     summary.append(phrase("calibration_sets.review_in_force", name=set_name(held)))
     summary.append(phrase("calibration_sets.review_adopt" if adoptable else "calibration_sets.review_nothing"))
+    if adoptable:
+        summary.append(phrase("calibration_sets.review_licence", licence=candidate["licence"])
+                       if candidate["licence"] else phrase("calibration_sets.review_no_licence"))
 
+    tables = []
+    if sources:
+        unnamed = phrase("calibration_sets.cell_not_named")
+        tables.append({"key": "sources", "caption": phrase("calibration_sets.sources_caption"),
+                       "header": [phrase("calibration_sets.sources_col_organisation"),
+                                  phrase("calibration_sets.sources_col_set"),
+                                  phrase("calibration_sets.sources_col_licence"),
+                                  phrase("calibration_sets.sources_col_contact")],
+                       "rows": [[source["organisation"] or unnamed,
+                                 _called(source["version"], source["fitted_on"], source["boreholes"],
+                                         source["adopted_by"], source["adopted_on"], source["sets"]),
+                                 source["licence"], source["contact"] or unnamed] for source in sources]})
     rate = float(config.odds.success_yield_m3_per_h)
     prior_rows = []
     for row in prior:
@@ -680,19 +740,30 @@ def set_review(candidate: dict, config: Config | None = None) -> dict:
         prior_rows.append([ground, str(row["boreholes"]), str(row["successes"]),
                            phrase("calibration_sets.cell_rate", p=_share(row["base_rate"])),
                            phrase("calibration_sets.cell_rate", p=_share(now["rate"])), fitted])
-    tables = [{"key": "prior", "caption": phrase("calibration_sets.prior_caption"),
-               "header": [phrase("calibration_sets.prior_col_ground"), phrase("calibration_sets.prior_col_boreholes"),
-                          phrase("calibration_sets.prior_col_succeeded"), phrase("calibration_sets.prior_col_table"),
-                          phrase("calibration_sets.prior_col_in_force"), phrase("calibration_sets.prior_col_fitted")],
-               "rows": prior_rows}]
+    tables.append({"key": "prior", "caption": phrase("calibration_sets.prior_caption"),
+                   "header": [phrase("calibration_sets.prior_col_ground"),
+                              phrase("calibration_sets.prior_col_boreholes"),
+                              phrase("calibration_sets.prior_col_succeeded"),
+                              phrase("calibration_sets.prior_col_table"),
+                              phrase("calibration_sets.prior_col_in_force"),
+                              phrase("calibration_sets.prior_col_fitted")],
+                   "rows": prior_rows})
     names = phrase_table("calibration_sets.edge_names")
     edge_rows = []
     for row in edges:
-        fitted = (phrase("calibration_sets.cell_edge", value=row["value"], misread=row["misread"]) if row["fitted"]
-                  else phrase("calibration_sets.cell_edge_too_few", m=row["boreholes"], minimum=minimum))
+        if sources:
+            now = phrase("calibration_sets.cell_edge_value", value=row["base"])
+            fitted = (phrase("calibration_sets.cell_edge_pooled", value=row["value"], sets=row["sets"])
+                      if row["fitted"] else phrase("calibration_sets.cell_edge_pooled_none") if not row["sets"]
+                      else phrase("calibration_sets.cell_edge_pooled_window") if row["edge"] == "clay_max_rho"
+                      else phrase("calibration_sets.cell_edge_pooled_clay"))
+        else:
+            now = phrase("calibration_sets.cell_edge", value=row["base"], misread=row["misread_base"])
+            fitted = (phrase("calibration_sets.cell_edge", value=row["value"], misread=row["misread"])
+                      if row["fitted"] else phrase("calibration_sets.cell_edge_too_few", m=row["boreholes"],
+                                                   minimum=minimum))
         edge_rows.append([row["glg"], names[row["edge"]],
-                          phrase("calibration_sets.cell_layers", below=row["below"], above=row["above"]),
-                          phrase("calibration_sets.cell_edge", value=row["base"], misread=row["misread_base"]), fitted])
+                          phrase("calibration_sets.cell_layers", below=row["below"], above=row["above"]), now, fitted])
     tables.append({"key": "edges", "caption": phrase("calibration_sets.edges_caption"),
                    "header": [phrase("calibration_sets.edges_col_unit"), phrase("calibration_sets.edges_col_edge"),
                               phrase("calibration_sets.edges_col_layers"),
@@ -709,8 +780,213 @@ def set_review(candidate: dict, config: Config | None = None) -> dict:
                                  phrase("calibration_sets.cell_weight", w=weights["value"][key])
                                  if weights["fitted"] else phrase("calibration_sets.cell_not_fitted")]
                                 for key in SUITABILITY_PARTS]})
-    return {"title": phrase("calibration_sets.review_title", fitted_on=candidate["fitted_on"]),
+    return {"title": phrase("calibration_sets.review_title_pooled" if sources else "calibration_sets.review_title",
+                            fitted_on=candidate["fitted_on"]),
             "summary": summary, "tables": tables, "adoptable": adoptable}
+
+
+# ----------------------------------------------------------------- pooling
+
+#: The parts of a set its fingerprint is taken over: what it counts and
+#: what it pooled, not who adopted it, when, or under which name or
+#: licence it was issued, so a set adopted twice, or passed on under
+#: another organisation's name, is still the same set.
+_FINGERPRINTED = ("format", "success_yield_m3_per_h", "boreholes", "left_out", "prior", "edges", "weights",
+                  "sources")
+
+
+def set_fingerprint(s) -> str:
+    """The SHA-256, in hex, of what the set counts (``_FINGERPRINTED``),
+    written as its file writes it. ``s`` is read whole first
+    (:func:`clean_set`), so a file of format 1 is fingerprinted as format 2
+    reads it, and one that cannot be read raises ValueError."""
+    s = clean_set(s)
+    lines: list[str] = []
+    _emit({key: s[key] for key in _FINGERPRINTED}, 0, lines)
+    return hashlib.sha256(("\n".join(lines) + "\n").encode("utf-8")).hexdigest()
+
+
+def _chain(s: dict, fingerprint: str) -> set[str]:
+    """The fingerprints of the set and of every set it holds counts of."""
+    out = {fingerprint}
+    for source in s["sources"]:
+        out.add(source["fingerprint"])
+        out.update(source["pools"])
+    return out
+
+
+def _table_row(table: list[dict], row: dict) -> int | None:
+    """The position of a set's prior row in the provisional table, or None
+    where the table has no such row or only its even-chance fallback."""
+    return next((k for k, r in enumerate(table) if r["bgs_code"] == row["bgs_code"] and r["glg"] == row["glg"]
+                 and r["status"] != "fallback"), None)
+
+
+def pool_sets(sets: list, pooled_on: str, config: Config | None = None, labels: list[str] | None = None) -> dict:
+    """The calibration sets ``sets`` (as read from their files) pooled into
+    one, numbered and adopted by no one yet, to be issued under
+    ``ledger.set_licence``.
+
+    Each set must be readable whole (:func:`clean_set`), adopted by a named
+    person, issued under the licence the pooled set is issued under
+    (``ledger.set_licence``, which may not be blank: the toolkit cannot
+    read what another licence allows) and judged at one definition of
+    success; no two may be the same set, or hold the counts of one same set
+    (a set and a pooled set that pooled it, or two pooled sets that pooled
+    it); and each prior row must start from this toolkit's provisional row.
+    Anything else raises ValueError naming the set by its entry in
+    ``labels`` (the file names, in the apps), else by its place.
+
+    Each ground's boreholes, successes and evidence-adjusted count are
+    summed over the sets, and its rate worked out from the provisional row,
+    counted once, and the summed counts, as :func:`fit_prior` works out one
+    set's. A row is fitted where the sum holds ``ledger.fit_min_boreholes``.
+    Each set's count of a row is the one its own fit expected, so the sum is
+    not a fit to all the boreholes together, which would need each one's
+    evidence. Each edge of a geology unit is the mean of the logarithms of
+    the sets' fitted edges, weighted by the boreholes behind each, rounded
+    to 0.1 ohm-m; it is not fitted where it would not stay under the
+    water-bearing window (the clay edge) or over the clay edge the unit is
+    then read with (the basement edge). The suitability weights are not
+    pooled: they are fitted to how each pair of boreholes ranks, which no
+    set file carries. The sets are taken in the order of their
+    fingerprints, so their order makes no difference. The pooled set's
+    ``fitted_on`` is ``pooled_on``, the date it was pooled, as text.
+    """
+    from .siting.odds import odds_tables, prior_for
+
+    config = config or Config()
+    names = ([str(label) for label in labels] if labels is not None
+             else [phrase("calibration_sets.pool_label", k=k + 1) for k in range(len(sets))])
+    if len(sets) < 2:
+        raise ValueError(phrase("calibration_sets.pool_too_few"))
+    licence = _name(config.ledger.set_licence)
+    if not licence:
+        raise ValueError(phrase("calibration_sets.pool_no_licence"))
+    clean = []
+    for raw, label in zip(sets, names, strict=True):
+        try:
+            s = clean_set(raw)
+        except ValueError as exc:
+            raise ValueError(phrase("calibration_sets.pool_file", label=label, reason=str(exc))) from exc
+        if s["version"] == 0:
+            raise ValueError(phrase("calibration_sets.pool_default", label=label))
+        if s["version"] is None:
+            raise ValueError(phrase("calibration_sets.pool_unadopted", label=label))
+        if not s["licence"]:
+            raise ValueError(phrase("calibration_sets.pool_unlicensed", label=label))
+        # the toolkit cannot read what a licence allows, so it pools only
+        # sets issued under the one it issues the pooled set under
+        if s["licence"] != licence:
+            raise ValueError(phrase("calibration_sets.pool_other_licence", label=label, licence=s["licence"],
+                                    ours=licence))
+        if s["success_yield_m3_per_h"] is None:
+            raise ValueError(phrase("calibration_sets.pool_no_definition", label=label))
+        clean.append(s)
+    rate_m3h = clean[0]["success_yield_m3_per_h"]
+    for s, label in zip(clean[1:], names[1:], strict=True):
+        if abs(s["success_yield_m3_per_h"] - rate_m3h) >= 1e-9:
+            raise ValueError(phrase("calibration_sets.pool_definition", label=label,
+                                    rate=s["success_yield_m3_per_h"], first=names[0], first_rate=rate_m3h))
+    prints = [set_fingerprint(s) for s in clean]
+    chains = [_chain(s, fp) for s, fp in zip(clean, prints, strict=True)]
+    for j in range(len(clean)):
+        for i in range(j):
+            if prints[i] == prints[j]:
+                raise ValueError(phrase("calibration_sets.pool_same", label=names[j], other=names[i]))
+            if chains[i] & chains[j]:
+                raise ValueError(phrase("calibration_sets.pool_chain", label=names[j], other=names[i]))
+    table = odds_tables()["prior"]
+
+    def provisional(k: int) -> tuple[float, float]:
+        base = table[k]
+        return (prior_for(base["bgs_code"], base["glg"] if base["glg"] != "*" else None, rate_m3h)["rate"],
+                float(base["effective_n"]))
+
+    # each ground's position in the provisional table
+    where: dict[tuple[str, str], int] = {}
+    for s, label in zip(clean, names, strict=True):
+        for row in s["prior"]:
+            k = _table_row(table, row)
+            if k is None or _round(provisional(k)[0], 4) != row["base_rate"] or provisional(k)[1] != row["base_n"]:
+                ground = (phrase("calibration_sets.ground_class", code=row["bgs_code"]) if row["glg"] == "*"
+                          else phrase("calibration_sets.ground_combination", code=row["bgs_code"], glg=row["glg"]))
+                raise ValueError(phrase("calibration_sets.pool_table", label=label, ground=ground))
+            where[(row["bgs_code"], row["glg"])] = k
+
+    order = sorted(range(len(clean)), key=prints.__getitem__)
+    counts: dict[int, list] = {}
+    sides: dict[tuple[str, str], dict] = {}
+    left = {"unknown": 0, "definition": 0}
+    for i in order:
+        s = clean[i]
+        for key in left:
+            left[key] += s["left_out"][key]
+        for row in s["prior"]:
+            held = counts.setdefault(where[(row["bgs_code"], row["glg"])], [0, 0, 0.0])
+            held[0] += row["boreholes"]
+            held[1] += row["successes"]
+            held[2] = held[2] + row["expected"]
+        for row in s["edges"]:
+            held = sides.setdefault((row["glg"], row["edge"]), {"all": [0, 0, 0], "fit": [0, 0, 0], "sets": 0,
+                                                                "logs": 0.0, "weight": 0})
+            for part, key in ((held["all"], None), (held["fit"], "fitted")):
+                if key is None or row[key]:
+                    part[0] += row["boreholes"]
+                    part[1] += row["below"]
+                    part[2] += row["above"]
+            if row["fitted"]:
+                held["sets"] += 1
+                held["logs"] = held["logs"] + row["boreholes"] * math.log(row["value"])
+                held["weight"] += row["boreholes"]
+
+    prior = []
+    for k in sorted(counts):
+        base_rate, base_n = provisional(k)
+        m, successes = counts[k][0], counts[k][1]
+        expected = _round(counts[k][2], 2)
+        fitted = m >= int(config.ledger.fit_min_boreholes)
+        rate = (base_n * base_rate + expected) / (base_n + m)
+        prior.append({
+            "bgs_code": table[k]["bgs_code"], "glg": table[k]["glg"], "boreholes": m, "successes": successes,
+            "expected": expected, "base_rate": _round(base_rate, 4), "base_n": base_n, "fitted": fitted,
+            "rate": min(max(_round(rate, 4), _RATE_BOUND), 1.0 - _RATE_BOUND) if fitted else None,
+            "effective_n": base_n + m if fitted else None,
+        })
+
+    edges = []
+    base = {"clay_max_rho": float(config.ves.clay_max_rho),
+            "fresh_basement_min_rho": float(config.ves.fresh_basement_min_rho)}
+    held_set = in_force(config)
+    window = float(config.ves.fractured_zone_rho[1])
+    for glg in sorted({unit for unit, _ in sides}):
+        here = dict(base, **unit_edges(held_set, glg))
+        # in force, the pooled set replaces the set in force, so a unit whose
+        # clay edge it does not fit is read by the configuration's
+        clay: float = base["clay_max_rho"]
+        for edge in EDGES:
+            held = sides.get((glg, edge))
+            if held is None:
+                continue
+            value = _round(math.exp(held["logs"] / held["weight"]), 1) if held["sets"] else None
+            fitted = value is not None and (value < window if edge == "clay_max_rho" else value > clay)
+            if value is not None and fitted and edge == "clay_max_rho":
+                clay = value
+            n, below, above = held["fit"] if held["sets"] else held["all"]
+            edges.append({"glg": glg, "edge": edge, "boreholes": n, "below": below, "above": above,
+                          "base": here[edge], "misread_base": None, "fitted": fitted,
+                          "value": value if fitted else None, "misread": None, "sets": held["sets"]})
+
+    sources = []
+    for i in order:
+        s = clean[i]
+        sources.append({"organisation": s["organisation"], "contact": s["contact"], "licence": s["licence"],
+                        "version": s["version"], "fitted_on": s["fitted_on"], "adopted_by": s["adopted_by"],
+                        "adopted_on": s["adopted_on"], "boreholes": s["boreholes"], "sets": len(s["sources"]),
+                        "fingerprint": prints[i], "pools": sorted(chains[i] - {prints[i]})})
+    return dict(default_set(), licence=licence, version=None, fitted_on=str(pooled_on),
+                success_yield_m3_per_h=rate_m3h, boreholes=None, left_out=left, prior=prior, edges=edges,
+                weights=None, sources=sources)
 
 
 # ------------------------------------------------------------- the file
@@ -759,22 +1035,69 @@ def _flag(value) -> bool:
     return isinstance(value, bool)
 
 
+def _none(value) -> bool:
+    return value is None
+
+
+def _hex(value) -> bool:
+    """A SHA-256 in lower-case hex, as :func:`set_fingerprint` writes it."""
+    return isinstance(value, str) and len(value) == 64 and all(ch in "0123456789abcdef" for ch in value)
+
+
+def _listed_boreholes(raw: dict) -> int:
+    """The boreholes a file of format 1 listed by their ledger ids, checked
+    as that format was and counted: the ids are not kept."""
+    listed = _field(raw, "boreholes", lambda v: isinstance(v, list))
+    for item in listed:
+        _field(item, "id", lambda v: isinstance(v, str) and bool(v), "boreholes.")
+        _field(item, "success", _flag, "boreholes.")
+        _field(item, "forecast", _flag, "boreholes.")
+        _field(item, "uses", lambda v: isinstance(v, list) and all(u in ("prior",) + EDGES + ("weights",)
+                                                                   for u in v), "boreholes.")
+    return len(listed)
+
+
+def _clean_source(item) -> dict:
+    """One of a pooled set's sources, read whole."""
+    out: dict = {key: _name(_field(item, key, _text, "sources.")) for key in ("organisation", "contact", "licence")}
+    out["version"] = _field(item, "version", lambda v: _count(v) and v > 0, "sources.")
+    out["fitted_on"] = _field(item, "fitted_on", _text, "sources.")
+    out["adopted_by"] = _name(_field(item, "adopted_by", lambda v: bool(_name(v)), "sources."))
+    out["adopted_on"] = _field(item, "adopted_on", _text, "sources.")
+    out["boreholes"] = _field(item, "boreholes", _maybe(_count), "sources.")
+    out["sets"] = _field(item, "sets", _count, "sources.")
+    if (out["boreholes"] is None) != (out["sets"] > 0):
+        raise _unreadable(phrase("calibration_sets.why_pooled"))
+    out["fingerprint"] = _field(item, "fingerprint", _hex, "sources.")
+    out["pools"] = list(_field(item, "pools", lambda v: isinstance(v, list) and all(_hex(p) for p in v),
+                               "sources."))
+    return out
+
+
 def clean_set(raw) -> dict:
     """A set read from a file, in the shape the functions here write, or
     ValueError with the sentence the app shows.
 
     A set changes what every report predicts, so a file is read whole or
     not at all: a field missing or of the wrong kind refuses the file
-    rather than being left blank, and a set numbered as adopted must name
-    who adopted it.
+    rather than being left blank, a set numbered as adopted must name who
+    adopted it, a row must hold a borehole and no more successes than it
+    has, no ground or edge is given twice, and a pooled set lists its
+    sources, counts no boreholes of its own and fits no weights. A file of
+    format 1 is read as format 2: its ledger ids are counted and dropped,
+    and it declares no licence, organisation or contact.
     """
     if not isinstance(raw, dict):
         raise _unreadable(phrase("calibration_sets.why_not_mapping"))
-    if raw.get("format") != FORMAT or raw.get("format_version") != FORMAT_VERSION \
-            or not _is_int(raw.get("format_version")):
+    old = raw.get("format_version") == 1
+    if raw.get("format") != FORMAT or not _is_int(raw.get("format_version")) \
+            or raw.get("format_version") not in _READS:
         raise _unreadable(phrase("calibration_sets.why_format", expected=FORMAT_VERSION))
+    out: dict = {"format": FORMAT, "format_version": FORMAT_VERSION}
+    for key in ("licence", "organisation", "contact"):
+        out[key] = "" if old else _name(_field(raw, key, _text))
     version = _field(raw, "version", _maybe(_count))
-    out = {"format": FORMAT, "format_version": FORMAT_VERSION, "version": version}
+    out["version"] = version
     for key in ("fitted_on", "adopted_by", "adopted_on"):
         out[key] = _field(raw, key, _text)
     out["adopted_by"] = _name(out["adopted_by"])
@@ -788,22 +1111,18 @@ def clean_set(raw) -> dict:
                     "adopted_on": _field(replaces, "adopted_on", _text, "replaces.")}
     out["replaces"] = replaces
     out["success_yield_m3_per_h"] = _field(raw, "success_yield_m3_per_h", _maybe(_positive))
-    boreholes = []
-    for item in _field(raw, "boreholes", lambda v: isinstance(v, list)):
-        boreholes.append({
-            "id": _field(item, "id", lambda v: isinstance(v, str) and bool(v), "boreholes."),
-            "success": _field(item, "success", _flag, "boreholes."),
-            "forecast": _field(item, "forecast", _flag, "boreholes."),
-            "uses": list(_field(item, "uses", lambda v: isinstance(v, list) and all(
-                u in ("prior",) + EDGES + ("weights",) for u in v), "boreholes.")),
-        })
-    out["boreholes"] = boreholes
+    out["boreholes"] = _listed_boreholes(raw) if old else _field(raw, "boreholes", _maybe(_count))
     left = _field(raw, "left_out", lambda v: isinstance(v, dict))
     out["left_out"] = {key: _field(left, key, _count, "left_out.") for key in ("unknown", "definition")}
-    prior = []
+    sources = [] if old else [_clean_source(item) for item in
+                              _field(raw, "sources", lambda v: isinstance(v, list))]
+    pooled = bool(sources)
+    if (out["boreholes"] is None) != pooled:
+        raise _unreadable(phrase("calibration_sets.why_pooled"))
+    prior, grounds = [], set()
     for row in _field(raw, "prior", lambda v: isinstance(v, list)):
         fitted = _field(row, "fitted", _flag, "prior.")
-        prior.append({
+        clean = {
             "bgs_code": _field(row, "bgs_code", _text, "prior."),
             "glg": _field(row, "glg", _text, "prior."),
             "boreholes": _field(row, "boreholes", _count, "prior."),
@@ -814,25 +1133,45 @@ def clean_set(raw) -> dict:
             "fitted": fitted,
             "rate": _field(row, "rate", _rate if fitted else _maybe(_rate), "prior."),
             "effective_n": _field(row, "effective_n", _positive if fitted else _maybe(_positive), "prior."),
-        })
+        }
+        if clean["boreholes"] <= 0 or clean["successes"] > clean["boreholes"] \
+                or not 0 <= clean["expected"] <= clean["boreholes"]:
+            raise _unreadable(phrase("calibration_sets.why_counts"))
+        if (clean["bgs_code"], clean["glg"]) in grounds:
+            raise _unreadable(phrase("calibration_sets.why_twice_prior", code=clean["bgs_code"], glg=clean["glg"]))
+        grounds.add((clean["bgs_code"], clean["glg"]))
+        prior.append(clean)
     out["prior"] = prior
-    edges = []
+    edges, seen = [], set()
     for row in _field(raw, "edges", lambda v: isinstance(v, list)):
         fitted = _field(row, "fitted", _flag, "edges.")
-        edges.append({
+        clean = {
             "glg": _field(row, "glg", _text, "edges."),
             "edge": _field(row, "edge", lambda v: v in EDGES, "edges."),
             "boreholes": _field(row, "boreholes", _count, "edges."),
             "below": _field(row, "below", _count, "edges."),
             "above": _field(row, "above", _count, "edges."),
             "base": _field(row, "base", _positive, "edges."),
-            "misread_base": _field(row, "misread_base", _count, "edges."),
+            # a pooled set's sources did not carry their layers, so it
+            # cannot say how many its edges misread
+            "misread_base": _field(row, "misread_base", _none if pooled else _count, "edges."),
             "fitted": fitted,
             "value": _field(row, "value", _positive if fitted else _maybe(_positive), "edges."),
-            "misread": _field(row, "misread", _count if fitted else _maybe(_count), "edges."),
-        })
+            "misread": _field(row, "misread", _none if pooled else _count if fitted else _maybe(_count), "edges."),
+        }
+        if pooled:
+            clean["sets"] = _field(row, "sets", lambda v: _count(v) and (v > 0 or not fitted), "edges.")
+        if clean["boreholes"] <= 0:
+            raise _unreadable(phrase("calibration_sets.why_counts"))
+        if (clean["glg"], clean["edge"]) in seen:
+            raise _unreadable(phrase("calibration_sets.why_twice_edge", glg=clean["glg"], edge=clean["edge"]))
+        seen.add((clean["glg"], clean["edge"]))
+        edges.append(clean)
     out["edges"] = edges
     out["weights"] = _clean_weights(_field(raw, "weights", lambda v: v is None or isinstance(v, dict)))
+    if pooled and out["weights"] is not None:
+        raise _unreadable(phrase("calibration_sets.why_pooled"))
+    out["sources"] = sources
     return out
 
 
@@ -910,7 +1249,7 @@ def set_yaml(s: dict) -> str:
     """The set as its ``calibration.yaml``: block style, the keys in the
     order the set holds them, every text quoted, so the browser writes the
     same file byte for byte and both read it back."""
-    lines = ["# A calibration set of the groundwater toolkit (PLAN.md step 5.3)."]
+    lines = ["# A calibration set of the groundwater toolkit (PLAN.md steps 5.3 and 5.5)."]
     _emit(s, 0, lines)
     return "\n".join(lines) + "\n"
 

@@ -1,6 +1,6 @@
-# Calibration sets (PLAN.md step 5.3): what the toolkit's priors, resistivity
-# edges and suitability weights are fitted to from the pooled ledgers, and who
-# adopted them. Written by calibration_sets.py and by the calibration set
+# Calibration sets (PLAN.md steps 5.3 and 5.5): what the toolkit's priors,
+# resistivity edges and suitability weights are fitted to from the pooled
+# ledgers, who adopted them, and sets of several organisations pooled. Written by calibration_sets.py and by the calibration set
 # functions of gwt-core.js. Every entry is read by its quoted id in both
 # engines, never by an id built from pieces. The template rules are in
 # src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
@@ -16,6 +16,13 @@ name_adopted: >-
 name_candidate: >-
   a calibration set fitted on {fitted_on} to {n:g}
   {n:plural:borehole|boreholes}, not adopted by anyone
+# A set pooled from other sets (PLAN.md step 5.5), named by how many.
+name_pooled_adopted: >-
+  calibration set {version:g}, pooled on {fitted_on} from {k:g}
+  {k:plural:set|sets} and adopted by {by} on {on}
+name_pooled_candidate: >-
+  a calibration set pooled on {fitted_on} from {k:g} {k:plural:set|sets},
+  not adopted by anyone
 
 # What a set in force changes besides the priors, which each point's prior
 # names: the basis of the odds prints these after the set's name.
@@ -44,12 +51,66 @@ adopt_again: >-
 # A set file that cannot be read. {why} is one of the reasons below.
 unreadable: "This is not a calibration set the toolkit can read: {why}."
 why_not_mapping: the file does not hold a calibration set
-why_format: it does not say it is a calibration set of format {expected:g}
+why_format: >-
+  it does not say it is a calibration set of a format this toolkit reads (1
+  to {expected:g})
 why_field: 'the field "{field}" is missing or holds the wrong kind of value'
 why_unadopted: >-
   its number and who adopted it disagree, and a set is numbered only when a
   named person adopts it
 why_weights: its fitted suitability weights do not add up to 1
+why_counts: >-
+  a row of it holds no borehole, or counts more successes, or expects more,
+  than it has boreholes
+why_twice_prior: it gives the prior of {code} on {glg} twice
+why_twice_edge: it gives the {edge} edge of {glg} twice
+why_pooled: >-
+  it is not whole as a pooled set: a pooled set lists the sets it pools,
+  counts no boreholes of its own, says how many sets fitted each of its
+  edges, and fits no suitability weights
+
+# Pooling sets from other organisations (PLAN.md step 5.5): the refusals.
+# {label} names a set by its file in the apps, else by its place.
+pool_label: "Set {k:g}"
+pool_too_few: >-
+  Pooling needs at least two calibration sets. A single set someone adopted
+  is put in force as it is.
+pool_file: "{label}: {reason}"
+pool_default: >-
+  {label} is the toolkit's provisional default, which holds nothing to pool.
+pool_unadopted: >-
+  {label} has not been adopted by anyone, and only a set a named person
+  adopted can be pooled.
+pool_unlicensed: >-
+  {label} declares no licence, so it cannot be pooled. A set saved before
+  PLAN.md step 5.5 declares none: fit it again and adopt it to issue it
+  under one.
+pool_other_licence: >-
+  {label} is issued under {licence}, and a pooled set is issued under
+  {ours} (ledger.set_licence). The toolkit cannot read what a licence
+  allows, so it pools only sets issued under {ours}.
+pool_no_licence: >-
+  No licence is set for the sets this toolkit issues (ledger.set_licence is
+  blank). The toolkit cannot read what a licence allows, so it pools only
+  sets issued under the licence it issues the pooled set under.
+pool_no_definition: >-
+  {label} does not say at what yield its boreholes were judged a success,
+  so its counts cannot be added to others.
+pool_definition: >-
+  {label} judged its boreholes a success at {rate:num} m3/h and {first} at
+  {first_rate:num} m3/h; sets judged at different yields count different
+  things and cannot be pooled.
+pool_same: >-
+  {label} and {other} are the same set, and pooling it twice would count
+  its boreholes twice.
+pool_chain: >-
+  {label} and {other} hold the counts of one same set (one pooled the
+  other, or both pooled a third), and pooling them would count its
+  boreholes twice.
+pool_table: >-
+  {label} fitted the prior of {ground} from another provisional rate or
+  size than this toolkit's, so its counts cannot be added to this
+  toolkit's prior.
 
 # The review of a fitted set, before anyone adopts it, against the set in
 # force: what it was fitted to and what adopting it would change.
@@ -83,6 +144,33 @@ review_adopt: >-
 review_nothing: >-
   It fits nothing yet, so there is nothing to adopt: the set in force stays
   in force until more drilled points are in the ledgers.
+review_licence: >-
+  Adopted, it is issued under {licence}, in the name of the organisation
+  typed below with the adopter's name; the organisation and the contact may
+  be left blank.
+review_no_licence: >-
+  Adopted, it declares no licence (ledger.set_licence is blank), so no
+  other organisation can pool it.
+# The review of a pooled set (PLAN.md step 5.5).
+review_title_pooled: "Calibration set pooled on {fitted_on}"
+review_lead_pooled: >-
+  It pools the {k:g} calibration sets below, judged at a yield of {rate:num}
+  m3/h. Each ground's boreholes, successes and evidence-adjusted count are
+  added up over the sets and the provisional prior counted once, so a row
+  too small to fit in one set can be fitted in the sum. Each resistivity
+  edge is the mean of the sets' fitted edges, weighted by the boreholes
+  behind each, taken on a logarithmic scale. Nothing of the projects behind
+  the sets is in them or in this one.
+review_weights_pooled: >-
+  A pooled set fits no suitability weights: they are fitted to how each
+  pair of a borehole that succeeded and one that failed ranks, which no set
+  file carries, so in force it leaves the score with the toolkit's weights
+  or the configuration's.
+review_same_organisation: >-
+  {organisation} issued {n:g} of these sets. Sets one organisation fitted
+  at different times from a growing ledger share boreholes, which no set
+  file can tell apart: pool them only if they were fitted to different
+  boreholes.
 
 # The review's tables.
 prior_caption: The prior of each ground the boreholes fall in
@@ -109,6 +197,19 @@ edge_names:
 cell_layers: "{below:g} and {above:g}"
 cell_edge: "{value:num} ohm-m, {misread:g} misread"
 cell_edge_too_few: "too few ({m:g} of {minimum:g}), or no layer on one side"
+cell_edge_value: "{value:num} ohm-m"
+cell_edge_pooled: "{value:num} ohm-m, from {sets:g} {sets:plural:set|sets}"
+cell_edge_pooled_none: fitted in none of the sets
+cell_edge_pooled_window: >-
+  not fitted: pooled, it would not stay under the top of the water-bearing
+  window
+cell_edge_pooled_clay: "not fitted: pooled, it would not stay over the clay edge"
+sources_caption: The sets it pools, and who issued each
+sources_col_organisation: Organisation
+sources_col_set: Set
+sources_col_licence: Licence
+sources_col_contact: Contact
+cell_not_named: not given
 weights_caption: The suitability score's weights
 weights_col_part: Part
 weights_col_in_force: In force
@@ -149,3 +250,25 @@ page_adopter_help: >-
   The name of the person who adopts the set: it goes in the file and in
   every report that reads it.
 page_adopt: Adopt the set and put it in force
+page_organisation: Organisation
+page_organisation_help: >-
+  The organisation that issues the set: it goes in the file, and in the
+  list of sources of any set pooled from it. It may be left blank.
+page_contact: Contact
+page_contact_help: >-
+  How another organisation can reach whoever issued the set, such as an
+  email address: it goes in the file. It may be left blank.
+page_share: >-
+  A set file can be passed to another organisation. It holds the counts and
+  resistivity edges the set was fitted to, any suitability weights it
+  fitted, its dates, who adopted it, and the organisation, contact and
+  licence it was issued under; no project, client, community, position or
+  borehole name.
+page_pool: Pool sets from other organisations
+page_pool_help: >-
+  Pool calibration.yaml files that named people at other organisations
+  adopted into one set, reviewed here beside the set in force before anyone
+  adopts it. To keep the counts of the set in force, download it and add
+  its file among them.
+page_pool_load: calibration.yaml files to pool
+page_pool_button: Pool the files

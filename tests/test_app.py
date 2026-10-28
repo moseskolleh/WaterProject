@@ -1614,6 +1614,9 @@ def test_the_portfolio_fits_a_calibration_set_for_a_named_person_to_adopt(sample
     assert not at.exception, at.exception
     held = at.session_state["calibration_set"]
     assert (held["version"], held["adopted_by"]) == (1, "A. Kamara")
+    # issued under the licence in the settings, for no organisation, since
+    # none was typed and the sidebar names none
+    assert (held["licence"], held["organisation"], held["contact"]) == ("CC BY 4.0", "", "")
     name = CS.set_name(held)
     assert phrase("calibration_sets.page_put_in_force", name=name) in [str(m.value) for m in at.success]
     shown = [str(m.value) for m in at.markdown]
@@ -1646,6 +1649,100 @@ def test_the_portfolio_fits_a_calibration_set_for_a_named_person_to_adopt(sample
     # leaves it in force
     assert not "calibration_set".startswith(PERSIST_PREFIXES)
     assert "calibration_set" not in stale_on_load({"calibration_set": held})
+
+
+def _set_file(glg: str, code: str, organisation: str, on: str, start: int = 0) -> bytes:
+    """A calibration.yaml another organisation fitted to 30 drilled points
+    of its own on one geology unit, adopted and issued under CC BY 4.0."""
+    from groundwater import calibration_sets as CS
+    from groundwater import ledger as L
+
+    log = [[0.0, 2.0, "laterite"], [2.0, 8.0, "clay"], [8.0, 22.0, "weathered"], [22.0, 50.0, "basement"]]
+    layers = [[0.0, 2.0, 900.0], [2.0, 8.0, 12.0], [8.0, 22.0, 140.0], [22.0, None, 2400.0]]
+    entries = [{"id": f"o{start + k}", "before_outcome": True, "recorded_on": "2026-03-01", "toolkit": "0.3.0",
+                "point": {"sounding_id": f"VES {k}"},
+                "prediction": {"investigation_depth_m": 60.0, "layers": layers, "suitability": None,
+                               "odds": {"probability": 0.6, "prior": 0.55, "bgs_code": code, "glg": glg}},
+                "outcome": {"total_depth_m": 50.0, "success": k % 3 != 0, "success_yield_m3_per_h": 1.0,
+                            "success_basis": "tested", "intervals": log}} for k in range(30)]
+    fitted = CS.fit_set(L.pool_ledgers([("theirs", {"entries": entries})]), on)
+    return CS.set_yaml(CS.adopt_set(fitted, "A. Kamara", on, organisation=organisation)).encode("utf-8")
+
+
+def test_the_portfolio_pools_sets_from_other_organisations_for_a_named_person_to_adopt(sample_data):
+    """PLAN.md step 5.5: set files other organisations adopted are pooled
+    into one set and reviewed beside the set in force, with no project file
+    on the page; files that cannot be pooled are refused in a sentence
+    naming the file; and nothing changes until a named person adopts the
+    pooled set, issued in the name of their organisation."""
+    from groundwater import calibration_sets as CS
+    from groundwater.text import phrase
+
+    trust = _set_file("pCm", "B-L", "Rural Water Trust", "2026-10-20")
+    kono = _set_file("Pi", "I-L", "Kono Wells", "2026-09-01", start=100)
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Portfolio"
+    at.session_state["org_name"] = "Salone Water Forum"
+    at.run()
+    assert not at.exception, at.exception
+    assert f"**{phrase('calibration_sets.page_pool')}**" in [str(m.value) for m in at.markdown]
+    assert phrase("calibration_sets.page_share") in [str(c.value) for c in at.caption]
+
+    # the same set twice, under another organisation's name, is refused by file
+    renamed = trust.replace(b'organisation: "Rural Water Trust"', b'organisation: "Someone Else"')
+    at.file_uploader(key="calibration_pool_upload").set_value(
+        [("trust.yaml", trust, "application/x-yaml"), ("copy.yaml", renamed, "application/x-yaml")])
+    at.run()
+    at.button(key="calibration_pool").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert [str(e.value) for e in at.error] == [phrase("calibration_sets.pool_same", label="copy.yaml",
+                                                       other="trust.yaml")]
+    assert "calibration_pooled" not in at.session_state
+
+    at.file_uploader(key="calibration_pool_upload").set_value(
+        [("trust.yaml", trust, "application/x-yaml"), ("kono.yaml", kono, "application/x-yaml")])
+    at.run()
+    at.button(key="calibration_pool").click()
+    at.run()
+    assert not at.exception, at.exception
+    shown = [str(m.value) for m in at.markdown]
+    assert any(text.startswith("It pools the 2 calibration sets below") for text in shown)
+    sources = next(d.value for d in at.dataframe if phrase("calibration_sets.sources_col_licence") in d.value.columns)
+    assert sorted(sources[phrase("calibration_sets.sources_col_organisation")]) == ["Kono Wells",
+                                                                                    "Rural Water Trust"]
+    # nothing is in force until a named person adopts it
+    assert "calibration_set" not in at.session_state
+    at.button(key="calibration_pool_adopt").click()
+    at.run()
+    assert [str(e.value) for e in at.error] == [phrase("calibration_sets.adopt_unnamed")]
+    assert at.text_input(key="calibration_pool_organisation").value == "Salone Water Forum"
+    at.text_input(key="calibration_pool_adopter").set_value("C. Conteh")
+    at.text_input(key="calibration_pool_contact").set_value("forum@example.org")
+    at.button(key="calibration_pool_adopt").click()
+    at.run()
+    assert not at.exception, at.exception
+    held = at.session_state["calibration_set"]
+    assert (held["version"], held["adopted_by"], held["organisation"], held["contact"]) == (
+        1, "C. Conteh", "Salone Water Forum", "forum@example.org")
+    assert sorted(s["organisation"] for s in held["sources"]) == ["Kono Wells", "Rural Water Trust"]
+    name = CS.set_name(held)
+    assert name.startswith("calibration set 1, pooled on ")
+    assert phrase("calibration_sets.page_put_in_force", name=name) in [str(m.value) for m in at.success]
+    assert "calibration_pooled" not in at.session_state
+    # a set saved before step 5.5 declares no licence, and is refused by file
+    old = CS.read_set(kono.decode("utf-8"))
+    old = {key: value for key, value in old.items() if key not in ("licence", "organisation", "contact", "sources")}
+    old.update(format_version=1, boreholes=[{"id": f"x{k}", "success": True, "forecast": True, "uses": ["prior"]}
+                                            for k in range(old["boreholes"])])
+    at.file_uploader(key="calibration_pool_upload").set_value(
+        [("trust.yaml", trust, "application/x-yaml"),
+         ("kono-old.yaml", CS.set_yaml(old).encode("utf-8"), "application/x-yaml")])
+    at.run()
+    at.button(key="calibration_pool").click()
+    at.run()
+    assert [str(e.value) for e in at.error] == [phrase("calibration_sets.pool_unlicensed", label="kono-old.yaml")]
+    assert at.session_state["calibration_set"] == held
 
 
 def test_a_set_put_in_force_reads_the_survey_on_show_again(sample_data):
