@@ -91,10 +91,30 @@ kept_nothing: >-
   No water point, drainage line or sea that this page maps lies within reach
   of the service radius.
 
+# kept_nothing where the water points were not looked up as far as their
+# rings reach (water_points_short follows it), so that it claims nothing
+# of the water points the lookup did not load.
+kept_nothing_loaded: >-
+  No water point loaded, and no drainage line or sea that this page maps,
+  lies within reach of the service radius.
+
 no_water_points: >-
   No water points were loaded when the terrain was analysed: read or fetch
   them on the Water points page and analyse the terrain again, so that the
   plan keeps clear of them.
+
+# In place of no_water_points where the water points were looked up round
+# the site, but not as far as a mapped one's ring can reach a sounding.
+# {searched} is how far round the site they were looked up, in whole
+# metres; {reach} is the service radius and the table's largest distance
+# from a water point (survey.water_point_reach).
+water_points_short: >-
+  The water points were looked up no further than {searched:g} m round the
+  site, short of the {reach:g} m within which a mapped water point's
+  separation distance can reach a sounding, so a peg may lie too near one
+  that was not loaded: look the water points up again over at least
+  {reach:g} m and analyse the terrain again, or check each peg on the
+  ground.
 
 # {structures} is unmapped_item for each row of the separation table no map
 # here records, in the table's order, joined by and_join; {structure} is the

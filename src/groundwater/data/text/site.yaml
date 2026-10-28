@@ -1,0 +1,14 @@
+# A site position, as both apps record it: an easting and a northing in UTM
+# metres. What both engines say when the two boxes hold degrees instead. Both
+# engines read this file: groundwater/geo.py and gwt-core.js. The template
+# rules are in src/groundwater/text.py; CONTRIBUTING.md says how to add an
+# entry.
+
+# {easting} and {northing} are the values as typed, {position} the latitude
+# and longitude they read as ("8.48310° N, 13.22940° W").
+degrees_in_utm_boxes: >-
+  The easting and northing hold {easting} and {northing}, which are a
+  longitude and a latitude in degrees ({position}), not UTM metres, so no
+  position is read from them. Convert them to UTM and record the result as
+  the easting and northing; until then the readiness gate, the maps and the
+  asset identifier have no position to read.

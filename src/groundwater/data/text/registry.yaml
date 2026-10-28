@@ -1,0 +1,33 @@
+# The asset registry: what both engines say about an identifier read off a
+# headworks plate, and about an event stream that goes on after a borehole
+# was decommissioned. Both engines read this file: groundwater/registry.py
+# and the asset registry section of gwt-core.js. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# An identifier whose last character is the one the toolkit minted before
+# the check character followed ISO 7064 MOD 37,36 exactly. It is still
+# read, because plates carrying it may already be fixed to headworks and a
+# stored asset must never stop opening. The cost is that a mistyped
+# identifier can match the older character (about one single mistyped
+# character in 36 does), so it is never accepted in silence: the person
+# typing it is told to compare it with the plate. {expected} is the
+# character the standard gives.
+legacy_check_character: >-
+  {asset_id} ends in the check character identifiers were given before the
+  toolkit followed ISO 7064 MOD 37,36 exactly; worked out as the standard
+  has it, it would end in {expected}. It is still read, because plates and
+  project files made before the correction carry it, but while the older
+  character is read a mistyped identifier can pass as an older one: compare
+  it with the plate character by character.
+
+# Records dated after a decommissioning that would otherwise set whether the
+# borehole works. {events} is a list of event_on, "repair on 2023-03-05 and
+# failure on 2023-04-01".
+after_decommissioning: >-
+  {n:plural:A record|Records} dated after the decommissioning ({events})
+  {n:plural:is|are} kept in the history but {n:plural:does|do} not bring the
+  borehole back into service: a decommissioned borehole returns only through
+  a new commissioning record.
+
+# One record in that list. {event} is the record's label in lower case.
+event_on: "{event} on {when}"

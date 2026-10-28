@@ -309,6 +309,52 @@ def test_the_plan_says_what_it_rests_on_what_it_kept_clear_of_and_what_to_check_
                 "the site, and without a position there is nothing to measure that from."}
 
 
+def test_a_lookup_short_of_a_rings_reach_is_said_and_one_that_reaches_is_not():
+    """A sounding inside the 500 m the site serves is kept 50 m from a
+    borehole up to 550 m from the site, but a lookup at 500 m never loads a
+    borehole 515 m off: the plan left the crossing sounding 45 m from it and
+    said every sounding was kept 50 m from the one borehole it was given.
+    Told how far the water points were looked up, it says the lookup fell
+    short and what to do; a lookup that reached 550 m, or an inventory not
+    cut to a circle, says nothing of it; a lookup that found nothing within
+    its radius is not told it loaded nothing."""
+    sx, sy = SITE
+    valley = _candidate(0, "valley", (sx + 470.0, sy - 900.0), (sx + 470.0, sy + 900.0))
+    far = _water(sx + 515.0, sy, "Borehole", "Hand Pump")
+    near = _water(sx - 300.0, sy + 300.0, "Borehole", "Hand Pump")
+    short = "The water points were looked up no further than 500 m round the site, short of the 550 m within which "
+    lin, site = _candidates([valley]), _lonlat(*SITE)
+
+    def caption(water, searched):
+        plan = survey_plan(lin, _core(), (), site, water, None, searched_m=searched)
+        crossing = next(x for x in plan.soundings if x.role == "crossing")
+        return plan, crossing, survey_plan_captions(plan, "Kakua")["plan"]
+
+    plan, crossing, text = caption([near], 500.0)
+    assert plan.searched_m == 500.0 and crossing.moved_m == 0.0
+    assert short + ("a mapped water point's separation distance can reach a sounding, so a peg may lie too near "
+                    "one that was not loaded: look the water points up again over at least 550 m and analyse the "
+                    "terrain again, or check each peg on the ground.") in text
+    plan, crossing, text = caption([near, far], 1000.0)
+    assert crossing.moved_m == pytest.approx(-5.0) and "looked up no further" not in text
+    assert "looked up no further" not in caption([near, far], 550.0)[2]
+    assert "no further than 549 m round the site, short of the 550 m" in caption([near, far], 549.9)[2]
+    # to the millimetre: a hair short of 300 m is 300 m, a hair short of 550 m is no shortfall
+    assert "no further than 300 m round the site" in caption([near], 299.99999998)[2]
+    assert "looked up no further" not in caption([near, far], 549.99999998)[2]
+    _, _, text = caption([near], None)
+    assert "looked up no further" not in text and "No water points were loaded" not in text
+    _, _, text = caption([], 750.0)
+    assert "No water points were loaded" not in text and "looked up no further" not in text
+    assert "No water point, drainage line or sea that this page maps lies within reach" in text
+    _, _, text = caption([], 250.0)
+    assert "No water point loaded, and no drainage line or sea that this page maps, lies within reach" in text
+    assert "no further than 250 m round the site" in text
+    assert "No water points were loaded when the terrain was analysed" in caption([], None)[2]
+    with pytest.raises(ValueError, match="looked up within must be 0 m or more"):
+        survey_plan(lin, _core(), (), site, [], None, searched_m=-1.0)
+
+
 @pytest.mark.parametrize(("source", "technology", "kind"), [
     ("Borehole/Tubewell", "Hand Pump - India Mark II", "borehole"),
     ("Protected Shallow Well", "", "dug_well"),
@@ -467,7 +513,7 @@ const ops = {
       cls: new U8(Buffer.from(r.cls, 'base64')) };
     let plan;
     try {
-      plan = C.surveyPlan(lineaments, core, r.parts, r.site, r.water, terrain, cfg.ves);
+      plan = C.surveyPlan(lineaments, core, r.parts, r.site, r.water, terrain, cfg.ves, undefined, r.searched);
     } catch (e) {
       return { refused: String(e && e.message) };
     }
@@ -604,8 +650,13 @@ def _case(seed: int) -> dict:
         settings["survey_move_m"] = settings["survey_flank_m"] * 0.4
     if seed == 11:
         settings = {"survey_move_m": 30.0}
+    # every third case's water points looked up round the site, about half
+    # of them short of the 550 m a borehole's ring reaches; one refused
+    searched = float(rng.uniform(0.0, 900.0)) if seed % 3 == 0 else None
+    if seed == 20:
+        searched = -5.0
     return {"rows": rows, "cols": cols, "frame": frame, "shown": shown, "site_xy": site, "items": items,
-            "water": water, "parts": parts, "cls": cls, "settings": settings}
+            "water": water, "parts": parts, "cls": cls, "settings": settings, "searched": searched}
 
 
 def _python_answer(case: dict) -> dict:
@@ -618,7 +669,7 @@ def _python_answer(case: dict) -> dict:
     water = [SimpleNamespace(**w) for w in case["water"]]
     parts = [SimpleNamespace(vertices=tuple(p)) for p in case["parts"]]
     try:
-        plan = survey_plan(lin, core, parts, site, water, cfg)
+        plan = survey_plan(lin, core, parts, site, water, cfg, searched_m=case["searched"])
     except ValueError as exc:
         return {"refused": str(exc)}
     pair = lambda p: [_hex(v) for v in p]  # noqa: E731
@@ -651,7 +702,7 @@ def _browser_answer(browser, case: dict) -> dict:
         roseValleyM=list(lin.rose_valley_m), roseRidgeM=list(lin.rose_ridge_m),
         site=[LON0 + case["site_xy"][0] / frame[0] * STEP, LAT0 + case["site_xy"][1] / frame[1] * STEP],
         water=case["water"], parts=[{"vertices": [list(v) for v in p]} for p in case["parts"]],
-        settings=case["settings"], where="Kakua", meta=META)
+        settings=case["settings"], searched=case["searched"], where="Kakua", meta=META)
 
 
 @pytest.mark.parametrize("seed", range(40))
@@ -680,10 +731,15 @@ def test_the_cases_reach_every_rule():
         seen[name] = seen.get(name, 0) + int(bool(yes))
 
     for seed in range(40):
-        answer = _python_answer(_case(seed))
+        case = _case(seed)
+        answer = _python_answer(case)
         if "refused" in answer:
             saw("refused", True)
+            saw("searched_refused", case["searched"] is not None and case["searched"] < 0)
             continue
+        saw("short", "were looked up no further than" in answer["captions"]["plan"])
+        saw("searched_far", case["searched"] is not None and answer["basis"] == "candidates"
+            and "were looked up no further than" not in answer["captions"]["plan"])
         saw(answer["basis"], True)
         saw("moved", any(x[5] != _hex(0.0) for x in answer["soundings"]))
         saw("off_line", any(d[3] == ["off_line"] for d in answer["dropped"]))
@@ -696,5 +752,5 @@ def test_the_cases_reach_every_rule():
         saw("uncovered", not answer["covered"])
     missing = [name for name in ("candidates", "strike", "none", "moved", "off_line", "rings", "borehole", "dug_well",
                                  "other", "surface", "streams", "sea", "crosses", "skipped", "shortened", "uncovered",
-                                 "refused") if not seen.get(name)]
+                                 "refused", "short", "searched_far", "searched_refused") if not seen.get(name)]
     assert not missing, (missing, seen)

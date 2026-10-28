@@ -31,7 +31,12 @@ from __future__ import annotations
 import functools
 from collections.abc import Iterable
 
-from ..geo import infer_zone_for_sierra_leone, utm_distance_m, utm_to_geographic
+from ..geo import (
+    degrees_in_utm_boxes,
+    infer_zone_for_sierra_leone,
+    utm_distance_m,
+    utm_to_geographic,
+)
 from ..models import DataFlag, SiteMetadata
 
 # Sierra Leone in geographic coordinates, generous margin
@@ -244,6 +249,14 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
         flags.append(
             DataFlag("info", "missing_coordinates", "No GPS coordinates recorded.", ctx)
         )
+        return flags
+
+    # Degrees typed into the UTM boxes: refused before they are projected,
+    # in the words the browser uses, so the gate, the maps and the asset
+    # identifier all have no position rather than three different ones.
+    degrees = degrees_in_utm_boxes(site.easting, site.northing)
+    if degrees:
+        flags.append(DataFlag("error", "coordinates_in_degrees", degrees, ctx))
         return flags
 
     zone = site.utm_zone

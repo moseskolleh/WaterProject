@@ -10,7 +10,7 @@ statistics. Pure and map-library-free, so it is unit-testable.
 from __future__ import annotations
 
 import math
-from .geo import infer_zone_for_sierra_leone, utm_to_geographic
+from .geo import infer_zone_for_sierra_leone, utm_boxes_hold_degrees, utm_to_geographic
 from .quality.assess import VERDICT_LONG, VERDICT_ORDER, VERDICT_SHORT
 from .site_status import (
     STATUS_COLORS,
@@ -32,6 +32,7 @@ __all__ = [
     "site_detail",
     "site_label",
     "site_one_pager",
+    "summary_holds_degrees",
     "verdict_state",
 ]
 
@@ -116,10 +117,26 @@ def _num(value):
     return number if math.isfinite(number) else None
 
 
+def summary_holds_degrees(summary: dict) -> bool:
+    """Whether a summary's easting and northing are a longitude and a
+    latitude typed into the UTM boxes, by the rule the site page reads them
+    by (:func:`~groundwater.geo.utm_boxes_hold_degrees`)."""
+    easting = _num(summary.get("easting"))
+    northing = _num(summary.get("northing"))
+    return bool(easting and northing) and utm_boxes_hold_degrees(easting, northing)
+
+
 def _latlon(summary: dict):
     easting = _num(summary.get("easting"))
     northing = _num(summary.get("northing"))
     if not easting or not northing:
+        return None
+    # Degrees are no position in metres, as SiteMetadata.utm reads them: a
+    # project file saved with "-13.2317" and "8.4657" in the two boxes was
+    # read as metres and put on the equator, 940 km off, so the desk study
+    # left it out of the projects near its site without a word and the
+    # portfolio map drew it in the Gulf of Guinea.
+    if utm_boxes_hold_degrees(easting, northing):
         return None
     # same fallback as SiteMetadata.utm: a hard-coded zone dropped every
     # zone-less project 6 degrees off, into the Atlantic and off the map

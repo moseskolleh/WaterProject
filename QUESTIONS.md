@@ -179,3 +179,64 @@ need real project inputs or decisions to finish calibrating it.
    zone whose two rounded ends meet (exactly 1 m on two half metres,
    such as 3.5 to 4.5 m) ends 1 m below its rounded top, "4 m to 5 m",
    rather than being widened at both ends.
+
+15. **Identifiers minted with the old check character (added when the
+   check character was corrected to ISO 7064 MOD 37,36).** Until this
+   change the asset identifier's last character was worked out with the
+   running sum reduced modulo 37 instead of 36, so it did not follow the
+   standard and let about one single mistyped character in 680 through.
+   New identifiers are minted with the standard's character. An
+   identifier minted before is still read as itself, in both apps and
+   from saved project files, and is never renamed or refused, because
+   plates carrying it may already be fixed to headworks and a history is
+   filed under it; looking it up says it carries the older character
+   and what the standard's would be. Two costs follow. While both are
+   accepted, about one single mistyped character in 36 of any identifier
+   matches the older character and is accepted with that note instead
+   of refused. And a project with no saved asset record mints its
+   identifier afresh, now with the standard's character, so a plate
+   printed from it before this change carries a different last
+   character from what the apps show (the district and position code are
+   the same). PLAN.md step 7.1's SMS reports have nobody to read the
+   note, so the plan holds a report naming an identifier that checks only
+   against the older character for a person to confirm. Decide: whether
+   any plates were made with the old character; if none were, whether to
+   stop accepting it; if some were, whether to re-mark them (a new plate
+   carries the same position code and a new last character, and the
+   history would need to move to it) and when to stop accepting the old
+   character.
+
+16. **Choices made in the drilling log reader, the supervision record and
+   the registry (added with the same fixes).** Each is stated where it is
+   applied and wants confirming: a depth with no unit of its own is read
+   in its column header's unit, else in feet when every unit the sheet
+   names for a depth or a penetration rate is feet, and refused when the
+   sheet names both (so a metric log with one strike note in feet, or a
+   rate column in minutes per foot, has its unlabelled total depth
+   refused); depths converted from feet are kept to the centimetre; a
+   strike refused as deeper than the hole keeps the drilling log from
+   being called complete but is not a reading without a unit; a
+   supervision record is held back while any critical item has no
+   answer, in every stage, so a record issued at the end of one stage is
+   provisional until the last is answered (whether a stage's record
+   should be judged on its own stage alone is the owner's call); on one
+   day a borehole's records are read commissioned, visits, failure,
+   repair or return to service, then decommissioned; and a decommissioned
+   borehole returns to service only through a new commissioning record,
+   not through a repair or a "returned to service" logged after it.
+
+17. **Choices made in the desk study, the survey plan, the water point
+   reader and the planning view (added with the fixes to them).** Each
+   is stated where it is applied and wants confirming: an earlier
+   project whose easting and northing hold a longitude and a latitude is
+   no position in the portfolio and the desk study, which names it and
+   asks for it to be converted, rather than being placed by reading the
+   pair as degrees (neither app reads a position from such a pair on the
+   project's own pages); a survey plan whose water points were looked up
+   over less than the service radius and the largest separation distance
+   from a water point (550 m) says so and asks for another lookup, rather
+   than fetching more points itself; a fractional install year is read
+   as its whole part (2009.6 as 2009) and 0 or less as unrecorded; and a
+   survey dated after the year planned for is left out of the age and the
+   recent count for that year, rather than the plan year being refused
+   when it is earlier than the inventory's survey dates.

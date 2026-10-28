@@ -13,7 +13,7 @@ import numpy as np
 import streamlit as st
 
 from groundwater.desk_study import desk_study_terrain
-from groundwater.geo import infer_zone_for_sierra_leone
+from groundwater.geo import geodesic_distance_m, infer_zone_for_sierra_leone
 from groundwater.mapping import (
     apparent_resistivity_pseudosection,
     aquifer_thickness_map,
@@ -183,8 +183,22 @@ def _plan_table(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _water_points_searched(wp: dict | None, site) -> float | None:
+    """How far round the site the water points the page holds were looked
+    up, for the survey plan: the lookup's radius, less how far the site now
+    lies from where the lookup was centred, or None with none held."""
+    if not wp:
+        return None
+    radius = float((wp.get("decision") or {}).get("search_radius_m") or DEFAULT_SEARCH_RADIUS_M)
+    centre = wp.get("centre")
+    if centre is None or site.latlon is None:
+        return radius
+    moved = geodesic_distance_m(centre[0], centre[1], site.latlon[0], site.latlon[1])
+    return max(0.0, radius - moved)
+
+
 def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, declared, heard,
-                     water_points=()) -> dict:
+                     water_points=(), searched_m: float | None = None) -> dict:
     """Read the window, analyse it, find its lineament candidates and lay
     the survey plan across them, draw the four terrain figures, the two of
     the candidates and the plan's, and write the drainage lines and the
@@ -230,7 +244,7 @@ def _analyse_terrain(tiles, grids, site, radius_km: float, area_km2: float, decl
     if site.latlon is not None:
         lat, lon = site.latlon
         plan = survey_plan(lineaments, analysis.core, analysis.parts, (lon, lat), water_points, cfg,
-                           app_config().ves)
+                           app_config().ves, searched_m=searched_m)
     meta = geojson_meta(analysis, read, centre)
     notes = list(read.notes) if read is not None else _grid_notes(Path(grids[0].name).name, analysis, centre, meta)
     captions = {**terrain_captions(analysis, read, centre.label), **lineament_captions(lineaments, centre.label)}
@@ -602,10 +616,12 @@ def render() -> None:
                     return progress
 
                 try:
+                    _held = st.session_state.get("wp_result")
                     _result = _analyse_terrain(
                         _tiles, _grids, site, float(_terrain_radius),
                         float(_terrain_area), _declared, _heard,
-                        (st.session_state.get("wp_result") or {}).get("points") or ())
+                        (_held or {}).get("points") or (),
+                        _water_points_searched(_held, site))
                 except ValueError as exc:
                     _failed = str(exc)
                     _status.update(state="error")

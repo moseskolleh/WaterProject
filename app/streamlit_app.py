@@ -46,6 +46,7 @@ import streamlit as st
 
 import groundwater
 from groundwater.geo import (
+    degrees_in_utm_boxes,
     infer_zone_for_sierra_leone,
     parse_utm_zone,
     utm_to_geographic,
@@ -63,6 +64,7 @@ from shared import (
     DEFAULT_PAGE,
     IN_BROWSER,
     NAV_GROUPS,
+    _apply_degree_boxes,
     _apply_latlon,
     _group_key,
     _load_project,
@@ -566,7 +568,10 @@ with st.sidebar:
     detected_latlon = None
     _e = st.session_state.get("meta_easting", 0.0)
     _n = st.session_state.get("meta_northing", 0.0)
-    if _e and _n:
+    # degrees in the two boxes are no position until the operator converts
+    # them, below; projected as metres they are a point near the equator
+    _degrees = degrees_in_utm_boxes(_e, _n) if _e and _n else ""
+    if _e and _n and not _degrees:
         # A zone the state cannot be read for is inferred from the easting,
         # as SiteMetadata.utm infers it, rather than read as 29N: the same
         # easting in the other zone is a site 660 km away, in Guinea.
@@ -666,6 +671,10 @@ with st.sidebar:
                            key="meta_easting", format="%.0f")
         col_n.number_input("GPS North (UTM m)", min_value=0.0, step=100.0,
                            key="meta_northing", format="%.0f")
+        if _degrees:
+            st.warning(_degrees)
+            st.button("Convert these degrees to UTM", on_click=_apply_degree_boxes,
+                      key="convert_degree_boxes", width="stretch")
         # A loaded project may carry meta_zone as a bare int/str (e.g. 29) or
         # with the label the sheet used ("Zone 28"): read the number that
         # follows the label and coerce it to the "NN N" option, so the

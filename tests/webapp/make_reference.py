@@ -307,7 +307,55 @@ DRILLING_CASES = [
                     ["60 -", "", "", 0.4, "Granite", 6.5, None]]),
     # a grout written as the range it covers
     _sheet(_TABLE, _ROWS, grout="0-20"),
+    # A log in feet: the headers, the cells, the total depth, a strike cell, a
+    # strike note and rates per foot all say so, and are converted.
+    [["Total depth (ft):", "150 ft"],
+     ["Depth interval (ft)", "Sample / lithology description",
+      "Penetration rate (min/ft)", "Water strike depth (ft)"],
+     ["0-20 ft", "Laterite", "2", ""],
+     ["20-60 ft", "Weathered granite", "4 min/ft", "45 ft"],
+     ["60-150 ft", "Fresh granite", "1.5 ft/min", ""],
+     ["Water strike at 90 ft", "", "", ""]],
+    # every unit the sheet names is feet, so a bare depth is feet too; the
+    # grout and the screens in feet, the screens with their unit on each
+    [["Grouting depth:", "0-20 ft"], ["Screens installed:", "80 ft - 110 ft; 120-130 ft"],
+     ["Depth interval", "Lithology description", "Penetration rate"],
+     ["0-10", "Laterite", "1.5 ft/min"], ["10-140", "Granite", "4 min/ft"],
+     ["Water strike at 30", "", ""], ["Water strike at 95'", "", ""]],
+    # a header naming both units, and a sheet giving depths in both: a bare
+    # depth there is refused, never read as metres
+    [["Depth interval (m/ft)", "Lithology description"],
+     ["0-10", "Laterite"], ["10-40 ft", "Granite"], ["40 ft-50 m", "Granite"]],
+    [["Total depth:", "150"], ["Grouting depth:", "6"],
+     ["Depth interval", "Lithology description", "Water strike"],
+     ["0-20 ft", "Laterite", ""], ["20-45 m", "Granite", "12"],
+     ["Water strike at 14", "", ""]],
+    # a template sheet with one strike typed in feet
+    _sheet(_TABLE, [["0-10", "", "", 1, "Topsoil", 6.5, None],
+                    ["10-30", "", "", 0.5, "Weathered granite", 6.5, "45 ft"],
+                    ["30-60", "", "", 0.4, "Granite, fractured", 6.5, "18"]]),
+    # decimal commas in the interval column, and a lens inside a longer row
+    _sheet(_TABLE, [["0-12,5", "", "", 1, "Topsoil", 6.5, None],
+                    ["12,5-30", "", "", 0.5, "Weathered granite", 6.5, None],
+                    ["30-60", "", "", 0.4, "Granite", 6.5, None]]),
+    _sheet(_TABLE, [["0-30", "", "", 1, "Weathered granite", 6.5, None],
+                    ["5-10", "", "", 1, "Clay lens", 6.5, None],
+                    ["30-45", "", "", 0.4, "Granite", 6.5, None],
+                    ["50-60", "", "", 0.4, "Granite", 6.5, None]]),
+    [["Depth interval", "Lithology description"],
+     ["0-12", "Laterite and saprolite"], ["12-45", "Granite, fractured at 30-32"],
+     ["30-32", "Fracture zone, water"]],
 ]
+
+
+# The two logs the readiness cases add: one in feet, and one whose rows and
+# strikes the reader had to set aside. parity.mjs reads them from the
+# reference, so both engines read the same cells.
+GATE_FEET_LOG = DRILLING_CASES[6]
+GATE_SET_ASIDE_LOG = _sheet(_TABLE, [
+    ["0-10", "", "", 1, "Topsoil", 6.5, "75 m"],
+    ["10 -", "", "", 0.5, "Weathered granite", 6.5, None],
+    ["20-60", "", "", 0.4, "Granite, fractured", 6.5, "1/2 m"]])
 
 
 def drilling_case(grid) -> dict:
@@ -318,6 +366,8 @@ def drilling_case(grid) -> dict:
         "grid": grid,
         "strikes": clean(log.water_strikes_m),
         "grout": clean(log.grouting_depth_m),
+        "total": clean(log.total_depth_m),
+        "screens": [[clean(a), clean(b)] for a, b in log.installed_screens_m],
         "intervals": [[clean(iv.top_m), clean(iv.bottom_m), iv.description,
                        clean(iv.penetration_rate_m_per_min), clean(iv.bit_diameter_in)]
                       for iv in log.intervals],
@@ -2187,6 +2237,7 @@ def build() -> dict:
     ]
 
     # The certification gate, over a project missing one thing at a time.
+    from groundwater.ingestion.drilling import drilling_from_grid as _drilling_from_grid
     from groundwater.readiness import assess_readiness
 
     _log = read_drilling_workbook(DATA / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
@@ -2253,6 +2304,17 @@ def build() -> dict:
             "wq": {"sample": "dr_timbo/dr_timbo_water_quality.xlsx"},
         }), {"field_data": {"reason": "published as a worked example",
                             "by": "M. K."}}),
+        # A log in feet, converted: met, with the conversion stated beside
+        # the gate. A log the reader set part of aside: not complete, and no
+        # longer "every reading carried a unit". Degrees in the UTM boxes:
+        # no position.
+        "feet_log": (dict(_full, drilling_log=_drilling_from_grid(
+            GATE_FEET_LOG, "case.xlsx")), {}),
+        "log_set_aside": (dict(_full, drilling_log=_drilling_from_grid(
+            GATE_SET_ASIDE_LOG, "case.xlsx")), {}),
+        "degree_site": (dict(_full, site=SiteMetadata(
+            community="Dr. Timbo's", district="Western Area Rural",
+            easting=-13.2294, northing=8.4831)), {}),
     }
     out["readiness"] = {}
     for _name, (_state, _over) in _gate_cases.items():
@@ -2356,8 +2418,42 @@ def build() -> dict:
         for t in (_timbo_id, _timbo_id.lower(), _timbo_id.replace("0", "O"),
                   _timbo_id.replace("1", "L"), " " + _timbo_id + " ",
                   _timbo_id[:-1] + "Z", _timbo_id.replace("-", ""),
-                  "SL-WAR-XXXXXXX-9", "not an identifier", "")
+                  "SL-WAR-XXXXXXX-9", "not an identifier", "",
+                  # minted before the check character followed ISO 7064, and
+                  # a mistyping of one that the legacy character lets through
+                  "SL-WAR-8FEEVKQ-T", "sl-war-8feevkq-t", "SL-BO-C4817SW-1",
+                  "SL-BO-P4817SW-1", "SL-PL-8HE2QWG-3", "SL-PL-8HE2QWG-G")
     ]
+    # the check character itself, on the standard's examples and on bodies
+    # the legacy calculation gives another character for
+    out["check_characters"] = [
+        {"body": b, "iso": _registry.check_character(b),
+         "legacy": _registry.legacy_check_character(b),
+         "is_legacy": _registry.is_legacy_asset_id(
+             f"{b}-{_registry.legacy_check_character(b)}")}
+        for b in ("00000000D07A0090", "00000000D07A009000000000",
+                  "188166C7342065419F3A0245", "A12425GABC1234002",
+                  "SL-WAR-8FEEVKQ", "SL-BO-C4817SW", "SL-PL-8HE2QWG",
+                  "SL-KAI-KDH2TCG", "SL-XX-00000ZZ")
+    ]
+    # Degrees typed into the UTM boxes: the same refusal from the identifier
+    # and the gate, and no position, in both engines.
+    from groundwater.geo import degrees_in_utm_boxes as _degrees
+
+    _degree_sites = [(-13.2294, 8.4831), (13.2294, 8.4831), (20.5, 5.25),
+                     (-180.0, 90.0), (0.0, 0.0), (694912.0, 938150.0), (181.0, 8.0)]
+    out["degree_boxes"] = []
+    for _e, _n in _degree_sites:
+        _site = SiteMetadata(district="Western Area Rural", easting=_e, northing=_n)
+        try:
+            _minted = _registry.mint_asset_id(_site)
+        except ValueError as _refused:
+            _minted = "refused: " + str(_refused)
+        _gate = assess_readiness({"site": _site, "sources": {}}, "placard")
+        out["degree_boxes"].append({
+            "easting": _e, "northing": _n, "note": _degrees(_e, _n), "minted": _minted,
+            "site_located": [[r.state, r.detail] for r in _gate.requirements
+                             if r.key == "site_located"][0]})
     _streams = [
         [{"when": "2020-01-10", "kind": "commissioned", "by": "M. Kolleh"},
          {"when": "2023-04-02", "kind": "failure", "note": "rising main parted"}],
@@ -2380,6 +2476,31 @@ def build() -> dict:
         "decommissioned": _streams[0][:1] + [{"when": "2022-08-01",
                                               "kind": "decommissioned"}],
         "merged": _streams[0] + _streams[1],
+        # broken in January and reported again in May: out since January
+        "rebroken": _streams[0][:1] + [
+            {"when": "2024-01-10", "kind": "failure", "by": "M. Kolleh"},
+            {"when": "2024-05-20", "kind": "failure", "note": "still broken"}],
+        # the same visit records the failure and the decommissioning, or a
+        # pump pulled for reuse on the decommissioning day
+        "collapsed": _streams[0][:1] + [
+            {"when": "2023-03-01", "kind": "decommissioned", "note": "backfilled"},
+            {"when": "2023-03-01", "kind": "failure", "note": "hole collapsed"}],
+        "pulled": _streams[0][:1] + [
+            {"when": "2023-03-01", "kind": "repair", "note": "pump pulled for reuse"},
+            {"when": "2023-03-01", "kind": "decommissioned", "note": "dry"}],
+        # records after a decommissioning, and a new commissioning
+        "after_decommissioning": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned"},
+            {"when": "2023-01-05", "kind": "repair", "note": "new seals"},
+            {"when": "2023-02-01", "kind": "restored"}],
+        "recommissioned": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned"},
+            {"when": "2023-01-05", "kind": "repair"},
+            {"when": "2023-06-01", "kind": "commissioned", "by": "A. Bangura"}],
+        # a second decommissioning record, which explains nothing away
+        "decommissioned_twice": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned", "note": "collapsed"},
+            {"when": "2023-01-05", "kind": "decommissioned", "note": "backfilled"}],
     }
     _today = _date(2024, 6, 1)
     _assets = {}
@@ -2450,6 +2571,15 @@ def build() -> dict:
                      ("2019", "6 months"), ("", ""), ("not a date", "seasonal"),
                      ("1899-01-01", "14"), ("survey 2024 round 2", "no"))
     ]
+    from groundwater.waterpoints import parse_wpdx_records as _parse_wpdx
+
+    _skipped: list = []
+    _read = _parse_wpdx(WPDX_READER_ROWS, _skipped)
+    out["wpdx_reader_rows"] = WPDX_READER_ROWS
+    out["wpdx_reader"] = {
+        "points": [[p.row_id, p.lat, p.lon, p.install_year] for p in _read],
+        "flags": [[f.level, f.code, f.message] for f in _skipped],
+    }
     out["growth_rate"] = _planning.intercensal_growth_rate()
     _planning_population = {
         "Bo": 575478.0, "Kono": 506100.0, "Pujehun": 346461.0,
@@ -2468,6 +2598,7 @@ def build() -> dict:
         ("today", 2026, None, None),
         ("slow", 2026, 0.015, None),
         ("districts", 2026, None, {"Western Area Urban": 0.06, "Pujehun": 0.01}),
+        ("before the surveys", 2018, None, None),
     ):
         _rows, _proj = _planning.planning_rows(
             _planning_population, _planning_points,
@@ -2596,6 +2727,7 @@ def build() -> dict:
     out["survey_figures"] = survey_figures_reference(rokel_interps)
     out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
     out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
+    out["gate_logs"] = {"feet": GATE_FEET_LOG, "set_aside": GATE_SET_ASIDE_LOG}
     out["photo_evidence"] = photo_evidence_reference()
     out["field_kit"] = field_kit_reference()
     out["airlift"] = airlift_reference()
@@ -3721,6 +3853,33 @@ def lineament_reference() -> dict:
     }
 
 
+#: WPdx+ rows both readers read alike: positions no map holds ("nan",
+#: "inf", past 90 or 180, UTM metres in the degree columns, a cell of
+#: spaces, numbers one language reads and the other does not), and install
+#: years written as 0, as a fraction, as installation_year and as text.
+WPDX_READER_ROWS = [
+    {"row_id": "ok", "lat_deg": "8.5", "lon_deg": "-11.5", "install_year": "2012"},
+    {"row_id": "nan", "lat_deg": "nan", "lon_deg": "nan"},
+    {"row_id": "inf", "lat_deg": "8.5", "lon_deg": "inf"},
+    {"row_id": "Infinity", "lat_deg": "Infinity", "lon_deg": "-11.5"},
+    {"row_id": "range", "lat_deg": "95", "lon_deg": "200"},
+    {"row_id": "utm", "lat_deg": "936224.6", "lon_deg": "694667.5"},
+    {"row_id": "spaces", "lat_deg": "  ", "lon_deg": "-11.5"},
+    {"row_id": "underscore", "lat_deg": "8.5", "lon_deg": "-11_5"},
+    {"row_id": "hex", "lat_deg": "0x8", "lon_deg": "-11.5"},
+    {"row_id": "true", "lat_deg": True, "lon_deg": -11.5},
+    {"row_id": "edge", "lat_deg": 90, "lon_deg": -180},
+    {"row_id": "padded", "lat_deg": " 8.25\t", "lon_deg": "-11.5e0", "install_year": "0"},
+    {"row_id": "fraction", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "2009.6"},
+    {"row_id": "installation", "lat_deg": 8.3, "lon_deg": -11.6, "installation_year": "2011"},
+    {"row_id": "blank", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "", "installation_year": 2003},
+    {"row_id": "negative", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "-4"},
+    {"row_id": "text", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "unknown"},
+    {"row_id": "number", "lat_deg": "+.5", "lon_deg": "-11.", "install_year": 1998},
+    "not a record",
+]
+
+
 # ------------------------------------------------ survey plan (PLAN.md step 4.3)
 
 #: Plans laid on L1's window (LINEAMENT_GENERATED, analysed as the
@@ -3735,7 +3894,11 @@ def lineament_reference() -> dict:
 #: and surface water 45 m before it; at P3 the service radius shortens a
 #: line; P4 has no candidate within 500 m; P5 changes every setting and asks
 #: for a depth past the field schedule's longest spacing; and P6 is at the
-#: square's edge.
+#: square's edge. "searched" is how far round the site the water points
+#: were looked up (survey_plan's searched_m), None where it is not given:
+#: P7 is P2 with its water points looked up only 300 m round the site,
+#: short of the 550 m a borehole's ring reaches, and P8 a lookup over
+#: 1,000 m that found none.
 PLAN_CASES = [
     {"case": "P1: in the middle of the window, with a spring and a tap", "at": [80.0, 80.0],
      "water": [[84.0, 77.0, "Protected Spring", ""], [79.0, 86.5, "Piped Water", "Tap stand"]], "settings": {}},
@@ -3749,6 +3912,12 @@ PLAN_CASES = [
      "settings": {"survey_lines": 3, "survey_line_m": 600.0, "survey_station_m": 25.0, "survey_flank_m": 80.0,
                   "survey_move_m": 30.0, "survey_cross_within_deg": 30.0, "survey_target_depth_m": 300.0}},
     {"case": "P6: at the edge of the square shown", "at": [20.0, 140.0], "water": [], "settings": {}},
+    {"case": "P7: P2's water points looked up short of a borehole's reach", "at": [49.0, 42.0],
+     "water": [[52.12, 40.87, "Borehole", "Hand Pump - India Mark II"], [40.465, 37.894, "Protected Shallow Well", ""],
+               [38.648, 38.308, "Surface Water (River/Stream/Lake/Pond/Dam)", ""]], "settings": {},
+     "searched": 300.0},
+    {"case": "P8: a lookup over 1,000 m that found no water point", "at": [80.0, 80.0], "water": [], "settings": {},
+     "searched": 1000.0},
 ]
 
 #: Settings both engines refuse in the same words.
@@ -3772,7 +3941,7 @@ def _sp_answer(a, lin, spec: dict, kase: dict) -> tuple[dict, str | None, str | 
     water = [SimpleNamespace(lon=at(w)[0], lat=at(w)[1], source=w[2], technology=w[3]) for w in kase["water"]]
     cfg = dataclasses.replace(lin.settings, **kase["settings"])
     try:
-        plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water, cfg)
+        plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water, cfg, searched_m=kase.get("searched"))
     except ValueError as refused:
         return {"refused": str(refused)}, None, None
 
@@ -3827,7 +3996,7 @@ def _desk_terrain(a, lin, spec: dict, kase: dict) -> dict:
 
     water = [SimpleNamespace(lon=at(w)[0], lat=at(w)[1], source=w[2], technology=w[3]) for w in kase["water"]]
     plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water,
-                       dataclasses.replace(lin.settings, **kase["settings"]))
+                       dataclasses.replace(lin.settings, **kase["settings"]), searched_m=kase.get("searched"))
     captions = {**lineament_captions(lin, PLAN_META["where"]), **survey_plan_captions(plan, PLAN_META["where"])}
     return desk_study_terrain(lin, plan, a.core.lons, a.core.lats, captions, PLAN_META["label"])
 
@@ -3849,6 +4018,9 @@ def survey_plan_reference() -> dict:
     refused = [{"settings": settings,
                 "refused": _sp_answer(a, lin, spec, dict(PLAN_CASES[0], settings=settings))[0]["refused"]}
                for settings in PLAN_REFUSED]
+    # a lookup radius below 0, refused in the same words
+    refused.append({"settings": {}, "searched": -1.0,
+                    "refused": _sp_answer(a, lin, spec, dict(PLAN_CASES[0], searched=-1.0))[0]["refused"]})
     return {"meta": PLAN_META, "cases": cases, "refused": refused}
 
 
@@ -3911,7 +4083,10 @@ def _portfolio(lat: float, lon: float) -> list[dict]:
 #: is on the Freetown Complex with nothing near; D3 has no position; D4 to
 #: D6 keep L1's plans, D4 with more water points than are listed and D6
 #: with the site moved off the plan; D7 is on the Bullom Group and D8 on
-#: surface water, where the placeholder prior applies.
+#: surface water, where the placeholder prior applies. D9 has an earlier
+#: project with a longitude and a latitude in its UTM boxes, beside the
+#: site, and water points whose install year is 0, 2009.6 and an
+#: installation_year.
 DESK_CASES = [
     {"case": "D1: inland, with water points and earlier projects", "site": {"community": "Rokel",
      "chiefdom": "Maforki", "district": "Port Loko"}, "where": "Rokel", "latlon": [8.6, -11.9],
@@ -3932,6 +4107,21 @@ DESK_CASES = [
      "plan": None},
     {"case": "D8: surface water", "site": {"community": "T"}, "where": "T", "latlon": [7.3, -11.8], "water": [],
      "radius": 1000.0, "portfolio": [], "plan": None},
+    {"case": "D9: degrees in an earlier project's boxes, and install years written three ways",
+     "site": {"community": "Rokel II", "district": "Western Area Rural"}, "where": "Rokel II",
+     "latlon": [8.466, -13.232],
+     "water": [{"row_id": "y0", "lat_deg": "8.4663", "lon_deg": "-13.232", "status_clean": "Functional",
+                "water_source_clean": "Borehole", "install_year": "0"},
+               {"row_id": "y1", "lat_deg": "8.4673", "lon_deg": "-13.232", "status_clean": "Functional",
+                "water_source_clean": "Borehole", "install_year": "2009.6"},
+               {"row_id": "y2", "lat_deg": "8.4683", "lon_deg": "-13.232", "status_clean": "Non-Functional",
+                "water_source_clean": "Borehole", "installation_year": "2011"},
+               {"row_id": "y3", "lat_deg": "nan", "lon_deg": "-13.232", "status_clean": "Functional"}],
+     "radius": 1000.0,
+     "portfolio": [{"community": "Rokel", "district": "Western Area Rural", "easting": -13.2317,
+                    "northing": 8.4657, "status": "Completed - successful", "total_depth_m": 48},
+                   {"community": "Kissy", "easting": "13.2", "northing": "8.47"},
+                   {"community": "Nowhere", "status": "dry"}], "plan": None},
 ]
 
 
@@ -5290,6 +5480,23 @@ def photo_evidence_reference() -> dict:
             "des-backfill-placed-6": {"status": "na"},
             "dev-borehole-disinfected-chlorine": {"status": "na"}}}},
     }
+    # Every critical item needs an answer: answered in both apps' shapes
+    # (the browser's {status}, the Streamlit app's bare code), a No is an
+    # answer, and a code that is none of the four is pending.
+    from groundwater.supervision import load_checklists as _load_checklists
+
+    _critical = [i.item_id for i in _load_checklists() if i.critical]
+    _photographed = {key: photo for key in ("des-casing-screen-assemblage",
+                                            "des-backfill-placed-6",
+                                            "dev-borehole-disinfected-chlorine")}
+    gate["answered"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: ({"status": "yes"} if n % 2 else "Yes ") for n, key in enumerate(_critical)}}}
+    gate["failed"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: {"status": "no", "remark": "not done"} for key in _critical}}}
+    gate["garbled"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: ("maybe" if n < 3 else "na") for n, key in enumerate(_critical)}}}
+    gate["three_of_38"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: {"status": "yes"} for key in _photographed}}}
     return {
         "attached_at": attached,
         "cases": cases,

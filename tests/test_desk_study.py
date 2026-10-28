@@ -213,6 +213,19 @@ def test_more_water_points_than_are_listed_are_counted():
                                                radius=1000.0)
 
 
+def test_the_installed_column_reads_one_rule_in_both_engines():
+    """The column printed a 0, which WPDx writes where the year was never
+    recorded, as the year a borehole was installed; took 2009.6 as 2009
+    where the browser took it as 2010; and left out a year the export
+    holds as installation_year, which the browser read."""
+    lat, lon = INLAND
+    rows = [_point(lat + 0.0003, lon, year="0", row="a"), _point(lat + 0.0013, lon, year="2009.6", row="b"),
+            dict(_point(lat + 0.0023, lon, row="c"), installation_year="2011")]
+    section = _section(desk_study_content(SITE, "Rokel", INLAND, water_points=parse_wpdx_records(rows)),
+                       "water_points")
+    assert [r[3] for r in section["tables"][0]["rows"]] == ["", "2009", "2011"]
+
+
 def test_water_points_not_loaded_and_none_found_are_told_apart():
     content = desk_study_content(SITE, "Rokel", INLAND)
     assert _section(content, "water_points")["paragraphs"] == [phrase("desk_study.water_not_loaded")]
@@ -243,6 +256,30 @@ def test_earlier_projects_within_5_km_nearest_first():
     # a depth typed as text is read; a verdict from an older file is marked
     assert rows[0][3] == "62.0" and rows[0][5].endswith("*")
     assert rows[1][3:5] == ["48.5", "1.80"]
+
+
+def test_an_earlier_project_with_degrees_in_its_boxes_is_named_not_dropped():
+    """A project file saved with a longitude and a latitude in the easting
+    and northing boxes was read as UTM metres and put on the equator,
+    940 km off, so it was neither listed nor counted as having no position:
+    the desk study said no earlier project lay near a site that one stood
+    beside. It is now read as the site page reads such a pair, as no
+    position, and named with what to do."""
+    lat, lon = FREETOWN
+    portfolio = [{"community": "Rokel", "district": "Western Area Rural", "easting": lon, "northing": lat,
+                  "status": "Completed - successful", "total_depth_m": 48},
+                 {"community": "Kissy", "easting": "13.2", "northing": "8.47", "utm_zone": 28},
+                 {"community": "Nowhere", "status": "dry"},
+                 _summary(lat + 0.009, lon, community="Wellington", status="dry")]
+    section = _section(desk_study_content(SITE, "Rokel", FREETOWN, portfolio=portfolio), "projects")
+    assert section["paragraphs"] == [
+        phrase("desk_study.projects_found", count=1, km=5.0, drilled=1, successful=0),
+        phrase("desk_study.projects_degrees", count=2, names="Rokel (Western Area Rural) and Kissy"),
+        phrase("desk_study.projects_unplaced", count=1)]
+    assert section["paragraphs"][1].startswith(
+        "Rokel (Western Area Rural) and Kissy hold a longitude and a latitude in degrees where the easting and "
+        "northing go, which neither app reads as a position, so they are left out")
+    assert [r[0] for r in section["tables"][0]["rows"]] == ["Wellington"]
 
 
 def test_no_portfolio_and_no_project_near_are_told_apart():
@@ -454,6 +491,13 @@ def _case(seed: int) -> dict:
                 if rng.random() < 0.2:
                     summary["utm_zone"] = None
                 portfolio.append(summary)
+        if seed % 5 == 1:
+            portfolio.append({"community": "Kpetema", "easting": latlon[1] + 0.001, "northing": latlon[0],
+                              "status": "dry"})
+    if water is not None and seed % 4 == 2:
+        water += [dict(_point(latlon[0] + 0.0004, latlon[1], row="y0"), install_year="0"),
+                  dict(_point(latlon[0] + 0.0008, latlon[1], row="y1"), install_year="2009.6"),
+                  dict(_point(latlon[0] + 0.0012, latlon[1], row="y2"), installation_year="2011")]
     return {"site": {"community": ["Rokel", "", "Kamaranka"][seed % 3], "chiefdom": ["Maforki", ""][seed % 2],
                      "district": ["Port Loko", "", "Bo"][seed % 3]},
             # now and then no name at all, which is an unnamed site
@@ -493,6 +537,7 @@ def test_the_seeded_cases_reach_every_rule():
                    "further away than the last listed", "carries no position", "carry no position",
                    "of them come within", "None of them comes within", "proposes no sounding",
                    "no profiling line could be laid", "was analysed over the square",
+                   "Kpetema holds a longitude and a latitude in degrees", '"2009"]',
                    "and no lineament candidate was found", "drilled,", "Bullom Group", "Precambrian basement"]:
         assert marker in told, marker
 

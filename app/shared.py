@@ -838,6 +838,21 @@ def report_gate(report: str, scope: str = "", decided: dict | None = None):
     return readiness
 
 
+def _apply_degree_boxes() -> None:
+    """Convert degrees typed into the UTM boxes into UTM (a button callback).
+
+    Pressed only by the operator: degrees in the two boxes are refused by
+    the gate, the maps and the asset identifier in both apps, and this is
+    the operator saying they are a latitude and a longitude. The pair is put
+    in the paste box and read exactly as a pasted pair is, so an unsigned
+    longitude is west and the conversion says so.
+    """
+    easting = st.session_state.get("meta_easting")
+    northing = st.session_state.get("meta_northing")
+    st.session_state["latlon_paste"] = f"{float(northing)!r}, {float(easting)!r}"
+    _apply_latlon()
+
+
 def _apply_latlon() -> None:
     """Convert the decimal lat/lon entry into the UTM site fields.
 

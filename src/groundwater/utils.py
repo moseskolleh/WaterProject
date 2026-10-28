@@ -77,8 +77,11 @@ def parse_number(value, default=None) -> float | None:
     return float(match.group(0))
 
 
+# Each depth may carry a decimal comma, as parse_number reads one: without it
+# "12,5-30" was read as the 5-30 m interval inside it, and the only trace was
+# an overlap flag that blamed the log.
 _INTERVAL_RE = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)", re.IGNORECASE
+    r"(\d+(?:[.,]\d+)?)\s*(?:-|to)\s*(\d+(?:[.,]\d+)?)", re.IGNORECASE
 )
 
 
@@ -96,13 +99,20 @@ def parse_depth_interval(value) -> tuple[float, float] | None:
     >>> import datetime
     >>> parse_depth_interval(datetime.datetime(2026, 5, 10)) is None
     True
+
+    A decimal comma is a decimal point here, as it is in :func:`parse_number`:
+
+    >>> parse_depth_interval("12,5-30")
+    (12.5, 30.0)
     """
     if value is None or isinstance(value, (datetime.date, datetime.datetime)):
         return None
     match = _INTERVAL_RE.search(str(value))
     if match is None:
         return None
-    top, bottom = float(match.group(1)), float(match.group(2))
+    top, bottom = parse_number(match.group(1)), parse_number(match.group(2))
+    if top is None or bottom is None:
+        return None
     if bottom < top:
         top, bottom = bottom, top
     return top, bottom

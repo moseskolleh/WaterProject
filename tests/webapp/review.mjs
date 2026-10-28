@@ -152,8 +152,10 @@ await withPage(async (page, base, consoleErrors) => {
 
   // A position is not a position in Sierra Leone just because it was typed.
   // The site page flagged a fix outside the country and the gate passed it,
-  // where the Python holds the report back; the site page also takes a
-  // latitude and longitude in the two boxes, which only the browser does.
+  // where the Python holds the report back. A latitude and longitude typed
+  // into the two boxes was read as degrees here and as metres by Python, so
+  // the gate passed a placard whose identifier could not be minted: both
+  // engines now refuse them, in the same words, until they are converted.
   const placed = await page.evaluate(() => {
     const state = window.GWT.app.projectState();
     const detail = (site) => window.GWT.core.assessReadiness(
@@ -169,15 +171,18 @@ await withPage(async (page, base, consoleErrors) => {
   check('a UTM fix outside the country does not pass the gate',
     placed.utm.state === 'unmet' &&
     placed.utm.detail.includes('which is outside Sierra Leone'), JSON.stringify(placed.utm));
-  check('a degree fix outside the country does not pass the gate',
+  check('degrees in the UTM boxes do not pass the gate, inside the country or out',
     placed.abroad.state === 'unmet' &&
-    placed.abroad.detail.startsWith('Coordinates convert to 4.0000 N, 13.2317 W'),
+    placed.abroad.detail.startsWith('The easting and northing hold -13.2317 and 4, ' +
+      'which are a longitude and a latitude in degrees (4.00000° N, 13.23170° W)'),
     JSON.stringify(placed.abroad));
-  check('a degree fix is recorded as degrees, not as metres',
-    placed.degrees.state === 'met' &&
-    placed.degrees.detail === 'Position recorded: 8.46570° N, 13.23170° W.' &&
-    placed.unsigned.state === 'met' &&
-    placed.unsigned.detail === placed.degrees.detail,
+  check('degrees in the UTM boxes are refused in the words the identifier uses',
+    placed.degrees.state === 'unmet' &&
+    placed.degrees.detail.startsWith('The easting and northing hold -13.2317 and 8.4657, ' +
+      'which are a longitude and a latitude in degrees (8.46570° N, 13.23170° W), not ' +
+      'UTM metres') &&
+    placed.unsigned.state === 'unmet' &&
+    placed.unsigned.detail.includes('Longitude 13.2317 was read as 13.2317 W'),
     JSON.stringify([placed.degrees, placed.unsigned]));
 
   // --- the document says what the gate says ---------------------------------
@@ -1338,6 +1343,9 @@ await withPage(async (page, base, consoleErrors) => {
   // face value, so a longitude typed without its western sign put the site in
   // central Africa - no marker, "13.23170 E" in every report, and nothing on
   // the page to say so - while a correct western fix printed "-13.23170°E".
+  // It was then read as degrees, which the Python engine did not do; now it
+  // is no position until the operator converts it, and the page says so in
+  // the gate's words and offers the conversion.
   const degrees = await page.evaluate(async () => {
     const app = window.GWT.app;
     const saved = JSON.parse(JSON.stringify(app.store.get('site')));
@@ -1349,28 +1357,45 @@ await withPage(async (page, base, consoleErrors) => {
           district: '', easting: e, northing: n, utm_zone: null }));
         app.goto('site');
         await new Promise((r) => setTimeout(r, 200));
-        const latlon = app.siteLatLon();
-        out[key] = { lat: latlon && latlon.lat, lon: latlon && latlon.lon,
+        const before = { latlon: app.siteLatLon(),
           text: document.querySelector('#page-host').textContent };
+        const convert = Array.from(document.querySelectorAll('#page-host button'))
+          .find((b) => b.textContent === 'Convert these degrees to UTM');
+        if (convert) convert.click();
+        await new Promise((r) => setTimeout(r, 200));
+        const site = app.store.get('site');
+        const latlon = app.siteLatLon();
+        out[key] = { before: before.latlon, text: before.text, offered: !!convert,
+          easting: site.easting, northing: site.northing, zone: site.utm_zone,
+          lat: latlon && latlon.lat, lon: latlon && latlon.lon,
+          after: document.querySelector('#page-host').textContent };
       }
     } finally {
       app.store.set('site', saved);
     }
     return out;
   });
+  check('site: degrees in the UTM boxes are no position, and the page says why',
+    ['unsigned', 'signed', 'abroad'].every((k) => degrees[k].before === null &&
+      degrees[k].offered && degrees[k].text.includes('which are a longitude and a ' +
+      'latitude in degrees')),
+    JSON.stringify(Object.values(degrees).map((d) => [d.before, d.offered])));
   check('site: an unsigned longitude in the degree fields is read as west, and says so',
-    degrees.unsigned.lon === -13.2317 &&
     degrees.unsigned.text.includes('8.46570° N, 13.23170° W') &&
-    degrees.unsigned.text.includes('Longitude 13.2317 was read as 13.2317 W'),
-    JSON.stringify([degrees.unsigned.lat, degrees.unsigned.lon]));
-  check('site: a western position is printed as west, not as a negative east',
-    degrees.signed.text.includes('8.46570° N, 13.23170° W') &&
-    !degrees.signed.text.includes('°E') && !degrees.signed.text.includes('was read as'),
-    degrees.signed.text.slice(0, 200));
-  check('site: a position outside Sierra Leone is flagged, as the Python check flags it',
-    degrees.abroad.text.includes('Coordinates convert to 5.2500 N, 20.5000 E which ' +
-      'is outside Sierra Leone'),
-    degrees.abroad.text.slice(0, 200));
+    degrees.unsigned.text.includes('Longitude 13.2317 was read as 13.2317 W') &&
+    degrees.unsigned.zone === 28 && Math.abs(degrees.unsigned.lon + 13.2317) < 1e-5,
+    JSON.stringify([degrees.unsigned.lat, degrees.unsigned.lon, degrees.unsigned.zone]));
+  check('site: converted, a western position is printed as west, not as a negative east',
+    degrees.signed.zone === 28 && degrees.signed.easting > 600000 &&
+    degrees.signed.after.includes('8.46570° N, 13.23170° W (converted from UTM zone 28)') &&
+    !degrees.signed.after.includes('°E') &&
+    !degrees.signed.after.includes('which are a longitude and a latitude in degrees'),
+    degrees.signed.after.slice(0, 300));
+  check('site: degrees outside Sierra Leone are not converted into its zones',
+    degrees.abroad.text.includes('(5.25000° N, 20.50000° E)') &&
+    degrees.abroad.easting === 20.5 && degrees.abroad.northing === 5.25 &&
+    degrees.abroad.lat === null,
+    JSON.stringify([degrees.abroad.easting, degrees.abroad.northing]));
 
   /* A report figure is painted for paper, not for the screen it was built
    * on. The app's default theme is dark and every chart reads the live CSS

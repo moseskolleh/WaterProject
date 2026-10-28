@@ -36,6 +36,7 @@ import math
 from dataclasses import dataclass
 from collections.abc import Iterable
 
+from .text import phrase, phrase_table
 from .waterpoints import WaterPoint
 
 __all__ = [
@@ -152,17 +153,22 @@ def project_population(population: dict[str, float], to_year: int, *,
 FRESH_YEARS = 3
 AGEING_YEARS = 7
 
-FRESHNESS_LABELS = {
-    "fresh": "Surveyed recently",
-    "ageing": "Survey is getting old",
-    "stale": "Survey is out of date",
-    "unknown": "Survey dates not recorded",
-}
+#: The label of each state, from the catalogue both engines read
+#: (``planning.yaml``). ``later`` is an area every survey date of which is
+#: after the plan year.
+FRESHNESS_LABELS = dict(phrase_table("planning.freshness_label"))
 
 
 @dataclass(frozen=True)
 class Freshness:
-    """When the points in an area were last actually looked at."""
+    """When the points in an area were last actually looked at, as seen
+    from ``as_of_year``, the plan year.
+
+    ``n_dated`` counts the points surveyed in or before the plan year, the
+    ones the median age, the latest year and the recent count are taken
+    from; ``n_later`` the points surveyed after it, which say nothing about
+    that year and are left out of them.
+    """
 
     n_points: int
     n_dated: int
@@ -170,6 +176,8 @@ class Freshness:
     median_age_years: float | None
     n_recent: int
     state: str
+    as_of_year: int | None = None
+    n_later: int = 0
 
     @property
     def label(self) -> str:
@@ -177,28 +185,44 @@ class Freshness:
 
     @property
     def detail(self) -> str:
+        if self.state == "later":
+            return phrase("planning.freshness_all_later", later=self.n_later, points=self.n_points,
+                          year=self.as_of_year)
         if self.state == "unknown":
-            return ("No survey dates are recorded for these points, so how "
-                    "current this coverage figure is cannot be established.")
-        return (f"{self.n_dated} of {self.n_points} points carry a survey "
-                f"date; the most recent is {self.latest_year} and the median "
-                f"is {self.median_age_years:.0f} years old. "
-                f"{self.n_recent} were surveyed in the last {FRESH_YEARS} years.")
+            return phrase("planning.freshness_undated")
+        text = phrase("planning.freshness_dated", dated=self.n_dated, points=self.n_points,
+                      year=self.as_of_year, latest=self.latest_year, median=self.median_age_years,
+                      recent=self.n_recent, fresh=FRESH_YEARS)
+        if self.n_later:
+            text += " " + phrase("planning.freshness_later", later=self.n_later, year=self.as_of_year)
+        return text
 
     def as_dict(self) -> dict:
         return {"n_points": self.n_points, "n_dated": self.n_dated,
                 "latest_year": self.latest_year,
                 "median_age_years": self.median_age_years,
-                "n_recent": self.n_recent, "state": self.state,
-                "label": self.label, "detail": self.detail}
+                "n_recent": self.n_recent, "n_later": self.n_later,
+                "state": self.state, "label": self.label, "detail": self.detail}
 
 
 def point_freshness(points: Iterable[WaterPoint], as_of_year: int) -> Freshness:
-    """Summarise how old the survey behind a set of points is."""
+    """Summarise how old the survey behind a set of points is in
+    ``as_of_year``.
+
+    A survey dated after the plan year is evidence about a later year, not
+    about this one: a planner who sets 2018 to reproduce an earlier
+    programme's figures used to have points surveyed in 2023 counted as
+    surveyed in the last three years, at an age of -5 years. Such a survey
+    is left out of the median and of the recent count, and the detail says
+    how many were; an area with no other survey date is ``later``.
+    """
     points = list(points)
-    years = sorted(p.report_year for p in points if p.report_year)
+    dated = sorted(p.report_year for p in points if p.report_year)
+    years = [y for y in dated if y <= as_of_year]
+    later = len(dated) - len(years)
     if not years:
-        return Freshness(len(points), 0, None, None, 0, "unknown")
+        return Freshness(len(points), 0, None, None, 0, "later" if later else "unknown",
+                         as_of_year, later)
     ages = [as_of_year - y for y in years]
     middle = len(ages) // 2
     median = (float(ages[middle]) if len(ages) % 2
@@ -210,7 +234,7 @@ def point_freshness(points: Iterable[WaterPoint], as_of_year: int) -> Freshness:
         state = "ageing"
     else:
         state = "stale"
-    return Freshness(len(points), len(years), max(years), median, recent, state)
+    return Freshness(len(points), len(years), max(years), median, recent, state, as_of_year, later)
 
 
 # ---------------------------------------------------------------------------
@@ -361,8 +385,10 @@ def planning_rows(population: dict[str, float],
         points = list(points_by_area.get(name, ()))
         people = projected[name]
         functional = [p for p in points if p.functional]
+        # surveyed in the plan year or the seven before it: a survey after
+        # the plan year says nothing about it
         recent = [p for p in functional
-                  if p.report_year and as_of_year - p.report_year <= AGEING_YEARS]
+                  if p.report_year and 0 <= as_of_year - p.report_year <= AGEING_YEARS]
         rows.append(PlanningRow(
             name=name, census_population=float(census), population=people,
             water_points=len(points), functional_points=len(functional),
