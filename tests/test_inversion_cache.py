@@ -69,7 +69,8 @@ def _assert_same(a, b):
     for name in ("ab2", "rho_obs", "rho_calc", "rho_uncertainty_factor",
                  "h_uncertainty_factor"):
         assert np.array_equal(getattr(a, name), getattr(b, name)), name
-    for name in ("fit_error_percent", "n_iterations", "converged", "trials", "shifts"):
+    for name in ("fit_error_percent", "n_iterations", "converged", "stopped", "trials",
+                 "shifts"):
         assert getattr(a, name) == getattr(b, name), name
         assert type(getattr(a, name)) is type(getattr(b, name)), name
     assert np.array_equal(a.model.resistivities, b.model.resistivities)
@@ -183,6 +184,7 @@ def test_the_engine_is_named_by_its_code():
     "not a mapping", "no result", "result not a mapping", "digest changed",
     "reading edited", "edited and signed again", "layer count out of range",
     "a word for a number", "a bool for a count", "trials missing",
+    "no stop recorded", "a stop the search never makes",
 ])
 def test_a_damaged_entry_is_ignored(first_load, counted, sample_data, tmp_path, damage):
     raw = first_load[1]
@@ -212,6 +214,10 @@ def test_a_damaged_entry_is_ignored(first_load, counted, sample_data, tmp_path, 
             record["n_iterations"] = True
         elif damage == "trials missing":
             record["trials"] = []
+        elif damage == "no stop recorded":
+            del record["stopped"]
+        elif damage == "a stop the search never makes":
+            record["stopped"] = "gave up"
         # the digest a hand editor could work out: sound, and still not used
         entry["digest"] = cache_module._digest(key, record)
     out = recompute_results(

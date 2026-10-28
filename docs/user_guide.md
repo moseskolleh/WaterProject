@@ -84,6 +84,14 @@ At every segment change (for example AB/2 = 3, 10, 40 and 70 m),
 repeat the same AB/2 with the old MN and again with the new MN. Both
 readings are used; do not delete either one.
 
+A sounding is inverted from four spacings up, and is fitted with no
+more layers than leave it one reading to spare: two layers below six
+spacings, three below eight, and four from eight. A sounding cut short
+at four or five spacings is therefore read as two layers, however many
+the ground has. A row whose AB/2 is 0 (a formula over a blank cell, or
+a placeholder) is kept as read, flagged "A spacing must be positive",
+and left out of the inversion.
+
 ## 2a. VES co-pilot (browser app, at the peg)
 
 The browser app has a page that checks a Schlumberger sounding as it is

@@ -84,13 +84,18 @@ def resistivity_transform(
 # exponentially decaying are computed in two sections:
 #
 # * x in (0, z1), z1 the first zero of Jn: composite Gauss-Legendre on
-#   log-subdivided panels. The resistivity transform varies over about
-#   a decade of lambda, so sub-decade panels resolve it for any layer
-#   thickness / spacing ratio.
+#   (0, 1e-6) and on log-subdivided panels from 1e-6. The resistivity
+#   transform varies over about a decade of lambda, so sub-decade panels
+#   resolve it for any layer thickness / spacing ratio. The piece below
+#   1e-6 is about (rho_n - rho1) x 1e-6 for the potential (J0) integral,
+#   which a Wenner or finite-MN reading takes as a difference of two
+#   radii, so leaving it out, as the tables once did, left an error of
+#   (rho1 - rho_n) x 1e-6 ohm-m at every spacing: 5e-4 relative over
+#   5000 ohm-m on 10. For J1 it is of order 1e-19 and changes nothing.
 # * x > z1: 10 point Gauss-Legendre panels between consecutive zeros
 #   of Jn. Within a half period the integrand is smooth, so each panel
 #   is near exact. The number of panels follows the exponential decay
-#   scale of (T - rho1).
+#   of (T - rho1) and the contrast it has to resolve (see _cut).
 #
 # Nodes and (weight x Bessel) products are precomputed once per order,
 # so each integral is two vectorised evaluations of g.
@@ -99,9 +104,10 @@ def resistivity_transform(
 _N_ZEROS = 1200
 
 # The quadrature runs out to the largest tabulated Bessel zero. A sounding
-# needs panels out to 9 * (AB/2) / h_min, so 1200 zeros (largest abscissa
-# 3770.7) covers spacings up to about 419 times the thinnest layer. Beyond
-# that the table is grown on demand: truncating the integral part-way
+# needs panels out to n (AB/2) / (2 h1), n at least 18 (see _cut), so 1200
+# zeros (largest abscissa 3770.7) covers spacings up to about 419 times the
+# top layer at the least n. Beyond that the table is grown on demand:
+# truncating the integral part-way
 # through an oscillation of J1 leaves a large spurious residue - at AB/2 =
 # 1000 m over a 0.5 m layer the model returned 574 ohm-m instead of 30.
 # The inversion explores thin layers, so it can walk into that regime.
@@ -114,14 +120,43 @@ _MAX_ZEROS = 60_000
 # bounds thicknesses at 0.2 m; this only guards a hand-built degenerate model.
 _MIN_DECAY_H = 0.02
 
+# Where the quadrature stops. With the half-space asymptote subtracted, the
+# integrand is bounded by 2 rho1 exp(-x / d) times the Bessel function, d =
+# r / (2 h1) for a radius r (an AB/2, or a potential electrode's distance)
+# and h1 the top layer's thickness. The recurrence gives T - rho1 = (T2 -
+# rho1)(1 - tanh(lambda h1)) / (1 + T2 tanh(lambda h1) / rho1), so no deeper
+# layer, however thin, slows that decay. Stopping at a zero of J1 n decay
+# lengths out leaves about half the next half-period of the alternating sum,
+# 2 rho1 exp(-n) sqrt(2 n d / pi), and rho_a is no smaller than the least
+# resistivity in the model. So the cut is placed where
+#     n = ln(2 rho1 / (_CUT_ERROR rho_min)) + 0.5 ln(2 n d / pi),
+# solved by two fixed-point steps from _MIN_CUT_DECAYS, and never nearer.
+#
+# The former cut, 18 decay lengths of the thinnest layer, left 5 to 7e-8 x
+# (rho1 / rho_a) x sqrt(AB/2 / h1): 2.7 percent at 150,000 ohm-m over 10
+# ohm-m, and, as the cut crossed a Bessel zero with every small change of
+# that layer, steps in rho_a that put slopes of +-17.7 into the Jacobian
+# where the true slope was 0.00002. Over 2932 models of two to four layers
+# at 10 to 150,000 ohm-m and 0.5 to 60 m, against a quadrature carried 80
+# decay lengths out, this cut leaves at most 3.1e-8. Its steps are of that
+# size too. It integrates 15 percent further than the former cut on the
+# median model, and less far where a deeper layer is thinner than the top.
+# _CUT_ERROR is a choice: 1e-7 left up to 1.1e-7, and 1e-9 no less than
+# 1e-8 (2.1e-8, the quadrature's own floor at these contrasts) for more work.
+_CUT_ERROR = 1e-8
+_MIN_CUT_DECAYS = 18.0
+
 
 def _build_tables(order: int, n_zeros: int = _N_ZEROS):
     zeros = jn_zeros(order, n_zeros)
     bessel = j0 if order == 0 else j1
 
-    # section 1: 14 log-spaced panels from 1e-6 to the first zero, GL-8
+    # section 1: GL-8 on (0, 1e-6) and on 14 log-spaced panels from 1e-6 to
+    # the first zero. A midpoint rule below 1e-6 is not enough: under a
+    # 0.5 ohm-m top layer on 200,000 ohm-m, T(lambda) falls by 4 percent
+    # inside (0, 1e-6) at a 1 m spacing.
     nodes8, weights8 = leggauss(8)
-    edges = np.geomspace(1e-6, zeros[0], 15)
+    edges = np.concatenate([[0.0], np.geomspace(1e-6, zeros[0], 15)])
     s1_nodes, s1_wb = [], []
     for lo, hi in zip(edges[:-1], edges[1:], strict=True):
         mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo)
@@ -190,13 +225,36 @@ def _table_for(order: int, x_stop: float) -> dict:
 _BATCH_ABSCISSA_CAP = 2_000_000
 
 
-def _hankel_integrals(g, order: int, x_decays: np.ndarray) -> np.ndarray:
-    """Int_0^inf g_j(x) J_order(x) dx for a batch of decay scales.
+def _cut(decay: float, ratio: float) -> float:
+    """Where the quadrature stops for a member that decays like
+    ``exp(-x / decay)`` and whose top layer is ``ratio`` times the least
+    resistivity of its model. The rule is set out at ``_CUT_ERROR``; the
+    browser engine computes it in the same steps."""
+    d = max(decay, 1.0)
+    n = _MIN_CUT_DECAYS
+    for _ in range(2):
+        n = max(
+            _MIN_CUT_DECAYS,
+            math.log(2.0 * ratio / _CUT_ERROR) + 0.5 * math.log(2.0 * n * d / math.pi),
+        )
+    return n * d
+
+
+def _cuts(r: np.ndarray, rho: np.ndarray, h: np.ndarray) -> np.ndarray:
+    """``_cut`` at every radius in ``r`` of one model."""
+    scale = 2.0 * max(float(h[0]) if len(h) else 1.0, _MIN_DECAY_H)
+    ratio = float(rho[0]) / float(np.min(rho))
+    return np.array([_cut(float(radius) / scale, ratio) for radius in r], dtype=float)
+
+
+def _hankel_integrals(g, order: int, x_stops: np.ndarray) -> np.ndarray:
+    """Int_0^inf g_j(x) J_order(x) dx for a batch of members.
 
     ``g(x, rows)`` returns the integrand of the members named by ``rows`` at
-    the abscissas ``x``, as a ``(len(rows), len(x))`` array. Each member j
-    decays like ``exp(-x / x_decays[j])`` at large x, so they need the
-    quadrature carried to different distances.
+    the abscissas ``x``, as a ``(len(rows), len(x))`` array. Member j is
+    integrated to the first Bessel zero at or past ``x_stops[j]`` (see
+    :func:`_cut`), so members need the quadrature carried to different
+    distances.
 
     A sounding is a batch: one layered model sampled at every AB/2 the field
     team walked out to. Evaluated one member at a time, the resistivity
@@ -216,10 +274,9 @@ def _hankel_integrals(g, order: int, x_decays: np.ndarray) -> np.ndarray:
     differences over a 1e-4 step, so it turns a last-bit change in the
     forward model into a visible one in the fitted layer.
     """
-    x_decays = np.asarray(x_decays, dtype=float)
-    if not x_decays.size:  # a sounding with no readings integrates nothing
+    x_stop = np.asarray(x_stops, dtype=float)
+    if not x_stop.size:  # a sounding with no readings integrates nothing
         return np.empty(0, dtype=float)
-    x_stop = 18.0 * np.maximum(x_decays, 1.0)
     t = _table_for(order, float(x_stop.max()))
     n_panels = np.searchsorted(t["panel_ends"], x_stop) + 1
     n_panels = np.clip(n_panels, 8, len(t["panel_ends"]))
@@ -227,7 +284,7 @@ def _hankel_integrals(g, order: int, x_decays: np.ndarray) -> np.ndarray:
 
     s1_nodes, s1_wb = t["s1_nodes"], t["s1_wb"]
     s2_nodes, s2_wb = t["s2_nodes"], t["s2_wb"]
-    acc = np.empty(len(x_decays), dtype=float)
+    acc = np.empty(len(x_stop), dtype=float)
     by_reach = np.argsort(ends, kind="stable")
 
     for group in _reach_groups(ends, by_reach):
@@ -272,7 +329,6 @@ def forward_schlumberger(
     """Ideal (gradient) Schlumberger apparent resistivity at AB/2 values."""
     rho, h = _model_arrays(model)
     ab2 = np.atleast_1d(np.asarray(ab2, dtype=float))
-    h_min = float(np.min(h)) if len(h) else 1.0
     # substitute x = lambda L: rho_a = rho1 + Int (T(x/L) - rho1) J1(x) x dx
     # (the L^2 prefactor cancels against the 1/L^2 from the substitution)
     def g(x, rows):
@@ -282,9 +338,8 @@ def forward_schlumberger(
         integrand *= x[None, :]
         return integrand
 
-    # (T - rho1) decays like exp(-2 lambda h_min) = exp(-x / (L / (2 h_min)))
-    decay = ab2 / (2.0 * max(h_min, _MIN_DECAY_H))
-    return rho[0] + _hankel_integrals(g, 1, decay)
+    # (T - rho1) decays like exp(-2 lambda h1) = exp(-x / (L / (2 h1)))
+    return rho[0] + _hankel_integrals(g, 1, _cuts(ab2, rho, h))
 
 
 def _transform_rows(
@@ -316,7 +371,7 @@ def _transform_rows(
     return T
 
 
-def _batchable(order: int, n_members: int, decay_max: float) -> bool:
+def _batchable(order: int, n_members: int, x_stop: float) -> bool:
     """Whether a batch of this reach should be evaluated in one pass.
 
     Batching wins while the arrays are small enough that numpy spends more
@@ -338,7 +393,6 @@ def _batchable(order: int, n_members: int, decay_max: float) -> bool:
     synthetic traverse soundings whose fits wander to thin layers went
     from 28 s to 52 s, most of it filling 16 MB integrand buffers.
     """
-    x_stop = 18.0 * max(decay_max, 1.0)
     _table_for(order, 0.0)  # the base table, built on first use
     if x_stop > _BASE_REACH[order]:
         return False
@@ -365,11 +419,10 @@ def forward_schlumberger_models(
     ab2 = np.atleast_1d(np.asarray(ab2, dtype=float))
     n_models, n_spacings = len(rho), ab2.size
 
-    h_min = np.full(n_models, 1.0) if h.shape[1] == 0 else h.min(axis=1)
-    scale = 2.0 * np.maximum(h_min, _MIN_DECAY_H)
-    decay = ab2[None, :] / scale[:, None]
+    # each model's own cuts, as forward_schlumberger takes them
+    x_stops = np.stack([_cuts(ab2, rho[k], h[k]) for k in range(n_models)])
 
-    if not _batchable(1, n_models * n_spacings, float(decay.max())):
+    if not _batchable(1, n_models * n_spacings, float(x_stops.max())):
         return np.stack(
             [forward_schlumberger((rho[k], h[k]), ab2) for k in range(n_models)]
         )
@@ -386,11 +439,11 @@ def forward_schlumberger_models(
         integrand *= x[None, :]
         return integrand
 
-    acc = _hankel_integrals(g, 1, decay.ravel())
+    acc = _hankel_integrals(g, 1, x_stops.ravel())
     return rho[:, :1] + acc.reshape(n_models, n_spacings)
 
 
-def _potential_integrals(rho, h, r: np.ndarray, h_min: float) -> np.ndarray:
+def _potential_integrals(rho, h, r: np.ndarray) -> np.ndarray:
     """F(r) = Int T(lam) J0(lam r) dlam, for every radius in ``r`` at once.
 
     ``F(r) = (rho1 + Int (T - rho1) J0(x) dx) / r``.
@@ -403,8 +456,7 @@ def _potential_integrals(rho, h, r: np.ndarray, h_min: float) -> np.ndarray:
         integrand -= rho[0]
         return integrand
 
-    decay = r / (2.0 * max(h_min, _MIN_DECAY_H))
-    return (rho[0] + _hankel_integrals(g, 0, decay)) / r
+    return (rho[0] + _hankel_integrals(g, 0, _cuts(r, rho, h))) / r
 
 
 def forward_schlumberger_finite_mn(
@@ -422,7 +474,6 @@ def forward_schlumberger_finite_mn(
         # one MN per reading; broadcasting a single MN over every spacing
         # would answer for readings nobody took
         raise ValueError(f"{ab2.size} AB/2 spacings but {mn.size} MN spacings")
-    h_min = float(np.min(h)) if len(h) else 1.0
     out = np.empty_like(ab2)
 
     b = mn / 2.0
@@ -435,9 +486,7 @@ def forward_schlumberger_finite_mn(
         idx = np.nonzero(usable)[0]
         L, half = ab2[idx], b[idx]
         # the inner and outer potential radii of every reading at once
-        f = _potential_integrals(
-            rho, h, np.concatenate([L - half, L + half]), h_min
-        )
+        f = _potential_integrals(rho, h, np.concatenate([L - half, L + half]))
         n = len(idx)
         # combined a reading at a time: a scalar L**2 goes through pow(),
         # an array's through x * x, and the two disagree in the last bit
@@ -452,9 +501,8 @@ def forward_wenner(model: LayeredModel | tuple, a: np.ndarray) -> np.ndarray:
     """Wenner apparent resistivity at spacings a."""
     rho, h = _model_arrays(model)
     a = np.atleast_1d(np.asarray(a, dtype=float))
-    h_min = float(np.min(h)) if len(h) else 1.0
     # both radii of every spacing in one quadrature pass
-    f = _potential_integrals(rho, h, np.concatenate([a, 2.0 * a]), h_min)
+    f = _potential_integrals(rho, h, np.concatenate([a, 2.0 * a]))
     n = len(a)
     # rho_a = 2 pi a (V_M - V_N)/I; with A and B both contributing,
     # V_M - V_N = (I/pi) (F(a) - F(2a)), so rho_a = 2 a (F(a) - F(2a)).

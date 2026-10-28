@@ -101,3 +101,18 @@ need real project inputs or decisions to finish calibrating it.
    distances table mirrors regional practice (FGN/NWRI 2010) and
    should be checked against the Sierra Leone Ministry of Water
    Resources requirements.
+
+11. **Three choices in the VES inversion want a geophysicist's
+   confirmation (added with the VES audit).** None is a published
+   standard; each is stated where it is made
+   (`groundwater/ves/forward.py` and `groundwater/ves/inversion.py`)
+   with what it was measured to do. (a) The quadrature stops where the
+   tail it leaves is 1e-8 of the least resistivity in the model, which
+   left at most 3.1e-8 over 2932 models at 10 to 150,000 ohm-m. (b) A
+   fit is labelled converged when the Gauss-Newton step from where it
+   stopped would lower its sum of squared log residuals by at most
+   1e-6 of itself; the label errs towards "not converged" in an
+   equivalence valley. (c) A sounding is fitted with at most half as
+   many layers as it has spacings, so a model keeps one degree of
+   freedom; keeping two would refuse three layers to soundings of six
+   and seven spacings.

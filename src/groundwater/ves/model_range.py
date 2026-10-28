@@ -415,7 +415,7 @@ def sample_model_range(
     start_errors = []
     for k, point in enumerate(start_points):
         progress(f"starting model {k + 1} of {n_starts}")
-        model, calc, err, _it, _conv = invert_model(
+        model, calc, err, _it, _conv, _stop = invert_model(
             ab2, rho_app, np.exp(point[:n]), np.exp(point[n:]),
             array_type, ves.damping, ves.max_iterations,
         )
