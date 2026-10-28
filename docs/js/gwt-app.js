@@ -903,6 +903,15 @@
     var state = Object.assign({}, store.state);
     state.extraction = Object.assign({}, state.extraction || {});
     delete state.extraction.apiKey;
+    /* the asset record goes out with the rising main the design now
+     * specifies, as the registry page shows it (PLAN.md step 7.3) */
+    if (state.asset) {
+      var record = C.assetFromDict(state.asset);
+      if (record) {
+        state.asset = C.assetWithRisingMain(record, derived.design ? derived.design.rising_main
+          : null);
+      }
+    }
     /* the ledger goes at the top of the file, where the Python app writes
      * and reads it, and not twice, with the borehole's outcome as the
      * project now holds it: a corrected log corrects it */
@@ -6658,12 +6667,14 @@
 
   /* The stored record if there is one, otherwise a draft from the project.
    * A draft carries no events: a borehole is commissioned by somebody
-   * deciding it is, on a day, not by opening a page. */
+   * deciding it is, on a day, not by opening a page. Either carries the
+   * rising main of the project's design as the design now stands, whose
+   * interval the routine inspection is due by (PLAN.md step 7.3). */
   function currentAsset() {
     var stored = store.get('asset');
-    var record = stored ? C.assetFromDict(stored) : null;
-    if (record) return record;
-    return C.assetFromProject(projectState());
+    var record = (stored ? C.assetFromDict(stored) : null) || C.assetFromProject(projectState());
+    return record ? C.assetWithRisingMain(record, derived.design ? derived.design.rising_main
+      : null) : null;
   }
 
   function saveAsset(asset) {
@@ -6693,7 +6704,7 @@
         }, { variant: 'ghost' })]),
       ]));
     } else {
-      var state = C.assetState(asset);
+      var state = C.assetState(asset, null, C.serviceSchedule(config()));
       var tone = state.function === 'functional' ? 'ok'
         : (state.function === 'non_functional' ? 'bad' : 'warn');
       nodes.push(itemNode(asset.asset_id, card('This borehole', [
@@ -6705,7 +6716,8 @@
           'of two adjacent ones.'),
         S.statRow([
           S.stat('Status', state.label),
-          S.stat('Last inspected', state.last_inspection || 'never'),
+          S.stat('Last sanitary inspection', state.last_inspection || 'never'),
+          S.stat('Last routine inspection', state.last_routine_inspection || 'never'),
           S.stat('Last sampled', state.last_sample || 'never'),
           S.stat('Records', String((asset.events || []).length)),
         ]),
@@ -6722,6 +6734,14 @@
             message: item.detail,
           };
         })),
+        /* the routine inspection's interval is the one that differs from
+         * borehole to borehole: it follows the design's rising main */
+        el('p.muted.rounds-interval', state.due.filter(function (item) {
+          return item.key === 'routine_inspection';
+        }).map(function (item) {
+          return C.phrase('rounds.interval_line', { title: item.title, basis: item.basis });
+        }).join(' ')),
+        mechanicField(asset),
       ])));
 
       var draft = { when: new Date().toISOString().slice(0, 10),
@@ -6804,8 +6824,113 @@
     ]));
 
     nodes.push(registryCard());
+    nodes.push(roundsCard(asset));
     return nodes;
   };
+
+  /* The area mechanic named on this borehole's record, whose service round
+   * it is on (PLAN.md step 7.3). Named here, it travels in the project file;
+   * a borehole with none named goes to the mechanic named for its chiefdom
+   * on the rounds below. */
+  function mechanicField(asset) {
+    var draft = { name: asset.area_mechanic || '' };
+    return el('div', [
+      el('div.field-row', [
+        field('Area mechanic', S.textInput(draft.name, function (v) {
+          draft.name = String(v);
+        }, { placeholder: 'Area mechanic', 'data-rounds': 'mechanic' }),
+        asset.area_mechanic ? 'Named on this borehole’s record.'
+          : 'None named on the record; the rounds look the chiefdom up.'),
+      ]),
+      el('div.btn-row', [button('Name the area mechanic', function () {
+        var next = Object.assign({}, asset, { events: asset.events || [] });
+        var name = C.trimField(draft.name);
+        if (name) next.area_mechanic = name; else delete next.area_mechanic;
+        saveAsset(next);
+        S.toast(name ? 'Area mechanic named.' : 'Area mechanic cleared.', 'ok');
+      }, { variant: 'ghost' })]),
+    ]);
+  }
+
+  /* The service rounds (PLAN.md step 7.3): what is due on a day at this
+   * borehole and at every borehole in the register above, grouped by area
+   * mechanic and put in order, with the round sheets to print. The day is
+   * the page's input, today unless another is written; the engine never
+   * reads the clock. */
+  function roundsCard(asset) {
+    var today = new Date().toISOString().slice(0, 10);
+    var when = store.get('rounds.date', '') || today;
+    var text = store.get('rounds.mechanics', '');
+    var parsed = C.parseAreaMechanics(text);
+    var box = /** @type {HTMLTextAreaElement} */ (el('textarea.input', {
+      rows: 3, 'data-rounds': 'chiefdoms',
+      placeholder: 'One chiefdom a line: the chiefdom, a colon and the mechanic’s name',
+    }));
+    box.value = text;
+    box.addEventListener('change', function () {
+      store.set('rounds.mechanics', box.value);
+      render();
+    });
+    var nodes = [
+      el('p.muted', 'What is due on the day below, at this borehole and at every ' +
+        'borehole in the register above: the sanitary inspection, the routine ' +
+        'inspection of the pump and rising main, and the water quality sample. ' +
+        'Each borehole goes to the area mechanic named on its record, else to the ' +
+        'one named for its chiefdom here. The Streamlit app has the same rounds ' +
+        'on its Asset registry page.'),
+      el('div.field-row', [
+        field('Round drawn up on', S.textInput(when, function (v) {
+          store.set('rounds.date', String(v).trim());
+          render();
+        }, { placeholder: 'YYYY-MM-DD', 'data-rounds': 'date' }), ''),
+      ]),
+      field('Area mechanics by chiefdom', box, ''),
+    ];
+    parsed.skipped.forEach(function (line) {
+      nodes.push(el('div.callout.callout-warn', el('p', line)));
+    });
+    if (C.isoDay(when) === null) {
+      nodes.push(el('div.callout.callout-warn', el('p', 'The date should be written ' +
+        'YYYY-MM-DD.')));
+      return card('Service rounds', nodes);
+    }
+    /* this borehole first, so its record, kept in step with the design,
+     * is the one read where the register holds the same borehole */
+    var assets = (asset ? [asset] : []).concat(derived.registry || []);
+    var result = C.serviceRounds(assets, when, C.serviceSchedule(config()), parsed.entries);
+    var words = C.roundsText(result);
+    nodes.push(el('div.rounds-summary', words.summary.map(function (line) {
+      return el('p', line);
+    })));
+    result.rounds.forEach(function (one) {
+      var lines = C.roundText(one);
+      nodes.push(el('h3.round-name', lines[0]));
+      lines.slice(1).forEach(function (line) { nodes.push(el('p.muted', line)); });
+      nodes.push(S.table(C.roundHeader(), C.roundRows(one)));
+    });
+    if (result.rounds.length) {
+      nodes.push(el('p.muted', words.method));
+      nodes.push(el('p.muted', words.intervals));
+    }
+    nodes.push(el('div.btn-row', [button('Round sheets (.docx)', async function (event) {
+      await buildRoundSheet(result, event.target);
+    }, { disabled: !result.n_boreholes })]));
+    return card('Service rounds', nodes);
+  }
+
+  async function buildRoundSheet(result, node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    try {
+      await S.withBusy(host, 'Building the round sheets…', async function () {
+        await need(REPORT_BUNDLES);
+        var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result });
+        S.download('rounds_' + result.as_of + '.docx', await builder.build());
+      });
+      S.toast('Document ready.', 'ok');
+    } catch (err) {
+      S.toast('Could not build the document: ' + err.message, 'error');
+    }
+  }
 
   /* The WHO form for a borehole with a handpump, and the risk statement that
    * reads the latest inspection with the E. coli count of the water quality
@@ -6914,7 +7039,7 @@
       nodes.push(el('p.muted', 'Nothing loaded yet.'));
       return card('Many boreholes', nodes);
     }
-    var stats = C.registryStats(assets);
+    var stats = C.registryStats(assets, null, C.serviceSchedule(config()));
     nodes.push(S.statRow([
       S.stat('Boreholes', String(stats.n_assets)),
       S.stat('Working', String(stats.n_functional)),
@@ -6937,12 +7062,12 @@
         'the same as nothing having happened to ' +
         (stats.n_unknown === 1 ? 'it.' : 'them.'))));
     }
-    if (stats.n_overdue_inspection + stats.n_overdue_sample) {
+    if (stats.n_overdue_inspection + stats.n_overdue_routine + stats.n_overdue_sample) {
       nodes.push(el('p', stats.n_overdue_inspection + ' overdue a sanitary ' +
-        'inspection, ' + stats.n_overdue_sample + ' overdue a water quality ' +
-        'sample.'));
+        'inspection, ' + stats.n_overdue_routine + ' overdue a routine inspection, ' +
+        stats.n_overdue_sample + ' overdue a water quality sample.'));
     }
-    var rows = C.registryRows(assets);
+    var rows = C.registryRows(assets, null, C.serviceSchedule(config()));
     nodes.push(S.table(Object.keys(rows[0]), rows.map(function (row) {
       return Object.keys(row).map(function (key) { return String(row[key]); });
     })));
@@ -6967,7 +7092,8 @@
         await need(REPORT_BUNDLES);
         var cfg = config();
         var context = {
-          style: cfg.style, asset: asset, state: C.assetState(asset),
+          style: cfg.style, asset: asset,
+          state: C.assetState(asset, null, C.serviceSchedule(cfg)),
           /* a plate on the headworks makes no claim about the water, so it is
            * not held back for want of a laboratory panel */
           readiness: reportReadiness(kind === 'placard' ? 'placard' : 'asset'),

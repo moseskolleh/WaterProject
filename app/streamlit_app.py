@@ -51,7 +51,7 @@ from groundwater.geo import (
     utm_to_geographic,
 )
 from groundwater.mapping import chiefdom_of, district_of
-from groundwater.registry import asset_from_project
+from groundwater.registry import asset_from_dict, asset_from_project, asset_with_rising_main
 from groundwater.recompute import recompute_results
 
 import state
@@ -807,6 +807,17 @@ with _project_panel:
         _drafted = asset_from_project(_project_state())
         if _drafted is not None:
             st.session_state["asset_record"] = _drafted.as_dict()
+    else:
+        # with the rising main the design now specifies, as the registry page
+        # shows it: the routine inspection is due by its interval (PLAN.md
+        # step 7.3), and a record drafted before the water was analysed
+        # would otherwise go out with the interval for no chemistry
+        _record = asset_from_dict(st.session_state["asset_record"])
+        _rising = getattr(st.session_state.get("borehole_design"), "rising_main", None)
+        if _record is not None and _rising is not None:
+            _kept = asset_with_rising_main(_record, _rising).as_dict()
+            if _kept != st.session_state["asset_record"]:
+                st.session_state["asset_record"] = _kept
     st.download_button(
         "Save project (.yaml)",
         project_file_bytes(),

@@ -152,7 +152,15 @@ water quality guidelines.
     unanswered is not a no, so an incomplete form gives a range; a side
     that is not known is said to be unknown and gives no priority. The
     form's wording and the matrix's cells, which are a choice made here,
-    are listed in `QUESTIONS.md` for checking
+    are listed in `QUESTIONS.md` for checking. The registry schedules three
+    visits: the sanitary inspection, a routine inspection of the pump and
+    rising main at the interval the design sets for the rising main, and
+    the water quality sample, every interval a setting in
+    `data/defaults.json`. Service rounds group what is due on a day across
+    the register by area mechanic (named on the borehole's record, else for
+    its chiefdom), order each round by a stated nearest-neighbour walk that
+    is not an optimal route, and print a round sheet with boxes for the
+    readings
 18. The survey as an interactive map, not only as a picture: both apps
     write a [GeoLibre](https://geolibre.app) project file - an open,
     plain-JSON map format - carrying the site, the scored drill targets,
@@ -345,6 +353,8 @@ groundwater/
     procurement.py  contract, variation orders, measurement and the interim
                   payment certificate
     registry.py   asset identifiers, maintenance events, derived condition
+    rounds.py     service rounds: what is due on a day, by area mechanic,
+                  in the order of a nearest-neighbour walk
     sanitary.py   the sanitary inspection form, scored and read with the
                   E. coli count into one risk statement
     qr.py         a dependency-free QR encoder for the headworks plate

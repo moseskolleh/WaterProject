@@ -428,6 +428,44 @@ await withPage(async (page, base, consoleErrors) => {
     registry.warned.includes('no recorded position yet'),
     JSON.stringify(registry));
 
+  // --- a round sheet claims only what the register records -------------------
+  // A mechanic takes the round sheet to boreholes nobody may have reported on
+  // for years. One with nothing recorded is "not known" and due now, never
+  // working; one with no position is placed last and says so; the order is
+  // stated as a walk, not a route, and the intervals as choices; and each
+  // mechanic's round starts on a page of its own (PLAN.md step 7.3).
+  const roundSheet = await page.evaluate(async () => {
+    const C = window.GWT.core;
+    const id = (easting) => C.mintAssetId({ district: 'Bo', easting: easting,
+      northing: 875300, utm_zone: 28 });
+    const commissioned = [{ when: '2020-01-10', kind: 'commissioned' }];
+    const result = C.serviceRounds([
+      { asset_id: id(790500), community: 'Silent', easting: 790500, northing: 875300,
+        utm_zone: 28, events: [] },
+      { asset_id: id(791500), community: 'Lost', events: commissioned },
+      { asset_id: id(792500), community: 'Named', easting: 792500, northing: 875300,
+        utm_zone: 28, area_mechanic: 'A. Bangura', events: commissioned },
+    ], '2024-06-01', null, []);
+    const bytes = await (await window.GWT.docx.roundSheet({ rounds: result })).build();
+    const files = await window.GWT.support.unzip(bytes);
+    const xml = new TextDecoder().decode(files['word/document.xml']);
+    return { text: await window.__docText(bytes), pages: (xml.match(/w:type="page"/g) || []).length,
+      rounds: result.rounds.length };
+  });
+  check('a round sheet says a borehole nobody reported on is not known and due now',
+    roundSheet.text.includes('Not known. Nothing has been recorded against this borehole') &&
+    roundSheet.text.includes('due now, nothing to count from') &&
+    !/Silent[^\n]*\n[^\n]*Working/.test(roundSheet.text), '');
+  check('a round sheet places a borehole with no position last and says so',
+    roundSheet.text.includes('No recorded position') &&
+    roundSheet.text.includes('1 stop has no recorded position, so it comes last'), '');
+  check('a round sheet states its order as a walk and its intervals as choices',
+    roundSheet.text.includes('it is not an optimal route') &&
+    roundSheet.text.includes('choices made here and not a standard') &&
+    roundSheet.text.includes('as for water nobody has analysed'), '');
+  check('each round of the sheet starts on a page of its own',
+    roundSheet.rounds === 2 && roundSheet.pages === 1, JSON.stringify(roundSheet.pages));
+
   // --- a demonstration says so, and keeps saying it -------------------------
   // The sample files are offered from a picker so nobody has to have drilled
   // a borehole to see what the toolkit does. The documents they produce are

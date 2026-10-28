@@ -150,6 +150,9 @@ CARRIED_KEYS = frozenset({
     "terrain_source", "terrain_source_text", "terrain_radius_km", "terrain_area_km2",
     "cov_source", "cov_resolution", "cov_year", "cov_rate",
     "asset_lookup",
+    # the service rounds' area mechanics by chiefdom (PLAN.md step 7.3),
+    # saved with the project by its org_ prefix
+    "org_area_mechanics",
     "proc_ref", "proc_retention", "proc_advance", "proc_number", "proc_date",
     "proc_previous",
 })

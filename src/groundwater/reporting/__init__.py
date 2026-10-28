@@ -26,6 +26,7 @@ __all__ = [
     "build_payment_certificate",
     "build_pumping_report",
     "build_quality_report",
+    "build_round_sheet",
     "build_supervision_report",
 ]
 
@@ -42,6 +43,7 @@ _LAZY = {
     "build_payment_certificate": ".procurement",
     "build_pumping_report": ".pumping",
     "build_quality_report": ".quality",
+    "build_round_sheet": ".rounds",
     "build_supervision_report": ".supervision",
 }
 
@@ -58,8 +60,10 @@ _LAZY_MODULES = (
     "procurement",
     "supervision",
     "registry",
+    "rounds",
     "field_kit",
     "desk_study",
+    "calibration",
     "citations",
     "context",
 )

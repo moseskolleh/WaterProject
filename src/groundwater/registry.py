@@ -33,11 +33,14 @@ gets read as good news, and after two years everything is green.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 
+from .config import Config, DesignRules, ServiceConfig
 from .geo import infer_zone_for_sierra_leone, utm_to_geographic
+from .text import phrase, phrase_table
 
 __all__ = [
     "Asset",
@@ -49,8 +52,10 @@ __all__ = [
     "Schedule",
     "asset_from_project",
     "asset_state",
+    "asset_with_rising_main",
     "check_character",
     "clean_answers",
+    "clean_rising_main",
     "event_id",
     "format_asset_id",
     "iso_date",
@@ -243,10 +248,16 @@ def validate_asset_id(text: str) -> tuple[bool, str]:
 # Events
 # ---------------------------------------------------------------------------
 
-#: kind -> (label, what it establishes about function, is it a service visit)
+#: kind -> (label, what it establishes about function, is it a service visit).
+#: A routine inspection is the area mechanic's visit to the pump and the
+#: rising main (PLAN.md step 7.3), at the interval the design sets for the
+#: rising main; an ``inspection`` is the sanitary inspection, as it always
+#: was. A repair is not counted as a routine inspection: it records what was
+#: mended, not that the rest was looked at.
 EVENT_KINDS = {
     "commissioned": ("Commissioned", "functional", False),
     "inspection": ("Sanitary inspection", None, True),
+    "routine_inspection": ("Routine inspection", None, True),
     "water_sample": ("Water sampled", None, False),
     "repair": ("Repair", "functional", True),
     "failure": ("Failure", "non_functional", True),
@@ -475,6 +486,16 @@ class Asset:
     pump_type: str = ""
     installed_by: str = ""
     events: list[AssetEvent] = field(default_factory=list)
+    #: The area mechanic whose service round the borehole is on (PLAN.md
+    #: step 7.3); blank where none is named on the record, and then the
+    #: rounds look the chiefdom up instead.
+    area_mechanic: str = ""
+    #: What the borehole's design specifies for the rising main (PLAN.md
+    #: step 7.2), as :func:`clean_rising_main` keeps it: ``material``,
+    #: ``inspection_months`` (the routine inspection's interval) and
+    #: ``chemistry``. None where the record carries none, and then the
+    #: routine inspection is due at the schedule's shorter interval.
+    rising_main: dict | None = None
 
     @property
     def latlon(self) -> tuple[float, float] | None:
@@ -499,10 +520,81 @@ class Asset:
                                                *streams)})
 
     def as_dict(self) -> dict:
-        payload = {k: v for k, v in self.__dict__.items() if k != "events"}
+        payload = {k: v for k, v in self.__dict__.items()
+                   if k not in ("events", "area_mechanic", "rising_main")}
+        # only a record that has them carries them, so a project file with
+        # no mechanic named and no rising main is written as it was before
+        if self.area_mechanic:
+            payload["area_mechanic"] = self.area_mechanic
+        if self.rising_main is not None:
+            payload["rising_main"] = dict(self.rising_main)
         payload["events"] = [e.identified_for(self.asset_id).as_dict()
                              for e in self.events]
         return payload
+
+
+#: The longest interval a record may set, in months: a hundred years. A
+#: longer one is not an interval anybody meant, and its due date would pass
+#: the year 9999 the calendar ends at.
+_MAX_MONTHS = 1200
+
+
+def _whole(value) -> bool:
+    """Whether ``value`` is a whole number, as JavaScript and Python both
+    read one: 5.0 is 5, true is not a number, and an int past a double
+    (which the browser reads as Infinity) is not one."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value) and value == int(value)
+    except OverflowError:
+        return False
+
+
+def _whole_months(value) -> int | None:
+    """``value`` as a number of months from 1 to 1200, or None when it is not
+    a whole number in that range."""
+    if not _whole(value) or not 1 <= value <= _MAX_MONTHS:
+        return None
+    return int(value)
+
+
+def _text_field(value) -> str:
+    """A text field of a record, trimmed, or blank when it is not text."""
+    return trim_field(value) if isinstance(value, str) else ""
+
+
+def clean_rising_main(raw) -> dict | None:
+    """The rising main a record carries, as both engines keep it, or None.
+
+    ``raw`` is a design's rising main (``rising_main_choice``) or a stored
+    record's. The interval has to be a whole number of months from 1 to
+    1200, or the record carries no rising main at all, since the interval is
+    what the routine inspection is due by; the material is trimmed, and the
+    chemistry is kept only when it is one of the states the design names.
+    """
+    if not isinstance(raw, dict):
+        return None
+    months = _whole_months(raw.get("inspection_months"))
+    if months is None:
+        return None
+    chemistry = _text_field(raw.get("chemistry"))
+    return {"material": _text_field(raw.get("material")),
+            "inspection_months": months,
+            "chemistry": chemistry if chemistry in phrase_table("rounds.water") else ""}
+
+
+def asset_with_rising_main(asset: Asset, rising_main) -> Asset:
+    """A copy of ``asset`` carrying the rising main of its project's design.
+
+    The design is the latest word on the borehole's rising main, so the apps
+    pass the current project's record through this before showing or saving
+    it. A design with no rising main (or none) leaves the record as it is.
+    """
+    clean = clean_rising_main(rising_main)
+    if clean is None:
+        return asset
+    return Asset(**{**asset.__dict__, "rising_main": clean})
 
 
 def asset_from_dict(payload: dict) -> Asset | None:
@@ -512,10 +604,13 @@ def asset_from_dict(payload: dict) -> Asset | None:
     asset_id = parse_asset_id(payload.get("asset_id"))
     if not asset_id:
         return None
-    known = {f for f in Asset.__dataclass_fields__ if f != "events"}
+    known = {f for f in Asset.__dataclass_fields__
+             if f not in ("events", "area_mechanic", "rising_main")}
     fields = {k: v for k, v in payload.items() if k in known}
     fields["asset_id"] = asset_id
     asset = Asset(**fields)
+    asset.area_mechanic = _text_field(payload.get("area_mechanic"))
+    asset.rising_main = clean_rising_main(payload.get("rising_main"))
     asset.events = merge_events(asset_id, payload.get("events") or [])
     return asset
 
@@ -539,7 +634,9 @@ def asset_from_project(state: dict) -> Asset | None:
     analysis = state.get("pump_analysis")
     depth = getattr(log, "total_depth_m", None) if log is not None else None
     recommendation = getattr(analysis, "yield_recommendation", None)
+    design = state.get("borehole_design")
     return Asset(
+        rising_main=clean_rising_main(getattr(design, "rising_main", None)),
         asset_id=asset_id,
         community=getattr(site, "community", "") or "",
         district=getattr(site, "district", "") or "",
@@ -588,21 +685,55 @@ def _project_site(state: dict):
 
 @dataclass(frozen=True)
 class Schedule:
-    """How often a working point should be visited.
+    """How often a point should be visited.
 
-    These are defaults, not a standard. Surveillance intervals for rural
-    point sources are set by the programme and by the district, and vary
-    with how many people drink from the point and what the last result said;
-    a six-monthly sanitary inspection and an annual water sample is a common
-    baseline to start from and to argue with. Change them here and every
-    due-date in the registry moves with them.
+    These are a programme's choices, not a standard (``config.ServiceConfig``
+    says why each value is what it is): the defaults are the ``service``
+    section of ``data/defaults.json``, and :meth:`from_config` reads them
+    from a configuration. Change them there and every due date in the
+    registry moves with them.
+
+    The routine inspection of the pump and rising main is due at the interval
+    the borehole's record carries from its design (``Asset.rising_main``,
+    PLAN.md step 7.2); ``routine_inspection_months`` is the interval for a
+    record that carries none, the design rules' interval for water whose
+    corrosivity is not known.
     """
 
-    inspection_months: int = 6
-    water_sample_months: int = 12
+    sanitary_inspection_months: int = ServiceConfig().sanitary_inspection_months
+    water_sample_months: int = ServiceConfig().water_sample_months
     #: How long past due before an item stops being "due" and starts being
     #: "overdue". A visit is a journey, not a diary entry.
-    grace_days: int = 30
+    grace_days: int = ServiceConfig().grace_days
+    routine_inspection_months: int = DesignRules().aggressive_rising_main_inspection_months
+
+    def __post_init__(self) -> None:
+        """Refuse an interval no due date can be counted with, as
+        ``checkSchedule`` refuses it in the browser: a configuration that
+        set one would otherwise give a due date in one engine and an error
+        or nonsense in the other."""
+        for name in ("sanitary_inspection_months", "water_sample_months",
+                     "routine_inspection_months"):
+            months = _whole_months(getattr(self, name))
+            if months is None:
+                raise ValueError(f"schedule: {name} must be a whole number of months "
+                                 f"from 1 to {_MAX_MONTHS}")
+            object.__setattr__(self, name, months)
+        grace = self.grace_days
+        if not _whole(grace) or grace < 0:
+            raise ValueError("schedule: grace_days must be a whole number of days, 0 or more")
+        object.__setattr__(self, "grace_days", int(grace))
+
+    @classmethod
+    def from_config(cls, config: Config | None = None) -> Schedule:
+        """The schedule a configuration sets: its ``service`` section, and
+        its design rules' interval for a rising main in water whose
+        corrosivity is not known."""
+        config = config or Config()
+        return cls(sanitary_inspection_months=config.service.sanitary_inspection_months,
+                   water_sample_months=config.service.water_sample_months,
+                   grace_days=config.service.grace_days,
+                   routine_inspection_months=config.design.aggressive_rising_main_inspection_months)
 
 
 @dataclass(frozen=True)
@@ -610,13 +741,16 @@ class DueItem:
     key: str
     title: str
     due_on: date | None
-    state: str          # "due" | "overdue" | "unknown"
+    state: str          # "scheduled" | "due" | "overdue" | "unknown"
     detail: str
+    #: The interval it is due by, in months, and where that comes from.
+    months: int = 0
+    basis: str = ""
 
     def as_dict(self) -> dict:
         return {"key": self.key, "title": self.title, "state": self.state,
                 "due_on": self.due_on.isoformat() if self.due_on else None,
-                "detail": self.detail}
+                "detail": self.detail, "months": self.months, "basis": self.basis}
 
 
 @dataclass(frozen=True)
@@ -632,6 +766,7 @@ class AssetState:
     days_out_of_service: int | None
     due: tuple[DueItem, ...]
     undated_events: int
+    last_routine_inspection: date | None = None
 
     @property
     def label(self) -> str:
@@ -655,6 +790,8 @@ class AssetState:
             if self.last_inspection else None,
             "last_sample": self.last_sample.isoformat()
             if self.last_sample else None,
+            "last_routine_inspection": self.last_routine_inspection.isoformat()
+            if self.last_routine_inspection else None,
             "commissioned": self.commissioned.isoformat()
             if self.commissioned else None,
             "days_out_of_service": self.days_out_of_service,
@@ -663,10 +800,14 @@ class AssetState:
         }
 
 
-def _add_months(start: date, months: int) -> date:
+def _add_months(start: date, months: int) -> date | None:
+    """``months`` after ``start``, or None when that is past the year 9999,
+    the last a date can hold in either engine."""
     month = start.month - 1 + months
     year = start.year + month // 12
     month = month % 12 + 1
+    if year > 9999:
+        return None
     # clamp rather than roll over: six months from 31 August is 28 February,
     # not 3 March, and a due date that drifts forward is one that gets missed
     day = min(start.day, [31, 29 if year % 4 == 0 and (year % 100 or not
@@ -688,7 +829,7 @@ def asset_state(asset: Asset, today: date | None = None,
     function, since, detail = "unknown", None, (
         "Nothing has been recorded against this borehole, so whether it is "
         "working is not known.")
-    commissioned = last_inspection = last_sample = None
+    commissioned = last_inspection = last_sample = last_routine = None
     for when, event in dated:
         if when > today:
             continue  # a record dated in the future settles nothing yet
@@ -702,6 +843,8 @@ def asset_state(asset: Asset, today: date | None = None,
             commissioned = when
         if event.kind == "inspection":
             last_inspection = when
+        if event.kind == "routine_inspection":
+            last_routine = when
         if event.kind == "water_sample":
             last_sample = when
 
@@ -713,44 +856,73 @@ def asset_state(asset: Asset, today: date | None = None,
 
     due: list[DueItem] = []
     if function != "decommissioned":
+        months = schedule.sanitary_inspection_months
         due.append(_due_item(
             "inspection", "Sanitary inspection", last_inspection, commissioned,
-            schedule.inspection_months, schedule.grace_days, today,
+            months, schedule.grace_days, today,
             "A sanitary inspection is what catches a cracked apron or a "
-            "latrine dug uphill before the water shows it."))
+            "latrine dug uphill before the water shows it.",
+            phrase("rounds.basis_sanitary", months=months)))
+        months, basis = _routine_interval(asset, schedule)
+        due.append(_due_item(
+            "routine_inspection", EVENT_KINDS["routine_inspection"][0], last_routine,
+            commissioned, months, schedule.grace_days, today,
+            phrase("rounds.routine_why"), basis))
+        months = schedule.water_sample_months
         due.append(_due_item(
             "water_sample", "Water quality sample", last_sample, commissioned,
-            schedule.water_sample_months, schedule.grace_days, today,
+            months, schedule.grace_days, today,
             "Water that was safe at handover is not evidence that it is safe "
-            "now: the aquifer, the headworks and the catchment all change."))
+            "now: the aquifer, the headworks and the catchment all change.",
+            phrase("rounds.basis_sample", months=months)))
     return AssetState(
         function=function, since=since, detail=detail,
         last_inspection=last_inspection, last_sample=last_sample,
         commissioned=commissioned, days_out_of_service=out_for,
         due=tuple(item for item in due if item is not None),
-        undated_events=undated,
+        undated_events=undated, last_routine_inspection=last_routine,
     )
 
 
+def _routine_interval(asset: Asset, schedule: Schedule) -> tuple[int, str]:
+    """The routine inspection's interval in months, and where it comes from:
+    the rising main the record carries from the design, else the schedule's
+    interval for a record that carries none."""
+    rising = clean_rising_main(getattr(asset, "rising_main", None))
+    if rising is None:
+        months = schedule.routine_inspection_months
+        return months, phrase("rounds.basis_default", months=months)
+    months = rising["inspection_months"]
+    if rising["material"] and rising["chemistry"]:
+        return months, phrase("rounds.basis_design", months=months,
+                              material=rising["material"],
+                              water=phrase_table("rounds.water")[rising["chemistry"]])
+    return months, phrase("rounds.basis_record", months=months)
+
+
 def _due_item(key: str, title: str, last: date | None, commissioned: date | None,
-              months: int, grace_days: int, today: date, why: str) -> DueItem:
+              months: int, grace_days: int, today: date, why: str,
+              basis: str) -> DueItem:
     anchor = last or commissioned
     if anchor is None:
         return DueItem(key, title, None, "unknown",
                        f"No {title.lower()} has been recorded, and there is no "
-                       f"commissioning date to count from. {why}")
+                       f"commissioning date to count from. {why}", months, basis)
     due_on = _add_months(anchor, months)
-    if today > due_on + timedelta(days=grace_days):
-        overdue_by = (today - due_on).days
+    if due_on is None:
+        return DueItem(key, title, None, "scheduled",
+                       phrase("rounds.beyond", title=title.lower()), months, basis)
+    late = (today - due_on).days
+    if late > grace_days:
         never = "" if last else "has never been done; it "
         return DueItem(key, title, due_on, "overdue",
                        f"{title} {never}has been due since "
-                       f"{due_on.isoformat()}, {overdue_by} days ago. {why}")
-    if today > due_on:
+                       f"{due_on.isoformat()}, {late} days ago. {why}", months, basis)
+    if late > 0:
         return DueItem(key, title, due_on, "due",
-                       f"{title} fell due on {due_on.isoformat()}.")
+                       f"{title} fell due on {due_on.isoformat()}.", months, basis)
     return DueItem(key, title, due_on, "scheduled",
-                   f"Next {title.lower()} due {due_on.isoformat()}.")
+                   f"Next {title.lower()} due {due_on.isoformat()}.", months, basis)
 
 
 # ---------------------------------------------------------------------------
@@ -869,6 +1041,7 @@ def registry_stats(assets, today: date | None = None,
         "functionality_rate": (counts["functional"] / known * 100.0)
         if known else None,
         "n_overdue_inspection": overdue_by_key.get("inspection", 0),
+        "n_overdue_routine": overdue_by_key.get("routine_inspection", 0),
         "n_overdue_sample": overdue_by_key.get("water_sample", 0),
         "mean_days_out_of_service": (sum(out_days) / len(out_days))
         if out_days else None,

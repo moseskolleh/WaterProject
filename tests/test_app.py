@@ -2062,3 +2062,60 @@ def test_a_sanitary_inspection_is_recorded_and_read_with_the_sample(sample_data)
     assert "between 3 and 5 of 10, which the form rates intermediate" in expected["statement"]
     written = " ".join(str(w.value) for w in at.warning)
     assert expected["statement"] in written
+
+
+def test_the_service_rounds_follow_the_design_and_the_mechanic(sample_data):
+    """PLAN.md step 7.3: the Asset registry page schedules this borehole's
+    routine inspection at the interval the design sets for its rising main
+    (Dr Timbo's aggressive sample: stainless steel, every 6 months), puts it
+    on the round of the mechanic named for its chiefdom until one is named on
+    its record, and builds the round sheet."""
+    import docx
+
+    from groundwater.registry import Asset, AssetEvent, asset_from_dict
+    from groundwater.text import phrase, phrase_table
+
+    asset = Asset(asset_id="SL-WAR-8FEEVKQ-T", community="Dr. Timbo's",
+                  district="Western Area Rural", chiefdom="Koya", easting=694912.0,
+                  northing=938150.0, utm_zone=28,
+                  events=[AssetEvent("2020-01-10", "commissioned")])
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["asset_record"] = asset.as_dict()
+    goto(at, "Borehole design")
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    goto(at, "Water quality")
+    at.selectbox(key="sample_wq").select("dr_timbo/dr_timbo_water_quality.xlsx")
+    at.run()
+    assert not at.exception, at.exception
+    goto(at, "Asset registry")
+    basis = phrase("rounds.basis_design", months=6, material="stainless steel",
+                   water=phrase_table("rounds.water")["aggressive"])
+    captions = " ".join(str(c.value) for c in at.caption)
+    assert phrase("rounds.interval_line", title="Routine inspection", basis=basis) in captions
+    # the record saved with the project carries the design's rising main
+    saved = asset_from_dict(at.session_state["asset_record"])
+    assert saved.rising_main == {"material": "stainless steel", "inspection_months": 6,
+                                 "chemistry": "aggressive"}
+
+    at.text_area(key="org_area_mechanics").input("koya: M. Kolleh\nno colon")
+    at.run()
+    assert not at.exception, at.exception
+    assert "M. Kolleh: 1 stop." in " ".join(str(m.value) for m in at.markdown)
+    assert phrase("rounds.mechanics_no_colon", line=2) in " ".join(str(w.value) for w in at.warning)
+
+    next(t for t in at.text_input if t.label == "Area mechanic").input("A. Bangura")
+    next(b for b in at.button if b.label == "Name the area mechanic").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert asset_from_dict(at.session_state["asset_record"]).area_mechanic == "A. Bangura"
+    assert "A. Bangura: 1 stop." in " ".join(str(m.value) for m in at.markdown)
+
+    at.button(key="rounds_sheet").click()
+    at.run()
+    assert not at.exception, at.exception
+    sheet = docx.Document(at.session_state["artifacts"]["Round sheets"])
+    text = "\n".join(p.text for p in sheet.paragraphs)
+    assert "Area mechanic: A. Bangura" in text and basis in text
+    cells = [c.text for t in sheet.tables for row in t.rows for c in row.cells]
+    assert "SL-WAR-8FEEVKQ-T" in cells and "BOREHOLE SL-WAR-8FEEVKQ-T" in cells
