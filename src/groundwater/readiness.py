@@ -68,13 +68,24 @@ _UNIT_BLOCKERS = (
 
 #: Codes that say a value was assumed rather than read. Not blocking - the
 #: assumption is stated in the report - but worth surfacing beside the gate.
+#: A drilling log converted from feet is among them: the depths were read,
+#: but the report should say they were converted, and a bare depth may have
+#: been read in feet because the rest of the sheet was.
 _UNIT_ASSUMPTIONS = (
     "discharge_unit_assumed",
     "unit_not_reported",
     "unit_basis_assumed",
     "utm_zone_assumed",
     "test_type_inferred",
+    "feet_converted",
 )
+
+
+def _drilling_flags(log, codes: tuple[str, ...]) -> list:
+    """The flags the drilling log reader raised with one of ``codes``, the
+    reader's own lists (``ingestion.drilling.UNREADABLE_CODES`` and
+    ``REFUSAL_CODES``), so the gate and the reader cannot drift."""
+    return _has(_flags(log), codes)
 
 
 @dataclass(frozen=True)
@@ -316,6 +327,17 @@ def _borehole_logged(state: dict) -> tuple[str, str]:
         return "unmet", "The drilling log records no total depth."
     if not log.intervals:
         return "unmet", "The drilling log records no lithology."
+    # A log the reader dropped a row of, or refused a strike from, is not the
+    # log the crew wrote: the gate used to call it met, and "Logged to 45 m"
+    # stood over a log that had lost its 5-10 m row and both water strikes.
+    from .ingestion.drilling import REFUSAL_CODES
+
+    refused = _drilling_flags(log, REFUSAL_CODES)
+    if refused:
+        from .text import phrase
+
+        return "unmet", phrase("drilling.gate_set_aside", messages=" ".join(
+            dict.fromkeys(f.message for f in refused)))
     return "met", (
         f"Logged to {log.total_depth_m:.0f} m with "
         f"{plural(len(log.intervals), 'lithological interval')}."
@@ -355,7 +377,13 @@ def _readings_usable(state: dict) -> tuple[str, str]:
     analysis = state.get("pump_analysis")
     if analysis is not None:
         flags += analysis.test.flags or []
-    refused = _has(flags, _UNIT_BLOCKERS)
+    # and every cell the drilling log reader could not read: "every reading
+    # carried a unit the toolkit could read" was said of a log whose strike
+    # cells it had refused and whose rows it had skipped
+    from .ingestion.drilling import UNREADABLE_CODES
+
+    refused = _has(flags, _UNIT_BLOCKERS) + _drilling_flags(
+        state.get("drilling_log"), UNREADABLE_CODES)
     if refused:
         return "unmet", "; ".join(f.message for f in refused)
     return "met", "Every reading carried a unit the toolkit could read."
@@ -524,6 +552,43 @@ def _photo_evidence(state: dict) -> tuple[str, str]:
     return "met", phrase("evidence.photos_present", n=len(wanted)) + " " + caveat
 
 
+def _checklist_answered(state: dict) -> tuple[str, str]:
+    """Every critical checklist item has an answer.
+
+    Completeness, not outcome, as everywhere in this gate: an answer of No
+    is an answer, and the record states the failure; an item left blank is
+    a step the record cannot vouch for. The gate used to look only at the
+    photographs, so a record with three photographed items answered and 35
+    critical ones blank was certified, while its own summary said in bold
+    that 35 critical items were still open. An answer of N/A counts as an
+    answer, and an answer that is none of the four is read as pending, as
+    :func:`~groundwater.supervision.checklists.evaluate_checklist` reads it.
+    """
+    from .supervision.checklists import RESPONSE_STATES, load_checklists, stage_title
+    from .text import phrase
+
+    supervision = state.get("supervision") or {}
+    items = supervision.get("items")
+    if items is None:
+        items = load_checklists()
+    responses = supervision.get("responses") or {}
+    critical = [i for i in items if i.critical]
+    if not critical:
+        return "met", phrase("supervision.no_critical_items")
+    open_by_stage: dict[str, int] = {}
+    for item in critical:
+        status = _response_status(responses.get(item.item_id))
+        if status not in RESPONSE_STATES or status == "pending":
+            title = stage_title(item.checklist)
+            open_by_stage[title] = open_by_stage.get(title, 0) + 1
+    if open_by_stage:
+        return "unmet", phrase(
+            "supervision.critical_unanswered", n=sum(open_by_stage.values()),
+            stages=and_join([phrase("supervision.open_in_stage", n=count, stage=title)
+                             for title, count in open_by_stage.items()]))
+    return "met", phrase("supervision.critical_answered", n=len(critical))
+
+
 def _decision_bands(state: dict, report: str) -> tuple[str, str]:
     """Every decision number the report prints carries a band (PLAN.md step
     3.6), as every borehole carries a GPS fix.
@@ -646,6 +711,7 @@ REQUIREMENTS: dict[str, tuple[str, Any]] = {
     "water_quality_evaluable": ("Water quality evaluable", _water_quality_evaluable),
     "design_derived": ("Borehole design", _design_derived),
     "cost_basis": ("Cost estimate", _cost_basis),
+    "checklist_answered": ("Critical items answered", _checklist_answered),
     "photo_evidence": ("Photo evidence", _photo_evidence),
     "decision_bands": ("Decision bands", _decision_bands),
     "no_errors": ("No fatal data problems", _no_errors),
@@ -691,9 +757,10 @@ REPORTS: dict[str, tuple[str, ...]] = {
     # An estimate is priced before anything is drilled, so it is judged on
     # its own inputs, not on a log and an as-built design it cannot have.
     "costing": ("field_data", "site_located", "cost_basis", "decision_bands", "no_errors"),
-    # A supervision record vouches that the critical steps were done, and for
-    # the ones the checklist says need it, a photograph is the evidence.
-    "supervision": ("field_data", "site_located", "photo_evidence"),
+    # A supervision record vouches that the critical steps were done: each
+    # needs an answer, and for the ones the checklist says need it, a
+    # photograph is the evidence.
+    "supervision": ("field_data", "site_located", "checklist_answered", "photo_evidence"),
     # The asset documents and the payment certificate. Without an entry each
     # of these fell back to the completion set, so a plate for the headworks
     # was stamped PROVISIONAL for want of a water quality panel - which a

@@ -1040,3 +1040,142 @@ def test_a_grout_written_as_a_range_is_its_bottom():
         grid = _drilling_grid([["0-30", None, None, None, "Fractured granite", 6.5, None]])
         grid[3] = ["Grouting depth (m)", cell]
         assert drilling_from_grid(grid).grouting_depth_m == 20.0, cell
+
+
+# A log kept in feet: the headers, the cells, the total depth, a strike cell,
+# a strike note and the rates all say so, and nothing knew about feet. A 150 ft
+# hole was designed, costed and reported as a 150 m one, with strikes at 45 m
+# and 90 m, and "4 min/ft" fell through to the bare number as 4 m/min.
+_FEET_LOG = [
+    ["Total depth (ft):", "150 ft"],
+    ["Depth interval (ft)", "Sample / lithology description",
+     "Penetration rate (min/ft)", "Water strike depth (ft)"],
+    ["0-20 ft", "Laterite", "2", ""],
+    ["20-60 ft", "Weathered granite", "4 min/ft", "45 ft"],
+    ["60-150 ft", "Fresh granite", "1.5 ft/min", ""],
+    ["Water strike at 90 ft", "", "", ""],
+]
+
+
+def test_a_drilling_log_in_feet_is_converted_and_says_so():
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(_FEET_LOG)
+    assert log.total_depth_m == 45.72
+    assert [(iv.top_m, iv.bottom_m) for iv in log.intervals] == [
+        (0.0, 6.1), (6.1, 18.29), (18.29, 45.72)]
+    assert log.water_strikes_m == [13.72, 27.43]
+    # 2 min/ft, 4 min/ft and 1.5 ft/min, in metres a minute
+    assert [iv.penetration_rate_m_per_min for iv in log.intervals] == pytest.approx(
+        [0.1524, 0.0762, 0.4572])
+    [flag] = log.flags
+    assert (flag.level, flag.code) == ("info", "feet_converted")
+    assert flag.message == (
+        "The drilling log gives 9 depths in feet; they were converted to metres "
+        "at 0.3048 m to the foot and kept to the centimetre (the deepest, 150 ft, "
+        "is 45.72 m). Check the converted log against the sheet. 3 penetration "
+        "rates given per foot or in feet per minute or hour were converted to "
+        "metres per minute.")
+
+
+def test_a_depth_with_no_unit_of_its_own_is_read_in_the_sheets_unit():
+    """Every unit the sheet names is feet, so a bare depth is feet too, and
+    the flag says that was the sheet's reading, not the cell's."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    grid = [["Depth interval", "Lithology description", "Penetration rate"],
+            ["0-10", "Laterite", "1.5 ft/min"], ["10-40", "Granite", "4 min/ft"],
+            ["Water strike at 30 ft", "", ""]]
+    log = drilling_from_grid(grid)
+    assert [(iv.top_m, iv.bottom_m) for iv in log.intervals] == [(0.0, 3.05), (3.05, 12.19)]
+    assert log.water_strikes_m == [9.14]
+    assert "read in feet too, because every unit the sheet names" in log.flags[0].message
+    # with no unit anywhere the template's metres stand, as before
+    plain = drilling_from_grid([["Depth interval", "Lithology description"],
+                                ["0-10", "Laterite"], ["10-40", "Granite"]])
+    assert [(iv.top_m, iv.bottom_m) for iv in plain.intervals] == [(0.0, 10.0), (10.0, 40.0)]
+    assert not any(f.code == "feet_converted" for f in plain.flags)
+
+
+def test_a_depth_whose_unit_cannot_be_told_is_refused_not_read_as_metres():
+    """A header naming both units, and a sheet giving depths in both, leave
+    a bare depth with no unit to read it in: it is refused and said."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    both = drilling_from_grid([["Depth interval (m/ft)", "Lithology description"],
+                               ["0-10", "Laterite"], ["10-40 ft", "Granite"]])
+    assert [(iv.top_m, iv.bottom_m) for iv in both.intervals] == [(3.05, 12.19)]
+    refused = [f for f in both.flags if f.code == "depth_unit_ambiguous"]
+    assert [f.message for f in refused] == [(
+        'Depth interval cell "0-10" names no unit, and its column header names '
+        'both feet and metres, so this row was skipped; write the unit in the cell '
+        'or the column header, as "0-20 m" or "0-60 ft".')]
+
+    mixed = drilling_from_grid([
+        ["Total depth:", "150"],
+        ["Depth interval", "Lithology description", "Water strike"],
+        ["0-20 ft", "Laterite", ""], ["20-45 m", "Granite", "12"],
+        ["Water strike at 14", "", ""]])
+    assert [(iv.top_m, iv.bottom_m) for iv in mixed.intervals] == [(0.0, 6.1), (20.0, 45.0)]
+    assert mixed.water_strikes_m == []
+    assert mixed.total_depth_m == 45.0          # the stated 150 was refused
+    messages = [f.message for f in mixed.flags]
+    assert ('Total depth "150" names no unit, and the sheet gives depths in both '
+            'feet and metres, so it was not recorded; write the unit beside it, as '
+            '"45 m" or "150 ft".') in messages
+    assert ('Water strike cell "12" was not read as a depth: it names no unit, and '
+            'the sheet gives depths in both feet and metres. No strike was recorded '
+            'from it; write each depth with its unit, as "water strike at 12 m and '
+            '30 m".') in messages
+    # the readiness gate does not call that log complete
+    from groundwater.readiness import assess_readiness
+
+    gate = assess_readiness({"drilling_log": mixed}, "completion")
+    states = {r.key: r.state for r in gate.requirements}
+    assert states["borehole_logged"] == states["readings_usable"] == "unmet"
+
+
+def test_a_decimal_comma_in_the_interval_column_is_a_decimal_point():
+    """"12,5-30" was read as the 5-30 m inside it, and the overlap flag that
+    followed blamed the log."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-12,5", None, None, None, "Laterite", 6.5, None],
+        ["12,5-30", None, None, None, "Granite", 6.5, None],
+    ]))
+    assert [(iv.top_m, iv.bottom_m) for iv in log.intervals] == [(0.0, 12.5), (12.5, 30.0)]
+    assert not any(f.code in ("interval_overlap", "interval_gap", "depth_mismatch")
+                   for f in log.flags)
+
+
+def test_a_lens_logged_inside_a_longer_interval_is_no_gap():
+    """The column was checked against the row before only, so 0-30, 5-10,
+    30-45 reported a gap from 10 to 30 m that the 0-30 m row covers, and a
+    nested row at the foot of the table was "the deepest logged interval"
+    against a total nobody stated."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    nested = drilling_from_grid([
+        ["Depth interval", "Lithology description"],
+        ["0-30", "Weathered granite"], ["5-10", "Clay lens"], ["30-45", "Granite"]])
+    assert [(f.code, f.message) for f in nested.flags] == [
+        ("interval_overlap", "Depth intervals overlap at 5 m.")]
+    last = drilling_from_grid([
+        ["Depth interval", "Lithology description"],
+        ["0-12", "Laterite"], ["12-45", "Granite, fractured at 30-32"],
+        ["30-32", "Fracture zone"]])
+    assert last.total_depth_m == 45.0
+    assert [f.code for f in last.flags] == ["interval_overlap"]
+    # a total the sheet does state is still held to the deepest bottom
+    stated = drilling_from_grid(_drilling_grid([
+        ["0-12", None, None, None, "Laterite", 6.5, None],
+        ["12-28", None, None, None, "Granite", 6.5, None],
+        ["20-22", None, None, None, "Fracture", 6.5, None],
+    ]))
+    assert [f.message for f in stated.flags if f.code == "depth_mismatch"] == [
+        "Stated total depth 30 m differs from the deepest logged interval 28 m."]
+    # and a real gap is still a gap, from the deepest bottom logged
+    gap = drilling_from_grid([["Depth interval", "Lithology description"],
+                              ["0-30", "A"], ["5-10", "B"], ["35-45", "C"]])
+    assert "Gap in the drilling log between 30 m and 35 m." in [f.message for f in gap.flags]

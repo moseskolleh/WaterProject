@@ -64,6 +64,10 @@ def render() -> None:
                                           search_radius_m=float(radius))
                 st.session_state["wp_result"] = {
                     "decision": decision,
+                    # where the lookup was centred: the survey plan keeps
+                    # clear of these points only as far round its own
+                    # site as they were looked up
+                    "centre": (lat, lon),
                     "rows": [p.as_row() for p in points],
                     # kept as objects too, so the GeoLibre project can put
                     # them on the map rather than re-fetching them

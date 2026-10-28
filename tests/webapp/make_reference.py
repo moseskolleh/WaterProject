@@ -48,8 +48,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from groundwater.depth_spine.view import SpineInputs, build_view
-from groundwater.costing import CostingInputs, inputs_from_design
+from groundwater.depth_spine.view import SpineCosting, SpineInputs, build_view
+from groundwater.costing import CostingInputs, inputs_from_design, load_rates
 from groundwater.design import design_borehole
 from groundwater.hydraulics import analyse_pumping_test, test_type_text
 from groundwater.ingestion import (
@@ -307,7 +307,55 @@ DRILLING_CASES = [
                     ["60 -", "", "", 0.4, "Granite", 6.5, None]]),
     # a grout written as the range it covers
     _sheet(_TABLE, _ROWS, grout="0-20"),
+    # A log in feet: the headers, the cells, the total depth, a strike cell, a
+    # strike note and rates per foot all say so, and are converted.
+    [["Total depth (ft):", "150 ft"],
+     ["Depth interval (ft)", "Sample / lithology description",
+      "Penetration rate (min/ft)", "Water strike depth (ft)"],
+     ["0-20 ft", "Laterite", "2", ""],
+     ["20-60 ft", "Weathered granite", "4 min/ft", "45 ft"],
+     ["60-150 ft", "Fresh granite", "1.5 ft/min", ""],
+     ["Water strike at 90 ft", "", "", ""]],
+    # every unit the sheet names is feet, so a bare depth is feet too; the
+    # grout and the screens in feet, the screens with their unit on each
+    [["Grouting depth:", "0-20 ft"], ["Screens installed:", "80 ft - 110 ft; 120-130 ft"],
+     ["Depth interval", "Lithology description", "Penetration rate"],
+     ["0-10", "Laterite", "1.5 ft/min"], ["10-140", "Granite", "4 min/ft"],
+     ["Water strike at 30", "", ""], ["Water strike at 95'", "", ""]],
+    # a header naming both units, and a sheet giving depths in both: a bare
+    # depth there is refused, never read as metres
+    [["Depth interval (m/ft)", "Lithology description"],
+     ["0-10", "Laterite"], ["10-40 ft", "Granite"], ["40 ft-50 m", "Granite"]],
+    [["Total depth:", "150"], ["Grouting depth:", "6"],
+     ["Depth interval", "Lithology description", "Water strike"],
+     ["0-20 ft", "Laterite", ""], ["20-45 m", "Granite", "12"],
+     ["Water strike at 14", "", ""]],
+    # a template sheet with one strike typed in feet
+    _sheet(_TABLE, [["0-10", "", "", 1, "Topsoil", 6.5, None],
+                    ["10-30", "", "", 0.5, "Weathered granite", 6.5, "45 ft"],
+                    ["30-60", "", "", 0.4, "Granite, fractured", 6.5, "18"]]),
+    # decimal commas in the interval column, and a lens inside a longer row
+    _sheet(_TABLE, [["0-12,5", "", "", 1, "Topsoil", 6.5, None],
+                    ["12,5-30", "", "", 0.5, "Weathered granite", 6.5, None],
+                    ["30-60", "", "", 0.4, "Granite", 6.5, None]]),
+    _sheet(_TABLE, [["0-30", "", "", 1, "Weathered granite", 6.5, None],
+                    ["5-10", "", "", 1, "Clay lens", 6.5, None],
+                    ["30-45", "", "", 0.4, "Granite", 6.5, None],
+                    ["50-60", "", "", 0.4, "Granite", 6.5, None]]),
+    [["Depth interval", "Lithology description"],
+     ["0-12", "Laterite and saprolite"], ["12-45", "Granite, fractured at 30-32"],
+     ["30-32", "Fracture zone, water"]],
 ]
+
+
+# The two logs the readiness cases add: one in feet, and one whose rows and
+# strikes the reader had to set aside. parity.mjs reads them from the
+# reference, so both engines read the same cells.
+GATE_FEET_LOG = DRILLING_CASES[6]
+GATE_SET_ASIDE_LOG = _sheet(_TABLE, [
+    ["0-10", "", "", 1, "Topsoil", 6.5, "75 m"],
+    ["10 -", "", "", 0.5, "Weathered granite", 6.5, None],
+    ["20-60", "", "", 0.4, "Granite, fractured", 6.5, "1/2 m"]])
 
 
 def drilling_case(grid) -> dict:
@@ -318,6 +366,8 @@ def drilling_case(grid) -> dict:
         "grid": grid,
         "strikes": clean(log.water_strikes_m),
         "grout": clean(log.grouting_depth_m),
+        "total": clean(log.total_depth_m),
+        "screens": [[clean(a), clean(b)] for a, b in log.installed_screens_m],
         "intervals": [[clean(iv.top_m), clean(iv.bottom_m), iv.description,
                        clean(iv.penetration_rate_m_per_min), clean(iv.bit_diameter_in)]
                       for iv in log.intervals],
@@ -330,8 +380,12 @@ def drilling_case(grid) -> dict:
 # The interpretation and report prose over cases the Rokel pair never
 # reaches: a zone whose modelled base lies below the depth of investigation,
 # one wholly below it, a margin cut back to it, a last reading the inversion
-# dropped, poorly resolved boundaries, a near-tie, an exact tie and two
-# sheets carrying one sounding number. parity.mjs builds the same cases.
+# dropped, poorly resolved boundaries, a resistive cover over conductive
+# ground, a 1 m zone on half metres, a sounding too short for the vadose
+# allowance, a near-tie, an exact tie, two sheets carrying one sounding
+# number, a resistance sheet with rows K cannot convert, a resistivity headed
+# as a resistance, and a spacing read twice with no MN recorded. parity.mjs
+# builds the same cases.
 VES_CASE_SPACINGS = [1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0]
 VES_CASES = [
     # name, rho, h, err, h_factor, ab2, rho_app
@@ -345,6 +399,21 @@ VES_CASES = [
     ("two poorly resolved", [1100, 1600, 300, 47], [1.0, 2.0, 7.0], 5.0,
      [3.7, 2.5, 1.1], None, None),
     ("thin resistive at 2.5", [1000, 5000, 100], [2.5, 3], 5.0, None, None, None),
+    # a layer as resistive as basement over a water zone, over clay and over
+    # a conductive half-space: a resistive cover, never the depth to bedrock
+    ("cover over a water zone", [300, 5000, 60, 8000], [0.8, 2, 20], 2.0, None, None, None),
+    ("cover over clay", [300, 5000, 10, 8000], [0.8, 2, 20], 2.0, None, None, None),
+    ("cover over a conductive half-space", [1100, 5000, 47], [1.0, 7.0], 5.0, None, None,
+     None),
+    ("two covers", [300, 5000, 60, 4000, 60, 8000], [0.8, 2, 5, 2, 10], 2.0, None, None,
+     None),
+    ("basement over compact rock", [300, 5000, 1500, 8000], [0.8, 2, 20], 2.0, None, None,
+     None),
+    # a 1 m zone whose two ends round half to even onto the same metre
+    ("half-metre zone", [500, 100, 5000], [3.5, 1.0], 2.0, None, None, None),
+    # a sounding too short to see below the vadose allowance
+    ("short sounding", [400, 90, 3000], [0.6, 8.0], 2.0, None,
+     [1.0, 1.5, 2.0, 3.0, 4.0, 5.0], None),
 ]
 
 
@@ -385,7 +454,53 @@ VES_SHEETS = [
                                                   "Apparent Resistivity (ohm-m)"],
                            [[10.0, 1.0, 410.0], [20.0, 1.0, 260.0], [40.0, 1.0, 140.0],
                             [60.0, 10.0, 70.0]])),
+    # a resistance sheet with two rows where MN/2 is not below AB/2: those
+    # rows are left out and flagged, and the sheet is still read
+    ("R", _ves_sheet("R 1", "Schlumberger", ["No.", "AB/2 (m)", "MN (m)", "R (ohm)"],
+                     [[0.3, 1.0, 12.5], [0.5, 1.0, 9.0], [2.0, 1.0, 4.1], [3.0, 1.0, 1.9],
+                      [5.0, 1.0, 0.62], [10.0, 1.0, 0.18], [15.0, 1.0, 0.09]])),
+    # a resistivity headed as a resistance, but in ohm-metres
+    ("R ohm-m", _ves_sheet("R 2", "Schlumberger", ["No.", "AB/2 (m)", "MN (m)",
+                                                  "Apparent Resistance (Ωm)"],
+                           [[1.0, 0.5, 120.0], [2.0, 0.5, 95.0], [3.0, 0.5, 80.0],
+                            [5.0, 0.5, 70.0], [10.0, 2.0, 90.0]])),
+    # one spacing read twice with no MN column: fitted as two readings
+    ("no MN", _ves_sheet("N 1", "Schlumberger", ["No.", "AB/2 (m)",
+                                                "Apparent Resistivity (ohm-m)"],
+                         [[1.0, 120.0], [2.0, 95.0], [3.0, 80.0], [5.0, 70.0], [10.0, 90.0],
+                          [10.0, 120.0], [15.0, 110.0], [20.0, 140.0], [30.0, 190.0]])),
 ]
+
+
+#: (ab2, mn, rho, array) of soundings whose fitted readings and reading
+#: errors both engines compare: a zero at an MN overlap beside a good
+#: reading, a spacing read twice with no MN recorded, and an MN overlap
+READING_CASES = [
+    ([1, 2, 3, 5, 8, 10, 10, 15, 20, 30, 40, 40, 60, 80, 100],
+     [0.5] * 6 + [4.0] * 5 + [10.0] * 4,
+     [300, 250, 180, 120, 90, 85, 88, 80, 90, 120, 170, 0, 260, 330, 400], "schlumberger"),
+    ([1, 2, 3, 5, 10, 10, 15, 20, 30, 40, 40, 60], [None] * 12,
+     [120, 95, 80, 70, 90, 120, 110, 140, 190, 230, 260, 300], "schlumberger"),
+    ([1, 2, 3, 5, 10, 10, 15, 20, 30, 40, 40, 60], [1.0] * 5 + [4.0] * 5 + [10.0] * 2,
+     [120, 95, 80, 70, 90, 120, 110, 140, 190, 230, 260, 300], "schlumberger"),
+]
+
+
+def reading_cases() -> list:
+    from groundwater.ves.inversion import inversion_readings
+    from groundwater.ves.model_range import reading_errors
+
+    out = []
+    for ab2, mn, rho, array in READING_CASES:
+        sounding = VESSounding(SiteMetadata(), "R", np.array(ab2, dtype=float),
+                               np.array([np.nan if v is None else v for v in mn], dtype=float),
+                               np.array(rho, dtype=float), array_type=array)
+        fitted, fitted_rho, _ = inversion_readings(sounding)
+        sigma, spacings = reading_errors(sounding, fitted, 3.0)
+        out.append({"ab2": ab2, "mn": mn, "rho": rho, "array": array,
+                    "fitted_ab2": clean(fitted), "fitted_rho": clean(fitted_rho),
+                    "sigma": clean(sigma), "spacings": clean(spacings)})
+    return out
 
 
 def _trial_case(trials, chosen_rho, chosen_h, err):
@@ -463,6 +578,8 @@ def ves_text(rokel_inversions, rokel_interps) -> dict:
                 "wenner", 60.0, 24.0, VESConfig(depth_of_investigation_factor=0.4)),
         ],
         "sheets": [[s.sounding_id, s.array_type, flags(s.flags)] for _, s in grids],
+        "sheet_readings": [[clean(s.ab2), clean(s.rho_app)] for _, s in grids],
+        "readings": reading_cases(),
     }
 
 
@@ -480,9 +597,10 @@ RANGE_SHORT = {"samples": 200, "burn_in": 100, "starts": 4, "chains": 2}
 
 
 def _range_soundings() -> list:
-    """Two soundings the Rokel pair does not cover, as readings both engines
-    read: basement within reach under a weathered zone (the sentences with
-    a band), and a Wenner sheet that reads one spacing twice."""
+    """Three soundings the Rokel pair does not cover, as readings both
+    engines read: basement within reach under a weathered zone (the
+    sentences with a band), a Wenner sheet that reads one spacing twice, and
+    a duricrust over a conductive weathered zone."""
     from groundwater.models import SiteMetadata, VESSounding
     from groundwater.ves.forward import forward_schlumberger, forward_wenner
 
@@ -498,6 +616,12 @@ def _range_soundings() -> list:
     rho[6] *= 1.3  # the repeat at 8 m disagrees
     out.append(VESSounding(site=SiteMetadata(), sounding_id="wenner repeat", ab2=a,
                            mn=np.full(len(a), np.nan), rho_app=rho, array_type="wenner"))
+    # a duricrust 1 m down over a conductive weathered zone: every model that
+    # fits reads it as a cover, and none finds basement, where each used to
+    # find it at the duricrust's top
+    rho = forward_schlumberger((np.array([300.0, 5000.0, 60.0]), np.array([1.0, 3.0])), ab2)
+    out.append(VESSounding(site=SiteMetadata(), sounding_id="duricrust over water",
+                           ab2=ab2, mn=np.full(len(ab2), np.nan), rho_app=rho * noise))
     return out
 
 
@@ -644,7 +768,10 @@ def ves_range_reference(soundings, inversions) -> dict:
 # pull request: two layers, the top 0.2 to 2 m thick at 4 to 200,000 ohm-m,
 # over 3.2 to 40 ohm-m, and models of three and four layers whose thinnest
 # layer is not the top one, since the quadrature's cut follows the top
-# layer's thickness and the contrast to the least resistivity.
+# layer's thickness and the contrast to the least resistivity. Two more put
+# 300 and 900 m of 0.5 ohm-m on 200,000 ohm-m: there the potential (J0)
+# integral's transform turns at x = 3e-9 to 8e-9 for a 1 m radius, which
+# one panel on (0, 1e-6) left 1.1e-3 out in Wenner and finite MN.
 # The starting models are held to 1e-12 on soundings whose first spacing
 # was read twice, where np.interp at the first abscissa reads the second
 # reading and the browser's interp used to read the first. interp itself is
@@ -661,6 +788,10 @@ FORWARD_LAYERED = [
     ([10.0, 150000.0, 10.0], [3.0, 0.5]),
     ([150000.0, 100.0, 10.0], [0.5, 15.0]),
     ([0.5, 200000.0], [0.2]),
+    # thick conductive cover on the most resistive basement, where the
+    # potential integral's transform falls below x = 1e-6
+    ([0.5, 200000.0], [300.0]),
+    ([0.5, 0.5, 0.5, 200000.0], [300.0, 300.0, 300.0]),
 ]
 
 #: inversion_readings of regressions/ves-thin-resistive-top-layer.json and
@@ -782,7 +913,8 @@ def ves_bessel_reference() -> dict:
 # search had given up. Each is held here: three short soundings' layer
 # counts, trials, models and uncertainty factors, and the refusal of a model
 # they cannot determine; fits run to caps of 0, 1 and 3 iterations, and why
-# each stopped; a sheet with a row at AB/2 = 0, its flags and its inversion;
+# each stopped; a sheet with a row at AB/2 = 0, its flags and its inversion,
+# and one with two such rows, whose flag the catalogue puts in the plural;
 # interp over the logarithms of spacings with a 0 among them; and how the
 # Rokel pair's inversions stopped and whether they converged. How many
 # iterations a full inversion takes is not compared: the two engines' last
@@ -848,6 +980,12 @@ def ves_fit_reference(rokel_inversions) -> dict:
                       [[0.0, 0.4, 1150.0]]
                       + [[float(a), 0.4, float(r)] for a, r in zip(spacings, readings, strict=True)])
     zero, _reason = _sounding_or_reason(rows, source="x.xlsx", sheet_name="Z")
+    # and with two rows not above 0, where the catalogued flag takes its plural
+    rows_two = _ves_sheet("Z 2", "Schlumberger",
+                          ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+                          [[-1.0, 0.4, 1150.0], [0.0, 0.4, 1150.0]]
+                          + [[float(a), 0.4, float(r)] for a, r in zip(spacings, readings, strict=True)])
+    two, _reason = _sounding_or_reason(rows_two, source="x.xlsx", sheet_name="Z")
 
     xp_raw, fp = [0.0, 1.0, 2.0, 3.0], [1150.0, 1165.0, 1193.0, 1303.0]
     x = [-1.0, 0.5, 1.0, 1.5, 2.5, 5.0]
@@ -858,6 +996,7 @@ def ves_fit_reference(rokel_inversions) -> dict:
         "capped_ab2": FIT_AB2, "capped_rho": clean(rho), "capped": capped,
         "zero_rows": clean(rows), "zero_flags": flags(zero.flags),
         "zero_ab2": clean(zero.ab2), "zero_fit": _fit_dict(invert_sounding(zero)),
+        "zeros_rows": clean(rows_two), "zeros_flags": flags(two.flags),
         "interp": {"xp_raw": xp_raw, "fp": fp, "x": x,
                    "value": clean(np.interp(probes, logs, np.log(fp)))},
         "rokel_stops": [[inv.model.sounding_id, inv.converged, inv.stopped]
@@ -1751,6 +1890,49 @@ def build() -> dict:
         "edited": spine_edited["edited"],
     }
 
+    # The spine priced with the Costing page's settings rather than its
+    # defaults. The Streamlit spine could not be given them, so the price
+    # signed there was the catalogue's; the settings travel with the answer
+    # so the browser prices with the very same ones.
+    _rates = load_rates()
+    _edited_rate = (_rates[0].code, round(_rates[0].unit_cost_usd * 1.5, 2))
+    spine_settings = {
+        "mobilisation_km": 120.0, "rate": list(_edited_rate),
+        "overheads": 25.0, "margin": 10.0, "contingency": 5.0, "vat": 15.0,
+        "exchange": 25.0, "overburden": 12.0, "wq_samples": 2, "handpumps": 0,
+        "development_hours": 8.0, "test_pumping_hours": 36.0,
+    }
+    spine_costed = build_view(SpineInputs(
+        name="Dr Timbo", log=log, analysis=analysis, assessment=assessed,
+        mobilisation_distance_km=spine_settings["mobilisation_km"],
+        costing=SpineCosting(
+            rates=[r.with_likely(_edited_rate[1]) if r.code == _edited_rate[0] else r
+                   for r in _rates],
+            overheads_percent=spine_settings["overheads"],
+            margin_percent=spine_settings["margin"],
+            contingency_percent=spine_settings["contingency"],
+            vat_percent=spine_settings["vat"],
+            exchange_rate_sle_per_usd=spine_settings["exchange"],
+            overburden_m=spine_settings["overburden"],
+            wq_samples=spine_settings["wq_samples"],
+            handpumps=spine_settings["handpumps"],
+            development_hours=spine_settings["development_hours"],
+            test_pumping_hours=spine_settings["test_pumping_hours"],
+        ),
+    ))
+    out["spine_costed"] = {
+        "settings": spine_settings,
+        "money": {key: clean(spine_costed["costing"][key])
+                  for key in ("directCost", "overheads", "totalCost", "margin",
+                              "price", "vat", "costPerMetre", "overheadsPercent",
+                              "marginPercent", "contingencyPercent", "vatPercent",
+                              "exchangeRate")},
+        "quantity_basis": {k: clean(v) for k, v
+                           in spine_costed["costing"]["quantityBasis"].items()},
+        "items": [[i["code"], clean(i["quantity"]), clean(i["unitCost"]),
+                   clean(i["amount"])] for i in spine_costed["costing"]["items"]],
+    }
+
     # The drill-target scorecard, over the real Rokel soundings.
     rokel_inversions = [invert_sounding(s) for s in soundings]
     rokel_interps = [
@@ -1809,6 +1991,8 @@ def build() -> dict:
     out["calibration_in_force"] = calibration_in_force_reference()
     out["sanitary"] = sanitary_reference()
     out["rising_main"] = rising_main_reference()
+    out["rounds"] = rounds_reference()
+    out["survival"] = survival_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -2076,6 +2260,14 @@ def build() -> dict:
     # only shows on a converted one.
     from groundwater.depth_spine.view import _quality as _spine_quality
 
+    # A pH outside its 6.5 to 8.5 range is past the limit line on either
+    # side of it: below the range it used to be drawn on the compliant side.
+    out["spine_range_ratio"] = {
+        str(ph): next(row["ratio"] for row in _spine_quality(assess_sample(
+            _wq(WaterQualityResult("pH", ph))))["rows"] if row["parameter"] == "pH")
+        for ph in (5.9, 5.4, 6.5, 7.0, 8.5, 9.5, 0.0, -1.0)
+    }
+
     out["spine_quality"] = [
         {
             "parameter": row["parameter"],
@@ -2098,6 +2290,7 @@ def build() -> dict:
     ]
 
     # The certification gate, over a project missing one thing at a time.
+    from groundwater.ingestion.drilling import drilling_from_grid as _drilling_from_grid
     from groundwater.readiness import assess_readiness
 
     _log = read_drilling_workbook(DATA / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
@@ -2164,6 +2357,17 @@ def build() -> dict:
             "wq": {"sample": "dr_timbo/dr_timbo_water_quality.xlsx"},
         }), {"field_data": {"reason": "published as a worked example",
                             "by": "M. K."}}),
+        # A log in feet, converted: met, with the conversion stated beside
+        # the gate. A log the reader set part of aside: not complete, and no
+        # longer "every reading carried a unit". Degrees in the UTM boxes:
+        # no position.
+        "feet_log": (dict(_full, drilling_log=_drilling_from_grid(
+            GATE_FEET_LOG, "case.xlsx")), {}),
+        "log_set_aside": (dict(_full, drilling_log=_drilling_from_grid(
+            GATE_SET_ASIDE_LOG, "case.xlsx")), {}),
+        "degree_site": (dict(_full, site=SiteMetadata(
+            community="Dr. Timbo's", district="Western Area Rural",
+            easting=-13.2294, northing=8.4831)), {}),
     }
     out["readiness"] = {}
     for _name, (_state, _over) in _gate_cases.items():
@@ -2267,8 +2471,42 @@ def build() -> dict:
         for t in (_timbo_id, _timbo_id.lower(), _timbo_id.replace("0", "O"),
                   _timbo_id.replace("1", "L"), " " + _timbo_id + " ",
                   _timbo_id[:-1] + "Z", _timbo_id.replace("-", ""),
-                  "SL-WAR-XXXXXXX-9", "not an identifier", "")
+                  "SL-WAR-XXXXXXX-9", "not an identifier", "",
+                  # minted before the check character followed ISO 7064, and
+                  # a mistyping of one that the legacy character lets through
+                  "SL-WAR-8FEEVKQ-T", "sl-war-8feevkq-t", "SL-BO-C4817SW-1",
+                  "SL-BO-P4817SW-1", "SL-PL-8HE2QWG-3", "SL-PL-8HE2QWG-G")
     ]
+    # the check character itself, on the standard's examples and on bodies
+    # the legacy calculation gives another character for
+    out["check_characters"] = [
+        {"body": b, "iso": _registry.check_character(b),
+         "legacy": _registry.legacy_check_character(b),
+         "is_legacy": _registry.is_legacy_asset_id(
+             f"{b}-{_registry.legacy_check_character(b)}")}
+        for b in ("00000000D07A0090", "00000000D07A009000000000",
+                  "188166C7342065419F3A0245", "A12425GABC1234002",
+                  "SL-WAR-8FEEVKQ", "SL-BO-C4817SW", "SL-PL-8HE2QWG",
+                  "SL-KAI-KDH2TCG", "SL-XX-00000ZZ")
+    ]
+    # Degrees typed into the UTM boxes: the same refusal from the identifier
+    # and the gate, and no position, in both engines.
+    from groundwater.geo import degrees_in_utm_boxes as _degrees
+
+    _degree_sites = [(-13.2294, 8.4831), (13.2294, 8.4831), (20.5, 5.25),
+                     (-180.0, 90.0), (0.0, 0.0), (694912.0, 938150.0), (181.0, 8.0)]
+    out["degree_boxes"] = []
+    for _e, _n in _degree_sites:
+        _site = SiteMetadata(district="Western Area Rural", easting=_e, northing=_n)
+        try:
+            _minted = _registry.mint_asset_id(_site)
+        except ValueError as _refused:
+            _minted = "refused: " + str(_refused)
+        _gate = assess_readiness({"site": _site, "sources": {}}, "placard")
+        out["degree_boxes"].append({
+            "easting": _e, "northing": _n, "note": _degrees(_e, _n), "minted": _minted,
+            "site_located": [[r.state, r.detail] for r in _gate.requirements
+                             if r.key == "site_located"][0]})
     _streams = [
         [{"when": "2020-01-10", "kind": "commissioned", "by": "M. Kolleh"},
          {"when": "2023-04-02", "kind": "failure", "note": "rising main parted"}],
@@ -2291,6 +2529,31 @@ def build() -> dict:
         "decommissioned": _streams[0][:1] + [{"when": "2022-08-01",
                                               "kind": "decommissioned"}],
         "merged": _streams[0] + _streams[1],
+        # broken in January and reported again in May: out since January
+        "rebroken": _streams[0][:1] + [
+            {"when": "2024-01-10", "kind": "failure", "by": "M. Kolleh"},
+            {"when": "2024-05-20", "kind": "failure", "note": "still broken"}],
+        # the same visit records the failure and the decommissioning, or a
+        # pump pulled for reuse on the decommissioning day
+        "collapsed": _streams[0][:1] + [
+            {"when": "2023-03-01", "kind": "decommissioned", "note": "backfilled"},
+            {"when": "2023-03-01", "kind": "failure", "note": "hole collapsed"}],
+        "pulled": _streams[0][:1] + [
+            {"when": "2023-03-01", "kind": "repair", "note": "pump pulled for reuse"},
+            {"when": "2023-03-01", "kind": "decommissioned", "note": "dry"}],
+        # records after a decommissioning, and a new commissioning
+        "after_decommissioning": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned"},
+            {"when": "2023-01-05", "kind": "repair", "note": "new seals"},
+            {"when": "2023-02-01", "kind": "restored"}],
+        "recommissioned": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned"},
+            {"when": "2023-01-05", "kind": "repair"},
+            {"when": "2023-06-01", "kind": "commissioned", "by": "A. Bangura"}],
+        # a second decommissioning record, which explains nothing away
+        "decommissioned_twice": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned", "note": "collapsed"},
+            {"when": "2023-01-05", "kind": "decommissioned", "note": "backfilled"}],
     }
     _today = _date(2024, 6, 1)
     _assets = {}
@@ -2361,6 +2624,15 @@ def build() -> dict:
                      ("2019", "6 months"), ("", ""), ("not a date", "seasonal"),
                      ("1899-01-01", "14"), ("survey 2024 round 2", "no"))
     ]
+    from groundwater.waterpoints import parse_wpdx_records as _parse_wpdx
+
+    _skipped: list = []
+    _read = _parse_wpdx(WPDX_READER_ROWS, _skipped)
+    out["wpdx_reader_rows"] = WPDX_READER_ROWS
+    out["wpdx_reader"] = {
+        "points": [[p.row_id, p.lat, p.lon, p.install_year] for p in _read],
+        "flags": [[f.level, f.code, f.message] for f in _skipped],
+    }
     out["growth_rate"] = _planning.intercensal_growth_rate()
     _planning_population = {
         "Bo": 575478.0, "Kono": 506100.0, "Pujehun": 346461.0,
@@ -2379,6 +2651,7 @@ def build() -> dict:
         ("today", 2026, None, None),
         ("slow", 2026, 0.015, None),
         ("districts", 2026, None, {"Western Area Urban": 0.06, "Pujehun": 0.01}),
+        ("before the surveys", 2018, None, None),
     ):
         _rows, _proj = _planning.planning_rows(
             _planning_population, _planning_points,
@@ -2502,11 +2775,13 @@ def build() -> dict:
     }
 
     out["pdf_sheet"] = pdf_sheet_reference()
+    out["extraction"] = extraction_reference()
     out["pumping_cases"] = pumping_cases()
     out["regional"] = regional_reference()
     out["survey_figures"] = survey_figures_reference(rokel_interps)
     out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
     out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
+    out["gate_logs"] = {"feet": GATE_FEET_LOG, "set_aside": GATE_SET_ASIDE_LOG}
     out["photo_evidence"] = photo_evidence_reference()
     out["field_kit"] = field_kit_reference()
     out["airlift"] = airlift_reference()
@@ -3632,6 +3907,33 @@ def lineament_reference() -> dict:
     }
 
 
+#: WPdx+ rows both readers read alike: positions no map holds ("nan",
+#: "inf", past 90 or 180, UTM metres in the degree columns, a cell of
+#: spaces, numbers one language reads and the other does not), and install
+#: years written as 0, as a fraction, as installation_year and as text.
+WPDX_READER_ROWS = [
+    {"row_id": "ok", "lat_deg": "8.5", "lon_deg": "-11.5", "install_year": "2012"},
+    {"row_id": "nan", "lat_deg": "nan", "lon_deg": "nan"},
+    {"row_id": "inf", "lat_deg": "8.5", "lon_deg": "inf"},
+    {"row_id": "Infinity", "lat_deg": "Infinity", "lon_deg": "-11.5"},
+    {"row_id": "range", "lat_deg": "95", "lon_deg": "200"},
+    {"row_id": "utm", "lat_deg": "936224.6", "lon_deg": "694667.5"},
+    {"row_id": "spaces", "lat_deg": "  ", "lon_deg": "-11.5"},
+    {"row_id": "underscore", "lat_deg": "8.5", "lon_deg": "-11_5"},
+    {"row_id": "hex", "lat_deg": "0x8", "lon_deg": "-11.5"},
+    {"row_id": "true", "lat_deg": True, "lon_deg": -11.5},
+    {"row_id": "edge", "lat_deg": 90, "lon_deg": -180},
+    {"row_id": "padded", "lat_deg": " 8.25\t", "lon_deg": "-11.5e0", "install_year": "0"},
+    {"row_id": "fraction", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "2009.6"},
+    {"row_id": "installation", "lat_deg": 8.3, "lon_deg": -11.6, "installation_year": "2011"},
+    {"row_id": "blank", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "", "installation_year": 2003},
+    {"row_id": "negative", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "-4"},
+    {"row_id": "text", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "unknown"},
+    {"row_id": "number", "lat_deg": "+.5", "lon_deg": "-11.", "install_year": 1998},
+    "not a record",
+]
+
+
 # ------------------------------------------------ survey plan (PLAN.md step 4.3)
 
 #: Plans laid on L1's window (LINEAMENT_GENERATED, analysed as the
@@ -3646,7 +3948,11 @@ def lineament_reference() -> dict:
 #: and surface water 45 m before it; at P3 the service radius shortens a
 #: line; P4 has no candidate within 500 m; P5 changes every setting and asks
 #: for a depth past the field schedule's longest spacing; and P6 is at the
-#: square's edge.
+#: square's edge. "searched" is how far round the site the water points
+#: were looked up (survey_plan's searched_m), None where it is not given:
+#: P7 is P2 with its water points looked up only 300 m round the site,
+#: short of the 550 m a borehole's ring reaches, and P8 a lookup over
+#: 1,000 m that found none.
 PLAN_CASES = [
     {"case": "P1: in the middle of the window, with a spring and a tap", "at": [80.0, 80.0],
      "water": [[84.0, 77.0, "Protected Spring", ""], [79.0, 86.5, "Piped Water", "Tap stand"]], "settings": {}},
@@ -3660,6 +3966,12 @@ PLAN_CASES = [
      "settings": {"survey_lines": 3, "survey_line_m": 600.0, "survey_station_m": 25.0, "survey_flank_m": 80.0,
                   "survey_move_m": 30.0, "survey_cross_within_deg": 30.0, "survey_target_depth_m": 300.0}},
     {"case": "P6: at the edge of the square shown", "at": [20.0, 140.0], "water": [], "settings": {}},
+    {"case": "P7: P2's water points looked up short of a borehole's reach", "at": [49.0, 42.0],
+     "water": [[52.12, 40.87, "Borehole", "Hand Pump - India Mark II"], [40.465, 37.894, "Protected Shallow Well", ""],
+               [38.648, 38.308, "Surface Water (River/Stream/Lake/Pond/Dam)", ""]], "settings": {},
+     "searched": 300.0},
+    {"case": "P8: a lookup over 1,000 m that found no water point", "at": [80.0, 80.0], "water": [], "settings": {},
+     "searched": 1000.0},
 ]
 
 #: Settings both engines refuse in the same words.
@@ -3683,7 +3995,7 @@ def _sp_answer(a, lin, spec: dict, kase: dict) -> tuple[dict, str | None, str | 
     water = [SimpleNamespace(lon=at(w)[0], lat=at(w)[1], source=w[2], technology=w[3]) for w in kase["water"]]
     cfg = dataclasses.replace(lin.settings, **kase["settings"])
     try:
-        plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water, cfg)
+        plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water, cfg, searched_m=kase.get("searched"))
     except ValueError as refused:
         return {"refused": str(refused)}, None, None
 
@@ -3738,7 +4050,7 @@ def _desk_terrain(a, lin, spec: dict, kase: dict) -> dict:
 
     water = [SimpleNamespace(lon=at(w)[0], lat=at(w)[1], source=w[2], technology=w[3]) for w in kase["water"]]
     plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water,
-                       dataclasses.replace(lin.settings, **kase["settings"]))
+                       dataclasses.replace(lin.settings, **kase["settings"]), searched_m=kase.get("searched"))
     captions = {**lineament_captions(lin, PLAN_META["where"]), **survey_plan_captions(plan, PLAN_META["where"])}
     return desk_study_terrain(lin, plan, a.core.lons, a.core.lats, captions, PLAN_META["label"])
 
@@ -3760,6 +4072,9 @@ def survey_plan_reference() -> dict:
     refused = [{"settings": settings,
                 "refused": _sp_answer(a, lin, spec, dict(PLAN_CASES[0], settings=settings))[0]["refused"]}
                for settings in PLAN_REFUSED]
+    # a lookup radius below 0, refused in the same words
+    refused.append({"settings": {}, "searched": -1.0,
+                    "refused": _sp_answer(a, lin, spec, dict(PLAN_CASES[0], searched=-1.0))[0]["refused"]})
     return {"meta": PLAN_META, "cases": cases, "refused": refused}
 
 
@@ -3822,7 +4137,10 @@ def _portfolio(lat: float, lon: float) -> list[dict]:
 #: is on the Freetown Complex with nothing near; D3 has no position; D4 to
 #: D6 keep L1's plans, D4 with more water points than are listed and D6
 #: with the site moved off the plan; D7 is on the Bullom Group and D8 on
-#: surface water, where the placeholder prior applies.
+#: surface water, where the placeholder prior applies. D9 has an earlier
+#: project with a longitude and a latitude in its UTM boxes, beside the
+#: site, and water points whose install year is 0, 2009.6 and an
+#: installation_year.
 DESK_CASES = [
     {"case": "D1: inland, with water points and earlier projects", "site": {"community": "Rokel",
      "chiefdom": "Maforki", "district": "Port Loko"}, "where": "Rokel", "latlon": [8.6, -11.9],
@@ -3843,6 +4161,21 @@ DESK_CASES = [
      "plan": None},
     {"case": "D8: surface water", "site": {"community": "T"}, "where": "T", "latlon": [7.3, -11.8], "water": [],
      "radius": 1000.0, "portfolio": [], "plan": None},
+    {"case": "D9: degrees in an earlier project's boxes, and install years written three ways",
+     "site": {"community": "Rokel II", "district": "Western Area Rural"}, "where": "Rokel II",
+     "latlon": [8.466, -13.232],
+     "water": [{"row_id": "y0", "lat_deg": "8.4663", "lon_deg": "-13.232", "status_clean": "Functional",
+                "water_source_clean": "Borehole", "install_year": "0"},
+               {"row_id": "y1", "lat_deg": "8.4673", "lon_deg": "-13.232", "status_clean": "Functional",
+                "water_source_clean": "Borehole", "install_year": "2009.6"},
+               {"row_id": "y2", "lat_deg": "8.4683", "lon_deg": "-13.232", "status_clean": "Non-Functional",
+                "water_source_clean": "Borehole", "installation_year": "2011"},
+               {"row_id": "y3", "lat_deg": "nan", "lon_deg": "-13.232", "status_clean": "Functional"}],
+     "radius": 1000.0,
+     "portfolio": [{"community": "Rokel", "district": "Western Area Rural", "easting": -13.2317,
+                    "northing": 8.4657, "status": "Completed - successful", "total_depth_m": 48},
+                   {"community": "Kissy", "easting": "13.2", "northing": "8.47"},
+                   {"community": "Nowhere", "status": "dry"}], "plan": None},
 ]
 
 
@@ -4697,6 +5030,269 @@ def rising_main_reference() -> dict:
     return clean({"choices": choices, "bills": bills})
 
 
+def rounds_reference() -> dict:
+    """Service rounds (PLAN.md step 7.3): what is due at each borehole of a
+    register on a day, by area mechanic and in the order of the walk, with
+    the words and the round sheet's parts; and each record's state as the
+    registry reads it, the routine inspection among its visits. Named cases
+    for each rule, then registers drawn from seeds. The cases carry their
+    own inputs, so parity.mjs gives the browser exactly these."""
+    import random as _random
+    from dataclasses import asdict as _asdict
+    from datetime import date as _date
+
+    from groundwater import rounds as RD
+    from groundwater.registry import Schedule, asset_from_dict, asset_state, mint_asset_id
+
+    def ident(easting, northing=938150.0, zone=28, district="Western Area Rural"):
+        return mint_asset_id(SiteMetadata(district=district, easting=easting,
+                                          northing=northing, utm_zone=zone))
+
+    def record(easting, *events, northing=938150.0, **fields):
+        return {"asset_id": ident(easting, northing), "community": "Case",
+                "district": "Western Area Rural", "easting": easting, "northing": northing,
+                "utm_zone": 28, "events": list(events), **fields}
+
+    def ev(when, kind, **more):
+        return {"when": when, "kind": kind, **more}
+
+    old, late = ev("2019-01-10", "commissioned"), ev("2022-01-10", "commissioned")
+    aggressive = {"material": "stainless steel", "inspection_months": 6, "chemistry": "aggressive"}
+    plain = {"material": "galvanised iron", "inspection_months": 12, "chemistry": "not_aggressive"}
+    named = {
+        # four on a line at 0, 1, 3 and 6 km: the walk starts at the one due
+        # longest and goes to the nearest each time
+        "walk": [record(694000.0, late), record(695000.0, late), record(697000.0, old),
+                 record(700000.0, late)],
+        # equidistant either side of the start: the lower identifier first
+        "tie": [record(696000.0, late), record(694000.0, late), record(695000.0, old)],
+        "silent": [record(694000.0)],
+        "not_due_and_gone": [record(694000.0, ev("2024-05-20", "commissioned")),
+                             record(695000.0, late, ev("2022-08-01", "decommissioned")),
+                             record(696000.0, late)],
+        "routine_by_design": [record(694000.0, late, ev("2023-11-20", "routine_inspection"),
+                                     rising_main=aggressive),
+                              record(695000.0, late, ev("2023-11-20", "routine_inspection"),
+                                     rising_main=plain),
+                              record(696000.0, late, ev("2023-11-20", "repair"))],
+        "mechanics": [record(694000.0, late, chiefdom="Koya"),
+                      record(695000.0, late, chiefdom="KORI"),
+                      record(696000.0, late, chiefdom="Bo Town"),
+                      record(697000.0, late, chiefdom="koya", area_mechanic=" Zainab ")],
+        "merged": [record(694000.0, late), {**record(694000.0, ev("2024-05-30", "routine_inspection")),
+                                            "community": "", "area_mechanic": "A. Bangura",
+                                            "rising_main": aggressive},
+                   {"asset_id": "not one"}],
+        "unplaced": [record(694000.0, late), {**record(700000.0, late), "easting": None},
+                     {**record(690000.0, late), "easting": "690000"},
+                     {**record(698000.0, late), "utm_zone": "28"}],
+        "beyond": [record(694000.0, ev("9999-08-01", "commissioned"))],
+        "zones": [record(694000.0, late), {**record(280400.0, late, northing=925600.0),
+                                            "asset_id": ident(280400.0, 925600.0, 29, "Kailahun"),
+                                            "utm_zone": 29}],
+    }
+    table = "Koya: M. Kolleh\nkori: A. Bangura\nno colon\nKOYA: Someone Else\n: blank\n"
+    cases = []
+
+    def case(name, assets, as_of="2024-06-01", mechanics=table, schedule=None, sheets=True):
+        plan = Schedule(**{**_asdict(Schedule()), **(schedule or {})})
+        parsed = RD.parse_area_mechanics(mechanics)
+        result = RD.service_rounds(assets, as_of, plan, parsed["entries"])
+        states = []
+        for raw in assets:
+            asset = asset_from_dict(raw)
+            states.append(None if asset is None
+                          else asset_state(asset, _date.fromisoformat(as_of), plan).as_dict())
+        rounds = []
+        for one in result["rounds"]:
+            told = {"text": RD.round_text(one), "rows": RD.round_rows(one)}
+            if sheets:
+                told["sheets"] = [RD.stop_sheet(stop) for stop in one["stops"]]
+            rounds.append(told)
+        cases.append({
+            "name": name, "assets": assets, "as_of": as_of, "mechanics": mechanics,
+            "schedule": schedule or {}, "sheets": sheets,
+            "expect": {"parsed": parsed, "result": result, "words": RD.rounds_text(result),
+                       "rounds": rounds, "states": states},
+        })
+
+    # the round sheet's parts are held where they differ most: the three
+    # visits' boxes and bases, and merged records with a mechanic named
+    with_sheets = {"routine_by_design", "merged"}
+    for name, assets in named.items():
+        case(name, assets, as_of="9999-12-31" if name == "beyond" else "2024-06-01",
+             sheets=name in with_sheets)
+    case("empty", [])
+    case("schedule", named["routine_by_design"], sheets=False,
+         schedule={"water_sample_months": 3, "grace_days": 0, "routine_inspection_months": 24})
+    # registers drawn from seeds: a patch of zone 28 where legs tie and stops
+    # coincide, second records of one borehole, and positions, mechanics and
+    # rising mains that are not what they should be. The round sheet's parts
+    # are held on two named cases only, to keep this section small
+    # (tests/test_rounds.py holds them on its own seeded registers)
+    days = ["2019-03-01", "2020-01-10", "2022-08-01", "2023-05-20", "2023-11-20", "2023-12-01",
+            "2024-01-31", "2024-05-01", "2024-06-01", "2024-07-15", "2099-01-01", "not written"]
+    kinds = ["commissioned", "inspection", "routine_inspection", "water_sample", "repair",
+             "failure", "restored", "decommissioned", "note"]
+    for seed in range(6):
+        rng = _random.Random(f"rounds {seed}")
+        assets, ids = [], []
+        for _ in range(rng.randint(1, 9)):
+            easting = rng.choice([694000.0, 694500.0, 695000.0, 696000.0,
+                                  round(rng.uniform(690000.0, 700000.0), 1)])
+            northing = rng.choice([938150.0, round(rng.uniform(930000.0, 940000.0), 1)])
+            if ids and rng.random() < 0.2:
+                asset_id = rng.choice(ids)
+            else:
+                asset_id = ident(easting, northing)
+                ids.append(asset_id)
+            raw = {"asset_id": asset_id, "community": rng.choice(["Rokel", "", None]),
+                   "district": "Western Area Rural",
+                   "chiefdom": rng.choice(["Koya", "KORI", "", None, "Bumpe Ngao"]),
+                   "easting": rng.choice([easting] * 9 + [None]), "northing": northing,
+                   "utm_zone": rng.choice([28] * 9 + [None]),
+                   "events": [ev(rng.choice(days), rng.choice(kinds))
+                              for _ in range(rng.choice([0, 1, 2, 3, 5]))]}
+            if rng.random() < 0.4:
+                raw["area_mechanic"] = rng.choice(["A. Bangura", " M. Kolleh ", "", 7])
+            if rng.random() < 0.5:
+                raw["rising_main"] = rng.choice([aggressive, plain, {"inspection_months": 9},
+                                                 {"inspection_months": 6.5}])
+            assets.append(raw)
+        case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2024-02-29"]), sheets=False)
+    return clean({"cases": cases})
+
+
+def survival_reference() -> dict:
+    """How long boreholes keep working (PLAN.md step 7.4): the time to the
+    first failure across a register as of a day, by pump type, contractor
+    and water chemistry, with the comparison, the words and the tables. Named
+    cases for each rule, then registers drawn from seeds. The cases carry
+    their own inputs, so parity.mjs gives the browser exactly these."""
+    import random as _random
+    from dataclasses import replace as _replace
+
+    from groundwater import survival as SV
+    from groundwater.config import Config, SurvivalConfig
+    from groundwater.registry import mint_asset_id
+
+    def ident(easting):
+        return mint_asset_id(SiteMetadata(district="Western Area Rural", easting=easting,
+                                          northing=938150.0, utm_zone=28))
+
+    def record(i, *events, **fields):
+        return {"asset_id": ident(690000.0 + 1000.0 * i), "community": "Case",
+                "district": "Western Area Rural", "easting": 690000.0 + 1000.0 * i,
+                "northing": 938150.0, "utm_zone": 28,
+                "events": [{"when": when, "kind": kind} for when, kind in events], **fields}
+
+    aggressive = {"material": "stainless steel", "inspection_months": 6, "chemistry": "aggressive"}
+    plain = {"material": "galvanised iron", "inspection_months": 12, "chemistry": "not_aggressive"}
+
+    def register(n_a, n_b, n_c=0, late=1500):
+        """two pump types (and a third), one failing early and one late"""
+        out = []
+        for i in range(n_a + n_b + n_c):
+            kind = "Afridev" if i < n_a else ("India Mark II" if i < n_a + n_b else "Kardia")
+            offset = 200 + 40 * i if i < n_a else late + 50 * i
+            year, rest = 2018 + offset // 365, offset % 365
+            when = f"{year}-{1 + rest // 31:02d}-{1 + rest % 28:02d}"
+            out.append(record(i, ("2018-01-10", "commissioned"),
+                              (when, "failure" if i % 3 else "routine_inspection"),
+                              pump_type=kind if i != 1 else kind.upper(),
+                              installed_by="Contractor A" if i % 2 else "",
+                              rising_main=aggressive if i % 2 else plain))
+        return out
+
+    named = {
+        "two_pumps": register(6, 7, 2),
+        "one_pump": register(6, 2),
+        # all fail where the other group has left the risk set
+        "one_at_risk": [record(i, ("2018-01-10", "commissioned"),
+                               ("2018-03-01", "routine_inspection"), pump_type="A")
+                        for i in range(5)]
+        + [record(10 + i, ("2018-01-10", "commissioned"), (f"2023-0{i + 1}-01", "failure"),
+                  pump_type="B") for i in range(5)],
+        # at risk together only on the day every borehole at risk failed
+        "singular": [record(i, ("2018-01-10", "commissioned"), ("2019-01-10", "failure"),
+                            pump_type="AB"[i % 2]) for i in range(10)],
+        # a pump type new this year, never at risk when an older one failed:
+        # left out of the test, which compares the other two without it
+        "new_pump": register(6, 7) + [
+            record(30 + i, ("2024-01-10", "commissioned"), ("2024-03-01", "routine_inspection"),
+                   pump_type="Kardia") for i in range(5)],
+        "no_failures": [record(i, ("2018-01-10", "commissioned"),
+                               (f"2022-01-1{i}", "water_sample"), pump_type="AB"[i % 2])
+                        for i in range(10)],
+        "rules": [record(0, ("2019-05-01", "failure"), ("2020-01-10", "commissioned"),
+                         ("x", "failure"), ("2021-01-10", "inspection")),
+                  record(1, ("2020-01-10", "commissioned"), ("2021-01-10", "repair")),
+                  record(2, ("2020-01-10", "commissioned"), ("2021-01-10", "restored")),
+                  record(3, ("2020-01-10", "commissioned"), ("2021-01-10", "decommissioned"),
+                         ("2021-01-10", "failure")),
+                  record(4, ("2020-01-10", "commissioned"), ("2021-06-01", "decommissioned")),
+                  record(5, ("2020-01-10", "commissioned")),
+                  record(6, ("2020-01-10", "commissioned"), ("2020-01-10", "failure")),
+                  record(7, ("2021-01-10", "routine_inspection")),
+                  record(8, ("2020-01-10", "commissioned"), ("2024-07-01", "failure")),
+                  {"asset_id": "not one"}],
+        # every one at risk fails: the estimate and its band close on nought
+        "all_fail": [record(i, ("2018-01-10", "commissioned"), (f"2019-0{1 + i % 3}-15", "failure"))
+                     for i in range(6)],
+        "empty": [],
+    }
+    cases = []
+
+    def case(name, assets, as_of="2024-06-01", settings=None):
+        section = {**SurvivalConfig().__dict__, **(settings or {})}
+        config = _replace(Config(), survival=SurvivalConfig(**section))
+        result = SV.survival_analysis(assets, as_of, config)
+        groups = [result["overall"]] + [g for grouping in result["groupings"] for g in grouping["groups"]]
+        cases.append({
+            "name": name, "assets": assets, "as_of": as_of, "settings": settings or {},
+            "expect": {"result": result, "words": SV.survival_text(result),
+                       "header": SV.survival_header(),
+                       "rows": [SV.survival_rows([result["overall"]])]
+                       + [SV.survival_rows(g["groups"]) for g in result["groupings"]],
+                       "at_risk": [SV.at_risk_header(result), SV.at_risk_rows(groups)]},
+        })
+
+    for name, assets in named.items():
+        case(name, assets)
+    case("settings", named["one_pump"], settings={"min_at_risk": 2, "at_risk_years": [0, 0.5, 4]})
+    case("earlier", named["two_pumps"], as_of="2020-06-30")
+    # registers drawn from seeds: pump types and contractors spelt in either
+    # case or not at all, rising mains that say nothing of the water, records
+    # of one borehole twice, and histories in any order
+    days = ["2015-03-01", "2016-06-15", "2017-01-10", "2018-02-28", "2018-11-30", "2019-07-04",
+            "2020-01-10", "2020-12-31", "2021-05-20", "2022-08-01", "2023-03-15", "2023-11-20",
+            "2024-05-31", "2024-06-01", "2024-09-01", "not written down"]
+    kinds = ["commissioned", "commissioned", "inspection", "routine_inspection", "water_sample",
+             "repair", "failure", "failure", "restored", "decommissioned", "note"]
+    for seed in range(6):
+        rng = _random.Random(f"survival reference {seed}")
+        assets, ids = [], []
+        for _ in range(rng.randint(10, 40)):
+            if ids and rng.random() < 0.1:
+                asset_id = rng.choice(ids)
+            else:
+                asset_id = ident(690000.0 + rng.randint(0, 4000) * 10.0)
+                ids.append(asset_id)
+            raw = {"asset_id": asset_id, "community": "Case", "district": "Western Area Rural",
+                   "pump_type": rng.choice(["India Mark II", "india mark ii", "Afridev", "", None]),
+                   "installed_by": rng.choice(["Contractor A", "Contractor B", ""]),
+                   "events": ([{"when": rng.choice(days[:10]), "kind": "commissioned"}]
+                              if rng.random() < 0.9 else [])
+                   + [{"when": rng.choice(days), "kind": rng.choice(kinds)}
+                      for _ in range(rng.choice([0, 1, 2, 3]))]}
+            rising = rng.choice([aggressive, plain, None, {"inspection_months": 9}])
+            if rising is not None:
+                raw["rising_main"] = rising
+            assets.append(raw)
+        case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2022-02-28"]))
+    return clean({"cases": cases})
+
+
 def sanitary_reference() -> dict:
     """Sanitary inspection (PLAN.md step 7.5): forms scored and laid out as a
     table, counts graded, and the latest inspection read with the E. coli
@@ -5201,6 +5797,23 @@ def photo_evidence_reference() -> dict:
             "des-backfill-placed-6": {"status": "na"},
             "dev-borehole-disinfected-chlorine": {"status": "na"}}}},
     }
+    # Every critical item needs an answer: answered in both apps' shapes
+    # (the browser's {status}, the Streamlit app's bare code), a No is an
+    # answer, and a code that is none of the four is pending.
+    from groundwater.supervision import load_checklists as _load_checklists
+
+    _critical = [i.item_id for i in _load_checklists() if i.critical]
+    _photographed = {key: photo for key in ("des-casing-screen-assemblage",
+                                            "des-backfill-placed-6",
+                                            "dev-borehole-disinfected-chlorine")}
+    gate["answered"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: ({"status": "yes"} if n % 2 else "Yes ") for n, key in enumerate(_critical)}}}
+    gate["failed"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: {"status": "no", "remark": "not done"} for key in _critical}}}
+    gate["garbled"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: ("maybe" if n < 3 else "na") for n, key in enumerate(_critical)}}}
+    gate["three_of_38"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: {"status": "yes"} for key in _photographed}}}
     return {
         "attached_at": attached,
         "cases": cases,
@@ -5642,6 +6255,18 @@ SURVEY_CASES = {
         ("VES 2", _E + 100, _N, 71.0, [320, 60, 4200], [2.5, 14]),
         ("VES 3", _E + 200, _N, 72.0, [320, 60, 4200], [2.5, 12]),
     ],
+    # due north, and the same pegs as a handheld GPS reads them, a few tens
+    # of centimetres east or west: both run from VES 1 northwards
+    "northsouth": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E, _N + 100, 71.0, [320, 60, 4200], [2.5, 14]),
+        ("VES 3", _E, _N + 200, 72.0, [320, 60, 4200], [2.5, 12]),
+    ],
+    "nsjitter": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E + 0.3, _N + 100, 71.0, [320, 60, 4200], [2.5, 14]),
+        ("VES 3", _E - 0.1, _N + 200, 72.0, [320, 60, 4200], [2.5, 12]),
+    ],
     # every water zone open below the depth of investigation
     "open": [
         ("VES 1", _E, _N, 70.0, [320, 60], [2.5]),
@@ -5715,7 +6340,7 @@ def survey_figures_reference(rokel_interps) -> dict:
         suitability_label,
         suitability_map_note,
     )
-    from groundwater.mapping.subsurface import spacing_note
+    from groundwater.mapping.subsurface import bearing_text, spacing_note
     from groundwater.reporting.geophysical import (
         _SUBSURFACE_MAPS,
         _drawn_depth_text,
@@ -5789,6 +6414,8 @@ def survey_figures_reference(rokel_interps) -> dict:
             "indices": list(profile.indices),
             "length_m": clean(profile.length_m),
             "bearing_deg": clean(profile.bearing_deg),
+            # as a section title prints it: just west of north is 0, not 360
+            "bearing_text": bearing_text(profile.bearing_deg),
             # the model each station takes, by position in the list
             "layer2_rho": [clean(interps[k].model.resistivities[1])
                            for k in profile.indices],
@@ -5878,12 +6505,20 @@ def _typed_field_sheet_pdf() -> bytes:
         y = 630 - i * 18
         for x, value in zip((60, 110, 200, 280), row, strict=True):
             placed.append((x, y, str(value)))
+    return _placed_sheet_pdf(placed)
 
+
+def _placed_sheet_pdf(placed) -> bytes:
+    """A one-page PDF with each (x, y, text) placed by Tm/Tj in Helvetica.
+    An empty list draws a line and no text at all, as a scanner's page
+    carries none."""
     ops = ["BT", "/F1 10 Tf"]
     for x, y, text in placed:
         escaped = str(text).replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
         ops.append(f"1 0 0 1 {x} {y} Tm ({escaped}) Tj")
     ops.append("ET")
+    if not placed:
+        ops = ["0.5 w", "60 600 m", "400 600 l", "S"]
     # level 9 and no timestamp, so the same table always gives the same bytes
     content = zlib.compress("\n".join(ops).encode("latin-1"), 9)
 
@@ -5928,6 +6563,174 @@ def pdf_sheet_reference() -> dict:
                    for t in document.tables],
         "uncertain": len(document.uncertain_cells),
     }
+
+
+# ------------------------------------------------------- reading field sheets
+
+#: Cells the text-layer grader is given, under a numeric heading. parse_number
+#: takes the first number in a cell, so the grader asks whether that number
+#: is all there is: a scanner's letter O for a zero ("12O.4") is a misread.
+EXTRACTION_CELLS = [
+    "120.4", "078,7", "2,933", "1.234,5", "80m", "80 m", "120.4 ohm-m",
+    "120.4ohm.m", "120.4 \u03a9m", "120.4 \u2126m", "120.4 \u03c9\u00b7m", "1e3", ".5",
+    "-3", "5 min", "2.5 m3/h", "0.8 l/s", "4 m/min",
+    "12O.4", "9B.1", "8O.2", "12O", "1l", "1 234", "1/2", "12.", "45 ft",
+    "<0.01", "08:30", "1,2,3", "m", "", "--",
+]
+
+#: AI replies with a VES table, headed the ways field sheets head one: the
+#: template takes what the VES reader reads back, and refuses the rest.
+_RK_ROWS = [["1", "1.5", "0.25", "13.74", "8.76", "120.4"],
+            ["2", "2", "0.25", "24.74", "3.97", "98.1"],
+            ["3", "3", "0.25", "56.16", "1.43", "80.2"],
+            ["4", "4", "0.25", "100.14", "0.659", "66.0"],
+            ["5", "6", "0.25", "225.8", "0.227", "51.3"]]
+_RK_COLUMNS = ["No.", "AB/2 (m)", "MN/2 (m)", "K", "Resistance (ohm)",
+               "App. Resistivity (ohm-m)"]
+EXTRACTION_TABLES = {
+    "all_six": [0, 1, 2, 3, 4, 5],
+    "resistance_and_k": [0, 1, 2, 3, 4],
+    "resistance_only": [0, 1, 2, 4],
+    "resistance_no_mn": [0, 1, 4],
+    "no_mn": [0, 1, 5],
+}
+
+
+def _extraction_payload(columns, rows, header=True):
+    return {
+        "document_kind": "ves",
+        "header": [{"name": "Community", "value": "Rokel", "confidence": 0.95},
+                   {"name": "Sounding Number", "value": "VES 3", "confidence": 0.95}]
+        if header else [],
+        "tables": [{"title": "Readings", "columns": columns, "rows": rows}],
+        "uncertain_cells": [{"table_index": 0, "row": 1, "column": 1,
+                             "reason": "smudged"}],
+        "notes": "",
+    }
+
+
+def extraction_payloads() -> dict:
+    out = {}
+    for name, keep in EXTRACTION_TABLES.items():
+        out[name] = _extraction_payload(
+            [_RK_COLUMNS[i] for i in keep], [[row[i] for i in keep] for row in _RK_ROWS])
+    out["wenner"] = _extraction_payload(
+        ["No.", "a (m)", "Apparent Resistivity (ohm-m)"],
+        [["1", "1", "120.4"], ["2", "2", "98.1"]])
+    out["unheaded"] = _extraction_payload(
+        ["Field readings", "(Schlumberger", "array)", ""],
+        [["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+         ["1", "1.5", "0.5", "120.4"]], header=False)
+    # a table the transcription left untitled is named "Table 1" in both
+    out["untitled"] = _extraction_payload(
+        ["No.", "a (m)", "Apparent Resistivity (ohm-m)"], [["1", "1", "120.4"]])
+    out["untitled"]["tables"][0]["title"] = ""
+    out["no_table"] = dict(_extraction_payload([], []), tables=[], uncertain_cells=[])
+    out["no_table_pumping"] = dict(out["no_table"], document_kind="pumping_test")
+    return out
+
+
+#: The replies an extraction can come back with: (stop reason, content).
+EXTRACTION_REPLIES = {
+    "cut_off": ("max_tokens", [{"type": "thinking", "thinking": "..."},
+                               {"type": "text", "text": '{"document_kind": "ves", "hea'}]),
+    "cut_off_thinking": ("max_tokens", [{"type": "thinking", "thinking": "..."}]),
+    "refusal": ("refusal", []),
+    "no_text": ("end_turn", [{"type": "thinking", "thinking": "..."}]),
+    "not_json": ("end_turn", [{"type": "text", "text": "Here is the sheet: {"}]),
+    "not_an_object": ("end_turn", [{"type": "text", "text": "[1, 2]"}]),
+    "no_reason": (None, [{"type": "text", "text": "null"}]),
+    "complete": ("end_turn", [{"type": "text", "text": '{"document_kind": "ves"}'}]),
+}
+
+
+def captioned_sheet_placed() -> list:
+    """The typed VES sheet with a caption above its headings, a note under its
+    readings and three cells a scanner misread: the caption used to become the
+    Python reader's header and the note a reading, and "12O.4" passed as 12."""
+    placed = list(_PDF_HEADER)
+    placed.append((60, 668, "Field readings (Schlumberger array)"))
+    rows = [list(r) for r in _PDF_ROWS[:5]]
+    rows[0][3], rows[1][3], rows[2][3] = "21O.4", "2B3.1", "268.O"
+    for i, row in enumerate(rows):
+        y = 630 - i * 18
+        for x, value in zip((60, 110, 200, 280), row, strict=True):
+            placed.append((x, y, str(value)))
+    placed.append((60, 630 - 5 * 18, "Notes: MN is the full potential electrode spacing."))
+    return placed
+
+
+def extraction_reference() -> dict:
+    """What reading a field sheet gives, in the cases the two engines each got
+    wrong: the grader, the filled template read back, the replies an AI
+    transcription can end with, and two PDFs - a captioned sheet with misread
+    cells, and one with no text layer at all."""
+    from groundwater.extraction.claude import ClaudeExtractor, _reply_payload
+    from groundwater.extraction.pdf_text import _cell_confidence, extract_pdf_text
+    from groundwater.extraction.review import fill_ves_template
+    from groundwater.ingestion import read_ves_workbook
+    from groundwater.utils import is_whole_number
+
+    out: dict = {
+        "cells": [[cell, *_cell_confidence(cell, "Apparent Resistivity (ohm-m)"),
+                   is_whole_number(cell)] for cell in EXTRACTION_CELLS],
+        "payloads": extraction_payloads(),
+        "fills": {},
+        "replies_in": {name: [stop, content]
+                       for name, (stop, content) in EXTRACTION_REPLIES.items()},
+        "replies": {},
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, payload in out["payloads"].items():
+            document = ClaudeExtractor._to_document(payload, "scan.jpg")
+            entry: dict = {"review": document.review_items}
+            if not document.tables:
+                # both apps offer the template only for a VES table
+                out["fills"][name] = entry
+                continue
+            try:
+                path = fill_ves_template(document, Path(tmp) / f"{name}.xlsx")
+            except ValueError as exc:
+                entry["refused"] = str(exc)
+            else:
+                s = read_ves_workbook(path)[0]
+                entry.update({
+                    "ab2": clean(s.ab2), "mn": clean(s.mn), "rho": clean(s.rho_app),
+                    "flags": [f.code for f in s.flags], "id": s.sounding_id,
+                    "community": s.site.community, "instrument": s.instrument,
+                    "array": s.array_type,
+                })
+            out["fills"][name] = entry
+
+        for name, (stop, content) in EXTRACTION_REPLIES.items():
+            reply = SimpleNamespace(stop_reason=stop,
+                                    content=[SimpleNamespace(**b) for b in content])
+            try:
+                out["replies"][name] = {"kind": _reply_payload(reply)["document_kind"]}
+            except RuntimeError as exc:
+                out["replies"][name] = {"error": str(exc)}
+
+        pdfs = {"captioned": _placed_sheet_pdf(captioned_sheet_placed()),
+                "no_text": _placed_sheet_pdf([])}
+        out["pdfs"] = {}
+        for name, pdf in pdfs.items():
+            path = Path(tmp) / f"{name}.pdf"
+            path.write_bytes(pdf)
+            entry = {"b64": base64.b64encode(pdf).decode("ascii")}
+            try:
+                document = extract_pdf_text(path)
+            except ValueError as exc:
+                entry["error"] = str(exc)
+            else:
+                entry.update({
+                    "tables": [{"columns": list(t.columns), "rows": [list(r) for r in t.rows]}
+                               for t in document.tables],
+                    "uncertain": [[c.table_index, c.row, c.column, c.reason]
+                                  for c in document.uncertain_cells],
+                    "review": document.review_items,
+                })
+            out["pdfs"][name] = entry
+    return out
 
 
 # Loose enough to absorb a different BLAS build, tight enough that a real

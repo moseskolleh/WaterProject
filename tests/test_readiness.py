@@ -362,3 +362,108 @@ def test_an_overridden_report_names_who_issued_it(project, tmp_path):
     assert "ISSUED ON OVERRIDE" in text
     assert "M. Kolleh" in text
     assert "GPS unit failed" in text
+
+
+# ---------------------------------------------------------------------------
+# The supervision record and the drilling log reader
+# ---------------------------------------------------------------------------
+
+def _critical_items():
+    from groundwater.supervision import load_checklists
+
+    return [i for i in load_checklists() if i.critical]
+
+
+def test_a_critical_item_never_answered_keeps_the_supervision_record_provisional():
+    """Three photographed items answered and 35 critical ones blank was a
+    certified record whose own summary said 35 critical items were open."""
+    photo = {"b64": "AAAA"}
+    photographed = ("des-casing-screen-assemblage", "des-backfill-placed-6",
+                    "dev-borehole-disinfected-chlorine")
+    state = {"supervision": {
+        "evidence": {key: photo for key in photographed},
+        "responses": {key: {"status": "yes"} for key in photographed}}}
+    readiness = assess_readiness(state, "supervision")
+    assert not readiness.is_certifiable
+    (req,) = [r for r in readiness.requirements if r.key == "checklist_answered"]
+    assert req.state == "unmet"
+    assert req.detail.startswith("No answer is recorded for 35 critical checklist items "
+                                 "(4 in Procurement and contract, 5 in Pre-contract")
+    # an answer of No is an answer: the record states the failure, and is
+    # complete; N/A is an answer too, in either app's shape
+    answers = {i.item_id: ("No" if n % 3 == 0 else {"status": "na"} if n % 3 == 1
+                           else "yes") for n, i in enumerate(_critical_items())}
+    state["supervision"]["responses"] = answers
+    readiness = assess_readiness(state, "supervision")
+    (req,) = [r for r in readiness.requirements if r.key == "checklist_answered"]
+    assert (req.state, req.detail) == ("met", (
+        "Each of the 38 critical checklist items has an answer. This asks only "
+        "that each was answered: an answer of No stays in the record as a failure."))
+    # an answer that is none of the four is read as pending
+    answers[_critical_items()[0].item_id] = "maybe"
+    (req,) = [r for r in assess_readiness(state, "supervision").requirements
+              if r.key == "checklist_answered"]
+    assert req.state == "unmet" and "1 critical checklist item (1 in" in req.detail
+    assert REPORTS["supervision"] == ("field_data", "site_located", "checklist_answered",
+                                      "photo_evidence")
+
+
+def test_a_log_the_reader_set_part_of_aside_is_not_called_complete():
+    """A dropped row and a refused strike used to pass "Drilling log" and
+    "Every reading carried a unit the toolkit could read"."""
+    import datetime
+
+    from groundwater.ingestion.drilling import REFUSAL_CODES, drilling_from_grid
+
+    grid = [
+        ["Total depth (m)", 45],
+        ["Depth interval (m)", "Sample / lithology description", "Water strike depth (m)"],
+        ["0-5", "Laterite", None],
+        [datetime.datetime(2026, 10, 5), "Clay", None],
+        ["10-30", "Weathered granite", "18/22"],
+        ["30-45", "Granite", None],
+    ]
+    log = drilling_from_grid(grid)
+    assert {f.code for f in log.flags} >= {"interval_read_as_date", "water_strike_unreadable"}
+    readiness = assess_readiness({"drilling_log": log}, "completion")
+    states = {r.key: (r.state, r.detail) for r in readiness.requirements}
+    assert states["borehole_logged"][0] == "unmet"
+    assert states["borehole_logged"][1].startswith(
+        "The drilling log reader set part of the sheet aside, so the log is not "
+        "complete: Depth interval cell holds the date 05 Oct 2026")
+    assert states["readings_usable"][0] == "unmet"
+    assert "18/22" in states["readings_usable"][1]
+    assert set(REFUSAL_CODES) >= {"interval_read_as_date", "interval_unreadable",
+                                  "water_strike_unreadable", "diameter_implausible",
+                                  "depth_unit_ambiguous"}
+
+    # A strike below the bottom of the hole carried its unit and was read,
+    # then refused: the log is not complete, but every reading was readable.
+    deep = drilling_from_grid([
+        ["Total depth (m)", 45],
+        ["Depth interval (m)", "Sample / lithology description", "Water strike depth (m)"],
+        ["0-45", "Granite", "165 m"]])
+    assert [f.code for f in deep.flags] == ["water_strike_below_total_depth"]
+    states = {r.key: (r.state, r.detail) for r in assess_readiness(
+        {"drilling_log": deep}, "completion").requirements}
+    assert states["borehole_logged"][0] == "unmet"
+    assert "165 m below the recorded total depth of 45 m" in states["borehole_logged"][1]
+    assert states["readings_usable"] == (
+        "met", "Every reading carried a unit the toolkit could read.")
+
+
+def test_a_log_converted_from_feet_is_complete_and_says_it_was_converted():
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid([
+        ["Total depth (ft):", "150 ft"],
+        ["Depth interval (ft)", "Sample / lithology description"],
+        ["0-20", "Laterite"], ["20-150", "Granite"]])
+    readiness = assess_readiness({"drilling_log": log}, "completion")
+    states = {r.key: (r.state, r.detail) for r in readiness.requirements}
+    assert states["borehole_logged"] == ("met", "Logged to 46 m with 2 lithological intervals.")
+    assert states["readings_usable"][0] == "met"
+    assert readiness.assumptions == [(
+        "The drilling log gives 5 depths in feet; they were converted to metres "
+        "at 0.3048 m to the foot and kept to the centimetre (the deepest, 150 ft, "
+        "is 45.72 m). Check the converted log against the sheet.")]

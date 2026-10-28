@@ -37,13 +37,13 @@ from .mapping.lineaments import ROSE_BANDS, LineamentAnalysis, lineament_lonlat
 from .mapping.lithology import describe, lithology_for
 from .mapping.regional import _unit_district, aquifer_unit_at, geology_unit_at
 from .mapping.survey import SurveyPlan, line_station, survey_sounding_text
-from .portfolio import _latlon, _num, classify_status, site_label, verdict_state
+from .portfolio import _latlon, _num, classify_status, site_label, summary_holds_degrees, verdict_state
 from .reporting.citations import references_for
 from .site_status import status_label
 from .quality.assess import VERDICT_SHORT
 from .siting.odds import odds_basis_text, odds_headline, odds_prior_text, prior_odds
 from .text import phrase
-from .utils import fmt_num, sum_in_order
+from .utils import and_join, fmt_num, sum_in_order
 from .waterpoints import DEFAULT_SEARCH_RADIUS_M, SERVICE_RADIUS_M, points_within
 
 __all__ = [
@@ -234,11 +234,16 @@ def _projects_section(latlon, portfolio) -> tuple[dict, int | None]:
         section["paragraphs"].append(phrase("desk_study.projects_not_loaded"))
         return section, None
     lat, lon = latlon
-    near, unplaced = [], 0
+    near, unplaced, degrees = [], 0, []
     for summary in portfolio:
         at = _latlon(summary)
         if at is None:
-            unplaced += 1
+            # a project whose boxes hold degrees is named, so that it can be
+            # put right, rather than counted with those that record nothing
+            if summary_holds_degrees(summary):
+                degrees.append(site_label(summary))
+            else:
+                unplaced += 1
             continue
         distance = geodesic_distance_m(lat, lon, at[0], at[1])
         if distance <= PORTFOLIO_RADIUS_M:
@@ -266,6 +271,9 @@ def _projects_section(latlon, portfolio) -> tuple[dict, int | None]:
                        phrase("desk_study.projects_col_yield"), phrase("desk_study.projects_col_water")],
             "rows": rows,
         })
+    if degrees:
+        section["paragraphs"].append(phrase("desk_study.projects_degrees", count=len(degrees),
+                                            names=and_join(degrees)))
     if unplaced:
         section["paragraphs"].append(phrase("desk_study.projects_unplaced", count=unplaced))
     return section, len(near)

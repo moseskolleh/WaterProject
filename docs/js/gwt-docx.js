@@ -2980,6 +2980,52 @@
     return b;
   }
 
+  /* --- the round sheet (PLAN.md step 7.3) ----------------------------------
+   * What an area mechanic takes out on a service round: one document for
+   * every round on a day, each from a new page, the stops in order with what
+   * is due and why and blank boxes for the readings. The twin of
+   * groundwater/reporting/rounds.py, printing the same parts in the same
+   * order; a working sheet, so it carries no readiness stamp.
+   * ---------------------------------------------------------------------- */
+
+  async function roundSheet(context) {
+    var rounds = context.rounds;
+    var b = new ReportBuilder({ style: context.style,
+      title: 'Service rounds - ' + rounds.as_of });
+    var words = C.roundsText(rounds);
+    if (!rounds.rounds.length) {
+      b.paragraph(C.phrase('rounds.sheet_title'), { bold: true, align: 'center', size: 16 });
+      b.paragraph(C.phrase('rounds.sheet_drawn', { date: rounds.as_of }), { align: 'center' });
+      words.summary.forEach(function (line) { b.paragraph(line); });
+      return b;
+    }
+    rounds.rounds.forEach(function (one, index) {
+      if (index) b.pageBreak();
+      b.paragraph(C.phrase('rounds.sheet_title'), { bold: true, align: 'center', size: 16 });
+      b.paragraph(C.phrase('rounds.sheet_mechanic',
+        { mechanic: one.mechanic || C.phrase('rounds.unassigned') }),
+      { bold: true, align: 'center', size: 13 });
+      b.paragraph(C.phrase('rounds.sheet_drawn', { date: rounds.as_of }), { align: 'center' });
+      C.roundText(one).forEach(function (line) { b.paragraph(line); });
+      b.paragraph(words.method, { italic: true });
+      b.paragraph(words.intervals, { italic: true });
+      b.paragraph(C.phrase('rounds.sheet_check'), { bold: true });
+      one.stops.forEach(function (stop) {
+        var sheet = C.stopSheet(stop);
+        b.heading(sheet.heading, 2, false);
+        b.table(sheet.details, { colWidthsCm: [5.0, 11.0] });
+        sheet.visits.forEach(function (visit) {
+          b.paragraph(visit.text);
+          b.table(visit.rows, { header: visit.header,
+            colWidthsCm: visit.header.length === 3 ? [1.2, 11.0, 3.8] : [7.0, 9.0] });
+        });
+        b.table(sheet.visit.rows, { header: sheet.visit.header, colWidthsCm: [7.0, 9.0] });
+      });
+      b.paragraph(C.phrase('rounds.sheet_after'), { italic: true });
+    });
+    return b;
+  }
+
   /* --- the interim payment certificate --------------------------------------
    * The document a contractor is paid against, so everything that reduces
    * the payment appears on its face with its own line. A certificate showing
@@ -3232,6 +3278,7 @@
     supervisionReport: supervisionReport,
     handoverReport: handoverReport, handoverWorks: handoverWorks,
     assetPlacard: assetPlacard, assetRecordReport: assetRecordReport,
+    roundSheet: roundSheet,
     paymentCertificate: paymentCertificate,
     REFERENCES: REFERENCES, GLOSSARY: GLOSSARY, statusLabel: statusLabel,
   };

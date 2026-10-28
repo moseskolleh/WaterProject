@@ -43,6 +43,10 @@ _REFERENCES_FOR = {
     # the sanitary inspection form and the risk-to-health matrix the asset
     # record's sanitary risk reads (PLAN.md step 7.5)
     "asset": ["who_surveillance_1997"],
+    # not a report: the time-to-failure curves both apps' Asset registry
+    # pages close with (PLAN.md step 7.4)
+    "survival": ["kaplan_meier", "greenwood", "kalbfleisch_prentice", "brookmeyer_crowley",
+                 "mantel"],
 }
 
 

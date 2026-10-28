@@ -8,10 +8,107 @@ from pathlib import Path
 import re
 
 from ..models import DataFlag, DrillingLog, LithologyInterval
+from ..text import phrase, phrase_table
 from ..utils import clean_text, parse_depth_interval, parse_number, plural
 from . import common
 
 _SCREEN_RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)")
+
+#: The international foot, in metres, exactly.
+FOOT_M = 0.3048
+
+#: The codes this reader raises when a cell could not be read: a row
+#: dropped, or a value refused, for its form or its unit. The readiness gate
+#: reads them, so "every reading carried a unit the toolkit could read" is
+#: not said of a log that lost one; they are kept here, beside the reader
+#: that raises them.
+UNREADABLE_CODES = (
+    "interval_read_as_date",
+    "interval_unreadable",
+    "depth_unit_ambiguous",
+    "water_strike_unreadable",
+    "diameter_implausible",
+)
+
+#: Those, and a strike that was read but refused because it lies below the
+#: bottom of the hole: every code that means the log as read is not the log
+#: the crew wrote, so the gate does not call it complete.
+REFUSAL_CODES = UNREADABLE_CODES + ("water_strike_below_total_depth",)
+
+# A foot written against a number: "20 ft", "20ft.", "20 feet", "20'", and
+# the curly apostrophe and the prime a word processor puts in its place. Two
+# marks together are inches, which no depth is written in.
+_FOOT_UNIT_RE = re.compile(
+    r"(\d)\s*(?:feet\b|foot\b|ft\b\.?|['’′](?!['’′]))", re.IGNORECASE,
+)
+
+# The length unit a column header or a field's label names: "Depth interval
+# (ft)", "Total depth (m)". A lone apostrophe in brackets is feet.
+_HEADER_FEET_RE = re.compile(r"\b(?:feet|foot|ft)\b|\(\s*['’′]\s*\)", re.IGNORECASE)
+_HEADER_METRE_RE = re.compile(r"\b(?:met(?:re|er)s?|mtrs?|m)\b", re.IGNORECASE)
+_RATE_FEET_RE = re.compile(r"feet|foot|ft", re.IGNORECASE)
+
+
+def header_length_unit(header) -> str | None:
+    """``"ft"``, ``"m"``, ``"both"`` or ``None``: the length unit a header names.
+
+    A header naming both ("Depth (m/ft)") says nothing about a bare number
+    under it, and a number under it with no unit of its own is refused.
+
+    >>> header_length_unit("Depth interval (ft)"), header_length_unit("Total depth (m)")
+    ('ft', 'm')
+    """
+    text = clean_text(header)
+    feet = bool(_HEADER_FEET_RE.search(text))
+    metres = bool(_HEADER_METRE_RE.search(text))
+    if feet and metres:
+        return "both"
+    return "ft" if feet else ("m" if metres else None)
+
+
+def _length_units(value) -> tuple[object, set[str]]:
+    """A cell with the feet and metre units against its numbers dropped, and
+    the units it carried. A value that is not text is handed back as it is."""
+    if not isinstance(value, str):
+        return value, set()
+    units: set[str] = set()
+    text = common.normalise_dashes(value)
+    stripped = _FOOT_UNIT_RE.sub(r"\1", text)
+    if stripped != text:
+        units.add("ft")
+    metric = common.strip_metre_units(stripped)
+    if metric != stripped:
+        units.add("m")
+    return metric, units
+
+
+def _resolve_unit(cell_units: set[str], column: str | None,
+                  sheet: str | None) -> tuple[str | None, str]:
+    """The unit a depth is read in, and why not when it cannot be.
+
+    The cell's own unit first, then its column header's (or its field's
+    label's), then the sheet's: the one unit every depth and rate unit the
+    sheet names agrees on, or metres, the template's unit, where it names
+    none. Returns ``(unit, why)``; ``unit`` is ``None`` and ``why`` is a key
+    of ``drilling.ambiguous_why`` when the depth cannot be read.
+    """
+    if len(cell_units) > 1:
+        return None, "cell"
+    if cell_units:
+        return next(iter(cell_units)), ""
+    if column == "both":
+        return None, "header"
+    if column:
+        return column, ""
+    if sheet is None:
+        return None, "sheet"
+    return sheet, ""
+
+
+def _in_metres(value: float, unit: str | None) -> float:
+    """A depth in ``unit`` in metres; feet are kept to the centimetre, as a
+    converted bit size is kept to two decimals."""
+    return round(value * FOOT_M, 2) if unit == "ft" else value
 
 # A clock time carries a colon or an "h" between the hour and the minutes
 # ("14:30", "14h30"). A decimal point is deliberately not a clock separator
@@ -43,7 +140,8 @@ _CLOCK_TIME_RE = re.compile(
 # 4.5 m strike was not screened.
 _WATER_LEVEL_RE = re.compile(
     r"\b(?:s\.?w\.?l|r\.?w\.?l|(?:rest(?:ing)?|static|standing)\s+(?:water\s+)?level"
-    r"|water\s+level)\b\.?[^\d;,.]*?\d+(?:[.,]\d+)?\s*(?:met(?:re|er)s?\b|m\b)?",
+    r"|water\s+level)\b\.?[^\d;,.]*?\d+(?:[.,]\d+)?\s*"
+    r"(?:met(?:re|er)s?\b|m\b|feet\b|foot\b|ft\b\.?)?",
     re.IGNORECASE,
 )
 
@@ -56,6 +154,15 @@ _DEPTH_LIST_RE = re.compile(
     # two strikes - which is the invention this parser exists to stop.
     r"(?:\d+(?:[.,]\d+)?\s*(?:,|&|\+|and\b)\s*)*"
     r"\d+(?:[.,]\d+)?\s*(?:met(?:re|er)s?|m)\b(?!\s*/)",
+    re.IGNORECASE,
+)
+
+# The same in feet ("45 ft", "45 and 90 ft", "45'"), converted to metres. A
+# strike written "at 90 ft" used to be the bare number 90 and recorded as a
+# strike at 90 m.
+_FEET_LIST_RE = re.compile(
+    r"(?:\d+(?:[.,]\d+)?\s*(?:,|&|\+|and\b)\s*)*"
+    r"\d+(?:[.,]\d+)?\s*(?:feet\b|foot\b|ft\b\.?|['’′](?!['’′]))(?!\s*/)",
     re.IGNORECASE,
 )
 
@@ -87,7 +194,12 @@ _DIAMETER_UNIT_RE = re.compile(
 # which is the defect this parser was written to close (ROADMAP
 # data-ingestion-15). The longer spelling is listed before the shorter one in
 # each pair so "metres" is not read as an "m" followed by rubbish.
-_METRE = r"(?:met(?:re|er)s?|m)"
+#
+# A rig sheet in feet times the foot ("4 min/ft") or quotes feet a minute
+# ("1.5 ft/min"). Neither matched, so "4 min/ft" fell through to the bare
+# number and was recorded as 4 m/min, some 52 times too fast; the foot is a
+# length here like the metre, and the rate is converted from it.
+_METRE = r"(?:met(?:re|er)s?|m|feet|foot|ft)"
 _RATE_UNITS = (
     _METRE + r"\s*(?:/|per)\s*min(?:ute)?s?"
     r"|" + _METRE + r"\s*(?:/|per)\s*(?:hrs?|hours?|h)"
@@ -134,7 +246,8 @@ MAX_BIT_DIAMETER_IN = 36.0
 _FRACTION_RE = re.compile(r"\d\s*/\s*\d")
 
 
-def parse_water_strike_depths(value) -> tuple[list[float], str]:
+def parse_water_strike_depths(value, unit: str | None = "m",
+                              refusal: str = "") -> tuple[list[float], str]:
     """Read the strike depths a cell names, in metres.
 
     Returns ``(depths, reason)``: the depths the cell can be read to name,
@@ -156,19 +269,39 @@ def parse_water_strike_depths(value) -> tuple[list[float], str]:
     ([12.0, 30.0], '')
     >>> parse_water_strike_depths(0)
     ([], '')
+
+    A depth in feet is converted, whether the cell says so ("at 90 ft") or
+    ``unit`` is ``"ft"``, the unit its column or its sheet gives a bare
+    number. With ``unit`` ``None`` a bare number is refused, for the reason
+    ``refusal`` gives.
+
+    >>> parse_water_strike_depths("Water strike at 90 ft")
+    ([27.43], '')
     """
+    depths, reason, _ = _strike_depths(value, unit, refusal)
+    return depths, reason
+
+
+def _strike_depths(value, unit: str | None = "m",
+                   refusal: str = "") -> tuple[list[float], str, list]:
+    """:func:`parse_water_strike_depths`, and beside each depth the number of
+    feet it was converted from, or ``None`` for a depth in metres."""
     if value is None:
-        return [], ""
+        return [], "", []
     if isinstance(value, (datetime.date, datetime.datetime, datetime.time)):
         # Excel hands a cell typed as a time back as a datetime, and reading
         # it as a number recorded the year as a strike depth. A cell typed
         # as a time of day alone comes back as a time, which was read as
         # "14:30:00" and dropped without the flag the browser raises.
-        return [], "the cell holds a date or a time rather than a depth"
+        return [], "the cell holds a date or a time rather than a depth", []
     if isinstance(value, bool):
-        return [], ""
+        return [], "", []
     if isinstance(value, (int, float)):
-        return ([float(value)] if value > 0 else []), ""
+        if value <= 0:
+            return [], "", []
+        if unit is None:
+            return [], refusal, []
+        return [_in_metres(float(value), unit)], "", [float(value) if unit == "ft" else None]
 
     # A water level and a clock time are taken out before any number is
     # read, and counted: a cell whose only numbers were those names no
@@ -180,15 +313,19 @@ def parse_water_strike_depths(value) -> tuple[list[float], str]:
     # "Water strike 1/2 m" read as a strike at 2 m, which would place a
     # screen. Refusing it and saying so is the only honest answer.
     if _FRACTION_RE.search(text):
-        return [], "it writes a fraction or a date, which names no single depth"
-    depths: list[float] = []
-    for match in _DEPTH_LIST_RE.finditer(text):
-        for token in _NUMBER_TOKEN_RE.findall(match.group(0)):
-            depth = parse_number(token)
-            if depth is not None and depth > 0:
-                depths.append(depth)
-    if depths:
-        return depths, ""
+        return [], "it writes a fraction or a date, which names no single depth", []
+    # Depths in metres and in feet, in the order the cell writes them.
+    found: list[tuple[int, float, float | None]] = []
+    for pattern, feet in ((_DEPTH_LIST_RE, False), (_FEET_LIST_RE, True)):
+        for match in pattern.finditer(text):
+            for token in _NUMBER_TOKEN_RE.findall(match.group(0)):
+                depth = parse_number(token)
+                if depth is not None and depth > 0:
+                    found.append((match.start(), _in_metres(depth, "ft" if feet else "m"),
+                                  depth if feet else None))
+    if found:
+        found.sort(key=lambda item: item[0])
+        return [depth for _, depth, _ in found], "", [raw for *_, raw in found]
 
     # No number carries a unit. A single number is the depth the note is
     # about ("First water strike: 12"); several are a sentence this parser
@@ -198,14 +335,16 @@ def parse_water_strike_depths(value) -> tuple[list[float], str]:
         named = [what for what, count in (("a water level", levels), ("a clock time", clocks))
                  if count]
         if named:
-            return [], "it names " + " and ".join(named) + " but no strike depth"
-        return [], ""
+            return [], "it names " + " and ".join(named) + " but no strike depth", []
+        return [], "", []
     if len(numbers) > 1:
-        return [], "it names several numbers and none of them carries a unit"
+        return [], "it names several numbers and none of them carries a unit", []
     depth = parse_number(numbers[0])
     if depth is None or depth <= 0:
-        return [], ""
-    return [depth], ""
+        return [], "", []
+    if unit is None:
+        return [], refusal, []
+    return [_in_metres(depth, unit)], "", [depth if unit == "ft" else None]
 
 
 def _unreadable_strike_flag(text: str, reason: str) -> DataFlag:
@@ -307,15 +446,18 @@ def _rate_in_m_per_min(number: float | None, unit: str | None) -> float | None:
     if number is None or not unit:
         return number
     unit = re.sub(r"\s+", "", unit).lower().replace("per", "/")
+    # the length the rate is per, or per unit of time of: a foot is 0.3048 m
+    length = FOOT_M if _RATE_FEET_RE.search(unit) else 1.0
     if unit.startswith("min"):
-        # minutes per metre: the reciprocal, and a zero is not a rate at all
-        return 1.0 / number if number > 0 else None
+        # minutes per metre (or foot): the reciprocal, and a zero is not a
+        # rate at all
+        return length / number if number > 0 else None
     if unit.startswith("s"):
-        # seconds per metre
-        return 60.0 / number if number > 0 else None
+        # seconds per metre (or foot)
+        return 60.0 * length / number if number > 0 else None
     if "/h" in unit:
-        return number / 60.0
-    return number
+        return number * length / 60.0
+    return number * length if length != 1.0 else number
 
 
 def parse_penetration_rate_m_per_min(value, unit: str | None = None) -> float | None:
@@ -384,7 +526,7 @@ def _reads_as_interval(value) -> bool:
         return False
     if isinstance(value, (int, float)):
         return True
-    text = common.strip_metre_units(common.normalise_dashes(clean_text(value)))
+    text = str(_length_units(clean_text(value))[0])
     text = re.sub(r"\b(?:to|from)\b", " ", text, flags=re.IGNORECASE)
     return bool(re.search(r"\d", text)) and not re.search(r"[a-z]", text, re.IGNORECASE)
 
@@ -418,21 +560,69 @@ def _find_log_header(grid: list[list]) -> tuple[int, dict] | None:
     return None
 
 
+def _sheet_unit(statements: set[str]) -> str | None:
+    """The unit a bare depth is read in where nothing nearer names one.
+
+    Every depth and rate unit the sheet names agreeing on feet makes it a
+    sheet in feet; naming none, or only metres, it is in metres, the unit
+    the template asks for; naming both, there is no unit to read a bare
+    depth in, and it is refused.
+    """
+    if statements == {"ft"}:
+        return "ft"
+    if "ft" in statements:
+        return None
+    return "m"
+
+
+def _statement(unit: str | None) -> set[str]:
+    if unit == "both":
+        return {"ft", "m"}
+    return {unit} if unit else set()
+
+
+def _rate_length(unit: str | None) -> set[str]:
+    """The length a rate unit is per, as a statement about the sheet."""
+    if not unit:
+        return set()
+    return {"ft"} if _RATE_FEET_RE.search(unit) else {"m"}
+
+
+_DEPTH_FIELDS = ("borehole_depth_m", "grouting_depth_m", "installed_screens")
+
+
 def read_drilling_workbook(path: str | Path) -> DrillingLog:
     grid, _ = common.load_grid(path)
     return drilling_from_grid(grid, source=str(path))
 
 
 def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
-    fields = common.extract_header_fields(grid, max_rows=len(grid))
+    raw_fields: dict = {}
+    fields = common.extract_header_fields(grid, max_rows=len(grid), raw=raw_fields)
     site = common.site_from_fields(fields, source=source)
     flags: list[DataFlag] = []
+    why_text = phrase_table("drilling.ambiguous_why")
 
     located = _find_log_header(grid)
     intervals: list[LithologyInterval] = []
     strikes: list[float] = []
     zero_strike_rows = 0
     too_wide: list[str] = []
+
+    # What the sheet names its depths in, before any depth is read: a bare
+    # number is read in the unit the sheet gives, and a sheet in feet that
+    # gives its unit only in the total depth or the strike column still
+    # gives it for every depth on the sheet. A drilling log was read in
+    # metres whatever it said, so "Depth interval (ft)", "0-20 ft" and "Total
+    # depth: 150 ft" made a 45.7 m hole a 150 m one, with no flag.
+    statements: set[str] = set()
+    for key in _DEPTH_FIELDS:
+        if key in raw_fields:
+            label, value = raw_fields[key]
+            statements |= _statement(header_length_unit(label))
+            statements |= _length_units(value)[1]
+    header_units: dict[str, str | None] = {}
+    rate_unit = diameter_unit = None
     if located is not None:
         header_row, cols = located
 
@@ -444,6 +634,38 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
         # the unit the column header names is the unit of a bare number
         rate_unit = header_rate_unit(header("rate"))
         diameter_unit = header_diameter_unit(header("diameter"))
+        header_units = {key: header_length_unit(header(key)) for key in ("interval", "strike")}
+        statements |= _statement(header_units["interval"]) | _statement(header_units["strike"])
+        statements |= _rate_length(rate_unit)
+        for row in grid[header_row + 1:]:
+            for key in ("interval", "strike"):
+                c = cols.get(key)
+                if c is not None and c < len(row):
+                    statements |= _length_units(clean_text(row[c]))[1]
+            c = cols.get("rate")
+            if c is not None and c < len(row) and isinstance(row[c], str):
+                match = _RATE_UNIT_RE.search(clean_text(row[c]))
+                statements |= _rate_length(match.group("unit") if match else None)
+    for row in grid:
+        for c in row:
+            text = clean_text(c)
+            if "water strike" in text.lower() and not text.lower().startswith("note"):
+                statements |= _length_units(text)[1]
+    sheet = _sheet_unit(statements)
+
+    feet = {"depths": 0, "deepest": 0.0, "by_sheet": False, "rates": 0}
+
+    def counted(value: float, unit: str | None, cell_units: set[str],
+                column: str | None) -> float:
+        """``value`` in metres, counting a conversion from feet."""
+        if unit == "ft":
+            feet["depths"] += 1
+            feet["deepest"] = max(feet["deepest"], value)
+            if not cell_units and column not in ("ft", "m"):
+                feet["by_sheet"] = True
+        return _in_metres(value, unit)
+
+    if located is not None:
         for row in grid[header_row + 1 :]:
             def cell(key):
                 c = cols.get(key)
@@ -473,25 +695,36 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
             # without a word and the gap it left was reported as a gap in the
             # crew's log (ROADMAP data-ingestion-8). Normalising the dashes
             # reads the interval as it was written, whichever dash was typed.
-            # A metre unit against each depth ("30 m - 40 m", "5m-10m") is
-            # dropped first for the same reason: the row used to be skipped
-            # with its description and its strike.
-            interval = parse_depth_interval(
-                common.strip_metre_units(common.normalise_dashes(raw_interval))
-            )
+            # A unit against each depth ("30 m - 40 m", "5m-10m", "0-20 ft")
+            # is dropped first for the same reason: the row used to be skipped
+            # with its description and its strike. It is kept to read the
+            # depths in.
+            bare, cell_units = _length_units(raw_interval)
+            interval = parse_depth_interval(bare)
             if interval is None:
                 if _reads_as_interval(raw_interval):
                     flags.append(
                         DataFlag(
                             "warning",
                             "interval_unreadable",
-                            f'Depth interval cell "{clean_text(raw_interval)}" was not '
-                            "read as a depth interval, so this row was skipped; write "
-                            'it as the depths from and to, as "30-40".',
+                            phrase("drilling.interval_unreadable",
+                                   value=clean_text(raw_interval)),
                         )
                     )
                 continue
-            top, bottom = interval
+            unit, why = _resolve_unit(cell_units, header_units["interval"], sheet)
+            if unit is None:
+                flags.append(
+                    DataFlag(
+                        "warning",
+                        "depth_unit_ambiguous",
+                        phrase("drilling.row_unit_ambiguous", value=clean_text(raw_interval),
+                               why=why_text[why]),
+                    )
+                )
+                continue
+            top = counted(interval[0], unit, cell_units, header_units["interval"])
+            bottom = counted(interval[1], unit, cell_units, header_units["interval"])
             description = clean_text(cell("description"))
             diameter = parse_bit_diameter_in(cell("diameter"), diameter_unit)
             if diameter is not None and diameter > MAX_BIT_DIAMETER_IN:
@@ -500,6 +733,13 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                 # cement
                 too_wide.append(clean_text(cell("diameter")))
                 diameter = None
+            raw_rate = cell("rate")
+            rate = parse_penetration_rate_m_per_min(raw_rate, rate_unit)
+            rate_match = (_RATE_UNIT_RE.search(clean_text(raw_rate))
+                          if isinstance(raw_rate, str) else None)
+            rate_said = rate_match.group("unit") if rate_match else rate_unit
+            if rate is not None and _rate_length(rate_said) == {"ft"}:
+                feet["rates"] += 1
             intervals.append(
                 LithologyInterval(
                     top_m=top,
@@ -507,14 +747,22 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                     description=description,
                     from_time=clean_text(cell("from_time")),
                     to_time=clean_text(cell("to_time")),
-                    penetration_rate_m_per_min=parse_penetration_rate_m_per_min(
-                        cell("rate"), rate_unit
-                    ),
+                    penetration_rate_m_per_min=rate,
                     bit_diameter_in=diameter,
                 )
             )
             raw_strike = cell("strike")
-            depths, reason = parse_water_strike_depths(raw_strike)
+            strike_cell_units = _length_units(clean_text(raw_strike))[1] if isinstance(
+                raw_strike, str) else set()
+            strike_unit, strike_why = _resolve_unit(set(), header_units["strike"], sheet)
+            depths, reason, from_feet = _strike_depths(
+                raw_strike, strike_unit, "it " + why_text[strike_why] if strike_why else "")
+            converted = [f for f in from_feet if f is not None]
+            if converted:
+                feet["depths"] += len(converted)
+                feet["deepest"] = max([feet["deepest"]] + converted)
+                if not strike_cell_units and header_units["strike"] not in ("ft", "m"):
+                    feet["by_sheet"] = True
             strikes.extend(depths)
             if reason:
                 flags.append(
@@ -554,16 +802,25 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
     # Water strikes noted as text lines ("First water strike: 12m"). The note
     # used to be read as the last number after the last colon, so
     # "Water strike: 8 m at 14:30" recorded a 30 m strike and a note naming
-    # two strikes recorded only the first (ROADMAP data-ingestion-9).
+    # two strikes recorded only the first (ROADMAP data-ingestion-9). A bare
+    # number in a note is in the sheet's unit, and "at 90 ft" is in feet.
+    note_unit, note_why = _resolve_unit(set(), None, sheet)
     for row in grid:
         for c in row:
             raw = clean_text(c)
             text = raw.lower()
             if "water strike" in text and not text.startswith("note"):
-                depths, reason = parse_water_strike_depths(raw)
-                for value in depths:
-                    if value not in strikes:
-                        strikes.append(value)
+                depths, reason, from_feet = _strike_depths(
+                    raw, note_unit, "it " + why_text[note_why] if note_why else "")
+                for value, raw_feet in zip(depths, from_feet, strict=True):
+                    if value in strikes:
+                        continue
+                    strikes.append(value)
+                    if raw_feet is not None:
+                        feet["depths"] += 1
+                        feet["deepest"] = max(feet["deepest"], raw_feet)
+                        if not _length_units(raw)[1]:
+                            feet["by_sheet"] = True
                 if reason:
                     # A cell in the strike column that is also a note has
                     # already been refused once by the loop above, and one
@@ -572,7 +829,37 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                     if all(f.message != flag.message for f in flags):
                         flags.append(flag)
 
-    total = fields.get("borehole_depth_m")
+    # The depths the header block gives, each read in its label's unit or
+    # the one the cell writes beside it.
+    field_names = phrase_table("drilling.field_names")
+    for key in _DEPTH_FIELDS:
+        if key not in raw_fields:
+            continue
+        label, value = raw_fields[key]
+        bare, cell_units = _length_units(value)
+        column = header_length_unit(label)
+        unit, why = _resolve_unit(cell_units, column, sheet)
+        if unit is None:
+            fields.pop(key, None)
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "depth_unit_ambiguous",
+                    phrase("drilling.value_unit_ambiguous", what=field_names[key],
+                           value=clean_text(value), why=why_text[why]),
+                )
+            )
+        elif key == "installed_screens":
+            ranges = parse_installed_screens(bare)
+            fields[key] = [(counted(a, unit, cell_units, column),
+                            counted(b, unit, cell_units, column)) for a, b in ranges]
+        elif unit == "ft":
+            fields[key] = counted(float(fields[key]), unit, cell_units, column)
+    screens = fields.get("installed_screens", "")
+    screens = screens if isinstance(screens, list) else parse_installed_screens(screens)
+
+    stated = fields.get("borehole_depth_m")
+    total = stated
     if total is None and intervals:
         total = max(iv.bottom_m for iv in intervals)
 
@@ -597,6 +884,18 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                 )
             )
 
+    if feet["depths"] or feet["rates"]:
+        said = []
+        if feet["depths"]:
+            said.append(phrase("drilling.feet_converted", n=feet["depths"],
+                               feet=feet["deepest"],
+                               metres=_in_metres(feet["deepest"], "ft")))
+            if feet["by_sheet"]:
+                said.append(phrase("drilling.feet_by_sheet"))
+        if feet["rates"]:
+            said.append(phrase("drilling.feet_rates", n=feet["rates"]))
+        flags.append(DataFlag("info", "feet_converted", " ".join(said)))
+
     log = DrillingLog(
         site=site,
         borehole_ref=str(fields.get("borehole_ref", "") or ""),
@@ -605,39 +904,46 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
         intervals=sorted(intervals, key=lambda iv: iv.top_m),
         water_strikes_m=sorted(strikes),
         grouting_depth_m=fields.get("grouting_depth_m"),
-        installed_screens_m=parse_installed_screens(fields.get("installed_screens", "")),
+        installed_screens_m=screens,
         start_date=str(fields.get("start_date", "")),
         completion_date=str(fields.get("completion_date", "")),
         status=fields.get("status", ""),
         source=str(source),
     )
 
-    # consistency of the interval column
-    # intervals[1:] is one shorter by design: n intervals give n-1 boundaries.
-    for a, b in zip(log.intervals, log.intervals[1:], strict=False):
-        if b.top_m < a.bottom_m - 1e-9:
+    # Consistency of the interval column, against the deepest bottom logged
+    # so far rather than the row before: a clay lens logged inside a longer
+    # interval (0-30, 5-10, 30-45) is not a gap from 10 m to 30 m, which the
+    # 0-30 m row covers.
+    deepest = None
+    for b in log.intervals:
+        if deepest is not None and b.top_m < deepest - 1e-9:
             flags.append(
                 DataFlag(
                     "warning",
                     "interval_overlap",
-                    f"Depth intervals overlap at {b.top_m:g} m.",
+                    phrase("drilling.interval_overlap", depth=b.top_m),
                 )
             )
-        elif b.top_m > a.bottom_m + 1e-9:
+        elif deepest is not None and b.top_m > deepest + 1e-9:
             flags.append(
                 DataFlag(
                     "warning",
                     "interval_gap",
-                    f"Gap in the drilling log between {a.bottom_m:g} m and {b.top_m:g} m.",
+                    phrase("drilling.interval_gap", top=deepest, bottom=b.top_m),
                 )
             )
-    if total and log.intervals and abs(log.intervals[-1].bottom_m - total) > 1e-6:
+        deepest = b.bottom_m if deepest is None else max(deepest, b.bottom_m)
+    # Only a total the sheet states can differ from the log; one worked out
+    # from the intervals is their deepest bottom. The last row by top used to
+    # be compared, so a nested fracture row at the foot of the table was "the
+    # deepest logged interval", and a derived total was called "stated".
+    if stated and deepest is not None and abs(deepest - stated) > 1e-6:
         flags.append(
             DataFlag(
                 "warning",
                 "depth_mismatch",
-                f"Stated total depth {total:g} m differs from the deepest logged "
-                f"interval {log.intervals[-1].bottom_m:g} m.",
+                phrase("drilling.depth_mismatch", stated=float(stated), deepest=deepest),
             )
         )
     if not log.intervals:

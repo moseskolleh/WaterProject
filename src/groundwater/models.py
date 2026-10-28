@@ -13,7 +13,12 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .geo import UTMCoordinate, infer_zone_for_sierra_leone, utm_to_geographic
+from .geo import (
+    UTMCoordinate,
+    infer_zone_for_sierra_leone,
+    utm_boxes_hold_degrees,
+    utm_to_geographic,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +67,13 @@ class SiteMetadata:
     @property
     def utm(self) -> UTMCoordinate | None:
         if self.easting is None or self.northing is None:
+            return None
+        # Degrees typed into the two boxes are no position in metres: read as
+        # one they put the site near the equator, and the browser read them as
+        # degrees, so the two engines placed one project about 940 km apart
+        # (8.4831 N, 13.2294 W read as metres is 0.0001 N, 13.4889 W). Neither
+        # reads a position from them; check_site_consistency says why.
+        if utm_boxes_hold_degrees(self.easting, self.northing):
             return None
         # A fixed fallback puts half the country in the Atlantic: the two
         # zones are 6 degrees (about 660 km) apart. The easting alone

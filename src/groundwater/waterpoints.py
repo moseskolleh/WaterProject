@@ -34,6 +34,7 @@ import io
 import http.client
 import json
 import math
+import numbers
 import re
 import urllib.error
 import urllib.parse
@@ -156,18 +157,52 @@ def _first(record: dict, *keys: str):
     return None
 
 
-def _to_float(value) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+#: A number as an export writes one: digits with an optional sign, decimal
+#: point and exponent, between the white space both engines trim. The
+#: browser's reader takes a cell by the same pattern (``WP_PLAIN_NUMBER`` in
+#: gwt-core.js), because Python's ``float`` and JavaScript's ``Number`` read
+#: different cells as numbers: ``float`` takes "nan", "inf", "1_000" and
+#: digits of other scripts, ``Number`` takes "0x1F" and reads a cell of
+#: spaces as 0.
+_PLAIN_NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+#: The white space JavaScript's ``String.prototype.trim`` takes off a
+#: cell's ends, which ``str.strip()`` does not quite match.
+_EDGE_SPACE = (" \t\n\v\f\r\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008"
+               "\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff")
 
 
-def _to_int(value) -> int | None:
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
+def _plain_number(value) -> float | None:
+    """A finite number out of a cell, or ``None``: a JSON number as it is, a
+    text only when it is a plain decimal number, and nothing else (a
+    boolean, a blank, "nan", "inf", "1e999")."""
+    if value is None or isinstance(value, bool):
         return None
+    if isinstance(value, numbers.Real):
+        try:
+            number = float(value)
+        except OverflowError:
+            return None
+    elif isinstance(value, str):
+        text = value.strip(_EDGE_SPACE)
+        if not _PLAIN_NUMBER.fullmatch(text):
+            return None
+        number = float(text)
+    else:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _install_year(value) -> int | None:
+    """The year a point was installed, or ``None`` when it is unrecorded.
+
+    Its whole part, as the year 2009.6 falls in is 2009, and nothing at or
+    below 0: WPDx exports write 0 where the year was never recorded, and
+    the desk study printed it as the year a borehole was installed."""
+    number = _plain_number(value)
+    if number is None:
+        return None
+    year = int(number)
+    return year if year > 0 else None
 
 
 def _year_of(value) -> int | None:
@@ -253,9 +288,13 @@ def parse_wpdx_records(
         if not isinstance(record, dict):
             malformed += 1
             continue
-        lat = _to_float(_first(record, "lat_deg", "latitude", "lat"))
-        lon = _to_float(_first(record, "lon_deg", "longitude", "lon"))
-        if lat is None or lon is None:
+        # A position no map holds is no position: "nan", "inf", or UTM
+        # metres in the degree columns used to be kept as a water point,
+        # counted in the totals and joined to no chiefdom, where the
+        # browser's reader set it aside. Both readers now set it aside alike.
+        lat = _plain_number(_first(record, "lat_deg", "latitude", "lat"))
+        lon = _plain_number(_first(record, "lon_deg", "longitude", "lon"))
+        if lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180:
             unplaced += 1
             continue
         status_text = str(_first(record, "status_clean", "status") or "")
@@ -272,7 +311,7 @@ def parse_wpdx_records(
                                   "water_source", "source") or ""),
                 technology=str(_first(record, "water_tech_clean",
                                       "water_tech", "technology") or ""),
-                install_year=_to_int(_first(record, "install_year")),
+                install_year=_install_year(_first(record, "install_year", "installation_year")),
                 adm2=str(_first(record, "clean_adm2", "adm2") or ""),
                 report_year=_year_of(_first(record, "report_date", "date_of_record",
                                             "survey_date", "created_timestamp")),

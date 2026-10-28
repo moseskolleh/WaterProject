@@ -125,6 +125,33 @@ def test_the_freshness_detail_says_how_many_carried_a_date():
     assert "most recent is 2025" in fresh.detail
 
 
+def test_a_survey_after_the_plan_year_says_nothing_about_it():
+    """Both apps let the plan year go back to 2015, and WPDx surveys run into
+    the 2020s. A planner who set 2018 had points surveyed in 2022 and 2023
+    counted as surveyed in the last three years and as recent, at ages of -4
+    and -5 years, and read "the median is -5 years old". A survey after the
+    plan year is left out of the median and of the recent counts, and the
+    detail says how many were."""
+    fresh = point_freshness(
+        [_point(year=2023), _point(year=2022), _point(year=2014), _point(year=None)], 2018)
+    assert (fresh.state, fresh.n_dated, fresh.n_later, fresh.latest_year, fresh.median_age_years,
+            fresh.n_recent) == ("ageing", 1, 2, 2014, 4.0, 0)
+    assert fresh.detail == (
+        "1 of 4 points carry a survey date up to 2018; the most recent is 2014 and the median is 4 "
+        "years old. 0 were surveyed in the last 3 years. 2 more carry a survey date after 2018, which "
+        "says nothing about 2018, and are left out.")
+    every = point_freshness([_point(year=2023), _point(year=2022), _point(year=None)], 2018)
+    assert (every.state, every.label, every.n_dated, every.median_age_years) == (
+        "later", "Surveyed after the plan year", 0, None)
+    assert every.detail == (
+        "Every survey date these points carry (2 of 3) is after 2018, which says nothing about 2018, so how "
+        "current this coverage figure was then cannot be established.")
+    rows, _ = planning_rows({"Bo": 1000.0}, {"Bo": [_point(year=2023), _point(year=2015)]},
+                            as_of_year=2018)
+    assert rows[0].recent_functional_points == 1
+    assert rows[0].people_per_recent_point == pytest.approx(rows[0].population)
+
+
 def test_coverage_over_recent_surveys_is_reported_beside_coverage_over_all():
     """The gap is the share of the supply nobody has laid eyes on in years."""
     points = {"Bo": [_point(year=2024), _point(year=2010), _point(year=2009)]}

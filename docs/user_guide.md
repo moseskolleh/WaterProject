@@ -82,7 +82,20 @@ resistivity from the instrument.
 
 At every segment change (for example AB/2 = 3, 10, 40 and 70 m),
 repeat the same AB/2 with the old MN and again with the new MN. Both
-readings are used; do not delete either one.
+readings are used; do not delete either one. The inversion merges the
+two by geometric mean. A spacing read twice with no MN change recorded
+(no MN column, or the same MN throughout), and any repeat on a Wenner
+sheet, is fitted as two readings, and the flags say so.
+
+A sheet may record the instrument's resistance (V/I, in ohms, headed
+for example "R (ohm)") in place of the apparent resistivity. The
+reader then multiplies each reading by the geometric factor K, from the
+sheet's K column or from AB/2 and MN. K needs MN/2 between 0 and AB/2,
+so a row outside that is left out with a warning that names its AB/2;
+the rest of the sheet and the workbook are read. A column whose unit is
+ohm-metres (ohm-m, ohm.m, Ωm, Ω·m) is a resistivity whatever its
+heading says, so "R (ohm-m)" is read as it stands and not multiplied
+again.
 
 A sounding is inverted from four spacings up, and is fitted with no
 more layers than leave it one reading to spare: two layers below six
@@ -91,6 +104,13 @@ at four or five spacings is therefore read as two layers, however many
 the ground has. A row whose AB/2 is 0 (a formula over a blank cell, or
 a placeholder) is kept as read, flagged "A spacing must be positive",
 and left out of the inversion.
+
+The depth to bedrock is the top of resistive ground with nothing
+conductive below it in the fitted model. A layer as resistive as fresh
+basement (3,000 ohm-m by default) that lies over a water-bearing or
+clay-rich layer is read as a resistive cover, such as a duricrust or a
+dry layer, and the interpretation says so; bedrock is then looked for
+below the conductive ground.
 
 ## 2a. VES co-pilot (browser app, at the peg)
 
@@ -308,6 +328,28 @@ strike in the water strike column. The design module places screens
 against these depths, so accuracy here directly shapes the borehole
 design.
 
+A depth may carry a decimal comma (`12,5-30` is 12.5 to 30 m). A log
+kept in feet is read in feet: say so in the column headers ("Depth
+interval (ft)", "Total depth (ft)", "Penetration rate (min/ft)") or
+against the depths themselves (`0-20 ft`, `45'`, "water strike at 90
+ft"). Both apps convert every depth to metres at 0.3048 m to the foot,
+kept to the centimetre, convert rates per foot to metres a minute, and
+say on the log and beside the readiness gate that they did. A depth
+with no unit of its own is read in the unit its column header (or its
+label, for the total depth) names; failing that, in feet when every
+depth or rate unit the sheet names is feet, and in metres when it names
+only metres or none. Where the sheet names both feet and metres, or a
+header names both ("Depth (m/ft)"), a depth with no unit of its own is
+not read at all, and the log says which cell to write the unit in. A
+row or a strike the reader had to set aside keeps the drilling log from
+being called complete by the readiness gate until the sheet is
+corrected, and a cell it could not read also keeps it from saying that
+every reading carried a unit it could read.
+
+A lens logged inside a longer interval (`0-30`, `5-10`, `30-45`) is
+flagged as an overlap but not as a gap, and the total depth is checked
+against the deepest bottom logged only when the sheet states one.
+
 ## 4a. Drilling log co-pilot (browser app, at the rig)
 
 The browser app keeps the drilling log as the hole is drilled: **Drilling
@@ -426,7 +468,8 @@ choice made in this toolkit, not a standard; `QUESTIONS.md` item 13 asks
 for them to be confirmed. The card reads only the one sample the project
 holds, so a sample from another borehole, or from another season, is
 read as this borehole's water. The completion and handover reports do
-not name the rising main yet.
+not name the rising main yet. The asset registry schedules the rising
+main's inspection at this interval, as the routine inspection (9b).
 
 ## 5a. Finding your way around
 
@@ -733,6 +776,17 @@ content, verticality, specific capacity) and the minimum separation
 distances from pollution sources. When a stage is complete, download
 the signed checklist record from "Checklist record and sign off".
 
+The acceptance boxes start empty, and a check goes into the record only
+when its measurements were entered: a check nobody measured is not
+printed as a pass. Verticality also needs the casing inner diameter
+from the disinfection calculator beside it, as it does in the browser
+app. The record is stamped PROVISIONAL while any critical item has no
+answer, and the stamp counts the blank ones stage by stage. An answer of
+No is an answer - the record states the failure - and so is N/A; a
+blank is what holds it back. That includes the stages not reached yet,
+so a record downloaded at the end of one stage stays provisional until
+the last stage is answered, or is issued on an override that says why.
+
 ## 8a. Depth Spine
 
 In the browser app: [`#/spine`](index.html#/spine).
@@ -758,6 +812,21 @@ Moving a screen clears the design and costing signatures, since a
 signature has to belong to the numbers that were in front of the
 person at the time.
 
+The price on the costing stage is the Costing & BoQ page's price for
+the design on the section, in both apps: the unit rates as edited
+there, and its overheads, margin, contingency, VAT, exchange rate,
+overburden, mobilisation distance and counts, as they stand, or as
+they start if that page has not been opened yet. The Streamlit app's
+Costing page starts at a 100 km mobilisation distance and the
+browser's at 0 km, so the two apps' prices differ until it is set.
+
+The water quality chart draws each determinand as a multiple of its
+own limit, so one line separates compliant from not. Against a range,
+such as pH 6.5 to 8.5, a value is drawn past the line on whichever side
+of the range it falls: the larger of the value over the top of the
+range and the bottom of the range over the value. The Dr Timbo
+sample's pH of 5.9 is drawn at 6.5 / 5.9 = 1.10 times its limit.
+
 ## 9. Handover
 
 In the browser app: [`#/handover`](index.html#/handover).
@@ -770,6 +839,23 @@ recommendations, and the three signatories. Results already produced
 on the other pages - the borehole design, the pumping test and the
 water quality verdict - attach to the report automatically; the page
 shows what is attached before you build it.
+
+The Asset registry page ([`#/registry`](index.html#/registry)) gives
+the borehole its identifier and prints its headworks plate. The
+identifier is worked out from the GPS position, so the position has to
+be in UTM metres (section 10). Its last character is an ISO 7064 MOD
+37,36 check character, which catches every single mistyped character
+and almost every pair of neighbouring characters typed the wrong way
+round. Until this release that character was worked out slightly
+differently from the standard. An identifier ending in the older
+character is still read, on the page and from a saved project file,
+with a note saying so and asking for it to be compared with the plate,
+because while the older character is read a mistyped identifier can
+pass as an older one. A project with no saved asset record now shows
+its identifier with the corrected last character, so a plate printed
+from it before carries a different last character from the page; the
+rest of the identifier is the same. QUESTIONS.md item 15 asks what to
+do about plates already made.
 
 ## 9a. Sanitary inspection
 
@@ -831,6 +917,155 @@ sides' own WHO risk words), not a copy of WHO's figure. Both are listed in
 (.docx) carries the statement, the latest form as recorded and the
 reference.
 
+## 9b. Service rounds
+
+In the browser app: [`#/registry`](index.html#/registry), the *Service
+rounds* card at the foot of the page. In the Streamlit app: the Asset
+registry page, under *Many boreholes*.
+
+**What is due.** The registry schedules three visits for every borehole
+that is not decommissioned, and the page under *This borehole* lists them:
+
+- a **sanitary inspection** every 6 months (the form in 9a);
+- a **routine inspection** of the pump and rising main at the interval the
+  borehole's design sets for its rising main (5, *The rising main the
+  design specifies*): every 6 months in aggressive water or water nobody
+  has analysed, every 12 in water that is not aggressive, and every 6 for
+  a record that carries no rising main. Record one by choosing *Routine
+  inspection* under *Record what happened*; a repair is not counted as
+  one, since it records what was mended, not that the rest was looked at;
+- a **water quality sample** every 12 months.
+
+Each is counted from the last one recorded, or from commissioning where
+there is none. A visit is *due* the day after its due date and *overdue*
+30 days later; a borehole with no record to count from (nothing
+recorded, or no commissioning date) is *due now*, and its condition is
+"Not known", never "Working". These intervals are settings in
+`groundwater/data/defaults.json` (the `service` section, and the design
+rules' rising main intervals): choices made in this toolkit, not a
+standard, which `QUESTIONS.md` item 18 asks the programme to confirm.
+
+The borehole's record takes the rising main of this project's design
+whenever the design has one, on the page and in the saved project file,
+so load the water quality sheet before the record goes out. A borehole
+loaded from another project file keeps the rising main its file carries.
+
+**Whose round.** Name the borehole's area mechanic under *This borehole*
+and press *Name the area mechanic*; the name is saved with the project.
+A borehole with none named goes to the mechanic named for its chiefdom
+in *Area mechanics by chiefdom*, one chiefdom a line: the chiefdom, a
+colon and the name (`Koya: M. Kolleh`). Chiefdoms are matched with
+capital and small letters A to Z read alike; a line that cannot be read
+is listed and not used, and of two lines for one chiefdom the first is
+used. Boreholes with no mechanic either way are put on a round of their
+own, *No area mechanic assigned*, last.
+
+**Which boreholes.** This project's borehole and every borehole in the
+register above (*Many boreholes*), on the day in *Round drawn up on*
+(today unless you change it). Several files of one borehole are one
+stop, with their histories merged.
+
+**In what order.** Each round starts at the stop that has been due the
+longest and goes each time to the nearest stop not yet visited, measured
+in a straight line, a tie going to the lower identifier. This puts the
+stops in an order; it is not an optimal route and knows nothing of roads,
+rivers or the rains, so a mechanic who knows the way should take it.
+A borehole with no recorded position comes last.
+
+**The round sheets (.docx)** are one document with each mechanic's round
+from a new page. Each stop carries the identifier and the line a scan of
+the headworks plate begins with (check the two match before writing anything),
+where the borehole is, its condition on record and the distance from the
+stop before; then each visit due, with why and how often, and blank boxes
+for the readings: four for the routine inspection, the ten questions of
+the sanitary inspection form, four for the water sample, and the date,
+who visited and anything else found. Back from the round, record each
+visit on the Asset registry page with the date it was made.
+
+The browser app keeps the chiefdom table and the day with the project;
+the Streamlit app saves the chiefdom table with the project and starts
+the day at today each time the page is opened.
+
+## 9c. How long boreholes keep working
+
+In the browser app: [`#/registry`](index.html#/registry), the *How long
+boreholes keep working* card at the foot of the page. In the Streamlit
+app: the Asset registry page, after *Service rounds*.
+
+**What it reads.** This project's borehole and every borehole in the
+register above (*Many boreholes*), as of the day in *Analysed as of*
+(today unless you change it; records dated after it are not read). For
+each borehole it counts the time from its first *Commissioned* record to
+its first failure:
+
+- the first *Failure* recorded is the failure;
+- a *Repair* or *Returned to service* with no failure recorded before it
+  also counts as the first failure, on its own date: something had broken
+  by then, and its date is the latest the breakdown can have happened.
+  The summary says how many failures were found this way;
+- a borehole that has not failed is *censored*: counted as working up to
+  the last report of it working and not a day after. A report of working
+  is its commissioning, a *Sanitary inspection*, a *Routine inspection*
+  or a *Water sampled*: a visit that would have recorded a failure had it
+  found one. A *Note* says nothing either way, and a borehole nobody has
+  reported on since is not taken to be working;
+- a borehole *Decommissioned* without a failure is censored on that day;
+- a borehole with no report since its commissioning is censored at
+  commissioning and adds no time; one with no commissioning date has no
+  time to count from and is left out. The summary counts both.
+
+Of several records on one day, a failure is read first, then a repair or
+return to service, then a decommissioning. Records dated before the
+commissioning, and records whose date cannot be read, are not read, and
+the summary counts the boreholes that carry them.
+
+**What it shows.** Over all the boreholes, then by pump type, by
+contractor and by water chemistry: a curve of the share still working
+against years since commissioning (the Kaplan-Meier estimate), shaded
+with its 95 percent band, a tick where a borehole was censored; a line a
+group with its counts and the median time to the first failure with its
+band; a table of the same; and a table of the number still at risk and
+the share still working at 0, 1, 2, 3, 5 and 10 years. The band is
+pointwise, from Greenwood's variance on the log-log scale; there is none
+before the first failure. The median is the first time the estimate is
+at or below one half; where it never gets there the table says "not
+reached". The method's works are listed under *References*.
+
+**Too few to judge.** A group with fewer than five boreholes followed
+(the setting `survival.min_at_risk` in `groundwater/data/defaults.json`)
+says it is too few to judge and gives its counts, never a curve. The
+times the table states are the setting `survival.at_risk_years`. Both
+are choices made in this toolkit, not a standard (`QUESTIONS.md` item
+14).
+
+**The groups.** The pump type and the contractor are those named on each
+borehole's record: name this borehole's under *This borehole* (*Pump
+type* and *Installed by*) and press *Save the pump and contractor*; they
+are saved with the project. *Installed by* starts from the contractor in
+the site details when the record is first drafted. Names are matched
+with capital and small letters A to Z read alike and nothing else, so
+"India Mark II" and "india mark ii" are one group but "India Mk II" is
+another. The water chemistry is the corrosivity the record carries from
+its design's rising main (5, *The rising main the design specifies*):
+aggressive, not aggressive, or not known (no sample, a sample the
+indices could not be computed from, or a record with no rising main). A
+borehole loaded from another project file keeps what its file carries.
+Boreholes whose record names no pump type or contractor, or whose water
+is not known, are shown as a group of their own but never compared.
+
+**Comparing groups.** Where at least two groups that name a value each
+have five boreholes followed, they are compared by the log-rank test,
+which gives a chi-squared and its p-value. The p-value is how often
+curves at least this far apart would arise by chance if all the groups'
+boreholes failed at the same rate: it is not the chance that the groups
+differ, and it says nothing of why they might. A group none of whose
+boreholes was at risk when any borehole failed (a pump type introduced
+after the others' failures, say) has nothing to be compared on and is
+left out of the test, which says so.
+
+The browser app keeps the day with the project; the Streamlit app starts
+it at today each time the page is opened.
+
 ## 10. Site maps
 
 In the browser app: [`#/site`](index.html#/site), and the terrain
@@ -844,7 +1079,13 @@ sits, the study area, geology and aquifers, topography and terrain, and
 the interactive map.
 The subsurface maps outside the reports are in the Python app for now.
 Enter the UTM coordinates in the sidebar to place the site star; the
-window slider sets how much ground the local maps cover. Every figure
+window slider sets how much ground the local maps cover. The easting and
+northing boxes take UTM metres only. A latitude and longitude typed into
+them (a pair no larger than 180 and 90) is not read as a position in
+either app: the page says so, in the same words the readiness gate and
+the asset identifier use, and offers to convert it, reading an unsigned
+longitude as west and saying it did. Or paste "lat, lon" into the box
+below and convert that. Every figure
 carries its data attribution, and the study area, geological and
 aquifer maps embed automatically into the geophysical survey and
 handover reports.
@@ -1150,7 +1391,13 @@ blue, a missing tile taken as sea the same blue hatched, and gaps grey.
   along its line to the nearest clear place, no further than 20 m; where
   there is none, it is left out, and the caption says how many and why.
   The water points are those loaded on the Water points page when the
-  terrain was analysed. Latrines and soakaways, buildings, refuse dumps
+  terrain was analysed. A borehole's 50 m ring reaches into the service
+  radius from as far as 550 m from the site, so a lookup over less than
+  550 m round the site cannot see every water point a peg must keep clear
+  of: the caption then says how far the lookup went and asks for another
+  over at least 550 m (or a check of each peg on the ground). A site
+  moved after the lookup is covered only as far as the lookup still
+  reaches round it. Latrines and soakaways, buildings, refuse dumps
   and burial grounds are on no map here: check each peg for them on the
   ground. Each sounding is planned with the VES co-pilot's AB/2 series
   to the spacing at which the depth-of-investigation rule reaches 60 m
@@ -1223,12 +1470,18 @@ ground. It holds:
   the most of them, how many come within the 500 m the site serves, and
   the relief, the candidates and their rose as the press drew them;
 - the water points the Water points page holds, within the radius it
-  searched: how many are working, whether a working improved source lies
-  within the 500 m the site serves, the broken ones there to assess for
-  rehabilitation, and the nearest 15 in a table. The WPdx+ inventory as
-  read here records no depth or yield, and the document says so;
+  searched (the lookup's own radius, in both apps, even if the radius box
+  has been changed since): how many are working, whether a working
+  improved source lies within the 500 m the site serves, the broken ones
+  there to assess for rehabilitation, and the nearest 15 in a table, with
+  the year each was installed where the inventory records one (a year
+  recorded as 0 is left blank). The WPdx+ inventory as read here records
+  no depth or yield, and the document says so;
 - the earlier projects the Portfolio page holds within 5 km, nearest
-  first, with their status, depth, safe yield and water quality;
+  first, with their status, depth, safe yield and water quality. A
+  project file whose easting and northing hold a longitude and a latitude
+  in degrees has no position in either app; the desk study names it and
+  says to convert the degrees on its site details and save it again;
 - the odds of a working borehole from the ground alone, before any
   survey, in the words of the geophysical report's odds;
 - the survey plan's lines and soundings, with its figure;
@@ -1320,7 +1573,11 @@ apparent-resistivity pseudo-section, which involves no inversion at
 all - each point is a reading at the station and spacing it was taken
 with, so it is still right if the inversion is wrong. Its vertical
 axis is AB/2, the electrode half-spacing, and is labelled as such
-rather than converted to a depth.
+rather than converted to a depth. Both sections run eastwards along the
+line, or northwards where the line is within a degree of north-south,
+whatever order the soundings were entered in, so a few tens of
+centimetres of GPS scatter on a north-south line no longer turns the
+section round.
 
 Every interpolated surface is blanked outside the ground the soundings
 enclose. A contour past the last peg is the interpolator continuing a
@@ -1346,13 +1603,25 @@ inside the service radius means the community **may already be served**
 and the need should be verified, and otherwise **new construction is
 justified**. The lookup needs a connection; if there is none, download
 your country's WPdx export once and upload the CSV instead - the
-analysis is identical and runs offline.
+analysis is identical and runs offline. The points kept are those within
+the radius the lookup searched: change the radius afterwards and the
+page goes on judging, and the desk study quoting, the radius searched
+until *Look up water points* is pressed again, and the browser app says
+so under the box. A row whose latitude or longitude is blank, not a
+plain number ("nan", "inf"), or past 90 or 180 degrees (UTM metres in
+the degree columns) is set aside and counted in a note, in both apps.
 
 **Coverage gap** - where are the underserved people? Ranks districts,
 or chiefdoms for finer targeting, by population per functional water
 point (2015 census populations joined to WPDx points), as a choropleth
 map and a ranked table. Higher means more people per working source
-means higher priority.
+means higher priority. The planning view under it projects the census
+to the year planned for and says how old the survey behind each area's
+points is in that year. A survey dated after the year planned for (a
+2023 survey when planning for 2018, say) says nothing about it: it is
+left out of the median age and of the points counted as recently
+surveyed, and an area every dated survey of which is later is labelled
+*Surveyed after the plan year*.
 
 **Portfolio** - upload several saved project files at once for the
 programme view: a status map, headline figures (success rate, mean cost
@@ -1542,6 +1811,42 @@ workbook. Check each highlighted cell against the paper before the
 data is used; nothing is accepted silently, and extraction never
 writes into the project on its own - correct the workbook, then upload
 the corrected sheet on the page that needs it.
+
+A PDF straight from a scanner is usually a picture of the sheet with
+no text in it. Both apps refuse it on the text path (in the Streamlit
+app, Extract with the AI box unticked) and say to use the AI
+extraction, rather than handing back an empty workbook.
+
+The review list starts with anything wrong with the sheet as a whole:
+no table found at all, or a VES reading table the VES template cannot
+take. A line of a single phrase - a caption above the column headings,
+a note under the readings - is not read as part of the table. Under a
+numeric heading, a cell is held back when it holds anything besides
+one number and a unit after it, so a scanner's "12O.4" (a letter O for
+a zero) is flagged "contains characters other than a number" instead
+of being read as 12. The units accepted after a number are m, cm, mm,
+min, s, h, hr, %, ohm, ohm-m, m3/h, l/s and m/min; anything else, a
+"<" or a "ft" included, is flagged for you to confirm.
+
+For a VES sheet the page also offers the standard VES template, filled
+in. Its columns are placed by the same rules the VES reader reads the
+template back with: an MN/2 column stays headed MN/2, so the reader
+doubles it; an apparent-resistivity column is taken ahead of a
+resistance column; and a sheet that records only resistances keeps
+them as resistances, beside its K column, so the reader works out the
+apparent resistivity (from AB/2 and MN where there is no K) and says
+so. A table with no AB/2 column, with neither an apparent resistivity
+nor a resistance, with the Wenner spacing a (the template is the
+Schlumberger sheet), or with resistances and neither K nor MN, is not
+put into the template; the page says why, and those readings are
+entered by hand. The template carries no instrument or sounding number
+the sheet did not give.
+
+The AI transcription of a long sheet - a stepped pumping test with its
+recovery runs to several hundred cells - can run out of output part of
+the way through. The page then says the transcription was cut off and
+nothing was read from it: photograph or scan each table on its own and
+extract them one at a time.
 
 ## 13. Where results go
 

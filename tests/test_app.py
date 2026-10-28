@@ -336,6 +336,76 @@ def test_supervision_flow(app):
     assert not app.exception
 
 
+def test_a_field_check_nobody_measured_is_not_in_the_record(app):
+    """The boxes started at plausible values and all four checks went into
+    the report every run, so a record built without opening the expander
+    said verticality, sand content, specific capacity and the drilled
+    metres had passed, against numbers nobody measured."""
+    from docx import Document
+
+    goto(app, "Supervision")
+    for key in ("fx_watercol", "fx_casingid", "fx_dev", "fx_vdepth", "fx_sand1",
+                "fx_sand2", "fx_sand3", "fx_q", "fx_dd", "fx_logged", "fx_claimed"):
+        assert app.number_input(key=key).value is None, key
+    app.button(key="build_sup_report").click()
+    app.run()
+    assert not app.exception
+    assert app.session_state["field_checks"] == []
+    path = Path(app.session_state["workdir"]) / "Supervision_Checklist_Report.docx"
+    text = "\n".join(p.text for p in Document(str(path)).paragraphs)
+    assert "Field Acceptance Checks" not in text
+    # what is entered is checked, and only that
+    app.number_input(key="fx_dev").set_value(80.0)
+    app.number_input(key="fx_vdepth").set_value(60.0)
+    app.number_input(key="fx_casingid").set_value(103.0)
+    app.number_input(key="fx_sand2").set_value(0.1)
+    app.run()
+    assert not app.exception
+    assert [c.name for c in app.session_state["field_checks"]] == [
+        "Verticality (plumb test)", "Sand content"]
+    assert "1 sample" in app.session_state["field_checks"][1].measured
+    for key in ("fx_dev", "fx_vdepth", "fx_casingid", "fx_sand2"):
+        app.number_input(key=key).set_value(None)
+    app.run()
+    assert not app.exception
+
+
+def test_degrees_typed_into_the_utm_boxes_are_refused_until_converted(app):
+    """The gate, the identifier and the sidebar say the same thing of them,
+    and converting them is the operator's own button."""
+    from groundwater.geo import degrees_in_utm_boxes
+
+    saved = {key: app.session_state.get(key, None)
+             for key in ("meta_easting", "meta_northing", "meta_zone")}
+    try:
+        goto(app, "Asset registry")
+        app.number_input(key="meta_easting").set_value(13.2294)
+        app.number_input(key="meta_northing").set_value(8.4831)
+        app.run()
+        assert not app.exception
+        sentence = degrees_in_utm_boxes(13.2294, 8.4831)
+        warnings = [str(w.value) for w in app.warning]
+        assert sentence in warnings                     # the sidebar
+        assert sentence + (" The sidebar's \"Convert these degrees to UTM\" "
+                           "button does it.") in warnings
+        app.button(key="convert_degree_boxes").click()
+        app.run()
+        assert not app.exception
+        assert app.session_state["meta_zone"] == "28N"
+        assert abs(app.session_state["meta_easting"] - 694912) <= 1
+        assert abs(app.session_state["meta_northing"] - 938150) <= 1
+        # converted on a sign the parser supplied, and said
+        assert "13.2294 was read as 13.2294 W" in app.session_state["latlon_assumed"]
+        assert all(sentence not in str(w.value) for w in app.warning)
+    finally:
+        for key in ("meta_easting", "meta_northing"):
+            app.number_input(key=key).set_value(saved[key] or 0.0)
+        app.selectbox(key="meta_zone").select(saved["meta_zone"] or "29N")
+        app.text_input(key="latlon_paste").set_value("")
+        app.session_state["latlon_assumed"] = ""
+        app.run()
+
+
 def test_supervision_photo_evidence_holds_the_record_until_attached(app):
     """The gate lists each item missing its photograph, in the catalogue's
     words, and a photograph kept with its provenance lifts it."""
@@ -868,6 +938,24 @@ def test_the_desk_study_carries_the_terrain_press(sample_data):
     if desk["soundings"]:
         assert desk["soundings"][0][0] in text
     assert "Earlier projects within 5 km" in text and phrase("desk_study.projects_not_loaded") in text
+
+
+def test_a_lookup_short_of_a_rings_reach_is_said_under_the_plan(sample_data):
+    """A lookup on the Water points page at 300 m never loads a borehole 300
+    to 550 m from the site, whose 50 m ring a sounding inside the service
+    radius may stand in, and the plan said nothing of it. The press now
+    tells the plan how far round the site the lookup went, and the caption
+    says it fell short; it no longer says no water points were loaded."""
+    from groundwater.models import SiteMetadata
+    from groundwater.text import phrase
+
+    site = SiteMetadata(easting=280126.0, northing=994900.0, utm_zone=29)
+    at = _terrain_page(_tiles())
+    at.session_state["wp_result"] = {"decision": {"search_radius_m": 300.0}, "rows": [], "points": [],
+                                     "centre": site.latlon}
+    caption = _analyse(at)["captions"]["plan"]
+    assert phrase("survey_plan.water_points_short", searched=300.0, reach=550.0) in caption
+    assert phrase("survey_plan.no_water_points") not in caption
 
 
 def test_the_desk_study_without_an_elevation_model(sample_data):
@@ -1654,6 +1742,7 @@ def test_a_set_put_in_force_reads_the_survey_on_show_again(sample_data):
     models dropped where those edges are not the ones it was sampled with."""
     from groundwater.calibration_sets import config_for_sounding
     from groundwater.config import Config
+    from groundwater.text import phrase
 
     at = AppTest.from_file(APP, default_timeout=600)
     goto(at, "Geophysics (VES)")
@@ -1683,8 +1772,12 @@ def test_a_set_put_in_force_reads_the_survey_on_show_again(sample_data):
     assert kept is soundings and again is results
     config = config_for_sounding(Config(calibration=held), soundings[0])
     assert config.ves.fresh_basement_min_rho == 579.7
-    # read by the set's basement edge, the 1,638 ohm-m layer is basement now
-    assert after[0].depth_to_basement_m == pytest.approx(1.02, abs=0.01)
+    # read by the set's basement edge, the 1,637 ohm-m layer is as resistive
+    # as basement now; over the 47 ohm-m water zone it is a resistive cover,
+    # not bedrock (it used to be read as basement at 1.0 m)
+    assert before[0].layers[1].unit == "compact or dry weathered rock (regolith)"
+    assert after[0].layers[1].unit == phrase("ves.unit_resistive_cover")
+    assert after[0].depth_to_basement_m is None
     assert "ves_ranges" not in at.session_state
 
     at.button(key="calibration_default").click()
@@ -1907,6 +2000,73 @@ def test_depth_spine_page(app):
     )
 
 
+def test_the_depth_spine_prices_as_the_costing_page_does(sample_data):
+    """The spine signs a price on its "Costing & BoQ" stage, so it has to be
+    the Costing page's price for the design. The Streamlit spine priced at
+    the catalogue rates, the default percentages and no mobilisation, so with
+    the Costing page's overheads, VAT and distance changed the two disagreed.
+    """
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    assert not at.exception, at.exception
+    goto(at, "Borehole design")
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    goto(at, "Costing & BoQ")
+    for key, value in (("cost_overheads", 25.0), ("cost_vat", 15.0),
+                       ("cost_distance", 120.0), ("cost_samples", 2)):
+        at.number_input(key=key).set_value(value)
+    at.run()
+    at.button(key="run_cost").click()
+    at.run()
+    assert not at.exception, at.exception
+    estimate = at.session_state["cost_estimate"]
+
+    goto(at, "Depth Spine")
+    assert not at.exception, at.exception
+    [workspace] = at.get("component_instance")
+    costing = json.loads(workspace.proto.json_args)["view"]["costing"]
+    assert costing["price"] == pytest.approx(estimate.price_usd, abs=0.005)
+    assert costing["vat"] == pytest.approx(estimate.vat_usd, abs=0.005) and costing["vat"] > 0
+    assert costing["directCost"] == pytest.approx(estimate.direct_cost_usd, abs=0.005)
+    assert costing["overheadsPercent"] == 25.0
+
+
+def test_the_scanned_sheets_page_says_what_it_could_not_read(sample_data):
+    """An image-only PDF came back as an "unknown" sheet whose review said
+    every value had been extracted, and a VES table the template could not
+    take was written as a template that read back with no readings. The page
+    says each, in the engine's words."""
+    pytest.importorskip("pdfplumber")
+    from groundwater.text import phrase
+    from test_extraction import _pdf
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    goto(at, "Scanned sheets")
+    at.file_uploader(key="scan").set_value([("scan.pdf", _pdf([]), "application/pdf")])
+    at.run()
+    at.button(key="run_extract").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert [e.value for e in at.error] == [phrase("extraction.no_text_layer")]
+
+    placed = [(60, 760, "SCHLUMBERGER ARRAY VES FIELD DATA"),
+              (60, 650, "No."), (110, 650, "Spacing"), (200, 650, "Reading")]
+    for k, (spacing, reading) in enumerate((("1.5", "120.4"), ("2", "98.1"), ("3", "80.2"))):
+        placed += [(60, 630 - 18 * k, str(k + 1)), (110, 630 - 18 * k, spacing),
+                   (200, 630 - 18 * k, reading)]
+    at.file_uploader(key="scan").set_value([("sheet.pdf", _pdf(placed), "application/pdf")])
+    at.run()
+    at.button(key="run_extract").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert not at.error, [e.value for e in at.error]
+    warnings = [str(w.value) for w in at.warning]
+    assert any("cannot be placed in the VES template" in w for w in warnings), warnings
+    assert "1 item(s) to review" in " ".join(str(s.value) for s in at.success)
+
+
 def test_the_static_level_box_shows_the_level_the_design_uses(sample_data):
     """Open the app, then load the test and the log: the box said 0.0.
 
@@ -2062,3 +2222,132 @@ def test_a_sanitary_inspection_is_recorded_and_read_with_the_sample(sample_data)
     assert "between 3 and 5 of 10, which the form rates intermediate" in expected["statement"]
     written = " ".join(str(w.value) for w in at.warning)
     assert expected["statement"] in written
+
+
+def test_the_service_rounds_follow_the_design_and_the_mechanic(sample_data):
+    """PLAN.md step 7.3: the Asset registry page schedules this borehole's
+    routine inspection at the interval the design sets for its rising main
+    (Dr Timbo's aggressive sample: stainless steel, every 6 months), puts it
+    on the round of the mechanic named for its chiefdom until one is named on
+    its record, and builds the round sheet."""
+    import docx
+
+    from groundwater.registry import Asset, AssetEvent, asset_from_dict
+    from groundwater.text import phrase, phrase_table
+
+    asset = Asset(asset_id="SL-WAR-8FEEVKQ-T", community="Dr. Timbo's",
+                  district="Western Area Rural", chiefdom="Koya", easting=694912.0,
+                  northing=938150.0, utm_zone=28,
+                  events=[AssetEvent("2020-01-10", "commissioned")])
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["asset_record"] = asset.as_dict()
+    goto(at, "Borehole design")
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    goto(at, "Water quality")
+    at.selectbox(key="sample_wq").select("dr_timbo/dr_timbo_water_quality.xlsx")
+    at.run()
+    assert not at.exception, at.exception
+    goto(at, "Asset registry")
+    basis = phrase("rounds.basis_design", months=6, material="stainless steel",
+                   water=phrase_table("rounds.water")["aggressive"])
+    captions = " ".join(str(c.value) for c in at.caption)
+    assert phrase("rounds.interval_line", title="Routine inspection", basis=basis) in captions
+    # the record saved with the project carries the design's rising main
+    saved = asset_from_dict(at.session_state["asset_record"])
+    assert saved.rising_main == {"material": "stainless steel", "inspection_months": 6,
+                                 "chemistry": "aggressive"}
+
+    at.text_area(key="org_area_mechanics").input("koya: M. Kolleh\nno colon")
+    at.run()
+    assert not at.exception, at.exception
+    assert "M. Kolleh: 1 stop." in " ".join(str(m.value) for m in at.markdown)
+    assert phrase("rounds.mechanics_no_colon", line=2) in " ".join(str(w.value) for w in at.warning)
+
+    next(t for t in at.text_input if t.label == "Area mechanic").input("A. Bangura")
+    next(b for b in at.button if b.label == "Name the area mechanic").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert asset_from_dict(at.session_state["asset_record"]).area_mechanic == "A. Bangura"
+    assert "A. Bangura: 1 stop." in " ".join(str(m.value) for m in at.markdown)
+
+    at.button(key="rounds_sheet").click()
+    at.run()
+    assert not at.exception, at.exception
+    sheet = docx.Document(at.session_state["artifacts"]["Round sheets"])
+    text = "\n".join(p.text for p in sheet.paragraphs)
+    assert "Area mechanic: A. Bangura" in text and basis in text
+    cells = [c.text for t in sheet.tables for row in t.rows for c in row.cells]
+    assert "SL-WAR-8FEEVKQ-T" in cells and "BOREHOLE SL-WAR-8FEEVKQ-T" in cells
+
+
+def test_how_long_boreholes_keep_working_on_the_registry_page():
+    """PLAN.md step 7.4: the Asset registry page reads this borehole and the
+    register of saved project files as a time to the first failure: the
+    curve over them all and by pump type with its tables, a group of too few
+    boreholes said to be too few, and the pump type named on this borehole's
+    record joining it to its group."""
+    from datetime import date
+
+    import yaml
+
+    from groundwater.models import SiteMetadata
+    from groundwater.project_io import serialize_project
+    from groundwater.registry import Asset, AssetEvent, asset_from_dict, mint_asset_id
+    from groundwater.survival import survival_analysis, survival_rows, survival_text
+    from groundwater.text import phrase
+
+    files = []
+    for i in range(12):
+        easting = 690000.0 + 1000.0 * i
+        days = 300 + 90 * i if i < 6 else 1500 + 60 * i
+        when = date.fromordinal(date(2018, 1, 10).toordinal() + days).isoformat()
+        record = Asset(
+            asset_id=mint_asset_id(SiteMetadata(district="Western Area Rural", easting=easting,
+                                                northing=938150.0, utm_zone=28)),
+            community=f"Site {i}", district="Western Area Rural", easting=easting,
+            northing=938150.0, utm_zone=28,
+            pump_type="Afridev" if i < 6 else "India Mark II",
+            events=[AssetEvent("2018-01-10", "commissioned"),
+                    AssetEvent(when, "failure" if i % 2 else "routine_inspection")])
+        files.append((f"site_{i}.yaml", serialize_project({"asset_record": record.as_dict()},
+                                                          "0.3.0")))
+    this = Asset(asset_id="SL-WAR-8FEEVKQ-T", community="Dr. Timbo's",
+                 district="Western Area Rural", easting=694912.0, northing=938150.0,
+                 utm_zone=28, events=[AssetEvent("2020-01-10", "commissioned"),
+                                      AssetEvent("2022-03-01", "failure")])
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["asset_record"] = this.as_dict()
+    at.session_state["registry_upload_kept"] = {"ids": [name for name, _ in files],
+                                                "files": files}
+    goto(at, "Asset registry")
+    at.date_input(key="survival_date").set_value(date(2024, 6, 1))
+    at.run()
+    assert not at.exception, at.exception
+
+    register = [asset_from_dict(this.as_dict())] + [
+        asset_from_dict(yaml.safe_load(blob)["asset"]) for _, blob in files]
+    result = survival_analysis(register, "2024-06-01")
+    words = survival_text(result)
+    written = " ".join(str(m.value) for m in at.markdown)
+    assert words["summary"][0] in written and words["overall"]["lines"][0] in written
+    pump = next(g for g in words["groupings"] if g["by"] == "pump_type")
+    assert all(line in written for line in pump["lines"])
+    # this borehole names no pump yet, so it is a group of one, too few
+    assert phrase("survival.too_few", label=phrase("survival.not_recorded"), n=1, minimum=5,
+                  failed=1, censored=0) in written
+    frames = [element.value for element in at.dataframe]
+    assert any(list(frame.iloc[0]) == survival_rows([result["overall"]])[0] for frame in frames)
+    assert len(at.get("image")) >= 2
+
+    # naming its pump joins it to its group
+    next(t for t in at.text_input if t.label == "Pump type").input(" India Mark II ")
+    next(b for b in at.button if b.label == "Save the pump and contractor").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert asset_from_dict(at.session_state["asset_record"]).pump_type == "India Mark II"
+    register[0] = asset_from_dict(at.session_state["asset_record"])
+    pump = next(g for g in survival_text(survival_analysis(register, "2024-06-01"))["groupings"]
+                if g["by"] == "pump_type")
+    written = " ".join(str(m.value) for m in at.markdown)
+    assert pump["lines"][0].startswith("India Mark II: 7 followed") and pump["lines"][0] in written

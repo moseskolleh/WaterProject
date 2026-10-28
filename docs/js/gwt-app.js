@@ -299,6 +299,11 @@
      * inventory, other projects' summaries, an extracted scan */
     waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
     waterPointsSkipped: null,
+    /* the radius and centre of the site lookup the water points came from,
+     * or null where they are not cut to a circle round the site (a CSV, the
+     * national pull): the desk study and the rehabilitate-or-drill call
+     * speak of the radius searched, not the box's value since */
+    waterPointsRadius: null, waterPointsCentre: null,
     portfolio: null, extraction: null,
     /* the ledgers of the portfolio's files, by the index of their summaries */
     portfolioLedgers: null,
@@ -903,6 +908,15 @@
     var state = Object.assign({}, store.state);
     state.extraction = Object.assign({}, state.extraction || {});
     delete state.extraction.apiKey;
+    /* the asset record goes out with the rising main the design now
+     * specifies, as the registry page shows it (PLAN.md step 7.3) */
+    if (state.asset) {
+      var record = C.assetFromDict(state.asset);
+      if (record) {
+        state.asset = C.assetWithRisingMain(record, derived.design ? derived.design.rising_main
+          : null);
+      }
+    }
     /* the ledger goes at the top of the file, where the Python app writes
      * and reads it, and not twice, with the borehole's outcome as the
      * project now holds it: a corrected log corrects it */
@@ -1965,6 +1979,49 @@
     return { lat: reading.lat, lon: reading.lon };
   }
 
+  /* "lat, lon" converted into the site's UTM fields: what the paste box's
+   * Convert does, and what the degree callout does with the pair typed into
+   * the two boxes. */
+  function convertLatLon(text) {
+    var reading = C.readLatLon(text);
+    if (reading.lat === null || reading.lon === null) {
+      /* What the parser refused, and why, is what the operator needs:
+       * "8 27.942" is two readings 2000 km apart and the sentence says so,
+       * where a single generic line said only that something was wrong. */
+      S.toast(reading.message + " Enter 'lat, lon' in decimal " +
+        'degrees - 8.4657, -13.2317 or 8.4657 N, 13.2317 W - or in ' +
+        'degrees and minutes, 8 27.942 N, 13 13.902 W.', 'error');
+      return;
+    }
+    var lat = reading.lat, lon = reading.lon;
+    var utm = C.geographicToUtm(lat, lon);
+    if ((utm.zone !== 28 && utm.zone !== 29) || utm.hemisphere !== 'N') {
+      /* The site fields hold Sierra Leone's two zones. Writing this easting
+       * down beside 28N or 29N would relabel the position rather than
+       * convert it, and land the site inside the country: an unsigned
+       * 13.2317 projected in zone 33 was stored here as a zone-33 easting,
+       * 270 km east of Freetown, with nothing said (ROADMAP
+       * data-ingestion-3). */
+      S.toast(C.pyFixed(lat, 4) + ', ' + C.pyFixed(lon, 4) +
+        ' falls in UTM zone ' + utm.zone + utm.hemisphere +
+        ", outside Sierra Leone's 28N and 29N, so it cannot be " +
+        'stored as a site position. Check the coordinates - a ' +
+        'western longitude needs its minus sign or its W.', 'error');
+      return;
+    }
+    store.set('site.easting', S.round(utm.easting, 1));
+    store.set('site.northing', S.round(utm.northing, 1));
+    store.set('site.utm_zone', utm.zone);
+    S.toast('Converted to UTM zone ' + utm.zone + 'N.', 'ok');
+    if (reading.message) {
+      /* The position was converted, but on a sign the parser supplied
+       * rather than one the crew typed, so it is said out loud rather than
+       * left inside the reading. */
+      S.toast(reading.message, 'warn');
+    }
+    render();
+  }
+
   PAGES.site = function () {
     var site = store.get('site');
     var mapRadius = store.get('site.mapRadiusKm', 40);
@@ -1985,6 +2042,8 @@
       .map(function (row) { return row.chiefdom; });
 
     var latlon = siteLatLon();
+    /* degrees typed into the two boxes: no position until converted */
+    var degreeBoxes = C.degreesInUtmBoxes(site.easting, site.northing);
     var districtWarning = districtNote(site, latlon);
     var mapNode = null;
     if (mapLayers() && mapLayers().adminBoundaries) {
@@ -2042,10 +2101,14 @@
           ]),
         ]),
         el('div.field-row', [
-          field('GPS easting (UTM)', S.numberInput(site.easting, bindNum('easting')),
-            'or a longitude in degrees'),
-          field('GPS northing (UTM)', S.numberInput(site.northing, bindNum('northing')),
-            'or a latitude in degrees'),
+          /* Metres only. These used to invite a longitude and a latitude in
+           * degrees, which this app read as degrees and the Python engine as
+           * metres near the equator: one project, a placard the gate passed
+           * and an identifier nobody could mint. Degrees typed here are now
+           * refused by both engines, and the callout below offers to convert
+           * them. */
+          field('GPS easting (UTM m)', S.numberInput(site.easting, bindNum('easting'))),
+          field('GPS northing (UTM m)', S.numberInput(site.northing, bindNum('northing'))),
           field('UTM zone', S.selectInput(site.utm_zone || '',
             [{ value: '', label: 'infer from the easting' },
               { value: '28', label: '28N' }, { value: '29', label: '29N' }],
@@ -2053,64 +2116,35 @@
           field('Elevation (m)', S.numberInput(site.elevation_m, bindNum('elevation_m'))),
           field('Date', S.textInput(site.date, bind('date'))),
         ]),
+        /* degrees typed into the two boxes, said in the words the gate and
+         * the identifier use, with the conversion offered */
+        degreeBoxes ? el('div.callout.callout-warn', [
+          el('p', degreeBoxes),
+          el('div.btn-row', [button('Convert these degrees to UTM', function () {
+            /* the operator saying the boxes hold degrees: read exactly as a
+             * pasted pair is, so an unsigned longitude is west, and said */
+            convertLatLon(String(Number(site.northing)) + ', ' +
+              String(Number(site.easting)));
+          }, { variant: 'ghost' })]),
+        ]) : null,
         /* Field crews read decimal degrees off a phone or a handheld GPS.
-         * Typing them straight in removes the UTM-conversion friction and the
+         * Pasting them here removes the UTM-conversion friction and the
          * wrong-zone errors that come with it. */
         field('or paste "lat, lon" from a phone or handheld GPS',
           el('div.btn-row', [
             S.textInput('', function (value) { latLonEntry.text = value; },
               { placeholder: '8.4657, -13.2317' }),
             button('Convert to UTM', function () {
-              var reading = C.readLatLon(latLonEntry.text);
-              if (reading.lat === null || reading.lon === null) {
-                /* What the parser refused, and why, is what the operator
-                 * needs: "8 27.942" is two readings 2000 km apart and the
-                 * sentence says so, where a single generic line said only
-                 * that something was wrong. */
-                S.toast(reading.message + " Enter 'lat, lon' in decimal " +
-                  'degrees - 8.4657, -13.2317 or 8.4657 N, 13.2317 W - or in ' +
-                  'degrees and minutes, 8 27.942 N, 13 13.902 W.', 'error');
-                return;
-              }
-              var lat = reading.lat, lon = reading.lon;
-              var utm = C.geographicToUtm(lat, lon);
-              if ((utm.zone !== 28 && utm.zone !== 29) || utm.hemisphere !== 'N') {
-                /* The site fields hold Sierra Leone's two zones. Writing this
-                 * easting down beside 28N or 29N would relabel the position
-                 * rather than convert it, and land the site inside the
-                 * country: an unsigned 13.2317 projected in zone 33 was
-                 * stored here as a zone-33 easting, 270 km east of Freetown,
-                 * with nothing said (ROADMAP data-ingestion-3). */
-                S.toast(C.pyFixed(lat, 4) + ', ' + C.pyFixed(lon, 4) +
-                  ' falls in UTM zone ' + utm.zone + utm.hemisphere +
-                  ", outside Sierra Leone's 28N and 29N, so it cannot be " +
-                  'stored as a site position. Check the coordinates - a ' +
-                  'western longitude needs its minus sign or its W.', 'error');
-                return;
-              }
-              store.set('site.easting', S.round(utm.easting, 1));
-              store.set('site.northing', S.round(utm.northing, 1));
-              store.set('site.utm_zone', utm.zone);
-              S.toast('Converted to UTM zone ' + utm.zone + 'N.', 'ok');
-              if (reading.message) {
-                /* The position was converted, but on a sign the parser
-                 * supplied rather than one the crew typed, so it is said out
-                 * loud rather than left inside the reading. */
-                S.toast(reading.message, 'warn');
-              }
-              render();
+              convertLatLon(latLonEntry.text);
             }, { variant: 'ghost' }),
           ])),
         latlon ? el('p.muted', 'Interpreted position: ' + degreesText(latlon) +
-          (latlon.fromUtm ? ' (converted from UTM zone ' + latlon.zone + ')' : '') +
+          ' (converted from UTM zone ' + latlon.zone + ')' +
           (latlon.chiefdom ? ' — inside ' + latlon.chiefdom + ' chiefdom' +
             (districtOf(latlon.chiefdom) ? ', ' + districtOf(latlon.chiefdom) +
               ' district' : '') : '')) : null,
-        /* a sign the reader supplied is not a sign the crew typed, and a
-         * position outside the country is on no map below: both are said
+        /* a position outside the country is on no map below: it is said
          * where the position is shown, in the words the engine uses */
-        latlon && latlon.note
-          ? el('div.callout.callout-warn', el('p', latlon.note)) : null,
         latlon && latlon.outside
           ? el('div.callout.callout-bad', el('p', latlon.outside)) : null,
         /* the commonest copy-over error on a field sheet is a district that
@@ -2271,17 +2305,16 @@
   }
 
   /* Sierra Leone lies in UTM zones 28N and 29N; the easting alone identifies
-   * the zone, so it is inferred rather than guessed. A pair of small numbers is
-   * read as degrees instead, and read the way a pasted "lat, lon" is, through
-   * the engine's readLatLon: a longitude typed without its western sign is
-   * read as west, and the reading says so. Taken at face value, easting
-   * 13.2317 and northing 8.4657 put the site in central Africa - no marker on
-   * any map, "13.23170 E" in every report, and nothing on the page to say it
-   * was wrong.
+   * the zone, so it is inferred rather than guessed. A pair of small numbers
+   * typed into the two boxes is degrees and no position at all, in both
+   * engines (C.degreesInUtmBoxes): the site page says so and offers to
+   * convert it, reading it the way a pasted "lat, lon" is read, so a
+   * longitude typed without its western sign is read as west and the
+   * reading says so. It was read as degrees here and as metres by the
+   * Python engine, which put the same project 940 km apart.
    *
-   * `note` is the assumption a degree reading rests on, and `outside` the
-   * sentence check_site_consistency writes for a position outside the
-   * country, UTM or degrees; the site page shows both. */
+   * `outside` is the sentence check_site_consistency writes for a position
+   * outside the country; the site page shows it. */
   function siteLatLon() {
     /* read once, in the core, so the readiness gate refuses the position the
      * site page flags */
@@ -2661,8 +2694,13 @@
   function terrainPlan(read, result) {
     var cfg = result.cfg;
     result.planWaterPoints = (derived || {}).waterPoints || null;
+    /* and how far round the site they were looked up, so that a lookup
+     * short of a water point's reach says so rather than leaving a peg in
+     * a ring it never loaded */
+    result.planSearchedM = result.site ? waterPointsSearched(result.site) : null;
     result.plan = result.site ? C.surveyPlan(result.lineaments, result.core, result.parts,
-      [result.site.lon, result.site.lat], result.planWaterPoints, cfg.terrain, cfg.ves) : null;
+      [result.site.lon, result.site.lat], result.planWaterPoints, cfg.terrain, cfg.ves, undefined,
+      result.planSearchedM) : null;
     result.planCaptions = C.surveyPlanCaptions(result.plan, read.centre.label);
     var laid = !!result.plan && result.plan.basis !== 'none';
     var told = { where: read.centre.label, label: read.grid.label, site_label: store.get('site.community') || 'Site' };
@@ -5961,7 +5999,10 @@
             S.toast('Could not write the review workbook: ' + e.message, 'error');
           }
         }),
-        doc.document_kind === 'ves' && doc.tables.length
+        /* a table whose readings the template cannot take is not offered as
+         * one: "Needs a human" says why */
+        doc.document_kind === 'ves' && doc.tables.length &&
+          !C.vesTemplateColumns(doc.tables[0]).missing.length
           ? button('Download filled VES template (.xlsx)', async function () {
             try {
               await buildFilledVesTemplate(doc);
@@ -6043,6 +6084,8 @@
           }
           derived.waterPoints = points;
           derived.waterPointsSource = spec.label;
+          derived.waterPointsRadius = spec.clip ? spec.radiusM : null;
+          derived.waterPointsCentre = spec.clip ? { lat: spec.lat, lon: spec.lon } : null;
           S.toast(points.length
             ? S.thousands(points.length) + ' water points read from WPdx+.'
             : 'WPdx+ has no mapped water point in that area.',
@@ -6086,10 +6129,34 @@
     ].filter(Boolean));
   }
 
+  /* The radius the water points held were searched within: a site lookup's
+   * own, which it clipped them to, else the box's (a CSV or the national
+   * pull covers any radius). The box changed after a lookup used to be
+   * quoted over the points the lookup kept, so the desk study said "no
+   * water point within 2,000 m" beside a borehole 1.5 km off that a 500 m
+   * lookup never loaded. The Python app quotes the lookup's radius too. */
+  function waterPointsSearchRadius() {
+    var held = derived.waterPointsRadius;
+    return held === null || held === undefined
+      ? store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M) : held;
+  }
+
+  /* How far round `site` ({lat, lon}) the water points held were looked up,
+   * for the survey plan: a lookup's radius, less how far the site now lies
+   * from where the lookup was centred; null where they are not cut to a
+   * circle round the site. app/views/site_maps._water_points_searched. */
+  function waterPointsSearched(site) {
+    var held = derived.waterPointsRadius, centre = derived.waterPointsCentre;
+    if (held === null || held === undefined || !derived.waterPoints) return null;
+    if (!centre || !site) return held;
+    return Math.max(0, held - C.geodesicDistanceM(centre.lat, centre.lon, site.lat, site.lon));
+  }
+
   PAGES.waterpoints = function () {
     var latlon = siteLatLon();
     var points = derived.waterPoints || [];
     var radius = store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M);
+    var searched = waterPointsSearchRadius();
     var nodes = [
       pageHead('Water points', 'Before drilling a new borehole, check what is ' +
         'already there. A broken improved source nearby is usually cheaper to ' +
@@ -6132,6 +6199,7 @@
               derived.waterPointsSkipped = csvSkipped;
               derived.waterPointsSource = file.name;
               derived.waterPointsCapped = false;
+              derived.waterPointsRadius = null; derived.waterPointsCentre = null;
               S.toast(derived.waterPoints.length + ' water points read.', 'ok');
               render();
             } catch (e) {
@@ -6140,8 +6208,8 @@
           }, { variant: 'ghost' }),
           points.length ? button('Clear', function () {
             derived.waterPoints = null; derived.waterPointsSource = null;
-            derived.waterPointsCapped = false;
-            derived.waterPointsSkipped = null; render();
+            derived.waterPointsCapped = false; derived.waterPointsRadius = null;
+            derived.waterPointsCentre = null; derived.waterPointsSkipped = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         !latlon ? el('p.muted', 'The live lookup needs the site GPS position; ' +
@@ -6150,6 +6218,10 @@
           'The lookup hit its row cap, so this is a partial slice of the area. ' +
           'Narrow the radius, or use a filtered CSV export for a complete, ' +
           'reproducible analysis.')) : null,
+        searched !== radius ? el('p.muted', { 'data-searched': String(searched) },
+          'These water points were looked up within ' + S.thousands(Math.round(searched)) +
+          ' m of the site, and everything below speaks of that radius: press Look up water points ' +
+          'to search ' + S.thousands(Math.round(radius)) + ' m.') : null,
         waterPointSourceNote(),
       ]),
     ];
@@ -6170,7 +6242,7 @@
 
     if (latlon) {
       var decision = C.rehabVsDrill(points, latlon.lat, latlon.lon,
-        { searchRadiusM: radius });
+        { searchRadiusM: searched });
       var tone = decision.recommendation === C.DRILL_NEW ? '.callout-ok'
         : (decision.recommendation === C.ASSESS_REHAB ? '.callout-warn' : '.callout');
       var pointColumns = [
@@ -6232,7 +6304,7 @@
       nodes.push(card('All water points in range', [
         decision.nearby.length
           ? S.table(pointColumns, decision.nearby.slice(0, 100))
-          : S.empty('Nothing mapped within ' + Math.round(radius) + ' m of the site.'),
+          : S.empty('Nothing mapped within ' + Math.round(searched) + ' m of the site.'),
         decision.nearby.length > 100
           ? el('p.muted', 'Showing the nearest 100 of ' +
             S.thousands(decision.nearby.length) + '.') : null,
@@ -6286,8 +6358,8 @@
             { variant: 'ghost' }),
           points.length ? button('Clear', function () {
             derived.waterPoints = null; derived.waterPointsSource = null;
-            derived.waterPointsCapped = false;
-            derived.waterPointsSkipped = null; render();
+            derived.waterPointsCapped = false; derived.waterPointsRadius = null;
+            derived.waterPointsCentre = null; derived.waterPointsSkipped = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         derived.waterPointsCapped ? el('div.callout.callout-warn', el('p',
@@ -6658,12 +6730,14 @@
 
   /* The stored record if there is one, otherwise a draft from the project.
    * A draft carries no events: a borehole is commissioned by somebody
-   * deciding it is, on a day, not by opening a page. */
+   * deciding it is, on a day, not by opening a page. Either carries the
+   * rising main of the project's design as the design now stands, whose
+   * interval the routine inspection is due by (PLAN.md step 7.3). */
   function currentAsset() {
     var stored = store.get('asset');
-    var record = stored ? C.assetFromDict(stored) : null;
-    if (record) return record;
-    return C.assetFromProject(projectState());
+    var record = (stored ? C.assetFromDict(stored) : null) || C.assetFromProject(projectState());
+    return record ? C.assetWithRisingMain(record, derived.design ? derived.design.rising_main
+      : null) : null;
   }
 
   function saveAsset(asset) {
@@ -6683,8 +6757,14 @@
     ];
 
     if (!asset) {
+      var placed = store.get('site') || {};
+      /* degrees in the two boxes: said in the words the gate uses, rather
+       * than that the project has no position */
+      var degrees = C.degreesInUtmBoxes(placed.easting, placed.northing);
       nodes.push(card('This borehole', [
-        el('div.callout.callout-warn', el('p', 'This project has no recorded ' +
+        el('div.callout.callout-warn', el('p', degrees
+          ? degrees + ' The Site page converts them.'
+          : 'This project has no recorded ' +
           'position yet, so it cannot be given an identifier — there would be ' +
           'nothing to find the borehole by. Enter the GPS position on the ' +
           'Site page.')),
@@ -6693,19 +6773,23 @@
         }, { variant: 'ghost' })]),
       ]));
     } else {
-      var state = C.assetState(asset);
+      var state = C.assetState(asset, null, C.serviceSchedule(config()));
       var tone = state.function === 'functional' ? 'ok'
         : (state.function === 'non_functional' ? 'bad' : 'warn');
       nodes.push(itemNode(asset.asset_id, card('This borehole', [
         el('p.asset-id', asset.asset_id),
         el('p.muted', 'The identifier is derived from the position, so two ' +
           'teams at the same wellhead with no connection between them arrive ' +
-          'at the same one. The last character is a check character: it ' +
-          'catches every single mistyped character and every transposition ' +
-          'of two adjacent ones.'),
+          'at the same one. The last character is an ISO 7064 MOD 37,36 check ' +
+          'character: it catches every single mistyped character and almost ' +
+          'every transposition of two adjacent ones.'),
+        C.isLegacyAssetId(asset.asset_id)
+          ? el('div.callout.callout-warn', el('p', C.validateAssetId(asset.asset_id).reason))
+          : null,
         S.statRow([
           S.stat('Status', state.label),
-          S.stat('Last inspected', state.last_inspection || 'never'),
+          S.stat('Last sanitary inspection', state.last_inspection || 'never'),
+          S.stat('Last routine inspection', state.last_routine_inspection || 'never'),
           S.stat('Last sampled', state.last_sample || 'never'),
           S.stat('Records', String((asset.events || []).length)),
         ]),
@@ -6722,6 +6806,15 @@
             message: item.detail,
           };
         })),
+        /* the routine inspection's interval is the one that differs from
+         * borehole to borehole: it follows the design's rising main */
+        el('p.muted.rounds-interval', state.due.filter(function (item) {
+          return item.key === 'routine_inspection';
+        }).map(function (item) {
+          return C.phrase('rounds.interval_line', { title: item.title, basis: item.basis });
+        }).join(' ')),
+        mechanicField(asset),
+        pumpField(asset),
       ])));
 
       var draft = { when: new Date().toISOString().slice(0, 10),
@@ -6799,13 +6892,210 @@
         'wrong identifier attaches a repair to somebody else’s borehole.'),
       field('Identifier', S.textInput(store.get('registry.lookup', ''),
         function (v) { store.set('registry.lookup', String(v).trim()); render(); },
-        { placeholder: 'SL-WAR-8FEEVKQ-T' }), ''),
+        { placeholder: 'SL-WAR-8FEEVKQ-E' }), ''),
       lookupResult(store.get('registry.lookup', '')),
     ]));
 
     nodes.push(registryCard());
+    nodes.push(roundsCard(asset));
+    nodes.push(survivalCard(asset));
     return nodes;
   };
+
+  /* The pump type and the contractor named on this borehole's record, by
+   * which the time to the first failure is grouped (PLAN.md step 7.4).
+   * Named here, they travel in the project file. */
+  function pumpField(asset) {
+    var draft = { pump: asset.pump_type || '', by: asset.installed_by || '' };
+    return el('div', [
+      el('div.field-row', [
+        field('Pump type', S.textInput(draft.pump, function (v) {
+          draft.pump = String(v);
+        }, { placeholder: 'India Mark II', 'data-survival': 'pump' }),
+        'The pump installed, as the handover names it. The curves of how long boreholes ' +
+        'keep working are grouped by it.'),
+        field('Installed by', S.textInput(draft.by, function (v) {
+          draft.by = String(v);
+        }, { placeholder: 'Contractor', 'data-survival': 'contractor' }),
+        'The contractor who drilled and installed it: the site details’ contractor when ' +
+        'the record was drafted, and what is saved here after that.'),
+      ]),
+      el('div.btn-row', [button('Save the pump and contractor', function () {
+        saveAsset(Object.assign({}, asset, { events: asset.events || [],
+          pump_type: C.trimField(draft.pump), installed_by: C.trimField(draft.by) }));
+        S.toast('Saved on the borehole’s record.', 'ok');
+      }, { variant: 'ghost' })]),
+    ]);
+  }
+
+  /* How long the boreholes keep working (PLAN.md step 7.4): the time from
+   * commissioning to the first failure across this borehole and the
+   * register, over them all and by pump type, contractor and water
+   * chemistry, each as a curve with its band and a table. The day is the
+   * page's input, today unless another is written; the engine never reads
+   * the clock. */
+  function survivalCard(asset) {
+    var today = new Date().toISOString().slice(0, 10);
+    var when = store.get('survival.date', '') || today;
+    var nodes = [
+      el('p.muted', C.phrase('survival.intro') + ' The Streamlit app has the same curves ' +
+        'on its Asset registry page.'),
+      el('div.field-row', [
+        field('Analysed as of', S.textInput(when, function (v) {
+          store.set('survival.date', String(v).trim());
+          render();
+        }, { placeholder: 'YYYY-MM-DD', 'data-survival': 'date' }), ''),
+      ]),
+    ];
+    if (C.isoDay(when) === null) {
+      nodes.push(el('div.callout.callout-warn', el('p', 'The date should be written ' +
+        'YYYY-MM-DD.')));
+      return card(C.phrase('survival.heading'), nodes);
+    }
+    /* this borehole first, so its record, kept in step with the design,
+     * is the one read where the register holds the same borehole */
+    var assets = (asset ? [asset] : []).concat(derived.registry || []);
+    var result = C.survivalAnalysis(assets, when, config());
+    var words = C.survivalText(result);
+    nodes.push(el('div.survival-summary', words.summary.map(function (line) {
+      return el('p', line);
+    })));
+    if (!result.n_boreholes) return card(C.phrase('survival.heading'), nodes);
+    var sections = [{ by: null, told: words.overall, groups: [result.overall], comparison: [] }]
+      .concat(result.groupings.map(function (g, i) {
+        return { by: g.by, told: words.groupings[i], groups: g.groups,
+          comparison: words.groupings[i].comparison };
+      }));
+    sections.forEach(function (section) {
+      nodes.push(el('h3.survival-group', section.told.heading));
+      if (section.by) nodes.push(el('p.muted', section.told.intro));
+      if (section.groups.some(function (g) { return g.judged; })) {
+        var title = section.by ? C.phrase('survival.figure_by',
+          { by: C.phraseTable('survival.by')[section.by] }) : C.phrase('survival.figure_all');
+        nodes.push(charts.figure(charts.survivalCurves(section.groups, { title: title }), '',
+          { filename: 'survival_' + (section.by || 'all') }));
+      }
+      section.told.lines.forEach(function (line) { nodes.push(el('p.survival-line', line)); });
+      nodes.push(S.table(C.survivalHeader(), C.survivalRows(section.groups)));
+      var risk = C.atRiskRows(section.groups);
+      if (risk.length) nodes.push(S.table(C.atRiskHeader(result), risk));
+      section.comparison.forEach(function (line) {
+        nodes.push(el('p.muted.survival-comparison', line));
+      });
+    });
+    nodes.push(el('p.muted', C.phrase('survival.figure_caption')));
+    nodes.push(el('p.muted', C.phrase('survival.at_risk_caption')));
+    words.method.forEach(function (line) { nodes.push(el('p.muted', line)); });
+    nodes.push(el('h3', 'References'));
+    nodes.push(el('ul.survival-references', words.references.map(function (ref) {
+      return el('li', ref);
+    })));
+    return card(C.phrase('survival.heading'), nodes);
+  }
+
+  /* The area mechanic named on this borehole's record, whose service round
+   * it is on (PLAN.md step 7.3). Named here, it travels in the project file;
+   * a borehole with none named goes to the mechanic named for its chiefdom
+   * on the rounds below. */
+  function mechanicField(asset) {
+    var draft = { name: asset.area_mechanic || '' };
+    return el('div', [
+      el('div.field-row', [
+        field('Area mechanic', S.textInput(draft.name, function (v) {
+          draft.name = String(v);
+        }, { placeholder: 'Area mechanic', 'data-rounds': 'mechanic' }),
+        asset.area_mechanic ? 'Named on this borehole’s record.'
+          : 'None named on the record; the rounds look the chiefdom up.'),
+      ]),
+      el('div.btn-row', [button('Name the area mechanic', function () {
+        var next = Object.assign({}, asset, { events: asset.events || [] });
+        var name = C.trimField(draft.name);
+        if (name) next.area_mechanic = name; else delete next.area_mechanic;
+        saveAsset(next);
+        S.toast(name ? 'Area mechanic named.' : 'Area mechanic cleared.', 'ok');
+      }, { variant: 'ghost' })]),
+    ]);
+  }
+
+  /* The service rounds (PLAN.md step 7.3): what is due on a day at this
+   * borehole and at every borehole in the register above, grouped by area
+   * mechanic and put in order, with the round sheets to print. The day is
+   * the page's input, today unless another is written; the engine never
+   * reads the clock. */
+  function roundsCard(asset) {
+    var today = new Date().toISOString().slice(0, 10);
+    var when = store.get('rounds.date', '') || today;
+    var text = store.get('rounds.mechanics', '');
+    var parsed = C.parseAreaMechanics(text);
+    var box = /** @type {HTMLTextAreaElement} */ (el('textarea.input', {
+      rows: 3, 'data-rounds': 'chiefdoms',
+      placeholder: 'One chiefdom a line: the chiefdom, a colon and the mechanic’s name',
+    }));
+    box.value = text;
+    box.addEventListener('change', function () {
+      store.set('rounds.mechanics', box.value);
+      render();
+    });
+    var nodes = [
+      el('p.muted', 'What is due on the day below, at this borehole and at every ' +
+        'borehole in the register above: the sanitary inspection, the routine ' +
+        'inspection of the pump and rising main, and the water quality sample. ' +
+        'Each borehole goes to the area mechanic named on its record, else to the ' +
+        'one named for its chiefdom here. The Streamlit app has the same rounds ' +
+        'on its Asset registry page.'),
+      el('div.field-row', [
+        field('Round drawn up on', S.textInput(when, function (v) {
+          store.set('rounds.date', String(v).trim());
+          render();
+        }, { placeholder: 'YYYY-MM-DD', 'data-rounds': 'date' }), ''),
+      ]),
+      field('Area mechanics by chiefdom', box, ''),
+    ];
+    parsed.skipped.forEach(function (line) {
+      nodes.push(el('div.callout.callout-warn', el('p', line)));
+    });
+    if (C.isoDay(when) === null) {
+      nodes.push(el('div.callout.callout-warn', el('p', 'The date should be written ' +
+        'YYYY-MM-DD.')));
+      return card('Service rounds', nodes);
+    }
+    /* this borehole first, so its record, kept in step with the design,
+     * is the one read where the register holds the same borehole */
+    var assets = (asset ? [asset] : []).concat(derived.registry || []);
+    var result = C.serviceRounds(assets, when, C.serviceSchedule(config()), parsed.entries);
+    var words = C.roundsText(result);
+    nodes.push(el('div.rounds-summary', words.summary.map(function (line) {
+      return el('p', line);
+    })));
+    result.rounds.forEach(function (one) {
+      var lines = C.roundText(one);
+      nodes.push(el('h3.round-name', lines[0]));
+      lines.slice(1).forEach(function (line) { nodes.push(el('p.muted', line)); });
+      nodes.push(S.table(C.roundHeader(), C.roundRows(one)));
+    });
+    if (result.rounds.length) {
+      nodes.push(el('p.muted', words.method));
+      nodes.push(el('p.muted', words.intervals));
+    }
+    nodes.push(el('div.btn-row', [button('Round sheets (.docx)', async function (event) {
+      await buildRoundSheet(result, event.target);
+    }, { disabled: !result.n_boreholes })]));
+    return card('Service rounds', nodes);
+  }
+
+  async function buildRoundSheet(result, node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    try {
+      await S.withBusy(host, 'Building the round sheets…', async function () {
+        await need(REPORT_BUNDLES);
+        var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result });
+        S.download('rounds_' + result.as_of + '.docx', await builder.build());
+      });
+      S.toast('Document ready.', 'ok');
+    } catch (err) {
+      S.toast('Could not build the document: ' + err.message, 'error');
+    }
+  }
 
   /* The WHO form for a borehole with a handpump, and the risk statement that
    * reads the latest inspection with the E. coli count of the water quality
@@ -6873,10 +7163,12 @@
   function lookupResult(typed) {
     if (!typed) return null;
     var verdict = C.validateAssetId(typed);
-    return el('div.callout.callout-' + (verdict.ok ? 'ok' : 'bad'),
-      el('p', verdict.ok
-        ? 'That is a valid identifier: ' + verdict.assetId
-        : verdict.reason));
+    /* one read with the legacy check character is valid, and said */
+    return el('div.callout.callout-' + (verdict.ok ? (verdict.legacy ? 'warn' : 'ok') : 'bad'),
+      verdict.ok
+        ? [el('p', 'That is a valid identifier: ' + verdict.assetId),
+          verdict.reason ? el('p', verdict.reason) : null]
+        : el('p', verdict.reason));
   }
 
   function registryCard() {
@@ -6914,7 +7206,7 @@
       nodes.push(el('p.muted', 'Nothing loaded yet.'));
       return card('Many boreholes', nodes);
     }
-    var stats = C.registryStats(assets);
+    var stats = C.registryStats(assets, null, C.serviceSchedule(config()));
     nodes.push(S.statRow([
       S.stat('Boreholes', String(stats.n_assets)),
       S.stat('Working', String(stats.n_functional)),
@@ -6937,12 +7229,12 @@
         'the same as nothing having happened to ' +
         (stats.n_unknown === 1 ? 'it.' : 'them.'))));
     }
-    if (stats.n_overdue_inspection + stats.n_overdue_sample) {
+    if (stats.n_overdue_inspection + stats.n_overdue_routine + stats.n_overdue_sample) {
       nodes.push(el('p', stats.n_overdue_inspection + ' overdue a sanitary ' +
-        'inspection, ' + stats.n_overdue_sample + ' overdue a water quality ' +
-        'sample.'));
+        'inspection, ' + stats.n_overdue_routine + ' overdue a routine inspection, ' +
+        stats.n_overdue_sample + ' overdue a water quality sample.'));
     }
-    var rows = C.registryRows(assets);
+    var rows = C.registryRows(assets, null, C.serviceSchedule(config()));
     nodes.push(S.table(Object.keys(rows[0]), rows.map(function (row) {
       return Object.keys(row).map(function (key) { return String(row[key]); });
     })));
@@ -6967,7 +7259,8 @@
         await need(REPORT_BUNDLES);
         var cfg = config();
         var context = {
-          style: cfg.style, asset: asset, state: C.assetState(asset),
+          style: cfg.style, asset: asset,
+          state: C.assetState(asset, null, C.serviceSchedule(cfg)),
           /* a plate on the headworks makes no claim about the water, so it is
            * not held back for want of a laboratory panel */
           readiness: reportReadiness(kind === 'placard' ? 'placard' : 'asset'),
@@ -8530,7 +8823,7 @@
         var content = C.deskStudyContent(site, site.community || site.chiefdom || site.district || '',
           siteLatLon(), {
             waterPoints: derived.waterPoints || null,
-            searchRadiusM: store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M),
+            searchRadiusM: waterPointsSearchRadius(),
             portfolio: derived.portfolio || null,
             terrain: session.result ? session.result.desk || null : null,
             config: config(),
@@ -8854,6 +9147,7 @@
     summaryFromProjectFile: summaryFromProjectFile,
     commitSpineScreens: commitSpineScreens, spineDecide: spineDecide,
     lookUpWaterPoints: lookUpWaterPoints, parseLatLon: parseLatLon,
+    waterPointsSearchRadius: waterPointsSearchRadius, waterPointsSearched: waterPointsSearched,
     signOffFor: signOffFor, offlineReady: offlineReady,
     projectState: projectState, reportReadiness: reportReadiness,
     getApiKey: getApiKey, setApiKey: setApiKey, forgetApiKey: forgetApiKey,

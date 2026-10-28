@@ -110,18 +110,21 @@ def test_the_forward_model_has_no_steps_for_the_jacobian_to_read():
     """Where the cut crossed a Bessel zero, rho_a stepped. Over 100
     Jacobian-sized steps of h1 (5000 over 10 ohm-m, h1 = 0.5 m, AB/2 300 m),
     17 forward-difference slopes were +-17.7 where the true slope is 0.00002.
-    And a deep thin layer, which set the old cut, no longer steps it."""
+    And a deep thin layer, which set the old cut, no longer steps it: with
+    0.5 m of 300 ohm-m at 3.55 m, under 0.55 m of 5000 ohm-m and 3 m of 10,
+    the slopes against that layer's thickness spread over 0.10 in 100 steps
+    (AB/2 300 m), where they now vary by 4e-5."""
     L = np.array([300.0])
     hs = 0.5 * np.exp(np.arange(100) * inversion.JACOBIAN_STEP)
     values = [forward_schlumberger(([5000.0, 10.0], [h]), L)[0] for h in hs]
     slopes = np.diff(np.log(values)) / inversion.JACOBIAN_STEP
     assert np.max(np.abs(slopes)) < 0.01
 
-    h3 = 1.04 * np.exp(np.arange(100) * inversion.JACOBIAN_STEP)
-    values = [forward_schlumberger(([300.0, 50.0, 300.0, 2000.0], [1.1, 3.9, h]),
-                                   np.array([80.0]))[0] for h in h3]
+    h3 = 0.5 * np.exp(np.arange(100) * inversion.JACOBIAN_STEP)
+    values = [forward_schlumberger(([5000.0, 10.0, 300.0, 2000.0], [0.55, 3.0, h]),
+                                   L)[0] for h in h3]
     slopes = np.diff(np.log(values)) / inversion.JACOBIAN_STEP
-    assert np.max(slopes) - np.min(slopes) < 0.01
+    assert np.max(slopes) - np.min(slopes) < 1e-3
 
 
 def test_the_potential_integral_starts_at_zero():
@@ -146,6 +149,44 @@ def test_the_potential_integral_starts_at_zero():
     numeric = forward_schlumberger_finite_mn(
         (np.array([rho1, rho2]), np.array([h])), np.array([L]), np.array([2.0 * b]))
     assert abs(numeric[0] / exact - 1.0) < 1e-6
+
+
+@pytest.mark.parametrize("h1", [60.0, 300.0])
+def test_the_potential_integral_holds_under_a_thick_conductive_cover(h1):
+    """Below x = r / (rho_n S), S = h1 / rho1, the potential integrand is the
+    whole rho_n - rho1, and the tables took (0, 1e-6) as one Gauss-Legendre
+    panel. At the corner of the inversion's bounds, 0.5 ohm-m on 200,000
+    ohm-m, that point is 8e-9 for a 1 m radius under 300 m of cover: Wenner
+    was 1.1e-3 out at a = 1 m, and finite MN (MN 0.4 m) 1.1e-3 at AB/2 = 1 m
+    (6.0e-4 and 3.5e-4 at a = 0.5 m and AB/2 = 1 m under 60 m). The J0 panels
+    now run down to 1e-14, and both are within 3e-10."""
+    rho1, rho2 = 0.5, 200000.0
+    model = (np.array([rho1, rho2]), np.array([h1]))
+    a = np.array([0.5, 1.0, 3.0, 10.0])
+    exact = _wenner_image_series(rho1, rho2, h1, a)
+    assert np.max(np.abs(forward_wenner(model, a) / exact - 1.0)) < 1e-8
+
+    k = (rho2 - rho1) / (rho2 + rho1)
+    n = np.arange(1, 1_000_001, dtype=float)
+
+    def potential(r):  # F(r) of a two-layer earth, by image theory
+        return rho1 * (1.0 / r + 2.0 * np.sum(k**n / np.sqrt(r**2 + (2.0 * n * h1) ** 2)))
+
+    L, b = np.array([1.0, 2.0, 4.0]), 0.2
+    exact = np.array([(x**2 - b**2) / (2.0 * b) * (potential(x - b) - potential(x + b))
+                      for x in L])
+    numeric = forward_schlumberger_finite_mn(model, L, np.full(L.size, 2.0 * b))
+    assert np.max(np.abs(numeric / exact - 1.0)) < 1e-8
+
+
+def test_the_potential_table_reaches_below_every_cover_the_inversion_can_fit():
+    """The J0 table's panels stop at forward._J0_FLOOR, which is exact only
+    while x = r / (rho_n S) stays above it. Held here with room to spare -
+    ten layers at the inversion's bounds and a 1 mm radius - so that
+    widening the bounds cannot quietly leave the floor too high."""
+    rho_lo, rho_hi = inversion._RHO_BOUNDS
+    cover = 9 * inversion._H_BOUNDS[1] / rho_lo  # S over the basement, siemens
+    assert 1e-3 / (rho_hi * cover) > 10.0 * forward._J0_FLOOR
 
 
 def test_the_cut_never_falls_short_of_eighteen_decay_lengths():
@@ -314,4 +355,12 @@ def test_a_reading_at_a_spacing_of_zero_is_left_out_and_flagged(tmp_path):
     assert flags["nonpositive_spacing"].level == "warning"
     assert flags["nonpositive_spacing"].message == (
         "A spacing must be positive; 1 reading at a spacing of 0 or less is left "
+        "out of the inversion.")
+
+    # the sentence is the catalogue's (ves.yaml), and takes its plural there
+    lines.insert(3, "-1,0.4,1150")
+    path.write_text("\n".join(lines) + "\n")
+    flags = {f.code: f for f in read_ves_csv(path).flags}
+    assert flags["nonpositive_spacing"].message == (
+        "A spacing must be positive; 2 readings at a spacing of 0 or less are left "
         "out of the inversion.")

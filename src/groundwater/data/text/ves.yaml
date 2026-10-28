@@ -1,0 +1,66 @@
+# What the VES reader, the inversion and the interpretation say about a
+# sounding, in the words both engines write: the reader's flags
+# (groundwater/ingestion/ves.py and the VES sheet reader in gwt-core.js), the
+# inversion's refusals (groundwater/ves/inversion.py and invertSounding) and
+# the interpretation's words for a resistive cover and for a water-bearing
+# layer the sounding does not see (groundwater/ves/interpret.py and
+# interpretModel). The template rules are in src/groundwater/text.py;
+# CONTRIBUTING.md says how to add an entry.
+
+nonpositive_spacing: >-
+  A spacing must be positive; {n:g} {n:plural:reading|readings} at a spacing
+  of 0 or less {n:plural:is|are} left out of the inversion.
+
+too_many_layers: >-
+  Too few spacings for a {layers:g}-layer model: its {parameters:g}
+  parameters need at least {needed:g} spacings, and the sounding has
+  {spacings:g}
+
+k_undefined: >-
+  The Schlumberger geometric factor K needs MN/2 between 0 and AB/2, so the
+  {n:plural:resistance|resistances} read at AB/2 {spacings} m could not be
+  turned into {n:plural:a resistivity|resistivities} and
+  {n:plural:is|are} left out. Check the spacings on the sheet.
+
+segment_overlap: >-
+  {n:g} AB/2 value(s) repeated with different MN (segment changes); both
+  readings kept.
+
+overlap_discrepancy: >-
+  At an MN change the two readings at one AB/2 should agree within a few
+  percent; these differ by more than {percent:.0f} percent: {pairs}. That is a
+  field problem (potential-electrode contact, lateral inhomogeneity at the
+  new MN) or a transcription slip, and the inversion merges the pair by
+  geometric mean, so part of the model misfit is made by the splice. Check
+  the sheet before relying on the deep branch.
+
+repeat_reading: >-
+  {n:g} AB/2 value(s) read more than once; the readings are kept, and the
+  inversion fits each one as it stands rather than merging them.
+
+repeat_discrepancy: >-
+  Readings repeated at one AB/2 should agree within a few percent; these
+  differ by more than {percent:.0f} percent: {pairs}. That is a field problem
+  (electrode contact, an electrode moved between the readings, lateral
+  inhomogeneity at a new MN) or a transcription slip, and the inversion fits
+  each reading as it stands, so the disagreement is part of the model
+  misfit. Check the sheet before relying on the model.
+
+unit_resistive_cover: resistive cover (a duricrust or a dry layer) over conductive ground
+
+resistive_cover: >-
+  {n:plural:Layer|Layers} {layers} {n:plural:is|are} as resistive as fresh
+  basement, but conductive ground lies below {n:plural:it|them} in the
+  fitted model, so {n:plural:it is|they are} read as resistive cover and not
+  as bedrock.
+
+unseen_layers: >-
+  The water-bearing {n:plural:layer|layers} from {tops}
+  {n:plural:lies|lie} below the {doi:num} m the sounding resolves, so
+  {n:plural:it is not counted as a water zone|they are not counted as water zones}.
+
+vadose_layers: >-
+  The water-bearing {n:plural:layer|layers} from {tops}
+  {n:plural:starts|start} within the top {vadose:num} m, which are taken as
+  unsaturated, and the sounding resolves only {doi:num} m, so
+  {n:plural:it is not counted as a water zone|they are not counted as water zones}.

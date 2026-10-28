@@ -2063,6 +2063,50 @@ await withPage(async (page, base, consoleErrors) => {
     scan.ab2.length === 8 && Math.abs(scan.rho[0] - 210.4) < 1e-9,
     `${scan.soundingId} / ${scan.community} / ${scan.ab2.length} readings`);
 
+  // A sheet of resistances with MN/2 and K, as crews keep one, goes into the
+  // page's own template under headings the reader multiplies out; one whose
+  // readings the template cannot take is not offered as a template, and the
+  // page says why. "Resistance (ohm)" used to land in the resistivity column.
+  const headed = await page.evaluate(async () => {
+    const S = window.GWT.support, C = window.GWT.core, app = window.GWT.app;
+    const columns = ['No.', 'AB/2 (m)', 'MN/2 (m)', 'K', 'Resistance (ohm)'];
+    const rows = [['1', '1.5', '0.25', '13.74', '8.76'], ['2', '2', '0.25', '24.74', '3.97'],
+      ['3', '3', '0.25', '56.16', '1.43']];
+    const sheet = (keep) => C.extractionDocumentFrom({
+      document_kind: 'ves', header: [], uncertain_cells: [], notes: '',
+      tables: [{ title: 'Readings', columns: keep.map((i) => columns[i]),
+        rows: rows.map((r) => keep.map((i) => r[i])) }],
+    }, 'scan.jpg');
+    const filled = await S.writeXlsx([{ name: 'VES 1',
+      rows: C.fillVesTemplateSheets(sheet([0, 1, 2, 3, 4]), app.templates.ves.sheets()[0].rows) }]);
+    const sounding = C.readVesSheets(await S.readXlsx(filled), 'filled.xlsx')[0];
+    const before = app.derived.extraction;
+    const buttons = async (doc) => {
+      app.derived.extraction = doc;
+      await app.goto('extract');
+      return {
+        offered: Array.from(document.querySelectorAll('#page-host button'))
+          .some((b) => b.textContent === 'Download filled VES template (.xlsx)'),
+        text: document.querySelector('#page-host').textContent,
+      };
+    };
+    const placed = await buttons(sheet([0, 1, 2, 3, 4]));
+    const refused = await buttons(sheet([0, 1, 4]));
+    app.derived.extraction = before;
+    await app.goto('overview');
+    return { rho: sounding.rho_app, mn: sounding.mn,
+      expected: rows.map((r) => Number(r[3]) * Number(r[4])), placed, refused };
+  });
+  check('scan: a sheet of resistances and MN/2 reads back as resistivities and full MN',
+    headed.rho.length === 3 && headed.rho.every((v, i) => Math.abs(v - headed.expected[i]) < 1e-9) &&
+    headed.mn.every((v) => v === 0.5), JSON.stringify(headed.rho) + ' ' + JSON.stringify(headed.mn));
+  check('scan: a table the template cannot take is not offered as one, and the page says why',
+    headed.placed.offered && !headed.refused.offered &&
+    headed.refused.text.includes('cannot be placed in the VES template') &&
+    !headed.refused.text.includes('Nothing flagged'),
+    JSON.stringify([headed.placed.offered, headed.refused.offered,
+      headed.refused.text.slice(0, 400)]));
+
   // --- A pumping test written on a Word field sheet ---
   // Built here from the sample workbook so the two readers are compared on
   // the same readings: a .docx that carries the workbook's own numbers must
@@ -2410,12 +2454,47 @@ await withPage(async (page, base, consoleErrors) => {
       today: '2024-06-01',
     })).build());
 
+    // an identifier minted before the check character followed ISO 7064
+    // still reads, in a warning that says so
+    app.store.set('registry.lookup', 'SL-WAR-8FEEVKQ-T');
+    app.render();
+    const legacyLookup = Array.from(document.querySelectorAll('#page-host .callout-warn p'))
+      .map((n) => n.textContent).join(' ');
+    // and a stored asset carrying it opens as itself, with its history
+    app.store.set('registry.lookup', '');
+    app.store.set('asset', Object.assign({}, C.assetFromDict(app.store.get('asset')),
+      { asset_id: 'SL-WAR-8FEEVKQ-T' }));
+    app.render();
+    const legacyStored = {
+      id: document.querySelector('#page-host .asset-id')?.textContent || '',
+      text: document.querySelector('#page-host').textContent,
+      events: (C.assetFromDict(app.store.get('asset')) || { events: [] }).events.length,
+    };
+    // degrees typed into the boxes: said in the gate's words, not "no position"
+    app.store.set('asset', null);
+    site.easting = -13.2294; site.northing = 8.4831; site.utm_zone = null;
+    app.render();
+    const degreesText = document.querySelector('#page-host').textContent;
+
     app.store.set('registry.lookup', '');
     app.store.set('asset', null);
     site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
     app.render();
-    return { unlocated, located, refusedBadDate, afterOne, afterTwice, lookup, doc };
+    return { unlocated, located, refusedBadDate, afterOne, afterTwice, lookup, doc,
+      legacyLookup, legacyStored, degreesText };
   });
+  check('registry: an identifier minted before the correction still reads, and says so',
+    registry.legacyLookup.includes('That is a valid identifier: SL-WAR-8FEEVKQ-T') &&
+    registry.legacyLookup.includes('it would end in E.'),
+    registry.legacyLookup);
+  check('registry: a stored asset with the legacy character opens as itself',
+    registry.legacyStored.id === 'SL-WAR-8FEEVKQ-T' && registry.legacyStored.events === 1 &&
+    registry.legacyStored.text.includes('SL-WAR-8FEEVKQ-T ends in the check character'),
+    JSON.stringify(registry.legacyStored).slice(0, 300));
+  check('registry: degrees in the UTM boxes are named, not called no position',
+    registry.degreesText.includes('The easting and northing hold -13.2294 and 8.4831') &&
+    !registry.degreesText.includes('nothing to find the borehole by'),
+    registry.degreesText.slice(0, 300));
   check('registry: a borehole with no position gets no identifier',
     registry.unlocated.includes('nothing to find the borehole by'));
   check('registry: the identifier is derived from the position',
@@ -2503,6 +2582,148 @@ await withPage(async (page, base, consoleErrors) => {
     sanitary.doc.includes('Sanitary risk') && sanitary.doc.includes('between 3 and 5 of 10') &&
     sanitary.doc.includes('Surveillance and Control of Community Supplies'),
     sanitary.doc.length + ' chars');
+
+  // --- the service rounds (PLAN.md step 7.3) ------------------------------
+  // The routine inspection follows the design's rising main, the borehole
+  // goes to the mechanic named for its chiefdom until one is named on its
+  // record, the project file carries both, and the round sheet prints it.
+  const rounds = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone, site.chiefdom];
+    const savedDesign = d.design;
+    app.store.set('asset', null);
+    site.easting = 694912; site.northing = 938150; site.utm_zone = 28; site.chiefdom = 'Koya';
+    d.design = Object.assign({}, savedDesign || {}, { rising_main: { material: 'stainless steel',
+      inspection_months: 6, chemistry: 'aggressive', statement: '' } });
+    app.store.set('rounds.date', '2024-06-01');
+    app.goto('registry');
+    app.render();
+    const text = (selector) => Array.from(document.querySelectorAll('#page-host ' + selector))
+      .map((n) => n.textContent);
+    const interval = text('.rounds-interval').join(' ');
+    const chiefdoms = document.querySelector('#page-host textarea[data-rounds="chiefdoms"]');
+    if (chiefdoms) {
+      chiefdoms.value = 'koya: M. Kolleh\nno colon';
+      chiefdoms.dispatchEvent(new Event('change'));
+    }
+    const byChiefdom = text('h3.round-name');
+    const skipped = text('.callout p').filter((t) => t.startsWith('Line 2 is not read'));
+    const name = document.querySelector('#page-host input[data-rounds="mechanic"]');
+    if (name) { name.value = 'A. Bangura'; name.dispatchEvent(new Event('change')); }
+    const btn = Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Name the area mechanic');
+    if (btn) btn.click();
+    const byRecord = text('h3.round-name');
+    const stored = app.store.get('asset') || {};
+    const filed = app.projectPayload().state.asset || {};
+    const result = C.serviceRounds([C.assetFromDict(stored)], '2024-06-01', null, []);
+    const doc = await window.__docText(await (await window.GWT.docx.roundSheet({
+      rounds: result })).build());
+    app.store.set('asset', null);
+    app.store.set('rounds.mechanics', '');
+    app.store.set('rounds.date', '');
+    d.design = savedDesign;
+    site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
+    site.chiefdom = saved[3];
+    app.render();
+    return { interval, byChiefdom, skipped, pressed: !!btn, byRecord, stored, filed, doc,
+      id: result.rounds.length ? result.rounds[0].stops[0].asset_id : '' };
+  });
+  check('rounds: the routine inspection follows the design\'s rising main',
+    rounds.interval.includes('stainless steel rising main in aggressive water') &&
+    rounds.interval.includes('every 6 months'), rounds.interval);
+  check('rounds: the borehole goes to the mechanic named for its chiefdom',
+    JSON.stringify(rounds.byChiefdom) === JSON.stringify(['M. Kolleh: 1 stop.']) &&
+    rounds.skipped.length === 1, JSON.stringify([rounds.byChiefdom, rounds.skipped]));
+  check('rounds: a mechanic named on the record takes the borehole',
+    rounds.pressed && rounds.stored.area_mechanic === 'A. Bangura' &&
+    JSON.stringify(rounds.byRecord) === JSON.stringify(['A. Bangura: 1 stop.']),
+    JSON.stringify([rounds.byRecord, rounds.stored.area_mechanic]));
+  check('rounds: the project file carries the mechanic and the rising main',
+    rounds.filed.area_mechanic === 'A. Bangura' && rounds.filed.rising_main &&
+    rounds.filed.rising_main.inspection_months === 6, JSON.stringify(rounds.filed.rising_main));
+  check('rounds: the round sheet names the mechanic, the stop and its plate',
+    rounds.doc.includes('Area mechanic: A. Bangura') && rounds.doc.includes(rounds.id) &&
+    rounds.doc.includes('BOREHOLE ' + rounds.id) && rounds.doc.includes('Drawn up on 2024-06-01'),
+    rounds.doc.length + ' chars');
+
+  // --- how long boreholes keep working (PLAN.md step 7.4) ------------------
+  // The register and this borehole read as a time to the first failure: the
+  // curve over them all and by pump type, a group too few to judge drawn as
+  // counts only, and the pump type named on this borehole's record joining
+  // it to its group and travelling in the project file.
+  const survival = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone];
+    const savedRegistry = d.registry;
+    site.easting = 694912; site.northing = 938150; site.utm_zone = 28;
+    app.store.set('asset', { asset_id: C.mintAssetId(site), community: 'This one',
+      district: site.district, easting: 694912, northing: 938150, utm_zone: 28,
+      events: [{ when: '2020-01-10', kind: 'commissioned' },
+        { when: '2022-03-01', kind: 'failure' }] });
+    const register = [];
+    for (let i = 0; i < 12; i++) {
+      const easting = 690000 + 1000 * i;
+      const when = C.dayToIso(C.isoDay('2018-01-10') + (i < 6 ? 300 + 90 * i : 1500 + 60 * i));
+      register.push(C.assetFromDict({
+        asset_id: C.mintAssetId({ district: 'Western Area Rural', easting: easting,
+          northing: 938150, utm_zone: 28 }),
+        community: 'Site ' + i, district: 'Western Area Rural', easting: easting,
+        northing: 938150, utm_zone: 28, pump_type: i < 6 ? 'Afridev' : 'India Mark II',
+        events: [{ when: '2018-01-10', kind: 'commissioned' },
+          { when: when, kind: i % 2 ? 'failure' : 'routine_inspection' }],
+      }));
+    }
+    d.registry = register;
+    app.store.set('survival.date', '2024-06-01');
+    app.goto('registry');
+    app.render();
+    const text = (selector) => Array.from(document.querySelectorAll('#page-host ' + selector))
+      .map((n) => n.textContent);
+    const card = document.querySelector('#page-host h3.survival-group')?.closest('.card');
+    const before = {
+      headings: text('h3.survival-group'),
+      lines: text('p.survival-line'),
+      figures: card ? card.querySelectorAll('figure svg').length : 0,
+    };
+    const fill = (name, value) => {
+      const input = document.querySelector('#page-host input[data-survival="' + name + '"]');
+      if (input) { input.value = value; input.dispatchEvent(new Event('change')); }
+      return !!input;
+    };
+    const typed = fill('pump', ' India Mark II ');
+    const btn = Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Save the pump and contractor');
+    if (btn) btn.click();
+    const stored = app.store.get('asset') || {};
+    const filed = app.projectPayload().state.asset || {};
+    const after = text('p.survival-line');
+    const expected = C.survivalText(C.survivalAnalysis([C.assetFromDict(stored)].concat(register),
+      '2024-06-01'));
+    app.store.set('asset', null);
+    app.store.set('survival.date', '');
+    d.registry = savedRegistry;
+    site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
+    app.render();
+    return { before, typed, pressed: !!btn, stored, filed, after, expected };
+  });
+  check('survival: the register is read over all boreholes and by each grouping',
+    JSON.stringify(survival.before.headings) === JSON.stringify(['All boreholes', 'By pump type',
+      'By contractor', 'By water chemistry']) && survival.before.figures === 4,
+  JSON.stringify(survival.before));
+  check('survival: a group too few to judge gives counts, never a curve',
+    survival.before.lines.some((l) => l.startsWith('Not recorded: too few boreholes to judge')) &&
+    survival.before.lines.some((l) => l.startsWith('Afridev: 6 followed')),
+  JSON.stringify(survival.before.lines));
+  check('survival: a pump named on the record joins its group, in the project file too',
+    survival.typed && survival.pressed && survival.stored.pump_type === 'India Mark II' &&
+    survival.filed.pump_type === 'India Mark II' &&
+    survival.after.some((l) => l.startsWith('India Mark II: 7 followed')) &&
+    JSON.stringify(survival.after.slice(0, 1)) ===
+      JSON.stringify(survival.expected.overall.lines),
+  JSON.stringify([survival.stored.pump_type, survival.after]));
 
   // --- the certification gate ---------------------------------------------
   // The gate never blocks a build: an interim report is a real need, and an
@@ -4589,10 +4810,13 @@ await withPage(async (page, base, consoleErrors) => {
    * their names are not Copernicus's */
   await removeAll();
   await page.evaluate(() => {
+    /* the site in the UTM the site page stores: degrees typed into the two
+     * boxes are no position in either engine */
     const store = window.GWT.app.store;
-    store.set('site.easting', -12.0);
-    store.set('site.northing', 8.0);
-    store.set('site.utm_zone', null);
+    const utm = window.GWT.core.geographicToUtm(8.0, -12.0);
+    store.set('site.easting', utm.easting);
+    store.set('site.northing', utm.northing);
+    store.set('site.utm_zone', utm.zone);
   });
   await drop(holes);
   await opened(3);
@@ -4636,9 +4860,10 @@ await withPage(async (page, base, consoleErrors) => {
     const app = window.GWT.app, engine = window.GWT.engine, store = app.store;
     const kept = { easting: store.get('site.easting'), northing: store.get('site.northing'),
       utm_zone: store.get('site.utm_zone') };
-    store.set('site.easting', -11.5);
-    store.set('site.northing', 8.5);
-    store.set('site.utm_zone', null);
+    const utm = window.GWT.core.geographicToUtm(8.5, -11.5);
+    store.set('site.easting', utm.easting);
+    store.set('site.northing', utm.northing);
+    store.set('site.utm_zone', utm.zone);
     const n = 1201, view = new DataView(new ArrayBuffer(2 * n * n));
     for (let row = 0; row < n; row++) {
       for (let col = 0; col < n; col++) {
@@ -5303,7 +5528,14 @@ await withPage(async (page, base, consoleErrors) => {
    * under the figure and saved as the engine writes them */
   const beside = await page.evaluate(async () => {
     const app = window.GWT.app, store = app.store, support = window.GWT.support;
-    store.set('site.northing', 8.475);
+    /* the site in UTM, as the site page stores it */
+    window.__placeSite = (lat, lon) => {
+      const utm = window.GWT.core.geographicToUtm(lat, lon);
+      store.set('site.easting', utm.easting);
+      store.set('site.northing', utm.northing);
+      store.set('site.utm_zone', utm.zone);
+    };
+    window.__placeSite(8.475, -11.5);
     Array.from(document.querySelectorAll('[data-item="terrain"] button'))
       .find((b) => b.textContent === 'Analyse the terrain').click();
     const done = await window.__until(window.__settled);
@@ -5324,7 +5556,7 @@ await withPage(async (page, base, consoleErrors) => {
     const names = Array.from(doc.getElementsByTagNameNS(ns, 'wpt')).map((w) =>
       w.getElementsByTagNameNS(ns, 'name')[0].textContent);
     const project = JSON.parse(got[1].data);
-    store.set('site.northing', 8.5);
+    window.__placeSite(8.5, -11.5);
     return { done, plan: [plan.basis, plan.lines.length, plan.soundings.length].join(),
       same: s.result.planGpx === want.planGpx && s.result.planGeoJson === want.planGeoJson &&
         JSON.stringify(s.result.planCaptions) === JSON.stringify(want.planCaptions),
@@ -5374,9 +5606,9 @@ await withPage(async (page, base, consoleErrors) => {
       return { name: got[0].name, text: text,
         media: Object.keys(files).filter((n) => n.startsWith('word/media/')).length };
     };
-    store.set('site.northing', 8.475);
+    window.__placeSite(8.475, -11.5);
     const here = await build();
-    store.set('site.northing', 8.5);
+    window.__placeSite(8.5, -11.5);
     const moved = await build();
     const s = app.terrainSession();
     return { card: !!button, here: here && { name: here.name, media: here.media,
@@ -5398,13 +5630,81 @@ await withPage(async (page, base, consoleErrors) => {
     desk.here.media === 3 + 2 + (desk.here.rose ? 1 : 0) + 1 && desk.moved,
     JSON.stringify(desk));
 
+  /* water points looked up 300 m round the site beside the valley, short
+   * of the 550 m a borehole's ring reaches: the plan says the lookup fell
+   * short; the radius box widened to 2,000 m afterwards changes neither
+   * what the Water points page judges nor what the desk study quotes,
+   * both the 300 m searched, and the page says so */
+  const searched = await page.evaluate(async () => {
+    const app = window.GWT.app, store = app.store, support = window.GWT.support, C = window.GWT.core;
+    window.__placeSite(8.475, -11.5);
+    const real = window.fetch;
+    /* WPdx+ holds one working borehole 1.5 km north of the site */
+    window.fetch = async (u, o) => String(u).includes('waterpointdata') ? new Response(JSON.stringify([
+      { row_id: 'n', lat_deg: String(8.475 + 1500 / 111194.93), lon_deg: '-11.5', status_clean: 'Functional',
+        water_source_clean: 'Borehole', water_tech_clean: 'Hand Pump' }]),
+    { status: 200, headers: { 'content-type': 'application/json' } }) : real(u, o);
+    const radius = store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M);
+    let out;
+    try {
+      store.set('waterpoints.radius', 300);
+      /* round the site as the page reads it, as the Look up button does */
+      const ll = app.siteLatLon();
+      await app.lookUpWaterPoints(document.querySelector('#page-host'), { lat: ll.lat, lon: ll.lon, radiusM: 300,
+        limit: 5000, clip: true, label: 'live WPdx+, 300 m around the site' });
+      app.goto('site');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+        .find((b) => b.textContent === 'Analyse the terrain').click();
+      const done = await window.__until(window.__settled);
+      const s = app.terrainSession();
+      const short = C.phrase('survey_plan.water_points_short', { searched: 300, reach: 550 });
+      store.set('waterpoints.radius', 2000);
+      app.goto('waterpoints');
+      const note = document.querySelector('#page-host [data-searched]');
+      const got = [];
+      const download = support.download;
+      support.download = (name, data) => { got.push({ name, data }); };
+      try { await app.buildDeskStudy(null); } finally { support.download = download; }
+      const files = await support.unzip(new Uint8Array(await got[0].data.arrayBuffer()));
+      const xml = new DOMParser().parseFromString(new TextDecoder().decode(files['word/document.xml']),
+        'application/xml');
+      const text = Array.from(xml.getElementsByTagName('w:p')).map((para) =>
+        Array.from(para.getElementsByTagName('w:t')).map((t) => t.textContent).join('')).join('\n');
+      /* the site moved 0.001 degree north, about 110 m: the lookup covers
+       * the rest of its 300 m round it */
+      const moved = app.waterPointsSearched({ lat: ll.lat + 0.001, lon: ll.lon });
+      out = { done, searchedM: s.result.plan && s.result.plan.searched_m,
+        short: s.result.planCaptions.plan.includes(short), held: app.waterPointsSearchRadius(),
+        note: note ? [note.getAttribute('data-searched'), note.textContent.includes('within 300 m')] : null,
+        desk: text.includes(C.phrase('desk_study.water_none', { radius: 300 })) &&
+          !text.includes(C.phrase('desk_study.water_none', { radius: 2000 })),
+        moved: [moved, 300 - C.geodesicDistanceM(ll.lat, ll.lon, ll.lat + 0.001, ll.lon)] };
+    } finally {
+      window.fetch = real;
+      store.set('waterpoints.radius', radius);
+      Object.assign(app.derived, { waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
+        waterPointsRadius: null, waterPointsCentre: null, waterPointsSkipped: null });
+      window.__placeSite(8.5, -11.5);
+      app.goto('site');
+    }
+    return out;
+  });
+  check('water points looked up short of a ring\'s reach: the plan says so, and a radius widened after the ' +
+    'lookup is not quoted by the Water points page or the desk study',
+    searched.done && searched.searchedM === 300 && searched.short && searched.held === 300 &&
+    JSON.stringify(searched.note) === '["300",true]' && searched.desk &&
+    searched.moved[0] === searched.moved[1] && searched.moved[0] > 185 && searched.moved[0] < 195,
+    JSON.stringify(searched));
+
   /* a Copernicus set: the three tiles around a missing fourth, declared
    * Copernicus GLO-30, at 8 N, 12 W */
   const holesSite = () => page.evaluate(() => {
     const store = window.GWT.app.store;
-    store.set('site.easting', -12.0);
-    store.set('site.northing', 8.0);
-    store.set('site.utm_zone', null);
+    const utm = window.GWT.core.geographicToUtm(8.0, -12.0);
+    store.set('site.easting', utm.easting);
+    store.set('site.northing', utm.northing);
+    store.set('site.utm_zone', utm.zone);
   });
   const holesOnCard = async () => {
     await holesSite();
@@ -5601,9 +5901,10 @@ await withPage(async (page, base, consoleErrors) => {
   await removeAll();
   await page.evaluate(() => {
     const store = window.GWT.app.store;
-    store.set('site.easting', -12.4967);
-    store.set('site.northing', 8.7447);
-    store.set('site.utm_zone', null);
+    const utm = window.GWT.core.geographicToUtm(8.7447, -12.4967);
+    store.set('site.easting', utm.easting);
+    store.set('site.northing', utm.northing);
+    store.set('site.utm_zone', utm.zone);
   });
   await drop(overlap);
   await opened(2);
@@ -5842,13 +6143,19 @@ await withPage(async (page, base, consoleErrors) => {
       .find((c) => (c.querySelector('.card-title') || {}).textContent === title);
     const press = (label) => [...named(C.phrase('calibration_sets.page_heading')).querySelectorAll('button')]
       .find((b) => b.textContent === label).click();
-    const basement = () => (app.derived.interpretations || [])
-      .filter((i) => i.sounding_id === 'A (1)').map((i) => i.depth_to_basement_m)[0];
+    /* Rokel A as read: its depth to basement and what its 1,637 ohm-m second
+     * layer is taken for. Under the set's 579.7 ohm-m edge that layer is as
+     * resistive as basement, and over the 47 ohm-m water zone a resistive
+     * cover, so the depth to basement stays null (it used to read 1.02 m). */
+    const rokelA = () => (app.derived.interpretations || [])
+      .filter((i) => i.sounding_id === 'A (1)')
+      .map((i) => [i.depth_to_basement_m, i.layers[1].unit])[0];
+    const cover = C.phrase('ves.unit_resistive_cover');
     const settled = async (want) => {
-      for (let t = 0; t < 400 && !(basement() !== undefined && want(basement())); t++) {
+      for (let t = 0; t < 400 && !(rokelA() !== undefined && want(rokelA()[1])); t++) {
         await new Promise((r) => setTimeout(r, 25));
       }
-      return basement();
+      return rokelA();
     };
     const log = [[0, 2, 'laterite'], [2, 8, 'clay'], [8, 22, 'weathered'], [22, 50, 'basement']];
     const layers = [[0, 2, 900], [2, 8, 12], [8, 22, 140], [22, null, 2400]];
@@ -5887,7 +6194,7 @@ await withPage(async (page, base, consoleErrors) => {
       press(C.phrase('calibration_sets.page_adopt'));
       const held = app.store.get('calibration');
       out.adopted = held && [held.version, held.adopted_by];
-      out.after = await settled((v) => v !== null);
+      out.after = await settled((unit) => unit === cover);
       out.shown = card().textContent.includes(C.phrase('calibration_sets.page_in_force', { name: C.setName(held) }));
       out.notSaved = !('calibration' in app.projectPayload().state);
       const payload = app.projectPayload();
@@ -5902,7 +6209,8 @@ await withPage(async (page, base, consoleErrors) => {
       out.file = got.length && got[0].name === 'calibration.yaml' && got[0].data === C.setYaml(held);
       press(C.phrase('calibration_sets.page_default'));
       out.dropped = app.store.get('calibration') === null;
-      out.back = await settled((v) => v === null);
+      out.back = await settled((unit) => unit !== cover);
+      out.cover = cover;
       support.pickFile = async () => new File([C.setYaml(held)], 'calibration.yaml');
       press(C.phrase('calibration_sets.page_load_button'));
       for (let t = 0; t < 200 && !app.store.get('calibration'); t++) await new Promise((r) => setTimeout(r, 25));
@@ -5927,11 +6235,13 @@ await withPage(async (page, base, consoleErrors) => {
     'named person adopts it; then it is in force, and the Rokel survey is read by its basement edge',
     sets.empty && sets.review && sets.unnamed[0] === null && sets.unnamed[1][1] === 'error' &&
     JSON.stringify(sets.adopted) === '[1,"A. Kamara"]' && sets.shown &&
-    sets.before === null && Math.abs(sets.after - 1.02) < 0.01, JSON.stringify(sets));
+    JSON.stringify(sets.before) === JSON.stringify([null, 'compact or dry weathered rock (regolith)']) &&
+    JSON.stringify(sets.after) === JSON.stringify([null, sets.cover]), JSON.stringify(sets));
   check('calibration sets: the set in force belongs to this browser: no project file carries it, opening ' +
     'one keeps it, and it is downloaded, dropped and loaded back from calibration.yaml; a set nobody ' +
     'adopted is refused',
-    sets.notSaved && sets.keptOverLoad && sets.file && sets.dropped && sets.back === null && sets.loaded &&
+    sets.notSaved && sets.keptOverLoad && sets.file && sets.dropped &&
+    JSON.stringify(sets.back) === JSON.stringify(sets.before) && sets.loaded &&
     sets.refused[1] === 1 && sets.refused[0][1] === 'error', JSON.stringify(sets));
 
   check('no console errors', consoleErrors.length === 0,

@@ -43,7 +43,8 @@ await withPage(async (page, base, consoleErrors) => {
   await page.waitForFunction(() => window.GWT && window.GWT.core && window.GWT.data &&
     window.GWT.docx);
 
-  const parsed = await page.evaluate(async (R_STREAMLIT_YAML) => {
+  const parsed = await page.evaluate(async ([R_STREAMLIT_YAML, GATE_LOGS, WPDX_ROWS,
+    SPINE_SETTINGS]) => {
     const S = GWT.support, C = GWT.core, D = GWT.data;
     async function grids(b64) {
       return GWT.support.readXlsx(S.base64ToBytes(b64));
@@ -289,6 +290,31 @@ await withPage(async (page, base, consoleErrors) => {
       edited: spineEdited.edited,
     };
 
+    // priced with the Costing page's settings, the ones the reference used
+    const money = SPINE_SETTINGS;
+    const spineCosted = C.buildSpineView({
+      name: 'Dr Timbo', log, analysis, assessment: assessed,
+      mobilisationDistanceKm: money.mobilisation_km,
+      costing: {
+        rates: C.loadRates().map((r) => (r.code === money.rate[0]
+          ? C.rateWithLikely(r, money.rate[1]) : r)),
+        overheadsPercent: money.overheads, marginPercent: money.margin,
+        contingencyPercent: money.contingency, vatPercent: money.vat,
+        exchangeRate: money.exchange, overburdenM: money.overburden,
+        wqSamples: money.wq_samples, handpumps: money.handpumps,
+        developmentHours: money.development_hours,
+        testPumpingHours: money.test_pumping_hours,
+      },
+    });
+    out.spine_costed = {
+      money: Object.fromEntries(['directCost', 'overheads', 'totalCost', 'margin',
+        'price', 'vat', 'costPerMetre', 'overheadsPercent', 'marginPercent',
+        'contingencyPercent', 'vatPercent', 'exchangeRate']
+        .map((key) => [key, spineCosted.costing[key]])),
+      quantity_basis: spineCosted.costing.quantityBasis,
+      items: spineCosted.costing.items.map((i) => [i.code, i.quantity, i.unitCost, i.amount]),
+    };
+
     // the portfolio view, over the same summaries the reference uses
     const summaries = [
       { community: 'Rokel', district: 'Port Loko', easting: 235000.0,
@@ -331,10 +357,13 @@ await withPage(async (page, base, consoleErrors) => {
     // The interpretation and report prose over the cases make_reference.py
     // builds as VES_CASES, VES_SHEETS and MODELS_TRIED_CASES: a zone past the
     // depth of investigation, one wholly below it, a margin cut back to it, a
-    // dropped last reading, poorly resolved boundaries, a near-tie, an exact
-    // tie, two sheets with one sounding number and a Wenner sheet with an MN
-    // column. The inputs are written out twice on purpose; they are the
-    // contract.
+    // dropped last reading, poorly resolved boundaries, resistive covers over
+    // conductive ground, a 1 m zone on half metres, a sounding too short for
+    // the vadose allowance, a near-tie, an exact tie, two sheets with one
+    // sounding number, a Wenner sheet with an MN column, a resistance sheet
+    // with rows K cannot convert, a resistivity headed as a resistance and a
+    // repeat with no MN recorded. The inputs are written out twice on
+    // purpose; they are the contract.
     const SPACINGS = [1, 2, 5, 10, 20, 40, 80];
     const caseInterp = (sid, rho, h, err, hFactor, ab2, rhoApp) => {
       const spacing = ab2 || SPACINGS;
@@ -356,6 +385,16 @@ await withPage(async (page, base, consoleErrors) => {
       ['two poorly resolved', [1100, 1600, 300, 47], [1, 2, 7], 5.0, [3.7, 2.5, 1.1],
         null, null],
       ['thin resistive at 2.5', [1000, 5000, 100], [2.5, 3], 5.0, null, null, null],
+      ['cover over a water zone', [300, 5000, 60, 8000], [0.8, 2, 20], 2.0, null, null, null],
+      ['cover over clay', [300, 5000, 10, 8000], [0.8, 2, 20], 2.0, null, null, null],
+      ['cover over a conductive half-space', [1100, 5000, 47], [1.0, 7.0], 5.0, null, null,
+        null],
+      ['two covers', [300, 5000, 60, 4000, 60, 8000], [0.8, 2, 5, 2, 10], 2.0, null, null,
+        null],
+      ['basement over compact rock', [300, 5000, 1500, 8000], [0.8, 2, 20], 2.0, null, null,
+        null],
+      ['half-metre zone', [500, 100, 5000], [3.5, 1.0], 2.0, null, null, null],
+      ['short sounding', [400, 90, 3000], [0.6, 8.0], 2.0, null, [1, 1.5, 2, 3, 4, 5], null],
     ];
     const cases = {};
     vesCases.forEach(([name, rho, h, err, hFactor, ab2, rhoApp]) => {
@@ -397,7 +436,35 @@ await withPage(async (page, base, consoleErrors) => {
         [20, 1, 250], [40, 1, 150], [40, 4, 148], [40, 10, 78], [60, 10, 60]]) },
       { name: 'S3 copy', rows: vesSheet('S 3', 'Schlumberger', withMn, [[10, 1, 410],
         [20, 1, 260], [40, 1, 140], [60, 10, 70]]) },
+      { name: 'R', rows: vesSheet('R 1', 'Schlumberger', ['No.', 'AB/2 (m)', 'MN (m)', 'R (ohm)'],
+        [[0.3, 1, 12.5], [0.5, 1, 9.0], [2, 1, 4.1], [3, 1, 1.9], [5, 1, 0.62], [10, 1, 0.18],
+          [15, 1, 0.09]]) },
+      { name: 'R ohm-m', rows: vesSheet('R 2', 'Schlumberger',
+        ['No.', 'AB/2 (m)', 'MN (m)', 'Apparent Resistance (Ωm)'],
+        [[1, 0.5, 120], [2, 0.5, 95], [3, 0.5, 80], [5, 0.5, 70], [10, 2, 90]]) },
+      { name: 'no MN', rows: vesSheet('N 1', 'Schlumberger',
+        ['No.', 'AB/2 (m)', 'Apparent Resistivity (ohm-m)'],
+        [[1, 120], [2, 95], [3, 80], [5, 70], [10, 90], [10, 120], [15, 110], [20, 140],
+          [30, 190]]) },
     ], 'x.xlsx');
+    /* the fitted readings and their errors, over make_reference.py's
+     * READING_CASES: a zero at an MN overlap, a repeat with no MN recorded and
+     * an MN overlap */
+    const readingCases = [
+      [[1, 2, 3, 5, 8, 10, 10, 15, 20, 30, 40, 40, 60, 80, 100],
+        [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 4, 4, 4, 4, 4, 10, 10, 10, 10],
+        [300, 250, 180, 120, 90, 85, 88, 80, 90, 120, 170, 0, 260, 330, 400]],
+      [[1, 2, 3, 5, 10, 10, 15, 20, 30, 40, 40, 60], new Array(12).fill(NaN),
+        [120, 95, 80, 70, 90, 120, 110, 140, 190, 230, 260, 300]],
+      [[1, 2, 3, 5, 10, 10, 15, 20, 30, 40, 40, 60], [1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 10, 10],
+        [120, 95, 80, 70, 90, 120, 110, 140, 190, 230, 260, 300]],
+    ].map(([ab2, mn, rho]) => {
+      const s = { sounding_id: 'R', array_type: 'schlumberger', ab2, mn, rho_app: rho, flags: [] };
+      const fitted = C.inversionReadings(s);
+      const errors = C.readingErrors(s, fitted.ab2, 3.0);
+      return { fitted_ab2: fitted.ab2, fitted_rho: fitted.rho, sigma: errors.sigma,
+        spacings: errors.spacings };
+    });
     const trialCase = (trials, err) => ({ trials, fit_error_percent: err,
       model: C.layeredModel([300, 100, 150], [3, 30]) });
     const withFactor = Object.assign({}, C.defaultConfig().ves,
@@ -427,6 +494,8 @@ await withPage(async (page, base, consoleErrors) => {
       ],
       sheets: sheets.map((s) => [s.sounding_id, s.array_type,
         s.flags.map((f) => [f.level, f.code, f.message])]),
+      sheet_readings: sheets.map((s) => [s.ab2, s.rho_app]),
+      readings: readingCases,
     };
 
     // a siting survey with no borehole yet: the design comes from the
@@ -645,6 +714,14 @@ await withPage(async (page, base, consoleErrors) => {
       )).verdict;
     });
 
+    // a pH outside its range is past the limit line on either side of it
+    out.spine_range_ratio = {};
+    [5.9, 5.4, 6.5, 7.0, 8.5, 9.5, 0.0, -1.0].forEach((ph) => {
+      out.spine_range_ratio[ph.toFixed(1)] = C.spineQuality(C.assessSample(wq(
+        { parameter: 'pH', value: ph }))).rows
+        .filter((row) => row.parameter === 'pH')[0].ratio;
+    });
+
     out.spine_quality = C.spineQuality(C.assessSample(wq(
       { parameter: 'Arsenic', value: 5.0, unit: 'ug/L' },
       { parameter: 'Electrical conductivity', value: 3.0, unit: 'mS/cm' },
@@ -716,6 +793,14 @@ await withPage(async (page, base, consoleErrors) => {
       demonstration_override: [Object.assign({}, fullProject, {
         sources: { wq: { sample: 'dr_timbo/dr_timbo_water_quality.xlsx' } },
       }), { field_data: { reason: 'published as a worked example', by: 'M. K.' } }],
+      // a log in feet, converted; a log the reader set part of aside; and
+      // degrees in the UTM boxes, which are no position
+      feet_log: [Object.assign({}, fullProject, {
+        drilling_log: C.drillingFromGrid(GATE_LOGS.feet, 'case.xlsx') }), {}],
+      log_set_aside: [Object.assign({}, fullProject, {
+        drilling_log: C.drillingFromGrid(GATE_LOGS.set_aside, 'case.xlsx') }), {}],
+      degree_site: [Object.assign({}, fullProject, { site: { community: "Dr. Timbo's",
+        district: 'Western Area Rural', easting: -13.2294, northing: 8.4831 } }), {}],
     };
     out.readiness = {};
     Object.keys(gateCases).forEach((name) => {
@@ -788,9 +873,27 @@ await withPage(async (page, base, consoleErrors) => {
     out.asset_id_parsing = [timboId, timboId.toLowerCase(),
       timboId.replace(/0/g, 'O'), timboId.replace(/1/g, 'L'), ' ' + timboId + ' ',
       timboId.slice(0, -1) + 'Z', timboId.replace(/-/g, ''),
-      'SL-WAR-XXXXXXX-9', 'not an identifier', ''].map((typed) => {
+      'SL-WAR-XXXXXXX-9', 'not an identifier', '',
+      'SL-WAR-8FEEVKQ-T', 'sl-war-8feevkq-t', 'SL-BO-C4817SW-1',
+      'SL-BO-P4817SW-1', 'SL-PL-8HE2QWG-3', 'SL-PL-8HE2QWG-G'].map((typed) => {
       const v = C.validateAssetId(typed);
       return { typed, parsed: C.parseAssetId(typed), ok: v.ok, reason: v.reason };
+    });
+    out.check_characters = ['00000000D07A0090', '00000000D07A009000000000',
+      '188166C7342065419F3A0245', 'A12425GABC1234002', 'SL-WAR-8FEEVKQ',
+      'SL-BO-C4817SW', 'SL-PL-8HE2QWG', 'SL-KAI-KDH2TCG', 'SL-XX-00000ZZ'].map((b) => ({
+      body: b, iso: C.checkCharacter(b), legacy: C.legacyCheckCharacter(b),
+      is_legacy: C.isLegacyAssetId(b + '-' + C.legacyCheckCharacter(b)),
+    }));
+    out.degree_boxes = [[-13.2294, 8.4831], [13.2294, 8.4831], [20.5, 5.25],
+      [-180.0, 90.0], [0.0, 0.0], [694912.0, 938150.0], [181.0, 8.0]].map(([e, n]) => {
+      const site = { district: 'Western Area Rural', easting: e, northing: n };
+      let minted;
+      try { minted = C.mintAssetId(site); } catch (err) { minted = 'refused: ' + err.message; }
+      const gate = C.assessReadiness({ site: site, sources: {} }, 'placard', {});
+      const located = gate.requirements.filter((q) => q.key === 'site_located')[0];
+      return { easting: e, northing: n, note: C.degreesInUtmBoxes(e, n), minted: minted,
+        site_located: [located.state, located.detail] };
     });
     const streams = [
       [{ when: '2020-01-10', kind: 'commissioned', by: 'M. Kolleh' },
@@ -813,6 +916,26 @@ await withPage(async (page, base, consoleErrors) => {
       decommissioned: streams[0].slice(0, 1).concat([
         { when: '2022-08-01', kind: 'decommissioned' }]),
       merged: streams[0].concat(streams[1]),
+      rebroken: streams[0].slice(0, 1).concat([
+        { when: '2024-01-10', kind: 'failure', by: 'M. Kolleh' },
+        { when: '2024-05-20', kind: 'failure', note: 'still broken' }]),
+      collapsed: streams[0].slice(0, 1).concat([
+        { when: '2023-03-01', kind: 'decommissioned', note: 'backfilled' },
+        { when: '2023-03-01', kind: 'failure', note: 'hole collapsed' }]),
+      pulled: streams[0].slice(0, 1).concat([
+        { when: '2023-03-01', kind: 'repair', note: 'pump pulled for reuse' },
+        { when: '2023-03-01', kind: 'decommissioned', note: 'dry' }]),
+      after_decommissioning: streams[0].slice(0, 1).concat([
+        { when: '2022-08-01', kind: 'decommissioned' },
+        { when: '2023-01-05', kind: 'repair', note: 'new seals' },
+        { when: '2023-02-01', kind: 'restored' }]),
+      recommissioned: streams[0].slice(0, 1).concat([
+        { when: '2022-08-01', kind: 'decommissioned' },
+        { when: '2023-01-05', kind: 'repair' },
+        { when: '2023-06-01', kind: 'commissioned', by: 'A. Bangura' }]),
+      decommissioned_twice: streams[0].slice(0, 1).concat([
+        { when: '2022-08-01', kind: 'decommissioned', note: 'collapsed' },
+        { when: '2023-01-05', kind: 'decommissioned', note: 'backfilled' }]),
     };
     const today = '2024-06-01';
     const assets = {};
@@ -831,10 +954,11 @@ await withPage(async (page, base, consoleErrors) => {
       out.asset_state[name] = {
         function: st.function, label: st.label, since: st.since,
         detail: st.detail, last_inspection: st.last_inspection,
-        last_sample: st.last_sample, commissioned: st.commissioned,
+        last_sample: st.last_sample, last_routine_inspection: st.last_routine_inspection,
+        commissioned: st.commissioned,
         days_out_of_service: st.days_out_of_service,
         due: st.due.map((d) => ({ key: d.key, title: d.title, state: d.state,
-          due_on: d.due_on, detail: d.detail })),
+          due_on: d.due_on, detail: d.detail, months: d.months, basis: d.basis })),
         undated_events: st.undated_events,
       };
     });
@@ -887,6 +1011,16 @@ await withPage(async (page, base, consoleErrors) => {
         return { date, year: point.report_year, months_text: months,
           months: point.months_per_year };
       });
+    {
+      /* the reader on rows both read alike: make_reference.py's
+       * WPDX_READER_ROWS */
+      const skipped = [];
+      const read = C.parseWpdxRecords(WPDX_ROWS, skipped);
+      out.wpdx_reader = {
+        points: read.map((p) => [p.row_id, p.lat, p.lon, p.installed]),
+        flags: skipped.map((f) => [f.level, f.code, f.message]),
+      };
+    }
     out.growth_rate = C.intercensalGrowthRate();
     const wp = (functional, year, months) => C.parseWpdxRecords([{
       lat_deg: 8, lon_deg: -13, status_clean: functional ? 'Functional' : 'Non-Functional',
@@ -909,7 +1043,8 @@ await withPage(async (page, base, consoleErrors) => {
     out.planning = {};
     [['census', 2015, null, null], ['today', 2026, null, null],
       ['slow', 2026, 0.015, null],
-      ['districts', 2026, null, { 'Western Area Urban': 0.06, Pujehun: 0.01 }]]
+      ['districts', 2026, null, { 'Western Area Urban': 0.06, Pujehun: 0.01 }],
+      ['before the surveys', 2018, null, null]]
       .forEach(([label, year, rate, rates]) => {
         const r = C.planningRows(planningPopulation, planningPoints,
           { asOfYear: year, rate, rates });
@@ -989,7 +1124,8 @@ await withPage(async (page, base, consoleErrors) => {
       one_pager: C.portfolioOnePager(summaries[1]),
     };
     return out;
-  }, reference.streamlit_project_file.yaml);
+  }, [reference.streamlit_project_file.yaml, reference.gate_logs, reference.wpdx_reader_rows,
+    reference.spine_costed.settings]);
 
   // The designs and logs the borehole-design review found wanting, run from
   // the specs make_reference.py wrote, so both engines see the same input.
@@ -1023,6 +1159,8 @@ await withPage(async (page, base, consoleErrors) => {
       return {
         strikes: log.water_strikes_m,
         grout: log.grouting_depth_m,
+        total: log.total_depth_m,
+        screens: log.installed_screens_m,
         intervals: log.intervals.map((iv) => [iv.top_m, iv.bottom_m, iv.description,
           iv.penetration_rate_m_per_min === undefined ? null : iv.penetration_rate_m_per_min,
           iv.bit_diameter_in === undefined ? null : iv.bit_diameter_in]),
@@ -1044,7 +1182,7 @@ await withPage(async (page, base, consoleErrors) => {
     }
   });
   R.drilling_cases.forEach((ref, i) => {
-    for (const key of ['strikes', 'grout', 'intervals', 'flags']) {
+    for (const key of ['strikes', 'grout', 'total', 'screens', 'intervals', 'flags']) {
       check(`drilling case ${i + 1}: ${key}`,
         JSON.stringify(cases.drilling[i][key]) === JSON.stringify(ref[key]),
         `js ${JSON.stringify(cases.drilling[i][key])}\n     py ${JSON.stringify(ref[key])}`);
@@ -1368,6 +1506,30 @@ await withPage(async (page, base, consoleErrors) => {
       check(`ves text: ${key}, word for word`, JSON.stringify(js) === JSON.stringify(py),
         `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
     });
+  // what the readers read off each sheet (a resistance times K, so to 1e-12),
+  // and the readings the inversion fits with their errors: the spacings
+  // exactly, a merged reading (a geometric mean) and an error to 1e-12
+  const allClose = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length &&
+    a.every((v, i) => close(v, b[i], 1e-12));
+  (VT.sheet_readings || []).forEach((py, i) => {
+    const js = parsed.ves_text.sheet_readings[i];
+    check(`ves sheet ${i}: the readings read`,
+      JSON.stringify(js[0]) === JSON.stringify(py[0]) && allClose(js[1], py[1]),
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+  });
+  check('ves text: the reference carries the fitted readings', !!VT.readings,
+    'regenerate tests/webapp/reference.json with make_reference.py');
+  (VT.readings || []).forEach((py, i) => {
+    const js = parsed.ves_text.readings[i];
+    check(`ves readings ${i}: the spacings fitted and those an overlap widens`,
+      JSON.stringify([js.fitted_ab2, js.spacings]) === JSON.stringify([py.fitted_ab2, py.spacings]),
+      `js ${JSON.stringify([js.fitted_ab2, js.spacings])}\n     ` +
+      `py ${JSON.stringify([py.fitted_ab2, py.spacings])}`);
+    check(`ves readings ${i}: the readings fitted and their errors`,
+      allClose(js.fitted_rho, py.fitted_rho) && allClose(js.sigma, py.sigma),
+      `js ${JSON.stringify([js.fitted_rho, js.sigma])}\n     ` +
+      `py ${JSON.stringify([py.fitted_rho, py.sigma])}`);
+  });
 
   // --- Geographic -> UTM ---
   parsed.geo.forEach((g, i) => {
@@ -1445,6 +1607,34 @@ await withPage(async (page, base, consoleErrors) => {
       `js "${parsed.corrosivity_ph[ph]}"\n     py "${R.corrosivity_ph[ph]}"`);
   });
 
+  // --- The Depth Spine priced with the Costing page's settings ---
+  // The Streamlit spine had no way to take them, so the price a named person
+  // signed there was the catalogue's at the default percentages.
+  Object.keys(R.spine_costed.money).forEach((key) => {
+    check(`spine priced as the Costing page prices: ${key}`,
+      close(parsed.spine_costed.money[key], R.spine_costed.money[key], 1e-9),
+      `js ${parsed.spine_costed.money[key]} vs py ${R.spine_costed.money[key]}`);
+  });
+  check('spine priced as the Costing page prices: quantity basis',
+    Object.keys(R.spine_costed.quantity_basis).every((k) =>
+      close(parsed.spine_costed.quantity_basis[k], R.spine_costed.quantity_basis[k], 1e-9)),
+    `js ${JSON.stringify(parsed.spine_costed.quantity_basis)}\n     ` +
+    `py ${JSON.stringify(R.spine_costed.quantity_basis)}`);
+  check('spine priced as the Costing page prices: every line of the bill',
+    parsed.spine_costed.items.length === R.spine_costed.items.length &&
+    R.spine_costed.items.every((row, i) => parsed.spine_costed.items[i][0] === row[0] &&
+      row.slice(1).every((v, j) => close(parsed.spine_costed.items[i][j + 1], v, 1e-9))),
+    `js ${JSON.stringify(parsed.spine_costed.items)}\n     ` +
+    `py ${JSON.stringify(R.spine_costed.items)}`);
+
+  // --- The guideline chart's ratio against a range ---
+  Object.keys(R.spine_range_ratio).forEach((ph) => {
+    const js = parsed.spine_range_ratio[(Number(ph)).toFixed(1)];
+    const py = R.spine_range_ratio[ph];
+    check(`spine ratio at pH ${ph}`,
+      py === null ? js === null : close(js, py, 1e-9), `js ${js} vs py ${py}`);
+  });
+
   // --- The Depth Spine's guideline chart, on non-guideline units ---
   // The limit is in the guideline's unit, so the value has to be too. The
   // bundled sample reports everything in the guideline unit, which is why
@@ -1508,6 +1698,9 @@ await withPage(async (page, base, consoleErrors) => {
       js.year === py.year && js.months === py.months,
       JSON.stringify(js) + ' vs ' + JSON.stringify(py));
   });
+  check('water points: the reader sets aside the same positions and reads the same install years',
+    JSON.stringify(parsed.wpdx_reader) === JSON.stringify(R.wpdx_reader),
+    JSON.stringify(parsed.wpdx_reader) + '\n     vs ' + JSON.stringify(R.wpdx_reader));
   check('planning: the growth rate is derived the same way',
     close(parsed.growth_rate, R.growth_rate),
     `${parsed.growth_rate} vs ${R.growth_rate}`);
@@ -1648,6 +1841,16 @@ await withPage(async (page, base, consoleErrors) => {
   check('registry: a due date never drifts over a short month',
     JSON.stringify(parsed.asset_months) === JSON.stringify(R.asset_months),
     JSON.stringify(parsed.asset_months) + '\n     vs ' + JSON.stringify(R.asset_months));
+  check('registry: the check character is ISO 7064 MOD 37,36, and the legacy one reads',
+    JSON.stringify(parsed.check_characters) === JSON.stringify(R.check_characters),
+    JSON.stringify(parsed.check_characters) + '\n     vs ' +
+    JSON.stringify(R.check_characters));
+  parsed.degree_boxes.forEach((js, i) => {
+    const py = R.degree_boxes[i];
+    check(`site: degrees in the UTM boxes (${js.easting}, ${js.northing}) refused alike`,
+      JSON.stringify(js) === JSON.stringify(py),
+      JSON.stringify(js) + '\n     vs ' + JSON.stringify(py));
+  });
 
   check('a Streamlit .yaml project file is readable by the browser at all',
     parsed.streamlit_project_file.error === null,
@@ -1742,6 +1945,109 @@ await withPage(async (page, base, consoleErrors) => {
   check('pdf sheet: the same cells held back for review',
     pdf.uncertain === R.pdf_sheet.uncertain,
     `js ${pdf.uncertain} py ${R.pdf_sheet.uncertain}`);
+
+  // --- Reading field sheets: the cases each engine got wrong ---
+  // The grader on cells a scanner misreads, the VES template filled from
+  // tables headed the ways field sheets head them and read back, the replies
+  // an AI transcription can end with, and two PDFs: a sheet with a caption
+  // above its headings, a note under its readings and three misread cells,
+  // and one with no text layer. The template is the browser's own blank
+  // (gwt-app.js TEMPLATE_SPECS.ves, which smoke.mjs fills on the page).
+  const RX = R.extraction;
+  const extraction = await page.evaluate(async (RX) => {
+    const C = GWT.core, S = GWT.support;
+    const blank = [['SCHLUMBERGER ARRAY VES FIELD DATA'],
+      ['Client', '', 'Community', ''], ['Project', '', 'Sounding Number', 'VES 1'],
+      ['District', '', 'Chiefdom', ''],
+      ['GPS Coordinate East', '', 'GPS Coordinate North', ''],
+      ['Elevation', '', 'Date', ''], ['Field Supervisor', '', 'Instrument', ''], [],
+      ['No.', 'AB/2 (m)', 'MN (m)', 'Apparent Resistivity (ohm-m)'],
+      [1, 1.5, 0.5, ''], [2, 2, 0.5, '']];
+    const out = { cells: [], fills: {}, replies: {}, pdfs: {} };
+    RX.cells.forEach((row) => {
+      const graded = C.cellConfidence(row[0], 'Apparent Resistivity (ohm-m)');
+      out.cells.push([row[0], graded[0], graded[1], C.isWholeNumber(row[0])]);
+    });
+    Object.keys(RX.payloads).forEach((name) => {
+      const doc = C.extractionDocumentFrom(RX.payloads[name], 'scan.jpg');
+      const entry = { review: C.reviewItems(doc) };
+      out.fills[name] = entry;
+      if (!doc.tables.length) return;
+      try {
+        const grid = C.fillVesTemplateSheets(doc, blank)
+          .map((r) => r.map((c) => (c && typeof c === 'object' ? c.v : c)));
+        const s = C.readVesSheets([{ name: 'VES 1', rows: grid }], 'filled.xlsx')[0];
+        Object.assign(entry, {
+          ab2: s.ab2, mn: s.mn.map((v) => (isFinite(v) ? v : null)), rho: s.rho_app,
+          flags: s.flags.map((f) => f.code), id: s.sounding_id,
+          community: s.site.community, instrument: s.instrument || '',
+          array: s.array_type,
+        });
+      } catch (e) {
+        entry.refused = e.message;
+      }
+    });
+    Object.keys(RX.replies_in).forEach((name) => {
+      const [stop, content] = RX.replies_in[name];
+      try {
+        out.replies[name] = { kind: C.replyPayload({ stop_reason: stop, content }).document_kind };
+      } catch (e) {
+        out.replies[name] = { error: e.message };
+      }
+    });
+    for (const name of Object.keys(RX.pdfs)) {
+      try {
+        const doc = await C.extractPdfText(S.base64ToBytes(RX.pdfs[name].b64), name + '.pdf');
+        out.pdfs[name] = {
+          tables: doc.tables.map((t) => ({ columns: t.columns, rows: t.rows })),
+          uncertain: doc.uncertain_cells.map((c) => [c.table_index, c.row, c.column, c.reason]),
+          review: C.reviewItems(doc),
+        };
+      } catch (e) {
+        out.pdfs[name] = { error: e.message };
+      }
+    }
+    return out;
+  }, RX);
+
+  check('extraction: the grader on every cell',
+    JSON.stringify(extraction.cells) === JSON.stringify(RX.cells),
+    `js ${JSON.stringify(extraction.cells)}\n     py ${JSON.stringify(RX.cells)}`);
+  const sameNumbers = (a, b) => Array.isArray(a) && Array.isArray(b) &&
+    a.length === b.length && b.every((v, i) => (v === null ? a[i] === null : close(a[i], v, 1e-9)));
+  Object.keys(RX.fills).forEach((name) => {
+    const js = extraction.fills[name], py = RX.fills[name];
+    check(`extraction ${name}: the review items`,
+      JSON.stringify(js.review) === JSON.stringify(py.review),
+      `js ${JSON.stringify(js.review)}\n     py ${JSON.stringify(py.review)}`);
+    if (!('refused' in py) && !('ab2' in py)) return;
+    if ('refused' in py) {
+      check(`extraction ${name}: the template is refused, in the same words`,
+        js.refused === py.refused, `js ${js.refused || 'filled'}\n     py ${py.refused}`);
+      return;
+    }
+    check(`extraction ${name}: the filled template reads back the same readings`,
+      !js.refused && sameNumbers(js.ab2, py.ab2) && sameNumbers(js.mn, py.mn) &&
+      sameNumbers(js.rho, py.rho),
+      `js ${js.refused || JSON.stringify([js.ab2, js.mn, js.rho])}\n     ` +
+      `py ${JSON.stringify([py.ab2, py.mn, py.rho])}`);
+    check(`extraction ${name}: the same sounding, array and flags`,
+      JSON.stringify([js.flags, js.id, js.community, js.instrument, js.array]) ===
+      JSON.stringify([py.flags, py.id, py.community, py.instrument, py.array]),
+      `js ${JSON.stringify([js.flags, js.id, js.community, js.instrument, js.array])}\n     ` +
+      `py ${JSON.stringify([py.flags, py.id, py.community, py.instrument, py.array])}`);
+  });
+  Object.keys(RX.replies).forEach((name) => {
+    check(`extraction reply ${name}: the same outcome, in the same words`,
+      JSON.stringify(extraction.replies[name]) === JSON.stringify(RX.replies[name]),
+      `js ${JSON.stringify(extraction.replies[name])}\n     py ${JSON.stringify(RX.replies[name])}`);
+  });
+  Object.keys(RX.pdfs).forEach((name) => {
+    const { b64, ...py } = RX.pdfs[name];
+    check(`extraction pdf ${name}: the same tables, cells held back and review`,
+      JSON.stringify(extraction.pdfs[name]) === JSON.stringify(py),
+      `js ${JSON.stringify(extraction.pdfs[name])}\n     py ${JSON.stringify(py)}`);
+  });
 
   // --- pumping sheets at the edges ---
   // The two sample sheets are the ordinary case. These are the same sheets
@@ -1979,7 +2285,7 @@ await withPage(async (page, base, consoleErrors) => {
       return {
         reason: null, labels: profile.labels, chainage_m: profile.chainage_m,
         indices: profile.indices, length_m: profile.length_m,
-        bearing_deg: profile.bearing_deg,
+        bearing_deg: profile.bearing_deg, bearing_text: C.bearingText(profile.bearing_deg),
         // the model each column is drawn with, where the section is drawn
         layer2_rho: section.reason
           ? profile.indices.map((k) => interps[k].model.resistivities[1])
@@ -2338,7 +2644,9 @@ await withPage(async (page, base, consoleErrors) => {
   // rho1 / rho_a: the browser's former tables, good to 5e-9, were 3e-3 out
   // at 200,000 ohm-m over 3.2. Each forward model the inversion uses is held
   // to 1e-6 relative over the grid, without waiting for the fuzz suite to
-  // draw such a case. The starting models are arithmetic on the readings and
+  // draw such a case; the grid's thick conductive covers hold the J0 table's
+  // panels below 1e-6, without which Wenner was 1.1e-3 out there, to
+  // Python's. The starting models are arithmetic on the readings and
   // are held to 1e-12, on soundings whose first spacing was read twice.
   const VF = R.ves_forward;
   const forwardJs = await page.evaluate((VF) => {
@@ -2489,6 +2797,7 @@ await withPage(async (page, base, consoleErrors) => {
       const entry = JSON.parse(JSON.stringify(C.inversionCacheEntry(key, capSounding, atCap)));
       const back = C.inversionFromCache(entry, key, capSounding, cfg);
       const zero = C.readVesSheets([{ name: 'Z', rows: RF.zero_rows }], 'x.xlsx')[0];
+      const two = C.readVesSheets([{ name: 'Z', rows: RF.zeros_rows }], 'x.xlsx')[0];
       return {
         short: short, capped: capped,
         at_cap: { iterations: atCap.n_iterations, stopped: atCap.stopped,
@@ -2499,6 +2808,7 @@ await withPage(async (page, base, consoleErrors) => {
           rho: atCap.model.resistivities },
         zero_flags: zero.flags.map((f) => [f.level, f.code, f.message]),
         zero_ab2: zero.ab2, zero_fit: fitDict(C.invertSounding(zero)),
+        zeros_flags: two.flags.map((f) => [f.level, f.code, f.message]),
         interp: RF.interp.x.map((x) => C.interp(Math.log(x), RF.interp.xp_raw.map(Math.log),
           RF.interp.fp.map(Math.log))),
         max_iterations: cfg.ves.max_iterations,
@@ -2558,6 +2868,10 @@ await withPage(async (page, base, consoleErrors) => {
       JSON.stringify(fitJs.zero_ab2) === JSON.stringify(RF.zero_ab2),
       `js ${JSON.stringify(fitJs.zero_flags)}\n     py ${JSON.stringify(RF.zero_flags)}`);
     sameFit('ves fit: the sheet with a row at AB/2 = 0', fitJs.zero_fit, RF.zero_fit);
+    check('ves fit: two rows not above 0 are flagged in the plural, word for word',
+      JSON.stringify(fitJs.zeros_flags) === JSON.stringify(RF.zeros_flags) &&
+      RF.zeros_flags.some((f) => f[1] === 'nonpositive_spacing' && f[2].includes('2 readings')),
+      `js ${JSON.stringify(fitJs.zeros_flags)}\n     py ${JSON.stringify(RF.zeros_flags)}`);
     check('ves fit: interp over log abscissae with log 0 among them, as np.interp',
       RF.interp.value.every((py, k) => (py === null ? Number.isNaN(fitJs.interp[k])
         : fitJs.interp[k] === py)),
@@ -3866,7 +4180,8 @@ await withPage(async (page, base, consoleErrors) => {
         let laid;
         try {
           laid = C.surveyPlan(lin, run.a.core, run.a.parts, at(kase.at), water,
-            Object.assign({}, lin.settings, kase.settings), C.defaultConfig().ves);
+            Object.assign({}, lin.settings, kase.settings), C.defaultConfig().ves, undefined,
+            kase.searched === undefined ? null : kase.searched);
         } catch (e) {
           return { exact: { refused: String(e && e.message !== undefined ? e.message : e) } };
         }
@@ -3896,7 +4211,8 @@ await withPage(async (page, base, consoleErrors) => {
       };
       return { z: [C.sha256Hex(bytesOf(z)), spots(z)], cases: g.cases.map((kase) => answer(window, run, kase.settings)),
         plans: SP.cases.map((kase) => tried(() => plan(kase))),
-        refused: SP.refused.map((kase) => tried(() => plan(Object.assign({}, SP.cases[0], { settings: kase.settings })))) };
+        refused: SP.refused.map((kase) => tried(() => plan(Object.assign({}, SP.cases[0],
+          { settings: kase.settings, searched: kase.searched === undefined ? null : kase.searched })))) };
     };
 
     return {
@@ -3982,7 +4298,9 @@ await withPage(async (page, base, consoleErrors) => {
       SP.refused.forEach((kase, i) => {
         const plan = (got.refused || [])[i] || { threw: 'no answer' };
         const said = plan.threw ? `threw ${plan.threw}` : plan.exact.refused;
-        check(`survey plan: ${JSON.stringify(kase.settings)} refused in Python's words`, said === kase.refused,
+        const asked = kase.searched === undefined ? JSON.stringify(kase.settings)
+          : `a lookup radius of ${kase.searched} m`;
+        check(`survey plan: ${asked} refused in Python's words`, said === kase.refused,
           `js ${JSON.stringify(said)}\n     py ${JSON.stringify(kase.refused)}`);
       });
     }
@@ -4443,6 +4761,108 @@ await withPage(async (page, base, consoleErrors) => {
     check('rising main: every state of the water is among the cases',
       ['aggressive', 'not_aggressive', 'incomplete', 'none'].every((k) => states.has(k)),
       JSON.stringify([...states]));
+  }
+
+  // --- Service rounds (PLAN.md step 7.3) ---
+  // The twins of groundwater/rounds.py on make_reference.py's cases: the area
+  // mechanics read from their lines, what is due at each borehole of the
+  // register on the day, the rounds by mechanic in the order of the walk with
+  // the legs between the stops, their words and the round sheet's parts, and
+  // each record's state with the routine inspection among its visits, all
+  // held whole.
+  {
+    const RS = R.rounds;
+    const rsJs = await page.evaluate(({ RS }) => {
+      const C = GWT.core;
+      return RS.cases.map((c) => {
+        try {
+          const plan = Object.assign(C.serviceSchedule(), c.schedule || {});
+          const parsed = C.parseAreaMechanics(c.mechanics);
+          const result = C.serviceRounds(c.assets, c.as_of, plan, parsed.entries);
+          const states = c.assets.map((raw) => {
+            const asset = C.assetFromDict(raw);
+            if (!asset) return null;
+            const st = C.assetState(asset, c.as_of, plan);
+            delete st.overdue;
+            delete st.is_working;
+            return st;
+          });
+          return { ok: {
+            parsed, result, words: C.roundsText(result),
+            rounds: result.rounds.map((one) => Object.assign(
+              { text: C.roundText(one), rows: C.roundRows(one) },
+              c.sheets ? { sheets: one.stops.map((stop) => C.stopSheet(stop)) } : {})),
+            states,
+          } };
+        } catch (e) {
+          return { threw: String(e && e.stack || e) };
+        }
+      });
+    }, { RS });
+    const failed = RS.cases.map((c, i) => {
+      const g = rsJs[i];
+      if (!g || g.threw) return `[${c.name}] threw ${g ? g.threw : 'no answer'}`;
+      return firstDifference(g.ok, c.expect, `[${c.name}]`);
+    }).filter(Boolean);
+    check(`rounds: what is due, by mechanic, in order, and the sheet (${RS.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const stops = RS.cases.flatMap((c) => c.expect.result.rounds.flatMap((r) => r.stops));
+    const reached = ['asset', 'chiefdom', 'none'].every((k) => stops.some((s) => s.mechanic_from === k)) &&
+      ['overdue', 'due', 'unknown'].every((k) => stops.some((s) => s.due.some((d) => d.state === k))) &&
+      stops.some((s) => !s.placed) && stops.some((s) => s.due.some((d) => d.key === 'routine_inspection'));
+    check('rounds: the cases reach every mechanic, every state and a stop with no position', reached);
+  }
+
+  // --- How long boreholes keep working (PLAN.md step 7.4) ---
+  // The twins of groundwater/survival.py on make_reference.py's cases: each
+  // borehole's time from commissioning to its first failure or censoring,
+  // the Kaplan-Meier estimate with its band, median and numbers at risk over
+  // the register and by pump type, contractor and water chemistry, the
+  // log-rank comparison, the words and the tables, all held whole. The
+  // shares are rounded to four decimals and the p-value to six where the
+  // engines report them, so the two engines' logarithms need not agree to
+  // the last bit.
+  {
+    const SR = R.survival;
+    const srJs = await page.evaluate(({ SR }) => {
+      const C = GWT.core;
+      return SR.cases.map((c) => {
+        try {
+          const cfg = C.withConfig({ survival: c.settings || {} });
+          const result = C.survivalAnalysis(c.assets, c.as_of, cfg);
+          const groups = [result.overall].concat(result.groupings.flatMap((g) => g.groups));
+          return { ok: {
+            result, words: C.survivalText(result), header: C.survivalHeader(),
+            rows: [C.survivalRows([result.overall])]
+              .concat(result.groupings.map((g) => C.survivalRows(g.groups))),
+            at_risk: [C.atRiskHeader(result), C.atRiskRows(groups)],
+          } };
+        } catch (e) {
+          return { threw: String(e && e.stack || e) };
+        }
+      });
+    }, { SR });
+    const failed = SR.cases.map((c, i) => {
+      const g = srJs[i];
+      if (!g || g.threw) return `[${c.name}] threw ${g ? g.threw : 'no answer'}`;
+      return firstDifference(g.ok, c.expect, `[${c.name}]`);
+    }).filter(Boolean);
+    check(`survival: time to first failure, by group, compared, in words (${SR.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const results = SR.cases.map((c) => c.expect.result);
+    const ends = new Set(results.flatMap((r) => r.boreholes.map((b) => b.ends)));
+    const reasons = new Set(results.flatMap((r) => r.groupings.map((g) => g.comparison.reason)));
+    const groups = results.flatMap((r) => r.groupings.flatMap((g) => g.groups));
+    const reached = ['failure', 'repair', 'restored', 'decommissioned', 'report', 'commissioning',
+      'no_commissioning'].every((k) => ends.has(k)) &&
+      [null, 'fewer_than_two', 'no_failures', 'one_at_risk', 'singular']
+        .every((k) => reasons.has(k)) &&
+      results.some((r) => r.groupings.some((g) => g.comparison.reason === null &&
+        g.comparison.not_at_risk.length)) &&
+      groups.some((g) => g.judged) && groups.some((g) => !g.judged) &&
+      groups.some((g) => g.steps.some((s) => s.survival === 0));
+    check('survival: the cases reach every ending, every comparison, a group left out of the ' +
+      'test and a curve closing on nought', reached);
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

@@ -196,7 +196,8 @@ def split_inline_value(cell_text: str) -> tuple[str, str | None]:
     return text, None
 
 
-def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
+def extract_header_fields(grid: list[list], max_rows: int = 30,
+                          raw: dict | None = None) -> dict:
     """Scan the top of a sheet for ``Label -> value`` pairs.
 
     A value is taken from the same cell after a colon when present,
@@ -204,6 +205,11 @@ def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
     occurrence of a key wins, except that a more specific label wording
     later in the sheet ("Depth of Borehole") overrides a generic one
     seen earlier ("Depth").
+
+    ``raw``, when given, is filled with ``key -> (label, value)``: the label
+    text and the cell value each field was read from. A number loses its
+    unit on the way into ``fields`` ("150 ft" is 150), and the drilling log
+    reader needs both the label's unit ("Total depth (ft)") and the cell's.
     """
     fields: dict = {}
     priorities: dict[str, int] = {}
@@ -246,9 +252,13 @@ def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
                 if number is not None:
                     fields[key] = number
                     priorities[key] = priority
+                    if raw is not None:
+                        raw[key] = (label_text, value)
             else:
                 fields[key] = clean_text(_date_text(value))
                 priorities[key] = priority
+                if raw is not None:
+                    raw[key] = (label_text, value)
     return fields
 
 

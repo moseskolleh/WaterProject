@@ -114,7 +114,9 @@ water quality guidelines.
     and saying plainly that a uniform rate cannot reorder the ranking - only
     district rates do that); the age of the survey behind each point is
     measured, with coverage over recent surveys reported beside coverage
-    over all of them so the gap between them is the size of the assumption;
+    over all of them so the gap between them is the size of the assumption
+    (a survey dated after the year planned for says nothing about it, and
+    is left out of both the age and the recent count);
     and dry-season service is a band rather than a number, because most
     surveys never recorded how many months of the year a source yields water
     and silence is not a year-round supply
@@ -137,11 +139,14 @@ water quality guidelines.
     certificate that forgets what earlier ones paid is challenged, and a
     certificate that would pay less than nothing pays nothing and says by
     how much the job is overpaid
-17. A borehole asset registry for the second twenty years: a check-summed
-    identifier derived from the position (so two teams at the same wellhead
-    with no connection between them arrive at the same one), a printable
-    headworks plate carrying a QR symbol generated offline, an append-only
-    maintenance history that merges by content when two phones meet, and
+17. A borehole asset registry for the second twenty years: an identifier
+    derived from the position (so two teams at the same wellhead with no
+    connection between them arrive at the same one) and closed by an ISO
+    7064 MOD 37,36 check character (identifiers minted before that
+    character was corrected are still read, with a note saying so), a
+    printable headworks plate carrying a QR symbol generated offline, an
+    append-only maintenance history that merges by content when two phones
+    meet, and
     derived condition and overdue dates. Nothing is assumed working - a
     borehole nobody has reported on is unknown, not functional, and the
     functionality rate is only ever computed over the points whose
@@ -152,7 +157,23 @@ water quality guidelines.
     unanswered is not a no, so an incomplete form gives a range; a side
     that is not known is said to be unknown and gives no priority. The
     form's wording and the matrix's cells, which are a choice made here,
-    are listed in `QUESTIONS.md` for checking
+    are listed in `QUESTIONS.md` for checking. The registry schedules three
+    visits: the sanitary inspection, a routine inspection of the pump and
+    rising main at the interval the design sets for the rising main, and
+    the water quality sample, every interval a setting in
+    `data/defaults.json`. Service rounds group what is due on a day across
+    the register by area mechanic (named on the borehole's record, else for
+    its chiefdom), order each round by a stated nearest-neighbour walk that
+    is not an optimal route, and print a round sheet with boxes for the
+    readings. Across the register, the time from commissioning to the
+    first failure is estimated by Kaplan and Meier's method, overall and
+    by pump type, contractor and water corrosivity, as a step curve with
+    its 95 percent band and a table of the median and the numbers at risk
+    on a day that is an input. A borehole that has not failed counts as
+    working only up to the last report of it working; a group of fewer
+    than five boreholes followed says it is too few to judge and shows no
+    curve; and groups are compared by the log-rank test, with its p-value
+    said to be what it is
 18. The survey as an interactive map, not only as a picture: both apps
     write a [GeoLibre](https://geolibre.app) project file - an open,
     plain-JSON map format - carrying the site, the scored drill targets,
@@ -312,8 +333,11 @@ groundwater extract field_sheet.pdf --out ./review       # a text-layer PDF into
 
 `recompute` prints one line per saved source and exits non-zero when one
 could not be rebuilt, so a shell loop over a folder of project files
-stops on the file that needs attention. `python -m groundwater` is the
-same thing.
+stops on the file that needs attention. `extract` writes the review
+workbook, and the filled VES template when the sheet's reading table can
+go into one (it says why when it cannot), and prints how many items the
+review lists; a scanned PDF with no text layer is refused with a pointer
+to the AI extraction. `python -m groundwater` is the same thing.
 
 ## Package layout
 
@@ -345,6 +369,8 @@ groundwater/
     procurement.py  contract, variation orders, measurement and the interim
                   payment certificate
     registry.py   asset identifiers, maintenance events, derived condition
+    rounds.py     service rounds: what is due on a day, by area mechanic,
+                  in the order of a nearest-neighbour walk
     sanitary.py   the sanitary inspection form, scored and read with the
                   E. coli count into one risk statement
     qr.py         a dependency-free QR encoder for the headworks plate

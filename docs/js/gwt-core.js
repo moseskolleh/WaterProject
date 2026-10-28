@@ -107,7 +107,7 @@
     var cfg = defaultConfig();
     if (!overrides) return cfg;
     ['style', 'ves', 'pumping', 'design', 'ves_range', 'odds', 'ledger', 'cost_range',
-      'terrain']
+      'terrain', 'service', 'survival']
       .forEach(function (section) {
       var over = overrides[section];
       if (!over) return;
@@ -157,7 +157,8 @@
    * and sin(x) apart; against 1.17 these agree to 3e-16 on [0, 30] and to
    * 1.5e-14 out to 2e5. J1 returns x / 2 below sqrt(eps), as xsf's own
    * source does and neither release yet does, which moves only results
-   * below 1.5e-8, where the tables never reach: they start at 1e-6.
+   * below 1.5e-8, where the J1 table never reaches: its lowest node is
+   * 2.0e-8. (The J0 table reaches 2e-16, where both give 1.)
    * parity.mjs holds both functions, and their zeros, to scipy. The
    * coefficients are written to the shortest digits that give the same
    * doubles.
@@ -628,18 +629,35 @@
     return quadratureCut(r / scale, rho[0] / arrMin(rho));
   }
 
+  /* Where the J0 table's panels start, and how many share the decades from
+   * there to 1e-6 (forward.py _J0_FLOOR, which sets out why). Below x =
+   * r / (rho_n S), S the conductance over the basement, the potential
+   * integrand is the whole rho_n - rho1, and a Wenner or finite-MN reading
+   * carries the piece under the lowest panel whole. One GL-8 panel on
+   * (0, 1e-6) left Wenner 1.1e-3 out under 300 m of 0.5 ohm-m on 200,000;
+   * inside the inversion's bounds that point is above 1e-14 for any radius
+   * over 4 micrometres. The J1 table needs none of this: its integrand
+   * carries x J1(x), and on (0, 1e-6) adds less than 2e-19 times the
+   * largest resistivity. */
+  var J0_FLOOR = 1e-14;
+  var J0_LOW_PANELS = 16;
+
   function buildTables(order, nZeros) {
     var zeros = besselZeros(order, nZeros);
     var bessel = order === 0 ? besselJ0 : besselJ1;
 
-    /* section 1: GL-8 on (0, 1e-6) and on 14 log-spaced panels from 1e-6 to
-     * the first zero. Starting at 1e-6, as the tables once did, left out
-     * (rho_n - rho1) x 1e-6 of the potential (J0) integral, an error of
-     * that many ohm-m in every Wenner and finite-MN reading. */
+    /* section 1: GL-8 on 14 log-spaced panels from 1e-6 to the first zero,
+     * and below them on (0, 1e-6) for J1; for J0, on J0_LOW_PANELS more
+     * log-spaced panels down to J0_FLOOR and then on (0, J0_FLOOR) */
     var gl8 = gaussLegendre(8);
-    var edges = [0.0].concat(geomspace(1e-6, zeros[0], 15));
-    var s1n = new Float64Array(15 * 8), s1w = new Float64Array(15 * 8), at = 0;
-    for (var p = 0; p < 15; p++) {
+    var edges = geomspace(1e-6, zeros[0], 15);
+    if (order === 0) {
+      edges = geomspace(J0_FLOOR, 1e-6, J0_LOW_PANELS + 1).slice(0, -1).concat(edges);
+    }
+    edges = [0.0].concat(edges);
+    var nS1 = edges.length - 1;
+    var s1n = new Float64Array(nS1 * 8), s1w = new Float64Array(nS1 * 8), at = 0;
+    for (var p = 0; p < nS1; p++) {
       var lo = edges[p], hi = edges[p + 1];
       var mid = 0.5 * (lo + hi), half = 0.5 * (hi - lo);
       for (var k = 0; k < 8; k++) {
@@ -927,15 +945,20 @@
       });
     });
 
-    /* merge duplicates by geometric mean */
+    /* Merge duplicates by geometric mean, over the readings that can be: a
+     * zero or blank at an overlap made the mean 0 or NaN, and the inversion
+     * then dropped the spacing with the good reading beside it. A spacing with
+     * no usable reading stays NaN, which the inversion leaves out. */
     var unique = ab2All.slice().sort(function (a, b) { return a - b; })
       .filter(function (v, k, a) { return k === 0 || v !== a[k - 1]; });
     var merged = unique.map(function (u) {
       var logs = [];
       for (var k = 0; k < ab2All.length; k++) {
-        if (ab2All[k] === u) logs.push(Math.log(rhoAll[k]));
+        if (ab2All[k] === u && isFinite(rhoAll[k]) && rhoAll[k] > 0) {
+          logs.push(Math.log(rhoAll[k]));
+        }
       }
-      return Math.exp(arrMean(logs));
+      return logs.length ? Math.exp(arrMean(logs)) : NaN;
     });
     return { ab2: unique, rho: merged, shifts: shifts };
   }
@@ -975,9 +998,8 @@
   }
 
   function tooManyLayers(n, nSpacings) {
-    return 'Too few spacings for a ' + n + '-layer model: its ' + (2 * n - 1) +
-      ' parameters need at least ' + (2 * n) + ' spacings, and the sounding has ' +
-      nSpacings;
+    return phrase('ves.too_many_layers', { layers: n, parameters: 2 * n - 1,
+      needed: 2 * n, spacings: nSpacings });
   }
 
   /* inversion.py _stationary: whether a fit stopped at theta is at a minimum
@@ -1637,7 +1659,10 @@
    * percentage, plus half the log ratio at an MN overlap, added in
    * quadrature as two independent errors are. A Wenner sheet has
    * no MN to change, and a spacing it reads twice is two readings the fit
-   * sees apart, so only a Schlumberger overlap adds to the error.
+   * sees apart, so only a Schlumberger overlap adds to the error. The splice
+   * also leaves as two readings a spacing read twice on a Schlumberger sheet
+   * with no MN change recorded, so a spacing ab2 holds more than once was not
+   * merged and its error is the base alone.
    * @param {Sounding} sounding
    * @param {number[]} ab2
    * @param {number} basePercent
@@ -1649,9 +1674,15 @@
     if (String(sounding.array_type || '').indexOf('wenner') !== 0) {
       overlapRatios(sounding.ab2, sounding.rho_app).forEach(function (o) { at[o[0]] = o[1]; });
     }
+    /** @type {Record<string, number>} */
+    var count = {};
+    ab2.forEach(function (value) { count[value] = (count[value] || 0) + 1; });
     var sigma = [], spacings = [];
     ab2.forEach(function (value) {
-      if (!Object.prototype.hasOwnProperty.call(at, value)) { sigma.push(base); return; }
+      if (count[value] > 1 || !Object.prototype.hasOwnProperty.call(at, value)) {
+        sigma.push(base);
+        return;
+      }
       var d = 0.5 * Math.log(at[value]);
       sigma.push(Math.sqrt(base * base + d * d));
       spacings.push(value);
@@ -1665,11 +1696,11 @@
     var rho = [], tops = [0.0], i;
     for (i = 0; i < n; i++) rho.push(Math.exp(theta[i]));
     for (i = n; i < theta.length; i++) tops.push(tops[tops.length - 1] + Math.exp(theta[i]));
-    var weathered = 0.0, deepest = null, basement = null;
+    var weathered = 0.0, deepest = null;
     for (i = 0; i < n; i++) {
       var top = tops[i], bottom = i + 1 < n ? tops[i + 1] : Infinity;
       if (unitLabel(rho[i], i === 0, i === n - 1, ves)[1]) {
-        var zTop = Math.max(top, 3.0);  /* the top few metres are vadose */
+        var zTop = Math.max(top, VADOSE_M);  /* the top few metres are vadose */
         if (zTop < investigation) {
           var zBottom = Math.min(bottom, investigation);
           if (zBottom - zTop >= 1.0) {
@@ -1678,9 +1709,11 @@
           }
         }
       }
-      if (basement === null && rho[i] >= ves.fresh_basement_min_rho && top > 0) basement = top;
     }
-    if (basement === null && rho[n - 1] >= ves.fractured_zone_rho[1]) basement = tops[n - 1];
+    /* resistive ground with nothing conductive below it, by the
+     * interpretation's own rule: a layer as resistive as basement over
+     * conductive ground is a cover, not a basement found in every model */
+    var basement = basementTop(rho, tops, ves);
     if (basement !== null && basement > investigation) basement = null;
     deepest = deepest === null ? investigation : deepest + ves.max_drilling_margin_m;
     return [basement, weathered, deepest, tops.slice(1), rho];
@@ -7545,10 +7578,17 @@
    * @param {Rec} [cfg] the configuration's terrain section, the candidates' own by default
    * @param {Rec} [ves] its VES section, which the AB/2 series is planned by
    * @param {Rec[]} [distances] the separation table, the bundled one by default
+   * @param {number|null} [searchedM] how far round the site the water points were looked up: a
+   *   lookup's radius, less how far the site lies from where it was centred; null where they are
+   *   not cut to a circle round the site (an export read whole, the national set)
    * @returns {Rec} */
-  function surveyPlan(lineaments, core, parts, site, waterPoints, cfg, ves, distances) {
+  function surveyPlan(lineaments, core, parts, site, waterPoints, cfg, ves, distances, searchedM) {
     var settings = cfg || lineaments.settings;
     var s = spSettings(settings);
+    var searched = searchedM === undefined || searchedM === null ? null : Number(searchedM);
+    if (searched !== null && !(isFinite(searched) && searched >= 0)) {
+      throw new Error('the radius the water points were looked up within must be 0 m or more');
+    }
     var rows = loadSeparationDistances(distances);
     /** @type {Record<string, number>} */
     var table = {};
@@ -7691,8 +7731,38 @@
       near: near.map(function (entry) { return entry[1].id; }), skipped: skipped, reach: reach, rings: rings,
       water_points: given, distances: mapped, unmapped: unmapped,
       ab2: vesSurveyPlan(s.survey_target_depth_m, { ves: ves || defaultConfig().ves }),
-      covered: covered, frame: frame, settings: settings,
+      covered: covered, frame: frame, settings: settings, searched_m: searched,
     };
+  }
+
+  /** How far from the site a mapped water point's separation ring can
+   * reach a sounding: the service radius and the table's largest distance
+   * from a water point, or null where the table keeps none
+   * (survey.water_point_reach).
+   * @param {Rec} plan what surveyPlan gives
+   * @returns {number|null} */
+  function waterPointReach(plan) {
+    var structures = [SP_BOREHOLE, SP_DUG_WELL, SP_OTHER_WELL, SP_STREAM];
+    var reach = -1;
+    for (var i = 0; i < structures.length; i++) {
+      if (!Object.prototype.hasOwnProperty.call(plan.distances, structures[i])) continue;
+      var d = Number(plan.distances[structures[i]]);
+      if (reach < 0 || d > reach) reach = d;
+    }
+    return reach < 0 ? null : Number(plan.radius_m) + reach;
+  }
+
+  /* how far the water points were looked up, to the millimetre, and the
+   * reach they fell short of, or null where they did not: survey._short_of.
+   * To the millimetre, so that a lookup a site's round trip through UTM has
+   * put a hair inside its radius is neither short of a reach it met nor
+   * said to stop at the metre below. */
+  /** @param {Rec} plan @returns {number[]|null} */
+  function spShortOf(plan) {
+    var reach = waterPointReach(plan);
+    if (plan.searched_m === null || plan.searched_m === undefined || reach === null) return null;
+    var searched = Math.floor(Number(plan.searched_m) * 1000 + 0.5) / 1000;
+    return searched >= reach ? null : [searched, reach];
   }
 
   /** @param {string} text */
@@ -7713,7 +7783,9 @@
       });
     if (plan.reach.streams) pieces.push(phrase('survey_plan.kept_streams', { distance: plan.distances[SP_STREAM] }));
     if (plan.reach.sea) pieces.push(phrase('survey_plan.kept_coast', { distance: plan.distances[SP_COAST] }));
-    if (!pieces.length) return phrase('survey_plan.kept_nothing');
+    if (!pieces.length) {
+      return phrase(spShortOf(plan) !== null ? 'survey_plan.kept_nothing_loaded' : 'survey_plan.kept_nothing');
+    }
     return phrase('survey_plan.kept', { kept: andJoin(pieces) });
   }
 
@@ -7754,7 +7826,14 @@
       var short = plan.dropped.filter(offLine).length;
       if (short) parts.push(phrase('survey_plan.dropped_short', { count: short }));
       parts.push(spKept(plan));
-      if (plan.water_points === 0) parts.push(phrase('survey_plan.no_water_points'));
+      var fell = spShortOf(plan);
+      if (fell !== null) {
+        /* the whole metres it reached, so that 549.6 m is not printed as the
+         * 550 m it fell short of */
+        parts.push(phrase('survey_plan.water_points_short', { searched: Math.floor(fell[0]), reach: fell[1] }));
+      } else if (plan.water_points === 0 && (plan.searched_m === null || plan.searched_m === undefined)) {
+        parts.push(phrase('survey_plan.no_water_points'));
+      }
     } else if (plan.basis === 'strike') {
       var line = plan.lines[0];
       parts.push(phrase('survey_plan.lines_strike', { radius: radius, strike: line.strike_deg, length: line.length_m,
@@ -7942,7 +8021,7 @@
   Object.assign(C, {
     waterPointKind: waterPointKind, surveyPlan: surveyPlan, surveyPlanCaptions: surveyPlanCaptions,
     surveyPlanGpx: surveyPlanGpx, surveyPlanGeoJson: surveyPlanGeoJson, surveySoundingText: surveySoundingText,
-    lineStation: lineStation,
+    lineStation: lineStation, waterPointReach: waterPointReach,
   });
 
   /* =========================================================== curve type
@@ -8012,7 +8091,48 @@
    * forms the main aquifer, and fresh basement at depth.
    */
 
-  function unitLabel(rho, isTop, isBottom, cfg) {
+  /* The top few metres are taken as unsaturated: a water zone starts no
+   * shallower than this (interpret.py VADOSE_M). */
+  var VADOSE_M = 3.0;
+
+  /* Whether a layer below the top is conductive ground: one the rules read as
+   * water-bearing or clay-rich weathered ground, rather than as compact or dry
+   * rock or basement - under both the top of the water-bearing window and the
+   * fresh basement edge (interpret.py _conductive). */
+  function isConductive(rho, cfg) {
+    return rho < cfg.fractured_zone_rho[1] && rho < cfg.fresh_basement_min_rho;
+  }
+
+  /* For each layer, whether any deeper layer is conductive ground. */
+  function conductiveBelow(rho, cfg) {
+    var out = [], seen = false;
+    for (var i = rho.length - 1; i >= 0; i--) {
+      out[i] = seen;
+      seen = seen || isConductive(rho[i], cfg);
+    }
+    return out;
+  }
+
+  /* interpret.py basement_top: the top of fresh basement, or null. Fresh
+   * basement is resistive ground with no conductive ground beneath it in the
+   * fitted model: the first layer below the surface that reaches the fresh
+   * basement edge with nothing conductive under it, else a half-space of
+   * 800 ohm-m or more. A layer that reaches the edge over conductive ground
+   * is a resistive cover (a duricrust or a dry layer), not bedrock; it used
+   * to be taken as basement whatever lay below. The interpretation and the
+   * range of models (rangeSummary) both read it from here. */
+  function basementTop(rho, tops, cfg) {
+    var below = conductiveBelow(rho, cfg);
+    for (var i = 0; i < rho.length; i++) {
+      if (rho[i] >= cfg.fresh_basement_min_rho && tops[i] > 0 && !below[i]) return tops[i];
+    }
+    if (rho[rho.length - 1] >= cfg.fractured_zone_rho[1]) return tops[rho.length - 1];
+    return null;
+  }
+
+  /* overConductive: whether conductive ground lies anywhere below the layer;
+   * a layer as resistive as fresh basement over it is a resistive cover. */
+  function unitLabel(rho, isTop, isBottom, cfg, overConductive) {
     var hi = cfg.fractured_zone_rho[1];
     if (isTop) {
       if (rho >= cfg.laterite_min_rho) return ['dry lateritic topsoil / duricrust', false];
@@ -8020,7 +8140,10 @@
       if (rho <= cfg.clay_max_rho) return ['clayey topsoil', false];
       return ['topsoil / laterite', false];
     }
-    if (rho >= cfg.fresh_basement_min_rho) return ['fresh basement', false];
+    if (rho >= cfg.fresh_basement_min_rho) {
+      if (overConductive) return [phrase('ves.unit_resistive_cover'), false];
+      return ['fresh basement', false];
+    }
     if (rho >= hi) {
       if (isBottom) {
         return ['slightly weathered or fractured bedrock (limited water potential)', false];
@@ -8182,8 +8305,9 @@
     }
 
     var layers = [];
+    var below = conductiveBelow(rho, cfg);
     for (i = 0; i < n; i++) {
-      var labelled = unitLabel(rho[i], i === 0, i === n - 1, cfg);
+      var labelled = unitLabel(rho[i], i === 0, i === n - 1, cfg, below[i]);
       layers.push({
         number: i + 1,
         rho: rho[i],
@@ -8200,20 +8324,30 @@
      * open-ended there, as the half-space is: the model put that base where
      * no reading reaches. A water-bearing layer that starts at or below the
      * depth of investigation was never seen at all, so it is no zone, and
-     * the narrative says so. */
+     * the narrative says so. One that starts above it, on a sounding too
+     * short to see below the vadose allowance, is no zone either, but does
+     * not lie below the depth of investigation. */
     var zones = [];
     var basementNotResolved = false;
-    var openBase = null, unseenTops = [];
+    var openBase = null, unseenTops = [], vadoseTops = [];
     layers.forEach(function (layer) {
       if (!layer.water_bearing) return;
-      var top = Math.max(layer.top_m, 3.0);
-      if (top >= investigation) { unseenTops.push(layer.top_m); return; }
+      var top = Math.max(layer.top_m, VADOSE_M);
+      if (top >= investigation) {
+        (layer.top_m >= investigation ? unseenTops : vadoseTops).push(layer.top_m);
+        return;
+      }
       var bottom = Math.min(layer.bottom_m, investigation);
       if (layer.bottom_m > investigation) {
         basementNotResolved = bottom - top >= 1.0;
         openBase = layer.bottom_m;
       }
-      if (bottom - top >= 1.0) zones.push([pyRound(top), pyRound(bottom)]);
+      if (bottom - top >= 1.0) {
+        /* each end rounded half to even, but never to a zone of no
+         * thickness: 3.5 to 4.5 m came out "4 m to 4 m", an aquifer of 0 m */
+        var zTop = pyRound(top);
+        zones.push([zTop, Math.max(pyRound(bottom), zTop + 1)]);
+      }
     });
     zones.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
     var merged = [];
@@ -8224,17 +8358,12 @@
     });
     zones = merged;
 
-    var depthToBasement = null;
-    for (i = 0; i < layers.length; i++) {
-      if (layers[i].rho >= cfg.fresh_basement_min_rho && layers[i].top_m > 0) {
-        depthToBasement = layers[i].top_m;
-        break;
-      }
-    }
-    if (depthToBasement === null &&
-        layers[layers.length - 1].rho >= cfg.fractured_zone_rho[1]) {
-      depthToBasement = layers[layers.length - 1].top_m;
-    }
+    /* resistive ground with nothing conductive below it (basementTop); a layer
+     * as resistive as basement over conductive ground is a cover */
+    var depthToBasement = basementTop(rho, tops, cfg);
+    var covers = layers.filter(function (layer, k) {
+      return layer.number > 1 && below[k] && layer.rho >= cfg.fresh_basement_min_rho;
+    }).map(function (layer) { return layer.number; });
     /* a basement top below the depth of investigation is where the model
      * happened to put it, not a depth the sounding measured */
     var bedrockUnseen = depthToBasement !== null && depthToBasement > investigation;
@@ -8332,7 +8461,8 @@
       fit_quality: fitQuality,
       max_spacing_m: maxSpacing,
     };
-    interp.narrative = interpretationNarrative(interp, unseenTops, bedrockUnseen);
+    interp.narrative = interpretationNarrative(interp, unseenTops, bedrockUnseen,
+      vadoseTops, covers);
     return interp;
   }
 
@@ -8692,7 +8822,10 @@
       : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
   }
 
-  function interpretationNarrative(interp, unseenTops, bedrockUnseen) {
+  /* vadoseTops: the tops of the water-bearing layers a sounding too short to
+   * see below the vadose allowance does not count; covers: the numbers of the
+   * layers as resistive as fresh basement over conductive ground. */
+  function interpretationNarrative(interp, unseenTops, bedrockUnseen, vadoseTops, covers) {
     var curve = describeCurveType(interp.curve_type);
     /* "resolves a 3 layer subsurface" over a boundary known only to x/ 3.7
      * claimed a layer the curve does not settle */
@@ -8733,13 +8866,14 @@
         'this point within the investigated depth.');
     }
     if (unseenTops && unseenTops.length) {
-      var one = unseenTops.length === 1;
-      parts.push('The water-bearing ' + (one ? 'layer' : 'layers') + ' from ' +
-        andJoin(unseenTops.map(function (t) { return fmtNum(t) + ' m'; })) + ' ' +
-        (one ? 'lies' : 'lie') + ' below the ' + fmtNum(interp.investigation_depth_m) +
-        ' m the sounding resolves, so ' +
-        (one ? 'it is not counted as a water zone' : 'they are not counted as water zones') +
-        '.');
+      parts.push(phrase('ves.unseen_layers', { n: unseenTops.length,
+        tops: andJoin(unseenTops.map(function (t) { return fmtNum(t) + ' m'; })),
+        doi: interp.investigation_depth_m }));
+    }
+    if (vadoseTops && vadoseTops.length) {
+      parts.push(phrase('ves.vadose_layers', { n: vadoseTops.length,
+        tops: andJoin(vadoseTops.map(function (t) { return fmtNum(t) + ' m'; })),
+        vadose: VADOSE_M, doi: interp.investigation_depth_m }));
     }
     if (interp.fit_error_percent !== null && interp.fit_error_percent !== undefined) {
       if (interp.fit_quality === 'unreliable') {
@@ -8752,6 +8886,10 @@
           fmtNum(interp.fit_error_percent, 3) + ' percent (ERR), above the ' +
           'target, so the layer depths are approximate.');
       }
+    }
+    if (covers && covers.length) {
+      parts.push(phrase('ves.resistive_cover', { n: covers.length,
+        layers: andJoin(covers.map(function (k) { return String(k); })) }));
     }
     if (interp.depth_to_basement_m !== null) {
       parts.push('The depth to bedrock is estimated at about ' +
@@ -16067,24 +16205,57 @@
     if (typeof value === 'boolean') return dflt;
     var text = String(value).trim();
     if (!text) return dflt;
-    if (text.indexOf(',') >= 0) {
-      /* A comma is a thousands separator only when exactly three digits
-       * follow it and end the number; any other comma between digits is a
-       * decimal comma, which crews trained on French-language sheets type
-       * as a matter of course. "1,5" used to parse as 15 and "078,7" as 787. */
-      if (text.indexOf('.') >= 0 && text.lastIndexOf(',') > text.lastIndexOf('.')) {
-        text = text.replace(/\./g, '').replace(/,/g, '.');
-      } else {
-        text = text.replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
-        text = text.replace(/(\d),(?=\d)/g, '$1.');
-        text = text.replace(/,/g, '');
-      }
-    }
-    var m = NUMBER_RE.exec(text);
+    var m = NUMBER_RE.exec(withoutCommas(text));
     return m === null ? dflt : parseFloat(m[0]);
   }
 
-  var INTERVAL_RE = /(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)/i;
+  /** text with its commas read as parseNumber reads them. A comma is a
+   * thousands separator only when exactly three digits follow it and end the
+   * number; any other comma between digits is a decimal comma, which crews
+   * trained on French-language sheets type as a matter of course. "1,5" used
+   * to parse as 15 and "078,7" as 787.
+   * @param {string} text
+   * @returns {string}
+   */
+  function withoutCommas(text) {
+    if (text.indexOf(',') < 0) return text;
+    if (text.indexOf('.') >= 0 && text.lastIndexOf(',') > text.lastIndexOf('.')) {
+      return text.replace(/\./g, '').replace(/,/g, '.');
+    }
+    text = text.replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
+    text = text.replace(/(\d),(?=\d)/g, '$1.');
+    return text.replace(/,/g, '');
+  }
+
+  /* The whole of a cell that is one number, and the units a field sheet
+   * writes after a reading: utils.py _WHOLE_NUMBER_RE and _UNIT_SUFFIX_RE. A
+   * letter that is not one of the units is a misread rather than a unit: "12O"
+   * is 120 with a scanner's letter O, not 12 of something. Ohms are written
+   * with the Greek capital omega or with the ohm sign, which a text layer may
+   * carry instead. */
+  var WHOLE_NUMBER_RE = /^[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?$/;
+  var UNIT_SUFFIX_RE =
+    /\s*(?:m|cm|mm|min|s|h|hr|%|ohm(?:[-. ]?m)?|[\u03a9\u2126](?:[-.\u00b7]?m)?|m3\/h|l\/s|m\/min)$/i;
+
+  /** Whether a cell is one number and nothing else, bar a unit after it.
+   * utils.py is_whole_number. parseNumber is lenient on purpose and takes the
+   * first number it finds, which is what reading "80m" needs; it is also
+   * what reads a scanner's "12O.4" as 12, so a grader asks this instead.
+   * @param {*} value a cell
+   * @returns {boolean}
+   */
+  function isWholeNumber(value) {
+    if (value === null || value === undefined || typeof value === 'boolean') return false;
+    if (typeof value === 'number') return isFinite(value);
+    if (value instanceof Date) return false;
+    var text = String(value).trim().replace(UNIT_SUFFIX_RE, '');
+    return WHOLE_NUMBER_RE.test(withoutCommas(text));
+  }
+
+  /* Each depth may carry a decimal comma, as parseNumber reads one: without
+   * it "12,5-30" was read as the 5-30 m interval inside it, and the only
+   * trace was an overlap flag that blamed the log. */
+  var INTERVAL_RE = /(\d+(?:[.,]\d+)?)\s*(?:-|to)\s*(\d+(?:[.,]\d+)?)/i;
 
   /** Depths are unsigned, so the hyphen is a range separator, never a minus.
    * A date is never an interval: Excel silently turns "5-10" typed into a
@@ -16098,7 +16269,8 @@
     if (value === null || value === undefined || value instanceof Date) return null;
     var m = INTERVAL_RE.exec(String(value));
     if (!m) return null;
-    var top = parseFloat(m[1]), bottom = parseFloat(m[2]);
+    var top = parseNumber(m[1]), bottom = parseNumber(m[2]);
+    if (top === null || bottom === null) return null;
     return bottom < top ? [bottom, top] : [top, bottom];
   }
 
@@ -16266,12 +16438,16 @@
     return below;
   }
 
-  /**
+  /** `raw`, when given, is filled with key -> [label, value]: the label text
+   * and the cell value each field was read from. A number loses its unit on
+   * the way into the fields ("150 ft" is 150), and the drilling log reader
+   * needs both the label's unit ("Total depth (ft)") and the cell's.
    * @param {Grid} grid
    * @param {number} [maxRows]
+   * @param {Record<string, Array<*>>} [raw]
    * @returns {Rec}
    */
-  function extractHeaderFields(grid, maxRows) {
+  function extractHeaderFields(grid, maxRows, raw) {
     var limit = maxRows === undefined ? 30 : maxRows;
     var fields = {}, priorities = {};
     for (var r = 0; r < Math.min(limit, grid.length); r++) {
@@ -16313,10 +16489,14 @@
         if (NUMERIC_HEADER_KEYS.indexOf(key) >= 0) {
           var number = RANGE_BOTTOM_KEYS.indexOf(key) >= 0 ? rangeBottom(value) : null;
           if (number === null) number = parseNumber(value);
-          if (number !== null) { fields[key] = number; priorities[key] = priority; }
+          if (number !== null) {
+            fields[key] = number; priorities[key] = priority;
+            if (raw) raw[key] = [split[0], value];
+          }
         } else {
           fields[key] = cleanText(headerDateText(value));
           priorities[key] = priority;
+          if (raw) raw[key] = [split[0], value];
         }
       }
     }
@@ -16361,6 +16541,13 @@
 
   /* "Resistance (ohm)", "R (ohm)", "V/I", "dV/I": a measured resistance */
   var RESISTANCE_RE = /resistance|^r\s*\(|v\s*\/\s*i/;
+  /* The unit of a resistivity, ohm-metres however a sheet writes it: "ohm-m",
+   * "ohm.m", "ohm m", "ohmm", "Ωm", "Ω·m", "ohm-metre". Only a
+   * resistivity is in ohm-metres, so a column headed "R (ohm-m)" is one,
+   * whatever its name says; such a column used to be read as V/I and
+   * multiplied by K. The same pattern as ingestion/ves.py _RESISTIVITY_UNIT_RE. */
+  var RESISTIVITY_UNIT_RE =
+    /(?:ohm|ω)\s*[-.·⋅•*]?\s*m(?:et(?:er|re)s?)?(?![a-z])/;
 
   /* The array a sheet names, wherever on the sheet it names it: the title of a
    * template ("SCHLUMBERGER ARRAY VES FIELD DATA"), the array field itself, or
@@ -16476,47 +16663,63 @@
 
   function findVesDataHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
-      var texts = rowText(grid[r]);
-      /** @type {Record<string, number>} */
-      var cols = {};
-      for (var c = 0; c < texts.length; c++) {
-        var t = texts[c];
-        if (!t) continue;
-        if (t.indexOf('ab/2') >= 0 || t === 'ab2' || t.indexOf('ab / 2') >= 0) {
-          cols.ab2 = c;
-        } else if (WENNER_A_HEADERS.indexOf(t) >= 0) {
-          /* The Wenner spacing column, headed "a" or "a (m)", meant nothing to
-           * the reader at all, so a Wenner sheet was dropped whole as having
-           * no data table (ROADMAP data-ingestion-11) */
-          cols.a = c;
-        } else if (t.indexOf('mn') === 0 && MN_HALF_RE.test(t)) {
-          /* half-MN first, and tolerant of the spaces a typed header carries:
-           * "MN / 2 (m)" does not contain the literal "/2", so it would fall
-           * through to the full-MN branch and halve every potential spacing */
-          cols.mn_half = c;
-        } else if (t.indexOf('mn') === 0) {
-          cols.mn = c;
-        } else if (RESISTANCE_RE.test(t)) {
-          /* a sheet that records V/I (a resistance, in ohms) is not a
-           * resistivity sheet: "R (ohm)" used to match the "ohm" test below
-           * and every reading came through as a resistivity of 0.9 */
-          cols.resistance = c;
-        } else if (t.indexOf('resistivity') >= 0 || t.indexOf('rho') === 0 ||
-                   t.indexOf('ohm') >= 0 || t.indexOf('apparent') >= 0 ||
-                   t.indexOf('\u03c1') >= 0 || t.indexOf('\u03c9') >= 0) {
-          cols.rho = c;
-        } else if (['k', 'k (m)', 'k(m)', 'geometric factor'].indexOf(t) >= 0) {
-          cols.k = c;
-        } else if (['no.', 'no', 'reading', 'n'].indexOf(t) >= 0) {
-          cols.no = c;
-        }
-      }
+      var cols = vesReadingColumns(grid[r]);
       if (('ab2' in cols || 'a' in cols) &&
           ('rho' in cols || 'resistance' in cols)) {
         return { row: r, cols: cols };
       }
     }
     return null;
+  }
+
+  /** What each heading of a VES table names, by the rules the reader reads a
+   * header row with (ves.py reading_columns), the last column of a kind
+   * winning. The extraction fills the VES template with it, so a sheet's
+   * columns are placed by the same rules that read the template back.
+   * @param {Array<*>} headings
+   * @returns {Record<string, number>}
+   */
+  function vesReadingColumns(headings) {
+    var texts = rowText(headings || []);
+    /** @type {Record<string, number>} */
+    var cols = {};
+    for (var c = 0; c < texts.length; c++) {
+      var t = texts[c];
+      if (!t) continue;
+      if (t.indexOf('ab/2') >= 0 || t === 'ab2' || t.indexOf('ab / 2') >= 0) {
+        cols.ab2 = c;
+      } else if (WENNER_A_HEADERS.indexOf(t) >= 0) {
+        /* The Wenner spacing column, headed "a" or "a (m)", meant nothing to
+         * the reader at all, so a Wenner sheet was dropped whole as having
+         * no data table (ROADMAP data-ingestion-11) */
+        cols.a = c;
+      } else if (t.indexOf('mn') === 0 && MN_HALF_RE.test(t)) {
+        /* half-MN first, and tolerant of the spaces a typed header carries:
+         * "MN / 2 (m)" does not contain the literal "/2", so it would fall
+         * through to the full-MN branch and halve every potential spacing */
+        cols.mn_half = c;
+      } else if (t.indexOf('mn') === 0) {
+        cols.mn = c;
+      } else if (RESISTIVITY_UNIT_RE.test(t)) {
+        /* a column in ohm-metres is a resistivity, before the resistance
+         * test reads "R (" or "resistance" in its name */
+        cols.rho = c;
+      } else if (RESISTANCE_RE.test(t)) {
+        /* a sheet that records V/I (a resistance, in ohms) is not a
+         * resistivity sheet: "R (ohm)" used to match the "ohm" test below
+         * and every reading came through as a resistivity of 0.9 */
+        cols.resistance = c;
+      } else if (t.indexOf('resistivity') >= 0 || t.indexOf('rho') === 0 ||
+                 t.indexOf('ohm') >= 0 || t.indexOf('apparent') >= 0 ||
+                 t.indexOf('\u03c1') >= 0 || t.indexOf('\u03c9') >= 0) {
+        cols.rho = c;
+      } else if (['k', 'k (m)', 'k(m)', 'geometric factor'].indexOf(t) >= 0) {
+        cols.k = c;
+      } else if (['no.', 'no', 'reading', 'n'].indexOf(t) >= 0) {
+        cols.no = c;
+      }
+    }
+    return cols;
   }
 
   /**
@@ -16571,6 +16774,8 @@
       spacingCol = cols.a; wennerFromAb2 = false;
     }
     var blankRun = 0;
+    /** @type {number[]} AB/2 of resistances K could not convert */
+    var kUndefined = [];
 
     for (var r = located.row + 1; r < grid.length; r++) {
       var row = grid[r] || [];
@@ -16597,7 +16802,15 @@
           k = geometricFactor('wenner', { a: a });
         } else if (k === null) {
           var spacing = (m !== null && mnIsHalf) ? 2.0 * m : m;
-          if (spacing) k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+          /* K is defined only for 0 < MN/2 < AB/2, and geometricFactor throws
+           * outside that: one mistyped spacing on a resistance sheet used to
+           * throw out of the reader and lose every sheet of the workbook. The
+           * row is left out and flagged instead. */
+          if (spacing !== null && spacing / 2.0 > 0 && spacing / 2.0 < a) {
+            k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+          } else if (spacing !== null) {
+            kUndefined.push(a);
+          }
         }
         rr = k ? k * rr : null;
       }
@@ -16684,9 +16897,14 @@
     var badSpacings = ab2.filter(function (v) { return !(v > 0); }).length;
     if (badSpacings) {
       flags.push({ level: 'warning', code: 'nonpositive_spacing',
-        message: 'A spacing must be positive; ' + plural(badSpacings, 'reading') +
-          ' at a spacing of 0 or less ' + (badSpacings === 1 ? 'is' : 'are') +
-          ' left out of the inversion.', context: soundingId });
+        message: phrase('ves.nonpositive_spacing', { n: badSpacings }),
+        context: soundingId });
+    }
+    if (kUndefined.length) {
+      flags.push({ level: 'warning', code: 'k_undefined',
+        message: phrase('ves.k_undefined', { n: kUndefined.length,
+          spacings: andJoin(kUndefined.map(function (v) { return formatG(v); })) }),
+        context: soundingId });
     }
     for (var d = 1; d < ab2.length; d++) {
       if (ab2[d] - ab2[d - 1] < 0) {
@@ -16708,21 +16926,19 @@
     ab2.forEach(function (v) { seen[v] = (seen[v] || 0) + 1; });
     Object.keys(seen).forEach(function (v) { if (seen[v] > 1) dup += 1; });
     if (dup) {
+      /* The splice merges a repeated spacing by geometric mean only on a
+       * Schlumberger sounding with more than one MN segment. A Wenner sheet, or
+       * one with no MN change recorded, is fitted reading by reading, and its
+       * flags used to say the pair was merged at an MN change all the same. */
+      var merged = !isWenner && soundingSegments(sounding).length > 1;
       flags.push({ level: 'info', code: 'segment_overlap',
-        message: dup + ' AB/2 value(s) repeated with different MN (segment ' +
-          'changes); both readings kept.', context: soundingId });
+        message: phrase(merged ? 'ves.segment_overlap' : 'ves.repeat_reading', { n: dup }),
+        context: soundingId });
       var discrepant = overlapDiscrepancies(ab2, rho);
       if (discrepant.length) {
         flags.push({ level: 'warning', code: 'segment_overlap_discrepancy',
-          message: 'At an MN change the two readings at one AB/2 should agree ' +
-            'within a few percent; these differ by more than ' +
-            pyFixed((OVERLAP_DISCREPANCY_RATIO - 1) * 100, 0) + ' percent: ' +
-            discrepant.join('; ') +
-            '. That is a field problem (potential-electrode contact, lateral ' +
-            'inhomogeneity at the new MN) or a transcription slip, and the ' +
-            'inversion merges the pair by geometric mean, so part of the model ' +
-            'misfit is made by the splice. Check the sheet before relying on the ' +
-            'deep branch.',
+          message: phrase(merged ? 'ves.overlap_discrepancy' : 'ves.repeat_discrepancy', {
+            percent: (OVERLAP_DISCREPANCY_RATIO - 1) * 100, pairs: discrepant.join('; ') }),
           context: soundingId });
       }
     }
@@ -16836,6 +17052,84 @@
 
   /* --- drilling logs -------------------------------------------------------- */
 
+  /* The international foot, in metres, exactly. */
+  var FOOT_M = 0.3048;
+
+  /* The codes this reader raises when a cell could not be read: a row
+   * dropped, or a value refused, for its form or its unit
+   * (ingestion/drilling.py UNREADABLE_CODES). The readiness gate reads them,
+   * so "every reading carried a unit the toolkit could read" is not said of
+   * a log that lost one; they are kept here, beside the reader that raises
+   * them. */
+  var DRILLING_UNREADABLE = ['interval_read_as_date', 'interval_unreadable',
+    'depth_unit_ambiguous', 'water_strike_unreadable', 'diameter_implausible'];
+
+  /* Those, and a strike that was read but refused because it lies below the
+   * bottom of the hole: every code that means the log as read is not the
+   * log the crew wrote, so the gate does not call it complete
+   * (REFUSAL_CODES). */
+  var DRILLING_REFUSALS = DRILLING_UNREADABLE.concat(['water_strike_below_total_depth']);
+
+  /* A foot written against a number: "20 ft", "20ft.", "20 feet", "20'", and
+   * the curly apostrophe and the prime a word processor puts in its place.
+   * Two marks together are inches, which no depth is written in. */
+  var FOOT_UNIT_RE = /(\d)\s*(?:feet\b|foot\b|ft\b\.?|['’′](?!['’′]))/gi;
+
+  /* The length unit a column header or a field's label names: "Depth
+   * interval (ft)", "Total depth (m)". A lone apostrophe in brackets is
+   * feet. */
+  var HEADER_FEET_RE = /\b(?:feet|foot|ft)\b|\(\s*['’′]\s*\)/i;
+  var HEADER_METRE_RE = /\b(?:met(?:re|er)s?|mtrs?|m)\b/i;
+  var RATE_FEET_RE = /feet|foot|ft/i;
+
+  /** 'ft', 'm', 'both' or null: the length unit a header names. A header
+   * naming both ("Depth (m/ft)") says nothing about a bare number under it,
+   * and a number under it with no unit of its own is refused.
+   * @param {*} header a header cell
+   * @returns {string|null}
+   */
+  function headerLengthUnit(header) {
+    var text = cleanText(header);
+    var feet = HEADER_FEET_RE.test(text), metres = HEADER_METRE_RE.test(text);
+    if (feet && metres) return 'both';
+    return feet ? 'ft' : (metres ? 'm' : null);
+  }
+
+  /* A cell with the feet and metre units against its numbers dropped, and
+   * the units it carried: [text, units]. A value that is not text is handed
+   * back as it is. */
+  function lengthUnits(value) {
+    if (typeof value !== 'string') return [value, []];
+    var units = [];
+    var text = normaliseDashes(value);
+    var stripped = text.replace(FOOT_UNIT_RE, '$1');
+    if (stripped !== text) units.push('ft');
+    var metric = stripMetreUnits(stripped);
+    if (metric !== stripped) units.push('m');
+    return [metric, units];
+  }
+
+  /* The unit a depth is read in, and why not when it cannot be: [unit, why].
+   * The cell's own unit first, then its column header's (or its field's
+   * label's), then the sheet's: the one unit every depth and rate unit the
+   * sheet names agrees on, or metres, the template's unit, where it names
+   * none. unit is null and why a key of drilling.ambiguous_why when the
+   * depth cannot be read. */
+  function resolveUnit(cellUnits, column, sheet) {
+    if (cellUnits.length > 1) return [null, 'cell'];
+    if (cellUnits.length) return [cellUnits[0], ''];
+    if (column === 'both') return [null, 'header'];
+    if (column) return [column, ''];
+    if (sheet === null) return [null, 'sheet'];
+    return [sheet, ''];
+  }
+
+  /* A depth in `unit` in metres; feet are kept to the centimetre, as a
+   * converted bit size is kept to two decimals. */
+  function inMetres(value, unit) {
+    return unit === 'ft' ? pyRound(value * FOOT_M, 2) : value;
+  }
+
   /* Whether a cell in the interval column was meant as a depth interval. A
    * cell of numbers and separators with nothing else in it ("30 -", "30 40")
    * is a row the crew logged and this parser could not read, and it is
@@ -16845,7 +17139,7 @@
     if (value === null || value === undefined || typeof value === 'boolean') return false;
     if (value instanceof Date) return false;
     if (typeof value === 'number') return true;
-    var text = stripMetreUnits(normaliseDashes(cleanText(value)))
+    var text = String(lengthUnits(cleanText(value))[0])
       .replace(/\b(?:to|from)\b/gi, ' ');
     return /\d/.test(text) && !/[a-z]/i.test(text);
   }
@@ -16902,7 +17196,8 @@
    * 4.5 m strike was not screened. */
   var WATER_LEVEL_RE = new RegExp('\\b(?:s\\.?w\\.?l|r\\.?w\\.?l|' +
     '(?:rest(?:ing)?|static|standing)\\s+(?:water\\s+)?level|water\\s+level)\\b' +
-    '\\.?[^\\d;,.]*?\\d+(?:[.,]\\d+)?\\s*(?:met(?:re|er)s?\\b|m\\b)?', 'gi');
+    '\\.?[^\\d;,.]*?\\d+(?:[.,]\\d+)?\\s*' +
+    '(?:met(?:re|er)s?\\b|m\\b|feet\\b|foot\\b|ft\\b\\.?)?', 'gi');
 
   /* One depth, or a list of them sharing the unit written after the last
    * ("12, 18 and 30 m"), in metres. The lookahead keeps the "m" of a rate
@@ -16913,6 +17208,13 @@
      * two strikes - which is the invention this parser exists to stop. */
     '(?:\\d+(?:[.,]\\d+)?\\s*(?:,|&|\\+|and\\b)\\s*)*' +
     '\\d+(?:[.,]\\d+)?\\s*(?:met(?:re|er)s?|m)\\b(?!\\s*/)', 'gi');
+
+  /* The same in feet ("45 ft", "45 and 90 ft", "45'"), converted to metres.
+   * A strike written "at 90 ft" used to be the bare number 90 and recorded
+   * as a strike at 90 m. */
+  var FEET_LIST_RE = new RegExp(
+    '(?:\\d+(?:[.,]\\d+)?\\s*(?:,|&|\\+|and\\b)\\s*)*' +
+    '\\d+(?:[.,]\\d+)?\\s*(?:feet\\b|foot\\b|ft\\b\\.?|[\'’′](?![\'’′]))(?!\\s*/)', 'gi');
 
   var NUMBER_TOKEN_RE = /\d+(?:[.,]\d+)?/g;
 
@@ -16926,8 +17228,13 @@
 
   /* The unit a penetration rate cell carries: metres per minute or hour, or
    * the time per metre a driller times with a stopwatch and writes the other
-   * way up. The order of the alternatives is load-bearing. */
-  var METRE_SOURCE = '(?:met(?:re|er)s?|m)';
+   * way up. The order of the alternatives is load-bearing.
+   *
+   * A rig sheet in feet times the foot ("4 min/ft") or quotes feet a minute
+   * ("1.5 ft/min"). Neither matched, so "4 min/ft" fell through to the bare
+   * number and was recorded as 4 m/min, some 52 times too fast; the foot is
+   * a length here like the metre, and the rate is converted from it. */
+  var METRE_SOURCE = '(?:met(?:re|er)s?|m|feet|foot|ft)';
   var RATE_UNITS_SOURCE = METRE_SOURCE + '\\s*(?:/|per)\\s*min(?:ute)?s?' +
     '|' + METRE_SOURCE + '\\s*(?:/|per)\\s*(?:hrs?|hours?|h)' +
     '|min(?:ute)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
@@ -16999,19 +17306,35 @@
    * number, none of which is a depth. */
   var FRACTION_RE = /\d\s*\/\s*\d/;
 
-  /**
+  /** A depth in feet is converted, whether the cell says so ("at 90 ft") or
+   * `unit` is 'ft', the unit its column or its sheet gives a bare number.
+   * With `unit` null a bare number is refused, for the reason `refusal`
+   * gives.
    * @param {*} value a cell
+   * @param {string|null} [unit] the unit of a bare number: 'm' (the default) or 'ft'
+   * @param {string} [refusal] why a bare number is refused when `unit` is null
    * @returns {[number[], string]}
    */
-  function parseWaterStrikeDepths(value) {
-    if (value === null || value === undefined) return [[], ''];
+  function parseWaterStrikeDepths(value, unit, refusal) {
+    var read = strikeDepths(value, unit === undefined ? 'm' : unit, refusal || '');
+    return [read[0], read[1]];
+  }
+
+  /* parseWaterStrikeDepths, and beside each depth the number of feet it was
+   * converted from, or null for a depth in metres: [depths, reason, feet]. */
+  function strikeDepths(value, unit, refusal) {
+    if (value === null || value === undefined) return [[], '', []];
     if (value instanceof Date) {
       /* A cell typed as a time comes back as a Date, and reading it as a
        * number recorded the year as a strike depth. */
-      return [[], 'the cell holds a date or a time rather than a depth'];
+      return [[], 'the cell holds a date or a time rather than a depth', []];
     }
-    if (typeof value === 'boolean') return [[], ''];
-    if (typeof value === 'number') return [value > 0 ? [value] : [], ''];
+    if (typeof value === 'boolean') return [[], '', []];
+    if (typeof value === 'number') {
+      if (!(value > 0)) return [[], '', []];
+      if (unit === null) return [[], refusal, []];
+      return [[inMetres(value, unit)], '', [unit === 'ft' ? value : null]];
+    }
 
     /* A water level and a clock time are taken out before any number is
      * read, and counted: a cell whose only numbers were those names no
@@ -17029,18 +17352,28 @@
      * "Water strike 1/2 m" read as a strike at 2 m, which would place a
      * screen. Refusing it and saying so is the only honest answer. */
     if (FRACTION_RE.test(text)) {
-      return [[], 'it writes a fraction or a date, which names no single depth'];
+      return [[], 'it writes a fraction or a date, which names no single depth', []];
     }
-    var depths = [], match, tokens, i, depth;
-    DEPTH_LIST_RE.lastIndex = 0;
-    while ((match = DEPTH_LIST_RE.exec(text)) !== null) {
-      tokens = match[0].match(NUMBER_TOKEN_RE) || [];
-      for (i = 0; i < tokens.length; i++) {
-        depth = parseNumber(tokens[i]);
-        if (depth !== null && depth > 0) depths.push(depth);
+    /* Depths in metres and in feet, in the order the cell writes them. */
+    var found = [], match, tokens, i, depth;
+    [[DEPTH_LIST_RE, false], [FEET_LIST_RE, true]].forEach(function (pair) {
+      var re = /** @type {RegExp} */ (pair[0]), feet = pair[1];
+      re.lastIndex = 0;
+      while ((match = re.exec(text)) !== null) {
+        tokens = match[0].match(NUMBER_TOKEN_RE) || [];
+        for (i = 0; i < tokens.length; i++) {
+          depth = parseNumber(tokens[i]);
+          if (depth !== null && depth > 0) {
+            found.push([match.index, inMetres(depth, feet ? 'ft' : 'm'), feet ? depth : null]);
+          }
+        }
       }
+    });
+    if (found.length) {
+      found.sort(function (a, b) { return a[0] - b[0]; });
+      return [found.map(function (f) { return f[1]; }), '',
+        found.map(function (f) { return f[2]; })];
     }
-    if (depths.length) return [depths, ''];
 
     /* No number carries a unit. A single number is the depth the note is
      * about ("First water strike: 12"); several are a sentence this parser
@@ -17050,15 +17383,18 @@
       var named = [];
       if (levels) named.push('a water level');
       if (clocks) named.push('a clock time');
-      if (named.length) return [[], 'it names ' + named.join(' and ') + ' but no strike depth'];
-      return [[], ''];
+      if (named.length) {
+        return [[], 'it names ' + named.join(' and ') + ' but no strike depth', []];
+      }
+      return [[], '', []];
     }
     if (numbers.length > 1) {
-      return [[], 'it names several numbers and none of them carries a unit'];
+      return [[], 'it names several numbers and none of them carries a unit', []];
     }
     depth = parseNumber(numbers[0]);
-    if (depth === null || depth <= 0) return [[], ''];
-    return [[depth], ''];
+    if (depth === null || depth <= 0) return [[], '', []];
+    if (unit === null) return [[], refusal, []];
+    return [[inMetres(depth, unit)], '', [unit === 'ft' ? depth : null]];
   }
 
   /* The flag raised for a strike cell that cannot be read as a depth.
@@ -17139,15 +17475,18 @@
   function rateInMPerMin(number, unit) {
     if (number === null || number === undefined || !unit) return number;
     var u = String(unit).replace(/\s+/g, '').toLowerCase().replace(/per/g, '/');
+    /* the length the rate is per, or per unit of time of: a foot is 0.3048 m */
+    var length = RATE_FEET_RE.test(u) ? FOOT_M : 1.0;
     if (u.indexOf('min') === 0) {
-      /* minutes per metre: the reciprocal, and a zero is not a rate at all */
-      return number > 0 ? 1.0 / number : null;
+      /* minutes per metre (or foot): the reciprocal, and a zero is not a
+       * rate at all */
+      return number > 0 ? length / number : null;
     }
-    if (u.indexOf('s') === 0) {                       /* seconds per metre */
-      return number > 0 ? 60.0 / number : null;
+    if (u.indexOf('s') === 0) {            /* seconds per metre (or foot) */
+      return number > 0 ? 60.0 * length / number : null;
     }
-    if (u.indexOf('/h') >= 0) return number / 60.0;
-    return number;
+    if (u.indexOf('/h') >= 0) return number * length / 60.0;
+    return length !== 1.0 ? number * length : number;
   }
 
   /** The penetration rate in metres per minute, whichever way up it is
@@ -17196,28 +17535,117 @@
     return out.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
   }
 
+  /* The unit a bare depth is read in where nothing nearer names one: every
+   * depth and rate unit the sheet names agreeing on feet makes it a sheet in
+   * feet; naming none, or only metres, it is in metres, the unit the
+   * template asks for; naming both, there is no unit to read a bare depth
+   * in, and it is refused. */
+  function sheetUnit(statements) {
+    if (statements.length === 1 && statements[0] === 'ft') return 'ft';
+    if (statements.indexOf('ft') >= 0) return null;
+    return 'm';
+  }
+
+  function statementOf(unit) {
+    if (unit === 'both') return ['ft', 'm'];
+    return unit ? [unit] : [];
+  }
+
+  /* The length a rate unit is per, as a statement about the sheet. */
+  function rateLength(unit) {
+    if (!unit) return [];
+    return RATE_FEET_RE.test(unit) ? ['ft'] : ['m'];
+  }
+
+  var DEPTH_FIELDS = ['borehole_depth_m', 'grouting_depth_m', 'installed_screens'];
+
   /**
    * @param {Grid} grid
    * @param {string} [source]
    * @returns {DrillingLog}
    */
   function drillingFromGrid(grid, source) {
-    var fields = extractHeaderFields(grid, grid.length);
+    /** @type {Record<string, Array<*>>} */
+    var rawFields = {};
+    var fields = extractHeaderFields(grid, grid.length, rawFields);
     var site = siteFromFields(fields, source);
     var flags = [], intervals = [], strikes = [], zeroStrikeRows = 0, tooWide = [];
+    var whyText = phraseTable('drilling.ambiguous_why');
     var located = findLogHeader(grid);
 
+    /* What the sheet names its depths in, before any depth is read: a bare
+     * number is read in the unit the sheet gives, and a sheet in feet that
+     * gives its unit only in the total depth or the strike column still
+     * gives it for every depth on the sheet. A drilling log was read in
+     * metres whatever it said, so "Depth interval (ft)", "0-20 ft" and
+     * "Total depth: 150 ft" made a 45.7 m hole a 150 m one, with no flag. */
+    var statements = [];
+    function state(units) {
+      units.forEach(function (u) { if (statements.indexOf(u) < 0) statements.push(u); });
+    }
+    DEPTH_FIELDS.forEach(function (key) {
+      if (!own(rawFields, key)) return;
+      state(statementOf(headerLengthUnit(rawFields[key][0])));
+      state(lengthUnits(rawFields[key][1])[1]);
+    });
+    /** @type {Record<string, string|null>} */
+    var headerUnits = { interval: null, strike: null };
+    var rateUnit = null, diameterUnit = null;
+    /** @type {Record<string, number>} */
+    var cols = {};
+    var r, row;
     if (located) {
-      var cols = located.cols;
+      cols = located.cols;
       var headerCell = function (key) {
         var c = cols[key], headerRow = grid[/** @type {Rec} */ (located).row] || [];
         return (c !== undefined && c < headerRow.length) ? headerRow[c] : null;
       };
       /* the unit the column header names is the unit of a bare number */
-      var rateUnit = headerRateUnit(headerCell('rate'));
-      var diameterUnit = headerDiameterUnit(headerCell('diameter'));
-      for (var r = located.row + 1; r < grid.length; r++) {
-        var row = grid[r] || [];
+      rateUnit = headerRateUnit(headerCell('rate'));
+      diameterUnit = headerDiameterUnit(headerCell('diameter'));
+      headerUnits = { interval: headerLengthUnit(headerCell('interval')),
+        strike: headerLengthUnit(headerCell('strike')) };
+      state(statementOf(headerUnits.interval));
+      state(statementOf(headerUnits.strike));
+      state(rateLength(rateUnit));
+      for (r = located.row + 1; r < grid.length; r++) {
+        row = grid[r] || [];
+        ['interval', 'strike'].forEach(function (key) {
+          var c = cols[key];
+          if (c !== undefined && c < row.length) state(lengthUnits(cleanText(row[c]))[1]);
+        });
+        var rc = cols.rate;
+        if (rc !== undefined && rc < row.length && typeof row[rc] === 'string') {
+          var rateMatch = searchUnit(RATE_UNIT_RE, cleanText(row[rc]));
+          state(rateLength(rateMatch ? rateMatch[2] : null));
+        }
+      }
+    }
+    grid.forEach(function (gridRow) {
+      (gridRow || []).forEach(function (c) {
+        var text = cleanText(c);
+        if (text.toLowerCase().indexOf('water strike') >= 0 &&
+            text.toLowerCase().indexOf('note') !== 0) {
+          state(lengthUnits(text)[1]);
+        }
+      });
+    });
+    var sheet = sheetUnit(statements);
+
+    var feet = { depths: 0, deepest: 0.0, bySheet: false, rates: 0 };
+    /* `value` in metres, counting a conversion from feet */
+    function counted(value, unit, cellUnits, column) {
+      if (unit === 'ft') {
+        feet.depths += 1;
+        feet.deepest = Math.max(feet.deepest, value);
+        if (!cellUnits.length && column !== 'ft' && column !== 'm') feet.bySheet = true;
+      }
+      return inMetres(value, unit);
+    }
+
+    if (located) {
+      for (r = located.row + 1; r < grid.length; r++) {
+        row = grid[r] || [];
         var cell = function (key) {
           var c = cols[key];
           return (c !== undefined && c < row.length) ? row[c] : null;
@@ -17242,22 +17670,33 @@
          * lists only the plain hyphen, so the row was dropped without a word
          * and the gap it left was reported as a gap in the crew's own log
          * (ROADMAP data-ingestion-8). Normalising the dashes reads the
-         * interval as it was written, whichever dash was typed. */
-        /* A metre unit against each depth ("30 m - 40 m", "5m-10m") is
-         * dropped first for the same reason: the row used to be skipped with
-         * its description and its strike. */
-        var interval = parseDepthInterval(stripMetreUnits(normaliseDashes(rawInterval)));
+         * interval as it was written, whichever dash was typed. A unit
+         * against each depth ("30 m - 40 m", "5m-10m", "0-20 ft") is dropped
+         * first for the same reason: the row used to be skipped with its
+         * description and its strike. It is kept to read the depths in. */
+        var split = lengthUnits(rawInterval);
+        var cellUnits = split[1];
+        var interval = parseDepthInterval(split[0]);
         if (!interval) {
           if (readsAsInterval(rawInterval)) {
             flags.push({
               level: 'warning', code: 'interval_unreadable',
-              message: 'Depth interval cell "' + cleanText(rawInterval) + '" was not ' +
-                'read as a depth interval, so this row was skipped; write it as the ' +
-                'depths from and to, as "30-40".',
+              message: phrase('drilling.interval_unreadable', { value: cleanText(rawInterval) }),
             });
           }
           continue;
         }
+        var resolved = resolveUnit(cellUnits, headerUnits.interval, sheet);
+        if (resolved[0] === null) {
+          flags.push({
+            level: 'warning', code: 'depth_unit_ambiguous',
+            message: phrase('drilling.row_unit_ambiguous',
+              { value: cleanText(rawInterval), why: whyText[resolved[1]] }),
+          });
+          continue;
+        }
+        var top = counted(interval[0], resolved[0], cellUnits, headerUnits.interval);
+        var bottom = counted(interval[1], resolved[0], cellUnits, headerUnits.interval);
         var diameter = parseBitDiameterIn(cell('diameter'), diameterUnit);
         if (diameter !== null && diameter > MAX_BIT_DIAMETER_IN) {
           /* a bit size in millimetres with its unit left off: sized as inches
@@ -17265,16 +17704,33 @@
           tooWide.push(cleanText(cell('diameter')));
           diameter = null;
         }
+        var rawRate = cell('rate');
+        var rate = parsePenetrationRateMPerMin(rawRate, rateUnit);
+        var rateSaid = typeof rawRate === 'string'
+          ? searchUnit(RATE_UNIT_RE, cleanText(rawRate)) : null;
+        var said = rateSaid ? rateSaid[2] : rateUnit;
+        if (rate !== null && rate !== undefined && rateLength(said)[0] === 'ft') feet.rates += 1;
         intervals.push({
-          top_m: interval[0], bottom_m: interval[1],
+          top_m: top, bottom_m: bottom,
           description: cleanText(cell('description')),
           from_time: cleanText(cell('from_time')),
           to_time: cleanText(cell('to_time')),
-          penetration_rate_m_per_min: parsePenetrationRateMPerMin(cell('rate'), rateUnit),
+          penetration_rate_m_per_min: rate,
           bit_diameter_in: diameter,
         });
         var rawStrike = cell('strike');
-        var readStrike = parseWaterStrikeDepths(rawStrike);
+        var strikeCellUnits = typeof rawStrike === 'string'
+          ? lengthUnits(cleanText(rawStrike))[1] : [];
+        var strikeUnit = resolveUnit([], headerUnits.strike, sheet);
+        var readStrike = strikeDepths(rawStrike, strikeUnit[0],
+          strikeUnit[1] ? 'it ' + whyText[strikeUnit[1]] : '');
+        var converted = readStrike[2].filter(function (f) { return f !== null; });
+        if (converted.length) {
+          feet.depths += converted.length;
+          feet.deepest = Math.max.apply(null, [feet.deepest].concat(converted));
+          if (!strikeCellUnits.length && headerUnits.strike !== 'ft' &&
+              headerUnits.strike !== 'm') feet.bySheet = true;
+        }
         readStrike[0].forEach(function (depth) { strikes.push(depth); });
         if (readStrike[1]) {
           flags.push(unreadableStrikeFlag(cleanText(rawStrike), readStrike[1]));
@@ -17306,15 +17762,24 @@
     /* Water strikes noted as text lines ("First water strike: 12m"). The note
      * used to be read as the last number after the last colon, so
      * "Water strike: 8 m at 14:30" recorded a 30 m strike and a note naming
-     * two strikes recorded only the first (ROADMAP data-ingestion-9). */
-    grid.forEach(function (row) {
-      (row || []).forEach(function (c) {
+     * two strikes recorded only the first (ROADMAP data-ingestion-9). A bare
+     * number in a note is in the sheet's unit, and "at 90 ft" is in feet. */
+    var noteUnit = resolveUnit([], null, sheet);
+    grid.forEach(function (gridRow) {
+      (gridRow || []).forEach(function (c) {
         var raw = cleanText(c);
         var text = raw.toLowerCase();
         if (text.indexOf('water strike') >= 0 && text.indexOf('note') !== 0) {
-          var read = parseWaterStrikeDepths(raw);
-          read[0].forEach(function (value) {
-            if (strikes.indexOf(value) < 0) strikes.push(value);
+          var read = strikeDepths(raw, noteUnit[0],
+            noteUnit[1] ? 'it ' + whyText[noteUnit[1]] : '');
+          read[0].forEach(function (value, i) {
+            if (strikes.indexOf(value) >= 0) return;
+            strikes.push(value);
+            if (read[2][i] !== null) {
+              feet.depths += 1;
+              feet.deepest = Math.max(feet.deepest, read[2][i]);
+              if (!lengthUnits(raw)[1].length) feet.bySheet = true;
+            }
           });
           if (read[1]) {
             /* A cell in the strike column that is also a note has already
@@ -17328,7 +17793,34 @@
       });
     });
 
-    var total = fields.borehole_depth_m;
+    /* The depths the header block gives, each read in its label's unit or
+     * the one the cell writes beside it. */
+    var fieldNames = phraseTable('drilling.field_names');
+    DEPTH_FIELDS.forEach(function (key) {
+      if (!own(rawFields, key)) return;
+      var label = rawFields[key][0], value = rawFields[key][1];
+      var parts = lengthUnits(value);
+      var column = headerLengthUnit(label);
+      var unit = resolveUnit(parts[1], column, sheet);
+      if (unit[0] === null) {
+        delete fields[key];
+        flags.push({ level: 'warning', code: 'depth_unit_ambiguous',
+          message: phrase('drilling.value_unit_ambiguous', { what: fieldNames[key],
+            value: cleanText(value), why: whyText[unit[1]] }) });
+      } else if (key === 'installed_screens') {
+        fields[key] = parseInstalledScreens(parts[0]).map(function (range) {
+          return [counted(range[0], unit[0], parts[1], column),
+            counted(range[1], unit[0], parts[1], column)];
+        });
+      } else if (unit[0] === 'ft') {
+        fields[key] = counted(Number(fields[key]), unit[0], parts[1], column);
+      }
+    });
+    var screens = Array.isArray(fields.installed_screens) ? fields.installed_screens
+      : parseInstalledScreens(fields.installed_screens || '');
+
+    var stated = fields.borehole_depth_m === undefined ? null : fields.borehole_depth_m;
+    var total = stated;
     if ((total === null || total === undefined) && intervals.length) {
       total = arrMax(intervals.map(function (iv) { return iv.bottom_m; }));
     }
@@ -17355,6 +17847,17 @@
       }
     }
 
+    if (feet.depths || feet.rates) {
+      var told = [];
+      if (feet.depths) {
+        told.push(phrase('drilling.feet_converted', { n: feet.depths, feet: feet.deepest,
+          metres: inMetres(feet.deepest, 'ft') }));
+        if (feet.bySheet) told.push(phrase('drilling.feet_by_sheet'));
+      }
+      if (feet.rates) told.push(phrase('drilling.feet_rates', { n: feet.rates }));
+      flags.push({ level: 'info', code: 'feet_converted', message: told.join(' ') });
+    }
+
     /** @type {DrillingLog} */
     var log = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
@@ -17365,28 +17868,37 @@
       /* the screens the crew actually set, when the sheet records them:
        * with these the drawing is an as-built record, without them it is a
        * design generated by the rules, and says so */
-      installed_screens_m: parseInstalledScreens(fields.installed_screens || ''),
+      installed_screens_m: screens,
       start_date: String(fields.start_date || ''),
       completion_date: String(fields.completion_date || ''),
       status: fields.status || '', source: String(source || ''), flags: [],
     };
 
-    for (var i = 0; i + 1 < intervals.length; i++) {
-      var a = intervals[i], b = intervals[i + 1];
-      if (b.top_m < a.bottom_m - 1e-9) {
+    /* Consistency of the interval column, against the deepest bottom logged
+     * so far rather than the row before: a clay lens logged inside a longer
+     * interval (0-30, 5-10, 30-45) is not a gap from 10 m to 30 m, which the
+     * 0-30 m row covers. */
+    /** @type {number|null} */
+    var deepest = null;
+    for (var k = 0; k < intervals.length; k++) {
+      var b = intervals[k];
+      if (deepest !== null && b.top_m < deepest - 1e-9) {
         flags.push({ level: 'warning', code: 'interval_overlap',
-          message: 'Depth intervals overlap at ' + formatG(b.top_m) + ' m.' });
-      } else if (b.top_m > a.bottom_m + 1e-9) {
+          message: phrase('drilling.interval_overlap', { depth: b.top_m }) });
+      } else if (deepest !== null && b.top_m > deepest + 1e-9) {
         flags.push({ level: 'warning', code: 'interval_gap',
-          message: 'Gap in the drilling log between ' + formatG(a.bottom_m) +
-            ' m and ' + formatG(b.top_m) + ' m.' });
+          message: phrase('drilling.interval_gap', { top: deepest, bottom: b.top_m }) });
       }
+      deepest = deepest === null ? b.bottom_m : Math.max(deepest, b.bottom_m);
     }
-    if (total && intervals.length &&
-        Math.abs(intervals[intervals.length - 1].bottom_m - total) > 1e-6) {
+    /* Only a total the sheet states can differ from the log; one worked out
+     * from the intervals is their deepest bottom. The last row by top used
+     * to be compared, so a nested fracture row at the foot of the table was
+     * "the deepest logged interval", and a derived total was called
+     * "stated". */
+    if (stated && deepest !== null && Math.abs(deepest - stated) > 1e-6) {
       flags.push({ level: 'warning', code: 'depth_mismatch',
-        message: 'Stated total depth ' + formatG(total) + ' m differs from the ' +
-          'deepest logged interval ' + formatG(intervals[intervals.length - 1].bottom_m) + ' m.' });
+        message: phrase('drilling.depth_mismatch', { stated: stated, deepest: deepest }) });
     }
     if (!intervals.length) {
       flags.push({ level: 'error', code: 'no_intervals',
@@ -18403,7 +18915,7 @@
   }
 
   Object.assign(C, {
-    cleanText: cleanText, parseNumber: parseNumber,
+    cleanText: cleanText, parseNumber: parseNumber, isWholeNumber: isWholeNumber,
     parseDepthInterval: parseDepthInterval,
     matchLabel: matchLabel, matchLabelPriority: matchLabelPriority,
     splitInlineValue: splitInlineValue, extractHeaderFields: extractHeaderFields,
@@ -18413,6 +18925,8 @@
     pumpingFromGrid: pumpingFromGrid, parseInstalledScreens: parseInstalledScreens,
     normaliseDashes: normaliseDashes,
     parseWaterStrikeDepths: parseWaterStrikeDepths,
+    headerLengthUnit: headerLengthUnit, FOOT_M: FOOT_M,
+    DRILLING_UNREADABLE: DRILLING_UNREADABLE, DRILLING_REFUSALS: DRILLING_REFUSALS,
     parseBitDiameterIn: parseBitDiameterIn,
     parsePenetrationRateMPerMin: parsePenetrationRateMPerMin,
     overlapDiscrepancies: overlapDiscrepancies, overlapRatios: overlapRatios,
@@ -19226,6 +19740,41 @@
     return null;
   }
 
+  /* A number as an export writes one: digits with an optional sign, decimal
+   * point and exponent, between the white space trim() takes off
+   * (waterpoints._PLAIN_NUMBER, between its _EDGE_SPACE). Number() and
+   * Python's float() read different cells as numbers: Number() takes "0x1F"
+   * and reads a cell of spaces as 0, float() takes "nan", "inf" and "1_000". */
+  var WP_PLAIN_NUMBER = /^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+
+  /* A finite number out of a cell, or null: a JSON number as it is, a text
+   * only when it is a plain decimal number, and nothing else (a boolean, a
+   * blank, "Infinity", "1e999"): waterpoints._plain_number. */
+  function wpPlainNumber(value) {
+    var number;
+    if (typeof value === 'number') {
+      number = value;
+    } else if (typeof value === 'string') {
+      var text = value.trim();
+      if (!WP_PLAIN_NUMBER.test(text)) return null;
+      number = Number(text);
+    } else {
+      return null;
+    }
+    return isFinite(number) ? number : null;
+  }
+
+  /* The year a point was installed, or null when it is unrecorded: its whole
+   * part, as the year 2009.6 falls in is 2009, and nothing at or below 0,
+   * which WPDx exports write where the year was never recorded
+   * (waterpoints._install_year). */
+  function wpInstallYear(value) {
+    var number = wpPlainNumber(value);
+    if (number === null) return null;
+    var year = Math.trunc(number);
+    return year > 0 ? year : null;
+  }
+
   /* Months of the year a point yields water. null is deliberately not twelve:
    * most surveys never asked, and reading silence as a year-round supply is
    * how a dry-season coverage figure ends up matching the wet-season one. */
@@ -19257,26 +19806,23 @@
     var unreadable = 0;
     (records || []).forEach(function (record) {
       if (!record || typeof record !== 'object') { unreadable += 1; return; }
-      /* Number(null) and Number('') are both 0, and a CSV export of WPdx+ is
-       * full of both. Left alone they became water points in the Gulf of
-       * Guinea, counted in the coverage of whatever chiefdom was nearest. */
-      var latRaw = wpFirst(record, ['lat_deg', 'latitude', 'lat']);
-      var lonRaw = wpFirst(record, ['lon_deg', 'longitude', 'lon']);
-      if (latRaw === null || latRaw === undefined || latRaw === '' ||
-          lonRaw === null || lonRaw === undefined || lonRaw === '') {
+      /* Number(null), Number('') and Number(' ') are all 0, and a CSV export
+       * of WPdx+ is full of blanks. Left alone they became water points in
+       * the Gulf of Guinea, counted in the coverage of whatever chiefdom was
+       * nearest; a position no map holds ("NaN", UTM metres in the degree
+       * columns) is set aside with them, by the rule the Python reader
+       * follows. */
+      var lat = wpPlainNumber(wpFirst(record, ['lat_deg', 'latitude', 'lat']));
+      var lon = wpPlainNumber(wpFirst(record, ['lon_deg', 'longitude', 'lon']));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
         unplaced += 1; return;
       }
-      var lat = Number(latRaw);
-      var lon = Number(lonRaw);
-      if (!isFinite(lat) || !isFinite(lon)) { unplaced += 1; return; }
-      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) { unplaced += 1; return; }
       var source = String(wpFirst(record, ['water_source_clean', 'water_source',
         'source']) || '');
       var technology = String(wpFirst(record, ['water_tech_clean', 'water_tech',
         'technology']) || '');
       var statusText = String(wpFirst(record, ['status_clean', 'status']) || '');
       var statusId = wpFirst(record, ['status_id', 'status']);
-      var year = Number(wpFirst(record, ['install_year', 'installation_year']));
       out.push({
         row_id: String(wpFirst(record, ['row_id', 'wpdx_id', 'objectid']) || ''),
         lat: lat, lon: lon,
@@ -19288,7 +19834,7 @@
         status_text: statusText,
         functional: functionalFrom(statusText, statusId),
         improved: improvedSource(source, technology),
-        installed: isFinite(year) && year ? Math.round(year) : null,
+        installed: wpInstallYear(wpFirst(record, ['install_year', 'installation_year'])),
         /* when it was last surveyed, and how much of the year it yields
          * water. A point reported functional in 2016 is evidence about 2016,
          * and a null month count is not twelve. */
@@ -20718,11 +21264,69 @@
       'easting/northing and the UTM zone.';
   }
 
-  /** Where a site's recorded position puts it, read as the site page reads
-   * it: a pair small enough to be degrees is a latitude and longitude typed
-   * into the two boxes, anything else UTM in the recorded zone or the one the
-   * easting implies. {lat, lon, note, fromUtm, zone}, or null when there is
-   * no position or it does not convert.
+  /** Whether an easting and northing are small enough to be degrees. No UTM
+   * easting lies within 180 m of its zone's origin, 500 km west of the
+   * central meridian, and nothing in Sierra Leone is within 90 m of the
+   * equator, so a pair that small is a longitude and a latitude typed into
+   * the two boxes (geo.utm_boxes_hold_degrees).
+   * @param {*} easting
+   * @param {*} northing
+   * @returns {boolean}
+   */
+  function utmBoxesHoldDegrees(easting, northing) {
+    if (easting === null || northing === null || easting === undefined ||
+        northing === undefined || typeof easting === 'boolean' ||
+        typeof northing === 'boolean') return false;
+    /* a blank box is no number, as Python's float() refuses one, where
+     * Number() would read it as 0 */
+    if (String(easting).trim() === '' || String(northing).trim() === '') return false;
+    var e = Number(easting), n = Number(northing);
+    return isFinite(e) && isFinite(n) && Math.abs(e) <= 180 && Math.abs(n) <= 90;
+  }
+
+  /* A box's value written out plainly, as Python's _as_typed writes it. */
+  function asTyped(value) {
+    return pyFixed(Number(value), 10).replace(/0+$/, '').replace(/\.$/, '');
+  }
+
+  /** The sentence refusing degrees typed into the UTM boxes, or ''
+   * (geo.degrees_in_utm_boxes). The site page read such a pair as degrees
+   * and the Python engine as metres near the equator, so one project had a
+   * placard this engine certified, an identifier neither could mint and a
+   * site the Python engine put outside the country. Neither engine reads a
+   * position from them now; the apps offer to convert them, which is the
+   * operator saying they are degrees. The position they read as is given,
+   * read as readLatLon reads a pasted pair, so an unsigned longitude is west
+   * and the sentence says that was assumed.
+   * @param {*} easting
+   * @param {*} northing
+   * @returns {string}
+   */
+  function degreesInUtmBoxes(easting, northing) {
+    if (!utmBoxesHoldDegrees(easting, northing)) return '';
+    var eText = asTyped(easting), nText = asTyped(northing);
+    var reading = readLatLon(nText + ', ' + eText);
+    var ok = reading.lat !== null && reading.lon !== null;
+    var position;
+    if (ok) {
+      var lat = Number(reading.lat), lon = Number(reading.lon);
+      position = pyFixed(Math.abs(lat), 5) + '° ' + (lat >= 0 ? 'N' : 'S') + ', ' +
+        pyFixed(Math.abs(lon), 5) + '° ' + (lon >= 0 ? 'E' : 'W');
+    } else {
+      position = String(reading.message).replace(/\.$/, '');
+    }
+    var text = phrase('site.degrees_in_utm_boxes',
+      { easting: eText, northing: nText, position: position });
+    return ok && reading.message ? text + ' ' + reading.message : text;
+  }
+
+  /** Where a site's recorded position puts it: UTM in the recorded zone or
+   * the one the easting implies. {lat, lon, zone}, or null when there is no
+   * position or it does not convert. A pair small enough to be degrees typed
+   * into the two boxes is no position at all: this used to read it as a
+   * latitude and longitude, which the Python engine did not, so the gate
+   * passed a placard whose identifier could not be minted.
+   * degreesInUtmBoxes says why, and the site page offers to convert it.
    * @param {Rec|null} site
    */
   function sitePosition(site) {
@@ -20732,20 +21336,11 @@
         e === '' || n === '') return null;
     e = Number(e); n = Number(n);
     if (!isFinite(e) || !isFinite(n)) return null;
-    /** @type {Rec|null} */
-    var ll;
-    if (Math.abs(e) <= 180 && Math.abs(n) <= 90) {
-      var reading = readLatLon(String(n) + ', ' + String(e));
-      ll = reading.lat === null || reading.lon === null
-        ? { lat: n, lon: e, note: '' }
-        : { lat: reading.lat, lon: reading.lon, note: reading.message };
-      ll.fromUtm = false;
-      return ll;
-    }
+    if (utmBoxesHoldDegrees(e, n)) return null;
     var zone = Number(site.utm_zone) || inferZoneForSierraLeone(e);
-    ll = utmToGeographic(e, n, zone);
+    var ll = utmToGeographic(e, n, zone);
     if (!ll) return null;
-    return { lat: ll.lat, lon: ll.lon, note: '', fromUtm: true, zone: zone };
+    return { lat: ll.lat, lon: ll.lon, zone: zone };
   }
 
   Object.assign(C, {
@@ -20759,6 +21354,7 @@
     geologyParagraph: geologyParagraph,
     HONEST_WINDOW_KM: HONEST_WINDOW_KM, scaleCaveat: scaleCaveat,
     outsideCountryNote: outsideCountryNote, sitePosition: sitePosition,
+    utmBoxesHoldDegrees: utmBoxesHoldDegrees, degreesInUtmBoxes: degreesInUtmBoxes,
   });
 
   /* ================================================================== siting
@@ -22829,18 +23425,39 @@
     return classifyStatusText(raw) || 'other';
   }
 
-  /**
+  /** Whether a summary's easting and northing are a longitude and a
+   * latitude typed into the UTM boxes, by the rule the site page reads them
+   * by (utmBoxesHoldDegrees): portfolio.summary_holds_degrees.
+   * @param {Rec|null} summary a project summary
+   * @returns {boolean}
+   */
+  function summaryHoldsDegrees(summary) {
+    var easting = deskNumber(summary && summary.easting), northing = deskNumber(summary && summary.northing);
+    return !!(easting && northing) && utmBoxesHoldDegrees(easting, northing);
+  }
+
+  /** Where a project summary is: portfolio._latlon. The portfolio map, the
+   * site detail and the desk study all place a project by this.
    * @param {Rec|null} summary a project summary
    * @returns {{lat: number, lon: number}|null}
    */
   function summaryLatLon(summary) {
-    var easting = summary && summary.easting, northing = summary && summary.northing;
+    if (!summary) return null;
+    /* a value a project file carries that is no number ("52 m") is no
+     * position, as portfolio._num reads it */
+    var easting = deskNumber(summary.easting), northing = deskNumber(summary.northing);
     if (!easting || !northing) return null;
+    /* Degrees are no position in metres, as sitePosition reads them: read
+     * as metres they put the project on the equator, 940 km off, so the
+     * desk study left it out of the projects near its site without a word
+     * and the portfolio map drew it in the Gulf of Guinea. */
+    if (utmBoxesHoldDegrees(easting, northing)) return null;
     /* the same fallback SiteMetadata.utm uses: a hard-coded zone dropped every
      * zone-less project six degrees off, into the Atlantic and off the map */
-    var zone = Number(/** @type {Rec} */ (summary).utm_zone) || inferZoneForSierraLeone(Number(easting));
+    var zone = Math.trunc(deskNumber(summary.utm_zone) || 0) || inferZoneForSierraLeone(easting);
     try {
-      return utmToGeographic(Number(easting), Number(northing), zone);
+      var at = utmToGeographic(easting, northing, zone);
+      return at && isFinite(at.lat) && isFinite(at.lon) ? at : null;
     } catch (e) { return null; }
   }
 
@@ -23049,6 +23666,7 @@
     classifyStatusText: classifyStatusText, normaliseStatus: normaliseStatus,
     summaryVerdictState: summaryVerdictState, VERDICT_SCHEMA: VERDICT_SCHEMA,
     classifyStatus: classifyStatus, summaryLatLon: summaryLatLon,
+    summaryHoldsDegrees: summaryHoldsDegrees,
     portfolioRows: portfolioRows, portfolioPoints: portfolioPoints,
     portfolioSiteLabel: portfolioSiteLabel,
     portfolioSiteDetail: portfolioSiteDetail,
@@ -25555,8 +26173,18 @@
 
   var UNIT_BLOCKERS = ['time_unit_unknown', 'discharge_unit_unknown',
     'discharge_ambiguous', 'time_reading_unreadable'];
+  /* A drilling log converted from feet is among the assumptions: the depths
+   * were read, but the report should say they were converted, and a bare
+   * depth may have been read in feet because the rest of the sheet was. */
   var UNIT_ASSUMPTIONS = ['discharge_unit_assumed', 'unit_not_reported',
-    'unit_basis_assumed', 'utm_zone_assumed', 'test_type_inferred'];
+    'unit_basis_assumed', 'utm_zone_assumed', 'test_type_inferred', 'feet_converted'];
+
+  /* The flags the drilling log reader raised with one of `codes`, the
+   * reader's own lists (DRILLING_UNREADABLE, DRILLING_REFUSALS), so the gate
+   * and the reader cannot drift. */
+  function drillingFlags(log, codes) {
+    return flagsWithCode(readinessFlags([log]), codes);
+  }
 
   function readinessFlags(objects) {
     var out = [];
@@ -25703,18 +26331,18 @@
           'project. A borehole that cannot be found again on the ground ' +
           'cannot be certified, revisited or maintained.'];
       }
+      /* Degrees typed into the UTM boxes are no position: this gate read
+       * them as degrees and passed a placard whose identifier could not be
+       * minted, while the Python refused them as a point near the equator.
+       * Both refuse them now, in the same words. */
+      var degrees = degreesInUtmBoxes(site.easting, site.northing);
+      if (degrees) return ['unmet', degrees];
       /* check_site_consistency's one error: a position that converts to
        * somewhere outside the country. The site page said so and the gate
        * let the report through unstamped, where the Python holds it back. */
       var position = sitePosition(site);
       var outside = position ? outsideCountryNote(position.lat, position.lon) : '';
       if (outside) return ['unmet', outside];
-      if (position && !position.fromUtm) {
-        return ['met', 'Position recorded: ' + pyFixed(Math.abs(position.lat), 5) +
-          '° ' + (position.lat >= 0 ? 'N' : 'S') + ', ' +
-          pyFixed(Math.abs(position.lon), 5) + '° ' + (position.lon >= 0 ? 'E' : 'W') +
-          '.'];
-      }
       var zone = Number(site.utm_zone) || inferZoneForSierraLeone(Number(site.easting));
       return ['met', 'Position recorded: ' + Math.round(site.easting) + ' mE, ' +
         Math.round(site.northing) + ' mN (UTM ' + zone + 'N).'];
@@ -25726,6 +26354,16 @@
       if (!(log.intervals || []).length) {
         return ['unmet', 'The drilling log records no lithology.'];
       }
+      /* A log the reader dropped a row of, or refused a strike from, is not
+       * the log the crew wrote: the gate used to call it met, and "Logged to
+       * 45 m" stood over a log that had lost its 5-10 m row and both water
+       * strikes. */
+      var refused = drillingFlags(log, DRILLING_REFUSALS);
+      if (refused.length) {
+        var seen = [];
+        refused.forEach(function (f) { if (seen.indexOf(f.message) < 0) seen.push(f.message); });
+        return ['unmet', phrase('drilling.gate_set_aside', { messages: seen.join(' ') })];
+      }
       return ['met', 'Logged to ' + pyFixed(log.total_depth_m, 0) + ' m with ' +
         plural(log.intervals.length, 'lithological interval') + '.'];
     }],
@@ -25733,7 +26371,11 @@
       var analysis = state.pump_analysis;
       var flags = readinessFlags([analysis, state.drilling_log,
         analysis ? analysis.test : null]);
-      var refused = flagsWithCode(flags, UNIT_BLOCKERS);
+      /* and every cell the drilling log reader could not read: "every
+       * reading carried a unit the toolkit could read" was said of a log
+       * whose strike cells it had refused and whose rows it had skipped */
+      var refused = flagsWithCode(flags, UNIT_BLOCKERS)
+        .concat(drillingFlags(state.drilling_log, DRILLING_UNREADABLE));
       if (refused.length) {
         return ['unmet', refused.map(function (f) { return f.message; }).join('; ')];
       }
@@ -25825,6 +26467,42 @@
       var depth = estimate.inputs ? estimate.inputs.total_depth_m : null;
       if (!depth) return ['unmet', 'The cost estimate has no total depth to price against.'];
       return ['met', 'Estimate priced for a ' + Math.round(depth) + ' m borehole.'];
+    }],
+    /* Every critical checklist item has an answer. Completeness, not
+     * outcome: an answer of No is an answer, and the record states the
+     * failure; an item left blank is a step the record cannot vouch for. The
+     * gate used to look only at the photographs, so a record with three
+     * photographed items answered and 35 critical ones blank was certified,
+     * while its own summary said 35 critical items were still open. N/A is
+     * an answer, and an answer that is none of the four is read as pending,
+     * as evaluateChecklist reads it. */
+    checklist_answered: ['Critical items answered', function (state) {
+      var supervision = state.supervision || {};
+      var items = supervision.items || loadChecklists();
+      var responses = supervision.responses || {};
+      var critical = items.filter(function (/** @type {Rec} */ item) { return item.critical; });
+      if (!critical.length) return ['met', phrase('supervision.no_critical_items')];
+      /** @type {Record<string, number>} */
+      var openByStage = {};
+      var titles = [];
+      critical.forEach(function (/** @type {Rec} */ item) {
+        var response = responses[item.item_id];
+        var value = response && typeof response === 'object' ? response.status : response;
+        var status = String(value || 'pending').trim().toLowerCase();
+        if (RESPONSE_STATES.indexOf(status) < 0 || status === 'pending') {
+          var title = stageTitle(item.checklist);
+          if (!own(openByStage, title)) { openByStage[title] = 0; titles.push(title); }
+          openByStage[title] += 1;
+        }
+      });
+      if (titles.length) {
+        var n = titles.reduce(function (sum, t) { return sum + openByStage[t]; }, 0);
+        return ['unmet', phrase('supervision.critical_unanswered', { n: n,
+          stages: andJoin(titles.map(function (t) {
+            return phrase('supervision.open_in_stage', { n: openByStage[t], stage: t });
+          })) })];
+      }
+      return ['met', phrase('supervision.critical_answered', { n: critical.length })];
     }],
     /* Every checklist item that needs a photograph has one. Which items do
      * is the checklist CSV's photo column, and one answered N/A needs none.
@@ -25918,9 +26596,10 @@
     /* an estimate is priced before anything is drilled, so it is judged on
      * its own inputs, not on a log and an as-built design it cannot have */
     costing: ['field_data', 'site_located', 'cost_basis', 'decision_bands', 'no_errors'],
-    /* a supervision record vouches that the critical steps were done, and
-     * for the ones the checklist says need it, a photograph is the evidence */
-    supervision: ['field_data', 'site_located', 'photo_evidence'],
+    /* a supervision record vouches that the critical steps were done: each
+     * needs an answer, and for the ones the checklist says need it, a
+     * photograph is the evidence */
+    supervision: ['field_data', 'site_located', 'checklist_answered', 'photo_evidence'],
     /* The asset documents and the payment certificate. Without an entry each
      * of these fell back to the completion set, so a plate for the headworks
      * was stamped PROVISIONAL for want of a water quality panel - which a
@@ -26258,6 +26937,27 @@
     };
   }
 
+  /** How far a value sits towards, or past, its binding limit: view.py
+   * _limit_ratio. Against a range it is the larger of the value over the top
+   * and the bottom over the value, so a value outside the range is past the
+   * line on whichever side it falls; the value over the top alone drew the
+   * Dr Timbo sample's pH of 5.9 at 0.69 times its 6.5 to 8.5 limit, on the
+   * compliant side. A value of zero or less under a range that starts above
+   * zero has no ratio.
+   * @param {number|null|undefined} value in the guideline's unit
+   * @param {Rec} limit
+   * @returns {number|null}
+   */
+  function spineLimitRatio(value, limit) {
+    if (value === null || value === undefined || !limit.maximum) return null;
+    var ratio = Number(value) / Number(limit.maximum);
+    if (limit.minimum) {
+      if (value <= 0) return null;
+      ratio = Math.max(ratio, Number(limit.minimum) / Number(value));
+    }
+    return ratio;
+  }
+
   /** @param {QualityAssessment} assessment */
   function spineQuality(assessment) {
     var rows = (assessment.rows || []).map(function (r) {
@@ -26272,10 +26972,7 @@
         /* The limit is written in the guideline's unit, so the value has to
          * be on that scale too. Dividing the raw reported number by it drew
          * a compliant ug/L result a thousand times past its line. */
-        if (r.value_in_guideline_unit !== null &&
-            r.value_in_guideline_unit !== undefined && limit.maximum) {
-          ratio = Number(r.value_in_guideline_unit) / Number(limit.maximum);
-        }
+        ratio = spineLimitRatio(r.value_in_guideline_unit, limit);
       }
       return {
         parameter: r.parameter, value: spineRound(r.value, 4), unit: r.unit,
@@ -26454,6 +27151,14 @@
     if (money.handpumps !== undefined && money.handpumps !== null) {
       costInputs.handpumps = money.handpumps;
     }
+    /* the Streamlit Costing page sets the pumping hours too (view.py
+     * SpineCosting); the browser's leaves them at the defaults */
+    if (money.developmentHours !== undefined && money.developmentHours !== null) {
+      costInputs.development_hours = money.developmentHours;
+    }
+    if (money.testPumpingHours !== undefined && money.testPumpingHours !== null) {
+      costInputs.test_pumping_hours = money.testPumpingHours;
+    }
     var estimate = estimateBoreholeCost(costInputs, money.rates || null, {
       overheadsPercent: money.overheadsPercent,
       marginPercent: money.marginPercent,
@@ -26560,17 +27265,83 @@
     return index < list.length ? list[index] : 1.0;
   }
 
+  /** The columns of an extracted VES table the template takes, and what it
+   * lacks: review.py ves_template_columns. `placed` maps ab2, mn or mn_half,
+   * rho or resistance, and k to the table's columns; `missing` holds the
+   * extraction.ves_missing keys that keep the readings out of the template.
+   * The columns are read by the VES reader's own rules, which are the rules
+   * that read the filled template back. Picked by substring instead, a sheet
+   * headed AB/2, MN/2, K, Resistance (ohm), App. Resistivity (ohm-m) had its
+   * resistances written into the apparent-resistivity column and its
+   * half-spacings into the full MN column, with nothing flagged.
+   * @param {Rec} table an extracted table
+   * @returns {{placed: Record<string, number>, missing: string[]}}
+   */
+  function vesTemplateColumns(table) {
+    var cols = vesReadingColumns(table.columns || []);
+    /** @type {Record<string, number>} */
+    var placed = {};
+    var missing = [];
+    if ('ab2' in cols) placed.ab2 = cols.ab2;
+    else missing.push('a' in cols ? 'wenner' : 'spacing');
+    if ('mn' in cols) placed.mn = cols.mn;
+    else if ('mn_half' in cols) placed.mn_half = cols.mn_half;
+    if ('rho' in cols) {
+      placed.rho = cols.rho;
+    } else if ('resistance' in cols) {
+      placed.resistance = cols.resistance;
+      if ('k' in cols) placed.k = cols.k;
+      /* the reader works K out from AB/2 and MN; with neither K nor MN every
+       * row would be dropped */
+      else if (!('mn' in placed) && !('mn_half' in placed)) missing.push('factor');
+    } else {
+      missing.push('value');
+    }
+    return { placed: placed, missing: missing };
+  }
+
+  function vesUnplaced(table, missing) {
+    var reasons = phraseTable('extraction.ves_missing');
+    return phrase('extraction.ves_unplaced', {
+      table: String(table.title),
+      missing: missing.map(function (key) { return reasons[key]; }).join('; '),
+      headings: (table.columns || []).map(function (c) {
+        return "'" + c + "'";
+      }).join(', ') || 'none',
+    });
+  }
+
+  /** What needs checking about the sheet as a whole, before any one value:
+   * review.py sheet_review_items. A sheet whose table was not found, or a VES
+   * sheet whose readings the template cannot take, has lost every reading,
+   * and its review used to say "None: all values extracted with high
+   * confidence".
+   * @param {Rec} document an extracted document
+   * @returns {string[]}
+   */
+  function sheetReviewItems(document) {
+    var tables = document.tables || [];
+    if (!tables.length) return [phrase('extraction.no_table')];
+    if (document.document_kind === 'ves') {
+      var missing = vesTemplateColumns(tables[0]).missing;
+      if (missing.length) return [vesUnplaced(tables[0], missing)];
+    }
+    return [];
+  }
+
   /** Everything a human still has to look at, in the words the review sheet
-   * uses. Mirrors ExtractedDocument.review_items.
+   * uses. Mirrors ExtractedDocument.review_items: the sheet as a whole first,
+   * then the header fields and the cells.
    * @param {Rec} document an extracted document
    * @returns {string[]}
    */
   function reviewItems(document) {
-    var items = (document.header || []).filter(function (f) { return f.needs_review; })
-      .map(function (f) {
-        return "header field '" + f.name + "' = '" + f.value + "' (confidence " +
-          pyFixed(f.confidence, 2) + ')';
-      });
+    var items = sheetReviewItems(document).concat(
+      (document.header || []).filter(function (f) { return f.needs_review; })
+        .map(function (f) {
+          return "header field '" + f.name + "' = '" + f.value + "' (confidence " +
+            pyFixed(f.confidence, 2) + ')';
+        }));
     (document.uncertain_cells || []).forEach(function (cell) {
       var table = (document.tables || [])[cell.table_index];
       if (!table) return;
@@ -26951,10 +27722,15 @@
    *
    * pdfplumber finds a table by its drawn rules; that needs the graphics
    * operators and the page's line art. Here the same job is done from word
-   * positions: a run of consecutive lines that share a column structure is a
-   * table. It finds the tables on a generated field sheet, and it is honest
-   * about what it is - the page says so, and every numeric cell that does not
-   * parse is flagged for review either way. */
+   * positions: a run of consecutive lines of two or more columns that share a
+   * column structure is a table. It finds the tables on a generated field
+   * sheet, and it is honest about what it is - the page says so, and every
+   * numeric cell that does not parse is flagged for review either way.
+   *
+   * A line's columns are its pieces between column breaks (the gaps lineText
+   * writes as three spaces), as pdf_text.py _tables_from_lines counts them.
+   * The Python reader counted words, so a caption above the headings became
+   * the header there, and a note under the table a reading. */
   function tablesFromLines(lines, isHeaderLine) {
     var tables = [];
     var run = [];
@@ -26976,7 +27752,8 @@
        * label/value pairs that have already been read as header fields;
        * folding them into the reading table would put "Community: Rokel"
        * where an AB/2 spacing belongs */
-      if (line.words.length >= 2 && !(isHeaderLine && isHeaderLine(line))) {
+      if (splitHeaderLine(lineText(line)).length >= 2 &&
+          !(isHeaderLine && isHeaderLine(line))) {
         run.push(line);
       } else {
         flush();
@@ -27019,8 +27796,11 @@
   var NUMERIC_COLUMN_MARKERS = ['(m)', 'm)', 'ohm', 'rate', 'level', 'depth',
     'time', 'value', 'ab/2', 'mn'];
 
-  /** Numeric columns should parse as numbers; an empty cell in a numeric column
-   * and non-numeric junk are both review items.
+  /** Numeric columns should hold numbers; an empty cell in a numeric column,
+   * non-numeric junk and a number with something else in the cell are all
+   * review items. parseNumber takes the first number in a cell, so a
+   * scanner's "12O.4" used to pass as clean and reach the template as 12: the
+   * whole cell has to be the number, bar a unit after it (isWholeNumber).
    * @param {*} cell
    * @param {*} column the column's header
    * @returns {[number, string]}
@@ -27031,8 +27811,10 @@
       return lower.indexOf(marker) >= 0;
     });
     if (!numeric) return [1.0, ''];
-    if (cell === '') return [0.6, 'empty cell in a numeric column'];
-    if (parseNumber(cell) === null) return [0.4, 'does not parse as a number'];
+    var reasons = phraseTable('extraction.cell_reason');
+    if (cell === '') return [0.6, reasons.empty];
+    if (parseNumber(cell) === null) return [0.4, reasons.unreadable];
+    if (!isWholeNumber(cell)) return [0.5, reasons.partial];
     return [1.0, ''];
   }
 
@@ -27141,10 +27923,7 @@
     }
 
     var blob = allText.join('\n');
-    if (!blob.trim()) {
-      throw new Error('That PDF carries no text layer - it is an image of a ' +
-        'sheet rather than a typed one. Use the AI assisted extraction instead.');
-    }
+    if (!blob.trim()) throw new Error(phrase('extraction.no_text_layer'));
     return {
       source: sourceName || 'document.pdf',
       document_kind: guessDocumentKind(blob),
@@ -27213,6 +27992,13 @@
   /** The standard VES template, filled from an extracted VES sheet. Header
    * fields go through the same label patterns the parsers use, so the filled
    * workbook reads back through the normal reader after review.
+   *
+   * The readings go in as the sheet has them, under headings the VES reader
+   * reads the way the sheet meant them (review.py fill_ves_template): a
+   * half-spacing column is headed "MN/2 (m)", so the reader doubles it, and a
+   * sheet that records resistances has them headed "Resistance (ohm)", with
+   * its K column beside them where it has one. A table whose readings cannot
+   * be placed that way is refused, with the reason.
    * @param {Rec} document an extracted document of kind 'ves'
    * @param {Grid} blankRows the template's own rows
    */
@@ -27224,6 +28010,12 @@
       throw new Error('No data table was extracted from that sheet.');
     }
     var table = document.tables[0];
+    var layout = vesTemplateColumns(table);
+    if (layout.missing.length) {
+      var reason = vesUnplaced(table, layout.missing);
+      throw new Error(reason.charAt(0).toUpperCase() + reason.slice(1) + '.');
+    }
+    var placed = layout.placed;
     var rows = blankRows.map(function (row) { return (row || []).slice(); });
 
     /* canonical key -> [row, column] in the template, 0-based */
@@ -27235,6 +28027,9 @@
       elevation_m: [5, 1], date: [5, 3],
       supervisor: [6, 1], instrument: [6, 3],
     };
+    /* the blank template's own sounding number is not the sheet's: left in,
+     * it was read back as if the sheet had given it */
+    if (rows[cellMap.sounding_id[0]]) rows[cellMap.sounding_id[0]][cellMap.sounding_id[1]] = '';
     (document.header || []).forEach(function (field) {
       /* The AI path names a field the way the sheet does ("Sounding Number"),
        * which the label patterns resolve. The text-layer path has already
@@ -27253,20 +28048,6 @@
       if (cell.table_index === 0) flagged[cell.row + ':' + cell.column] = true;
     });
 
-    function findColumn() {
-      var needles = Array.prototype.slice.call(arguments);
-      for (var i = 0; i < table.columns.length; i++) {
-        var low = String(table.columns[i]).toLowerCase();
-        for (var n = 0; n < needles.length; n++) {
-          if (low.indexOf(needles[n]) >= 0) return i;
-        }
-      }
-      return null;
-    }
-    var colAb2 = findColumn('ab/2', 'ab2');
-    var colMn = findColumn('mn');
-    var colRho = findColumn('resist', 'ohm', 'rho');
-
     /* the blank template's reading grid starts on the row after the column
      * headings; everything below it is replaced by the extracted readings */
     var firstReading = 9;
@@ -27274,14 +28055,37 @@
       if ((rows[i] || [])[0] === 'No.') { firstReading = i + 1; break; }
     }
     rows.length = firstReading;
+    /* template column (0-based) <- the extracted table's column, under the
+     * blank template's own headings, changed where the sheet's columns are
+     * not what they say */
+    var headings = (rows[firstReading - 1] || []).slice(0, 4);
+    /** @type {Array<[number, number]>} */
+    var targets = [[placed.ab2, 1]];
+    if ('mn' in placed) {
+      targets.push([placed.mn, 2]);
+    } else if ('mn_half' in placed) {
+      targets.push([placed.mn_half, 2]);
+      headings[2] = 'MN/2 (m)';
+    }
+    if ('rho' in placed) {
+      targets.push([placed.rho, 3]);
+    } else {
+      targets.push([placed.resistance, 3]);
+      headings[3] = 'Resistance (ohm)';
+      if ('k' in placed) {
+        targets.push([placed.k, 4]);
+        headings.push('K');
+      }
+    }
+    rows[firstReading - 1] = headings;
     table.rows.forEach(function (row, index) {
       /** @type {Array<*>} */
-      var out = [index + 1, '', '', ''];
-      /** @type {Array<[number|null, number]>} */ ([[colAb2, 1], [colMn, 2], [colRho, 3]])
-        .forEach(function (pair) {
-          if (pair[0] === null || pair[0] >= row.length) return;
-          out[pair[1]] = { v: row[pair[0]], flag: (index + ':' + pair[0]) in flagged };
-        });
+      var out = headings.map(function () { return ''; });
+      out[0] = index + 1;
+      targets.forEach(function (pair) {
+        if (pair[0] >= row.length) return;
+        out[pair[1]] = { v: row[pair[0]], flag: (index + ':' + pair[0]) in flagged };
+      });
       rows.push(out);
     });
     return rows;
@@ -27454,20 +28258,38 @@
         (detail ? ': ' + detail : '.'));
     }
     var message = await response.json();
-    if (message.stop_reason === 'refusal') {
-      throw new Error('The extraction request was declined by the model; ' +
-        'check the document content.');
-    }
-    /* a refusal leaves content empty, and hitting the output cap can leave
-     * only thinking blocks; either way there is nothing to parse */
+    return extractionDocumentFrom(replyPayload(message), opts.source || 'scan');
+  }
+
+  /** The transcription a reply carries, or the reason it carries none.
+   * claude.py _reply_payload. A refusal leaves content empty, and hitting the
+   * output cap can leave only thinking blocks or part of the JSON, which went
+   * straight to JSON.parse and came back as "Unexpected end of JSON input":
+   * the reply is refused for its stop reason before it is parsed, and
+   * anything else that is not JSON is refused naming it.
+   * @param {Rec} message the API's reply
+   * @returns {Rec}
+   */
+  function replyPayload(message) {
+    var stopReason = String(message.stop_reason || 'unknown');
+    if (stopReason === 'refusal') throw new Error(phrase('extraction.declined'));
+    if (stopReason === 'max_tokens') throw new Error(phrase('extraction.cut_off'));
     var textBlock = (message.content || []).filter(function (b) {
       return b.type === 'text';
     })[0];
     if (!textBlock) {
-      throw new Error('The model returned no transcription (stop reason: ' +
-        (message.stop_reason || 'unknown') + '). Try a clearer scan.');
+      throw new Error(phrase('extraction.no_transcription', { stop_reason: stopReason }));
     }
-    return extractionDocumentFrom(JSON.parse(textBlock.text), opts.source || 'scan');
+    var payload;
+    try {
+      payload = JSON.parse(textBlock.text);
+    } catch (e) {
+      throw new Error(phrase('extraction.unreadable_reply', { stop_reason: stopReason }));
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error(phrase('extraction.unreadable_reply', { stop_reason: stopReason }));
+    }
+    return payload;
   }
 
   /* --- a pumping test written on a Word field sheet -------------------------
@@ -27565,7 +28387,8 @@
     extractPdfText: extractPdfText, cellConfidence: cellConfidence,
     reviewWorkbookSheets: reviewWorkbookSheets,
     fillVesTemplateSheets: fillVesTemplateSheets,
-    extractWithClaude: extractWithClaude,
+    vesTemplateColumns: vesTemplateColumns, sheetReviewItems: sheetReviewItems,
+    extractWithClaude: extractWithClaude, replyPayload: replyPayload,
     extractionDocumentFrom: extractionDocumentFrom,
     EXTRACTION_MODEL: EXTRACTION_MODEL, EXTRACTION_SCHEMA: EXTRACTION_SCHEMA,
     EXTRACTION_PROMPT: EXTRACTION_PROMPT,
@@ -28032,22 +28855,48 @@
   var UNKNOWN_DISTRICT = 'XX';
   var ASSET_ID_RE = /^SL-([A-Z]{2,4})-([0-9A-Z]{7})-([0-9A-Z])$/;
 
-  /** ISO 7064 MOD 37,36: every single wrong character and every transposition
-   * of two adjacent ones, which between them are almost all the mistakes
-   * people make copying a code off a plate into a phone.
+  /* ISO 7064's hybrid system for M = 36: the running sum is reduced modulo M
+   * (36, with 0 written as 36) and doubled modulo M + 1 (37). */
+  var CHECK_M = 36;
+
+  function checkWith(body, modulus) {
+    var product = CHECK_M;
+    var text = String(body || '').toUpperCase();
+    for (var i = 0; i < text.length; i++) {
+      var value = CHECK_ALPHABET.indexOf(text.charAt(i));
+      if (value < 0) continue;             /* separators carry no value */
+      var total = (product % (CHECK_M + 1)) + value;
+      product = 2 * ((total % modulus) || modulus);
+    }
+    return CHECK_ALPHABET.charAt((CHECK_M + 1 - product % (CHECK_M + 1)) % CHECK_M);
+  }
+
+  /** ISO 7064 MOD 37,36, the running sum reduced modulo 36 and doubled
+   * modulo 37 as the standard's hybrid system has it. It used to be reduced
+   * modulo 37, which left 37 final states for 36 check characters, so two
+   * of them shared one: about one single mistyped character in 680 still
+   * validated, and the identifier did not match the standard's own worked
+   * examples. Done as the standard has it, every single wrong character is
+   * caught; most transpositions of two adjacent characters are too, but not
+   * all: of the 45,360 ways two different characters can meet in one of the
+   * calculation's 36 states, 72 leave the state unchanged (one in 630),
+   * which is the hybrid system's own limit rather than a slip here.
    * @param {*} body
    * @returns {string}
    */
   function checkCharacter(body) {
-    var product = 36;
-    var text = String(body || '').toUpperCase();
-    for (var i = 0; i < text.length; i++) {
-      var value = CHECK_ALPHABET.indexOf(text.charAt(i));
-      if (value < 0) continue;
-      var total = (product % 37) + value;
-      product = 2 * ((total % 37) || 37);
-    }
-    return CHECK_ALPHABET.charAt((37 - product % 37) % 36);
+    return checkWith(body, CHECK_M);
+  }
+
+  /** The check character identifiers were minted with before the
+   * correction: reduced modulo 37 rather than 36. Kept so an identifier
+   * already painted on a plate, or already holding a history in a project
+   * file, still reads; never used to mint.
+   * @param {*} body
+   * @returns {string}
+   */
+  function legacyCheckCharacter(body) {
+    return checkWith(body, CHECK_M + 1);
   }
 
   function positionCode(easting, northing, zone) {
@@ -28094,6 +28943,12 @@
       throw new Error('a borehole with no recorded position cannot be given ' +
         'an identifier: there would be nothing to find it by');
     }
+    /* Degrees typed into the two boxes are not a position in metres. The
+     * readiness gate read them as degrees and passed the plate, while this
+     * refused them, so a plate was certified for an identifier nobody could
+     * mint. Both engines now refuse them, in the same words. */
+    var degrees = degreesInUtmBoxes(s.easting, s.northing);
+    if (degrees) throw new Error(degrees);
     var zone = s.utm_zone || inferZoneForSierraLeone(Number(s.easting));
     return formatAssetId(districtCode(s.district),
       positionCode(s.easting, s.northing, zone));
@@ -28116,16 +28971,44 @@
     }).join('');
     var candidate = 'SL-' + district + '-' + code + '-' + given;
     if (!ASSET_ID_RE.test(candidate)) return null;
-    if (checkCharacter('SL-' + district + '-' + code) !== given) return null;
+    var body = 'SL-' + district + '-' + code;
+    /* An identifier minted before the check character followed ISO 7064
+     * exactly is still the identifier on its plate and in its project file,
+     * so it is read as it is rather than refused or renamed:
+     * validateAssetId says that it carries the older character. */
+    if (given !== checkCharacter(body) && given !== legacyCheckCharacter(body)) return null;
     return candidate;
   }
 
-  /** @param {*} text */
+  /** Whether an identifier checks only against the legacy check character.
+   * @param {*} assetId
+   * @returns {boolean}
+   */
+  function isLegacyAssetId(assetId) {
+    var parsed = parseAssetId(assetId);
+    if (!parsed) return false;
+    var cut = parsed.lastIndexOf('-');
+    return checkCharacter(parsed.slice(0, cut)) !== parsed.slice(cut + 1);
+  }
+
+  /** {ok, reason, assetId}. An identifier carrying the legacy check character
+   * is accepted, and its reason is the note saying so rather than ''.
+   * @param {*} text */
   function validateAssetId(text) {
     var raw = String(text === null || text === undefined ? '' : text).trim();
     if (!raw) return { ok: false, reason: 'No identifier was entered.' };
     var parsed = parseAssetId(raw);
-    if (parsed) return { ok: true, reason: '', assetId: parsed };
+    if (parsed) {
+      if (isLegacyAssetId(parsed)) {
+        /* read, and said: while the older character is read, about one
+         * single mistyped character in 36 matches it, so the person typing
+         * is told to compare the identifier with the plate */
+        return { ok: true, assetId: parsed, legacy: true,
+          reason: phrase('registry.legacy_check_character', { asset_id: parsed,
+            expected: checkCharacter(parsed.slice(0, parsed.lastIndexOf('-'))) }) };
+      }
+      return { ok: true, reason: '', assetId: parsed, legacy: false };
+    }
     var tidy = raw.replace(/[\s_]+/g, '').toUpperCase();
     if (tidy.indexOf('SL-') !== 0) tidy = 'SL-' + tidy;
     var parts = tidy.split('-');
@@ -28145,10 +29028,14 @@
       '. Something in it has been mistyped.' };
   }
 
-  /* kind -> [label, what it establishes about function, is it a service visit] */
+  /* kind -> [label, what it establishes about function, is it a service visit].
+   * A routine inspection is the area mechanic's visit to the pump and the
+   * rising main (PLAN.md step 7.3); an inspection is the sanitary inspection,
+   * as it always was. A repair is not counted as a routine inspection. */
   var EVENT_KINDS = {
     commissioned: ['Commissioned', 'functional', false],
     inspection: ['Sanitary inspection', null, true],
+    routine_inspection: ['Routine inspection', null, true],
     water_sample: ['Water sampled', null, false],
     repair: ['Repair', 'functional', true],
     failure: ['Failure', 'non_functional', true],
@@ -28156,6 +29043,32 @@
     decommissioned: ['Decommissioned', 'decommissioned', false],
     note: ['Note', null, false]
   };
+
+  /* The order events recorded on one day are read in (registry.py
+   * SAME_DAY_ORDER). Sorting them by kind name put "decommissioned" before
+   * "failure", "repair" and "restored", so a hole recorded as collapsed and
+   * decommissioned on one visit read "Not working" and stayed due an
+   * inspection, and a pump pulled for reuse on the decommissioning day read
+   * "Working". This order is a choice, stated: on a day the borehole is
+   * commissioned first, then visited, found broken, mended, and only then
+   * decommissioned. Kinds of the same rank keep their name order. */
+  var SAME_DAY_ORDER = {
+    commissioned: 0, inspection: 1, water_sample: 1, note: 1,
+    failure: 2, repair: 3, restored: 3, decommissioned: 4
+  };
+
+  function dayRank(kind) {
+    return own(SAME_DAY_ORDER, kind) ? SAME_DAY_ORDER[kind] : 1;
+  }
+
+  /* when, then the day's order, then kind, then id: merge_events' key */
+  function eventOrder(a, b) {
+    var aw = a.when || '9999', bw = b.when || '9999';
+    if (aw !== bw) return aw < bw ? -1 : 1;
+    if (dayRank(a.kind) !== dayRank(b.kind)) return dayRank(a.kind) - dayRank(b.kind);
+    if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+    return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
+  }
 
   var FUNCTION_LABELS = {
     functional: 'Working', non_functional: 'Not working',
@@ -28275,6 +29188,7 @@
 
   /** Clamped rather than rolled over: six months from 31 August is 28
    * February, not 3 March, and a due date that drifts forward is missed.
+   * Null past the year 9999, the last a date can hold in either engine.
    * @param {string} iso
    * @param {number} months
    * @returns {string|null}
@@ -28286,6 +29200,7 @@
     var day = Number(match[3]);
     year += Math.floor(month / 12);
     month = ((month % 12) + 12) % 12 + 1;
+    if (year > 9999) return null;
     day = Math.min(day, daysInMonth(year, month));
     /* the year written in four digits, as Python's isoformat writes it, so
      * a due date counted from a day before the year 1000 still reads */
@@ -28365,12 +29280,7 @@
         }
       });
     }
-    return order.map(function (key) { return merged[key]; }).sort(function (a, b) {
-      var aw = a.when || '9999', bw = b.when || '9999';
-      if (aw !== bw) return aw < bw ? -1 : 1;
-      if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
-      return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
-    });
+    return order.map(function (key) { return merged[key]; }).sort(eventOrder);
   }
 
   /**
@@ -28400,34 +29310,139 @@
     return asset && asset.district ? place + ' (' + asset.district + ')' : place;
   }
 
-  var DEFAULT_SCHEDULE = {
-    inspection_months: 6, water_sample_months: 12, grace_days: 30
-  };
+  /** How often a point is visited (registry.Schedule.from_config): the
+   * configuration's service section, and its design rules' interval for a
+   * rising main in water whose corrosivity is not known, which is the routine
+   * inspection's interval for a record that carries no rising main. These
+   * are a programme's choices, not a standard.
+   * @param {Config|null} [cfg] a configuration; the defaults when not given
+   * @returns {Rec}
+   */
+  function serviceSchedule(cfg) {
+    var c = cfg || defaultConfig();
+    return {
+      sanitary_inspection_months: c.service.sanitary_inspection_months,
+      water_sample_months: c.service.water_sample_months,
+      grace_days: c.service.grace_days,
+      routine_inspection_months: c.design.aggressive_rising_main_inspection_months
+    };
+  }
 
-  function dueItem(key, title, last, commissioned, months, graceDays, today, why) {
+  /* registry._MAX_MONTHS: a hundred years, the longest interval a record may
+   * set; a longer one is not an interval anybody meant */
+  var MAX_MONTHS = 1200;
+
+  /* a number of months from 1 to 1200, or null: a whole number, as Python
+   * reads it too (5.0 is 5, true is not a number) */
+  function wholeMonths(value) {
+    return typeof value === 'number' && isFinite(value) && value === Math.floor(value) &&
+      value >= 1 && value <= MAX_MONTHS ? value : null;
+  }
+
+  /* registry.Schedule.__post_init__: an interval no due date can be counted
+   * with is refused, so a configuration that set one does not give a due
+   * date in one engine and nonsense in the other */
+  function checkSchedule(plan) {
+    ['sanitary_inspection_months', 'water_sample_months', 'routine_inspection_months']
+      .forEach(function (name) {
+        if (wholeMonths(plan[name]) === null) {
+          throw new Error('schedule: ' + name + ' must be a whole number of months from 1 to ' +
+            MAX_MONTHS);
+        }
+      });
+    var grace = plan.grace_days;
+    if (!(typeof grace === 'number' && isFinite(grace) && grace === Math.floor(grace) &&
+        grace >= 0)) {
+      throw new Error('schedule: grace_days must be a whole number of days, 0 or more');
+    }
+    return plan;
+  }
+
+  /* a text field of a record, trimmed, or blank when it is not text */
+  function textField(value) {
+    return typeof value === 'string' ? trimField(value) : '';
+  }
+
+  /** The rising main a record carries, as both engines keep it, or null
+   * (registry.clean_rising_main): the interval a whole number of months from
+   * 1 to 1200, or no rising main at all; the material trimmed; the chemistry
+   * kept only when it is a state the design names.
+   * @param {*} raw a design's rising main or a stored record's
+   * @returns {Rec|null}
+   */
+  function cleanRisingMain(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    var months = wholeMonths(raw.inspection_months);
+    if (months === null) return null;
+    var chemistry = textField(raw.chemistry);
+    return {
+      material: textField(raw.material), inspection_months: months,
+      chemistry: own(phraseTable('rounds.water'), chemistry) ? chemistry : ''
+    };
+  }
+
+  /** A copy of the record carrying the rising main of its project's design;
+   * the record as it is when the design gives none.
+   * @param {Rec} asset
+   * @param {*} risingMain a design's rising main
+   * @returns {Rec}
+   */
+  function assetWithRisingMain(asset, risingMain) {
+    var clean = cleanRisingMain(risingMain);
+    if (!clean) return asset;
+    return Object.assign({}, asset, { rising_main: clean });
+  }
+
+  function dueItem(key, title, last, commissioned, months, graceDays, today, why, basis) {
     var anchor = last || commissioned;
     if (!anchor) {
       return { key: key, title: title, due_on: null, state: 'unknown',
         detail: 'No ' + title.toLowerCase() + ' has been recorded, and there ' +
-          'is no commissioning date to count from. ' + why };
+          'is no commissioning date to count from. ' + why,
+        months: months, basis: basis };
     }
     var dueOn = addMonths(anchor, months);
+    if (dueOn === null) {
+      return { key: key, title: title, due_on: null, state: 'scheduled',
+        detail: phrase('rounds.beyond', { title: title.toLowerCase() }),
+        months: months, basis: basis };
+    }
     /* both are days that read: dueOn is counted from a recorded day that
      * did, and today is the clock's own date unless a caller passes one */
     var dueDay = /** @type {number} */ (isoDay(dueOn)),
       todayDay = /** @type {number} */ (isoDay(today));
-    if (todayDay > dueDay + graceDays) {
+    var late = todayDay - dueDay;
+    if (late > graceDays) {
       var never = last ? '' : 'has never been done; it ';
       return { key: key, title: title, due_on: dueOn, state: 'overdue',
         detail: title + ' ' + never + 'has been due since ' + dueOn + ', ' +
-          (todayDay - dueDay) + ' days ago. ' + why };
+          late + ' days ago. ' + why,
+        months: months, basis: basis };
     }
-    if (todayDay > dueDay) {
+    if (late > 0) {
       return { key: key, title: title, due_on: dueOn, state: 'due',
-        detail: title + ' fell due on ' + dueOn + '.' };
+        detail: title + ' fell due on ' + dueOn + '.', months: months, basis: basis };
     }
     return { key: key, title: title, due_on: dueOn, state: 'scheduled',
-      detail: 'Next ' + title.toLowerCase() + ' due ' + dueOn + '.' };
+      detail: 'Next ' + title.toLowerCase() + ' due ' + dueOn + '.',
+      months: months, basis: basis };
+  }
+
+  /* registry._routine_interval: the routine inspection's interval and where
+   * it comes from - the rising main the record carries from the design, else
+   * the schedule's interval for a record that carries none */
+  function routineInterval(asset, plan) {
+    var rising = cleanRisingMain(asset.rising_main);
+    if (!rising) {
+      return [plan.routine_inspection_months, phrase('rounds.basis_default',
+        { months: plan.routine_inspection_months })];
+    }
+    var months = rising.inspection_months;
+    if (rising.material && rising.chemistry) {
+      return [months, phrase('rounds.basis_design', { months: months,
+        material: rising.material, water: phraseTable('rounds.water')[rising.chemistry] })];
+    }
+    return [months, phrase('rounds.basis_record', { months: months })];
   }
 
   /**
@@ -28437,36 +29452,53 @@
    */
   function assetState(asset, today, schedule) {
     var when = today || new Date().toISOString().slice(0, 10);
-    var plan = Object.assign({}, DEFAULT_SCHEDULE, schedule || {});
+    var plan = checkSchedule(Object.assign({}, serviceSchedule(), schedule || {}));
     var events = mergeEvents(asset.asset_id, asset.events || []);
     /* the clock's own date unless the caller passes one */
     var todayDay = /** @type {number} */ (isoDay(when));
     var dated = events.filter(function (e) { return isoDay(e.when) !== null; })
-      .sort(function (a, b) {
-        if (a.when !== b.when) return a.when < b.when ? -1 : 1;
-        if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
-        return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
-      });
+      .sort(eventOrder);
     var undated = events.length - dated.length;
 
     var fn = 'unknown', since = null;
     var detail = 'Nothing has been recorded against this borehole, so whether ' +
       'it is working is not known.';
-    var commissioned = null, lastInspection = null, lastSample = null;
+    var commissioned = null, lastInspection = null, lastSample = null, lastRoutine = null;
+    var afterDecommissioning = [];
     dated.forEach(function (event) {
       if (/** @type {number} */ (isoDay(event.when)) > todayDay) return;
       var establishes = EVENT_KINDS[event.kind][1];
-      if (establishes) {
+      if (establishes && fn === 'decommissioned' && event.kind !== 'commissioned') {
+        /* Decommissioning is terminal: a repair or a failure logged after it
+         * stays in the history but does not bring the borehole back. Only a
+         * new commissioning record does. A second decommissioning record
+         * changes nothing, as a second failure report does not. */
+        if (establishes !== 'decommissioned') afterDecommissioning.push(event);
+      } else if (establishes && establishes !== fn) {
+        /* Only a change moves "since". A villager reporting a broken pump
+         * again in May, as the plate reports of PLAN.md step 7.1 will,
+         * restarted the count from May, so a borehole out since January
+         * showed 12 days out of service rather than 143. */
         fn = establishes;
         since = event.when;
         detail = eventLabel(event.kind) + ' recorded on ' + event.when +
           (event.by ? ' by ' + event.by : '');
+        afterDecommissioning = [];
       }
       if (event.kind === 'commissioned' && !commissioned) commissioned = event.when;
       if (event.kind === 'inspection') lastInspection = event.when;
+      if (event.kind === 'routine_inspection') lastRoutine = event.when;
       if (event.kind === 'water_sample') lastSample = event.when;
     });
 
+    if (fn === 'decommissioned' && afterDecommissioning.length) {
+      detail += '. ' + phrase('registry.after_decommissioning', {
+        n: afterDecommissioning.length,
+        events: andJoin(afterDecommissioning.map(function (e) {
+          return phrase('registry.event_on',
+            { event: eventLabel(e.kind).toLowerCase(), when: e.when });
+        })) });
+    }
     var outFor = fn === 'non_functional' && since ? todayDay - /** @type {number} */ (isoDay(since)) : null;
     if (undated && fn === 'unknown') {
       detail = undated + ' record(s) carry a date nobody can read, so nothing ' +
@@ -28476,17 +29508,24 @@
     var due = [];
     if (fn !== 'decommissioned') {
       due.push(dueItem('inspection', 'Sanitary inspection', lastInspection,
-        commissioned, plan.inspection_months, plan.grace_days, when,
+        commissioned, plan.sanitary_inspection_months, plan.grace_days, when,
         'A sanitary inspection is what catches a cracked apron or a latrine ' +
-        'dug uphill before the water shows it.'));
+        'dug uphill before the water shows it.',
+        phrase('rounds.basis_sanitary', { months: plan.sanitary_inspection_months })));
+      var routine = routineInterval(asset, plan);
+      due.push(dueItem('routine_inspection', EVENT_KINDS.routine_inspection[0], lastRoutine,
+        commissioned, routine[0], plan.grace_days, when, phrase('rounds.routine_why'),
+        routine[1]));
       due.push(dueItem('water_sample', 'Water quality sample', lastSample,
         commissioned, plan.water_sample_months, plan.grace_days, when,
         'Water that was safe at handover is not evidence that it is safe now: ' +
-        'the aquifer, the headworks and the catchment all change.'));
+        'the aquifer, the headworks and the catchment all change.',
+        phrase('rounds.basis_sample', { months: plan.water_sample_months })));
     }
     return {
       function: fn, label: FUNCTION_LABELS[fn], since: since, detail: detail,
       last_inspection: lastInspection, last_sample: lastSample,
+      last_routine_inspection: lastRoutine,
       commissioned: commissioned, days_out_of_service: outFor,
       due: due, undated_events: undated,
       overdue: due.filter(function (item) { return item.state === 'overdue'; }),
@@ -28563,6 +29602,13 @@
       pump_type: payload.pump_type || '', installed_by: payload.installed_by || '',
       events: []
     };
+    /* only a record that has them carries them (PLAN.md step 7.3), so a
+     * project file with no mechanic named and no rising main is written as
+     * it was before */
+    var mechanic = textField(payload.area_mechanic);
+    if (mechanic) asset.area_mechanic = mechanic;
+    var rising = cleanRisingMain(payload.rising_main);
+    if (rising) asset.rising_main = rising;
     asset.events = mergeEvents(assetId, payload.events || []);
     return asset;
   }
@@ -28584,7 +29630,8 @@
     }
     var log = state.drilling_log, analysis = state.pump_analysis;
     var recommendation = analysis && analysis.yield_recommendation;
-    return {
+    /** @type {Rec} */
+    var asset = {
       asset_id: assetId, community: site.community || '',
       district: site.district || '', chiefdom: site.chiefdom || '',
       easting: site.easting, northing: site.northing,
@@ -28593,6 +29640,12 @@
       safe_yield_m3_per_h: recommendation ? recommendation.safe_yield_m3_per_h : null,
       pump_type: '', installed_by: site.contractor || '', events: []
     };
+    /* the rising main the design specifies, whose interval the routine
+     * inspection is due by (PLAN.md steps 7.2 and 7.3) */
+    var design = state.borehole_design;
+    var rising = cleanRisingMain(design ? design.rising_main : null);
+    if (rising) asset.rising_main = rising;
+    return asset;
   }
 
   /**
@@ -28645,6 +29698,7 @@
       n_unknown: counts.unknown,
       functionality_rate: known ? counts.functional / known * 100 : null,
       n_overdue_inspection: own(overdue, 'inspection') ? overdue.inspection : 0,
+      n_overdue_routine: own(overdue, 'routine_inspection') ? overdue.routine_inspection : 0,
       n_overdue_sample: own(overdue, 'water_sample') ? overdue.water_sample : 0,
       mean_days_out_of_service: outDays.length
         ? outDays.reduce(function (a, b) { return a + b; }, 0) / outDays.length : null
@@ -28654,9 +29708,12 @@
   Object.assign(C, {
     DISTRICT_CODES: DISTRICT_CODES, UNKNOWN_DISTRICT: UNKNOWN_DISTRICT,
     EVENT_KINDS: EVENT_KINDS, FUNCTION_LABELS: FUNCTION_LABELS,
-    FUNCTION_COLORS: FUNCTION_COLORS, DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
-    checkCharacter: checkCharacter, mintAssetId: mintAssetId,
+    FUNCTION_COLORS: FUNCTION_COLORS, serviceSchedule: serviceSchedule,
+    cleanRisingMain: cleanRisingMain, assetWithRisingMain: assetWithRisingMain,
+    checkCharacter: checkCharacter, legacyCheckCharacter: legacyCheckCharacter,
+    mintAssetId: mintAssetId, isLegacyAssetId: isLegacyAssetId,
     parseAssetId: parseAssetId, validateAssetId: validateAssetId,
+    SAME_DAY_ORDER: SAME_DAY_ORDER,
     eventId: eventId, eventLabel: eventLabel, mergeEvents: mergeEvents,
     cleanAnswers: cleanAnswers, trimField: trimField,
     assetState: assetState, assetLatLon: assetLatLon, assetLabel: assetLabel,
@@ -29133,6 +30190,1126 @@
     latestInspection: latestInspection, sanitaryRisk: sanitaryRisk
   });
 
+  /* ===================================================================
+   * Service rounds - a port of groundwater/rounds.py (PLAN.md 7.3)
+   *
+   * The register of many boreholes on a day: which have a visit due (the
+   * registry's sanitary inspection, routine inspection and water sample,
+   * due, overdue, or due now with nothing to count from), whose round each
+   * is on (the area mechanic named on the record, else the one named for its
+   * chiefdom, else none), and in what order: a nearest-neighbour walk from
+   * the stop due the longest, in straight lines on the ellipsoid to the
+   * metre, a tie going to the lower identifier. An order, not an optimal
+   * route. The day is an input, never the clock; the words are in
+   * text/rounds.yaml.
+   * =================================================================== */
+
+  var ROUND_STATES = ['overdue', 'due', 'unknown'];
+  /* rounds._MERGED_TEXT and _MERGED_VALUES: taken from the first record of a
+   * borehole that has one; a text field is had when it is text that is not
+   * blank once trimmed, any other when it is not missing */
+  var MERGED_TEXT = ['community', 'district', 'chiefdom', 'pump_type', 'installed_by',
+    'area_mechanic'];
+  var MERGED_VALUES = ['easting', 'northing', 'utm_zone', 'total_depth_m',
+    'safe_yield_m3_per_h', 'rising_main'];
+
+  /* the day the round is drawn up, as a day number; YYYY-MM-DD and nothing
+   * else, as iso_date reads it */
+  function roundDay(asOf) {
+    var day = isoDay(asOf);
+    if (day === null) throw new Error('a service round needs the day it is drawn up, as YYYY-MM-DD');
+    return day;
+  }
+
+  /* A to Z as a to z, nothing else changed, so both engines match exactly
+   * the same chiefdom names */
+  function foldAscii(text) {
+    return text.replace(/[A-Z]/g, function (c) { return c.toLowerCase(); });
+  }
+
+  function finiteNumber(value) {
+    return typeof value === 'number' && isFinite(value);
+  }
+
+  /** The area mechanics by chiefdom, from one line a chiefdom: the
+   * chiefdom, a colon and the mechanic's name (rounds.parse_area_mechanics).
+   * A line that cannot be read is left out and skipped says why; of two
+   * lines naming one chiefdom the first is used.
+   * @param {*} text
+   * @returns {{entries: Rec[], skipped: string[]}}
+   */
+  function parseAreaMechanics(text) {
+    /** @type {Rec[]} */
+    var entries = [];
+    /** @type {string[]} */
+    var skipped = [];
+    /** @type {Rec} */
+    var seen = {};
+    var raw = typeof text === 'string' ? text : '';
+    raw.split('\n').forEach(function (whole, i) {
+      var number = i + 1;
+      var line = trimField(whole);
+      if (!line) return;
+      var at = line.indexOf(':');
+      if (at < 0) {
+        skipped.push(phrase('rounds.mechanics_no_colon', { line: number }));
+        return;
+      }
+      var chiefdom = trimField(line.slice(0, at)), mechanic = trimField(line.slice(at + 1));
+      if (!chiefdom || !mechanic) {
+        skipped.push(phrase('rounds.mechanics_blank', { line: number }));
+        return;
+      }
+      var key = foldAscii(chiefdom);
+      if (own(seen, key)) {
+        skipped.push(phrase('rounds.mechanics_repeated', { line: number, chiefdom: chiefdom }));
+        return;
+      }
+      seen[key] = true;
+      entries.push({ chiefdom: chiefdom, mechanic: mechanic });
+    });
+    return { entries: entries, skipped: skipped };
+  }
+
+  /** The area mechanic whose round the borehole is on, and how that was
+   * found: asset (named on its record), chiefdom (named for its chiefdom)
+   * or none (rounds.mechanic_for).
+   * @param {Rec} asset
+   * @param {Rec[]|null} [mechanics] the entries parseAreaMechanics returns
+   * @returns {[string, string]}
+   */
+  function mechanicFor(asset, mechanics) {
+    var named = textField(asset.area_mechanic);
+    if (named) return [named, 'asset'];
+    var chiefdom = foldAscii(textField(asset.chiefdom));
+    if (chiefdom) {
+      var list = mechanics || [];
+      for (var i = 0; i < list.length; i++) {
+        var entry = list[i];
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        var mechanic = textField(entry.mechanic);
+        if (mechanic && foldAscii(textField(entry.chiefdom)) === chiefdom) {
+          return [mechanic, 'chiefdom'];
+        }
+      }
+    }
+    return ['', 'none'];
+  }
+
+  /* latitude and longitude from an easting and northing that are both
+   * finite numbers, each in its own zone (inferred from the easting where
+   * the record names no zone from 1 to 60), or null */
+  function roundPosition(asset) {
+    var easting = asset.easting, northing = asset.northing, zone = asset.utm_zone;
+    if (!finiteNumber(easting) || !finiteNumber(northing)) return null;
+    if (!(finiteNumber(zone) && zone === Math.floor(zone) && zone >= 1 && zone <= 60)) {
+      zone = inferZoneForSierraLeone(easting);
+    }
+    var fix = utmToGeographic(easting, northing, zone);
+    return fix ? [fix.lat, fix.lon] : null;
+  }
+
+  /* as the headworks plate's symbol writes a position */
+  function positionText(lat, lon) {
+    return pyFixed(Math.abs(lat), 5) + ' ' + (lat >= 0 ? 'N' : 'S') + ', ' +
+      pyFixed(Math.abs(lon), 5) + ' ' + (lon >= 0 ? 'E' : 'W');
+  }
+
+  function emptyField(value) {
+    return value === null || value === undefined || value === '';
+  }
+
+  /* the records read as assets, those of one borehole as one, with how many
+   * named a borehole already named and how many could not be read */
+  function roundRecords(assets) {
+    /** @type {Rec} */
+    var byId = {};
+    /** @type {Rec[]} */
+    var order = [];
+    var repeated = 0, unreadable = 0;
+    (assets || []).forEach(function (raw) {
+      var asset = assetFromDict(raw);
+      if (!asset) { unreadable += 1; return; }
+      if (!own(byId, asset.asset_id)) {
+        byId[asset.asset_id] = asset;
+        order.push(asset);
+        return;
+      }
+      repeated += 1;
+      var first = byId[asset.asset_id], next = asset;
+      MERGED_TEXT.forEach(function (name) {
+        if (!textField(first[name]) && textField(next[name])) first[name] = next[name];
+      });
+      MERGED_VALUES.forEach(function (name) {
+        if (emptyField(first[name]) && !emptyField(next[name])) first[name] = next[name];
+      });
+      first.events = mergeEvents(first.asset_id, first.events, next.events);
+    });
+    return { records: order, repeated: repeated, unreadable: unreadable };
+  }
+
+  function byAssetId(a, b) {
+    return a.asset_id < b.asset_id ? -1 : (a.asset_id > b.asset_id ? 1 : 0);
+  }
+
+  /* the stops in the order of a nearest-neighbour walk, each with the
+   * straight-line distance from the one before, in whole metres */
+  function roundWalk(stops) {
+    var placed = stops.filter(function (s) { return s.placed; });
+    var unplaced = stops.filter(function (s) { return !s.placed; }).sort(byAssetId);
+    /** @type {Rec[]} */
+    var order = [];
+    if (placed.length) {
+      var here = placed.reduce(function (best, s) {
+        return s._first < best._first || (s._first === best._first && byAssetId(s, best) < 0)
+          ? s : best;
+      });
+      here.leg_m = null;
+      order.push(here);
+      var left = placed.filter(function (s) { return s !== here; });
+      while (left.length) {
+        var from = here;
+        left.forEach(function (s) {
+          s._leg = pyRound(geodesicDistanceM(from._where[0], from._where[1],
+            s._where[0], s._where[1]));
+        });
+        here = left.reduce(function (best, s) {
+          return s._leg < best._leg || (s._leg === best._leg && byAssetId(s, best) < 0) ? s : best;
+        });
+        here.leg_m = here._leg;
+        order.push(here);
+        left = left.filter(function (s) { return s !== here; });
+      }
+    }
+    unplaced.forEach(function (s) { s.leg_m = null; order.push(s); });
+    order.forEach(function (s, i) {
+      s.order = i + 1;
+      /* the working values are not part of the answer: a latitude computed
+       * by two engines' trigonometry need not agree to the last bit */
+      delete s._leg;
+      delete s._first;
+      delete s._where;
+    });
+    return order;
+  }
+
+  /** The service rounds of a register of boreholes on the day asOf
+   * (rounds.service_rounds): each mechanic's round with its stops in order
+   * and the sum of the legs between them, the stops no mechanic is named
+   * for last; each stop with the borehole's identifier and what its plate's
+   * symbol begins with, where it is, its condition on record and the visits due.
+   * @param {Rec[]|null} assets registry records
+   * @param {string} asOf the day, YYYY-MM-DD; never read off the clock
+   * @param {Rec|null} [schedule] the intervals (serviceSchedule)
+   * @param {Rec[]|null} [mechanics] the area mechanics by chiefdom
+   * @returns {Rec}
+   */
+  function serviceRounds(assets, asOf, schedule, mechanics) {
+    var day = roundDay(asOf);
+    var today = /** @type {string} */ (dayToIso(day));
+    var plan = checkSchedule(Object.assign({}, serviceSchedule(), schedule || {}));
+    var read = roundRecords(assets);
+    /** @type {Rec} */
+    var groups = {};
+    var nothingDue = 0, decommissioned = 0;
+    read.records.forEach(function (asset) {
+      var state = assetState(asset, today, plan);
+      if (state.function === 'decommissioned') { decommissioned += 1; return; }
+      var due = state.due.filter(function (item) { return ROUND_STATES.indexOf(item.state) >= 0; });
+      if (!due.length) { nothingDue += 1; return; }
+      var who = mechanicFor(asset, mechanics);
+      var where = roundPosition(asset);
+      var first = Math.min.apply(null, due.map(function (item) {
+        return item.due_on === null ? day : /** @type {number} */ (isoDay(item.due_on));
+      }));
+      if (!own(groups, who[0])) groups[who[0]] = [];
+      var community = textField(asset.community), district = textField(asset.district);
+      var place = community || '(unnamed site)';
+      groups[who[0]].push({
+        order: 0,
+        asset_id: asset.asset_id,
+        plate: 'BOREHOLE ' + asset.asset_id,
+        /* as the registry labels a borehole, from the fields as read here */
+        label: district ? place + ' (' + district + ')' : place,
+        community: community,
+        chiefdom: textField(asset.chiefdom),
+        district: district,
+        placed: where !== null,
+        position: where ? positionText(where[0], where[1]) : '',
+        mechanic: who[0],
+        mechanic_from: who[1],
+        function: state.function,
+        condition: state.label,
+        condition_detail: state.detail,
+        due: due.map(function (item) {
+          return { key: item.key, title: item.title, state: item.state, due_on: item.due_on,
+            detail: item.detail, months: item.months, basis: item.basis };
+        }),
+        first_due: dayToIso(first),
+        leg_m: null,
+        _first: first,
+        _where: where,
+      });
+    });
+    var names = Object.keys(groups).filter(function (name) { return name; })
+      .sort(codePointCompare);
+    if (own(groups, '')) names.push('');
+    var rounds = names.map(function (name) {
+      var stops = roundWalk(groups[name]);
+      return {
+        mechanic: name,
+        stops: stops,
+        distance_m: stops.reduce(function (sum, s) { return sum + (s.leg_m === null ? 0 : s.leg_m); }, 0),
+        placed: stops.filter(function (s) { return s.placed; }).length,
+        unplaced: stops.filter(function (s) { return !s.placed; }).length,
+      };
+    });
+    return {
+      as_of: today,
+      rounds: rounds,
+      n_boreholes: read.records.length,
+      n_stops: rounds.reduce(function (sum, r) { return sum + r.stops.length; }, 0),
+      n_nothing_due: nothingDue,
+      n_decommissioned: decommissioned,
+      n_merged: read.repeated,
+      n_unreadable: read.unreadable,
+      schedule: {
+        sanitary_inspection_months: plan.sanitary_inspection_months,
+        water_sample_months: plan.water_sample_months,
+        grace_days: plan.grace_days,
+        routine_inspection_months: plan.routine_inspection_months
+      }
+    };
+  }
+
+  /** What the rounds say as a whole (rounds.rounds_text): the headline and
+   * the counts beside it, how a round is put in order, and what is due when.
+   * @param {Rec} result what serviceRounds returns
+   * @returns {{summary: string[], method: string, intervals: string}}
+   */
+  function roundsText(result) {
+    /** @type {string[]} */
+    var summary = [];
+    var total = result.n_boreholes, stops = result.n_stops;
+    if (!total) {
+      summary.push(phrase('rounds.empty'));
+    } else if (stops) {
+      summary.push(phrase('rounds.headline', { date: result.as_of, total: total, due: stops,
+        rounds: result.rounds.length }));
+    } else {
+      summary.push(phrase('rounds.headline_none', { date: result.as_of, total: total }));
+    }
+    if (stops && result.n_nothing_due) {
+      summary.push(phrase('rounds.nothing_due', { count: result.n_nothing_due }));
+    }
+    if (result.n_decommissioned) {
+      summary.push(phrase('rounds.decommissioned', { count: result.n_decommissioned }));
+    }
+    if (result.n_merged) summary.push(phrase('rounds.merged', { count: result.n_merged }));
+    if (result.n_unreadable) {
+      summary.push(phrase('rounds.unreadable', { count: result.n_unreadable }));
+    }
+    var plan = result.schedule;
+    return {
+      summary: summary,
+      method: phrase('rounds.method'),
+      intervals: phrase('rounds.intervals', { sanitary: plan.sanitary_inspection_months,
+        sample: plan.water_sample_months, routine: plan.routine_inspection_months,
+        grace: plan.grace_days })
+    };
+  }
+
+  /** What one round says of itself (rounds.round_text).
+   * @param {Rec} one a round of serviceRounds
+   * @returns {string[]}
+   */
+  function roundText(one) {
+    var name = one.mechanic || phrase('rounds.unassigned');
+    var out = [phrase('rounds.round_stops', { mechanic: name, stops: one.stops.length })];
+    if (one.placed > 1) out.push(phrase('rounds.round_distance', { km: one.distance_m / 1000 }));
+    if (one.unplaced) out.push(phrase('rounds.unplaced', { count: one.unplaced }));
+    if (!one.mechanic) out.push(phrase('rounds.round_unassigned'));
+    return out;
+  }
+
+  /** The labels of a round's table, in order (rounds.round_header).
+   * @returns {string[]}
+   */
+  function roundHeader() {
+    var table = phraseTable('rounds.columns');
+    return Object.keys(table).map(function (key) { return table[key]; });
+  }
+
+  /** A round's stops as the rows of its table (rounds.round_rows).
+   * @param {Rec} one a round of serviceRounds
+   * @returns {string[][]}
+   */
+  function roundRows(one) {
+    var states = phraseTable('rounds.state');
+    return one.stops.map(function (stop) {
+      return [String(stop.order), stop.asset_id, stop.community, stop.chiefdom, stop.condition,
+        stop.due.map(function (item) {
+          return phrase('rounds.due_short', { title: item.title, state: states[item.state] });
+        }).join('; '),
+        stop.leg_m === null ? '' : phrase('rounds.leg_km', { km: stop.leg_m / 1000 })];
+    });
+  }
+
+  /** What the round sheet prints for one stop (rounds.stop_sheet): its
+   * heading, the details, and for each visit due the sentence saying what
+   * is due and why with the boxes for its readings, then the boxes for the
+   * visit itself. A box is a row whose last cell is blank.
+   * @param {Rec} stop a stop of serviceRounds
+   * @returns {Rec}
+   */
+  function stopSheet(stop) {
+    var words = phraseTable('rounds.sheet_details');
+    var leg = stop.leg_m !== null ? phrase('rounds.sheet_leg', { km: stop.leg_m / 1000 })
+      : (!stop.placed ? phrase('rounds.sheet_no_position') : phrase('rounds.sheet_first'));
+    var mechanic = stop.mechanic
+      ? stop.mechanic + ' (' + phraseTable('rounds.mechanic_from')[stop.mechanic_from] + ')'
+      : phrase('rounds.unassigned');
+    var details = [
+      [words.identifier, stop.asset_id],
+      [words.plate, stop.plate],
+      [words.community, stop.community || '-'],
+      [words.chiefdom, stop.chiefdom || '-'],
+      [words.district, stop.district || '-'],
+      [words.position, stop.position || phrase('rounds.sheet_no_position')],
+      [words.condition, stop.condition + '. ' + stop.condition_detail],
+      [words.leg, leg],
+      [words.mechanic, mechanic],
+    ];
+    var states = phraseTable('rounds.state');
+    var value = phrase('rounds.sheet_value');
+    var rowsOf = function (table) {
+      return Object.keys(table).map(function (key) { return [table[key], '']; });
+    };
+    var visits = stop.due.map(function (item) {
+      var text = phrase('rounds.sheet_due', { title: item.title, state: states[item.state],
+        detail: item.detail, basis: item.basis });
+      if (item.key === 'inspection') {
+        return { text: text,
+          header: [phrase('sanitary.col_number'), phrase('sanitary.col_question'),
+            phrase('rounds.sheet_yes_no')],
+          rows: formQuestions().map(function (question, i) { return [String(i + 1), question, '']; }) };
+      }
+      return { text: text, header: [item.title, value],
+        rows: rowsOf(phraseTable(item.key === 'routine_inspection'
+          ? 'rounds.readings_routine' : 'rounds.readings_sample')) };
+    });
+    return {
+      heading: phrase('rounds.sheet_stop', { order: stop.order, place: stop.label }),
+      details: details,
+      visits: visits,
+      visit: { header: [phrase('rounds.sheet_visit'), value],
+        rows: rowsOf(phraseTable('rounds.readings_visit')) },
+    };
+  }
+
+  Object.assign(C, {
+    ROUND_STATES: ROUND_STATES, parseAreaMechanics: parseAreaMechanics,
+    mechanicFor: mechanicFor, serviceRounds: serviceRounds, roundsText: roundsText,
+    roundText: roundText, roundHeader: roundHeader, roundRows: roundRows,
+    stopSheet: stopSheet
+  });
+
+  /* ===================================================================
+   * How long boreholes keep working - a port of groundwater/survival.py
+   * (PLAN.md 7.4)
+   *
+   * The time from commissioning to the first failure across the boreholes
+   * of the register: the Kaplan-Meier estimate with Greenwood's variance and
+   * a 95 percent band on the log-log scale, the median and its band, the
+   * numbers at risk at stated times, by pump type, contractor and water
+   * chemistry, and the log-rank test between groups judged. A borehole that
+   * has not failed is censored at the last report of it working, never
+   * counted as working after it. The day is an input, never the clock; the
+   * words are in text/survival.yaml.
+   * =================================================================== */
+
+  var SURVIVAL_GROUPINGS = ['pump_type', 'contractor', 'chemistry'];
+  /* survival.DAYS_PER_YEAR, the Julian year, and Z_95, the two-sided 95
+   * percent point of the standard normal distribution */
+  var DAYS_PER_YEAR = 365.25;
+  var Z_95 = 1.959963984540054;
+  /* survival._MENDING and _WORKING: records that mend a breakdown, and
+   * records that report the borehole working */
+  var SURVIVAL_MENDING = ['repair', 'restored'];
+  var SURVIVAL_WORKING = ['commissioned', 'inspection', 'routine_inspection', 'water_sample'];
+  /* the works the method cites, as reporting/citations.py lists them for
+   * "survival" */
+  var SURVIVAL_CITED = ['kaplan_meier', 'greenwood', 'kalbfleisch_prentice',
+    'brookmeyer_crowley', 'mantel'];
+
+  /* the day of the analysis, as a day number; YYYY-MM-DD and nothing else */
+  function survivalDay(asOf) {
+    var day = isoDay(asOf);
+    if (day === null) throw new Error('survival: the analysis needs the day it is made, as YYYY-MM-DD');
+    return day;
+  }
+
+  /* the minimum followed and the times at risk, refused as Python refuses
+   * them (survival._settings) */
+  function survivalSettings(cfg) {
+    var section = (cfg || defaultConfig()).survival;
+    var minimum = section.min_at_risk;
+    if (!(typeof minimum === 'number' && isFinite(minimum) && minimum === Math.floor(minimum) &&
+        minimum >= 1)) {
+      throw new Error('survival: min_at_risk must be a whole number, 1 or more');
+    }
+    var stated = section.at_risk_years;
+    /** @type {number[]} */
+    var years = Array.isArray(stated) ? stated.slice() : [];
+    if (!Array.isArray(stated) || years.some(function (value, i) {
+      return !(finiteNumber(value) && value >= 0 && (i === 0 || value > years[i - 1]));
+    })) {
+      throw new Error('survival: at_risk_years must be a list of numbers of years, 0 or ' +
+        'more, each larger than the one before');
+    }
+    return { minimum: minimum, years: years };
+  }
+
+  /* times as [days, failed] pairs, refused as Python refuses them
+   * (survival._checked) unless each is a record whose days is a number, 0 or
+   * more, and whose failed is true or false */
+  function survivalTimes(times, where) {
+    return times.map(function (t) {
+      var days = isRecord(t) ? t.days : null, failed = isRecord(t) ? t.failed : null;
+      if (!(finiteNumber(days) && days >= 0 && typeof failed === 'boolean')) {
+        throw new Error('survival: ' + where + ' takes times of days, 0 or more, each with ' +
+          'whether it failed, true or false');
+      }
+      return [days, failed];
+    });
+  }
+
+  /* the distinct times of [days, failed] pairs in order, each with the
+   * number at risk there, the number failed and the number censored
+   * (survival._sweep) */
+  function survivalSweep(pairs) {
+    var sorted = pairs.slice().sort(function (a, b) { return a[0] - b[0]; });
+    /** @type {number[][]} */
+    var out = [];
+    var atRisk = pairs.length;
+    for (var i = 0; i < sorted.length;) {
+      var day = sorted[i][0], failed = 0, censored = 0;
+      for (; i < sorted.length && sorted[i][0] === day; i++) {
+        if (sorted[i][1]) failed += 1; else censored += 1;
+      }
+      out.push([day, atRisk, failed, censored]);
+      atRisk -= failed + censored;
+    }
+    return out;
+  }
+
+  function roundOrNull(value, digits) {
+    return value === null ? null : pyRound(value, digits);
+  }
+
+  /** One borehole's time from commissioning to its first failure, or to the
+   * day it is censored, read from its history as of asOf
+   * (survival.borehole_times).
+   * @param {Rec} asset a registry record
+   * @param {string} asOf the day, YYYY-MM-DD
+   * @returns {Rec}
+   */
+  function boreholeTimes(asset, asOf) {
+    var day = survivalDay(asOf);
+    var events = mergeEvents(asset.asset_id, asset.events || []);
+    /** @type {Rec} */
+    var byDay = {};
+    var undated = 0;
+    events.forEach(function (event) {
+      var when = isoDay(event.when);
+      if (when === null) { undated += 1; return; }
+      if (when > day) return;
+      if (!own(byDay, event.when)) byDay[event.when] = {};
+      byDay[event.when][event.kind] = true;
+    });
+    var days = Object.keys(byDay).sort();
+    var commissioned = days.filter(function (when) { return own(byDay[when], 'commissioned'); });
+    /** @type {Rec} */
+    var out = { asset_id: asset.asset_id, start: null, end: null, days: null, failed: false,
+      ends: 'no_commissioning', before_start: 0, undated: undated };
+    if (!commissioned.length) return out;
+    var start = commissioned[0];
+    var startDay = /** @type {number} */ (isoDay(start));
+    out.start = start;
+    out.before_start = events.filter(function (event) {
+      var when = isoDay(event.when);
+      return when !== null && when < startDay;
+    }).length;
+    var last = start, ends = 'commissioning', failed = false;
+    for (var i = 0; i < days.length; i++) {
+      var when = days[i], kinds = byDay[when];
+      if (when < start) continue;
+      if (own(kinds, 'failure')) { last = when; ends = 'failure'; failed = true; break; }
+      var mended = SURVIVAL_MENDING.filter(function (kind) { return own(kinds, kind); });
+      if (mended.length) { last = when; ends = mended[0]; failed = true; break; }
+      if (own(kinds, 'decommissioned')) { last = when; ends = 'decommissioned'; break; }
+      if (when > start && SURVIVAL_WORKING.some(function (kind) { return own(kinds, kind); })) {
+        last = when;
+        ends = 'report';
+      }
+    }
+    out.end = last;
+    out.days = /** @type {number} */ (isoDay(last)) - startDay;
+    out.failed = failed;
+    out.ends = ends;
+    return out;
+  }
+
+  /** The group a record falls in by one of the groupings: its key, its label
+   * and whether its record names one (survival.group_value).
+   * @param {Rec} asset a registry record
+   * @param {string} by pump_type, contractor or chemistry
+   * @returns {[string, string, boolean]}
+   */
+  function groupValue(asset, by) {
+    if (by === 'chemistry') {
+      var rising = cleanRisingMain(asset.rising_main);
+      var state = rising ? rising.chemistry : '';
+      var key = state === 'aggressive' || state === 'not_aggressive' ? state : 'unknown';
+      return [key, phraseTable('survival.chemistry')[key], key !== 'unknown'];
+    }
+    if (SURVIVAL_GROUPINGS.indexOf(by) < 0) throw new Error('survival: no grouping by ' + by);
+    var name = textField(by === 'pump_type' ? asset.pump_type : asset.installed_by);
+    if (!name) return ['', phrase('survival.not_recorded'), false];
+    return [foldAscii(name), name, true];
+  }
+
+  /* the 95 percent pointwise band on the log-log scale (survival._band):
+   * none where the share is 1, nought where it is nought */
+  function survivalBand(survival, total) {
+    if (survival <= 0.0) return [0.0, 0.0];
+    if (survival >= 1.0) return [null, null];
+    var spread = Z_95 * Math.sqrt(total) / Math.abs(Math.log(survival));
+    return [Math.pow(survival, Math.exp(spread)), Math.pow(survival, Math.exp(-spread))];
+  }
+
+  /** The Kaplan-Meier estimate over times, each a days (0 or more) and
+   * whether it failed (true or false) (survival.kaplan_meier): the counts,
+   * and only with at least minimum followed the steps, the median and the
+   * shares at the stated years.
+   * @param {Rec[]} times
+   * @param {number|null} [minimum] the fewest followed a group is judged on
+   * @param {number[]|null} [years] the times stated, in years
+   * @returns {Rec}
+   */
+  function kaplanMeier(times, minimum, years) {
+    var settings = minimum == null || years == null ? survivalSettings(null) : null;
+    var least = minimum == null ? /** @type {Rec} */ (settings).minimum : minimum;
+    var stated = years == null ? /** @type {Rec} */ (settings).years : years;
+    var followed = survivalTimes(times, 'kaplan_meier').filter(function (t) {
+      return t[1] || t[0] > 0;
+    });
+    var nFailed = followed.filter(function (t) { return t[1]; }).length;
+    /** @type {number|null} */
+    var lastDays = null;
+    followed.forEach(function (t) { if (lastDays === null || t[0] > lastDays) lastDays = t[0]; });
+    /** @type {Rec} */
+    var out = {
+      n: followed.length,
+      n_failed: nFailed,
+      n_censored: followed.length - nFailed,
+      n_no_time: times.length - followed.length,
+      judged: followed.length >= least,
+      last_days: lastDays,
+      steps: [],
+      median: null,
+      at_times: [],
+    };
+    if (!out.judged) return out;
+    var survival = 1.0, total = 0.0;
+    /** @type {Rec[]} */
+    var raw = [];
+    survivalSweep(followed).forEach(function (row) {
+      var day = row[0], atRisk = row[1], failed = row[2], censored = row[3];
+      if (failed) {
+        if (failed < atRisk) {
+          survival *= (atRisk - failed) / atRisk;
+          total += failed / (atRisk * (atRisk - failed));
+        } else {
+          survival = 0.0;
+        }
+      }
+      var band = survivalBand(survival, total);
+      raw.push({ days: day, at_risk: atRisk, failed: failed, censored: censored,
+        survival: survival, se: survival * Math.sqrt(total), lower: band[0], upper: band[1] });
+    });
+    out.steps = raw.map(function (step) {
+      return Object.assign({}, step, { survival: pyRound(step.survival, 4),
+        se: pyRound(step.se, 4), lower: roundOrNull(step.lower, 4),
+        upper: roundOrNull(step.upper, 4) });
+    });
+    var first = function (key) {
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i][key] !== null && raw[i][key] <= 0.5) return raw[i].days;
+      }
+      return null;
+    };
+    out.median = { days: first('survival'), lower: first('lower'), upper: first('upper') };
+    out.at_times = stated.map(function (year) {
+      var threshold = year * DAYS_PER_YEAR;
+      var atRisk = followed.filter(function (t) { return t[0] >= threshold; }).length;
+      /** @type {Rec} */
+      var entry = { years: year, at_risk: atRisk, survival: null, lower: null, upper: null };
+      if (threshold <= out.last_days) {
+        var before = raw.filter(function (s) { return s.days <= threshold; });
+        if (before.length) {
+          var step = before[before.length - 1];
+          entry.survival = pyRound(step.survival, 4);
+          entry.lower = roundOrNull(step.lower, 4);
+          entry.upper = roundOrNull(step.upper, 4);
+        } else {
+          entry.survival = 1.0;
+        }
+      }
+      return entry;
+    });
+    return out;
+  }
+
+  /* the regularised upper incomplete gamma function Q(a, x), by its series
+   * below a + 1 and its continued fraction above (survival._gamma_q) */
+  function gammaQ(a, x) {
+    if (x <= 0.0) return 1.0;
+    var front = Math.exp(-x + a * Math.log(x) - logGamma(a));
+    var i;
+    if (x < a + 1.0) {
+      var term = 1.0 / a, total = term, ap = a;
+      for (i = 0; i < 1000; i++) {
+        ap += 1.0;
+        term *= x / ap;
+        total += term;
+        if (Math.abs(term) < Math.abs(total) * 1e-15) break;
+      }
+      return Math.max(0.0, 1.0 - total * front);
+    }
+    var tiny = 1e-300;
+    var b = x + 1.0 - a, c = 1.0 / tiny, d = 1.0 / b, h = d;
+    for (i = 1; i < 1000; i++) {
+      var an = -i * (i - a);
+      b += 2.0;
+      d = an * d + b;
+      d = 1.0 / (Math.abs(d) >= tiny ? d : tiny);
+      c = b + an / c;
+      c = Math.abs(c) >= tiny ? c : tiny;
+      var step = d * c;
+      h *= step;
+      if (Math.abs(step - 1.0) < 1e-15) break;
+    }
+    return front * h;
+  }
+
+  /** The chance a chi-squared on df degrees of freedom is at least x
+   * (survival.chi2_survival).
+   * @param {number} x
+   * @param {number} df a whole number, 1 or more
+   * @returns {number}
+   */
+  function chi2Survival(x, df) {
+    if (!(typeof df === 'number' && isFinite(df) && df === Math.floor(df) && df >= 1)) {
+      throw new Error('survival: a chi-squared needs a whole number of degrees of freedom');
+    }
+    return gammaQ(df / 2.0, x / 2.0);
+  }
+
+  /* matrix x = vector by Gaussian elimination with partial pivoting, the
+   * first of equal pivots, or null where a pivot is under 1e-10 of the
+   * largest diagonal entry (survival._solve) */
+  function survivalSolve(matrix, vector) {
+    var m = vector.length;
+    var rows = vector.map(function (value, i) { return matrix[i].slice(0, m).concat([value]); });
+    var scale = 0.0;
+    for (var i = 0; i < m; i++) scale = Math.max(scale, Math.abs(rows[i][i]));
+    if (!(scale > 0.0)) return null;
+    for (var col = 0; col < m; col++) {
+      var pivot = col;
+      for (var r = col + 1; r < m; r++) {
+        if (Math.abs(rows[r][col]) > Math.abs(rows[pivot][col])) pivot = r;
+      }
+      if (Math.abs(rows[pivot][col]) <= 1e-10 * scale) return null;
+      var held = rows[col];
+      rows[col] = rows[pivot];
+      rows[pivot] = held;
+      for (r = col + 1; r < m; r++) {
+        var factor = rows[r][col] / rows[col][col];
+        for (var c = col; c <= m; c++) rows[r][c] -= factor * rows[col][c];
+      }
+    }
+    var x = vector.map(function () { return 0.0; });
+    for (var row = m - 1; row >= 0; row--) {
+      var total = rows[row][m];
+      for (var k = row + 1; k < m; k++) total -= rows[row][k] * x[k];
+      x[row] = total / rows[row][row];
+    }
+    return x;
+  }
+
+  /** The log-rank test across groups, each a list of days (0 or more) and
+   * whether it failed (true or false) (survival.log_rank): the failures
+   * observed and expected in each group; a group none of whose members was
+   * at risk when any failed is left out of the test (its index in
+   * not_at_risk), and the chi-squared is on one fewer degrees of freedom
+   * than the groups left in, with its p; or, with nothing to compare, the
+   * reason: no_failures, one_at_risk or singular.
+   * @param {Rec[][]} groups two or more
+   * @returns {Rec}
+   */
+  function logRank(groups) {
+    var k = groups.length;
+    if (k < 2) throw new Error('survival: a log-rank test needs two groups or more');
+    var pairs = groups.map(function (g) { return survivalTimes(g, 'log_rank'); });
+    var observed = pairs.map(function (g) {
+      return g.filter(function (t) { return t[1]; }).length;
+    });
+    /** @type {Rec} */
+    var out = { observed: observed, expected: null, not_at_risk: [], df: null, chi2: null,
+      p: null, reason: null };
+    if (!observed.reduce(function (a, b) { return a + b; }, 0)) {
+      out.reason = 'no_failures';
+      return out;
+    }
+    /* every group's times together, swept in order: at each time, the
+     * number still at risk in each group, then those that leave the risk
+     * set there */
+    /** @type {number[][]} */
+    var all = [];
+    pairs.forEach(function (g, i) {
+      g.forEach(function (t) { all.push([t[0], i, t[1] ? 1 : 0]); });
+    });
+    all.sort(function (a, b) { return a[0] - b[0]; });
+    var atRisk = pairs.map(function (g) { return g.length; });
+    var expected = pairs.map(function () { return 0.0; });
+    var variance = pairs.map(function () { return pairs.map(function () { return 0.0; }); });
+    var seen = pairs.map(function () { return false; });
+    for (var at = 0; at < all.length;) {
+      var day = all[at][0];
+      var failed = pairs.map(function () { return 0; });
+      var leaving = pairs.map(function () { return 0; });
+      for (; at < all.length && all[at][0] === day; at++) {
+        failed[all[at][1]] += all[at][2];
+        leaving[all[at][1]] += 1;
+      }
+      var d = failed.reduce(function (a, b) { return a + b; }, 0);
+      if (d) {
+        var n = atRisk.reduce(function (a, b) { return a + b; }, 0);
+        for (var i = 0; i < k; i++) {
+          expected[i] += d * atRisk[i] / n;
+          seen[i] = seen[i] || atRisk[i] > 0;
+        }
+        if (n > 1) {
+          var factor = d * (n - d) / (n - 1);
+          for (i = 0; i < k; i++) {
+            for (var j = 0; j < k; j++) {
+              var delta = i === j ? n : 0;
+              variance[i][j] += factor * atRisk[i] * (delta - atRisk[j]) / (n * n);
+            }
+          }
+        }
+      }
+      for (var g = 0; g < k; g++) atRisk[g] -= leaving[g];
+    }
+    out.expected = expected.map(function (e) { return pyRound(e, 4); });
+    /** @type {number[]} */
+    var kept = [];
+    seen.forEach(function (yes, i) { if (yes) kept.push(i); else out.not_at_risk.push(i); });
+    if (kept.length < 2) {
+      out.reason = 'one_at_risk';
+      return out;
+    }
+    var m = kept.length - 1;
+    var diff = kept.slice(0, m).map(function (i) { return observed[i] - expected[i]; });
+    var solved = survivalSolve(kept.slice(0, m).map(function (i) {
+      return kept.slice(0, m).map(function (j) { return variance[i][j]; });
+    }), diff);
+    if (solved === null) {
+      out.reason = 'singular';
+      return out;
+    }
+    var chi2 = 0.0;
+    for (var r = 0; r < m; r++) chi2 += diff[r] * solved[r];
+    chi2 = Math.max(chi2, 0.0);
+    out.df = m;
+    out.chi2 = pyRound(chi2, 4);
+    out.p = pyRound(chi2Survival(chi2, m), 6);
+    return out;
+  }
+
+  /* one group's estimate, with its counts (survival._analysis) */
+  function survivalGroup(key, label, recorded, rows, minimum, years) {
+    var started = rows.filter(function (r) { return r.days !== null; });
+    var km = kaplanMeier(started.map(function (r) { return { days: r.days, failed: r.failed }; }),
+      minimum, years);
+    return Object.assign({ key: key, label: label, recorded: recorded, n_boreholes: rows.length,
+      n_no_start: rows.length - started.length }, km);
+  }
+
+  /** How long the boreholes of a register keep working, as of asOf
+   * (survival.survival_analysis): each borehole's time with its groups, the
+   * estimate over them all, and each grouping's groups with the comparison
+   * across those judged.
+   * @param {Rec[]|null} assets registry records
+   * @param {string} asOf the day, YYYY-MM-DD; never read off the clock
+   * @param {Config|null} [cfg] a configuration: its survival section
+   * @returns {Rec}
+   */
+  function survivalAnalysis(assets, asOf, cfg) {
+    var day = survivalDay(asOf);
+    var today = /** @type {string} */ (dayToIso(day));
+    var settings = survivalSettings(cfg || null);
+    var read = roundRecords(assets);
+    var rows = read.records.map(function (asset) {
+      var row = boreholeTimes(asset, today);
+      row.groups = {};
+      SURVIVAL_GROUPINGS.forEach(function (by) {
+        var group = groupValue(asset, by);
+        row.groups[by] = { key: group[0], label: group[1], recorded: group[2] };
+      });
+      return row;
+    });
+    var groupings = SURVIVAL_GROUPINGS.map(function (by) {
+      /** @type {Rec} */
+      var members = {};
+      /** @type {string[]} */
+      var order = [];
+      rows.forEach(function (row) {
+        var group = row.groups[by];
+        var ident = (group.recorded ? '1' : '0') + group.key;
+        if (!own(members, ident)) {
+          members[ident] = { key: group.key, label: group.label, recorded: group.recorded, rows: [] };
+          order.push(ident);
+        }
+        members[ident].rows.push(row);
+      });
+      var groups = order.map(function (ident) {
+        var m = members[ident];
+        return survivalGroup(m.key, m.label, m.recorded, m.rows, settings.minimum, settings.years);
+      });
+      groups.sort(function (a, b) {
+        if (a.recorded !== b.recorded) return a.recorded ? -1 : 1;
+        if (a.n_boreholes !== b.n_boreholes) return b.n_boreholes - a.n_boreholes;
+        return codePointCompare(a.label, b.label);
+      });
+      var compared = groups.filter(function (g) { return g.recorded && g.judged; });
+      /** @type {Rec} */
+      var comparison = {
+        groups: compared.map(function (g) { return g.label; }),
+        left_out: groups.filter(function (g) { return !(g.recorded && g.judged); })
+          .map(function (g) { return g.label; }),
+      };
+      if (compared.length < 2) {
+        Object.assign(comparison, { observed: null, expected: null, not_at_risk: [], df: null,
+          chi2: null, p: null, reason: 'fewer_than_two' });
+      } else {
+        Object.assign(comparison, logRank(compared.map(function (g) {
+          return members['1' + g.key].rows.filter(function (r) {
+            return r.days !== null && (r.failed || r.days > 0);
+          }).map(function (r) { return { days: r.days, failed: r.failed }; });
+        })));
+        comparison.not_at_risk = comparison.not_at_risk.map(function (i) {
+          return compared[i].label;
+        });
+      }
+      return { by: by, groups: groups, comparison: comparison };
+    });
+    var overall = survivalGroup('all', phrase('survival.all'), true, rows, settings.minimum,
+      settings.years);
+    return {
+      as_of: today,
+      min_at_risk: settings.minimum,
+      at_risk_years: settings.years,
+      n_boreholes: rows.length,
+      n_merged: read.repeated,
+      n_unreadable: read.unreadable,
+      n_by_mending: rows.filter(function (r) { return SURVIVAL_MENDING.indexOf(r.ends) >= 0; }).length,
+      n_before_start: rows.filter(function (r) { return r.before_start; }).length,
+      n_undated: rows.filter(function (r) { return r.undated; }).length,
+      boreholes: rows,
+      overall: overall,
+      groupings: groupings,
+    };
+  }
+
+  function survivalYears(days) { return days / DAYS_PER_YEAR; }
+
+  /* labels as a list in words: "A", "A and B", "A, B and C" */
+  function survivalList(labels) {
+    if (labels.length === 1) return labels[0];
+    return phrase('survival.list_and', { first: labels.slice(0, -1).join(', '),
+      last: labels[labels.length - 1] });
+  }
+
+  function survivalMedianText(group) {
+    var median = group.median;
+    if (median.days === null) {
+      return phrase('survival.median_none', { years: survivalYears(group.last_days) });
+    }
+    if (median.upper === null) {
+      return phrase('survival.median_open', { years: survivalYears(median.days),
+        lower: survivalYears(median.lower) });
+    }
+    return phrase('survival.median', { years: survivalYears(median.days),
+      lower: survivalYears(median.lower), upper: survivalYears(median.upper) });
+  }
+
+  function survivalGroupLine(group, minimum) {
+    if (!group.judged) {
+      return phrase('survival.too_few', { label: group.label, n: group.n, minimum: minimum,
+        failed: group.n_failed, censored: group.n_censored });
+    }
+    return phrase('survival.group_line', { label: group.label, n: group.n,
+      failed: group.n_failed, censored: group.n_censored, median: survivalMedianText(group) });
+  }
+
+  function survivalComparisonText(comparison, minimum) {
+    /** @type {string[]} */
+    var out = [];
+    var reason = comparison.reason;
+    if (reason === 'fewer_than_two') {
+      out.push(phrase('survival.compare_few', { minimum: minimum }));
+    } else if (reason === 'no_failures') {
+      out.push(phrase('survival.compare_no_failures'));
+    } else if (reason === 'one_at_risk') {
+      out.push(phrase('survival.compare_one_at_risk'));
+    } else if (reason === 'singular') {
+      out.push(phrase('survival.compare_singular'));
+    } else {
+      var named = survivalList(comparison.groups.filter(function (label) {
+        return comparison.not_at_risk.indexOf(label) < 0;
+      }));
+      if (comparison.p < 0.001) {
+        out.push(phrase('survival.compared_small', { groups: named, chi2: comparison.chi2,
+          df: comparison.df }));
+      } else {
+        out.push(phrase('survival.compared', { groups: named, chi2: comparison.chi2,
+          df: comparison.df, p: comparison.p }));
+      }
+      out.push(phrase('survival.p_meaning'));
+      if (comparison.not_at_risk.length) {
+        out.push(phrase('survival.not_at_risk', { groups: survivalList(comparison.not_at_risk) }));
+      }
+    }
+    if (comparison.left_out.length && reason !== 'fewer_than_two') {
+      out.push(phrase('survival.left_out', { groups: survivalList(comparison.left_out) }));
+    }
+    return out;
+  }
+
+  /** What the analysis says (survival.survival_text): the summary, the
+   * method, the overall estimate and each grouping's lines and comparison,
+   * and the works the method cites.
+   * @param {Rec} result what survivalAnalysis returns
+   * @returns {Rec}
+   */
+  function survivalText(result) {
+    var minimum = result.min_at_risk;
+    var overall = result.overall;
+    /** @type {string[]} */
+    var summary = [];
+    var total = result.n_boreholes;
+    if (!total) {
+      summary.push(phrase('survival.empty'));
+    } else if (overall.n) {
+      summary.push(phrase('survival.headline', { date: result.as_of, total: total,
+        followed: overall.n, failed: overall.n_failed, censored: overall.n_censored }));
+    } else {
+      summary.push(phrase('survival.none_followed', { date: result.as_of, total: total }));
+    }
+    if (overall.n_no_time) summary.push(phrase('survival.no_time', { count: overall.n_no_time }));
+    if (overall.n_no_start) summary.push(phrase('survival.no_start', { count: overall.n_no_start }));
+    if (result.n_by_mending) summary.push(phrase('survival.by_mending', { count: result.n_by_mending }));
+    if (result.n_before_start) {
+      summary.push(phrase('survival.before_start', { count: result.n_before_start }));
+    }
+    if (result.n_undated) summary.push(phrase('survival.undated', { count: result.n_undated }));
+    if (result.n_merged) summary.push(phrase('rounds.merged', { count: result.n_merged }));
+    if (result.n_unreadable) summary.push(phrase('rounds.unreadable', { count: result.n_unreadable }));
+    var byWords = phraseTable('survival.by'), intros = phraseTable('survival.by_intro');
+    var citations = phraseTable('references.citations');
+    return {
+      summary: summary,
+      method: [phrase('survival.method'), phrase('survival.minimum', { minimum: minimum }),
+        phrase('survival.comparison_method')],
+      overall: { heading: phrase('survival.all'), lines: [survivalGroupLine(overall, minimum)] },
+      groupings: result.groupings.map(function (g) {
+        return {
+          by: g.by,
+          heading: phrase('survival.by_heading', { by: byWords[g.by] }),
+          intro: intros[g.by],
+          lines: g.groups.map(function (group) { return survivalGroupLine(group, minimum); }),
+          comparison: survivalComparisonText(g.comparison, minimum),
+        };
+      }),
+      references: SURVIVAL_CITED.map(function (key) { return citations[key]; }),
+    };
+  }
+
+  /** The labels of a grouping's table, in order (survival.survival_header).
+   * @returns {string[]}
+   */
+  function survivalHeader() {
+    var table = phraseTable('survival.columns');
+    return Object.keys(table).map(function (key) { return table[key]; });
+  }
+
+  /** Groups as the rows of their table (survival.survival_rows).
+   * @param {Rec[]} groups a grouping's groups, or [overall]
+   * @returns {string[][]}
+   */
+  function survivalRows(groups) {
+    return groups.map(function (group) {
+      var counts = [group.label, String(group.n_boreholes), String(group.n),
+        String(group.n_failed), String(group.n_censored)];
+      if (!group.judged) return counts.concat([phrase('survival.too_few_cell'), '']);
+      var median = group.median;
+      if (median.days === null) return counts.concat([phrase('survival.not_reached'), '']);
+      var upper = median.upper === null ? phrase('survival.not_reached')
+        : phrase('survival.years_cell', { years: survivalYears(median.upper) });
+      return counts.concat([phrase('survival.years_cell', { years: survivalYears(median.days) }),
+        phrase('survival.band_cell', { lower: phrase('survival.years_cell',
+          { years: survivalYears(median.lower) }), upper: upper })]);
+    });
+  }
+
+  /** The labels of the table of numbers at risk (survival.at_risk_header).
+   * @param {Rec} result what survivalAnalysis returns
+   * @returns {string[]}
+   */
+  function atRiskHeader(result) {
+    return [phrase('survival.at_risk_group')].concat(result.at_risk_years.map(function (year) {
+      return phrase('survival.at_risk_year', { years: year });
+    }));
+  }
+
+  /** The judged groups' numbers at risk and shares still working at each
+   * stated time, a row a group (survival.at_risk_rows).
+   * @param {Rec[]} groups
+   * @returns {string[][]}
+   */
+  function atRiskRows(groups) {
+    return groups.filter(function (group) { return group.judged; }).map(function (group) {
+      return [group.label].concat(group.at_times.map(function (entry) {
+        if (entry.survival === null) return phrase('survival.at_risk_beyond', { n: entry.at_risk });
+        if (entry.lower === null) {
+          return phrase('survival.at_risk_whole', { n: entry.at_risk, pct: 100.0 * entry.survival });
+        }
+        return phrase('survival.at_risk_cell', { n: entry.at_risk, pct: 100.0 * entry.survival,
+          lower: 100.0 * entry.lower, upper: 100.0 * entry.upper });
+      }));
+    });
+  }
+
+  Object.assign(C, {
+    SURVIVAL_GROUPINGS: SURVIVAL_GROUPINGS, DAYS_PER_YEAR: DAYS_PER_YEAR,
+    boreholeTimes: boreholeTimes, groupValue: groupValue, kaplanMeier: kaplanMeier,
+    chi2Survival: chi2Survival, logRank: logRank, survivalAnalysis: survivalAnalysis,
+    survivalText: survivalText, survivalHeader: survivalHeader, survivalRows: survivalRows,
+    atRiskHeader: atRiskHeader, atRiskRows: atRiskRows
+  });
+
 
 
   /* ===================================================================
@@ -29458,10 +31635,26 @@
   var DEFAULT_GROWTH_RATE = intercensalGrowthRate();
 
   var FRESH_YEARS = 3, AGEING_YEARS = 7;
-  var FRESHNESS_LABELS = {
-    fresh: 'Surveyed recently', ageing: 'Survey is getting old',
-    stale: 'Survey is out of date', unknown: 'Survey dates not recorded'
-  };
+
+  /* the label of a freshness state, from the catalogue (planning.yaml):
+   * planning.FRESHNESS_LABELS */
+  function freshnessLabel(state) {
+    var labels = phraseTable('planning.freshness_label');
+    return String(own(labels, state) ? labels[state] : labels.unknown);
+  }
+
+  /* the sentence under the label, in the plan year: Freshness.detail */
+  function freshnessDetail(f, year) {
+    if (f.state === 'later') {
+      return phrase('planning.freshness_all_later', { later: f.n_later, points: f.n_points, year: year });
+    }
+    if (f.state === 'unknown') return phrase('planning.freshness_undated');
+    var text = phrase('planning.freshness_dated', { dated: f.n_dated, points: f.n_points,
+      year: year, latest: f.latest_year, median: f.median_age_years, recent: f.n_recent,
+      fresh: FRESH_YEARS });
+    if (f.n_later) text += ' ' + phrase('planning.freshness_later', { later: f.n_later, year: year });
+    return text;
+  }
 
   function projectionNote(projection) {
     if (projection.target_year === projection.base_year) {
@@ -29520,34 +31713,33 @@
    * @returns {Rec}
    */
   function pointFreshness(points, asOfYear) {
+    /* A survey dated after the plan year is evidence about a later year:
+     * it is left out of the median and of the recent count, and the detail
+     * says how many were (planning.point_freshness). */
     var list = points || [];
-    var years = list.map(function (p) { return p.report_year; })
+    var dated = list.map(function (p) { return p.report_year; })
       .filter(function (y) { return y; }).sort(function (a, b) { return a - b; });
+    var years = dated.filter(function (y) { return y <= asOfYear; });
+    var later = dated.length - years.length;
+    /** @type {Rec} */
+    var f;
     if (!years.length) {
-      var blank = { n_points: list.length, n_dated: 0, latest_year: null,
-        median_age_years: null, n_recent: 0, state: 'unknown' };
-      blank.label = FRESHNESS_LABELS.unknown;
-      blank.detail = 'No survey dates are recorded for these points, so how ' +
-        'current this coverage figure is cannot be established.';
-      return blank;
+      f = { n_points: list.length, n_dated: 0, latest_year: null,
+        median_age_years: null, n_recent: 0, n_later: later, state: later ? 'later' : 'unknown' };
+    } else {
+      var ages = years.map(function (y) { return asOfYear - y; });
+      var middle = Math.floor(ages.length / 2);
+      var median = ages.length % 2
+        ? ages[middle] : (ages[middle - 1] + ages[middle]) / 2;
+      var recent = ages.filter(function (a) { return a <= FRESH_YEARS; }).length;
+      var state = median <= FRESH_YEARS ? 'fresh'
+        : (median <= AGEING_YEARS ? 'ageing' : 'stale');
+      f = { n_points: list.length, n_dated: years.length, latest_year: years[years.length - 1],
+        median_age_years: median, n_recent: recent, n_later: later, state: state };
     }
-    var ages = years.map(function (y) { return asOfYear - y; });
-    var middle = Math.floor(ages.length / 2);
-    var median = ages.length % 2
-      ? ages[middle] : (ages[middle - 1] + ages[middle]) / 2;
-    var recent = ages.filter(function (a) { return a <= FRESH_YEARS; }).length;
-    var state = median <= FRESH_YEARS ? 'fresh'
-      : (median <= AGEING_YEARS ? 'ageing' : 'stale');
-    var latest = years[years.length - 1];
-    return {
-      n_points: list.length, n_dated: years.length, latest_year: latest,
-      median_age_years: median, n_recent: recent, state: state,
-      label: FRESHNESS_LABELS[state],
-      detail: years.length + ' of ' + list.length + ' points carry a survey ' +
-        'date; the most recent is ' + latest + ' and the median is ' +
-        pyFixed(median, 0) + ' years old. ' + recent + ' were surveyed in the ' +
-        'last ' + FRESH_YEARS + ' years.'
-    };
+    f.label = freshnessLabel(f.state);
+    f.detail = freshnessDetail(f, asOfYear);
+    return f;
   }
 
   /** The dry-season band as a planner reads it: best case to worst.
@@ -29625,8 +31817,11 @@
       var points = (pointsByArea || {})[name] || [];
       var people = out.projected[name];
       var functional = points.filter(function (p) { return p.functional; });
+      /* surveyed in the plan year or the seven before it: a survey after
+       * the plan year says nothing about it */
       var recent = functional.filter(function (p) {
-        return p.report_year && asOfYear - p.report_year <= AGEING_YEARS;
+        return p.report_year && asOfYear - p.report_year >= 0 &&
+          asOfYear - p.report_year <= AGEING_YEARS;
       });
       var row = {
         name: name, census_population: Number(population[name]),
@@ -29693,7 +31888,6 @@
   Object.assign(C, {
     CENSUS_YEAR: CENSUS_YEAR, DEFAULT_GROWTH_RATE: DEFAULT_GROWTH_RATE,
     FRESH_YEARS: FRESH_YEARS, AGEING_YEARS: AGEING_YEARS,
-    FRESHNESS_LABELS: FRESHNESS_LABELS,
     intercensalGrowthRate: intercensalGrowthRate,
     projectPopulation: projectPopulation, pointFreshness: pointFreshness,
     seasonalCoverage: seasonalCoverage, seasonalBandText: seasonalBandText,
@@ -30311,6 +32505,20 @@
 
   /* --- the traverse ------------------------------------------------------- */
 
+  /* The east component of a unit direction within a degree of north-south. */
+  var NORTH_SOUTH_EAST_COMPONENT = Math.sin(1.0 * Math.PI / 180.0);
+
+  /** A traverse's bearing as a title prints it, to the degree: subsurface.py
+   * bearing_text. A line just west of north runs at a bearing just under 360,
+   * which is written as 0, the bearing of the line it is within a degree of.
+   * @param {number} bearingDeg
+   * @returns {string}
+   */
+  function bearingText(bearingDeg) {
+    var text = pyFixed(bearingDeg, 0);
+    return text === '360' ? '0' : text;
+  }
+
   /** subsurface.py traverse_profile: the soundings projected onto the best-fit
    * line through their recorded positions.
    *
@@ -30380,9 +32588,14 @@
     /* The sign of a singular vector is arbitrary, so the same five soundings
      * handed over in a different order came back as a section drawn the other
      * way round - the same ground, mirrored, with the chainages reversed. The
-     * line is made to run eastwards, or northwards where it is exactly
-     * north-south, so a survey has one section rather than two. */
-    if (direction[0] < 0 || (direction[0] === 0 && direction[1] < 0)) {
+     * line is made to run eastwards, or northwards where it is within a degree
+     * of north-south, so a survey has one section rather than two. Only an
+     * exactly north-south line used to run northwards: one whose eastings
+     * differed by 0.3 m, as a handheld GPS reads the same pegs, ran from the
+     * south end, its stations reversed and its title at bearing 180. */
+    if (Math.abs(direction[0]) < NORTH_SOUTH_EAST_COMPONENT) {
+      if (direction[1] < 0) direction = [-direction[0], -direction[1]];
+    } else if (direction[0] < 0) {
       direction = [-direction[0], -direction[1]];
     }
     var normal = [-direction[1], direction[0]];
@@ -30408,7 +32621,7 @@
     var length = arrMax(chainage);
     var maxOffset = arrMax(offset.map(function (v) { return Math.abs(v); }));
     var bearing = ((Math.atan2(direction[0], direction[1]) * 180.0 / Math.PI) %
-      180.0 + 180.0) % 180.0;
+      360.0 + 360.0) % 360.0;
     return {
       reason: null,
       labels: pick(labels),
@@ -30530,7 +32743,7 @@
     var title = opts.title;
     if (title === undefined || title === null) {
       title = 'Interpreted geoelectric section, ' + pyFixed(profile.length_m, 0) +
-        ' m along bearing ' + pyFixed(profile.bearing_deg, 0) + ' degrees';
+        ' m along bearing ' + bearingText(profile.bearing_deg) + ' degrees';
       if (!profile.is_collinear) {
         title += ' (soundings up to ' + pyFixed(profile.max_offset_m, 0) +
           ' m off the line)';
@@ -32442,7 +34655,7 @@
     subsurfaceMapSpec: subsurfaceMapSpec,
     pointsEncloseAnArea: pointsEncloseAnArea,
     singularValues2: singularValues2, principalAxis: principalAxis,
-    traverseProfile: traverseProfile, wideGaps: wideGaps,
+    traverseProfile: traverseProfile, bearingText: bearingText, wideGaps: wideGaps,
     correlationNote: correlationNote, rhoColourRange: rhoColourRange,
     geoelectricSectionGeometry: geoelectricSectionGeometry,
     pseudosectionGeometry: pseudosectionGeometry,
@@ -33122,17 +35335,6 @@
     return isFinite(number) ? number : null;
   }
 
-  /* where a project summary is: portfolio._latlon */
-  function deskLatLon(summary) {
-    var easting = deskNumber(summary.easting), northing = deskNumber(summary.northing);
-    if (!easting || !northing) return null;
-    var zone = Math.trunc(deskNumber(summary.utm_zone) || 0) || inferZoneForSierraLeone(easting);
-    try {
-      var at = utmToGeographic(easting, northing, zone);
-      return at && isFinite(at.lat) && isFinite(at.lon) ? at : null;
-    } catch (e) { return null; }
-  }
-
   function deskWaterQuality(summary) {
     var read = summaryVerdictState(summary);
     var water = read[0] && own(VERDICT_SHORT, read[0]) ? String(VERDICT_SHORT[read[0]]) : '';
@@ -33152,9 +35354,17 @@
       return { section: section, found: null };
     }
     var near = [], unplaced = 0;
+    /** @type {string[]} */
+    var degrees = [];
     portfolio.forEach(function (/** @type {Rec} */ summary) {
-      var at = deskLatLon(summary);
-      if (!at) { unplaced += 1; return; }
+      var at = summaryLatLon(summary);
+      if (!at) {
+        /* a project whose boxes hold degrees is named, so that it can be
+         * put right, rather than counted with those that record nothing */
+        if (summaryHoldsDegrees(summary)) degrees.push(portfolioSiteLabel(summary));
+        else unplaced += 1;
+        return;
+      }
       var distance = geodesicDistanceM(latlon.lat, latlon.lon, at.lat, at.lon);
       if (distance <= PORTFOLIO_RADIUS_M) near.push([distance, summary]);
     });
@@ -33178,6 +35388,10 @@
             depth ? pyFixed(depth, 1) : '', yieldM3h ? pyFixed(yieldM3h, 2) : '', deskWaterQuality(item[1])];
         }),
       });
+    }
+    if (degrees.length) {
+      section.paragraphs.push(phrase('desk_study.projects_degrees', { count: degrees.length,
+        names: andJoin(degrees) }));
     }
     if (unplaced) section.paragraphs.push(phrase('desk_study.projects_unplaced', { count: unplaced }));
     return { section: section, found: near.length };

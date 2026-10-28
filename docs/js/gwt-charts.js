@@ -502,6 +502,11 @@
         }));
       } else if (entry.kind === 'down') {
         g.appendChild(downMark(x + 8, ly - 4, entry.colour, f.palette.surface));
+      } else if (entry.kind === 'tick') {
+        g.appendChild(svgEl('line', {
+          x1: x + 8, y1: ly - 9, x2: x + 8, y2: ly + 1, stroke: entry.colour,
+          'stroke-width': 1.6,
+        }));
       } else if (entry.kind === 'hollow') {
         g.appendChild(marker(x + 8, ly - 4, 'circle', f.palette.surface, entry.colour));
       } else {
@@ -2592,6 +2597,68 @@
     });
     legend(f, [{ kind: 'line', colour: p.neutral, dash: '5 4', label: 'Calibrated' },
       { kind: 'circle', colour: p.accent, label: 'Forecasts, by band of chance' }], { avoid: marks });
+    return f.svg;
+  }
+
+  /* How long boreholes keep working (PLAN.md step 7.4): for each group
+   * judged, the share still working as a step from 100 percent at
+   * commissioning, its 95 percent band shaded behind it from the first
+   * failure on, and a tick where a borehole was censored at the last report
+   * of it working. survival_plots.py plot_survival's twin; groups too few
+   * to judge are not drawn. */
+  function survivalCurves(groups, options) {
+    var opts = options || {};
+    var perYear = C.DAYS_PER_YEAR;
+    var shown = groups.filter(function (g) { return g.judged; });
+    var right = 1.0;
+    shown.forEach(function (g) { right = Math.max(right, g.last_days / perYear); });
+    var f = frame({
+      width: opts.width || 720, height: opts.height || 420,
+      margin: { top: 34, right: 26, bottom: 52, left: 66 },
+      xDomain: [0, right * 1.04], yDomain: [0, 102], yTicks: [0, 20, 40, 60, 80, 100],
+      title: opts.title || C.phrase('survival.figure_all'),
+      xLabel: C.phrase('survival.axis_x'), yLabel: C.phrase('survival.axis_y'),
+    });
+    var p = f.palette;
+    var colours = [p.accent, p.secondary].concat(p.cat.slice(2));
+    /** @type {Array<{kind: string, colour: string, label: string}>} */
+    var entries = [];
+    /** @type {Array<{px: number, py: number}>} */
+    var marks = [];
+    shown.forEach(function (g, i) {
+      var colour = colours[i % colours.length];
+      var steps = g.steps;
+      steps.forEach(function (s, k) {
+        if (s.lower === null) return;
+        var x0 = f.fx(s.days / perYear);
+        var x1 = k + 1 < steps.length ? f.fx(steps[k + 1].days / perYear) : x0;
+        if (!(x1 > x0)) return;
+        f.plot.appendChild(svgEl('rect', {
+          x: x0, y: f.fy(100 * s.upper), width: x1 - x0,
+          height: Math.max(f.fy(100 * s.lower) - f.fy(100 * s.upper), 0.5),
+          fill: colour, 'fill-opacity': 0.15,
+        }));
+      });
+      var d = 'M' + f.fx(0).toFixed(2) + ' ' + f.fy(100).toFixed(2);
+      steps.forEach(function (s) {
+        d += 'H' + f.fx(s.days / perYear).toFixed(2) + 'V' + f.fy(100 * s.survival).toFixed(2);
+      });
+      f.plot.appendChild(svgEl('path', { d: d, fill: 'none', stroke: colour, 'stroke-width': 2,
+        'stroke-linejoin': 'round' }));
+      steps.forEach(function (s) {
+        var px = f.fx(s.days / perYear), py = f.fy(100 * s.survival);
+        marks.push({ px: px, py: py });
+        if (!s.censored) return;
+        f.plot.appendChild(svgEl('line', { x1: px, y1: py - 5, x2: px, y2: py + 5,
+          stroke: colour, 'stroke-width': 1.6 }));
+      });
+      entries.push({ kind: 'line', colour: colour,
+        label: C.phrase('survival.legend', { label: g.label, n: g.n }) });
+    });
+    if (shown.length) {
+      entries.push({ kind: 'tick', colour: p.neutral, label: C.phrase('survival.legend_censored') });
+      legend(f, entries, { avoid: marks });
+    }
     return f.svg;
   }
 
@@ -7016,6 +7083,8 @@
     costDistribution: costDistribution,
     /* the calibration report's two (PLAN.md step 5.2) */
     depthCalibration: depthCalibration, reliabilityDiagram: reliabilityDiagram,
+    /* the time to the first failure (PLAN.md step 7.4) */
+    survivalCurves: survivalCurves,
     choropleth: choropleth, siteMap: siteMap, thematicMap: thematicMap,
     studyAreaMap: studyAreaMap, studyAreaRadiusKm: studyAreaRadiusKm,
     chiefdomLabel: chiefdomLabel, relativeLuminance: relativeLuminance,

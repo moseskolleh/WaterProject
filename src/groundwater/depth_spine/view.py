@@ -16,6 +16,7 @@ from typing import Any
 from ..config import Config
 from ..costing.model import (
     CostEstimate,
+    RateItem,
     estimate_borehole_cost,
     inputs_from_design,
 )
@@ -40,6 +41,40 @@ def _round(value: float | None, places: int = 2) -> float | None:
 
 
 @dataclass
+class SpineCosting:
+    """The Costing page's settings, which the spine prices its design with.
+
+    The spine's price is signed off by a named person on the "Costing &
+    BoQ" stage, so it has to be the price the Costing page shows for the
+    same design: the rates as edited there, its overheads, margin,
+    contingency, VAT and exchange rate, the overburden, and the counts of
+    samples, handpumps and pumping hours. Without them the Streamlit spine
+    priced at the catalogue rates and the default percentages, so the price
+    signed there could differ from the Costing page's for the same design,
+    where the browser's spine already took the page's settings. A setting
+    left at None is the estimate's own default.
+    """
+
+    rates: list[RateItem] | None = None
+    overheads_percent: float | None = None
+    margin_percent: float | None = None
+    contingency_percent: float | None = None
+    vat_percent: float | None = None
+    exchange_rate_sle_per_usd: float | None = None
+    #: None applies the rule of thumb, as the Costing page's 0 does
+    overburden_m: float | None = None
+    wq_samples: int | None = None
+    handpumps: int | None = None
+    development_hours: float | None = None
+    test_pumping_hours: float | None = None
+
+
+_COST_COUNTS = ("wq_samples", "handpumps", "development_hours", "test_pumping_hours")
+_COST_OPTIONS = ("overheads_percent", "margin_percent", "contingency_percent",
+                 "vat_percent", "exchange_rate_sle_per_usd")
+
+
+@dataclass
 class SpineInputs:
     """Everything the workspace can draw, in whatever combination exists.
 
@@ -59,6 +94,8 @@ class SpineInputs:
     assessment: WaterQualityAssessment | None = None
     config: Config | None = None
     mobilisation_distance_km: float = 0.0
+    #: the Costing page's settings; None prices at the estimate's defaults
+    costing: SpineCosting | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +291,31 @@ def _binding_limit(row) -> tuple[Limit | None, str]:
     return best
 
 
+def _limit_ratio(value: float | None, limit: Limit) -> float | None:
+    """How far a value sits towards, or past, its binding limit.
+
+    The guideline chart draws every determinand at this multiple of its own
+    limit, so one vertical line at 1 separates compliant from not. Against
+    a maximum it is the value over the maximum. Against a range it is the
+    larger of the value over the top of the range and the bottom of the
+    range over the value, so a value outside the range is past the line on
+    whichever side of it the value falls. A value over the top alone put an
+    acidic sample on the compliant side: the Dr Timbo sample's pH of 5.9,
+    below the 6.5 to 8.5 range, was drawn at 0.69 times its limit.
+
+    A value of zero or less under a range that starts above zero is no
+    multiple of the bottom of it, and has no ratio.
+    """
+    if value is None or not limit.maximum:
+        return None
+    ratio = float(value) / float(limit.maximum)
+    if limit.minimum:
+        if value <= 0:
+            return None
+        ratio = max(ratio, float(limit.minimum) / float(value))
+    return ratio
+
+
 def _quality(assessment: WaterQualityAssessment) -> dict:
     rows = []
     for r in assessment.rows:
@@ -268,8 +330,7 @@ def _quality(assessment: WaterQualityAssessment) -> dict:
             # The limit is written in the guideline's unit, so the value has
             # to be on that scale too. Dividing the raw reported number by it
             # plotted a compliant ug/L result a thousand times over its line.
-            if r.value_in_guideline_unit is not None and limit.maximum:
-                ratio = float(r.value_in_guideline_unit) / float(limit.maximum)
+            ratio = _limit_ratio(r.value_in_guideline_unit, limit)
         rows.append(
             {
                 "parameter": r.parameter,
@@ -496,10 +557,21 @@ def build_view(
         quality=assessment,
     )
 
+    # The price signed on the spine is the Costing page's price for this
+    # design: only the quantities differ, and they differ because the screens
+    # on the section moved.
+    money = inputs.costing or SpineCosting()
+    cost_inputs = inputs_from_design(
+        design, mobilisation_distance_km=inputs.mobilisation_distance_km,
+        overburden_m=money.overburden_m,
+    )
+    for name in _COST_COUNTS:
+        if getattr(money, name) is not None:
+            setattr(cost_inputs, name, getattr(money, name))
     estimate = estimate_borehole_cost(
-        inputs_from_design(
-            design, mobilisation_distance_km=inputs.mobilisation_distance_km
-        )
+        cost_inputs, money.rates,
+        **{name: getattr(money, name) for name in _COST_OPTIONS
+           if getattr(money, name) is not None},
     )
 
     site = inputs.log.site
