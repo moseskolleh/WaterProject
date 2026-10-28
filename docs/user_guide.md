@@ -750,15 +750,23 @@ E. coli (or thermotolerant coliform) count of the water quality sample
 loaded on the Water quality page, and names the date of each. The count
 is graded A (none in 100 mL), B (1 to 10), C (11 to 100), D (101 to 1000)
 or E (over 1000). The two are then read together in a risk-to-health
-matrix to give an action priority: low, higher or urgent. Three things
+matrix to give an action priority: low, higher or urgent. Four things
 to know when you read it:
 
 - **A side that is not known gives no priority.** With no sample loaded,
   or no E. coli result in it, the statement says the microbiological side
-  is not known. With no inspection on the form, it says the sanitary side
-  is not known. The priority is given only where every possible answer on
+  is not known. If the borehole's history records a water sample, the
+  statement names its date and says its results are not loaded; load that
+  sample's sheet on the Water quality page to bring it in. If the history
+  records a sample later than the one loaded, the statement names that
+  one too. With no inspection on the form, it says the sanitary side is
+  not known. The priority is given only where every possible answer on
   the unknown side would give the same one (a count over 1000 is urgent
   whatever the inspection says).
+- **Dates are read as YYYY-MM-DD and nothing else**, in both apps. A form
+  in a project file whose date is written another way (`20240520`,
+  `20/05/2024`) is kept in the history but not used, and the statement
+  says how many such forms there are.
 - **A range is taken at its worse end.** An incomplete form, or a count
   the laboratory did not put a number to ("TNTC", ">50"), can fall in
   more than one cell; the statement says so and takes the worse until the

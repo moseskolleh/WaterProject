@@ -123709,6 +123709,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -123795,6 +123796,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "low",
       "action": "low",
@@ -123892,6 +123894,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "higher",
       "action": "higher",
@@ -123989,6 +123992,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "urgent",
       "priority_high": "urgent",
       "action": "urgent",
@@ -124086,6 +124090,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "higher",
       "action": "higher",
@@ -124183,6 +124188,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": "urgent",
@@ -124305,6 +124311,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "low",
       "action": "low",
@@ -124450,6 +124457,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "higher",
       "action": "higher",
@@ -124550,6 +124558,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -124632,6 +124641,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -124723,11 +124733,12 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+      "statement": "1 sanitary inspection form is on record with a date that cannot be read as YYYY-MM-DD, so it is not used, and the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
      },
      "merged": [
       {
@@ -124752,6 +124763,671 @@
     }
    },
    {
+    "name": "compact/clean",
+    "events": [
+     {
+      "when": "20240520",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YYYYYYYYYN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": null,
+      "score": null,
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "1 sanitary inspection form is on record with a date that cannot be read as YYYY-MM-DD, so it is not used, and the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     },
+     "merged": [
+      {
+       "when": "20240520",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YYYYYYYYYN",
+       "event_id": "20240520/inspection/ES7D"
+      }
+     ]
+    }
+   },
+   {
+    "name": "week/clean",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNNNNNNNNN",
+      "event_id": ""
+     },
+     {
+      "when": "2024-W21-1",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YYYYYYYYYN",
+      "event_id": ""
+     },
+     {
+      "when": "2024-05-20T09:00",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YYYYYYYYYN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "NNNNNNNNNN",
+       "event_id": "2024-05-20/inspection/33S6",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 0,
+       "low": 0,
+       "high": 0,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "low",
+      "action": "low",
+      "settled": true,
+      "statement": "Sanitary inspection of 2024-05-20: 0 of 10 risks present, which the form rates low. 2 other inspection forms are on record with a date that cannot be read as YYYY-MM-DD, so they are not used. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). Read together in the risk-to-health matrix: low risk, low action priority. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "NNNNNNNNNN",
+       "event_id": "2024-05-20/inspection/33S6"
+      },
+      {
+       "when": "2024-05-20T09:00",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YYYYYYYYYN",
+       "event_id": "2024-05-20T09:00/inspection/61YA"
+      },
+      {
+       "when": "2024-W21-1",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YYYYYYYYYN",
+       "event_id": "2024-W21-1/inspection/HVCQ"
+      }
+     ]
+    }
+   },
+   {
+    "name": "bom/clean",
+    "events": [
+     {
+      "when": "\ufeff2024-05-20",
+      "kind": "\ufeffinspection",
+      "form": "tubewell_handpump\ufeff",
+      "answers": "\ufeffYNNYNNYNYN",
+      "by": "\ufeffA. Bangura\u001c"
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "\ufeffA. Bangura\u001c",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/FWZ5",
+       "label": "2024-05-20 by A. Bangura"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 4,
+       "low": 4,
+       "high": 4,
+       "band_low": "intermediate",
+       "band_high": "intermediate",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "higher",
+      "priority_high": "higher",
+      "action": "higher",
+      "settled": true,
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 4 of 10 risks present, which the form rates intermediate. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). Read together in the risk-to-health matrix: intermediate to high risk, higher action priority. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "\ufeffA. Bangura\u001c",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/FWZ5"
+      }
+     ]
+    }
+   },
+   {
+    "name": "separator/clean",
+    "events": [
+     {
+      "when": "2024-05-20\u001c",
+      "kind": "inspection\u0085",
+      "form": "\u001ftubewell_handpump",
+      "answers": "YNNYNNYNYN\u001c",
+      "note": "apron cracked\u001e"
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/J47B",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 4,
+       "low": 4,
+       "high": 4,
+       "band_low": "intermediate",
+       "band_high": "intermediate",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "higher",
+      "priority_high": "higher",
+      "action": "higher",
+      "settled": true,
+      "statement": "Sanitary inspection of 2024-05-20: 4 of 10 risks present, which the form rates intermediate. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). Read together in the risk-to-health matrix: intermediate to high risk, higher action priority. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "apron cracked\u001e",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/J47B"
+      }
+     ]
+    }
+   },
+   {
+    "name": "sampled/clean",
+    "events": [
+     {
+      "when": "2024-03-01",
+      "kind": "water_sample",
+      "note": "E. coli 12 per 100 mL field kit"
+     },
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YNNYNNYNYN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/YDCR",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 4,
+       "low": 4,
+       "high": 4,
+       "band_low": "intermediate",
+       "band_high": "intermediate",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": {
+       "when": "2024-03-01",
+       "by": "",
+       "event_id": "2024-03-01/water_sample/P9ES",
+       "label": "2024-03-01"
+      },
+      "priority_low": "higher",
+      "priority_high": "higher",
+      "action": "higher",
+      "settled": true,
+      "statement": "Sanitary inspection of 2024-05-20: 4 of 10 risks present, which the form rates intermediate. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). Read together in the risk-to-health matrix: intermediate to high risk, higher action priority. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     },
+     "merged": [
+      {
+       "when": "2024-03-01",
+       "kind": "water_sample",
+       "note": "E. coli 12 per 100 mL field kit",
+       "by": "",
+       "photo": "",
+       "event_id": "2024-03-01/water_sample/P9ES"
+      },
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/YDCR"
+      }
+     ]
+    }
+   },
+   {
+    "name": "sampled_later/clean",
+    "events": [
+     {
+      "when": "2024-05-25",
+      "kind": "water_sample",
+      "by": "M. Kolleh"
+     },
+     {
+      "when": "2024-05-26",
+      "kind": "water_sample"
+     },
+     {
+      "when": "2024-07-01",
+      "kind": "water_sample"
+     },
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNNNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "NNNNNNNNNN",
+       "event_id": "2024-05-20/inspection/33S6",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 0,
+       "low": 0,
+       "high": 0,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": {
+       "when": "2024-05-26",
+       "by": "",
+       "event_id": "2024-05-26/water_sample/ZANR",
+       "label": "2024-05-26"
+      },
+      "priority_low": "low",
+      "priority_high": "low",
+      "action": "low",
+      "settled": true,
+      "statement": "Sanitary inspection of 2024-05-20: 0 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). The borehole's history records a later water sample, of 2024-05-26, whose results are not the ones read here. Read together in the risk-to-health matrix: low risk, low action priority. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "NNNNNNNNNN",
+       "event_id": "2024-05-20/inspection/33S6"
+      },
+      {
+       "when": "2024-05-25",
+       "kind": "water_sample",
+       "note": "",
+       "by": "M. Kolleh",
+       "photo": "",
+       "event_id": "2024-05-25/water_sample/9BXQ"
+      },
+      {
+       "when": "2024-05-26",
+       "kind": "water_sample",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "event_id": "2024-05-26/water_sample/ZANR"
+      },
+      {
+       "when": "2024-07-01",
+       "kind": "water_sample",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "event_id": "2024-07-01/water_sample/7QMF"
+      }
+     ]
+    }
+   },
+   {
     "name": "none/none",
     "events": [],
     "sample": null,
@@ -124761,11 +125437,12 @@
       "inspection": null,
       "score": null,
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": []
     }
@@ -124808,11 +125485,12 @@
        "complete": true
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -124866,11 +125544,12 @@
        "complete": true
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20 by M. Kolleh: 4 of 10 risks present, which the form rates intermediate. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet; on the side that is known it is at least intermediate to high risk, higher action priority."
+      "statement": "Sanitary inspection of 2024-05-20 by M. Kolleh: 4 of 10 risks present, which the form rates intermediate. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet; on the side that is known it is at least intermediate to high risk, higher action priority."
      },
      "merged": [
       {
@@ -124924,11 +125603,12 @@
        "complete": true
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "urgent",
       "priority_high": "urgent",
       "action": "urgent",
       "settled": true,
-      "statement": "Sanitary inspection of 2024-05-20: 9 of 10 risks present, which the form rates very high. No water sample is on record for this borehole, so the microbiological side of the risk is not known. Read together in the risk-to-health matrix: very high risk, urgent action."
+      "statement": "Sanitary inspection of 2024-05-20: 9 of 10 risks present, which the form rates very high. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. Read together in the risk-to-health matrix: very high risk, urgent action."
      },
      "merged": [
       {
@@ -124982,11 +125662,12 @@
        "complete": false
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -125040,11 +125721,12 @@
        "complete": false
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20: 1 of the form's 10 questions answered, 1 of them with the risk present, so the score is between 1 and 10 of 10, which the form rates low to very high. The form is incomplete, and a question left unanswered is not counted as a no. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "Sanitary inspection of 2024-05-20: 1 of the form's 10 questions answered, 1 of them with the risk present, so the score is between 1 and 10 of 10, which the form rates low to very high. The form is incomplete, and a question left unanswered is not counted as a no. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -125123,11 +125805,12 @@
        "complete": true
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-02-01: 1 of 10 risks present, which the form rates low. A later inspection, of 2024-04-11, has no answers to the form that can be scored. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "Sanitary inspection of 2024-02-01: 1 of 10 risks present, which the form rates low. A later inspection, of 2024-04-11, has no answers to the form that can be scored. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -125229,11 +125912,12 @@
        "complete": true
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20 by C: 3 of 10 risks present, which the form rates intermediate. 3 forms were recorded on 2024-05-20; the one showing the most risk is used. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet; on the side that is known it is at least intermediate to high risk, higher action priority."
+      "statement": "Sanitary inspection of 2024-05-20 by C: 3 of 10 risks present, which the form rates intermediate. 3 forms were recorded on 2024-05-20; the one showing the most risk is used. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet; on the side that is known it is at least intermediate to high risk, higher action priority."
      },
      "merged": [
       {
@@ -125290,11 +125974,12 @@
       "inspection": null,
       "score": null,
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20: none of the form's questions was answered, so it gives no score. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "Sanitary inspection of 2024-05-20: none of the form's questions was answered, so it gives no score. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -125333,11 +126018,12 @@
       "inspection": null,
       "score": null,
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-21: its recorded answers do not fit a form this toolkit has, so it gives no score. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "Sanitary inspection of 2024-05-21: its recorded answers do not fit a form this toolkit has, so it gives no score. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -125385,11 +126071,12 @@
       "inspection": null,
       "score": null,
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "1 sanitary inspection form is on record with a date that cannot be read as YYYY-MM-DD, so it is not used, and the sanitary side of the risk is not known. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -125409,6 +126096,437 @@
        "form": "tubewell_handpump",
        "answers": "YYYYYYYYYY",
        "event_id": "bad date/inspection/VVAW"
+      }
+     ]
+    }
+   },
+   {
+    "name": "compact/none",
+    "events": [
+     {
+      "when": "20240520",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YYYYYYYYYN",
+      "event_id": ""
+     }
+    ],
+    "sample": null,
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": null,
+      "score": null,
+      "microbiology": null,
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "1 sanitary inspection form is on record with a date that cannot be read as YYYY-MM-DD, so it is not used, and the sanitary side of the risk is not known. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+     },
+     "merged": [
+      {
+       "when": "20240520",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YYYYYYYYYN",
+       "event_id": "20240520/inspection/ES7D"
+      }
+     ]
+    }
+   },
+   {
+    "name": "week/none",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNNNNNNNNN",
+      "event_id": ""
+     },
+     {
+      "when": "2024-W21-1",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YYYYYYYYYN",
+      "event_id": ""
+     },
+     {
+      "when": "2024-05-20T09:00",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YYYYYYYYYN",
+      "event_id": ""
+     }
+    ],
+    "sample": null,
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "NNNNNNNNNN",
+       "event_id": "2024-05-20/inspection/33S6",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 0,
+       "low": 0,
+       "high": 0,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": null,
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20: 0 of 10 risks present, which the form rates low. 2 other inspection forms are on record with a date that cannot be read as YYYY-MM-DD, so they are not used. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "NNNNNNNNNN",
+       "event_id": "2024-05-20/inspection/33S6"
+      },
+      {
+       "when": "2024-05-20T09:00",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YYYYYYYYYN",
+       "event_id": "2024-05-20T09:00/inspection/61YA"
+      },
+      {
+       "when": "2024-W21-1",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YYYYYYYYYN",
+       "event_id": "2024-W21-1/inspection/HVCQ"
+      }
+     ]
+    }
+   },
+   {
+    "name": "bom/none",
+    "events": [
+     {
+      "when": "\ufeff2024-05-20",
+      "kind": "\ufeffinspection",
+      "form": "tubewell_handpump\ufeff",
+      "answers": "\ufeffYNNYNNYNYN",
+      "by": "\ufeffA. Bangura\u001c"
+     }
+    ],
+    "sample": null,
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "\ufeffA. Bangura\u001c",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/FWZ5",
+       "label": "2024-05-20 by A. Bangura"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 4,
+       "low": 4,
+       "high": 4,
+       "band_low": "intermediate",
+       "band_high": "intermediate",
+       "complete": true
+      },
+      "microbiology": null,
+      "sample_event": null,
+      "priority_low": "higher",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 4 of 10 risks present, which the form rates intermediate. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet; on the side that is known it is at least intermediate to high risk, higher action priority."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "\ufeffA. Bangura\u001c",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/FWZ5"
+      }
+     ]
+    }
+   },
+   {
+    "name": "separator/none",
+    "events": [
+     {
+      "when": "2024-05-20\u001c",
+      "kind": "inspection\u0085",
+      "form": "\u001ftubewell_handpump",
+      "answers": "YNNYNNYNYN\u001c",
+      "note": "apron cracked\u001e"
+     }
+    ],
+    "sample": null,
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/J47B",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 4,
+       "low": 4,
+       "high": 4,
+       "band_low": "intermediate",
+       "band_high": "intermediate",
+       "complete": true
+      },
+      "microbiology": null,
+      "sample_event": null,
+      "priority_low": "higher",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20: 4 of 10 risks present, which the form rates intermediate. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet; on the side that is known it is at least intermediate to high risk, higher action priority."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "apron cracked\u001e",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/J47B"
+      }
+     ]
+    }
+   },
+   {
+    "name": "sampled/none",
+    "events": [
+     {
+      "when": "2024-03-01",
+      "kind": "water_sample",
+      "note": "E. coli 12 per 100 mL field kit"
+     },
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YNNYNNYNYN",
+      "event_id": ""
+     }
+    ],
+    "sample": null,
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/YDCR",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 4,
+       "low": 4,
+       "high": 4,
+       "band_low": "intermediate",
+       "band_high": "intermediate",
+       "complete": true
+      },
+      "microbiology": null,
+      "sample_event": {
+       "when": "2024-03-01",
+       "by": "",
+       "event_id": "2024-03-01/water_sample/P9ES",
+       "label": "2024-03-01"
+      },
+      "priority_low": "higher",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20: 4 of 10 risks present, which the form rates intermediate. The borehole's history records a water sample of 2024-03-01, but no water quality analysis is loaded in this project, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet; on the side that is known it is at least intermediate to high risk, higher action priority."
+     },
+     "merged": [
+      {
+       "when": "2024-03-01",
+       "kind": "water_sample",
+       "note": "E. coli 12 per 100 mL field kit",
+       "by": "",
+       "photo": "",
+       "event_id": "2024-03-01/water_sample/P9ES"
+      },
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNNYNNYNYN",
+       "event_id": "2024-05-20/inspection/YDCR"
+      }
+     ]
+    }
+   },
+   {
+    "name": "sampled_later/none",
+    "events": [
+     {
+      "when": "2024-05-25",
+      "kind": "water_sample",
+      "by": "M. Kolleh"
+     },
+     {
+      "when": "2024-05-26",
+      "kind": "water_sample"
+     },
+     {
+      "when": "2024-07-01",
+      "kind": "water_sample"
+     },
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNNNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": null,
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "NNNNNNNNNN",
+       "event_id": "2024-05-20/inspection/33S6",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 0,
+       "low": 0,
+       "high": 0,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": null,
+      "sample_event": {
+       "when": "2024-05-26",
+       "by": "",
+       "event_id": "2024-05-26/water_sample/ZANR",
+       "label": "2024-05-26"
+      },
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20: 0 of 10 risks present, which the form rates low. The borehole's history records a water sample of 2024-05-26, but no water quality analysis is loaded in this project, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "NNNNNNNNNN",
+       "event_id": "2024-05-20/inspection/33S6"
+      },
+      {
+       "when": "2024-05-25",
+       "kind": "water_sample",
+       "note": "",
+       "by": "M. Kolleh",
+       "photo": "",
+       "event_id": "2024-05-25/water_sample/9BXQ"
+      },
+      {
+       "when": "2024-05-26",
+       "kind": "water_sample",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "event_id": "2024-05-26/water_sample/ZANR"
+      },
+      {
+       "when": "2024-07-01",
+       "kind": "water_sample",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "event_id": "2024-07-01/water_sample/7QMF"
       }
      ]
     }
@@ -125451,11 +126569,12 @@
        "complete": true
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -125548,6 +126667,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "low",
       "action": "low",
@@ -125645,6 +126765,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "higher",
       "action": "higher",
@@ -125742,6 +126863,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "urgent",
       "priority_high": "urgent",
       "action": "urgent",
@@ -125841,6 +126963,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "low",
       "action": "low",
@@ -125939,6 +127062,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "low",
       "action": "low",
@@ -126037,6 +127161,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": "urgent",
@@ -126136,6 +127261,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": "urgent",
@@ -126234,6 +127360,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": "urgent",
@@ -126330,14 +127457,15 @@
        "inclusive": false,
        "grade_low": null,
        "grade_high": null,
-       "reason": "below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method.",
+       "reason": "below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method.. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
      },
      "merged": [
       {
@@ -126425,6 +127553,7 @@
        "reason": "",
        "unit": ""
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -126522,6 +127651,7 @@
        "reason": "",
        "unit": "CFU/mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "higher",
       "action": "higher",
@@ -126624,6 +127754,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "higher",
       "action": "higher",
@@ -126721,6 +127852,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "low",
       "action": "low",
@@ -126815,14 +127947,312 @@
        "inclusive": false,
        "grade_low": null,
        "grade_high": null,
-       "reason": "reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit.",
+       "reason": "reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit",
        "unit": "wibbles"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21) could not be graded: reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit.. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21) could not be graded: reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "A. Bangura",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4"
+      }
+     ]
+    }
+   },
+   {
+    "name": "complete/slash_unit",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 3.0,
+       "unit": "/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "A. Bangura",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4",
+       "label": "2024-05-20 by A. Bangura"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 1,
+       "low": 1,
+       "high": 1,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "reported in '/100 mL' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit",
+       "unit": "/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21) could not be graded: reported in '/100 mL' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "A. Bangura",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4"
+      }
+     ]
+    }
+   },
+   {
+    "name": "complete/unreadable",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": null,
+       "unit": "CFU/100 mL",
+       "unreadable": "lots"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "A. Bangura",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4",
+       "label": "2024-05-20 by A. Bangura"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 1,
+       "low": 1,
+       "high": 1,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "reported as 'lots', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21) could not be graded: reported as 'lots', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "A. Bangura",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4"
+      }
+     ]
+    }
+   },
+   {
+    "name": "complete/coarse_per_ml",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": null,
+       "unit": "CFU/mL",
+       "below_detection": true,
+       "detection_limit": 1.0
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "A. Bangura",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4",
+       "label": "2024-05-20 by A. Bangura"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 1,
+       "low": 1,
+       "high": 1,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "below a detection limit of 100 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method",
+       "unit": "CFU/mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 100 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
      },
      "merged": [
       {
@@ -126920,6 +128350,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "low",
       "action": "low",
@@ -126978,11 +128409,12 @@
        "complete": false
       },
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": [
       {
@@ -127075,6 +128507,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "higher",
       "action": "higher",
@@ -127172,6 +128605,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "higher",
       "action": "higher",
@@ -127269,6 +128703,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "urgent",
       "priority_high": "urgent",
       "action": "urgent",
@@ -127368,6 +128803,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "higher",
       "action": "higher",
@@ -127466,6 +128902,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "higher",
       "action": "higher",
@@ -127564,6 +129001,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": "urgent",
@@ -127663,6 +129101,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": "urgent",
@@ -127761,6 +129200,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": "urgent",
@@ -127857,14 +129297,15 @@
        "inclusive": false,
        "grade_low": null,
        "grade_high": null,
-       "reason": "below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method.",
+       "reason": "below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method.. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
      },
      "merged": [
       {
@@ -127952,6 +129393,7 @@
        "reason": "",
        "unit": ""
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -128049,6 +129491,7 @@
        "reason": "",
        "unit": "CFU/mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "higher",
       "action": "higher",
@@ -128151,6 +129594,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "higher",
       "action": "higher",
@@ -128248,6 +129692,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "higher",
       "action": "higher",
@@ -128342,14 +129787,312 @@
        "inclusive": false,
        "grade_low": null,
        "grade_high": null,
-       "reason": "reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit.",
+       "reason": "reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit",
        "unit": "wibbles"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. E. coli in the water sample (2024-05-21) could not be graded: reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit.. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. E. coli in the water sample (2024-05-21) could not be graded: reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNN--NYN-N",
+       "event_id": "2024-05-20/inspection/FENF"
+      }
+     ]
+    }
+   },
+   {
+    "name": "incomplete/slash_unit",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YNN--NYN-N",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 3.0,
+       "unit": "/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "YNN--NYN-N",
+       "event_id": "2024-05-20/inspection/FENF",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 7,
+       "yes": 2,
+       "low": 2,
+       "high": 5,
+       "band_low": "low",
+       "band_high": "intermediate",
+       "complete": false
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "reported in '/100 mL' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit",
+       "unit": "/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. E. coli in the water sample (2024-05-21) could not be graded: reported in '/100 mL' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNN--NYN-N",
+       "event_id": "2024-05-20/inspection/FENF"
+      }
+     ]
+    }
+   },
+   {
+    "name": "incomplete/unreadable",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YNN--NYN-N",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": null,
+       "unit": "CFU/100 mL",
+       "unreadable": "lots"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "YNN--NYN-N",
+       "event_id": "2024-05-20/inspection/FENF",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 7,
+       "yes": 2,
+       "low": 2,
+       "high": 5,
+       "band_low": "low",
+       "band_high": "intermediate",
+       "complete": false
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "reported as 'lots', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. E. coli in the water sample (2024-05-21) could not be graded: reported as 'lots', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": [
+      {
+       "when": "2024-05-20",
+       "kind": "inspection",
+       "note": "",
+       "by": "",
+       "photo": "",
+       "form": "tubewell_handpump",
+       "answers": "YNN--NYN-N",
+       "event_id": "2024-05-20/inspection/FENF"
+      }
+     ]
+    }
+   },
+   {
+    "name": "incomplete/coarse_per_ml",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "YNN--NYN-N",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": null,
+       "unit": "CFU/mL",
+       "below_detection": true,
+       "detection_limit": 1.0
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "",
+       "form": "tubewell_handpump",
+       "answers": "YNN--NYN-N",
+       "event_id": "2024-05-20/inspection/FENF",
+       "label": "2024-05-20"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 7,
+       "yes": 2,
+       "low": 2,
+       "high": 5,
+       "band_low": "low",
+       "band_high": "intermediate",
+       "complete": false
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "below a detection limit of 100 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method",
+       "unit": "CFU/mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "Sanitary inspection of 2024-05-20: 7 of the form's 10 questions answered, 2 of them with the risk present, so the score is between 2 and 5 of 10, which the form rates low to intermediate. The form is incomplete, and a question left unanswered is not counted as a no. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 100 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
      },
      "merged": [
       {
@@ -128447,6 +130190,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "higher",
       "action": "higher",
@@ -128477,11 +130221,12 @@
       "inspection": null,
       "score": null,
       "microbiology": null,
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. No water sample is on record for this borehole, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
+      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. No water quality analysis is loaded in this project, and the borehole's history records no water sample, so the microbiological side of the risk is not known. The risk-to-health matrix needs both sides, so no action priority can be read from it yet."
      },
      "merged": []
     }
@@ -128535,6 +130280,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -128593,6 +130339,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": null,
@@ -128651,6 +130398,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "urgent",
       "priority_high": "urgent",
       "action": "urgent",
@@ -128711,6 +130459,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -128770,6 +130519,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -128829,6 +130579,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": null,
@@ -128889,6 +130640,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": null,
@@ -128948,6 +130700,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -129005,14 +130758,15 @@
        "inclusive": false,
        "grade_low": null,
        "grade_high": null,
-       "reason": "below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method.",
+       "reason": "below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method.. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 10 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
      },
      "merged": []
     }
@@ -129061,6 +130815,7 @@
        "reason": "",
        "unit": ""
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -129119,6 +130874,7 @@
        "reason": "",
        "unit": "CFU/mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": null,
@@ -129182,6 +130938,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "higher",
       "priority_high": "urgent",
       "action": null,
@@ -129240,6 +130997,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -129295,14 +131053,195 @@
        "inclusive": false,
        "grade_low": null,
        "grade_high": null,
-       "reason": "reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit.",
+       "reason": "reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit",
        "unit": "wibbles"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
       "settled": false,
-      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21) could not be graded: reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit.. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21) could not be graded: reported in 'wibbles' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": []
+    }
+   },
+   {
+    "name": "none/slash_unit",
+    "events": [],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 3.0,
+       "unit": "/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": null,
+      "score": null,
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "reported in '/100 mL' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit",
+       "unit": "/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21) could not be graded: reported in '/100 mL' but the guideline is in 'CFU/100 mL': the reported unit could not be read. The value was not compared against any limit. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": []
+    }
+   },
+   {
+    "name": "none/unreadable",
+    "events": [],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": null,
+       "unit": "CFU/100 mL",
+       "unreadable": "lots"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": null,
+      "score": null,
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "reported as 'lots', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21) could not be graded: reported as 'lots', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
+     },
+     "merged": []
+    }
+   },
+   {
+    "name": "none/coarse_per_ml",
+    "events": [],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": null,
+       "unit": "CFU/mL",
+       "below_detection": true,
+       "detection_limit": 1.0
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": null,
+      "score": null,
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "ungraded",
+       "count": null,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": null,
+       "grade_high": null,
+       "reason": "below a detection limit of 100 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method",
+       "unit": "CFU/mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21) could not be graded: below a detection limit of 100 CFU/100 mL, which is above the limit of 0 CFU/100 mL. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method. The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Not proven safe - incomplete or unevaluable results."
      },
      "merged": []
     }
@@ -129361,6 +131300,7 @@
        "reason": "",
        "unit": "CFU/100 mL"
       },
+      "sample_event": null,
       "priority_low": "low",
       "priority_high": "urgent",
       "action": null,
@@ -129370,6 +131310,803 @@
      "merged": []
     }
    }
+  ],
+  "todays": [
+   {
+    "name": "'20240601'",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "20240601",
+    "expect": {
+     "throws": true
+    }
+   },
+   {
+    "name": "'2024-W22-6'",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-W22-6",
+    "expect": {
+     "throws": true
+    }
+   },
+   {
+    "name": "'2024-06-01T00:00'",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01T00:00",
+    "expect": {
+     "throws": true
+    }
+   },
+   {
+    "name": "' 2024-06-01\\n'",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": " 2024-06-01\n",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "A. Bangura",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4",
+       "label": "2024-05-20 by A. Bangura"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 1,
+       "low": 1,
+       "high": 1,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "low",
+      "action": "low",
+      "settled": true,
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). Read together in the risk-to-health matrix: low risk, low action priority. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     }
+    }
+   },
+   {
+    "name": "'\\ufeff2024-06-01'",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "\ufeff2024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "A. Bangura",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4",
+       "label": "2024-05-20 by A. Bangura"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 1,
+       "low": 1,
+       "high": 1,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "low",
+      "action": "low",
+      "settled": true,
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). Read together in the risk-to-health matrix: low risk, low action priority. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     }
+    }
+   },
+   {
+    "name": "'2024-06-01\\x1c'",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "2024-06-01\u001c",
+    "expect": {
+     "risk": {
+      "inspection": {
+       "when": "2024-05-20",
+       "by": "A. Bangura",
+       "form": "tubewell_handpump",
+       "answers": "NNYNNNNNNN",
+       "event_id": "2024-05-20/inspection/KXR4",
+       "label": "2024-05-20 by A. Bangura"
+      },
+      "score": {
+       "form": "tubewell_handpump",
+       "n": 10,
+       "answered": 10,
+       "yes": 1,
+       "low": 1,
+       "high": 1,
+       "band_low": "low",
+       "band_high": "low",
+       "complete": true
+      },
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "low",
+      "action": "low",
+      "settled": true,
+      "statement": "Sanitary inspection of 2024-05-20 by A. Bangura: 1 of 10 risks present, which the form rates low. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). Read together in the risk-to-health matrix: low risk, low action priority. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     }
+    }
+   },
+   {
+    "name": "'0024-06-01'",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "0024-06-01",
+    "expect": {
+     "risk": {
+      "inspection": null,
+      "score": null,
+      "microbiology": {
+       "date": "2024-05-21",
+       "parameter": "E. coli",
+       "kind": "counted",
+       "count": 0.0,
+       "bound": null,
+       "inclusive": false,
+       "grade_low": "A",
+       "grade_high": "A",
+       "reason": "",
+       "unit": "CFU/100 mL"
+      },
+      "sample_event": null,
+      "priority_low": "low",
+      "priority_high": "urgent",
+      "action": null,
+      "settled": false,
+      "statement": "No sanitary inspection with the form filled in is on record, so the sanitary side of the risk is not known. E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A (in conformity with the WHO guideline value). The risk-to-health matrix needs both sides, so no action priority can be read from it yet. The matrix reads faecal contamination only; the sample's verdict on everything it tested is: Safe to drink."
+     }
+    }
+   },
+   {
+    "name": "'0000-06-01'",
+    "events": [
+     {
+      "when": "2024-05-20",
+      "kind": "inspection",
+      "note": "",
+      "by": "A. Bangura",
+      "photo": "",
+      "form": "tubewell_handpump",
+      "answers": "NNYNNNNNNN",
+      "event_id": ""
+     }
+    ],
+    "sample": {
+     "site": {
+      "community": "Ref"
+     },
+     "flags": [],
+     "sample_date": "2024-05-21",
+     "results": [
+      {
+       "parameter": "E. coli",
+       "value": 0.0,
+       "unit": "CFU/100 mL"
+      },
+      {
+       "parameter": "Arsenic",
+       "value": 0.001,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Fluoride",
+       "value": 0.3,
+       "unit": "mg/L"
+      },
+      {
+       "parameter": "Nitrate (as NO3)",
+       "value": 5.0,
+       "unit": "mg/L"
+      }
+     ]
+    },
+    "today": "0000-06-01",
+    "expect": {
+     "throws": true
+    }
+   }
+  ],
+  "days": [
+   {
+    "text": "2024-05-20",
+    "expect": {
+     "day": "2024-05-20"
+    }
+   },
+   {
+    "text": "20240520",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "2024-W21-1",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "2024W211",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "2024-05-20T09:00",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "2024-5-20",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "+2024-05-20",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "\u0968\u0966\u0968\u096a-\u0966\u096b-\u0968\u0966",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "2023-02-29",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "2024-02-29",
+    "expect": {
+     "day": "2024-02-29"
+    }
+   },
+   {
+    "text": "0000-01-01",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "0001-01-01",
+    "expect": {
+     "day": "0001-01-01"
+    }
+   },
+   {
+    "text": "0050-03-01",
+    "expect": {
+     "day": "0050-03-01"
+    }
+   },
+   {
+    "text": "0099-12-31",
+    "expect": {
+     "day": "0099-12-31"
+    }
+   },
+   {
+    "text": "9999-12-31",
+    "expect": {
+     "day": "9999-12-31"
+    }
+   },
+   {
+    "text": " 2024-05-20 ",
+    "expect": {
+     "day": "2024-05-20"
+    }
+   },
+   {
+    "text": "\ufeff2024-05-20",
+    "expect": {
+     "day": "2024-05-20"
+    }
+   },
+   {
+    "text": "2024-05-20\u001c",
+    "expect": {
+     "day": "2024-05-20"
+    }
+   },
+   {
+    "text": "\u00852024-05-20",
+    "expect": {
+     "day": "2024-05-20"
+    }
+   },
+   {
+    "text": "\u20002024-05-20\u3000",
+    "expect": {
+     "day": "2024-05-20"
+    }
+   },
+   {
+    "text": "\u200b2024-05-20",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": "",
+    "expect": {
+     "day": null
+    }
+   },
+   {
+    "text": null,
+    "expect": {
+     "day": null
+    }
+   }
+  ],
+  "trims": [
+   {
+    "text": "\ufeffYNNYNNYNYN",
+    "expect": {
+     "trim": "YNNYNNYNYN",
+     "answers": "YNNYNNYNYN",
+     "score": {
+      "form": "tubewell_handpump",
+      "n": 10,
+      "answered": 10,
+      "yes": 4,
+      "low": 4,
+      "high": 4,
+      "band_low": "intermediate",
+      "band_high": "intermediate",
+      "complete": true
+     }
+    }
+   },
+   {
+    "text": "YNNYNNYNYN\u001c",
+    "expect": {
+     "trim": "YNNYNNYNYN",
+     "answers": "YNNYNNYNYN",
+     "score": {
+      "form": "tubewell_handpump",
+      "n": 10,
+      "answered": 10,
+      "yes": 4,
+      "low": 4,
+      "high": 4,
+      "band_low": "intermediate",
+      "band_high": "intermediate",
+      "complete": true
+     }
+    }
+   },
+   {
+    "text": "\t\n\u000b\f\r\u001c\u001d\u001e\u001f \u0085\u00a0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000\ufeffYnN-x\t\n\u000b\f\r\u001c\u001d\u001e\u001f \u0085\u00a0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000\ufeff",
+    "expect": {
+     "trim": "YnN-x",
+     "answers": "YNN--",
+     "score": null
+    }
+   },
+   {
+    "text": "\t\n\u000b\f\r\u001c\u001d\u001e\u001f \u0085\u00a0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000\ufeffYNNYNNYNYN\t\n\u000b\f\r\u001c\u001d\u001e\u001f \u0085\u00a0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000\ufeff",
+    "expect": {
+     "trim": "YNNYNNYNYN",
+     "answers": "YNNYNNYNYN",
+     "score": {
+      "form": "tubewell_handpump",
+      "n": 10,
+      "answered": 10,
+      "yes": 4,
+      "low": 4,
+      "high": 4,
+      "band_low": "intermediate",
+      "band_high": "intermediate",
+      "complete": true
+     }
+    }
+   },
+   {
+    "text": "\u200bYNNYNNYNYN\u200b",
+    "expect": {
+     "trim": "\u200bYNNYNNYNYN\u200b",
+     "answers": "-YNNYNNYNYN-",
+     "score": null
+    }
+   },
+   {
+    "text": "\u0000YN\u0000",
+    "expect": {
+     "trim": "\u0000YN\u0000",
+     "answers": "-YN-",
+     "score": null
+    }
+   },
+   {
+    "text": "\t\n\u000b\f\r\u001c\u001d\u001e\u001f \u0085\u00a0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000\ufeff",
+    "expect": {
+     "trim": "",
+     "answers": "",
+     "score": null
+    }
+   },
+   {
+    "text": "",
+    "expect": {
+     "trim": "",
+     "answers": "",
+     "score": null
+    }
+   },
+   {
+    "text": null,
+    "expect": {
+     "trim": "",
+     "answers": "",
+     "score": null
+    }
+   }
+  ],
+  "trimmed": [
+   9,
+   10,
+   11,
+   12,
+   13,
+   28,
+   29,
+   30,
+   31,
+   32,
+   133,
+   160,
+   5760,
+   8192,
+   8193,
+   8194,
+   8195,
+   8196,
+   8197,
+   8198,
+   8199,
+   8200,
+   8201,
+   8202,
+   8232,
+   8233,
+   8239,
+   8287,
+   12288,
+   65279
   ],
   "forms": [
    {
@@ -138233,6 +140970,11 @@
    "from": "2024-02-29",
    "months": 12,
    "due": "2025-02-28"
+  },
+  {
+   "from": "0024-08-31",
+   "months": 6,
+   "due": "0025-02-28"
   }
  ],
  "seasonal_dates": [

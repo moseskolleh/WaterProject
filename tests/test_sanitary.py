@@ -89,6 +89,48 @@ def test_an_answer_nobody_can_read_is_an_unanswered_question():
     assert clean_answers("Y\U0001f600N") == "Y-N"
 
 
+@pytest.mark.parametrize("raw", [
+    "\ufeffYNNYNNYNYN",      # a byte order mark: JavaScript's trim took it, Python's did not
+    "YNNYNNYNYN\x1c",        # a file separator: Python's strip took it, JavaScript's did not
+    "\x85YNNYNNYNYN\x1f",
+    "\xa0YNNYNNYNYN\u3000",
+    " \tYNNYNNYNYN\r\n",
+])
+def test_answers_are_trimmed_alike_in_both_engines(raw):
+    """The ends are trimmed of what either engine's own trim takes, so the
+    same stored answers score in both; a character neither trims (a zero
+    width space) is still an answer nobody can read."""
+    assert clean_answers(raw) == "YNNYNNYNYN"
+    assert SAN.score_answers(raw)["yes"] == 4
+    assert clean_answers("\u200bYNNYNNYNYN") == "-YNNYNNYNYN"
+
+
+def test_the_trim_is_the_union_of_both_engines_trims():
+    """trim_field takes exactly what str.strip or String.trim would take; a
+    zero width space, which neither takes, is kept."""
+    import sys
+
+    from groundwater.registry import trim_field
+
+    python = {c for c in range(sys.maxunicode + 1) if (chr(c) + "x").strip() == "x"}
+    trimmed = {c for c in range(sys.maxunicode + 1) if trim_field(chr(c) + "x") == "x"}
+    node = shutil.which("node")
+    if node is None:
+        javascript = python - set(range(0x1C, 0x20)) - {0x85} | {0xFEFF}
+    else:
+        script = ("const o = []; for (let c = 0; c <= 0x10FFFF; c++) {"
+                  " if ((String.fromCodePoint(c) + 'x').trim() === 'x') o.push(c); }"
+                  " process.stdout.write(JSON.stringify(o));")
+        done = subprocess.run([node, "-e", script], capture_output=True, text=True,
+                              check=True)
+        javascript = set(json.loads(done.stdout))
+    # each engine's own trim took a few the other did not
+    assert python - javascript == set(range(0x1C, 0x20)) | {0x85}
+    assert javascript - python == {0xFEFF}
+    assert trimmed == python | javascript
+    assert trim_field(None) == "" and trim_field("\u200b x \u200b") == "\u200b x \u200b"
+
+
 def test_the_form_rows_name_each_answer():
     rows = SAN.form_rows("Y-NNNNNNNN")
     words = phrase_table("sanitary.answer")
@@ -185,6 +227,44 @@ def test_a_count_whose_unit_is_not_per_100_ml_is_not_graded():
     assert "date not recorded" in risk["statement"]
 
 
+@pytest.mark.parametrize("result", [
+    _ecoli(3.0, unit="/100 mL"),
+    _ecoli(None, unreadable="lots"),
+    _ecoli(None, below_detection=True, detection_limit=1.0, unit="CFU/mL"),
+    _ecoli(None, below_detection=True, detection_limit=10.0),
+])
+def test_a_result_that_could_not_be_graded_ends_its_sentence_once(result):
+    """The assessment's remark is a sentence with its own full stop, or
+    not; the statement adds one, so the remark's is taken off."""
+    risk = _risk(SAN.inspection_event("2024-06-30", "NNNNNNNNNN"), assessment=_assessed(result))
+    micro = risk["microbiology"]
+    assert micro["kind"] == "ungraded" and micro["reason"]
+    assert not micro["reason"].endswith(".")
+    assert ".." not in risk["statement"]
+    assert f"could not be graded: {micro['reason']}." in risk["statement"]
+
+
+def test_a_result_with_no_reason_is_still_one_sentence(tmp_path):
+    """No assessment the toolkit makes leaves an ungraded row without a
+    remark, so the row is made by hand, and the browser is given the same."""
+    from types import SimpleNamespace
+
+    fields = {"parameter": "E. coli", "status": "indeterminate", "evaluable": False,
+              "remark": " . ", "unit": "CFU/100 mL", "value": None, "greater_than": None,
+              "greater_than_inclusive": False}
+    risk = SAN.sanitary_risk(_asset(), TODAY, SimpleNamespace(
+        sample=None, rows=[SimpleNamespace(**fields)], verdict_state=None))
+    assert risk["microbiology"]["reason"] == ""
+    assert phrase("sanitary.ecoli_ungraded_bare", parameter="E. coli",
+                  date="date not recorded") in risk["statement"]
+    case = {"asset_id": ASSET, "events": [], "sample": None, "today": TODAY,
+            "assessment": {"sample": None, "rows": [fields], "verdict_state": None},
+            "answers": [], "counts": []}
+    answer = _browser([case], tmp_path)[0]
+    assert "threw" not in answer, answer.get("threw")
+    assert answer["ok"]["risk"] == json.loads(json.dumps(risk))
+
+
 def test_a_sample_without_e_coli_says_so_and_the_worst_row_is_used():
     micro = SAN.microbiology(assess_sample(_sample(*_PANEL)))
     assert micro["kind"] == "missing" and micro["grade_low"] is None
@@ -224,6 +304,67 @@ def test_with_no_sample_the_microbiological_side_is_unknown_and_no_priority_is_r
     assert risk["action"] is None and not risk["settled"]
     assert phrase("sanitary.no_sample") in risk["statement"]
     assert phrase("sanitary.together_unknown") in risk["statement"]
+
+
+def test_a_sample_the_history_records_is_named_when_its_analysis_is_not_loaded():
+    """The History table beside the statement lists the sample, so the
+    statement does not say there is none: it names it, and says its results
+    are not loaded. A sample dated after today is not named."""
+    events = (AssetEvent("2024-03-01", "water_sample", "E. coli 12 per 100 mL field kit"),
+              AssetEvent("2024-05-02", "water_sample", by="M. Kolleh"),
+              AssetEvent("2024-09-01", "water_sample"),
+              SAN.inspection_event("2024-06-01", "YNNYNNYNYN"))
+    risk = _risk(*events)
+    statement = risk["statement"]
+    assert phrase("sanitary.no_sample") not in statement
+    assert phrase("sanitary.sample_not_loaded", when="2024-05-02 by M. Kolleh") in statement
+    assert risk["sample_event"]["when"] == "2024-05-02" and risk["action"] is None
+    assert "No water sample is on record" not in statement
+    # with no sample in the history the sentence says both are missing
+    assert phrase("sanitary.no_sample") in _risk(events[3])["statement"]
+    assert _risk(events[3])["sample_event"] is None
+
+
+def test_a_later_sample_than_the_one_read_is_named():
+    later = AssetEvent("2024-06-20", "water_sample", by="A. Bangura")
+    risk = _risk(later, assessment=_assessed(_ecoli(3.0), when="2024-05-30"))
+    assert phrase("sanitary.sample_later", when="2024-06-20 by A. Bangura") in risk["statement"]
+    # the same day, an earlier one, or an analysis whose date cannot be read: not named
+    for when, sampled in (("2024-06-20", "2024-06-20"), ("2024-06-30", "2024-06-20"),
+                          ("", "2024-06-20"), ("20th June", "2024-06-20")):
+        quiet = _risk(AssetEvent(sampled, "water_sample"),
+                      assessment=_assessed(_ecoli(3.0), when=when))
+        assert "later water sample" not in quiet["statement"], when
+
+
+@pytest.mark.parametrize("written", [
+    "20240520", "2024-W21-1", "2024W211", "2024-05-20T09:00", "2024-5-20",
+    "\u0968\u0966\u0968\u096a-\u0966\u096b-\u0968\u0966", "0000-05-20", "2024-02-30", "+2024-05-20"])
+def test_a_date_is_read_only_as_yyyy_mm_dd(written):
+    """Python 3.11 reads compact and week dates that the browser and Python
+    3.10 do not; both engines now read YYYY-MM-DD and nothing else, so an
+    inspection on such a date is not read in either, and says so."""
+    from groundwater.registry import iso_date
+
+    assert iso_date(written) is None and AssetEvent(written, "repair").date is None
+    risk = _risk(SAN.inspection_event(written, "YYYYYYYYYN"))
+    assert risk["inspection"] is None and risk["action"] is None
+    assert phrase("sanitary.inspection_undated_only", count=1) in risk["statement"]
+    with pytest.raises(ValueError, match="today's date"):
+        _risk(today=written)
+
+
+def test_a_date_with_blanks_at_its_ends_is_read_and_an_early_year_is_its_own():
+    from groundwater.registry import iso_date
+
+    assert iso_date("\ufeff2024-05-20\x1c ") == date(2024, 5, 20)
+    assert iso_date("0024-05-20") == date(24, 5, 20)
+    risk = _risk(SAN.inspection_event("2024-06-30", "NNNNNNNNNN"),
+                 AssetEvent("30/06/2024", "inspection", form="tubewell_handpump",
+                            answers="YYYYYYYYYY"),
+                 assessment=_assessed(_ecoli(0.0)))
+    assert risk["inspection"]["when"] == "2024-06-30" and risk["action"] == "low"
+    assert phrase("sanitary.inspection_undated", count=1) in risk["statement"]
 
 
 def test_a_known_side_still_says_how_bad_it_is_at_least():
@@ -352,7 +493,9 @@ const C = sandbox.GWT.core;
 const cases = JSON.parse(readFileSync(0, 'utf8'));
 process.stdout.write(JSON.stringify(cases.map((r) => {
   try {
-    const assessment = r.sample ? C.assessSample(r.sample) : null;
+    // an assessment given whole is read as given, for a row no sample makes
+    const assessment = r.assessment !== undefined ? r.assessment
+      : (r.sample ? C.assessSample(r.sample) : null);
     const asset = { asset_id: r.asset_id, events: r.events };
     return { ok: {
       risk: C.sanitaryRisk(asset, r.today, assessment),
@@ -415,6 +558,22 @@ def _case(seed: int) -> dict:
             results.insert(0, row)
         sample = {"site": {"community": "Ref"}, "flags": [], "results": results,
                   "sample_date": rng.choice(["2024-06-30", "20th May, 2018", ""])}
+    # what the review found the engines reading apart, drawn from a second
+    # generator so the cases above stay as they were: a compact date, which
+    # neither engine reads, answers with ends the two engines' own trims
+    # took differently, and a sample older than one the history records
+    odd = random.Random(f"odd {seed}")
+    for event in events:
+        if odd.random() < 0.08:
+            event["when"] = "20240520"
+        if event.get("answers") and odd.random() < 0.15:
+            event["answers"] = odd.choice(["\ufeff", "\x85 "]) + event["answers"] + odd.choice(
+                ["\x1c", "\u3000", ""])
+    if odd.random() < 0.4:
+        events.append({"when": odd.choice(days), "kind": "water_sample",
+                       "by": odd.choice(_BY)})
+    if sample is not None and odd.random() < 0.3:
+        sample["sample_date"] = "2024-02-01"
     return {"asset_id": ASSET, "events": events, "sample": sample,
             "today": rng.choice(["2024-07-01", "2024-03-15"]),
             "answers": ["YNNYNNYNYN", "YNN--NYN-N", "--", "yn" * 5, "----------"],
@@ -444,17 +603,21 @@ def _python(case: dict) -> dict:
 SEEDS = range(40)
 
 
-@pytest.fixture(scope="module")
-def browser_answers(tmp_path_factory):
+def _browser(cases: list, folder: Path) -> list:
+    """What the browser's engine answers for each case, in a Node vm."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed; run `node --version` to check")
-    driver = tmp_path_factory.mktemp("sanitary") / "sanitary.mjs"
+    driver = folder / "sanitary.mjs"
     driver.write_text(_DRIVER, encoding="utf-8")
-    cases = [_case(seed) for seed in SEEDS]
     done = subprocess.run([node, str(driver), str(JS)], input=json.dumps(cases),
                           capture_output=True, text=True, encoding="utf-8", check=True)
     return json.loads(done.stdout)
+
+
+@pytest.fixture(scope="module")
+def browser_answers(tmp_path_factory):
+    return _browser([_case(seed) for seed in SEEDS], tmp_path_factory.mktemp("sanitary"))
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -475,5 +638,16 @@ def test_the_seeded_cases_reach_every_rule():
     for head in ("A later inspection, of", "forms were recorded on",
                  "the action priority is between", "on the side that is known it is at least",
                  "none of the form's questions was answered",
-                 "do not fit a form this toolkit has"):
+                 "do not fit a form this toolkit has", "could not be graded: ",
+                 "records a later water sample", "records a water sample of",
+                 "records no water sample", "cannot be read as YYYY-MM-DD"):
         assert head in statements, head
+    assert ".." not in statements
+
+
+def test_no_statement_the_two_engines_are_held_to_ends_a_sentence_twice():
+    """reference.json holds what parity.mjs holds the browser to; a double
+    full stop there would be locked into both engines."""
+    reference = json.loads((REPO / "tests" / "webapp" / "reference.json").read_text(encoding="utf-8"))
+    statements = [c["expect"]["risk"]["statement"] for c in reference["sanitary"]["cases"]]
+    assert statements and not [s for s in statements if ".." in s]

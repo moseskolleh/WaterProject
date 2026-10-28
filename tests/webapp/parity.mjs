@@ -843,7 +843,7 @@ await withPage(async (page, base, consoleErrors) => {
     out.registry_rows = C.registryRows(Object.keys(assets).map((k) => assets[k]), today);
     out.registry_stats = C.registryStats(Object.keys(assets).map((k) => assets[k]), today);
     out.asset_months = [['2023-08-31', 6], ['2023-12-31', 2], ['2020-02-29', 12],
-      ['2023-01-31', 1], ['2023-03-30', 11], ['2024-02-29', 12]]
+      ['2023-01-31', 1], ['2023-03-30', 11], ['2024-02-29', 12], ['0024-08-31', 6]]
       .map(([from, months]) => ({ from, months, due: C.addMonths(from, months) }));
 
     out.seasonal_dates = ['10/05/2018', '25/04/2018', '04/25/2018', '2018-09-14',
@@ -4205,6 +4205,23 @@ await withPage(async (page, base, consoleErrors) => {
           return { risk: C.sanitaryRisk({ asset_id: SN.asset_id, events: c.events }, c.today, assessment),
             merged: C.mergeEvents(SN.asset_id, c.events) };
         })),
+        // today written as neither engine reads a day throws in both
+        todays: SN.todays.map((c) => {
+          const got = attempt(() => C.sanitaryRisk({ asset_id: SN.asset_id, events: c.events }, c.today,
+            C.assessSample(c.sample)));
+          return got.threw && /today's date/.test(got.threw) ? { ok: { throws: true } }
+            : (got.ok ? { ok: { risk: got.ok } } : got);
+        }),
+        days: SN.days.map((d) => attempt(() => ({ day: C.dayToIso(C.isoDay(d.text)) }))),
+        trims: SN.trims.map((t) => attempt(() => ({ trim: C.trimField(t.text),
+          answers: C.cleanAnswers(t.text), score: C.scoreAnswers(t.text) }))),
+        trimmed: (() => {
+          const out = [];
+          for (let c = 0; c < 0x10000; c++) {
+            if (C.trimField(String.fromCharCode(c) + 'x') === 'x') out.push(c);
+          }
+          return out;
+        })(),
         forms: SN.forms.map((f) => attempt(() => ({ score: C.scoreAnswers(f.answers),
           rows: C.formRows(f.answers) }))),
         grades: SN.grades.map((g) => attempt(() => ({ grade: C.ecoliGrade(g.count),
@@ -4225,6 +4242,17 @@ await withPage(async (page, base, consoleErrors) => {
     held('sanitary: forms scored and laid out', sanJs.forms, SN.forms);
     held('sanitary: counts graded', sanJs.grades, SN.grades);
     held('sanitary: the risk statement and the merged events', sanJs.cases, SN.cases);
+    held('sanitary: today read only as YYYY-MM-DD', sanJs.todays, SN.todays);
+    held('sanitary: days read alike (isoDay and iso_date)', sanJs.days, SN.days);
+    held('sanitary: ends of a field and of the answers trimmed alike', sanJs.trims, SN.trims);
+    const trimmedApart = firstDifference(sanJs.trimmed, SN.trimmed);
+    check(`sanitary: the characters a field's ends are trimmed of (${SN.trimmed.length})`,
+      !trimmedApart, trimmedApart);
+    const twice = sanJs.cases.concat(sanJs.todays).map((g, i) => g && g.ok && g.ok.risk
+      && g.ok.risk.statement.includes('..') ? `[${i}] ${g.ok.risk.statement}` : null)
+      .filter(Boolean);
+    check('sanitary: no statement ends a sentence twice', twice.length === 0,
+      twice.slice(0, 2).join('\n     '));
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

@@ -53,6 +53,7 @@ __all__ = [
     "clean_answers",
     "event_id",
     "format_asset_id",
+    "iso_date",
     "merge_events",
     "mint_asset_id",
     "parse_asset_id",
@@ -60,6 +61,7 @@ __all__ = [
     "qr_payload",
     "registry_rows",
     "registry_stats",
+    "trim_field",
     "validate_asset_id",
 ]
 
@@ -277,6 +279,49 @@ def _hash32(text: str) -> int:
     return value
 
 
+#: What :func:`trim_field` takes off the ends of a registry field: every
+#: character either engine's own trim would take, written out. Python's
+#: ``str.strip`` and JavaScript's ``String.trim`` disagree on a handful -
+#: Python strips U+001C to U+001F and U+0085, JavaScript the byte order mark
+#: U+FEFF - so the same stored answers scored in one engine and not the
+#: other. The union, rather than the ASCII blanks the field kit's codes are
+#: trimmed of, because event identifiers were already derived from trimmed
+#: notes: the union changes no identifier the two engines agreed on.
+#: ``TRIMMED`` in gwt-core.js is the twin.
+_TRIMMED = ("\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0\u1680"
+            + "".join(chr(c) for c in range(0x2000, 0x200B))  # U+2000 to U+200A
+            + "\u2028\u2029\u202f\u205f\u3000\ufeff")
+
+#: An ISO day as both engines read one: four digits, two, two, nothing else.
+_ISO_DAY_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
+def trim_field(text) -> str:
+    """``text`` with the blanks at its ends taken off, as both engines take them.
+
+    The twin of ``trimField`` in gwt-core.js; see ``_TRIMMED`` for why it
+    is not ``str.strip``.
+    """
+    return str("" if text is None else text).strip(_TRIMMED)
+
+
+def iso_date(text) -> date | None:
+    """The day ``text`` writes as YYYY-MM-DD, or ``None`` when it is not one.
+
+    Strict on purpose, and the same rule as ``isoDay`` in gwt-core.js. From
+    Python 3.11 ``date.fromisoformat`` also reads ``20240520`` and
+    ``2024-W21-1``, which the browser does not and Python 3.10 does not, so
+    one record would have dated a visit in one engine and not the other.
+    """
+    raw = trim_field(text)
+    if not _ISO_DAY_RE.fullmatch(raw):
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
 def event_id(asset_id: str, when: str, kind: str, note: str = "",
              by: str = "", form: str = "", answers: str = "") -> str:
     """A content-derived identifier, so recording a visit twice merges to one.
@@ -292,7 +337,7 @@ def event_id(asset_id: str, when: str, kind: str, note: str = "",
     records. An event without them hashes as it always did, so no event
     recorded before the form existed changes its identifier.
     """
-    content = f"{asset_id}|{when}|{kind}|{note.strip()}|{by.strip()}"
+    content = f"{asset_id}|{when}|{kind}|{trim_field(note)}|{trim_field(by)}"
     if form or answers:
         content += f"|{form}|{answers}"
     digest = _hash32(content)
@@ -340,10 +385,7 @@ class AssetEvent:
         maintenance record because of a typo is worse - but it can never
         establish when anything last happened.
         """
-        try:
-            return date.fromisoformat(str(self.when).strip())
-        except (TypeError, ValueError):
-            return None
+        return iso_date(self.when)
 
     def as_dict(self) -> dict:
         out = {"when": self.when, "kind": self.kind, "note": self.note,
@@ -362,9 +404,10 @@ def clean_answers(raw) -> str:
 
     Y and N are read in either case; anything else, a blank included, is a
     question not answered, because an answer nobody can read is not a no.
+    The ends are trimmed as :func:`trim_field` trims them.
     """
     return "".join("Y" if c in "Yy" else "N" if c in "Nn" else "-"
-                   for c in str(raw or "").strip())
+                   for c in trim_field(raw or ""))
 
 
 def _coerce_event(raw) -> AssetEvent | None:
@@ -372,15 +415,15 @@ def _coerce_event(raw) -> AssetEvent | None:
         return raw
     if not isinstance(raw, dict):
         return None
-    kind = str(raw.get("kind") or "").strip()
+    kind = trim_field(raw.get("kind") or "")
     if kind not in EVENT_KINDS:
         kind = "note"
     return AssetEvent(
-        when=str(raw.get("when") or "").strip(), kind=kind,
+        when=trim_field(raw.get("when") or ""), kind=kind,
         note=str(raw.get("note") or ""), by=str(raw.get("by") or ""),
         photo=str(raw.get("photo") or ""),
         event_id=str(raw.get("event_id") or ""),
-        form=str(raw.get("form") or "").strip(),
+        form=trim_field(raw.get("form") or ""),
         answers=clean_answers(raw.get("answers")),
     )
 

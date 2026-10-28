@@ -27805,6 +27805,28 @@
     return value >>> 0;
   }
 
+  /* What trimField takes off the ends of a registry field, as a regular
+   * expression's character class: every character either engine's own trim
+   * would take, written out. String.trim and Python's str.strip disagree on
+   * a handful - Python strips U+001C to U+001F and U+0085, JavaScript the
+   * byte order mark U+FEFF - so the same stored answers scored in one
+   * engine and not the other. The union, rather than the ASCII blanks the
+   * field kit's codes are trimmed of, because event identifiers were
+   * already derived from trimmed notes: the union changes no identifier the
+   * two engines agreed on. _TRIMMED in groundwater/registry.py is the twin. */
+  var TRIMMED = '\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a' +
+    '\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff';
+  var TRIM_RE = new RegExp('^[' + TRIMMED + ']+|[' + TRIMMED + ']+$', 'g');
+
+  /** A field with the blanks at its ends taken off, as both engines take
+   * them: the twin of trim_field in groundwater/registry.py.
+   * @param {*} text
+   * @returns {string}
+   */
+  function trimField(text) {
+    return String(text === null || text === undefined ? '' : text).replace(TRIM_RE, '');
+  }
+
   /** A sanitary inspection's form and answers (PLAN.md step 7.5) are part of
    * its content; an event without them hashes as it always did.
    * @param {string} assetId
@@ -27818,7 +27840,7 @@
    */
   function eventId(assetId, when, kind, note, by, form, answers) {
     var content = assetId + '|' + when + '|' + kind + '|' +
-      String(note || '').trim() + '|' + String(by || '').trim();
+      trimField(note || '') + '|' + trimField(by || '');
     if (form || answers) content += '|' + (form || '') + '|' + (answers || '');
     var digest = hash32(content);
     var tail = [15, 10, 5, 0].map(function (shift) {
@@ -27839,15 +27861,22 @@
 
   /** Days since the epoch, or null when the date cannot be read. Kept as a
    * day number rather than a Date so arithmetic never meets a time zone.
+   * The same rule as iso_date in groundwater/registry.py: YYYY-MM-DD and
+   * nothing else, in years 1 to 9999, as Python's date has them.
    * @param {*} text
    * @returns {number|null}
    */
   function isoDay(text) {
-    var match = ISO_DATE_RE.exec(String(text === null || text === undefined ? '' : text).trim());
+    var match = ISO_DATE_RE.exec(trimField(text));
     if (!match) return null;
     var year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
-    if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null;
-    return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+    if (year < 1 || month < 1 || month > 12 || day < 1 ||
+        day > daysInMonth(year, month)) return null;
+    /* setUTCFullYear, not Date.UTC, which reads years 0 to 99 as 1900 to
+     * 1999 and so put a mistyped 0024 eighteen centuries from Python's */
+    var at = new Date(0);
+    at.setUTCFullYear(year, month - 1, day);
+    return Math.floor(at.getTime() / 86400000);
   }
 
   function isLeap(year) {
@@ -27882,7 +27911,11 @@
     year += Math.floor(month / 12);
     month = ((month % 12) + 12) % 12 + 1;
     day = Math.min(day, daysInMonth(year, month));
-    return year + '-' + pad2(month) + '-' + pad2(day);
+    /* the year written in four digits, as Python's isoformat writes it, so
+     * a due date counted from a day before the year 1000 still reads */
+    var y = String(year);
+    while (y.length < 4) y = '0' + y;
+    return y + '-' + pad2(month) + '-' + pad2(day);
   }
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -27890,27 +27923,28 @@
   /** A form's answers as stored: Y, N or - for each question, in order. Y
    * and N are read in either case; anything else, a blank included, is a
    * question not answered, because an answer nobody can read is not a no.
-   * Read by code point, as Python reads a string.
+   * Read by code point, as Python reads a string, and trimmed as trimField
+   * trims.
    * @param {*} raw
    * @returns {string}
    */
   function cleanAnswers(raw) {
-    return Array.from(String(raw || '').trim()).map(function (c) {
+    return Array.from(trimField(raw || '')).map(function (c) {
       return c === 'Y' || c === 'y' ? 'Y' : (c === 'N' || c === 'n' ? 'N' : '-');
     }).join('');
   }
 
   function coerceEvent(raw) {
     if (!raw || typeof raw !== 'object') return null;
-    var kind = String(raw.kind || '').trim();
+    var kind = trimField(raw.kind || '');
     if (!own(EVENT_KINDS, kind)) kind = 'note';
     /** @type {Rec} */
     var event = {
-      when: String(raw.when || '').trim(), kind: kind,
+      when: trimField(raw.when || ''), kind: kind,
       note: String(raw.note || ''), by: String(raw.by || ''),
       photo: String(raw.photo || '')
     };
-    var form = String(raw.form || '').trim(), answers = cleanAnswers(raw.answers);
+    var form = trimField(raw.form || ''), answers = cleanAnswers(raw.answers);
     /* only an event that has them carries them, so a project file with no
      * sanitary inspection in it is written as it was before */
     if (form || answers) {
@@ -28248,7 +28282,7 @@
     checkCharacter: checkCharacter, mintAssetId: mintAssetId,
     parseAssetId: parseAssetId, validateAssetId: validateAssetId,
     eventId: eventId, eventLabel: eventLabel, mergeEvents: mergeEvents,
-    cleanAnswers: cleanAnswers,
+    cleanAnswers: cleanAnswers, trimField: trimField,
     assetState: assetState, assetLatLon: assetLatLon, assetLabel: assetLabel,
     assetFromDict: assetFromDict, assetFromProject: assetFromProject,
     qrPayload: qrPayload, placardLines: placardLines,
@@ -28354,7 +28388,7 @@
    * @param {string} [form]
    * @returns {Rec} */
   function inspectionEvent(when, answers, by, note, form) {
-    return { when: String(when).trim(), kind: 'inspection', note: note || '',
+    return { when: trimField(when), kind: 'inspection', note: note || '',
       by: by || '', photo: '', form: form || SANITARY_FORM,
       answers: cleanAnswers(answers) };
   }
@@ -28389,12 +28423,20 @@
     return toGuidelineUnit(Number(value), unit, PER_100_ML).value;
   }
 
+  /* an assessment's remark, made to close a sentence the statement ends: a
+   * remark may or may not end in a full stop of its own, and the statement
+   * adds one, so the remark's is taken off with any blanks after it - the
+   * same characters as sanitary._reason takes */
+  function ecoliReason(remark) {
+    return String(remark || '').replace(/[ \t\n\r\f\v.]+$/, '');
+  }
+
   /* what one E. coli row of an assessment says, on the grades' scale */
   function ecoliGraded(row) {
     /** @type {Rec} */
     var out = { parameter: row.parameter, kind: 'ungraded', count: null,
       bound: null, inclusive: false, grade_low: null, grade_high: null,
-      reason: row.remark, unit: row.unit };
+      reason: ecoliReason(row.remark), unit: row.unit };
     if (!row.evaluable || row.status === 'indeterminate') return out;
     if (row.status === 'below_detection') {
       return Object.assign(out, { kind: 'none_found', count: 0, grade_low: 'A',
@@ -28428,7 +28470,7 @@
   function microbiology(assessment) {
     if (!assessment) return null;
     var sample = assessment.sample || {};
-    var when = String(sample.sample_date || '').trim();
+    var when = trimField(sample.sample_date || '');
     var order = sanitaryTables().grades.map(function (g) { return g.grade; });
     /** @type {Rec[]} */
     var graded = [];
@@ -28472,10 +28514,16 @@
     var todayDay = read;
     /** @type {Rec[]} */
     var inspections = [];
+    /* forms whose date cannot be read: not read, and the statement says so */
+    var undated = 0;
     (events || []).forEach(function (event) {
       if (event.kind !== 'inspection') return;
       var day = isoDay(event.when);
-      if (day === null || day > todayDay) return;
+      if (day === null) {
+        if (event.form || event.answers) undated += 1;
+        return;
+      }
+      if (day > todayDay) return;
       var score = event.form || event.answers ? scoreAnswers(event.answers, event.form || '') : null;
       inspections.push({ day: day, event: event, score: score });
     });
@@ -28509,11 +28557,28 @@
       same_day: sameDay, later: later,
       unscored: blank ? blank.event : null,
       unscored_fits: blank ? blank.score !== null : false,
+      undated: undated,
     };
   }
 
+  /* the latest water sample the history records, dated no later than
+   * todayDay, with its day; of several that day, the first in the
+   * registry's order, as sanitary._latest_sample keeps it */
+  function latestSampleEvent(events, todayDay) {
+    /** @type {{event: Rec, day: number}|null} */
+    var pick = null;
+    var list = events || [];
+    for (var i = 0; i < list.length; i++) {
+      var day = list[i].kind === 'water_sample' ? isoDay(list[i].when) : null;
+      if (day !== null && day <= todayDay && (pick === null || day > pick.day)) {
+        pick = { event: list[i], day: day };
+      }
+    }
+    return pick;
+  }
+
   function sanitaryWhen(event) {
-    var by = String(event.by || '').trim();
+    var by = trimField(event.by);
     return by ? phrase('sanitary.dated_by', { date: event.when, by: by }) : event.when;
   }
 
@@ -28525,7 +28590,9 @@
   /** The borehole's sanitary risk on today, as one statement: the latest
    * scored inspection, the E. coli grade of the assessment's sample, and
    * the two read together, with the action priority to act on (null until
-   * both sides are known well enough to read one).
+   * both sides are known well enough to read one). sample_event is the
+   * latest water sample the history records, which the statement names
+   * when no analysis is loaded or when it is later than the one read.
    * @param {Rec} asset a registry asset; its events are read
    * @param {string} today an ISO day; records dated after it are not read
    * @param {QualityAssessment|null} [assessment] the latest sample's
@@ -28533,6 +28600,7 @@
   function sanitaryRisk(asset, today, assessment) {
     var events = mergeEvents((asset && asset.asset_id) || '', (asset && asset.events) || []);
     var found = latestInspection(events, today);
+    var sampled = latestSampleEvent(events, /** @type {number} */ (isoDay(today)));
     var micro = microbiology(assessment || null);
     var grades = sanitaryTables().grades.map(function (g) { return g.grade; });
     var bandWords = phraseTable('sanitary.band');
@@ -28561,13 +28629,22 @@
       var key = found.unscored_fits ? 'sanitary.inspection_blank'
         : 'sanitary.inspection_unreadable';
       sentences.push(phrase(key, { when: sanitaryWhen(found.unscored) }));
+    } else if (found.undated) {
+      sentences.push(phrase('sanitary.inspection_undated_only', { count: found.undated }));
     } else {
       sentences.push(phrase('sanitary.inspection_none'));
+    }
+    if (found.undated && (score || found.unscored)) {
+      sentences.push(phrase('sanitary.inspection_undated', { count: found.undated }));
     }
 
     var gradeWords = phraseTable('sanitary.grade');
     if (!micro) {
-      sentences.push(phrase('sanitary.no_sample'));
+      if (sampled) {
+        sentences.push(phrase('sanitary.sample_not_loaded', { when: sanitaryWhen(sampled.event) }));
+      } else {
+        sentences.push(phrase('sanitary.no_sample'));
+      }
     } else {
       var dated = micro.date || phrase('sanitary.undated');
       var kind = micro.kind;
@@ -28596,9 +28673,18 @@
       } else if (kind === 'unit') {
         sentences.push(phrase('sanitary.ecoli_unit', { parameter: micro.parameter,
           date: dated, unit: micro.unit }));
-      } else {
+      } else if (micro.reason) {
         sentences.push(phrase('sanitary.ecoli_ungraded', { parameter: micro.parameter,
           date: dated, reason: micro.reason }));
+      } else {
+        sentences.push(phrase('sanitary.ecoli_ungraded_bare', { parameter: micro.parameter,
+          date: dated }));
+      }
+      /* a later sample on record is named, so the statement does not pass
+       * off an older analysis as the borehole's latest word */
+      var readOn = isoDay(micro.date);
+      if (sampled && readOn !== null && sampled.day > readOn) {
+        sentences.push(phrase('sanitary.sample_later', { when: sanitaryWhen(sampled.event) }));
       }
     }
 
@@ -28652,6 +28738,8 @@
         label: sanitaryWhen(event) } : null,
       score: score,
       microbiology: micro,
+      sample_event: sampled ? { when: sampled.event.when, by: sampled.event.by,
+        event_id: sampled.event.event_id, label: sanitaryWhen(sampled.event) } : null,
       priority_low: low,
       priority_high: high,
       action: action,

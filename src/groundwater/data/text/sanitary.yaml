@@ -71,6 +71,16 @@ inspection_later: >-
 inspection_several: >-
   {count:g} forms were recorded on {date}; the one showing the most risk is
   used.
+# Both engines read a date only as YYYY-MM-DD, so a form dated otherwise is
+# not read, and the statement says so rather than passing over it.
+inspection_undated: >-
+  {count:g} other inspection {count:plural:form is|forms are} on record with
+  a date that cannot be read as YYYY-MM-DD, so {count:plural:it is|they are}
+  not used.
+inspection_undated_only: >-
+  {count:g} sanitary inspection {count:plural:form is|forms are} on record
+  with a date that cannot be read as YYYY-MM-DD, so {count:plural:it is|they
+  are} not used, and the sanitary side of the risk is not known.
 
 # The E. coli count, from the water quality sample.
 ecoli_counted: >-
@@ -91,14 +101,28 @@ ecoli_detected: >-
 ecoli_unit: >-
   {parameter} in the water sample ({date}) could not be graded: its unit,
   {unit}, is not a count per 100 mL.
+# The reason is the assessment's remark, with its own closing full stop
+# taken off by the engine, so the sentence ends once.
 ecoli_ungraded: >-
   {parameter} in the water sample ({date}) could not be graded: {reason}.
+ecoli_ungraded_bare: >-
+  {parameter} in the water sample ({date}) could not be graded.
 ecoli_missing: >-
   The water sample ({date}) has no E. coli or thermotolerant coliform
   result, so the microbiological side of the risk is not known.
+# With no analysis loaded, what the borehole's history says about samples,
+# so the statement does not contradict the history printed beside it.
 no_sample: >-
-  No water sample is on record for this borehole, so the microbiological
-  side of the risk is not known.
+  No water quality analysis is loaded in this project, and the borehole's
+  history records no water sample, so the microbiological side of the risk
+  is not known.
+sample_not_loaded: >-
+  The borehole's history records a water sample of {when}, but no water
+  quality analysis is loaded in this project, so the microbiological side of
+  the risk is not known.
+sample_later: >-
+  The borehole's history records a later water sample, of {when}, whose
+  results are not the ones read here.
 undated: date not recorded
 
 # The two read together in the risk-to-health matrix (sanitary_risk.yaml).
