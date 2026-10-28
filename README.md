@@ -107,7 +107,9 @@ water quality guidelines.
     and saying plainly that a uniform rate cannot reorder the ranking - only
     district rates do that); the age of the survey behind each point is
     measured, with coverage over recent surveys reported beside coverage
-    over all of them so the gap between them is the size of the assumption;
+    over all of them so the gap between them is the size of the assumption
+    (a survey dated after the year planned for says nothing about it, and
+    is left out of both the age and the recent count);
     and dry-season service is a band rather than a number, because most
     surveys never recorded how many months of the year a source yields water
     and silence is not a year-round supply

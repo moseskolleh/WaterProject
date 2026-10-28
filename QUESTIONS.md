@@ -146,3 +146,19 @@ need real project inputs or decisions to finish calibrating it.
    repair or return to service, then decommissioned; and a decommissioned
    borehole returns to service only through a new commissioning record,
    not through a repair or a "returned to service" logged after it.
+
+13. **Choices made in the desk study, the survey plan, the water point
+   reader and the planning view (added with the fixes to them).** Each
+   is stated where it is applied and wants confirming: an earlier
+   project whose easting and northing hold a longitude and a latitude is
+   no position in the portfolio and the desk study, which names it and
+   asks for it to be converted, rather than being placed by reading the
+   pair as degrees (neither app reads a position from such a pair on the
+   project's own pages); a survey plan whose water points were looked up
+   over less than the service radius and the largest separation distance
+   from a water point (550 m) says so and asks for another lookup, rather
+   than fetching more points itself; a fractional install year is read
+   as its whole part (2009.6 as 2009) and 0 or less as unrecorded; and a
+   survey dated after the year planned for is left out of the age and the
+   recent count for that year, rather than the plan year being refused
+   when it is earlier than the inventory's survey dates.

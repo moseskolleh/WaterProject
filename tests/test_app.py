@@ -940,6 +940,24 @@ def test_the_desk_study_carries_the_terrain_press(sample_data):
     assert "Earlier projects within 5 km" in text and phrase("desk_study.projects_not_loaded") in text
 
 
+def test_a_lookup_short_of_a_rings_reach_is_said_under_the_plan(sample_data):
+    """A lookup on the Water points page at 300 m never loads a borehole 300
+    to 550 m from the site, whose 50 m ring a sounding inside the service
+    radius may stand in, and the plan said nothing of it. The press now
+    tells the plan how far round the site the lookup went, and the caption
+    says it fell short; it no longer says no water points were loaded."""
+    from groundwater.models import SiteMetadata
+    from groundwater.text import phrase
+
+    site = SiteMetadata(easting=280126.0, northing=994900.0, utm_zone=29)
+    at = _terrain_page(_tiles())
+    at.session_state["wp_result"] = {"decision": {"search_radius_m": 300.0}, "rows": [], "points": [],
+                                     "centre": site.latlon}
+    caption = _analyse(at)["captions"]["plan"]
+    assert phrase("survey_plan.water_points_short", searched=300.0, reach=550.0) in caption
+    assert phrase("survey_plan.no_water_points") not in caption
+
+
 def test_the_desk_study_without_an_elevation_model(sample_data):
     """With no terrain analysed, the desk study still gives the ground, the
     odds and the area maps, and says the terrain and plan wait for one."""

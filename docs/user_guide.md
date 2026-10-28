@@ -1098,7 +1098,13 @@ blue, a missing tile taken as sea the same blue hatched, and gaps grey.
   along its line to the nearest clear place, no further than 20 m; where
   there is none, it is left out, and the caption says how many and why.
   The water points are those loaded on the Water points page when the
-  terrain was analysed. Latrines and soakaways, buildings, refuse dumps
+  terrain was analysed. A borehole's 50 m ring reaches into the service
+  radius from as far as 550 m from the site, so a lookup over less than
+  550 m round the site cannot see every water point a peg must keep clear
+  of: the caption then says how far the lookup went and asks for another
+  over at least 550 m (or a check of each peg on the ground). A site
+  moved after the lookup is covered only as far as the lookup still
+  reaches round it. Latrines and soakaways, buildings, refuse dumps
   and burial grounds are on no map here: check each peg for them on the
   ground. Each sounding is planned with the VES co-pilot's AB/2 series
   to the spacing at which the depth-of-investigation rule reaches 60 m
@@ -1171,12 +1177,18 @@ ground. It holds:
   the most of them, how many come within the 500 m the site serves, and
   the relief, the candidates and their rose as the press drew them;
 - the water points the Water points page holds, within the radius it
-  searched: how many are working, whether a working improved source lies
-  within the 500 m the site serves, the broken ones there to assess for
-  rehabilitation, and the nearest 15 in a table. The WPdx+ inventory as
-  read here records no depth or yield, and the document says so;
+  searched (the lookup's own radius, in both apps, even if the radius box
+  has been changed since): how many are working, whether a working
+  improved source lies within the 500 m the site serves, the broken ones
+  there to assess for rehabilitation, and the nearest 15 in a table, with
+  the year each was installed where the inventory records one (a year
+  recorded as 0 is left blank). The WPdx+ inventory as read here records
+  no depth or yield, and the document says so;
 - the earlier projects the Portfolio page holds within 5 km, nearest
-  first, with their status, depth, safe yield and water quality;
+  first, with their status, depth, safe yield and water quality. A
+  project file whose easting and northing hold a longitude and a latitude
+  in degrees has no position in either app; the desk study names it and
+  says to convert the degrees on its site details and save it again;
 - the odds of a working borehole from the ground alone, before any
   survey, in the words of the geophysical report's odds;
 - the survey plan's lines and soundings, with its figure;
@@ -1294,13 +1306,25 @@ inside the service radius means the community **may already be served**
 and the need should be verified, and otherwise **new construction is
 justified**. The lookup needs a connection; if there is none, download
 your country's WPdx export once and upload the CSV instead - the
-analysis is identical and runs offline.
+analysis is identical and runs offline. The points kept are those within
+the radius the lookup searched: change the radius afterwards and the
+page goes on judging, and the desk study quoting, the radius searched
+until *Look up water points* is pressed again, and the browser app says
+so under the box. A row whose latitude or longitude is blank, not a
+plain number ("nan", "inf"), or past 90 or 180 degrees (UTM metres in
+the degree columns) is set aside and counted in a note, in both apps.
 
 **Coverage gap** - where are the underserved people? Ranks districts,
 or chiefdoms for finer targeting, by population per functional water
 point (2015 census populations joined to WPDx points), as a choropleth
 map and a ranked table. Higher means more people per working source
-means higher priority.
+means higher priority. The planning view under it projects the census
+to the year planned for and says how old the survey behind each area's
+points is in that year. A survey dated after the year planned for (a
+2023 survey when planning for 2018, say) says nothing about it: it is
+left out of the median age and of the points counted as recently
+surveyed, and an area every dated survey of which is later is labelled
+*Surveyed after the plan year*.
 
 **Portfolio** - upload several saved project files at once for the
 programme view: a status map, headline figures (success rate, mean cost

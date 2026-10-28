@@ -2355,6 +2355,15 @@ def build() -> dict:
                      ("2019", "6 months"), ("", ""), ("not a date", "seasonal"),
                      ("1899-01-01", "14"), ("survey 2024 round 2", "no"))
     ]
+    from groundwater.waterpoints import parse_wpdx_records as _parse_wpdx
+
+    _skipped: list = []
+    _read = _parse_wpdx(WPDX_READER_ROWS, _skipped)
+    out["wpdx_reader_rows"] = WPDX_READER_ROWS
+    out["wpdx_reader"] = {
+        "points": [[p.row_id, p.lat, p.lon, p.install_year] for p in _read],
+        "flags": [[f.level, f.code, f.message] for f in _skipped],
+    }
     out["growth_rate"] = _planning.intercensal_growth_rate()
     _planning_population = {
         "Bo": 575478.0, "Kono": 506100.0, "Pujehun": 346461.0,
@@ -2373,6 +2382,7 @@ def build() -> dict:
         ("today", 2026, None, None),
         ("slow", 2026, 0.015, None),
         ("districts", 2026, None, {"Western Area Urban": 0.06, "Pujehun": 0.01}),
+        ("before the surveys", 2018, None, None),
     ):
         _rows, _proj = _planning.planning_rows(
             _planning_population, _planning_points,
@@ -3626,6 +3636,33 @@ def lineament_reference() -> dict:
     }
 
 
+#: WPdx+ rows both readers read alike: positions no map holds ("nan",
+#: "inf", past 90 or 180, UTM metres in the degree columns, a cell of
+#: spaces, numbers one language reads and the other does not), and install
+#: years written as 0, as a fraction, as installation_year and as text.
+WPDX_READER_ROWS = [
+    {"row_id": "ok", "lat_deg": "8.5", "lon_deg": "-11.5", "install_year": "2012"},
+    {"row_id": "nan", "lat_deg": "nan", "lon_deg": "nan"},
+    {"row_id": "inf", "lat_deg": "8.5", "lon_deg": "inf"},
+    {"row_id": "Infinity", "lat_deg": "Infinity", "lon_deg": "-11.5"},
+    {"row_id": "range", "lat_deg": "95", "lon_deg": "200"},
+    {"row_id": "utm", "lat_deg": "936224.6", "lon_deg": "694667.5"},
+    {"row_id": "spaces", "lat_deg": "  ", "lon_deg": "-11.5"},
+    {"row_id": "underscore", "lat_deg": "8.5", "lon_deg": "-11_5"},
+    {"row_id": "hex", "lat_deg": "0x8", "lon_deg": "-11.5"},
+    {"row_id": "true", "lat_deg": True, "lon_deg": -11.5},
+    {"row_id": "edge", "lat_deg": 90, "lon_deg": -180},
+    {"row_id": "padded", "lat_deg": " 8.25\t", "lon_deg": "-11.5e0", "install_year": "0"},
+    {"row_id": "fraction", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "2009.6"},
+    {"row_id": "installation", "lat_deg": 8.3, "lon_deg": -11.6, "installation_year": "2011"},
+    {"row_id": "blank", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "", "installation_year": 2003},
+    {"row_id": "negative", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "-4"},
+    {"row_id": "text", "lat_deg": 8.3, "lon_deg": -11.6, "install_year": "unknown"},
+    {"row_id": "number", "lat_deg": "+.5", "lon_deg": "-11.", "install_year": 1998},
+    "not a record",
+]
+
+
 # ------------------------------------------------ survey plan (PLAN.md step 4.3)
 
 #: Plans laid on L1's window (LINEAMENT_GENERATED, analysed as the
@@ -3640,7 +3677,11 @@ def lineament_reference() -> dict:
 #: and surface water 45 m before it; at P3 the service radius shortens a
 #: line; P4 has no candidate within 500 m; P5 changes every setting and asks
 #: for a depth past the field schedule's longest spacing; and P6 is at the
-#: square's edge.
+#: square's edge. "searched" is how far round the site the water points
+#: were looked up (survey_plan's searched_m), None where it is not given:
+#: P7 is P2 with its water points looked up only 300 m round the site,
+#: short of the 550 m a borehole's ring reaches, and P8 a lookup over
+#: 1,000 m that found none.
 PLAN_CASES = [
     {"case": "P1: in the middle of the window, with a spring and a tap", "at": [80.0, 80.0],
      "water": [[84.0, 77.0, "Protected Spring", ""], [79.0, 86.5, "Piped Water", "Tap stand"]], "settings": {}},
@@ -3654,6 +3695,12 @@ PLAN_CASES = [
      "settings": {"survey_lines": 3, "survey_line_m": 600.0, "survey_station_m": 25.0, "survey_flank_m": 80.0,
                   "survey_move_m": 30.0, "survey_cross_within_deg": 30.0, "survey_target_depth_m": 300.0}},
     {"case": "P6: at the edge of the square shown", "at": [20.0, 140.0], "water": [], "settings": {}},
+    {"case": "P7: P2's water points looked up short of a borehole's reach", "at": [49.0, 42.0],
+     "water": [[52.12, 40.87, "Borehole", "Hand Pump - India Mark II"], [40.465, 37.894, "Protected Shallow Well", ""],
+               [38.648, 38.308, "Surface Water (River/Stream/Lake/Pond/Dam)", ""]], "settings": {},
+     "searched": 300.0},
+    {"case": "P8: a lookup over 1,000 m that found no water point", "at": [80.0, 80.0], "water": [], "settings": {},
+     "searched": 1000.0},
 ]
 
 #: Settings both engines refuse in the same words.
@@ -3677,7 +3724,7 @@ def _sp_answer(a, lin, spec: dict, kase: dict) -> tuple[dict, str | None, str | 
     water = [SimpleNamespace(lon=at(w)[0], lat=at(w)[1], source=w[2], technology=w[3]) for w in kase["water"]]
     cfg = dataclasses.replace(lin.settings, **kase["settings"])
     try:
-        plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water, cfg)
+        plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water, cfg, searched_m=kase.get("searched"))
     except ValueError as refused:
         return {"refused": str(refused)}, None, None
 
@@ -3732,7 +3779,7 @@ def _desk_terrain(a, lin, spec: dict, kase: dict) -> dict:
 
     water = [SimpleNamespace(lon=at(w)[0], lat=at(w)[1], source=w[2], technology=w[3]) for w in kase["water"]]
     plan = survey_plan(lin, a.core, a.parts, at(kase["at"]), water,
-                       dataclasses.replace(lin.settings, **kase["settings"]))
+                       dataclasses.replace(lin.settings, **kase["settings"]), searched_m=kase.get("searched"))
     captions = {**lineament_captions(lin, PLAN_META["where"]), **survey_plan_captions(plan, PLAN_META["where"])}
     return desk_study_terrain(lin, plan, a.core.lons, a.core.lats, captions, PLAN_META["label"])
 
@@ -3754,6 +3801,9 @@ def survey_plan_reference() -> dict:
     refused = [{"settings": settings,
                 "refused": _sp_answer(a, lin, spec, dict(PLAN_CASES[0], settings=settings))[0]["refused"]}
                for settings in PLAN_REFUSED]
+    # a lookup radius below 0, refused in the same words
+    refused.append({"settings": {}, "searched": -1.0,
+                    "refused": _sp_answer(a, lin, spec, dict(PLAN_CASES[0], searched=-1.0))[0]["refused"]})
     return {"meta": PLAN_META, "cases": cases, "refused": refused}
 
 
@@ -3816,7 +3866,10 @@ def _portfolio(lat: float, lon: float) -> list[dict]:
 #: is on the Freetown Complex with nothing near; D3 has no position; D4 to
 #: D6 keep L1's plans, D4 with more water points than are listed and D6
 #: with the site moved off the plan; D7 is on the Bullom Group and D8 on
-#: surface water, where the placeholder prior applies.
+#: surface water, where the placeholder prior applies. D9 has an earlier
+#: project with a longitude and a latitude in its UTM boxes, beside the
+#: site, and water points whose install year is 0, 2009.6 and an
+#: installation_year.
 DESK_CASES = [
     {"case": "D1: inland, with water points and earlier projects", "site": {"community": "Rokel",
      "chiefdom": "Maforki", "district": "Port Loko"}, "where": "Rokel", "latlon": [8.6, -11.9],
@@ -3837,6 +3890,21 @@ DESK_CASES = [
      "plan": None},
     {"case": "D8: surface water", "site": {"community": "T"}, "where": "T", "latlon": [7.3, -11.8], "water": [],
      "radius": 1000.0, "portfolio": [], "plan": None},
+    {"case": "D9: degrees in an earlier project's boxes, and install years written three ways",
+     "site": {"community": "Rokel II", "district": "Western Area Rural"}, "where": "Rokel II",
+     "latlon": [8.466, -13.232],
+     "water": [{"row_id": "y0", "lat_deg": "8.4663", "lon_deg": "-13.232", "status_clean": "Functional",
+                "water_source_clean": "Borehole", "install_year": "0"},
+               {"row_id": "y1", "lat_deg": "8.4673", "lon_deg": "-13.232", "status_clean": "Functional",
+                "water_source_clean": "Borehole", "install_year": "2009.6"},
+               {"row_id": "y2", "lat_deg": "8.4683", "lon_deg": "-13.232", "status_clean": "Non-Functional",
+                "water_source_clean": "Borehole", "installation_year": "2011"},
+               {"row_id": "y3", "lat_deg": "nan", "lon_deg": "-13.232", "status_clean": "Functional"}],
+     "radius": 1000.0,
+     "portfolio": [{"community": "Rokel", "district": "Western Area Rural", "easting": -13.2317,
+                    "northing": 8.4657, "status": "Completed - successful", "total_depth_m": 48},
+                   {"community": "Kissy", "easting": "13.2", "northing": "8.47"},
+                   {"community": "Nowhere", "status": "dry"}], "plan": None},
 ]
 
 

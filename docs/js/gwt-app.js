@@ -299,6 +299,11 @@
      * inventory, other projects' summaries, an extracted scan */
     waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
     waterPointsSkipped: null,
+    /* the radius and centre of the site lookup the water points came from,
+     * or null where they are not cut to a circle round the site (a CSV, the
+     * national pull): the desk study and the rehabilitate-or-drill call
+     * speak of the radius searched, not the box's value since */
+    waterPointsRadius: null, waterPointsCentre: null,
     portfolio: null, extraction: null,
     /* the ledgers of the portfolio's files, by the index of their summaries */
     portfolioLedgers: null,
@@ -2674,8 +2679,13 @@
   function terrainPlan(read, result) {
     var cfg = result.cfg;
     result.planWaterPoints = (derived || {}).waterPoints || null;
+    /* and how far round the site they were looked up, so that a lookup
+     * short of a water point's reach says so rather than leaving a peg in
+     * a ring it never loaded */
+    result.planSearchedM = result.site ? waterPointsSearched(result.site) : null;
     result.plan = result.site ? C.surveyPlan(result.lineaments, result.core, result.parts,
-      [result.site.lon, result.site.lat], result.planWaterPoints, cfg.terrain, cfg.ves) : null;
+      [result.site.lon, result.site.lat], result.planWaterPoints, cfg.terrain, cfg.ves, undefined,
+      result.planSearchedM) : null;
     result.planCaptions = C.surveyPlanCaptions(result.plan, read.centre.label);
     var laid = !!result.plan && result.plan.basis !== 'none';
     var told = { where: read.centre.label, label: read.grid.label, site_label: store.get('site.community') || 'Site' };
@@ -6026,6 +6036,8 @@
           }
           derived.waterPoints = points;
           derived.waterPointsSource = spec.label;
+          derived.waterPointsRadius = spec.clip ? spec.radiusM : null;
+          derived.waterPointsCentre = spec.clip ? { lat: spec.lat, lon: spec.lon } : null;
           S.toast(points.length
             ? S.thousands(points.length) + ' water points read from WPdx+.'
             : 'WPdx+ has no mapped water point in that area.',
@@ -6069,10 +6081,34 @@
     ].filter(Boolean));
   }
 
+  /* The radius the water points held were searched within: a site lookup's
+   * own, which it clipped them to, else the box's (a CSV or the national
+   * pull covers any radius). The box changed after a lookup used to be
+   * quoted over the points the lookup kept, so the desk study said "no
+   * water point within 2,000 m" beside a borehole 1.5 km off that a 500 m
+   * lookup never loaded. The Python app quotes the lookup's radius too. */
+  function waterPointsSearchRadius() {
+    var held = derived.waterPointsRadius;
+    return held === null || held === undefined
+      ? store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M) : held;
+  }
+
+  /* How far round `site` ({lat, lon}) the water points held were looked up,
+   * for the survey plan: a lookup's radius, less how far the site now lies
+   * from where the lookup was centred; null where they are not cut to a
+   * circle round the site. app/views/site_maps._water_points_searched. */
+  function waterPointsSearched(site) {
+    var held = derived.waterPointsRadius, centre = derived.waterPointsCentre;
+    if (held === null || held === undefined || !derived.waterPoints) return null;
+    if (!centre || !site) return held;
+    return Math.max(0, held - C.geodesicDistanceM(centre.lat, centre.lon, site.lat, site.lon));
+  }
+
   PAGES.waterpoints = function () {
     var latlon = siteLatLon();
     var points = derived.waterPoints || [];
     var radius = store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M);
+    var searched = waterPointsSearchRadius();
     var nodes = [
       pageHead('Water points', 'Before drilling a new borehole, check what is ' +
         'already there. A broken improved source nearby is usually cheaper to ' +
@@ -6115,6 +6151,7 @@
               derived.waterPointsSkipped = csvSkipped;
               derived.waterPointsSource = file.name;
               derived.waterPointsCapped = false;
+              derived.waterPointsRadius = null; derived.waterPointsCentre = null;
               S.toast(derived.waterPoints.length + ' water points read.', 'ok');
               render();
             } catch (e) {
@@ -6123,8 +6160,8 @@
           }, { variant: 'ghost' }),
           points.length ? button('Clear', function () {
             derived.waterPoints = null; derived.waterPointsSource = null;
-            derived.waterPointsCapped = false;
-            derived.waterPointsSkipped = null; render();
+            derived.waterPointsCapped = false; derived.waterPointsRadius = null;
+            derived.waterPointsCentre = null; derived.waterPointsSkipped = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         !latlon ? el('p.muted', 'The live lookup needs the site GPS position; ' +
@@ -6133,6 +6170,10 @@
           'The lookup hit its row cap, so this is a partial slice of the area. ' +
           'Narrow the radius, or use a filtered CSV export for a complete, ' +
           'reproducible analysis.')) : null,
+        searched !== radius ? el('p.muted', { 'data-searched': String(searched) },
+          'These water points were looked up within ' + S.thousands(Math.round(searched)) +
+          ' m of the site, and everything below speaks of that radius: press Look up water points ' +
+          'to search ' + S.thousands(Math.round(radius)) + ' m.') : null,
         waterPointSourceNote(),
       ]),
     ];
@@ -6153,7 +6194,7 @@
 
     if (latlon) {
       var decision = C.rehabVsDrill(points, latlon.lat, latlon.lon,
-        { searchRadiusM: radius });
+        { searchRadiusM: searched });
       var tone = decision.recommendation === C.DRILL_NEW ? '.callout-ok'
         : (decision.recommendation === C.ASSESS_REHAB ? '.callout-warn' : '.callout');
       var pointColumns = [
@@ -6215,7 +6256,7 @@
       nodes.push(card('All water points in range', [
         decision.nearby.length
           ? S.table(pointColumns, decision.nearby.slice(0, 100))
-          : S.empty('Nothing mapped within ' + Math.round(radius) + ' m of the site.'),
+          : S.empty('Nothing mapped within ' + Math.round(searched) + ' m of the site.'),
         decision.nearby.length > 100
           ? el('p.muted', 'Showing the nearest 100 of ' +
             S.thousands(decision.nearby.length) + '.') : null,
@@ -6269,8 +6310,8 @@
             { variant: 'ghost' }),
           points.length ? button('Clear', function () {
             derived.waterPoints = null; derived.waterPointsSource = null;
-            derived.waterPointsCapped = false;
-            derived.waterPointsSkipped = null; render();
+            derived.waterPointsCapped = false; derived.waterPointsRadius = null;
+            derived.waterPointsCentre = null; derived.waterPointsSkipped = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         derived.waterPointsCapped ? el('div.callout.callout-warn', el('p',
@@ -8457,7 +8498,7 @@
         var content = C.deskStudyContent(site, site.community || site.chiefdom || site.district || '',
           siteLatLon(), {
             waterPoints: derived.waterPoints || null,
-            searchRadiusM: store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M),
+            searchRadiusM: waterPointsSearchRadius(),
             portfolio: derived.portfolio || null,
             terrain: session.result ? session.result.desk || null : null,
             config: config(),
@@ -8781,6 +8822,7 @@
     summaryFromProjectFile: summaryFromProjectFile,
     commitSpineScreens: commitSpineScreens, spineDecide: spineDecide,
     lookUpWaterPoints: lookUpWaterPoints, parseLatLon: parseLatLon,
+    waterPointsSearchRadius: waterPointsSearchRadius, waterPointsSearched: waterPointsSearched,
     signOffFor: signOffFor, offlineReady: offlineReady,
     projectState: projectState, reportReadiness: reportReadiness,
     getApiKey: getApiKey, setApiKey: setApiKey, forgetApiKey: forgetApiKey,

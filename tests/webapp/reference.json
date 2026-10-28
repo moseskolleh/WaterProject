@@ -133166,6 +133166,178 @@
    "months": null
   }
  ],
+ "wpdx_reader_rows": [
+  {
+   "row_id": "ok",
+   "lat_deg": "8.5",
+   "lon_deg": "-11.5",
+   "install_year": "2012"
+  },
+  {
+   "row_id": "nan",
+   "lat_deg": "nan",
+   "lon_deg": "nan"
+  },
+  {
+   "row_id": "inf",
+   "lat_deg": "8.5",
+   "lon_deg": "inf"
+  },
+  {
+   "row_id": "Infinity",
+   "lat_deg": "Infinity",
+   "lon_deg": "-11.5"
+  },
+  {
+   "row_id": "range",
+   "lat_deg": "95",
+   "lon_deg": "200"
+  },
+  {
+   "row_id": "utm",
+   "lat_deg": "936224.6",
+   "lon_deg": "694667.5"
+  },
+  {
+   "row_id": "spaces",
+   "lat_deg": "  ",
+   "lon_deg": "-11.5"
+  },
+  {
+   "row_id": "underscore",
+   "lat_deg": "8.5",
+   "lon_deg": "-11_5"
+  },
+  {
+   "row_id": "hex",
+   "lat_deg": "0x8",
+   "lon_deg": "-11.5"
+  },
+  {
+   "row_id": "true",
+   "lat_deg": true,
+   "lon_deg": -11.5
+  },
+  {
+   "row_id": "edge",
+   "lat_deg": 90,
+   "lon_deg": -180
+  },
+  {
+   "row_id": "padded",
+   "lat_deg": " 8.25\t",
+   "lon_deg": "-11.5e0",
+   "install_year": "0"
+  },
+  {
+   "row_id": "fraction",
+   "lat_deg": 8.3,
+   "lon_deg": -11.6,
+   "install_year": "2009.6"
+  },
+  {
+   "row_id": "installation",
+   "lat_deg": 8.3,
+   "lon_deg": -11.6,
+   "installation_year": "2011"
+  },
+  {
+   "row_id": "blank",
+   "lat_deg": 8.3,
+   "lon_deg": -11.6,
+   "install_year": "",
+   "installation_year": 2003
+  },
+  {
+   "row_id": "negative",
+   "lat_deg": 8.3,
+   "lon_deg": -11.6,
+   "install_year": "-4"
+  },
+  {
+   "row_id": "text",
+   "lat_deg": 8.3,
+   "lon_deg": -11.6,
+   "install_year": "unknown"
+  },
+  {
+   "row_id": "number",
+   "lat_deg": "+.5",
+   "lon_deg": "-11.",
+   "install_year": 1998
+  },
+  "not a record"
+ ],
+ "wpdx_reader": {
+  "points": [
+   [
+    "ok",
+    8.5,
+    -11.5,
+    2012
+   ],
+   [
+    "edge",
+    90.0,
+    -180.0,
+    null
+   ],
+   [
+    "padded",
+    8.25,
+    -11.5,
+    null
+   ],
+   [
+    "fraction",
+    8.3,
+    -11.6,
+    2009
+   ],
+   [
+    "installation",
+    8.3,
+    -11.6,
+    2011
+   ],
+   [
+    "blank",
+    8.3,
+    -11.6,
+    2003
+   ],
+   [
+    "negative",
+    8.3,
+    -11.6,
+    null
+   ],
+   [
+    "text",
+    8.3,
+    -11.6,
+    null
+   ],
+   [
+    "number",
+    0.5,
+    -11.0,
+    1998
+   ]
+  ],
+  "flags": [
+   [
+    "warning",
+    "water_point_unplaced",
+    "9 inventory record(s) carry no usable latitude and longitude and are not counted anywhere on this page."
+   ],
+   [
+    "warning",
+    "water_point_unreadable",
+    "1 inventory record(s) could not be read at all."
+   ]
+  ]
+ },
  "growth_rate": 0.03272233402866398,
  "planning": {
   "census": {
@@ -133189,7 +133361,7 @@
     "worst_served_people_per_point": 351988.0,
     "n_no_source": 2,
     "national_people_per_point": 383795.5714285714,
-    "national_people_per_recent_point": 537313.8,
+    "national_people_per_recent_point": 2686569.0,
     "n_stale_areas": 1,
     "stale_areas": [
      "Kono"
@@ -133211,13 +133383,14 @@
      "staleness_gap_percent": null,
      "freshness": {
       "n_points": 1,
-      "n_dated": 1,
-      "latest_year": 2020,
-      "median_age_years": -5.0,
-      "n_recent": 1,
-      "state": "fresh",
-      "label": "Surveyed recently",
-      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is -5 years old. 1 were surveyed in the last 3 years."
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "n_later": 1,
+      "state": "later",
+      "label": "Surveyed after the plan year",
+      "detail": "Every survey date these points carry (1 of 1) is after 2015, which says nothing about 2015, so how current this coverage figure was then cannot be established."
      },
      "seasonal": {
       "n_year_round": 0,
@@ -133247,6 +133420,7 @@
       "latest_year": null,
       "median_age_years": null,
       "n_recent": 0,
+      "n_later": 0,
       "state": "unknown",
       "label": "Survey dates not recorded",
       "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
@@ -133270,18 +133444,19 @@
      "water_points": 3,
      "functional_points": 3,
      "people_per_point": 351988.0,
-     "recent_functional_points": 3,
-     "people_per_recent_point": 351988.0,
-     "staleness_gap_percent": 0.0,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
      "freshness": {
       "n_points": 3,
-      "n_dated": 3,
-      "latest_year": 2025,
-      "median_age_years": -10.0,
-      "n_recent": 3,
-      "state": "fresh",
-      "label": "Surveyed recently",
-      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is -10 years old. 3 were surveyed in the last 3 years."
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "n_later": 3,
+      "state": "later",
+      "label": "Surveyed after the plan year",
+      "detail": "Every survey date these points carry (3 of 3) is after 2015, which says nothing about 2015, so how current this coverage figure was then cannot be established."
      },
      "seasonal": {
       "n_year_round": 1,
@@ -133302,18 +133477,19 @@
      "water_points": 3,
      "functional_points": 2,
      "people_per_point": 287739.0,
-     "recent_functional_points": 2,
-     "people_per_recent_point": 287739.0,
-     "staleness_gap_percent": 0.0,
+     "recent_functional_points": 1,
+     "people_per_recent_point": 575478.0,
+     "staleness_gap_percent": 100.0,
      "freshness": {
       "n_points": 3,
-      "n_dated": 3,
-      "latest_year": 2024,
-      "median_age_years": -9.0,
-      "n_recent": 2,
-      "state": "fresh",
-      "label": "Surveyed recently",
-      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is -9 years old. 2 were surveyed in the last 3 years."
+      "n_dated": 1,
+      "latest_year": 2010,
+      "median_age_years": 5.0,
+      "n_recent": 0,
+      "n_later": 2,
+      "state": "ageing",
+      "label": "Survey is getting old",
+      "detail": "1 of 3 points carry a survey date up to 2015; the most recent is 2010 and the median is 5 years old. 0 were surveyed in the last 3 years. 2 more carry a survey date after 2015, which says nothing about 2015, and are left out."
      },
      "seasonal": {
       "n_year_round": 1,
@@ -133343,9 +133519,10 @@
       "latest_year": 2003,
       "median_age_years": 12.0,
       "n_recent": 0,
+      "n_later": 0,
       "state": "stale",
       "label": "Survey is out of date",
-      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 12 years old. 0 were surveyed in the last 3 years."
+      "detail": "1 of 2 points carry a survey date up to 2015; the most recent is 2003 and the median is 12 years old. 0 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 0,
@@ -133407,9 +133584,10 @@
       "latest_year": 2020,
       "median_age_years": 6.0,
       "n_recent": 0,
+      "n_later": 0,
       "state": "ageing",
       "label": "Survey is getting old",
-      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+      "detail": "1 of 1 points carry a survey date up to 2026; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 0,
@@ -133439,6 +133617,7 @@
       "latest_year": null,
       "median_age_years": null,
       "n_recent": 0,
+      "n_later": 0,
       "state": "unknown",
       "label": "Survey dates not recorded",
       "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
@@ -133471,9 +133650,10 @@
       "latest_year": 2025,
       "median_age_years": 1.0,
       "n_recent": 2,
+      "n_later": 0,
       "state": "fresh",
       "label": "Surveyed recently",
-      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+      "detail": "3 of 3 points carry a survey date up to 2026; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 1,
@@ -133503,9 +133683,10 @@
       "latest_year": 2024,
       "median_age_years": 2.0,
       "n_recent": 2,
+      "n_later": 0,
       "state": "fresh",
       "label": "Surveyed recently",
-      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+      "detail": "3 of 3 points carry a survey date up to 2026; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 1,
@@ -133535,9 +133716,10 @@
       "latest_year": 2003,
       "median_age_years": 23.0,
       "n_recent": 0,
+      "n_later": 0,
       "state": "stale",
       "label": "Survey is out of date",
-      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+      "detail": "1 of 2 points carry a survey date up to 2026; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 0,
@@ -133565,15 +133747,15 @@
     "n_areas": 5,
     "as_of_year": 2026,
     "projection_note": "Populations are projected from the 2015 census to 2026 at 1.50% a year, a factor of 1.178. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate.",
-    "population": 3164641.098803194,
+    "population": 3164641.0988031942,
     "census_population": 2686569.0,
     "worst_area": "Pujehun",
     "worst_people_per_point": null,
     "worst_served_area": "Western Area Urban",
     "worst_served_people_per_point": 414623.89057773637,
     "n_no_source": 2,
-    "national_people_per_point": 452091.5855433134,
-    "national_people_per_recent_point": 791160.2747007984,
+    "national_people_per_point": 452091.5855433135,
+    "national_people_per_recent_point": 791160.2747007986,
     "n_stale_areas": 1,
     "stale_areas": [
      "Kono"
@@ -133599,9 +133781,10 @@
       "latest_year": 2020,
       "median_age_years": 6.0,
       "n_recent": 0,
+      "n_later": 0,
       "state": "ageing",
       "label": "Survey is getting old",
-      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+      "detail": "1 of 1 points carry a survey date up to 2026; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 0,
@@ -133631,6 +133814,7 @@
       "latest_year": null,
       "median_age_years": null,
       "n_recent": 0,
+      "n_later": 0,
       "state": "unknown",
       "label": "Survey dates not recorded",
       "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
@@ -133663,9 +133847,10 @@
       "latest_year": 2025,
       "median_age_years": 1.0,
       "n_recent": 2,
+      "n_later": 0,
       "state": "fresh",
       "label": "Surveyed recently",
-      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+      "detail": "3 of 3 points carry a survey date up to 2026; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 1,
@@ -133695,9 +133880,10 @@
       "latest_year": 2024,
       "median_age_years": 2.0,
       "n_recent": 2,
+      "n_later": 0,
       "state": "fresh",
       "label": "Surveyed recently",
-      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+      "detail": "3 of 3 points carry a survey date up to 2026; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 1,
@@ -133727,9 +133913,10 @@
       "latest_year": 2003,
       "median_age_years": 23.0,
       "n_recent": 0,
+      "n_later": 0,
       "state": "stale",
       "label": "Survey is out of date",
-      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+      "detail": "1 of 2 points carry a survey date up to 2026; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 0,
@@ -133791,9 +133978,10 @@
       "latest_year": 2020,
       "median_age_years": 6.0,
       "n_recent": 0,
+      "n_later": 0,
       "state": "ageing",
       "label": "Survey is getting old",
-      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+      "detail": "1 of 1 points carry a survey date up to 2026; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 0,
@@ -133823,6 +134011,7 @@
       "latest_year": null,
       "median_age_years": null,
       "n_recent": 0,
+      "n_later": 0,
       "state": "unknown",
       "label": "Survey dates not recorded",
       "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
@@ -133855,9 +134044,10 @@
       "latest_year": 2025,
       "median_age_years": 1.0,
       "n_recent": 2,
+      "n_later": 0,
       "state": "fresh",
       "label": "Surveyed recently",
-      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+      "detail": "3 of 3 points carry a survey date up to 2026; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 1,
@@ -133887,9 +134077,10 @@
       "latest_year": 2024,
       "median_age_years": 2.0,
       "n_recent": 2,
+      "n_later": 0,
       "state": "fresh",
       "label": "Surveyed recently",
-      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+      "detail": "3 of 3 points carry a survey date up to 2026; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 1,
@@ -133919,9 +134110,10 @@
       "latest_year": 2003,
       "median_age_years": 23.0,
       "n_recent": 0,
+      "n_later": 0,
       "state": "stale",
       "label": "Survey is out of date",
-      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+      "detail": "1 of 2 points carry a survey date up to 2026; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
      },
      "seasonal": {
       "n_year_round": 0,
@@ -133930,6 +134122,204 @@
       "people_per_point_low": null,
       "people_per_point_high": 721199.8039129399,
       "people_per_point_band": "721,200 to no confirmed point",
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  },
+  "before the surveys": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2018,
+    "rate": 0.03272233402866398,
+    "uniform": true,
+    "factor": 1.1014142929954471,
+    "note": "Populations are projected from the 2015 census to 2018 at 3.27% a year, a factor of 1.101. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2018,
+    "projection_note": "Populations are projected from the 2015 census to 2018 at 3.27% a year, a factor of 1.101. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate.",
+    "population": 2959025.4957184857,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 387684.61416288145,
+    "n_no_source": 2,
+    "national_people_per_point": 422717.92795978364,
+    "national_people_per_recent_point": null,
+    "n_stale_areas": 2,
+    "stale_areas": [
+     "Bo",
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 381597.09736549563,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "n_later": 1,
+      "state": "later",
+      "label": "Surveyed after the plan year",
+      "detail": "Every survey date these points carry (1 of 1) is after 2018, which says nothing about 2018, so how current this coverage figure was then cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "people_per_point_band": "n/a",
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 223109.08767491573,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "n_later": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "people_per_point_band": "n/a",
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 1163053.8424886444,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 387684.61416288145,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "n_later": 3,
+      "state": "later",
+      "label": "Surveyed after the plan year",
+      "detail": "Every survey date these points carry (3 of 3) is after 2018, which says nothing about 2018, so how current this coverage figure was then cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 1163053.8424886444,
+      "people_per_point_high": 581526.9212443222,
+      "people_per_point_band": "581,527 to 1,163,054",
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 633839.6945044339,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 316919.84725221695,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 1,
+      "latest_year": 2010,
+      "median_age_years": 8.0,
+      "n_recent": 0,
+      "n_later": 2,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 3 points carry a survey date up to 2018; the most recent is 2010 and the median is 8 years old. 0 were surveyed in the last 3 years. 2 more carry a survey date after 2018, which says nothing about 2018, and are left out."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 633839.6945044339,
+      "people_per_point_high": 316919.84725221695,
+      "people_per_point_band": "316,920 to 633,840",
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 557425.7736849958,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 278712.8868424979,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 15.0,
+      "n_recent": 0,
+      "n_later": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date up to 2018; the most recent is 2003 and the median is 15 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 557425.7736849958,
+      "people_per_point_band": "557,426 to no confirmed point",
       "is_established": true,
       "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -161666,6 +162056,59 @@
      9101
     ],
     "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.53888888888889,-11.994444444444444],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":0,\"basis\":\"strike\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"No lineament candidate comes within the 500 m the site serves, so the profiling line runs through the site at right angles to 15\\u00b0, the strike of the 10\\u00b0 band that holds the greatest length of candidates in the square shown, 400 m long with a station every 10 m. No sounding is proposed beforehand: each goes where the profile finds a zone to sound. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground. The square shown does not hold the whole service radius, so candidates, streams and sea beyond its edge were not seen.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"105\",\"400\",\"8.53936 N, 11.99620 W\",\"8.53842 N, 11.99269 W\"]],\"soundings\":[]}"
+   },
+   {
+    "case": "P7: P2's water points looked up short of a borehole's reach",
+    "at": [
+     49.0,
+     42.0
+    ],
+    "water": [
+     [
+      52.12,
+      40.87,
+      "Borehole",
+      "Hand Pump - India Mark II"
+     ],
+     [
+      40.465,
+      37.894,
+      "Protected Shallow Well",
+      ""
+     ],
+     [
+      38.648,
+      38.308,
+      "Surface Water (River/Stream/Lake/Pond/Dam)",
+      ""
+     ]
+    ],
+    "settings": {},
+    "searched": 300.0,
+    "expect": "{\"basis\":\"candidates\",\"site\":[1498.5621779031264,1290.3177542025257],\"near\":[6,2,9],\"skipped\":[[2,1]],\"reach\":{\"borehole\":1,\"dug_well\":1,\"other\":0,\"surface\":1,\"streams\":10,\"sea\":0},\"covered\":true,\"water_points\":3,\"rings\":[[1593.980830863426,1255.6020622444023,\"Water supply borehole\",50.0],[1237.537112833798,1164.1738328036752,\"Hand dug well\",20.0],[1181.9679806448642,1176.8926792378468,\"Streams and canals and irrigation ditches\",20.0]],\"lines\":[[1,6,\"ridge\",19.998219438152532,109.99821943815253,[1565.800323112799,1265.8474370596794],[0.9397032491781723,-0.341990940646073],-20,20,400.0,200.0,[[2,53.942707446981096]],false],[2,9,\"ridge\",12.874535535851793,102.87453553585179,[1225.8460512191114,1166.8520878078177],[0.9748603189183483,-0.22281687233783737],-20,20,400.0,200.0,[[2,355.784278136544]],false]],\"soundings\":[[1,1,\"flank\",150.0,[1518.8151606538904,1282.946984091983],0.0,[],19.998219438152532],[2,2,\"flank\",134.9878001964437,[1162.468237385033,1181.3379028318486],-15.012199803556328,[\"Streams and canals and irrigation ditches\"],12.874535535851793],[3,2,\"crossing\",191.99391334519942,[1218.0412350295246,1168.635978995906],-8.006086654800594,[\"Hand dug well\"],12.874535535851793],[4,2,\"flank\",250.0,[1274.5890671650288,1155.7112441909258],0.0,[],12.874535535851793]],\"dropped\":[[1,\"crossing\",200.0,[\"Water supply borehole\"]],[1,\"flank\",250.0,[\"Water supply borehole\"]]],\"ab2\":{\"target_m\":60.0,\"factor\":0.5,\"max_ab2\":120,\"investigation_m\":60.0,\"line_m\":240,\"capped\":false,\"steps\":[{\"ab2\":1,\"mn\":0.4},{\"ab2\":1.5,\"mn\":0.4},{\"ab2\":2,\"mn\":0.4},{\"ab2\":3,\"mn\":0.4},{\"ab2\":4,\"mn\":0.4},{\"ab2\":4,\"mn\":1},{\"ab2\":5,\"mn\":1},{\"ab2\":6,\"mn\":1},{\"ab2\":8,\"mn\":1},{\"ab2\":10,\"mn\":1},{\"ab2\":10,\"mn\":2},{\"ab2\":12,\"mn\":2},{\"ab2\":15,\"mn\":2},{\"ab2\":20,\"mn\":2},{\"ab2\":20,\"mn\":5},{\"ab2\":25,\"mn\":5},{\"ab2\":30,\"mn\":5},{\"ab2\":40,\"mn\":5},{\"ab2\":50,\"mn\":5},{\"ab2\":50,\"mn\":20},{\"ab2\":60,\"mn\":20},{\"ab2\":80,\"mn\":20},{\"ab2\":100,\"mn\":20},{\"ab2\":120,\"mn\":20}]},\"captions\":[[\"title_plan\",\"Survey plan - Kakua\"],[\"plan\",\"2 profiling lines cross the lineament candidates nearest the site at right angles to their strike, inside the 500 m the site serves: each is 400 m long, or as long as the service radius leaves room for, with a station every 10 m. 3 candidates come within the service radius. 1 of them is crossed at right angles by a line laid for a nearer one. 4 proposed soundings: one where each line crosses its candidate and one 50 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 120 m, which by the depth-of-investigation rule sees 60 m down, for a target of 60 m, with its 240 m spread laid along its candidate's strike. 2 soundings were moved along their lines, by up to 15 m, to clear a separation distance. 2 soundings are left out, as no place within 20 m along their lines clears the separation distances. Every proposed sounding is kept at least 50 m from 1 mapped borehole, 20 m from 1 mapped dug well, 20 m from 1 mapped surface water point and 20 m from the drainage lines, which stand for the streams. The water points were looked up no further than 300 m round the site, short of the 550 m within which a mapped water point's separation distance can reach a sounding, so a peg may lie too near one that was not loaded: look the water points up again over at least 550 m and analyse the terrain again, or check each peg on the ground. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\"],[\"plan_note\",\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"]]}",
+    "gpx": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"Groundwater Investigation Toolkit\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n<metadata><name>Survey plan - Kakua</name><desc>Survey plan for Kakua, from the lineament candidates worked out from Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif. The candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground. Each VES waypoint is the centre of a sounding; each route is a profiling line, a point at each station.</desc></metadata>\n<wpt lat=\"8.511667\" lon=\"-11.986389\"><name>Rokel</name><type>Site</type></wpt>\n<wpt lat=\"8.511600\" lon=\"-11.986205\"><name>VES 1</name><desc>50 m from the ridge candidate 6, at 150 m along line 1. AB/2 to 120 m: the 240 m spread laid along 20\u00b0.</desc><type>VES</type></wpt>\n<wpt lat=\"8.510681\" lon=\"-11.989442\"><name>VES 2</name><desc>65 m from the ridge candidate 9, at 135 m along line 2. Moved 15 m along the line to clear a stream. AB/2 to 120 m: the 240 m spread laid along 13\u00b0.</desc><type>VES</type></wpt>\n<wpt lat=\"8.510566\" lon=\"-11.988937\"><name>VES 3</name><desc>On the ridge candidate 9, at 192 m along line 2. Moved 8.01 m along the line to clear a dug well. AB/2 to 120 m: the 240 m spread laid along 13\u00b0.</desc><type>VES</type></wpt>\n<wpt lat=\"8.510450\" lon=\"-11.988423\"><name>VES 4</name><desc>50 m from the ridge candidate 9, at 250 m along line 2. AB/2 to 120 m: the 240 m spread laid along 13\u00b0.</desc><type>VES</type></wpt>\n<wpt lat=\"8.512064\" lon=\"-11.987485\"><name>Line 1 start</name><type>Line end</type></wpt>\n<wpt lat=\"8.510827\" lon=\"-11.984071\"><name>Line 1 end</name><type>Line end</type></wpt>\n<wpt lat=\"8.510953\" lon=\"-11.990637\"><name>Line 2 start</name><type>Line end</type></wpt>\n<wpt lat=\"8.510147\" lon=\"-11.987095\"><name>Line 2 end</name><type>Line end</type></wpt>\n<rte><name>Line 1</name><desc>400 m at 110\u00b0, a station every 10 m, across the ridge candidate 6 at 200 m.</desc><rtept lat=\"8.512064\" lon=\"-11.987485\"><name>L1 000</name></rtept><rtept lat=\"8.512033\" lon=\"-11.987400\"><name>L1 010</name></rtept><rtept lat=\"8.512002\" lon=\"-11.987315\"><name>L1 020</name></rtept><rtept lat=\"8.511971\" lon=\"-11.987229\"><name>L1 030</name></rtept><rtept lat=\"8.511940\" lon=\"-11.987144\"><name>L1 040</name></rtept><rtept lat=\"8.511909\" lon=\"-11.987058\"><name>L1 050</name></rtept><rtept lat=\"8.511878\" lon=\"-11.986973\"><name>L1 060</name></rtept><rtept lat=\"8.511847\" lon=\"-11.986888\"><name>L1 070</name></rtept><rtept lat=\"8.511816\" lon=\"-11.986802\"><name>L1 080</name></rtept><rtept lat=\"8.511786\" lon=\"-11.986717\"><name>L1 090</name></rtept><rtept lat=\"8.511755\" lon=\"-11.986632\"><name>L1 100</name></rtept><rtept lat=\"8.511724\" lon=\"-11.986546\"><name>L1 110</name></rtept><rtept lat=\"8.511693\" lon=\"-11.986461\"><name>L1 120</name></rtept><rtept lat=\"8.511662\" lon=\"-11.986376\"><name>L1 130</name></rtept><rtept lat=\"8.511631\" lon=\"-11.986290\"><name>L1 140</name></rtept><rtept lat=\"8.511600\" lon=\"-11.986205\"><name>L1 150</name></rtept><rtept lat=\"8.511569\" lon=\"-11.986120\"><name>L1 160</name></rtept><rtept lat=\"8.511538\" lon=\"-11.986034\"><name>L1 170</name></rtept><rtept lat=\"8.511507\" lon=\"-11.985949\"><name>L1 180</name></rtept><rtept lat=\"8.511476\" lon=\"-11.985864\"><name>L1 190</name></rtept><rtept lat=\"8.511445\" lon=\"-11.985778\"><name>L1 200</name></rtept><rtept lat=\"8.511414\" lon=\"-11.985693\"><name>L1 210</name></rtept><rtept lat=\"8.511384\" lon=\"-11.985607\"><name>L1 220</name></rtept><rtept lat=\"8.511353\" lon=\"-11.985522\"><name>L1 230</name></rtept><rtept lat=\"8.511322\" lon=\"-11.985437\"><name>L1 240</name></rtept><rtept lat=\"8.511291\" lon=\"-11.985351\"><name>L1 250</name></rtept><rtept lat=\"8.511260\" lon=\"-11.985266\"><name>L1 260</name></rtept><rtept lat=\"8.511229\" lon=\"-11.985181\"><name>L1 270</name></rtept><rtept lat=\"8.511198\" lon=\"-11.985095\"><name>L1 280</name></rtept><rtept lat=\"8.511167\" lon=\"-11.985010\"><name>L1 290</name></rtept><rtept lat=\"8.511136\" lon=\"-11.984925\"><name>L1 300</name></rtept><rtept lat=\"8.511105\" lon=\"-11.984839\"><name>L1 310</name></rtept><rtept lat=\"8.511074\" lon=\"-11.984754\"><name>L1 320</name></rtept><rtept lat=\"8.511043\" lon=\"-11.984669\"><name>L1 330</name></rtept><rtept lat=\"8.511013\" lon=\"-11.984583\"><name>L1 340</name></rtept><rtept lat=\"8.510982\" lon=\"-11.984498\"><name>L1 350</name></rtept><rtept lat=\"8.510951\" lon=\"-11.984413\"><name>L1 360</name></rtept><rtept lat=\"8.510920\" lon=\"-11.984327\"><name>L1 370</name></rtept><rtept lat=\"8.510889\" lon=\"-11.984242\"><name>L1 380</name></rtept><rtept lat=\"8.510858\" lon=\"-11.984157\"><name>L1 390</name></rtept><rtept lat=\"8.510827\" lon=\"-11.984071\"><name>L1 400</name></rtept></rte>\n<rte><name>Line 2</name><desc>400 m at 103\u00b0, a station every 10 m, across the ridge candidate 9 at 200 m.</desc><rtept lat=\"8.510953\" lon=\"-11.990637\"><name>L2 000</name></rtept><rtept lat=\"8.510933\" lon=\"-11.990548\"><name>L2 010</name></rtept><rtept lat=\"8.510913\" lon=\"-11.990460\"><name>L2 020</name></rtept><rtept lat=\"8.510893\" lon=\"-11.990371\"><name>L2 030</name></rtept><rtept lat=\"8.510873\" lon=\"-11.990283\"><name>L2 040</name></rtept><rtept lat=\"8.510853\" lon=\"-11.990194\"><name>L2 050</name></rtept><rtept lat=\"8.510832\" lon=\"-11.990106\"><name>L2 060</name></rtept><rtept lat=\"8.510812\" lon=\"-11.990017\"><name>L2 070</name></rtept><rtept lat=\"8.510792\" lon=\"-11.989928\"><name>L2 080</name></rtept><rtept lat=\"8.510772\" lon=\"-11.989840\"><name>L2 090</name></rtept><rtept lat=\"8.510752\" lon=\"-11.989751\"><name>L2 100</name></rtept><rtept lat=\"8.510732\" lon=\"-11.989663\"><name>L2 110</name></rtept><rtept lat=\"8.510711\" lon=\"-11.989574\"><name>L2 120</name></rtept><rtept lat=\"8.510691\" lon=\"-11.989486\"><name>L2 130</name></rtept><rtept lat=\"8.510671\" lon=\"-11.989397\"><name>L2 140</name></rtept><rtept lat=\"8.510651\" lon=\"-11.989309\"><name>L2 150</name></rtept><rtept lat=\"8.510631\" lon=\"-11.989220\"><name>L2 160</name></rtept><rtept lat=\"8.510611\" lon=\"-11.989132\"><name>L2 170</name></rtept><rtept lat=\"8.510591\" lon=\"-11.989043\"><name>L2 180</name></rtept><rtept lat=\"8.510570\" lon=\"-11.988954\"><name>L2 190</name></rtept><rtept lat=\"8.510550\" lon=\"-11.988866\"><name>L2 200</name></rtept><rtept lat=\"8.510530\" lon=\"-11.988777\"><name>L2 210</name></rtept><rtept lat=\"8.510510\" lon=\"-11.988689\"><name>L2 220</name></rtept><rtept lat=\"8.510490\" lon=\"-11.988600\"><name>L2 230</name></rtept><rtept lat=\"8.510470\" lon=\"-11.988512\"><name>L2 240</name></rtept><rtept lat=\"8.510450\" lon=\"-11.988423\"><name>L2 250</name></rtept><rtept lat=\"8.510429\" lon=\"-11.988335\"><name>L2 260</name></rtept><rtept lat=\"8.510409\" lon=\"-11.988246\"><name>L2 270</name></rtept><rtept lat=\"8.510389\" lon=\"-11.988158\"><name>L2 280</name></rtept><rtept lat=\"8.510369\" lon=\"-11.988069\"><name>L2 290</name></rtept><rtept lat=\"8.510349\" lon=\"-11.987980\"><name>L2 300</name></rtept><rtept lat=\"8.510329\" lon=\"-11.987892\"><name>L2 310</name></rtept><rtept lat=\"8.510309\" lon=\"-11.987803\"><name>L2 320</name></rtept><rtept lat=\"8.510288\" lon=\"-11.987715\"><name>L2 330</name></rtept><rtept lat=\"8.510268\" lon=\"-11.987626\"><name>L2 340</name></rtept><rtept lat=\"8.510248\" lon=\"-11.987538\"><name>L2 350</name></rtept><rtept lat=\"8.510228\" lon=\"-11.987449\"><name>L2 360</name></rtept><rtept lat=\"8.510208\" lon=\"-11.987361\"><name>L2 370</name></rtept><rtept lat=\"8.510188\" lon=\"-11.987272\"><name>L2 380</name></rtept><rtept lat=\"8.510168\" lon=\"-11.987184\"><name>L2 390</name></rtept><rtept lat=\"8.510147\" lon=\"-11.987095\"><name>L2 400</name></rtept></rte>\n</gpx>\n",
+    "geojson": [
+     "8072f2a22f4076a0",
+     22322
+    ],
+    "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.511666666666667,-11.98638888888889],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":3,\"basis\":\"candidates\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"2 profiling lines cross the lineament candidates nearest the site at right angles to their strike, inside the 500 m the site serves: each is 400 m long, or as long as the service radius leaves room for, with a station every 10 m. 3 candidates come within the service radius. 1 of them is crossed at right angles by a line laid for a nearer one. 4 proposed soundings: one where each line crosses its candidate and one 50 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 120 m, which by the depth-of-investigation rule sees 60 m down, for a target of 60 m, with its 240 m spread laid along its candidate's strike. 2 soundings were moved along their lines, by up to 15 m, to clear a separation distance. 2 soundings are left out, as no place within 20 m along their lines clears the separation distances. Every proposed sounding is kept at least 50 m from 1 mapped borehole, 20 m from 1 mapped dug well, 20 m from 1 mapped surface water point and 20 m from the drainage lines, which stand for the streams. The water points were looked up no further than 300 m round the site, short of the 550 m within which a mapped water point's separation distance can reach a sounding, so a peg may lie too near one that was not loaded: look the water points up again over at least 550 m and analyse the terrain again, or check each peg on the ground. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"110\",\"400\",\"8.51206 N, 11.98749 W\",\"8.51083 N, 11.98407 W\"],[\"Line 2\",\"103\",\"400\",\"8.51095 N, 11.99064 W\",\"8.51015 N, 11.98710 W\"]],\"soundings\":[[\"VES 1\",\"1\",\"150.0\",\"8.51160 N, 11.98620 W\",\"50 m from the ridge candidate 6, at 150 m along line 1. AB/2 to 120 m: the 240 m spread laid along 20\\u00b0.\"],[\"VES 2\",\"2\",\"135.0\",\"8.51068 N, 11.98944 W\",\"65 m from the ridge candidate 9, at 135 m along line 2. Moved 15 m along the line to clear a stream. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"],[\"VES 3\",\"2\",\"192.0\",\"8.51057 N, 11.98894 W\",\"On the ridge candidate 9, at 192 m along line 2. Moved 8.01 m along the line to clear a dug well. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"],[\"VES 4\",\"2\",\"250.0\",\"8.51045 N, 11.98842 W\",\"50 m from the ridge candidate 9, at 250 m along line 2. AB/2 to 120 m: the 240 m spread laid along 13\\u00b0.\"]]}"
+   },
+   {
+    "case": "P8: a lookup over 1,000 m that found no water point",
+    "at": [
+     80.0,
+     80.0
+    ],
+    "water": [],
+    "settings": {},
+    "searched": 1000.0,
+    "expect": "{\"basis\":\"candidates\",\"site\":[2446.6321271887778,2457.748103242906],\"near\":[0],\"skipped\":[],\"reach\":{\"borehole\":0,\"dug_well\":0,\"other\":0,\"surface\":0,\"streams\":0,\"sea\":0},\"covered\":true,\"water_points\":0,\"rings\":[],\"lines\":[[1,0,\"ridge\",134.74680948543067,44.746809485430674,[2445.2886836876633,2456.392733586922],[0.7039751767031516,0.7102245775709022],-20,20,400.0,200.0,[],false]],\"soundings\":[[1,1,\"flank\",150.0,[2410.0899248525056,2420.881504708377],0.0,[],134.74680948543067],[2,1,\"crossing\",200.0,[2445.2886836876633,2456.392733586922],0.0,[],134.74680948543067],[3,1,\"flank\",250.0,[2480.487442522821,2491.903962465467],0.0,[],134.74680948543067]],\"dropped\":[],\"ab2\":{\"target_m\":60.0,\"factor\":0.5,\"max_ab2\":120,\"investigation_m\":60.0,\"line_m\":240,\"capped\":false,\"steps\":[{\"ab2\":1,\"mn\":0.4},{\"ab2\":1.5,\"mn\":0.4},{\"ab2\":2,\"mn\":0.4},{\"ab2\":3,\"mn\":0.4},{\"ab2\":4,\"mn\":0.4},{\"ab2\":4,\"mn\":1},{\"ab2\":5,\"mn\":1},{\"ab2\":6,\"mn\":1},{\"ab2\":8,\"mn\":1},{\"ab2\":10,\"mn\":1},{\"ab2\":10,\"mn\":2},{\"ab2\":12,\"mn\":2},{\"ab2\":15,\"mn\":2},{\"ab2\":20,\"mn\":2},{\"ab2\":20,\"mn\":5},{\"ab2\":25,\"mn\":5},{\"ab2\":30,\"mn\":5},{\"ab2\":40,\"mn\":5},{\"ab2\":50,\"mn\":5},{\"ab2\":50,\"mn\":20},{\"ab2\":60,\"mn\":20},{\"ab2\":80,\"mn\":20},{\"ab2\":100,\"mn\":20},{\"ab2\":120,\"mn\":20}]},\"captions\":[[\"title_plan\",\"Survey plan - Kakua\"],[\"plan\",\"1 profiling line crosses the lineament candidate nearest the site at right angles to its strike, inside the 500 m the site serves: it is 400 m long, or as long as the service radius leaves room for, with a station every 10 m. 1 candidate comes within the service radius. 3 proposed soundings: one where each line crosses its candidate and one 50 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 120 m, which by the depth-of-investigation rule sees 60 m down, for a target of 60 m, with its 240 m spread laid along its candidate's strike. No water point, drainage line or sea that this page maps lies within reach of the service radius. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\"],[\"plan_note\",\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"]]}",
+    "gpx": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"Groundwater Investigation Toolkit\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n<metadata><name>Survey plan - Kakua</name><desc>Survey plan for Kakua, from the lineament candidates worked out from Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif. The candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground. Each VES waypoint is the centre of a sounding; each route is a profiling line, a point at each station.</desc></metadata>\n<wpt lat=\"8.522222\" lon=\"-11.977778\"><name>Rokel</name><type>Site</type></wpt>\n<wpt lat=\"8.521889\" lon=\"-11.978110\"><name>VES 1</name><desc>50 m from the ridge candidate 0, at 150 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\u00b0.</desc><type>VES</type></wpt>\n<wpt lat=\"8.522210\" lon=\"-11.977790\"><name>VES 2</name><desc>On the ridge candidate 0, at 200 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\u00b0.</desc><type>VES</type></wpt>\n<wpt lat=\"8.522531\" lon=\"-11.977470\"><name>VES 3</name><desc>50 m from the ridge candidate 0, at 250 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\u00b0.</desc><type>VES</type></wpt>\n<wpt lat=\"8.520926\" lon=\"-11.979069\"><name>Line 1 start</name><type>Line end</type></wpt>\n<wpt lat=\"8.523494\" lon=\"-11.976511\"><name>Line 1 end</name><type>Line end</type></wpt>\n<rte><name>Line 1</name><desc>400 m at 45\u00b0, a station every 10 m, across the ridge candidate 0 at 200 m.</desc><rtept lat=\"8.520926\" lon=\"-11.979069\"><name>L1 000</name></rtept><rtept lat=\"8.520990\" lon=\"-11.979005\"><name>L1 010</name></rtept><rtept lat=\"8.521054\" lon=\"-11.978941\"><name>L1 020</name></rtept><rtept lat=\"8.521118\" lon=\"-11.978877\"><name>L1 030</name></rtept><rtept lat=\"8.521183\" lon=\"-11.978813\"><name>L1 040</name></rtept><rtept lat=\"8.521247\" lon=\"-11.978749\"><name>L1 050</name></rtept><rtept lat=\"8.521311\" lon=\"-11.978685\"><name>L1 060</name></rtept><rtept lat=\"8.521375\" lon=\"-11.978621\"><name>L1 070</name></rtept><rtept lat=\"8.521439\" lon=\"-11.978557\"><name>L1 080</name></rtept><rtept lat=\"8.521504\" lon=\"-11.978493\"><name>L1 090</name></rtept><rtept lat=\"8.521568\" lon=\"-11.978429\"><name>L1 100</name></rtept><rtept lat=\"8.521632\" lon=\"-11.978365\"><name>L1 110</name></rtept><rtept lat=\"8.521696\" lon=\"-11.978302\"><name>L1 120</name></rtept><rtept lat=\"8.521760\" lon=\"-11.978238\"><name>L1 130</name></rtept><rtept lat=\"8.521825\" lon=\"-11.978174\"><name>L1 140</name></rtept><rtept lat=\"8.521889\" lon=\"-11.978110\"><name>L1 150</name></rtept><rtept lat=\"8.521953\" lon=\"-11.978046\"><name>L1 160</name></rtept><rtept lat=\"8.522017\" lon=\"-11.977982\"><name>L1 170</name></rtept><rtept lat=\"8.522082\" lon=\"-11.977918\"><name>L1 180</name></rtept><rtept lat=\"8.522146\" lon=\"-11.977854\"><name>L1 190</name></rtept><rtept lat=\"8.522210\" lon=\"-11.977790\"><name>L1 200</name></rtept><rtept lat=\"8.522274\" lon=\"-11.977726\"><name>L1 210</name></rtept><rtept lat=\"8.522338\" lon=\"-11.977662\"><name>L1 220</name></rtept><rtept lat=\"8.522403\" lon=\"-11.977598\"><name>L1 230</name></rtept><rtept lat=\"8.522467\" lon=\"-11.977534\"><name>L1 240</name></rtept><rtept lat=\"8.522531\" lon=\"-11.977470\"><name>L1 250</name></rtept><rtept lat=\"8.522595\" lon=\"-11.977406\"><name>L1 260</name></rtept><rtept lat=\"8.522659\" lon=\"-11.977342\"><name>L1 270</name></rtept><rtept lat=\"8.522724\" lon=\"-11.977278\"><name>L1 280</name></rtept><rtept lat=\"8.522788\" lon=\"-11.977215\"><name>L1 290</name></rtept><rtept lat=\"8.522852\" lon=\"-11.977151\"><name>L1 300</name></rtept><rtept lat=\"8.522916\" lon=\"-11.977087\"><name>L1 310</name></rtept><rtept lat=\"8.522981\" lon=\"-11.977023\"><name>L1 320</name></rtept><rtept lat=\"8.523045\" lon=\"-11.976959\"><name>L1 330</name></rtept><rtept lat=\"8.523109\" lon=\"-11.976895\"><name>L1 340</name></rtept><rtept lat=\"8.523173\" lon=\"-11.976831\"><name>L1 350</name></rtept><rtept lat=\"8.523237\" lon=\"-11.976767\"><name>L1 360</name></rtept><rtept lat=\"8.523302\" lon=\"-11.976703\"><name>L1 370</name></rtept><rtept lat=\"8.523366\" lon=\"-11.976639\"><name>L1 380</name></rtept><rtept lat=\"8.523430\" lon=\"-11.976575\"><name>L1 390</name></rtept><rtept lat=\"8.523494\" lon=\"-11.976511\"><name>L1 400</name></rtept></rte>\n</gpx>\n",
+    "geojson": [
+     "c64b756565e78015",
+     10172
+    ],
+    "desk": "{\"label\":\"Copernicus_DSM_COG_10_N08_00_W012_00_DEM.tif\",\"site\":[8.522222222222222,-11.977777777777778],\"candidates\":12,\"valleys\":5,\"ridges\":7,\"km\":13.988102996429166,\"band_low\":10.0,\"band_high\":20.0,\"band_km\":5.479555070802914,\"near\":1,\"basis\":\"candidates\",\"captions\":{\"lineaments\":\"5 straight valleys and 7 ridges at least 600 m long, found where the relief, smoothed over about 65 m and lit from 270\\u00b0, 315\\u00b0, 0\\u00b0 and 45\\u00b0, changes sharply along a line. A valley or a ridge is told by which way the ground bends across it, and a candidate drawn from several straight pieces is one where shorter valleys or ridges line up. They are inferred from terrain, not confirmed by geophysics: a fracture zone, a geological contact, a dyke, a road or a field boundary can each draw one.\",\"rose\":\"The length of the candidates in each 10\\u00b0 band of strike, measured clockwise from grid north and folded to 0 to 180\\u00b0, valleys and ridges apart, on one scale. A strike has no way along it, so each band is drawn twice, opposite itself, and each petal's area rather than its reach is in proportion to the length, so that the longest band does not look longer than it is. A band that stands out is a direction that many straight features share; the analysis itself favours none, as tested on terrain that has none.\",\"plan\":\"1 profiling line crosses the lineament candidate nearest the site at right angles to its strike, inside the 500 m the site serves: it is 400 m long, or as long as the service radius leaves room for, with a station every 10 m. 1 candidate comes within the service radius. 3 proposed soundings: one where each line crosses its candidate and one 50 m along the line to either side, since a candidate is placed from the terrain to within a cell or two. Each is planned to AB/2 = 120 m, which by the depth-of-investigation rule sees 60 m down, for a target of 60 m, with its 240 m spread laid along its candidate's strike. No water point, drainage line or sea that this page maps lies within reach of the service radius. No map here records septic tank or soakaway (20 m), buildings (3 m) and solid waste dump or burial ground (1000 m): check each peg for them on the ground.\",\"plan_note\":\"Lineament candidates are inferred from terrain, not confirmed by geophysics, and every peg is a proposal to check on the ground.\"},\"lines\":[[\"Line 1\",\"45\",\"400\",\"8.52093 N, 11.97907 W\",\"8.52349 N, 11.97651 W\"]],\"soundings\":[[\"VES 1\",\"1\",\"150.0\",\"8.52189 N, 11.97811 W\",\"50 m from the ridge candidate 0, at 150 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\\u00b0.\"],[\"VES 2\",\"1\",\"200.0\",\"8.52221 N, 11.97779 W\",\"On the ridge candidate 0, at 200 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\\u00b0.\"],[\"VES 3\",\"1\",\"250.0\",\"8.52253 N, 11.97747 W\",\"50 m from the ridge candidate 0, at 250 m along line 1. AB/2 to 120 m: the 240 m spread laid along 135\\u00b0.\"]]}"
    }
   ],
   "refused": [
@@ -161698,6 +162141,11 @@
      "survey_station_m": 800.0
     },
     "refused": "terrain.survey_station_m must be no longer than terrain.survey_line_m"
+   },
+   {
+    "settings": {},
+    "searched": -1.0,
+    "refused": "the radius the water points were looked up within must be 0 m or more"
    }
   ]
  },
@@ -162212,6 +162660,72 @@
     "portfolio": [],
     "plan": null,
     "expect": "{\"title\":\"Desk study - T\",\"subtitle\":\"A pre-field siting report\",\"where\":\"T\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Surface water, which the BGS atlas classes as Surface water.\",\"About 50 percent (between 10 and 90) that a borehole here yields enough for a handpump through the dry season. Placeholder prior, with no cited rate behind it.\",\"No water point is recorded within 1,000 m.\",\"No earlier project lies within 5 km.\"],\"site_rows\":[[\"Community\",\"T\"],[\"Position\",\"7.30000 N, 11.80000 W\"],[\"UTM\",\"zone 29N, 190819 E, 807874 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Water (River or Lake) (H2O)\",\"Surface water. River, lake or estuary. Not an aquifer.\"],[\"BGS Africa Groundwater Atlas\",\"Surface water (n/a)\",\"The prior table gives no yield range for this ground.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"No elevation model was analysed, so this desk study has no terrain, lineament candidates or survey plan: supply one on the Site maps page, analyse the terrain and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"The WPdx+ inventory records no water point within 1,000 m of the site.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"No project in the portfolio loaded lies within 5 km of the site.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 50 percent (between 10 and 90) that a borehole here yields enough for a handpump through the dry season. Placeholder prior, with no cited rate behind it.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 50 percent (between 10 and 90), a placeholder held as weakly as 2 boreholes would hold it: the BGS map shows surface water here, so it gives no aquifer class for the point; no cited rate applies, so it is an even chance.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"The survey plan is laid across the lineament candidates near the site, so it waits for the terrain to be analysed.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"The ground round the site for the valleys and ridges an elevation model would have shown, since none was analysed.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
+   },
+   {
+    "case": "D9: degrees in an earlier project's boxes, and install years written three ways",
+    "site": {
+     "community": "Rokel II",
+     "district": "Western Area Rural"
+    },
+    "where": "Rokel II",
+    "latlon": [
+     8.466,
+     -13.232
+    ],
+    "water": [
+     {
+      "row_id": "y0",
+      "lat_deg": "8.4663",
+      "lon_deg": "-13.232",
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "install_year": "0"
+     },
+     {
+      "row_id": "y1",
+      "lat_deg": "8.4673",
+      "lon_deg": "-13.232",
+      "status_clean": "Functional",
+      "water_source_clean": "Borehole",
+      "install_year": "2009.6"
+     },
+     {
+      "row_id": "y2",
+      "lat_deg": "8.4683",
+      "lon_deg": "-13.232",
+      "status_clean": "Non-Functional",
+      "water_source_clean": "Borehole",
+      "installation_year": "2011"
+     },
+     {
+      "row_id": "y3",
+      "lat_deg": "nan",
+      "lon_deg": "-13.232",
+      "status_clean": "Functional"
+     }
+    ],
+    "radius": 1000.0,
+    "portfolio": [
+     {
+      "community": "Rokel",
+      "district": "Western Area Rural",
+      "easting": -13.2317,
+      "northing": 8.4657,
+      "status": "Completed - successful",
+      "total_depth_m": 48
+     },
+     {
+      "community": "Kissy",
+      "easting": "13.2",
+      "northing": "8.47"
+     },
+     {
+      "community": "Nowhere",
+      "status": "dry"
+     }
+    ],
+    "plan": null,
+    "expect": "{\"title\":\"Desk study - Rokel II\",\"subtitle\":\"A pre-field siting report\",\"where\":\"Rokel II\",\"site_heading\":\"The site\",\"stamp\":{\"title\":\"PRE-FIELD DOCUMENT - NOT A SURVEY RESULT\",\"lead\":\"This desk study was put together before anyone went to the site, from the bundled national maps, the water point inventory, earlier projects and, where one was supplied, an elevation model. Nothing in it was measured on the ground: every position, candidate and figure in it is to be checked in the field, and no borehole is to be sited from it alone.\"},\"summary\":[\"The bundled maps put the site on Freetown Layered Complex, which the BGS atlas classes as Igneous intrusive aquifer - low productivity.\",\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"3 water points are recorded within 1,000 m, 2 of them working.\",\"No earlier project lies within 5 km.\"],\"site_rows\":[[\"Community\",\"Rokel II\"],[\"District\",\"Western Area Rural\"],[\"Position\",\"8.46600 N, 13.23200 W\"],[\"UTM\",\"zone 28N, 694634 E, 936258 N\"]],\"sections\":[{\"key\":\"ground\",\"heading\":\"Geology and aquifer class\",\"paragraphs\":[\"The bundled maps put the site on the ground below. Both are published at 1:5,000,000, where a boundary can lie kilometres from where it runs on the ground, so the rock under the site is to be confirmed in the field.\"],\"tables\":[{\"caption\":\"The ground under the site on the bundled maps\",\"header\":[\"Map\",\"Unit\",\"What it means for a borehole\"],\"rows\":[[\"USGS Geologic Map of Africa\",\"Paleozoic Igneous (Pi)\",\"Freetown Layered Complex (Jf), Jurassic (about 193 Ma). Layered gabbro, norite and anorthosite; a basic to ultrabasic intrusion forming the Freetown peninsula hills. Massive and crystalline, with negligible primary porosity. Groundwater is confined to the weathered mantle and to fracture and joint sets; yields are modest and highly site-dependent, so the fracture target is the whole of the siting problem.\"],[\"BGS Africa Groundwater Atlas\",\"Igneous intrusive aquifer - low productivity (I-L)\",\"Boreholes sited and developed properly here yield 0.1 to 0.5 L/s between them, the class's published range, read as its quartiles.\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"terrain\",\"heading\":\"Terrain and lineaments\",\"paragraphs\":[\"No elevation model was analysed, so this desk study has no terrain, lineament candidates or survey plan: supply one on the Site maps page, analyse the terrain and build the desk study again.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"water_points\",\"heading\":\"Water points nearby\",\"paragraphs\":[\"The WPdx+ inventory records 3 water points within 1,000 m of the site: 2 working, 1 not working and 0 of unknown status.\",\"2 working improved sources lie within the 500 m the site serves, so the community may already be served.\",\"1 improved source within the 500 m the site serves is recorded as not working: a rehabilitation candidate, to assess before a new borehole is drilled.\",\"The inventory records no depth or yield for its points; the earlier projects below give them where their files hold them.\"],\"tables\":[{\"caption\":\"Water points within 1,000 m of the site, nearest first\",\"header\":[\"Distance (m)\",\"Status\",\"Source\",\"Installed\"],\"rows\":[[\"33.4\",\"Working\",\"Borehole\",\"\"],[\"145\",\"Working\",\"Borehole\",\"2009\"],[\"256\",\"Not working\",\"Borehole\",\"2011\"]]}],\"figures\":[],\"bullets\":[]},{\"key\":\"projects\",\"heading\":\"Earlier projects within 5 km\",\"paragraphs\":[\"No project in the portfolio loaded lies within 5 km of the site.\",\"Rokel (Western Area Rural) and Kissy hold a longitude and a latitude in degrees where the easting and northing go, which neither app reads as a position, so they are left out: open each, convert the degrees to UTM in its site details and save it again.\",\"1 project carries no position and is left out.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"odds\",\"heading\":\"The odds before the survey\",\"paragraphs\":[\"About 43 percent (between 23 and 63) that a borehole here yields enough for a handpump through the dry season. Provisional prior.\",\"Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water level, the handpump design rate in the configuration.\",\"The prior is 43 percent (between 23 and 63), for the BGS class I-L on the USGS unit Pi: BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Tables 3 and 4). No cited source separates the Freetown Complex unit within the class, so the class's yields apply. Read as the quartiles of a lognormal spread, 0.1 and 0.5 L/s put 43 percent of boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes drilled here.\",\"These odds rest on the ground under the site alone, before any survey. The geophysical report moves them by what the soundings find: the depth to basement, whether it was resolved, the resistivity of the water-bearing zone and the confidence of the fit.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"plan\",\"heading\":\"Survey plan\",\"paragraphs\":[\"The survey plan is laid across the lineament candidates near the site, so it waits for the terrain to be analysed.\"],\"tables\":[],\"figures\":[],\"bullets\":[]},{\"key\":\"checks\",\"heading\":\"What the field visit is to check\",\"paragraphs\":[],\"tables\":[],\"figures\":[],\"bullets\":[\"The rock and the weathered zone at the site, against the geology above.\",\"Whether the working sources within the 500 m the site serves reach the community, and all year.\",\"Why the improved sources recorded as not working failed, and whether rehabilitating one would serve the community.\",\"The ground round the site for the valleys and ridges an elevation model would have shown, since none was analysed.\"]}],\"references\":[\"United States Geological Survey (1997). Geologic Map of Africa, Open-File Report 97-470A. Public domain, 1:5,000,000.\",\"Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone. Freetown.\",\"British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.\",\"\\u00d3 Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.\",\"Water Point Data Exchange (WPdx+). Global water point data, Sierra Leone. https://www.waterpointdata.org. Licensed CC BY 4.0.\"]}"
    }
   ]
  }

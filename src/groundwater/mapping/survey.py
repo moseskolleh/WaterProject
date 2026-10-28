@@ -38,6 +38,13 @@ The rules, in the order :func:`survey_plan` applies them:
   out, and the plan says why. The table's other rows (latrines and
   soakaways, buildings, refuse dumps and burial grounds) are on no map
   here, and the plan says to check each peg for them on the ground.
+* A water point's ring can reach a sounding from as far as the service
+  radius and its separation distance (550 m for a borehole), so water
+  points looked up within less than that round the site leave the plan
+  blind beyond the lookup: ``searched_m`` says how far they were looked
+  up, and where it is short the plan says so and tells the operator to
+  look them up again, rather than saying nothing of the water points it
+  could not see.
 * Each sounding's AB/2 series is the VES co-pilot's own,
   :func:`groundwater.field_kit.ves_survey_plan`, for a target of
   ``survey_target_depth_m`` by the depth-of-investigation rule, its spread
@@ -90,6 +97,7 @@ __all__ = [
     "survey_plan_gpx",
     "survey_sounding_text",
     "water_point_kind",
+    "water_point_reach",
 ]
 
 #: The rows of the separation table the plan maps, by the structure each
@@ -207,6 +215,8 @@ class SurveyPlan:
     no map here records, ``(structure, distance)``, in the table's order.
     ``ab2`` is :func:`~groundwater.field_kit.ves_survey_plan` for the
     target; ``covered`` says the square shown holds the whole radius.
+    ``searched_m`` is how far round the site the water points given were
+    looked up, or None where they were not cut to a circle round it.
     """
 
     site: tuple[float, float]
@@ -227,6 +237,7 @@ class SurveyPlan:
     covered: bool = True
     frame: tuple[float, float] = (1.0, 1.0)
     settings: TerrainConfig = field(default_factory=TerrainConfig, repr=False)
+    searched_m: float | None = None
 
 
 def water_point_kind(point) -> str:
@@ -501,7 +512,8 @@ def _soundings(line: SurveyLine, zones: list[tuple], s: dict) -> tuple[list[tupl
 
 def survey_plan(lineaments: LineamentAnalysis, core: TerrainCore, parts: Sequence[DrainagePart],
                 site: tuple[float, float], water_points: Iterable = (), cfg: TerrainConfig | None = None,
-                ves: VESConfig | None = None, distances: Iterable | None = None) -> SurveyPlan:
+                ves: VESConfig | None = None, distances: Iterable | None = None,
+                searched_m: float | None = None) -> SurveyPlan:
     """The survey plan round ``site``, ``(lon, lat)``, from the lineament
     candidates of an analysed window (the module says how it is laid out).
 
@@ -511,8 +523,12 @@ def survey_plan(lineaments: LineamentAnalysis, core: TerrainCore, parts: Sequenc
     ``lon``, ``source`` and ``technology``). ``cfg`` is the terrain
     settings, the candidates' own by default; ``ves`` the VES settings the
     AB/2 series is planned by; ``distances`` the separation table, the
-    bundled one by default. Settings out of range are refused with a
-    ValueError, in the words the browser uses.
+    bundled one by default. ``searched_m`` is how far round the site the
+    water points were looked up: a lookup's radius, less how far the site
+    lies from where it was centred; None where they are not cut to a
+    circle round the site (an export read whole, the national set).
+    Settings out of range are refused with a ValueError, in the words the
+    browser uses.
     """
     from ..field_kit import ves_survey_plan
     from ..supervision.checklists import load_separation_distances
@@ -520,6 +536,10 @@ def survey_plan(lineaments: LineamentAnalysis, core: TerrainCore, parts: Sequenc
 
     cfg = cfg or lineaments.settings
     s = _plan_settings(cfg)
+    if searched_m is not None:
+        searched_m = float(searched_m)
+        if not (math.isfinite(searched_m) and searched_m >= 0.0):
+            raise ValueError("the radius the water points were looked up within must be 0 m or more")
     if distances is None:
         distances = load_separation_distances()
     rows = list(distances)
@@ -643,7 +663,7 @@ def survey_plan(lineaments: LineamentAnalysis, core: TerrainCore, parts: Sequenc
         near=tuple(e[1].id for e in near), skipped=tuple(skipped), reach=reach, rings=tuple(rings),
         water_points=given, distances={name: table[name] for name in _MAPPED if name in table},
         unmapped=tuple(unmapped), ab2=ves_survey_plan(s["survey_target_depth_m"], ves or VESConfig()),
-        covered=covered, frame=frame, settings=cfg)
+        covered=covered, frame=frame, settings=cfg, searched_m=searched_m)
 
 
 # --- what is said of it, and the files
@@ -666,8 +686,32 @@ def _kept(plan: SurveyPlan) -> str:
     if plan.reach["sea"]:
         pieces.append(phrase("survey_plan.kept_coast", distance=plan.distances[COAST]))
     if not pieces:
-        return phrase("survey_plan.kept_nothing")
+        return phrase("survey_plan.kept_nothing_loaded" if _short_of(plan) is not None else "survey_plan.kept_nothing")
     return phrase("survey_plan.kept", kept=and_join(pieces))
+
+
+def water_point_reach(plan: SurveyPlan) -> float | None:
+    """How far from the site a mapped water point's separation ring can
+    reach a sounding: the service radius and the table's largest distance
+    from a water point, or None where the table keeps none."""
+    reach = None
+    for structure in (BOREHOLE, DUG_WELL, OTHER_WELL, STREAM):
+        if structure in plan.distances and (reach is None or plan.distances[structure] > reach):
+            reach = plan.distances[structure]
+    return None if reach is None else plan.radius_m + reach
+
+
+def _short_of(plan: SurveyPlan) -> tuple[float, float] | None:
+    """How far the water points were looked up, to the millimetre, and the
+    reach they fell short of, or None where they did not. To the
+    millimetre, so that a lookup a site's round trip through UTM has put a
+    hair inside its radius (299.99999998 m of 300) is neither short of a
+    reach it met nor said to stop at the metre below."""
+    reach = water_point_reach(plan)
+    if plan.searched_m is None or reach is None:
+        return None
+    searched = math.floor(plan.searched_m * 1000.0 + 0.5) / 1000.0
+    return None if searched >= reach else (searched, reach)
 
 
 def survey_plan_captions(plan: SurveyPlan | None, where: str) -> dict[str, str]:
@@ -712,7 +756,13 @@ def survey_plan_captions(plan: SurveyPlan | None, where: str) -> dict[str, str]:
         if short:
             parts.append(phrase("survey_plan.dropped_short", count=short))
         parts.append(_kept(plan))
-        if plan.water_points == 0:
+        fell = _short_of(plan)
+        if fell is not None:
+            # the whole metres it reached, so that 549.6 m is not printed as
+            # the 550 m it fell short of
+            parts.append(phrase("survey_plan.water_points_short", searched=float(math.floor(fell[0])),
+                                reach=fell[1]))
+        elif plan.water_points == 0 and plan.searched_m is None:
             parts.append(phrase("survey_plan.no_water_points"))
     elif plan.basis == "strike":
         line = plan.lines[0]

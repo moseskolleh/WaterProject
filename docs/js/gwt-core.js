@@ -7383,10 +7383,17 @@
    * @param {Rec} [cfg] the configuration's terrain section, the candidates' own by default
    * @param {Rec} [ves] its VES section, which the AB/2 series is planned by
    * @param {Rec[]} [distances] the separation table, the bundled one by default
+   * @param {number|null} [searchedM] how far round the site the water points were looked up: a
+   *   lookup's radius, less how far the site lies from where it was centred; null where they are
+   *   not cut to a circle round the site (an export read whole, the national set)
    * @returns {Rec} */
-  function surveyPlan(lineaments, core, parts, site, waterPoints, cfg, ves, distances) {
+  function surveyPlan(lineaments, core, parts, site, waterPoints, cfg, ves, distances, searchedM) {
     var settings = cfg || lineaments.settings;
     var s = spSettings(settings);
+    var searched = searchedM === undefined || searchedM === null ? null : Number(searchedM);
+    if (searched !== null && !(isFinite(searched) && searched >= 0)) {
+      throw new Error('the radius the water points were looked up within must be 0 m or more');
+    }
     var rows = loadSeparationDistances(distances);
     /** @type {Record<string, number>} */
     var table = {};
@@ -7529,8 +7536,38 @@
       near: near.map(function (entry) { return entry[1].id; }), skipped: skipped, reach: reach, rings: rings,
       water_points: given, distances: mapped, unmapped: unmapped,
       ab2: vesSurveyPlan(s.survey_target_depth_m, { ves: ves || defaultConfig().ves }),
-      covered: covered, frame: frame, settings: settings,
+      covered: covered, frame: frame, settings: settings, searched_m: searched,
     };
+  }
+
+  /** How far from the site a mapped water point's separation ring can
+   * reach a sounding: the service radius and the table's largest distance
+   * from a water point, or null where the table keeps none
+   * (survey.water_point_reach).
+   * @param {Rec} plan what surveyPlan gives
+   * @returns {number|null} */
+  function waterPointReach(plan) {
+    var structures = [SP_BOREHOLE, SP_DUG_WELL, SP_OTHER_WELL, SP_STREAM];
+    var reach = -1;
+    for (var i = 0; i < structures.length; i++) {
+      if (!Object.prototype.hasOwnProperty.call(plan.distances, structures[i])) continue;
+      var d = Number(plan.distances[structures[i]]);
+      if (reach < 0 || d > reach) reach = d;
+    }
+    return reach < 0 ? null : Number(plan.radius_m) + reach;
+  }
+
+  /* how far the water points were looked up, to the millimetre, and the
+   * reach they fell short of, or null where they did not: survey._short_of.
+   * To the millimetre, so that a lookup a site's round trip through UTM has
+   * put a hair inside its radius is neither short of a reach it met nor
+   * said to stop at the metre below. */
+  /** @param {Rec} plan @returns {number[]|null} */
+  function spShortOf(plan) {
+    var reach = waterPointReach(plan);
+    if (plan.searched_m === null || plan.searched_m === undefined || reach === null) return null;
+    var searched = Math.floor(Number(plan.searched_m) * 1000 + 0.5) / 1000;
+    return searched >= reach ? null : [searched, reach];
   }
 
   /** @param {string} text */
@@ -7551,7 +7588,9 @@
       });
     if (plan.reach.streams) pieces.push(phrase('survey_plan.kept_streams', { distance: plan.distances[SP_STREAM] }));
     if (plan.reach.sea) pieces.push(phrase('survey_plan.kept_coast', { distance: plan.distances[SP_COAST] }));
-    if (!pieces.length) return phrase('survey_plan.kept_nothing');
+    if (!pieces.length) {
+      return phrase(spShortOf(plan) !== null ? 'survey_plan.kept_nothing_loaded' : 'survey_plan.kept_nothing');
+    }
     return phrase('survey_plan.kept', { kept: andJoin(pieces) });
   }
 
@@ -7592,7 +7631,14 @@
       var short = plan.dropped.filter(offLine).length;
       if (short) parts.push(phrase('survey_plan.dropped_short', { count: short }));
       parts.push(spKept(plan));
-      if (plan.water_points === 0) parts.push(phrase('survey_plan.no_water_points'));
+      var fell = spShortOf(plan);
+      if (fell !== null) {
+        /* the whole metres it reached, so that 549.6 m is not printed as the
+         * 550 m it fell short of */
+        parts.push(phrase('survey_plan.water_points_short', { searched: Math.floor(fell[0]), reach: fell[1] }));
+      } else if (plan.water_points === 0 && (plan.searched_m === null || plan.searched_m === undefined)) {
+        parts.push(phrase('survey_plan.no_water_points'));
+      }
     } else if (plan.basis === 'strike') {
       var line = plan.lines[0];
       parts.push(phrase('survey_plan.lines_strike', { radius: radius, strike: line.strike_deg, length: line.length_m,
@@ -7780,7 +7826,7 @@
   Object.assign(C, {
     waterPointKind: waterPointKind, surveyPlan: surveyPlan, surveyPlanCaptions: surveyPlanCaptions,
     surveyPlanGpx: surveyPlanGpx, surveyPlanGeoJson: surveyPlanGeoJson, surveySoundingText: surveySoundingText,
-    lineStation: lineStation,
+    lineStation: lineStation, waterPointReach: waterPointReach,
   });
 
   /* =========================================================== curve type
@@ -19167,6 +19213,41 @@
     return null;
   }
 
+  /* A number as an export writes one: digits with an optional sign, decimal
+   * point and exponent, between the white space trim() takes off
+   * (waterpoints._PLAIN_NUMBER, between its _EDGE_SPACE). Number() and
+   * Python's float() read different cells as numbers: Number() takes "0x1F"
+   * and reads a cell of spaces as 0, float() takes "nan", "inf" and "1_000". */
+  var WP_PLAIN_NUMBER = /^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+
+  /* A finite number out of a cell, or null: a JSON number as it is, a text
+   * only when it is a plain decimal number, and nothing else (a boolean, a
+   * blank, "Infinity", "1e999"): waterpoints._plain_number. */
+  function wpPlainNumber(value) {
+    var number;
+    if (typeof value === 'number') {
+      number = value;
+    } else if (typeof value === 'string') {
+      var text = value.trim();
+      if (!WP_PLAIN_NUMBER.test(text)) return null;
+      number = Number(text);
+    } else {
+      return null;
+    }
+    return isFinite(number) ? number : null;
+  }
+
+  /* The year a point was installed, or null when it is unrecorded: its whole
+   * part, as the year 2009.6 falls in is 2009, and nothing at or below 0,
+   * which WPDx exports write where the year was never recorded
+   * (waterpoints._install_year). */
+  function wpInstallYear(value) {
+    var number = wpPlainNumber(value);
+    if (number === null) return null;
+    var year = Math.trunc(number);
+    return year > 0 ? year : null;
+  }
+
   /* Months of the year a point yields water. null is deliberately not twelve:
    * most surveys never asked, and reading silence as a year-round supply is
    * how a dry-season coverage figure ends up matching the wet-season one. */
@@ -19198,26 +19279,23 @@
     var unreadable = 0;
     (records || []).forEach(function (record) {
       if (!record || typeof record !== 'object') { unreadable += 1; return; }
-      /* Number(null) and Number('') are both 0, and a CSV export of WPdx+ is
-       * full of both. Left alone they became water points in the Gulf of
-       * Guinea, counted in the coverage of whatever chiefdom was nearest. */
-      var latRaw = wpFirst(record, ['lat_deg', 'latitude', 'lat']);
-      var lonRaw = wpFirst(record, ['lon_deg', 'longitude', 'lon']);
-      if (latRaw === null || latRaw === undefined || latRaw === '' ||
-          lonRaw === null || lonRaw === undefined || lonRaw === '') {
+      /* Number(null), Number('') and Number(' ') are all 0, and a CSV export
+       * of WPdx+ is full of blanks. Left alone they became water points in
+       * the Gulf of Guinea, counted in the coverage of whatever chiefdom was
+       * nearest; a position no map holds ("NaN", UTM metres in the degree
+       * columns) is set aside with them, by the rule the Python reader
+       * follows. */
+      var lat = wpPlainNumber(wpFirst(record, ['lat_deg', 'latitude', 'lat']));
+      var lon = wpPlainNumber(wpFirst(record, ['lon_deg', 'longitude', 'lon']));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
         unplaced += 1; return;
       }
-      var lat = Number(latRaw);
-      var lon = Number(lonRaw);
-      if (!isFinite(lat) || !isFinite(lon)) { unplaced += 1; return; }
-      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) { unplaced += 1; return; }
       var source = String(wpFirst(record, ['water_source_clean', 'water_source',
         'source']) || '');
       var technology = String(wpFirst(record, ['water_tech_clean', 'water_tech',
         'technology']) || '');
       var statusText = String(wpFirst(record, ['status_clean', 'status']) || '');
       var statusId = wpFirst(record, ['status_id', 'status']);
-      var year = Number(wpFirst(record, ['install_year', 'installation_year']));
       out.push({
         row_id: String(wpFirst(record, ['row_id', 'wpdx_id', 'objectid']) || ''),
         lat: lat, lon: lon,
@@ -19229,7 +19307,7 @@
         status_text: statusText,
         functional: functionalFrom(statusText, statusId),
         improved: improvedSource(source, technology),
-        installed: isFinite(year) && year ? Math.round(year) : null,
+        installed: wpInstallYear(wpFirst(record, ['install_year', 'installation_year'])),
         /* when it was last surveyed, and how much of the year it yields
          * water. A point reported functional in 2016 is evidence about 2016,
          * and a null month count is not twelve. */
@@ -22816,18 +22894,39 @@
     return classifyStatusText(raw) || 'other';
   }
 
-  /**
+  /** Whether a summary's easting and northing are a longitude and a
+   * latitude typed into the UTM boxes, by the rule the site page reads them
+   * by (utmBoxesHoldDegrees): portfolio.summary_holds_degrees.
+   * @param {Rec|null} summary a project summary
+   * @returns {boolean}
+   */
+  function summaryHoldsDegrees(summary) {
+    var easting = deskNumber(summary && summary.easting), northing = deskNumber(summary && summary.northing);
+    return !!(easting && northing) && utmBoxesHoldDegrees(easting, northing);
+  }
+
+  /** Where a project summary is: portfolio._latlon. The portfolio map, the
+   * site detail and the desk study all place a project by this.
    * @param {Rec|null} summary a project summary
    * @returns {{lat: number, lon: number}|null}
    */
   function summaryLatLon(summary) {
-    var easting = summary && summary.easting, northing = summary && summary.northing;
+    if (!summary) return null;
+    /* a value a project file carries that is no number ("52 m") is no
+     * position, as portfolio._num reads it */
+    var easting = deskNumber(summary.easting), northing = deskNumber(summary.northing);
     if (!easting || !northing) return null;
+    /* Degrees are no position in metres, as sitePosition reads them: read
+     * as metres they put the project on the equator, 940 km off, so the
+     * desk study left it out of the projects near its site without a word
+     * and the portfolio map drew it in the Gulf of Guinea. */
+    if (utmBoxesHoldDegrees(easting, northing)) return null;
     /* the same fallback SiteMetadata.utm uses: a hard-coded zone dropped every
      * zone-less project six degrees off, into the Atlantic and off the map */
-    var zone = Number(/** @type {Rec} */ (summary).utm_zone) || inferZoneForSierraLeone(Number(easting));
+    var zone = Math.trunc(deskNumber(summary.utm_zone) || 0) || inferZoneForSierraLeone(easting);
     try {
-      return utmToGeographic(Number(easting), Number(northing), zone);
+      var at = utmToGeographic(easting, northing, zone);
+      return at && isFinite(at.lat) && isFinite(at.lon) ? at : null;
     } catch (e) { return null; }
   }
 
@@ -23036,6 +23135,7 @@
     classifyStatusText: classifyStatusText, normaliseStatus: normaliseStatus,
     summaryVerdictState: summaryVerdictState, VERDICT_SCHEMA: VERDICT_SCHEMA,
     classifyStatus: classifyStatus, summaryLatLon: summaryLatLon,
+    summaryHoldsDegrees: summaryHoldsDegrees,
     portfolioRows: portfolioRows, portfolioPoints: portfolioPoints,
     portfolioSiteLabel: portfolioSiteLabel,
     portfolioSiteDetail: portfolioSiteDetail,
@@ -29071,10 +29171,26 @@
   var DEFAULT_GROWTH_RATE = intercensalGrowthRate();
 
   var FRESH_YEARS = 3, AGEING_YEARS = 7;
-  var FRESHNESS_LABELS = {
-    fresh: 'Surveyed recently', ageing: 'Survey is getting old',
-    stale: 'Survey is out of date', unknown: 'Survey dates not recorded'
-  };
+
+  /* the label of a freshness state, from the catalogue (planning.yaml):
+   * planning.FRESHNESS_LABELS */
+  function freshnessLabel(state) {
+    var labels = phraseTable('planning.freshness_label');
+    return String(own(labels, state) ? labels[state] : labels.unknown);
+  }
+
+  /* the sentence under the label, in the plan year: Freshness.detail */
+  function freshnessDetail(f, year) {
+    if (f.state === 'later') {
+      return phrase('planning.freshness_all_later', { later: f.n_later, points: f.n_points, year: year });
+    }
+    if (f.state === 'unknown') return phrase('planning.freshness_undated');
+    var text = phrase('planning.freshness_dated', { dated: f.n_dated, points: f.n_points,
+      year: year, latest: f.latest_year, median: f.median_age_years, recent: f.n_recent,
+      fresh: FRESH_YEARS });
+    if (f.n_later) text += ' ' + phrase('planning.freshness_later', { later: f.n_later, year: year });
+    return text;
+  }
 
   function projectionNote(projection) {
     if (projection.target_year === projection.base_year) {
@@ -29133,34 +29249,33 @@
    * @returns {Rec}
    */
   function pointFreshness(points, asOfYear) {
+    /* A survey dated after the plan year is evidence about a later year:
+     * it is left out of the median and of the recent count, and the detail
+     * says how many were (planning.point_freshness). */
     var list = points || [];
-    var years = list.map(function (p) { return p.report_year; })
+    var dated = list.map(function (p) { return p.report_year; })
       .filter(function (y) { return y; }).sort(function (a, b) { return a - b; });
+    var years = dated.filter(function (y) { return y <= asOfYear; });
+    var later = dated.length - years.length;
+    /** @type {Rec} */
+    var f;
     if (!years.length) {
-      var blank = { n_points: list.length, n_dated: 0, latest_year: null,
-        median_age_years: null, n_recent: 0, state: 'unknown' };
-      blank.label = FRESHNESS_LABELS.unknown;
-      blank.detail = 'No survey dates are recorded for these points, so how ' +
-        'current this coverage figure is cannot be established.';
-      return blank;
+      f = { n_points: list.length, n_dated: 0, latest_year: null,
+        median_age_years: null, n_recent: 0, n_later: later, state: later ? 'later' : 'unknown' };
+    } else {
+      var ages = years.map(function (y) { return asOfYear - y; });
+      var middle = Math.floor(ages.length / 2);
+      var median = ages.length % 2
+        ? ages[middle] : (ages[middle - 1] + ages[middle]) / 2;
+      var recent = ages.filter(function (a) { return a <= FRESH_YEARS; }).length;
+      var state = median <= FRESH_YEARS ? 'fresh'
+        : (median <= AGEING_YEARS ? 'ageing' : 'stale');
+      f = { n_points: list.length, n_dated: years.length, latest_year: years[years.length - 1],
+        median_age_years: median, n_recent: recent, n_later: later, state: state };
     }
-    var ages = years.map(function (y) { return asOfYear - y; });
-    var middle = Math.floor(ages.length / 2);
-    var median = ages.length % 2
-      ? ages[middle] : (ages[middle - 1] + ages[middle]) / 2;
-    var recent = ages.filter(function (a) { return a <= FRESH_YEARS; }).length;
-    var state = median <= FRESH_YEARS ? 'fresh'
-      : (median <= AGEING_YEARS ? 'ageing' : 'stale');
-    var latest = years[years.length - 1];
-    return {
-      n_points: list.length, n_dated: years.length, latest_year: latest,
-      median_age_years: median, n_recent: recent, state: state,
-      label: FRESHNESS_LABELS[state],
-      detail: years.length + ' of ' + list.length + ' points carry a survey ' +
-        'date; the most recent is ' + latest + ' and the median is ' +
-        pyFixed(median, 0) + ' years old. ' + recent + ' were surveyed in the ' +
-        'last ' + FRESH_YEARS + ' years.'
-    };
+    f.label = freshnessLabel(f.state);
+    f.detail = freshnessDetail(f, asOfYear);
+    return f;
   }
 
   /** The dry-season band as a planner reads it: best case to worst.
@@ -29238,8 +29353,11 @@
       var points = (pointsByArea || {})[name] || [];
       var people = out.projected[name];
       var functional = points.filter(function (p) { return p.functional; });
+      /* surveyed in the plan year or the seven before it: a survey after
+       * the plan year says nothing about it */
       var recent = functional.filter(function (p) {
-        return p.report_year && asOfYear - p.report_year <= AGEING_YEARS;
+        return p.report_year && asOfYear - p.report_year >= 0 &&
+          asOfYear - p.report_year <= AGEING_YEARS;
       });
       var row = {
         name: name, census_population: Number(population[name]),
@@ -29306,7 +29424,6 @@
   Object.assign(C, {
     CENSUS_YEAR: CENSUS_YEAR, DEFAULT_GROWTH_RATE: DEFAULT_GROWTH_RATE,
     FRESH_YEARS: FRESH_YEARS, AGEING_YEARS: AGEING_YEARS,
-    FRESHNESS_LABELS: FRESHNESS_LABELS,
     intercensalGrowthRate: intercensalGrowthRate,
     projectPopulation: projectPopulation, pointFreshness: pointFreshness,
     seasonalCoverage: seasonalCoverage, seasonalBandText: seasonalBandText,
@@ -32735,17 +32852,6 @@
     return isFinite(number) ? number : null;
   }
 
-  /* where a project summary is: portfolio._latlon */
-  function deskLatLon(summary) {
-    var easting = deskNumber(summary.easting), northing = deskNumber(summary.northing);
-    if (!easting || !northing) return null;
-    var zone = Math.trunc(deskNumber(summary.utm_zone) || 0) || inferZoneForSierraLeone(easting);
-    try {
-      var at = utmToGeographic(easting, northing, zone);
-      return at && isFinite(at.lat) && isFinite(at.lon) ? at : null;
-    } catch (e) { return null; }
-  }
-
   function deskWaterQuality(summary) {
     var read = summaryVerdictState(summary);
     var water = read[0] && own(VERDICT_SHORT, read[0]) ? String(VERDICT_SHORT[read[0]]) : '';
@@ -32765,9 +32871,17 @@
       return { section: section, found: null };
     }
     var near = [], unplaced = 0;
+    /** @type {string[]} */
+    var degrees = [];
     portfolio.forEach(function (/** @type {Rec} */ summary) {
-      var at = deskLatLon(summary);
-      if (!at) { unplaced += 1; return; }
+      var at = summaryLatLon(summary);
+      if (!at) {
+        /* a project whose boxes hold degrees is named, so that it can be
+         * put right, rather than counted with those that record nothing */
+        if (summaryHoldsDegrees(summary)) degrees.push(portfolioSiteLabel(summary));
+        else unplaced += 1;
+        return;
+      }
       var distance = geodesicDistanceM(latlon.lat, latlon.lon, at.lat, at.lon);
       if (distance <= PORTFOLIO_RADIUS_M) near.push([distance, summary]);
     });
@@ -32791,6 +32905,10 @@
             depth ? pyFixed(depth, 1) : '', yieldM3h ? pyFixed(yieldM3h, 2) : '', deskWaterQuality(item[1])];
         }),
       });
+    }
+    if (degrees.length) {
+      section.paragraphs.push(phrase('desk_study.projects_degrees', { count: degrees.length,
+        names: andJoin(degrees) }));
     }
     if (unplaced) section.paragraphs.push(phrase('desk_study.projects_unplaced', { count: unplaced }));
     return { section: section, found: near.length };

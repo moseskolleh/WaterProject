@@ -193,6 +193,13 @@ projects_no_position: >-
   The earlier projects near the site are found from its GPS position, which
   is not recorded.
 
+# {names} is each project's site_label, joined by and_join.
+projects_degrees: >-
+  {names} {count:plural:holds|hold} a longitude and a latitude in degrees
+  where the easting and northing go, which neither app reads as a position,
+  so {count:plural:it is|they are} left out: open {count:plural:it|each},
+  convert the degrees to UTM in its site details and save it again.
+
 projects_unplaced: >-
   {count:num} {count:plural:project carries|projects carry} no position and
   {count:plural:is|are} left out.

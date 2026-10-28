@@ -5332,6 +5332,73 @@ await withPage(async (page, base, consoleErrors) => {
     desk.here.media === 3 + 2 + (desk.here.rose ? 1 : 0) + 1 && desk.moved,
     JSON.stringify(desk));
 
+  /* water points looked up 300 m round the site beside the valley, short
+   * of the 550 m a borehole's ring reaches: the plan says the lookup fell
+   * short; the radius box widened to 2,000 m afterwards changes neither
+   * what the Water points page judges nor what the desk study quotes,
+   * both the 300 m searched, and the page says so */
+  const searched = await page.evaluate(async () => {
+    const app = window.GWT.app, store = app.store, support = window.GWT.support, C = window.GWT.core;
+    window.__placeSite(8.475, -11.5);
+    const real = window.fetch;
+    /* WPdx+ holds one working borehole 1.5 km north of the site */
+    window.fetch = async (u, o) => String(u).includes('waterpointdata') ? new Response(JSON.stringify([
+      { row_id: 'n', lat_deg: String(8.475 + 1500 / 111194.93), lon_deg: '-11.5', status_clean: 'Functional',
+        water_source_clean: 'Borehole', water_tech_clean: 'Hand Pump' }]),
+    { status: 200, headers: { 'content-type': 'application/json' } }) : real(u, o);
+    const radius = store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M);
+    let out;
+    try {
+      store.set('waterpoints.radius', 300);
+      /* round the site as the page reads it, as the Look up button does */
+      const ll = app.siteLatLon();
+      await app.lookUpWaterPoints(document.querySelector('#page-host'), { lat: ll.lat, lon: ll.lon, radiusM: 300,
+        limit: 5000, clip: true, label: 'live WPdx+, 300 m around the site' });
+      app.goto('site');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      Array.from(document.querySelectorAll('[data-item="terrain"] button'))
+        .find((b) => b.textContent === 'Analyse the terrain').click();
+      const done = await window.__until(window.__settled);
+      const s = app.terrainSession();
+      const short = C.phrase('survey_plan.water_points_short', { searched: 300, reach: 550 });
+      store.set('waterpoints.radius', 2000);
+      app.goto('waterpoints');
+      const note = document.querySelector('#page-host [data-searched]');
+      const got = [];
+      const download = support.download;
+      support.download = (name, data) => { got.push({ name, data }); };
+      try { await app.buildDeskStudy(null); } finally { support.download = download; }
+      const files = await support.unzip(new Uint8Array(await got[0].data.arrayBuffer()));
+      const xml = new DOMParser().parseFromString(new TextDecoder().decode(files['word/document.xml']),
+        'application/xml');
+      const text = Array.from(xml.getElementsByTagName('w:p')).map((para) =>
+        Array.from(para.getElementsByTagName('w:t')).map((t) => t.textContent).join('')).join('\n');
+      /* the site moved 0.001 degree north, about 110 m: the lookup covers
+       * the rest of its 300 m round it */
+      const moved = app.waterPointsSearched({ lat: ll.lat + 0.001, lon: ll.lon });
+      out = { done, searchedM: s.result.plan && s.result.plan.searched_m,
+        short: s.result.planCaptions.plan.includes(short), held: app.waterPointsSearchRadius(),
+        note: note ? [note.getAttribute('data-searched'), note.textContent.includes('within 300 m')] : null,
+        desk: text.includes(C.phrase('desk_study.water_none', { radius: 300 })) &&
+          !text.includes(C.phrase('desk_study.water_none', { radius: 2000 })),
+        moved: [moved, 300 - C.geodesicDistanceM(ll.lat, ll.lon, ll.lat + 0.001, ll.lon)] };
+    } finally {
+      window.fetch = real;
+      store.set('waterpoints.radius', radius);
+      Object.assign(app.derived, { waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
+        waterPointsRadius: null, waterPointsCentre: null, waterPointsSkipped: null });
+      window.__placeSite(8.5, -11.5);
+      app.goto('site');
+    }
+    return out;
+  });
+  check('water points looked up short of a ring\'s reach: the plan says so, and a radius widened after the ' +
+    'lookup is not quoted by the Water points page or the desk study',
+    searched.done && searched.searchedM === 300 && searched.short && searched.held === 300 &&
+    JSON.stringify(searched.note) === '["300",true]' && searched.desk &&
+    searched.moved[0] === searched.moved[1] && searched.moved[0] > 185 && searched.moved[0] < 195,
+    JSON.stringify(searched));
+
   /* a Copernicus set: the three tiles around a missing fourth, declared
    * Copernicus GLO-30, at 8 N, 12 W */
   const holesSite = () => page.evaluate(() => {

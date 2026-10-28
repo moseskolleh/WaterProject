@@ -43,7 +43,7 @@ await withPage(async (page, base, consoleErrors) => {
   await page.waitForFunction(() => window.GWT && window.GWT.core && window.GWT.data &&
     window.GWT.docx);
 
-  const parsed = await page.evaluate(async ([R_STREAMLIT_YAML, GATE_LOGS]) => {
+  const parsed = await page.evaluate(async ([R_STREAMLIT_YAML, GATE_LOGS, WPDX_ROWS]) => {
     const S = GWT.support, C = GWT.core, D = GWT.data;
     async function grids(b64) {
       return GWT.support.readXlsx(S.base64ToBytes(b64));
@@ -932,6 +932,16 @@ await withPage(async (page, base, consoleErrors) => {
         return { date, year: point.report_year, months_text: months,
           months: point.months_per_year };
       });
+    {
+      /* the reader on rows both read alike: make_reference.py's
+       * WPDX_READER_ROWS */
+      const skipped = [];
+      const read = C.parseWpdxRecords(WPDX_ROWS, skipped);
+      out.wpdx_reader = {
+        points: read.map((p) => [p.row_id, p.lat, p.lon, p.installed]),
+        flags: skipped.map((f) => [f.level, f.code, f.message]),
+      };
+    }
     out.growth_rate = C.intercensalGrowthRate();
     const wp = (functional, year, months) => C.parseWpdxRecords([{
       lat_deg: 8, lon_deg: -13, status_clean: functional ? 'Functional' : 'Non-Functional',
@@ -954,7 +964,8 @@ await withPage(async (page, base, consoleErrors) => {
     out.planning = {};
     [['census', 2015, null, null], ['today', 2026, null, null],
       ['slow', 2026, 0.015, null],
-      ['districts', 2026, null, { 'Western Area Urban': 0.06, Pujehun: 0.01 }]]
+      ['districts', 2026, null, { 'Western Area Urban': 0.06, Pujehun: 0.01 }],
+      ['before the surveys', 2018, null, null]]
       .forEach(([label, year, rate, rates]) => {
         const r = C.planningRows(planningPopulation, planningPoints,
           { asOfYear: year, rate, rates });
@@ -1034,7 +1045,7 @@ await withPage(async (page, base, consoleErrors) => {
       one_pager: C.portfolioOnePager(summaries[1]),
     };
     return out;
-  }, [reference.streamlit_project_file.yaml, reference.gate_logs]);
+  }, [reference.streamlit_project_file.yaml, reference.gate_logs, reference.wpdx_reader_rows]);
 
   // The designs and logs the borehole-design review found wanting, run from
   // the specs make_reference.py wrote, so both engines see the same input.
@@ -1555,6 +1566,9 @@ await withPage(async (page, base, consoleErrors) => {
       js.year === py.year && js.months === py.months,
       JSON.stringify(js) + ' vs ' + JSON.stringify(py));
   });
+  check('water points: the reader sets aside the same positions and reads the same install years',
+    JSON.stringify(parsed.wpdx_reader) === JSON.stringify(R.wpdx_reader),
+    JSON.stringify(parsed.wpdx_reader) + '\n     vs ' + JSON.stringify(R.wpdx_reader));
   check('planning: the growth rate is derived the same way',
     close(parsed.growth_rate, R.growth_rate),
     `${parsed.growth_rate} vs ${R.growth_rate}`);
@@ -3800,7 +3814,8 @@ await withPage(async (page, base, consoleErrors) => {
         let laid;
         try {
           laid = C.surveyPlan(lin, run.a.core, run.a.parts, at(kase.at), water,
-            Object.assign({}, lin.settings, kase.settings), C.defaultConfig().ves);
+            Object.assign({}, lin.settings, kase.settings), C.defaultConfig().ves, undefined,
+            kase.searched === undefined ? null : kase.searched);
         } catch (e) {
           return { exact: { refused: String(e && e.message !== undefined ? e.message : e) } };
         }
@@ -3830,7 +3845,8 @@ await withPage(async (page, base, consoleErrors) => {
       };
       return { z: [C.sha256Hex(bytesOf(z)), spots(z)], cases: g.cases.map((kase) => answer(window, run, kase.settings)),
         plans: SP.cases.map((kase) => tried(() => plan(kase))),
-        refused: SP.refused.map((kase) => tried(() => plan(Object.assign({}, SP.cases[0], { settings: kase.settings })))) };
+        refused: SP.refused.map((kase) => tried(() => plan(Object.assign({}, SP.cases[0],
+          { settings: kase.settings, searched: kase.searched === undefined ? null : kase.searched })))) };
     };
 
     return {
@@ -3916,7 +3932,9 @@ await withPage(async (page, base, consoleErrors) => {
       SP.refused.forEach((kase, i) => {
         const plan = (got.refused || [])[i] || { threw: 'no answer' };
         const said = plan.threw ? `threw ${plan.threw}` : plan.exact.refused;
-        check(`survey plan: ${JSON.stringify(kase.settings)} refused in Python's words`, said === kase.refused,
+        const asked = kase.searched === undefined ? JSON.stringify(kase.settings)
+          : `a lookup radius of ${kase.searched} m`;
+        check(`survey plan: ${asked} refused in Python's words`, said === kase.refused,
           `js ${JSON.stringify(said)}\n     py ${JSON.stringify(kase.refused)}`);
       });
     }

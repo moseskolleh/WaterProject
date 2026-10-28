@@ -306,3 +306,47 @@ def test_a_caller_that_does_not_ask_is_unaffected():
         {"lat_deg": None, "lon_deg": -13.23},
     ]
     assert len(parse_wpdx_records(records)) == 1
+
+
+def test_a_position_no_map_holds_is_set_aside_as_the_browser_sets_it_aside():
+    """"nan", "inf", a latitude past 90 or a longitude past 180 (UTM metres
+    in the degree columns) is no position. The reader kept them as water
+    points: they were counted in the totals, raised no flag, fell into no
+    chiefdom, which the coverage page blamed on a border or the sea, and
+    one with "nan" made survey_plan raise. A cell of spaces, which the
+    browser read as 0, and a cell Python's float reads but the browser's
+    Number does not ("1_000") or the other way round ("0x1F") are no
+    number in either reader."""
+    records = [
+        {"lat_deg": "8.5", "lon_deg": "-11.5", "status_clean": "Functional"},
+        {"lat_deg": "nan", "lon_deg": "nan"},
+        {"lat_deg": "8.5", "lon_deg": "inf"},
+        {"lat_deg": "95", "lon_deg": "200"},
+        {"lat_deg": "936224.6", "lon_deg": "694667.5"},
+        {"lat_deg": "  ", "lon_deg": "-11.5"},
+        {"lat_deg": "8.5", "lon_deg": "-11_5"},
+        {"lat_deg": "0x8", "lon_deg": "-11.5"},
+        {"lat_deg": True, "lon_deg": -11.5},
+        {"lat_deg": float("nan"), "lon_deg": -11.5},
+        {"lat_deg": " 8.25\t", "lon_deg": "-11.5e0"},
+    ]
+    skipped: list = []
+    points = parse_wpdx_records(records, skipped)
+    assert [(p.lat, p.lon) for p in points] == [(8.5, -11.5), (8.25, -11.5)]
+    unplaced = next(f for f in skipped if f.code == "water_point_unplaced")
+    assert unplaced.message.startswith("9 inventory record(s)"), unplaced.message
+    assert functionality_summary(points)["total"] == 2
+
+
+def test_the_install_year_is_read_by_one_rule():
+    """The browser read "installation_year" and Python did not; Python kept
+    a 0, which WPDx writes where the year was never recorded, and printed it
+    as the year installed, where the browser left it blank; Python took
+    2009.6 as 2009 and the browser as 2010. Both take the whole part, read
+    install_year then installation_year, and read 0 or less as unrecorded."""
+    base = {"lat_deg": "8.5", "lon_deg": "-11.5"}
+    cells = [{"install_year": "0"}, {"install_year": "2009.6"}, {"installation_year": "2011"},
+             {"install_year": "", "installation_year": 2003}, {"install_year": "-4"},
+             {"install_year": "unknown"}, {"install_year": 1998}, {"install_year": "nan"}]
+    years = [p.install_year for p in parse_wpdx_records([dict(base, **c) for c in cells])]
+    assert years == [None, 2009, 2011, 2003, None, None, 1998, None]

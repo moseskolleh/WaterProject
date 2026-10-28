@@ -175,6 +175,21 @@ def test_points_without_coordinates_are_dropped():
     assert portfolio_points([{"community": "No GPS", "status": "sited"}]) == []
 
 
+def test_degrees_in_the_boxes_are_no_position_on_the_map_or_in_the_detail():
+    """A summary holding a longitude and a latitude where the easting and
+    northing go was read as metres and drawn on the equator, 940 km off;
+    it is no position, as SiteMetadata.utm reads it."""
+    from groundwater.portfolio import _latlon, summary_holds_degrees
+
+    degrees = {"community": "Rokel", "easting": -13.2317, "northing": 8.4657, "status": "dry"}
+    assert _latlon(degrees) is None and summary_holds_degrees(degrees)
+    assert portfolio_points([degrees]) == []
+    assert "Location" not in dict(site_detail(degrees))
+    assert not summary_holds_degrees({"easting": 694667.4, "northing": 936224.6})
+    assert not summary_holds_degrees({"easting": None, "northing": 8.4657})
+    assert not summary_holds_degrees({"easting": "13 W", "northing": 8.4657})
+
+
 def test_site_label():
     assert site_label(_SUMMARIES[0]) == "Rokel (Port Loko)"
     assert site_label({"community": "Foo"}) == "Foo"

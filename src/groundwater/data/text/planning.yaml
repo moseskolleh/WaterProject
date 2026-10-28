@@ -1,0 +1,37 @@
+# Coverage as a planning figure: how current the survey behind an area's
+# water points is, as the planning view of the Coverage gap page shows it
+# in both apps. Both engines read this file: groundwater/planning.py and the
+# planning section of gwt-core.js. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# The label of each state point_freshness gives. "later" is an area whose
+# every survey date is after the plan year.
+freshness_label:
+  fresh: Surveyed recently
+  ageing: Survey is getting old
+  stale: Survey is out of date
+  unknown: Survey dates not recorded
+  later: Surveyed after the plan year
+
+# The sentence under the label. {year} is the plan year: a survey dated
+# after it says nothing about it, so it is left out of the median and of
+# the recent count, and freshness_later says how many were. {fresh} is
+# FRESH_YEARS.
+freshness_undated: >-
+  No survey dates are recorded for these points, so how current this
+  coverage figure is cannot be established.
+
+freshness_dated: >-
+  {dated:.0f} of {points:.0f} points carry a survey date up to {year:.0f};
+  the most recent is {latest:.0f} and the median is {median:.0f} years old.
+  {recent:.0f} were surveyed in the last {fresh:.0f} years.
+
+freshness_later: >-
+  {later:.0f} more {later:plural:carries|carry} a survey date after
+  {year:.0f}, which says nothing about {year:.0f}, and
+  {later:plural:is|are} left out.
+
+freshness_all_later: >-
+  Every survey date these points carry ({later:.0f} of {points:.0f}) is
+  after {year:.0f}, which says nothing about {year:.0f}, so how current
+  this coverage figure was then cannot be established.
