@@ -147,3 +147,25 @@ citations:
     Murphy, A. H. and Winkler, R. L. (1977). Reliability of subjective
     probability forecasts of precipitation and temperature. Journal of the
     Royal Statistical Society, Series C (Applied Statistics), 26(1), 41-47.
+  # The time-to-failure curves of the asset registry (PLAN.md step 7.4,
+  # survival.py): the estimate, its variance, the log-log band, the median's
+  # band and the comparison between groups. Shown alike by both apps' Asset
+  # registry pages.
+  kaplan_meier: >-
+    Kaplan, E. L. and Meier, P. (1958). Nonparametric estimation from
+    incomplete observations. Journal of the American Statistical Association,
+    53(282), 457-481.
+  greenwood: >-
+    Greenwood, M. (1926). The natural duration of cancer. Reports on Public
+    Health and Medical Subjects, 33, 1-26. London: His Majesty's Stationery
+    Office.
+  kalbfleisch_prentice: >-
+    Kalbfleisch, J. D. and Prentice, R. L. (1980). The Statistical Analysis
+    of Failure Time Data. New York: Wiley.
+  brookmeyer_crowley: >-
+    Brookmeyer, R. and Crowley, J. (1982). A confidence interval for the
+    median survival time. Biometrics, 38(1), 29-41.
+  mantel: >-
+    Mantel, N. (1966). Evaluation of survival data and two new rank order
+    statistics arising in its consideration. Cancer Chemotherapy Reports,
+    50(3), 163-170.

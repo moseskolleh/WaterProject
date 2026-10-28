@@ -2279,3 +2279,75 @@ def test_the_service_rounds_follow_the_design_and_the_mechanic(sample_data):
     assert "Area mechanic: A. Bangura" in text and basis in text
     cells = [c.text for t in sheet.tables for row in t.rows for c in row.cells]
     assert "SL-WAR-8FEEVKQ-T" in cells and "BOREHOLE SL-WAR-8FEEVKQ-T" in cells
+
+
+def test_how_long_boreholes_keep_working_on_the_registry_page():
+    """PLAN.md step 7.4: the Asset registry page reads this borehole and the
+    register of saved project files as a time to the first failure: the
+    curve over them all and by pump type with its tables, a group of too few
+    boreholes said to be too few, and the pump type named on this borehole's
+    record joining it to its group."""
+    from datetime import date
+
+    import yaml
+
+    from groundwater.models import SiteMetadata
+    from groundwater.project_io import serialize_project
+    from groundwater.registry import Asset, AssetEvent, asset_from_dict, mint_asset_id
+    from groundwater.survival import survival_analysis, survival_rows, survival_text
+    from groundwater.text import phrase
+
+    files = []
+    for i in range(12):
+        easting = 690000.0 + 1000.0 * i
+        days = 300 + 90 * i if i < 6 else 1500 + 60 * i
+        when = date.fromordinal(date(2018, 1, 10).toordinal() + days).isoformat()
+        record = Asset(
+            asset_id=mint_asset_id(SiteMetadata(district="Western Area Rural", easting=easting,
+                                                northing=938150.0, utm_zone=28)),
+            community=f"Site {i}", district="Western Area Rural", easting=easting,
+            northing=938150.0, utm_zone=28,
+            pump_type="Afridev" if i < 6 else "India Mark II",
+            events=[AssetEvent("2018-01-10", "commissioned"),
+                    AssetEvent(when, "failure" if i % 2 else "routine_inspection")])
+        files.append((f"site_{i}.yaml", serialize_project({"asset_record": record.as_dict()},
+                                                          "0.3.0")))
+    this = Asset(asset_id="SL-WAR-8FEEVKQ-T", community="Dr. Timbo's",
+                 district="Western Area Rural", easting=694912.0, northing=938150.0,
+                 utm_zone=28, events=[AssetEvent("2020-01-10", "commissioned"),
+                                      AssetEvent("2022-03-01", "failure")])
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["asset_record"] = this.as_dict()
+    at.session_state["registry_upload_kept"] = {"ids": [name for name, _ in files],
+                                                "files": files}
+    goto(at, "Asset registry")
+    at.date_input(key="survival_date").set_value(date(2024, 6, 1))
+    at.run()
+    assert not at.exception, at.exception
+
+    register = [asset_from_dict(this.as_dict())] + [
+        asset_from_dict(yaml.safe_load(blob)["asset"]) for _, blob in files]
+    result = survival_analysis(register, "2024-06-01")
+    words = survival_text(result)
+    written = " ".join(str(m.value) for m in at.markdown)
+    assert words["summary"][0] in written and words["overall"]["lines"][0] in written
+    pump = next(g for g in words["groupings"] if g["by"] == "pump_type")
+    assert all(line in written for line in pump["lines"])
+    # this borehole names no pump yet, so it is a group of one, too few
+    assert phrase("survival.too_few", label=phrase("survival.not_recorded"), n=1, minimum=5,
+                  failed=1, censored=0) in written
+    frames = [element.value for element in at.dataframe]
+    assert any(list(frame.iloc[0]) == survival_rows([result["overall"]])[0] for frame in frames)
+    assert len(at.get("image")) >= 2
+
+    # naming its pump joins it to its group
+    next(t for t in at.text_input if t.label == "Pump type").input(" India Mark II ")
+    next(b for b in at.button if b.label == "Save the pump and contractor").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert asset_from_dict(at.session_state["asset_record"]).pump_type == "India Mark II"
+    register[0] = asset_from_dict(at.session_state["asset_record"])
+    pump = next(g for g in survival_text(survival_analysis(register, "2024-06-01"))["groupings"]
+                if g["by"] == "pump_type")
+    written = " ".join(str(m.value) for m in at.markdown)
+    assert pump["lines"][0].startswith("India Mark II: 7 followed") and pump["lines"][0] in written

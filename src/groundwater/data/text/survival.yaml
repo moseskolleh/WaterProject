@@ -1,0 +1,193 @@
+# How long boreholes keep working (PLAN.md step 7.4): the time from
+# commissioning to the first failure across the boreholes of the asset
+# registry, estimated by Kaplan and Meier's method, by pump type, contractor
+# and water chemistry. Written by survival.py and survival_plots.py, by the
+# Asset registry pages of both apps, and by their twins in gwt-core.js,
+# gwt-charts.js and gwt-app.js. Every entry is read by its quoted id in both
+# engines. The template rules are in src/groundwater/text.py;
+# CONTRIBUTING.md says how to add an entry.
+
+heading: How long boreholes keep working
+# Each app's page follows it with a sentence of its own naming the other app.
+intro: >-
+  This borehole and every borehole in the register above, from
+  commissioning to the first failure. A borehole that has not failed is
+  counted as working only up to the last report of it working, never after:
+  the registry's rule that a borehole nobody has reported on is not known to
+  be working.
+all: All boreholes
+not_recorded: Not recorded
+
+# The groupings.
+by:
+  pump_type: pump type
+  contractor: contractor
+  chemistry: water chemistry
+by_heading: "By {by}"
+by_intro:
+  pump_type: >-
+    By the pump type named on each borehole's record.
+  contractor: >-
+    By the contractor named on each borehole's record as having installed
+    it.
+  chemistry: >-
+    By the water's corrosivity as each borehole's record carries it from
+    its design's rising main, which read it from the project's water
+    quality sample: aggressive (by the corrosivity indices, or a pH below
+    6.5), not aggressive, or not known (no sample, or one the indices could
+    not be computed from, or a record that carries no rising main).
+# The water's corrosivity, by the design's chemistry state; incomplete,
+# none and a record with no rising main are all "unknown".
+chemistry:
+  aggressive: Aggressive water
+  not_aggressive: Water not aggressive
+  unknown: Corrosivity not known
+list_and: "{first} and {last}"
+
+# What the analysis says as a whole.
+empty: There are no boreholes in the register to follow.
+headline: >-
+  As of {date}, {followed:g} of the {total:g}
+  {total:plural:borehole|boreholes} in the register can be followed from
+  commissioning: {failed:g} {failed:plural:has|have} failed at least once,
+  and {censored:g} {censored:plural:has|have} not and {censored:plural:is|are}
+  censored, counted as working only up to the last report of
+  {censored:plural:it|them} working or {censored:plural:its|their}
+  decommissioning.
+none_followed: >-
+  As of {date}, none of the {total:g} {total:plural:borehole|boreholes} in
+  the register can be followed from commissioning.
+no_time: >-
+  {count:g} {count:plural:borehole has|boreholes have} no report of
+  working since commissioning, so {count:plural:it is|they are} censored at
+  commissioning and {count:plural:contributes|contribute} no time.
+no_start: >-
+  {count:g} {count:plural:borehole has|boreholes have} no commissioning
+  date on or before that day, so there is no time to count from, and
+  {count:plural:it is|they are} left out.
+by_mending: >-
+  {count:g} first {count:plural:breakdown is|breakdowns are} known only
+  from a repair or a return to service with no failure recorded before it,
+  and {count:plural:is|are} dated by that record: the latest the borehole
+  can have failed.
+before_start: >-
+  {count:g} {count:plural:borehole carries|boreholes carry} records dated
+  before {count:plural:its|their} commissioning, which are not read.
+undated: >-
+  {count:g} {count:plural:borehole carries|boreholes carry} records whose
+  date cannot be read, which are not counted, even where one is a failure.
+method: >-
+  The share still working is the Kaplan-Meier estimate (Kaplan and Meier
+  1958) of the time from commissioning to the first failure. A borehole
+  that has not failed is censored: counted as working up to the last report
+  of it working (its commissioning, or a visit that would have recorded a
+  failure had it found one: a sanitary or routine inspection, or a water
+  sample) and not after, because not reported since is not taken as
+  working; one decommissioned without a failure is censored on that day. A
+  repair or a return to service with no failure recorded before it counts
+  as the first failure, on its own date. Of several records on one day, a
+  failure is read first, then a repair or return to service, then a
+  decommissioning. Records dated after the day of the analysis are not
+  read. The band is a 95 percent pointwise band from Greenwood's variance
+  (Greenwood 1926) on the log-log scale (Kalbfleisch and Prentice 1980);
+  there is none before the first failure, and where the
+  last boreholes at risk all fail it closes on nought with the estimate.
+  The median is the first time the estimate falls to one half or below,
+  and its band runs from where the band's lower edge does so to where its
+  upper edge does (after Brookmeyer and Crowley 1982). A year is 365.25
+  days.
+minimum: >-
+  A group is judged only on at least {minimum:g} boreholes followed; below
+  that it says there are too few to judge and gives its counts, never a
+  curve. That number, which records count as a failure and which as a
+  report of working, and the times the table states are choices made here,
+  not a standard.
+comparison_method: >-
+  Groups are compared by the log-rank test (Mantel 1966) only where at
+  least two groups whose records name a value each have that many
+  boreholes followed. A group whose records name none is shown but not
+  compared, since it is not one kind of borehole, and a group none of whose
+  boreholes was at risk when any borehole failed has nothing to be compared
+  on and is left out of the test.
+
+# A group.
+group_line: >-
+  {label}: {n:g} followed, {failed:g} failed, {censored:g} censored.
+  {median}
+too_few: >-
+  {label}: too few boreholes to judge, with {n:g} followed where a curve
+  needs {minimum:g} ({failed:g} failed, {censored:g} censored).
+median: >-
+  Median time to the first failure: {years:.1f} years, with a 95 percent
+  band of {lower:.1f} to {upper:.1f} years.
+median_open: >-
+  Median time to the first failure: {years:.1f} years, with a 95 percent
+  band from {lower:.1f} years whose upper end is not reached.
+median_none: >-
+  The median is not reached: the estimate stays above one half over the
+  {years:.1f} years followed.
+
+# The comparison.
+compared: >-
+  The log-rank test across {groups} gives a chi-squared of {chi2:.2f} on
+  {df:g} {df:plural:degree|degrees} of freedom, p = {p:.3f}.
+compared_small: >-
+  The log-rank test across {groups} gives a chi-squared of {chi2:.2f} on
+  {df:g} {df:plural:degree|degrees} of freedom, p below 0.001.
+p_meaning: >-
+  The p-value is how often curves at least this far apart would arise by
+  chance if all these groups' boreholes failed at the same rate. It is not
+  the chance that the groups differ, and it says nothing of why they might.
+left_out: "Left out of the comparison: {groups}."
+compare_few: >-
+  No comparison: fewer than two groups whose records name a value have
+  {minimum:g} boreholes followed.
+compare_no_failures: >-
+  No comparison: none of the boreholes in the groups compared has failed.
+compare_one_at_risk: >-
+  No comparison: whenever a borehole failed, every borehole at risk was of
+  one group, so the log-rank test has nothing to compare it with.
+compare_singular: >-
+  No comparison: the groups were not at risk together at enough of the
+  failures for the log-rank test to be computed.
+not_at_risk: >-
+  Not in the test, having no borehole at risk when any borehole failed:
+  {groups}.
+
+# A grouping's table.
+columns:
+  group: Group
+  boreholes: Boreholes
+  followed: Followed
+  failed: Failed
+  censored: Censored
+  median: Median (years)
+  band: 95 percent band (years)
+too_few_cell: too few boreholes to judge
+not_reached: not reached
+years_cell: "{years:.1f}"
+band_cell: "{lower} to {upper}"
+
+# The table of numbers at risk.
+at_risk_group: Group
+at_risk_year: "Year {years:g}"
+at_risk_cell: "{n:g} at risk, {pct:.0f}% ({lower:.0f} to {upper:.0f})"
+at_risk_whole: "{n:g} at risk, {pct:.0f}%"
+at_risk_beyond: "{n:g} at risk"
+at_risk_caption: >-
+  Each cell is the number of boreholes still at risk at that time (followed
+  that long and not yet failed), then the share estimated still working and
+  its 95 percent band, in percent. Past the longest time followed there is
+  no estimate.
+
+# The figure.
+figure_all: Time to the first failure, all boreholes
+figure_by: "Time to the first failure, by {by}"
+axis_x: Years since commissioning
+axis_y: Still working (%)
+legend: "{label} ({n:g})"
+legend_censored: Censored
+figure_caption: >-
+  The step is the share estimated still working, the shading its 95
+  percent band, and a tick a time at which a borehole was censored. Only
+  groups with enough boreholes followed are drawn.

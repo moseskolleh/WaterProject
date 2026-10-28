@@ -29,6 +29,7 @@ _LEDGER = _DEFAULTS["ledger"]
 _COSTS = _DEFAULTS["cost_range"]
 _TERRAIN = _DEFAULTS["terrain"]
 _SERVICE = _DEFAULTS["service"]
+_SURVIVAL = _DEFAULTS["survival"]
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +530,26 @@ class ServiceConfig:
 
 
 # ---------------------------------------------------------------------------
+# How long boreholes keep working (PLAN.md step 7.4, survival.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SurvivalConfig:
+    # A group's time to first failure is estimated, drawn and compared only
+    # on at least this many boreholes followed from commissioning; below it
+    # the group says there are too few boreholes to judge and gives its
+    # counts, never a curve; the log-rank test compares only groups judged.
+    # Five, as the ledger's hit rates (min_group) and the plan's contractor
+    # scorecards (step 6.3) never judge on fewer. Provisional (QUESTIONS.md
+    # item 20).
+    min_at_risk: int = _SURVIVAL["min_at_risk"]
+    # The times, in years from commissioning, at which the number still at
+    # risk and the share still working are stated: a list, each larger than
+    # the one before. A choice (QUESTIONS.md item 20).
+    at_risk_years: tuple = tuple(_SURVIVAL["at_risk_years"])
+
+
+# ---------------------------------------------------------------------------
 # Top level configuration
 # ---------------------------------------------------------------------------
 
@@ -564,6 +585,7 @@ class Config:
     cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
     terrain: TerrainConfig = field(default_factory=TerrainConfig)
     service: ServiceConfig = field(default_factory=ServiceConfig)
+    survival: SurvivalConfig = field(default_factory=SurvivalConfig)
     # The calibration set in force (PLAN.md step 5.3, calibration_sets.py),
     # as clean_set reads it, or None for the toolkit's provisional default.
     # Put one in force with calibration_sets.apply_set, which refuses a set
@@ -596,6 +618,7 @@ class Config:
             ("cost_range", cfg.cost_range),
             ("terrain", cfg.terrain),
             ("service", cfg.service),
+            ("survival", cfg.survival),
         ):
             overrides = data.get(section_name, {}) or {}
             for key, value in overrides.items():
@@ -611,11 +634,12 @@ class Config:
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
             if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
-                           "ledger", "cost_range", "terrain", "service", "calibration"):
+                           "ledger", "cost_range", "terrain", "service", "survival",
+                           "calibration"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
                     "(expected style, ves, pumping, design, ves_range, odds, "
-                    "ledger, cost_range, terrain, service or calibration)",
+                    "ledger, cost_range, terrain, service, survival or calibration)",
                     stacklevel=2,
                 )
         named = data.get("calibration")

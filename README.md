@@ -165,7 +165,15 @@ water quality guidelines.
     the register by area mechanic (named on the borehole's record, else for
     its chiefdom), order each round by a stated nearest-neighbour walk that
     is not an optimal route, and print a round sheet with boxes for the
-    readings
+    readings. Across the register, the time from commissioning to the
+    first failure is estimated by Kaplan and Meier's method, overall and
+    by pump type, contractor and water corrosivity, as a step curve with
+    its 95 percent band and a table of the median and the numbers at risk
+    on a day that is an input. A borehole that has not failed counts as
+    working only up to the last report of it working; a group of fewer
+    than five boreholes followed says it is too few to judge and shows no
+    curve; and groups are compared by the log-rank test, with its p-value
+    said to be what it is
 18. The survey as an interactive map, not only as a picture: both apps
     write a [GeoLibre](https://geolibre.app) project file - an open,
     plain-JSON map format - carrying the site, the scored drill targets,
