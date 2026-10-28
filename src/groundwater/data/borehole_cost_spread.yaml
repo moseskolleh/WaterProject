@@ -10,7 +10,7 @@
 # The rates in one group share a cause, and the distribution draws them
 # together: one draw places every rate in the group at the same point of its
 # own triangle. Different groups are drawn independently. Drawing all
-# twenty-three apart would let a dear fuel line cancel a cheap one, which
+# twenty-four apart would let a dear fuel line cancel a cheap one, which
 # the pump price does not do.
 #
 # NO SOURCE IS RECORDED for any of these spreads. Each is a provisional
@@ -86,13 +86,13 @@ groups:
       bit or heavy losses cost well over the allowance.
 
   - key: manufactured_materials
-    codes: [CAS1, CAS2, CAS4, CAS5, PMP1]
+    codes: [CAS1, CAS2, CAS4, CAS5, PMP1, RSM1]
     below: 0.10
     above: 0.20
     basis: >-
-      Casing, screen, cement, fittings and the handpump are bought items that
-      can be quoted before the contract; imported ones move with the exchange
-      rate and with supply, mostly upward.
+      Casing, screen, cement, fittings, the handpump and a stainless rising
+      main are bought items that can be quoted before the contract; imported
+      ones move with the exchange rate and with supply, mostly upward.
 
   - key: gravel
     codes: [CAS3]

@@ -83,7 +83,7 @@ def triangle_inverse(lo: float, mode: float, hi: float, q: float) -> float:
 
 def test_every_rate_has_a_triangle_around_its_likely_value():
     rates = load_rates()
-    assert len(rates) == 23
+    assert len(rates) == 24
     for r in rates:
         lo, likely, hi = r.triangle()
         assert r.min_usd is not None and r.max_usd is not None, r.code

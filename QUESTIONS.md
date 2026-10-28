@@ -123,3 +123,29 @@ need real project inputs or decisions to finish calibrating it.
    follow; (d) say whether forms for other sources (a protected spring, a
    hand-dug well, a piped scheme) are wanted, since only the tubewell form
    is bundled.
+
+12. **The rising main material and its inspection intervals (added with
+   PLAN.md step 7.2).** Where the water is aggressive (by the corrosivity
+   classification, or a pH below 6.5) the design specifies a stainless
+   steel rising main in place of the galvanised iron one the handpump line
+   of the cost catalogue includes, and inspects it every 6 months rather
+   than every 12. All four values are settings in
+   `groundwater/data/defaults.json` (`design.rising_main_material`,
+   `aggressive_rising_main_material`, `rising_main_inspection_months` and
+   `aggressive_rising_main_inspection_months`), and each is a choice made
+   here, not a standard. Four things need the owner or someone with field
+   records: (a) confirm the two intervals, or give the ones the programme's
+   mechanics work to; (b) say whether a borehole whose water has not been
+   analysed should be inspected at the shorter interval, as it is now,
+   until a sample says otherwise; (c) say whether stainless steel (which
+   replaces the India Mark II's steel main and rods like for like) or uPVC
+   (for a pump made to take a uPVC main) should be the material the design
+   specifies and prices, since the catalogue prices only stainless steel and
+   a uPVC choice is flagged unpriced; (d) replace the placeholder rate of
+   row RSM1 in `groundwater/data/borehole_cost_items.csv` (USD 20 a metre,
+   extra over the handpump line, with no quotation behind it, as item 8
+   says of the other rates) with a current quotation, and add a uPVC row if
+   uPVC is wanted. The Ryznar classes and the aggressive-index cut the
+   classification uses are not cited in `references.yaml`, and the -0.5
+   margin on the Langelier index has no source in the toolkit; a reference
+   for each, or a corrected value, would close that too.

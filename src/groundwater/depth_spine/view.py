@@ -481,6 +481,10 @@ def build_view(
             intake_floor = pump_intake_floor(analysis.yield_recommendation,
                                              config.pumping.pump_submergence_min_m)
 
+    assessment = inputs.assessment
+    if assessment is None and inputs.quality is not None:
+        assessment = assess_sample(inputs.quality)
+
     design = design_borehole(
         log=inputs.log,
         static_water_level_m=swl,
@@ -488,6 +492,8 @@ def build_view(
         pump_intake_floor_m=intake_floor,
         rules=config.design,
         screens_m=screens_m,
+        # the rising main, and so the bill, follow the sample
+        quality=assessment,
     )
 
     estimate = estimate_borehole_cost(
@@ -514,9 +520,6 @@ def build_view(
         "edited": screens_m is not None,
     }
 
-    assessment = inputs.assessment
-    if assessment is None and inputs.quality is not None:
-        assessment = assess_sample(inputs.quality)
     if assessment is not None:
         payload["quality"] = _quality(assessment)
 

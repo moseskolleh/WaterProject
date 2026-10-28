@@ -42,7 +42,14 @@ water quality guidelines.
    ground to clip it to and none of them is a lower bound; otherwise it
    stays a picture, as the protective-capacity map, drawn in classes,
    always does
-3. To-scale borehole design drawings with lithology and construction columns
+3. To-scale borehole design drawings with lithology and construction columns,
+   and a rising main chosen from the water: where the sample's corrosivity
+   indices or its pH say the water is aggressive, the design specifies a
+   stainless steel rising main in place of galvanised iron, inspected every
+   6 months rather than 12, says why from the sample's index values, and the
+   bill of quantities prices it (at a placeholder rate). With no sample the
+   design says the choice rests on no chemistry. The intervals and the rate
+   are choices waiting on `QUESTIONS.md` item 12
 4. Pumping test analysis (Cooper-Jacob, Theis, recovery, step tests) with a
    recommended safe yield and pump setting depth
 5. Water quality assessment against WHO and national standards, with

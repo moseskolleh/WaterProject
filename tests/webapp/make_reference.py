@@ -959,6 +959,15 @@ COST_CASES = {
     "flat catalogue": dict(
         inputs={"total_depth_m": 48.0, "mobilisation_distance_km": 120.0}, flat=True),
     "one sample": dict(inputs={"total_depth_m": 30.0}, samples=1, p=0.7, sid="B"),
+    # a stainless rising main (PLAN.md step 7.2): one taken as long as the
+    # hole is as long as each depth drawn, one over the intake stays put
+    "stainless main as long as the hole, depth drawn": dict(
+        inputs={"total_depth_m": 36.0, "mobilisation_distance_km": 60.0,
+                "rising_main_material": "stainless steel"}, depth=True, p=0.5, sid="A (1)"),
+    "stainless main over the intake, depth drawn": dict(
+        inputs={"total_depth_m": 36.0, "mobilisation_distance_km": 60.0,
+                "rising_main_material": "stainless steel", "rising_main_m": 24.0},
+        depth=True),
     "long odds, few samples": dict(inputs={"total_depth_m": 30.0}, samples=5, p=0.02,
                                    sid="C"),
 }
@@ -973,6 +982,9 @@ COST_PROGRAMMES = {
     "one, certain, flat": dict(inputs={"total_depth_m": 45.0, "mobilisation_distance_km": 150.0},
                                n=1, rate=100.0, flat=True),
     "500 at 5 percent": dict(inputs={"total_depth_m": 40.0}, n=500, rate=5.0, samples=40),
+    "ten with a stainless main, depth drawn": dict(
+        inputs={"total_depth_m": 40.0, "mobilisation_distance_km": 100.0,
+                "rising_main_material": "stainless steel"}, n=10, rate=60.0, depth=True),
 }
 
 COST_SHORT = 300
@@ -1685,6 +1697,7 @@ def build() -> dict:
     out["calibration_sets"] = calibration_sets_reference()
     out["calibration_in_force"] = calibration_in_force_reference()
     out["sanitary"] = sanitary_reference()
+    out["rising_main"] = rising_main_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -4430,6 +4443,146 @@ IN_FORCE_POSITIONS = [[166030.0, 930010.0, 29], [708958.4, 926355.5, 28], [None,
                       [250000.0, 900000.0, None]]
 IN_FORCE_MODELS = [[[400.0, 90.0, 2000.0, 5000.0], [2.0, 18.0, 10.0]], [[300.0, 25.0, 140.0, 4000.0], [1.5, 6.0, 20.0]],
                    [[600.0, 120.0, 1200.0], [3.0, 30.0]], [[250.0, 12.0, 2500.0], [2.0, 10.0]]]
+
+
+# ------------------------------------- the rising main at design time (7.2)
+#
+# What the design specifies for the rising main and how often it is
+# inspected, from a water quality sample, over every state the water can be
+# in (aggressive by the indices, by the pH alone or by both, not aggressive,
+# without the indices, no sample) and the rules that name the materials; and
+# the bill of quantities that follows from a design, with the rising main
+# over the pump intake, taken as long as the hole, unpriced and left out.
+# The cases carry their own inputs, so parity.mjs gives the browser exactly
+# these.
+
+def _rm_sample(results, sample_id="WQ-7", when="2024-05-01"):
+    return {"site": {"community": "Ref"}, "flags": [], "sample_id": sample_id,
+            "sample_date": when,
+            "results": [{"parameter": n, "value": v, "unit": u} for n, v, u in results]}
+
+
+def _rm_object(raw):
+    return WaterQualitySample(
+        site=SiteMetadata(community="Ref"), sample_id=raw["sample_id"],
+        sample_date=raw["sample_date"],
+        results=[WaterQualityResult(**r) for r in raw["results"]])
+
+
+_RM_SOFT = [("pH", 5.8, "pH units"), ("Calcium", 6.0, "mg/L"),
+            ("Alkalinity", 15.0, "mg/L as CaCO3"), ("TDS", 60.0, "mg/L")]
+_RM_HARD = [("pH", 7.8, "pH units"), ("Calcium", 100.0, "mg/L"),
+            ("Alkalinity", 250.0, "mg/L as CaCO3"), ("TDS", 500.0, "mg/L")]
+
+RISING_MAIN_SAMPLES = {
+    "none": None,
+    "soft": _rm_sample(_RM_SOFT),
+    "hard": _rm_sample(_RM_HARD),
+    # the indices keep it, the pH rule does not
+    "acid hard": _rm_sample([("pH", 6.4, "pH units"), ("Calcium", 200.0, "mg/L"),
+                             ("Alkalinity", 500.0, "mg/L as CaCO3"), ("TDS", 1500.0, "mg/L")]),
+    # on the pH rule's limit, which is not below it
+    "limit hard": _rm_sample([("pH", 6.5, "pH units"), ("Calcium", 200.0, "mg/L"),
+                              ("Alkalinity", 500.0, "mg/L as CaCO3"),
+                              ("TDS", 1500.0, "mg/L")]),
+    # a Langelier index that rounds to nought, a Ryznar index on 7.0
+    "nought": _rm_sample([("pH", 7.0, "pH units"), ("Calcium", 90.0, "mg/L"),
+                          ("Alkalinity", 395.0, "mg/L as CaCO3"), ("TDS", 400.0, "mg/L")]),
+    # moderately soft water inside the pH range
+    "moderate": _rm_sample([("pH", 7.2, "pH units"), ("Calcium", 20.0, "mg/L"),
+                            ("Alkalinity", 60.0, "mg/L as CaCO3"), ("TDS", 150.0, "mg/L")]),
+    "scale": _rm_sample([("pH", 8.2, "pH units"), ("Calcium", 120.0, "mg/L"),
+                         ("Alkalinity", 300.0, "mg/L as CaCO3"), ("TDS", 600.0, "mg/L")]),
+    "ec only": _rm_sample([("pH", 6.8, "pH units"), ("Calcium", 10.0, "mg/L"),
+                           ("Alkalinity", 30.0, "mg/L as CaCO3"),
+                           ("Electrical conductivity", 150.0, "uS/cm")]),
+    "low ph only": _rm_sample([("pH", 6.0, "pH units")]),
+    "ph only": _rm_sample([("pH", 7.0, "pH units")]),
+    "near the limit": _rm_sample([("pH", 6.46, "pH units")]),
+    "no calcium": _rm_sample([("pH", 7.2, "pH units"), ("Calcium", 0.0, "mg/L"),
+                              ("Alkalinity", 20.0, "mg/L as CaCO3")]),
+    "no ph": _rm_sample([("Calcium", 10.0, "mg/L"), ("Alkalinity", 30.0, "mg/L as CaCO3")]),
+    "undated": _rm_sample(_RM_SOFT, when=""),
+    "unnamed": _rm_sample(_RM_HARD, sample_id="", when="20th May, 2018"),
+    "anonymous": _rm_sample(_RM_SOFT, sample_id=" ", when="\ufeff"),
+    "blank ends": _rm_sample(_RM_SOFT, sample_id="\ufeffWQ-7 ", when=" 2024-05-01\x1c"),
+}
+
+RISING_MAIN_RULES = {
+    "default": {},
+    "upvc": {"aggressive_rising_main_material": "uPVC"},
+    "same": {"aggressive_rising_main_material": " Galvanised iron "},
+    "intervals": {"rising_main_inspection_months": 24,
+                  "aggressive_rising_main_inspection_months": 3},
+}
+
+_RM_ROWS = [[0, 10, "Laterite"], [10, 30, "Weathered granite"],
+            [30, 50, "Granite, fracture zone 36-38 m"], [50, 60, "Granite"]]
+RISING_MAIN_BILLS = [
+    {"name": "aggressive, over the intake", "sample": "soft", "pump": 34.0},
+    {"name": "aggressive, no intake", "sample": "soft"},
+    {"name": "not aggressive", "sample": "hard", "pump": 34.0},
+    {"name": "no sample", "sample": "none", "pump": 34.0},
+    {"name": "uPVC, unpriced", "sample": "soft", "pump": 34.0, "rules": "upvc"},
+    {"name": "no handpump", "sample": "soft", "pump": 34.0, "handpumps": 0},
+    {"name": "two handpumps", "sample": "acid hard", "pump": 34.0, "handpumps": 2},
+    {"name": "no stainless rate", "sample": "soft", "pump": 34.0, "drop": "RSM1"},
+    {"name": "screens placed", "sample": "low ph only", "pump": 25.0,
+     "screens": [[40, 52]]},
+]
+
+
+def rising_main_reference() -> dict:
+    """The rising main at design time (PLAN.md step 7.2): rising_main_choice
+    over every sample and rule set above, and the bill each design gives."""
+    from groundwater.config import DesignRules
+    from groundwater.costing import estimate_borehole_cost, load_rates
+    from groundwater.design import rising_main_choice
+
+    def quality(raw, bare):
+        if raw is None:
+            return None
+        return _rm_object(raw) if bare else assess_sample(_rm_object(raw))
+
+    choices = []
+    for sample_name, raw in RISING_MAIN_SAMPLES.items():
+        for rules_name, rules in RISING_MAIN_RULES.items():
+            for bare in (False, True):
+                if bare and (raw is None or rules_name != "default"):
+                    continue
+                choices.append({
+                    "name": f"{sample_name}/{rules_name}" + ("/bare" if bare else ""),
+                    "sample": raw, "rules": rules, "bare": bare,
+                    "expect": rising_main_choice(quality(raw, bare), DesignRules(**rules)),
+                })
+
+    bills = []
+    for spec in RISING_MAIN_BILLS:
+        rules = RISING_MAIN_RULES[spec.get("rules", "default")]
+        raw = RISING_MAIN_SAMPLES[spec["sample"]]
+        log = _case_log({"total": 60, "intervals": _RM_ROWS})
+        design = design_borehole(
+            log=log, static_water_level_m=8.0, pump_intake_m=spec.get("pump"),
+            rules=DesignRules(**rules),
+            screens_m=[tuple(s) for s in spec["screens"]] if spec.get("screens") else None,
+            quality=quality(raw, False))
+        inputs = inputs_from_design(design, mobilisation_distance_km=50.0)
+        inputs.handpumps = spec.get("handpumps", 1)
+        rates = [r for r in load_rates() if r.code != spec.get("drop")]
+        estimate = estimate_borehole_cost(inputs, rates)
+        bills.append({
+            "spec": dict(spec, intervals=_RM_ROWS, total=60, rules=rules, raw=raw),
+            "expect": {
+                "rising_main": design.rising_main,
+                "material": inputs.rising_main_material,
+                "length": clean(inputs.rising_main_m),
+                "boq": clean(estimate.boq_rows()),
+                "flags": flags(estimate.flags),
+                "assumptions": list(estimate.assumptions),
+                "direct": clean(estimate.direct_cost_usd),
+            },
+        })
+    return clean({"choices": choices, "bills": bills})
 
 
 def sanitary_reference() -> dict:

@@ -184,10 +184,15 @@ def _at_depth(given: CostingInputs, base: CostingInputs, depth: float) -> Costin
         gravel = 0.0
     else:
         gravel = max(0.0, given.gravel_interval_m + shift)
+    # a rising main taken as long as the hole is as long as the hole drawn
+    rising = base.rising_main_m
+    if rising is not None and given.rising_main_m is None:
+        rising = depth
     return replace(
         base, total_depth_m=depth, overburden_m=min(over, depth), casing_m=casing,
         gravel_interval_m=gravel,
         crew_days=default_crew_days(depth) if given.crew_days is None else given.crew_days,
+        rising_main_m=rising,
     )
 
 

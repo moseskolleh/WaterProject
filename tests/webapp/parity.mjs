@@ -4255,6 +4255,72 @@ await withPage(async (page, base, consoleErrors) => {
       twice.slice(0, 2).join('\n     '));
   }
 
+  // --- The rising main at design time (PLAN.md step 7.2) ---
+  // The twin of groundwater/design/materials.py on make_reference.py's cases:
+  // what the design specifies for the rising main and how often it is
+  // inspected, over every state the water can be in and every rule set, from
+  // the assessment and from the bare sample; and the bill of quantities each
+  // design gives, all held whole.
+  {
+    const RM = R.rising_main;
+    const rmJs = await page.evaluate(({ RM }) => {
+      const C = GWT.core;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      const rules = (over) => Object.assign({}, C.defaultConfig().design, over || {});
+      const quality = (raw, bare) => (raw === null || raw === undefined ? null
+        : (bare ? raw : C.assessSample(raw)));
+      return {
+        choices: RM.choices.map((c) => attempt(() =>
+          C.risingMainChoice(quality(c.sample, c.bare), rules(c.rules)))),
+        bills: RM.bills.map((b) => attempt(() => {
+          const spec = b.spec;
+          const log = {
+            site: { community: 'Case' }, total_depth_m: spec.total, drilling_method: 'DTH',
+            intervals: spec.intervals.map((r) => ({ top_m: r[0], bottom_m: r[1], description: r[2] })),
+            water_strikes_m: [], grouting_depth_m: null, installed_screens_m: [],
+          };
+          const d = C.designBorehole({
+            log, staticWaterLevelM: 8.0, pumpIntakeM: spec.pump === undefined ? null : spec.pump,
+            rules: rules(spec.rules), screensM: spec.screens || null,
+            quality: quality(spec.raw, false),
+          });
+          const inputs = C.inputsFromDesign(d, { mobilisationDistanceKm: 50.0 });
+          inputs.handpumps = spec.handpumps === undefined ? 1 : spec.handpumps;
+          const rates = C.loadRates().filter((r) => r.code !== spec.drop);
+          const estimate = C.estimateBoreholeCost(inputs, rates);
+          return {
+            rising_main: d.rising_main, material: inputs.rising_main_material,
+            length: inputs.rising_main_m, boq: estimate.boq_rows(),
+            flags: estimate.flags.map((f) => [f.level, f.code, f.message]),
+            assumptions: estimate.assumptions, direct: estimate.direct_cost_usd,
+          };
+        })),
+        // rules saved before the rising main settings existed take the defaults
+        fallback: attempt(() => C.risingMainChoice(null, { casing_material: 'uPVC' })),
+        plain: attempt(() => C.risingMainChoice(null, C.defaultConfig().design)),
+      };
+    }, { RM });
+    const held = (label, got, list) => {
+      const failed = list.map((c, i) => {
+        const g = got[i];
+        if (!g || g.threw) return `[${c.name || (c.spec && c.spec.name) || i}] threw ${g ? g.threw : 'no answer'}`;
+        return firstDifference(g.ok, c.expect, `[${c.name || (c.spec && c.spec.name) || i}]`);
+      }).filter(Boolean);
+      check(`${label} (${list.length})`, failed.length === 0, failed.slice(0, 3).join('\n     '));
+    };
+    held('rising main: the material, the interval and the statement', rmJs.choices, RM.choices);
+    held('rising main: the design, its quantities and the bill', rmJs.bills, RM.bills);
+    const fallback = rmJs.fallback.ok && rmJs.plain.ok
+      ? firstDifference(rmJs.fallback.ok, rmJs.plain.ok) : String(rmJs.fallback.threw || rmJs.plain.threw);
+    check('rising main: rules without the settings take the defaults', !fallback, fallback);
+    const states = new Set(rmJs.choices.map((g) => g.ok && g.ok.chemistry));
+    check('rising main: every state of the water is among the cases',
+      ['aggressive', 'not_aggressive', 'incomplete', 'none'].every((k) => states.has(k)),
+      JSON.stringify([...states]));
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 

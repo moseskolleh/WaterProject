@@ -14513,6 +14513,8 @@
       /* true when the screens are the ones recorded as installed on the log */
       as_built: asBuilt,
       construction_note: asBuilt ? AS_BUILT_NOTE : DESIGN_NOTE,
+      /* the rising main and its inspection, from the water (step 7.2) */
+      rising_main: risingMainChoice(spec.quality || null, rules),
     };
     design.screens = segments.filter(function (s) { return s.kind === 'screen'; });
     design.total_screen_length_m = design.screens.reduce(function (a, s) {
@@ -14577,8 +14579,150 @@
     return rows;
   }
 
+  /* --- the rising main (PLAN.md step 7.2) -----------------------------------
+   * groundwater/design/materials.py. A galvanised iron rising main and its
+   * rods corrode quickly in aggressive water, so the design reads the water
+   * quality assessment and says what it specifies for the rising main and how
+   * often it is inspected, and why. No second classification is made: the
+   * water is aggressive by the corrosivity classification (is_aggressive:
+   * Ryznar above 7.0, Langelier below -0.5 or aggressive index below 10) or
+   * by the handpump corrosion check's pH rule (below 6.5, RWSN Stop the Rot).
+   * With no sample, or one without the indices, the standard material is kept
+   * on no chemistry and the shorter inspection interval applies. */
+
+  /** What the water says: CHEMISTRY_STATES in materials.py. */
+  var CHEMISTRY_STATES = ['aggressive', 'not_aggressive', 'incomplete', 'none'];
+  /** The handpump corrosion check's pH rule: PH_CORROSIVE_BELOW. */
+  var PH_CORROSIVE_BELOW = 6.5;
+
+  /* a design rule, or the toolkit's default where the rules carry none (a
+   * configuration saved before the rule existed) */
+  function designRule(rules, key) {
+    var value = rules ? rules[key] : undefined;
+    return value === undefined || value === null ? configDefaults().design[key] : value;
+  }
+
+  /* two material names are one material, whatever their case and end blanks
+   * (_same_material, trimmed as trim_field trims) */
+  function sameMaterial(a, b) {
+    return trimField(a).toLowerCase() === trimField(b).toLowerCase();
+  }
+
+  /* the Langelier index with its sign, to two decimals; nought is "+0.00" */
+  function signedIndex(value) {
+    return value < 0 ? '-' + pyFixed(-value, 2) : '+' + pyFixed(Math.abs(value), 2);
+  }
+
+  /* how the sample is named after "The water sample" (_sample_name) */
+  function risingMainSampleName(sample) {
+    var ident = trimField(sample.sample_id || '');
+    var when = trimField(sample.sample_date || '');
+    if (ident && when) return phrase('rising_main.sample_named', { id: ident, date: when });
+    if (ident) return phrase('rising_main.sample_undated', { id: ident });
+    if (when) return phrase('rising_main.sample_unnamed', { date: when });
+    return phrase('rising_main.sample_anonymous');
+  }
+
+  /** What the design specifies for the rising main, from the water:
+   * rising_main_choice. quality is the water quality assessment (its
+   * corrosivity read as it stands), a bare sample (assessed for corrosivity
+   * here) or null; rules are the design rules. inspection_months is the named
+   * value the service rounds of step 7.3 read.
+   * @param {QualityAssessment|QualitySample|null} [quality]
+   * @param {DesignConfig} [rules]
+   * @returns {Rec}
+   */
+  function risingMainChoice(quality, rules) {
+    var standard = designRule(rules, 'rising_main_material');
+    var resistant = designRule(rules, 'aggressive_rising_main_material');
+    var usual = designRule(rules, 'rising_main_inspection_months');
+    var shorter = designRule(rules, 'aggressive_rising_main_inspection_months');
+
+    var sample = null, corrosivity = null;
+    if (quality) {
+      if (quality.sample !== undefined && quality.corrosivity !== undefined) {
+        sample = quality.sample || null;
+        corrosivity = quality.corrosivity || (sample ? assessCorrosivity(sample) : null);
+      } else {
+        sample = quality;
+        corrosivity = assessCorrosivity(sample);
+      }
+    }
+    /** @type {Rec} */
+    var out = {
+      material: standard, standard: standard, upgraded: false, chemistry: 'none',
+      sample: '', ph: null, lsi: null, rsi: null, aggressive_index: null,
+      classification: '', by_indices: false, by_ph: false,
+      inspection_months: shorter, statement: '',
+    };
+    var sentences = [];
+    if (!sample || !corrosivity) {
+      sentences.push(phrase('rising_main.no_sample'));
+      sentences.push(phrase('rising_main.kept_unknown', { standard: standard, months: shorter }));
+      out.statement = sentences.join(' ');
+      return out;
+    }
+
+    var name = risingMainSampleName(sample);
+    /* the pH the corrosivity indices were computed from, read the same way */
+    var ph = sampleValue(sample, 'ph');
+    var indexed = ph !== null && corrosivity.lsi !== null && corrosivity.rsi !== null &&
+      corrosivity.aggressive_index !== null;
+    var byIndices = !!(indexed && corrosivity.is_aggressive);
+    var byPh = ph !== null && ph < PH_CORROSIVE_BELOW;
+    out.sample = name; out.ph = ph; out.lsi = corrosivity.lsi; out.rsi = corrosivity.rsi;
+    out.aggressive_index = corrosivity.aggressive_index;
+    out.classification = indexed ? corrosivity.classification : '';
+    out.by_indices = byIndices; out.by_ph = byPh;
+    /** @type {Rec} */
+    var indices = {};
+    if (indexed) {
+      /* the class as a sentence carries it ("rated strongly corrosive") */
+      var cls = corrosivity.classification;
+      indices = { rsi: corrosivity.rsi, lsi: signedIndex(corrosivity.lsi),
+        ai: corrosivity.aggressive_index,
+        classification: cls.charAt(0).toLowerCase() + cls.slice(1) };
+    }
+
+    if (byIndices) {
+      sentences.push(phrase('rising_main.aggressive', Object.assign({ sample: name }, indices)));
+    } else if (byPh) {
+      sentences.push(phrase('rising_main.ph_low', { sample: name, ph: phText(ph) }));
+      sentences.push(indexed ? phrase('rising_main.ph_low_indices', indices)
+        : phrase('rising_main.ph_low_no_indices'));
+    } else if (indexed) {
+      sentences.push(phrase('rising_main.not_aggressive',
+        Object.assign({ sample: name, ph: phText(ph) }, indices)));
+    } else {
+      sentences.push(phrase('rising_main.no_indices', { sample: name }));
+    }
+
+    if (byIndices || byPh) {
+      out.chemistry = 'aggressive';
+      out.inspection_months = shorter;
+      if (sameMaterial(resistant, standard)) {
+        sentences.push(phrase('rising_main.same_material', { material: standard, months: shorter }));
+      } else {
+        out.material = resistant;
+        out.upgraded = true;
+        sentences.push(phrase('rising_main.specified', { material: resistant,
+          standard: standard, months: shorter, usual: usual }));
+        sentences.push(phrase('rising_main.alternative'));
+      }
+    } else if (indexed) {
+      out.chemistry = 'not_aggressive';
+      out.inspection_months = usual;
+      sentences.push(phrase('rising_main.kept', { standard: standard, months: usual }));
+    } else {
+      out.chemistry = 'incomplete';
+      sentences.push(phrase('rising_main.kept_unknown', { standard: standard, months: shorter }));
+    }
+    out.statement = sentences.join(' ');
+    return out;
+  }
+
   /**
-   * @param {Rec} [options] rules, log, interpretation, totalDepthM, staticWaterLevelM, screensM, pumpIntakeM, pumpIntakeFloorM
+   * @param {Rec} [options] rules, log, interpretation, totalDepthM, staticWaterLevelM, screensM, pumpIntakeM, pumpIntakeFloorM, quality (the water quality assessment the rising main is chosen from)
    * @returns {Design}
    */
   function designBorehole(options) {
@@ -14624,6 +14768,7 @@
         screens: chosen.screens, basis: chosenBasis, flags: flags,
         totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
         pumpIntakeFloorM: intakeFloor, rules: rules, log: log, asBuilt: asBuilt,
+        quality: opts.quality || null,
       });
     }
 
@@ -14702,6 +14847,7 @@
       screens: screens, basis: placementBasis(found, screens, rules).concat(fallback),
       flags: flags, totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
       pumpIntakeFloorM: intakeFloor, rules: rules, log: log,
+      quality: opts.quality || null,
     });
   }
 
@@ -14717,6 +14863,18 @@
   var RESOURCE_CATEGORIES = ['equipment', 'labour', 'consumables', 'fuel', 'vehicles'];
   var DEFAULT_EXCHANGE_RATE_SLE_PER_USD = 23.0;
   var DRY_STAGES = ['Siting', 'Mobilisation', 'Drilling'];
+  /* The quantity basis that prices a rising main in place of the one the
+   * handpump line includes, by material in lower case: RISING_MAIN_BASES in
+   * costing/model.py. A material with none, or none in the catalogue, is
+   * flagged on the estimate as unpriced. */
+  /** @type {Record<string, string>} */
+  var RISING_MAIN_BASES = { 'stainless steel': 'per_m_rising_main_stainless_steel' };
+
+  /** @param {string} material */
+  function risingMainBasis(material) {
+    var key = trimField(material).toLowerCase();
+    return own(RISING_MAIN_BASES, key) ? RISING_MAIN_BASES[key] : null;
+  }
 
   /** The rate catalogue: load_rates. min_usd and max_usd are the ends of
    * the triangle the cost distribution draws the rate from, unit_cost_usd
@@ -14821,6 +14979,10 @@
       sanitary_seal_m: null,
       development_hours: 6.0, test_pumping_hours: 30.0,
       mobilisation_distance_km: 0.0, wq_samples: 1, handpumps: 1,
+      /* the rising main the design specifies in place of the handpump
+       * line's, and its length (the pump intake); blank prices the line as
+       * it is, and a null length takes the total depth and says so */
+      rising_main_material: '', rising_main_m: null,
     }, values || {});
   }
 
@@ -14874,6 +15036,11 @@
         'site (drilling at 25 m per day plus four days for moving, set up, ' +
         'development, testing and completion).');
     }
+    if (r.rising_main_material && r.handpumps > 0 &&
+        (r.rising_main_m === null || r.rising_main_m === undefined)) {
+      r.rising_main_m = r.total_depth_m;
+      assumptions.push(phrase('rising_main.length_assumed', { depth: r.rising_main_m }));
+    }
     r.bedrock_m = Math.max(0.0, r.total_depth_m - (r.overburden_m || 0.0));
     r.gravel_pack_m3 = annulusVolumeM3(r.borehole_diameter_in, r.casing_diameter_in,
       r.gravel_interval_m || 0.0, 1.3);
@@ -14894,6 +15061,9 @@
      * to carry gravel the drawing's own flag said could not be placed */
     var packed = (design.annular_fill === undefined ? 'gravel pack'
       : design.annular_fill) !== 'none';
+    /* the rising main the water calls for, over the pump intake depth */
+    var choice = design.rising_main || {};
+    var upgraded = !!choice.upgraded;
     return costingInputs({
       total_depth_m: design.total_depth_m,
       overburden_m: opts.overburdenM === undefined ? null : opts.overburdenM,
@@ -14908,6 +15078,9 @@
         Math.max(0.0, design.sanitary_seal[1] - design.sanitary_seal[0])
       ),
       mobilisation_distance_km: opts.mobilisationDistanceKm || 0.0,
+      rising_main_material: upgraded ? String(choice.material || '') : '',
+      rising_main_m: upgraded && design.pump_intake_m !== undefined
+        ? design.pump_intake_m : null,
     });
   }
 
@@ -14920,7 +15093,10 @@
    * @param {Rec} inputs resolved
    * @returns {Object<string, number>} */
   function quantityTable(inputs) {
-    return {
+    var chosen = risingMainBasis(inputs.rising_main_material);
+    var rising = (inputs.rising_main_m || 0.0) * Number(inputs.handpumps);
+    /** @type {Object<string, number>} */
+    var table = {
       lump_sum: 1.0,
       per_km_round_trip: 2.0 * inputs.mobilisation_distance_km,
       per_crew_day: inputs.crew_days || 0.0,
@@ -14936,6 +15112,11 @@
       per_sample: Number(inputs.wq_samples),
       per_handpump: Number(inputs.handpumps),
     };
+    Object.keys(RISING_MAIN_BASES).forEach(function (key) {
+      var basis = RISING_MAIN_BASES[key];
+      table[basis] = basis === chosen ? rising : 0.0;
+    });
+    return table;
   }
 
   /** Percentage defaults follow the RWSN costing and pricing guidance:
@@ -14973,6 +15154,20 @@
       });
     });
 
+    var held = resolved.inputs;
+    if (held.rising_main_material && held.handpumps > 0 && (held.rising_main_m || 0.0) > 0) {
+      var basis = risingMainBasis(held.rising_main_material);
+      var priced = basis !== null && catalogue.some(function (rate) {
+        return rate.quantity_basis === basis;
+      });
+      /* fail closed: the bill still carries the handpump line's main */
+      if (!priced) {
+        flags.push({
+          level: 'warning', code: 'rising_main_unpriced',
+          message: phrase('rising_main.unpriced', { material: held.rising_main_material }),
+        });
+      }
+    }
     if (resolved.inputs.mobilisation_distance_km <= 0) {
       flags.push({
         level: 'info', code: 'no_mobilisation_distance',
@@ -15593,6 +15788,8 @@
 
   Object.assign(C, {
     designBorehole: designBorehole, designSummaryRows: designSummaryRows,
+    risingMainChoice: risingMainChoice, CHEMISTRY_STATES: CHEMISTRY_STATES,
+    PH_CORROSIVE_BELOW: PH_CORROSIVE_BELOW, RISING_MAIN_BASES: RISING_MAIN_BASES,
     targetZones: targetZones, sealDepthFor: sealDepthFor,
     pumpIntakeFloor: pumpIntakeFloor,
     loggedDiameterIn: loggedDiameterIn, intervalAt: intervalAt,
@@ -21270,10 +21467,14 @@
     if (!costGiven(given.gravel_interval_m)) gravel = defaultGravelIntervalM(depth);
     else if (given.gravel_interval_m === 0) gravel = 0.0;
     else gravel = Math.max(0.0, given.gravel_interval_m + shift);
+    /* a rising main taken as long as the hole is as long as the hole drawn */
+    var rising = base.rising_main_m;
+    if (costGiven(rising) && !costGiven(given.rising_main_m)) rising = depth;
     var r = Object.assign({}, base, {
       total_depth_m: depth, overburden_m: Math.min(over, depth), casing_m: casing,
       gravel_interval_m: gravel,
       crew_days: costGiven(given.crew_days) ? given.crew_days : defaultCrewDays(depth),
+      rising_main_m: rising,
     });
     r.bedrock_m = Math.max(0.0, r.total_depth_m - (r.overburden_m || 0.0));
     r.gravel_pack_m3 = annulusVolumeM3(r.borehole_diameter_in, r.casing_diameter_in,
@@ -26054,10 +26255,15 @@
       }
     }
 
+    var assessment = inputs.assessment || null;
+    if (!assessment && inputs.quality) assessment = assessSample(inputs.quality);
+
     var design = designBorehole({
       log: log, staticWaterLevelM: swl, pumpIntakeM: pumpIntake,
       pumpIntakeFloorM: intakeFloor, rules: config.design,
       screensM: screensM && screensM.length ? screensM : null,
+      /* the rising main, and so the bill, follow the sample */
+      quality: assessment,
     });
 
     /* The spine's price is signed off by a named person, so it has to be the
@@ -26107,8 +26313,6 @@
       edited: !!(screensM && screensM.length),
     };
 
-    var assessment = inputs.assessment || null;
-    if (!assessment && inputs.quality) assessment = assessSample(inputs.quality);
     if (assessment) payload.quality = spineQuality(assessment);
     return payload;
   }

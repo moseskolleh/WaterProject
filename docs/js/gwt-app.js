@@ -753,6 +753,8 @@
           ? C.pumpIntakeFloor(rec, cfg.pumping.pump_submergence_min_m) : null,
         rules: cfg.design, totalDepthM: totalDepth,
         screensM: custom.screens && custom.screens.length ? custom.screens : null,
+        /* the rising main follows the Water quality page's sample */
+        quality: derived.assessment || null,
       });
     } catch (e) {
       S.toast('Borehole design: ' + e.message, 'warn');
@@ -795,12 +797,16 @@
       /* no drawing yet: the diameters and the seal come from the rules the
        * Settings page holds, not from the engine's own defaults */
       var rules = config().design;
+      /* with no drawing the rising main still follows the water, priced
+       * over the whole depth (the estimate says so) since no intake is drawn */
+      var choice = C.risingMainChoice(derived.assessment || null, rules);
       inputs = C.costingInputs({
         total_depth_m: costing.total_depth_m,
         mobilisation_distance_km: costing.mobilisation_km,
         borehole_diameter_in: rules.borehole_diameter_in,
         casing_diameter_in: rules.casing_diameter_in,
         sanitary_seal_m: rules.sanitary_seal_depth_m,
+        rising_main_material: choice.upgraded ? choice.material : '',
       });
     } else {
       return;
@@ -3716,6 +3722,9 @@
       ]),
     ]));
 
+    var risingMain = risingMainCard(design);
+    if (risingMain) nodes.push(risingMain);
+
     nodes.push(card('Screen placement', [
       el('p.muted', 'Screens are placed automatically against the water strikes ' +
         'in the drilling log, the aquifer intervals in the lithology, or the ' +
@@ -3755,6 +3764,33 @@
       'Pumping test', 'pumping'));
     return nodes;
   };
+
+  /* What the design specifies for the rising main, how often it is inspected,
+   * and why: the water quality sample's corrosivity indices and pH (PLAN.md
+   * step 7.2, C.risingMainChoice). The Streamlit app's design page shows the
+   * same card. */
+  function risingMainCard(design) {
+    var choice = design.rising_main;
+    if (!choice) return null;
+    return card('Rising main', [
+      S.statRow([
+        S.stat('Rising main', choice.material, choice.upgraded
+          ? 'in place of the ' + choice.standard + ' one the handpump line includes'
+          : 'the one the handpump line includes'),
+        S.stat('Rising main inspection', 'every ' + C.formatG(choice.inspection_months) +
+          ' months'),
+      ]),
+      /* aggressive water, or water nobody has analysed, is a warning */
+      el('div.callout' + (choice.chemistry === 'not_aggressive' ? '.callout-ok'
+        : '.callout-warn'), el('p', choice.statement)),
+      el('p.muted', (choice.upgraded
+        ? 'The Costing page prices it as a line extra over the handpump, over ' +
+          'the pump intake depth (over the whole depth where no intake is ' +
+          'known). ' : '') +
+        'Load or change the sample on the Water quality page and the design ' +
+        'follows it.'),
+    ]);
+  }
 
   /* --- depth spine ---------------------------------------------------------- */
 

@@ -389,6 +389,37 @@ in front of a regulator. The table is an editable CSV
 issuing specification in its `sl_source` column, and the warning drops
 away for that parameter.
 
+### The rising main the design specifies
+
+Galvanised iron rising mains and rods corrode quickly in aggressive
+water, and a corroded main is a common reason a handpump fails early. So
+the **Rising main** card on the Borehole design page (both apps) reads
+the sample on the Water quality page:
+
+- **Aggressive water** - the corrosivity classification on the Water
+  quality page counts it aggressive (a Ryznar index above 7.0, a
+  Langelier index below -0.5 or an aggressive index below 10), or its pH
+  is below 6.5, the limit of the supervision page's handpump corrosion
+  check. The design specifies a stainless steel rising main in place of
+  galvanised iron, inspected every 6 months. The card quotes the index
+  values or the pH and names the sample by its identifier and date.
+- **Water that is not aggressive** - galvanised iron, inspected every
+  12 months, with the index values that say so.
+- **No sample, or one that lacks pH, calcium or alkalinity** (and whose
+  pH, if it has one, is not below 6.5) - the card says the choice rests
+  on no chemistry, or on no corrosivity index. The design keeps
+  galvanised iron and the 6 month interval until a sample with all three
+  is analysed. Analyse one before the pump is ordered.
+
+The choice follows the sample: load or replace the water quality sheet
+and the design changes with it. The materials and both intervals are
+settings (`groundwater/data/defaults.json`), and the intervals are a
+choice made in this toolkit, not a standard; `QUESTIONS.md` item 12 asks
+for them to be confirmed. The card reads only the one sample the project
+holds, so a sample from another borehole, or from another season, is
+read as this borehole's water. The completion and handover reports do
+not name the rising main yet.
+
 ## 5a. Finding your way around
 
 The web interface is one workspace with a sidebar. The sidebar holds
@@ -585,6 +616,15 @@ contract price, and every rule of thumb applied is listed under
 - If a design was produced in the Borehole design page, switch on "Use
   the design" and the casing, screen and gravel quantities carry over
   automatically.
+- Where the design specifies a stainless steel rising main (see "The
+  rising main the design specifies"), the bill carries line RSM1, the
+  extra over the handpump line per metre of rising main, over the pump
+  intake depth; with no intake known it is taken as long as the hole, and
+  the assumptions say so. Its rate is a placeholder with no quotation
+  behind it: type a current price in the catalogue. A material the
+  catalogue has no rate for (uPVC) is not priced, and the estimate says
+  so in a warning. An estimate typed in without a design takes the
+  rising main from the water quality sample in the same way.
 - Download the bill of quantities (`.xlsx`, with live formulas the
   contractor can edit) or the full cost estimate report (`.docx`).
 - The programme estimate uses the siting success rate typed for it.

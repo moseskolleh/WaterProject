@@ -141,6 +141,53 @@ await withPage(async (page, base, consoleErrors) => {
   check('design assembled', state.design && state.screens > 0, `screens=${state.screens}`);
   check('cost estimated', state.estimate && state.cost > 0, `cost=${state.cost}`);
 
+  // The rising main at design time (PLAN.md step 7.2): Dr Timbo's sample is
+  // aggressive, so the design page specifies stainless steel and says why
+  // from the sample, and the bill prices it over the pump intake; with the
+  // water quality sheet removed the choice rests on no chemistry.
+  const risingMain = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+    const cardText = async () => {
+      app.goto('design');
+      await settle();
+      const found = [...document.querySelectorAll('#page-host .card')]
+        .find((c) => (c.querySelector('.card-title') || {}).textContent === 'Rising main');
+      return found ? found.textContent : null;
+    };
+    const line = () => {
+      const item = app.derived.estimate.items.find((i) => i.code === 'RSM1');
+      return item ? [item.quantity, item.unit_cost_usd] : null;
+    };
+    const aggressive = { card: await cardText(), choice: app.derived.design.rising_main,
+      intake: app.derived.design.pump_intake_m, line: line() };
+    app.goto('costing');
+    await settle();
+    aggressive.boq = document.querySelector('#page-host').textContent.includes('RSM1');
+    const kept = app.store.get('sources.quality');
+    app.store.remove('sources.quality');
+    await app.recompute();
+    const none = { card: await cardText(), choice: app.derived.design.rising_main, line: line() };
+    app.store.set('sources.quality', kept);
+    await app.recompute();
+    const back = app.derived.design.rising_main.chemistry;
+    app.goto('overview');
+    return { aggressive, none, back };
+  });
+  const rmA = risingMain.aggressive;
+  check('design: an aggressive sample gives a stainless steel rising main inspected every 6 months, ' +
+    'with the indices and the sample they came from (PLAN.md step 7.2)',
+    rmA.choice.upgraded && rmA.choice.material === 'stainless steel' && rmA.choice.inspection_months === 6 &&
+    !!rmA.card && rmA.card.includes('WQ-BH1-01 of 20th May, 2018') &&
+    rmA.card.includes('Ryznar index 11.37') && rmA.card.includes('every 6 months'),
+    JSON.stringify(rmA));
+  check('costing: the bill prices the stainless rising main over the pump intake',
+    !!rmA.line && rmA.line[0] === rmA.intake && rmA.line[1] > 0 && rmA.boq, JSON.stringify(rmA));
+  check('design: with no water quality sheet the rising main rests on no chemistry, and the bill drops it',
+    risingMain.none.choice.chemistry === 'none' && !!risingMain.none.card &&
+    risingMain.none.card.includes('rests on no chemistry') && risingMain.none.line === null &&
+    risingMain.back === 'aggressive', JSON.stringify(risingMain.none));
+
   // every page renders with a full project, and figures actually draw
   for (const key of PAGES) {
     await page.evaluate((k) => window.GWT.app.goto(k), key);

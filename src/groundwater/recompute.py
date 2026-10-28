@@ -348,6 +348,8 @@ def recompute_results(
                     log=log,
                     static_water_level_m=design_swl or None,
                     rules=config.design,
+                    # the rising main follows the project's sample
+                    quality=out.get("wq_assessment"),
                 )
             except Exception as exc:  # noqa: BLE001
                 _log.exception("borehole design could not be derived")

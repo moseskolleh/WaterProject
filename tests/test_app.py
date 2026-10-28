@@ -1967,6 +1967,57 @@ def test_the_design_takes_the_intake_the_pumping_report_prints(sample_data):
     assert design.pump_intake_m >= reported
 
 
+def test_the_design_chooses_the_rising_main_from_the_sample(sample_data):
+    """PLAN.md step 7.2: with no water quality sheet the design page says the
+    rising main rests on no chemistry; with Dr Timbo's aggressive sample it
+    specifies stainless steel, quoting the indices and the sample, inspected
+    every 6 months, and the bill of quantities prices it over the intake."""
+    from groundwater.text import phrase
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    goto(at, "Pumping test")
+    at.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
+    at.run()
+    goto(at, "Borehole design")
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    assert not at.exception, at.exception
+    design = at.session_state["borehole_design"]
+    assert design.rising_main["chemistry"] == "none"
+    warned = " ".join(str(w.value) for w in at.warning)
+    assert phrase("rising_main.no_sample") in warned
+    assert [m.value for m in at.metric if m.label == "Rising main"] == ["galvanised iron"]
+
+    goto(at, "Water quality")
+    at.selectbox(key="sample_wq").select("dr_timbo/dr_timbo_water_quality.xlsx")
+    at.run()
+    assert not at.exception, at.exception
+    # the design follows the sample without the design page being opened
+    choice = at.session_state["borehole_design"].rising_main
+    assert choice["upgraded"] and choice["material"] == "stainless steel"
+    goto(at, "Borehole design")
+    at.run()
+    assert not at.exception, at.exception
+    design = at.session_state["borehole_design"]
+    choice = design.rising_main
+    assert choice["chemistry"] == "aggressive" and choice["inspection_months"] == 6
+    warned = " ".join(str(w.value) for w in at.warning)
+    assert choice["statement"] in warned
+    assert "WQ-BH1-01 of 20th May, 2018" in warned and "Ryznar index 11.37" in warned
+    metrics = {m.label: m.value for m in at.metric}
+    assert metrics["Rising main"] == "stainless steel"
+    assert metrics["Rising main inspection"] == "every 6 months"
+
+    goto(at, "Costing & BoQ")
+    at.button(key="run_cost").click()
+    at.run()
+    assert not at.exception, at.exception
+    estimate = at.session_state["cost_estimate"]
+    line = next(i for i in estimate.items if i.code == "RSM1")
+    assert line.quantity == design.pump_intake_m
+
+
 def test_a_sanitary_inspection_is_recorded_and_read_with_the_sample(sample_data):
     """PLAN.md step 7.5: the form on the Asset registry page records an
     inspection in the borehole's history, with the questions left unanswered

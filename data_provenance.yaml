@@ -399,8 +399,8 @@ datasets:
       a tender.
     files:
       - path: src/groundwater/data/borehole_cost_items.csv
-        bytes: 3882
-        sha256: a03f407840af07b5089337e1718fc2ba031184ed1680dcd73bf0c7dc762eb77e
+        bytes: 4243
+        sha256: 8e1aa64f6e3b9cd209da702f7f4ea72fe70abf3384f86e1dccbb69fba5611882
         note: >-
           Unit rates and quantity bases for a borehole bill of quantities,
           built from the costing guide's worked example. Example figures,
@@ -408,7 +408,11 @@ datasets:
           spread_group columns (PLAN.md step 3.4) are not from the guides:
           they are this toolkit's provisional spread around each rate,
           worked out from borehole_cost_spread.yaml, which records the
-          reason for each and that no source is recorded for any.
+          reason for each and that no source is recorded for any. The RSM1
+          row (PLAN.md step 7.2), a stainless steel rising main and rods
+          priced extra over the handpump line, is not from the guides
+          either: its USD 20 a metre is a placeholder with no quotation
+          behind it.
       - path: src/groundwater/data/supervision_checklists.csv
         bytes: 14751
         sha256: a763253bc3cc339a91ad3e0148110c60cab0363c04712926713931f9ce10d11f
@@ -510,8 +514,8 @@ datasets:
           No source separates the geology units within a class, and none is
           claimed to.
       - path: src/groundwater/data/borehole_cost_spread.yaml
-        bytes: 4759
-        sha256: 89a3daa4e581a7ae29aae7a2914ab6e1061e764aae8342b8b3401c4501af4589
+        bytes: 4789
+        sha256: 206a39edb2e26ed80ec0b3b2897668ddf23e165ea1f17d81edf0acde2f809ee1
         note: >-
           How far each unit rate of the cost catalogue may fall below or rise
           above its likely value, by group of rates that share a cause, each
