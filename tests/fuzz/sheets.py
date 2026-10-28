@@ -626,11 +626,24 @@ def drilling_case(draw) -> dict:
     tops = list(range(0, total, step))
     rows_data = []
     strikes_written = []
+    # the unit the sheet's headers give its depths in: mostly the template's
+    # metres, but a log kept in feet, one that names no unit, and one whose
+    # header names both, which a bare depth cannot be read under
+    unit = draw(st.sampled_from(["m", "m", "m", "ft", "none", "both"]))
     for top in tops:
         bottom = min(top + step, total)
         style = draw(st.floats(0, 1))
+        if chance(draw, 0.05):
+            # a lens logged inside the row before it, or a depth with a
+            # decimal comma
+            rows_data.append([draw(st.sampled_from([f"{top + 1}-{top + 2}",
+                                                    f"{top},5-{bottom}"])),
+                              None, None, None, "Clay lens", None, None])
         if style < 0.6:
             interval = f"{top}-{bottom}"
+        elif style < 0.64:
+            interval = draw(st.sampled_from([f"{top}-{bottom} ft", f"{top}'-{bottom}'",
+                                             f"{top} ft - {bottom} m"]))
         elif style < 0.7:
             interval = f"{top} - {bottom}"
         elif style < 0.78:
@@ -655,14 +668,15 @@ def drilling_case(draw) -> dict:
             description += f", wet from {draw(st.integers(top, bottom))} m"
         elif extra < 0.2:
             description += f", fractures at {top + 1} and {bottom - 1} m"
-        rate = draw(st.sampled_from([None, 1, 0.5, 0.33, 0.42, "0.6", "1,2"]))
+        rate = draw(st.sampled_from([None, 1, 0.5, 0.33, 0.42, "0.6", "1,2", "4 min/ft",
+                                     "1.5 ft/min"]))
         diameter = draw(st.sampled_from([6.5, 6.5, 8, '8½"', '8-1/2"', 165, "6½", None, 254]))
         strike = None
         if chance(draw, 0.12):
             depth = draw(st.integers(top, bottom))
             strike = draw(st.sampled_from([depth, f"{depth} m", f"Strike 1: {depth} m",
                                            f"SWL {depth / 3:.1f}", "14:30",
-                                           f"{depth}, {bottom}"]))
+                                           f"{depth}, {bottom}", f"{depth} ft"]))
             strikes_written.append(depth)
         times = draw(st.sampled_from(["text", "none", "cells"]))
         if times == "text":
@@ -683,8 +697,8 @@ def drilling_case(draw) -> dict:
              ("Drilling start date", site.get("Date")), ("Completion date", None),
              ("Drilling method", draw(st.sampled_from(["Air rotary (DTH hammer)",
                                                        "Mud rotary", "DTH", ""]))),
-             ("Total depth (m)", draw(st.sampled_from([total, f"{total}m", None,
-                                                       total + 0.5]))),
+             ({"ft": "Total depth (ft)", "none": "Total depth"}.get(unit, "Total depth (m)"),
+              draw(st.sampled_from([total, f"{total}m", None, total + 0.5, f"{total} ft"]))),
              ("District", site.get("District")),
              ("BH status", draw(st.sampled_from(["Successful", "Dry", ""]))),
              ("GPS Coordinate East", site.get("GPS Coordinate East")),
@@ -696,11 +710,12 @@ def drilling_case(draw) -> dict:
     rows = header_rows(draw, "BOREHOLE DRILLING LOG", pairs, [0, 3])
     rows.append([])
     rate_head = draw(st.sampled_from(["Penetration rate (m/min)", "Penetration rate (min/m)",
-                                      "Penetration rate"]))
+                                      "Penetration rate", "Penetration rate (min/ft)"]))
     diameter_head = draw(st.sampled_from(["Drilling diameter (in)", "Bit diameter (mm)",
                                           "Bit size"]))
-    rows.append(["Depth interval (m)", "From time", "To time", rate_head,
-                 "Sample / lithology description", diameter_head, "Water strike depth (m)"])
+    named = {"m": " (m)", "ft": " (ft)", "none": "", "both": " (m/ft)"}[unit]
+    rows.append(["Depth interval" + named, "From time", "To time", rate_head,
+                 "Sample / lithology description", diameter_head, "Water strike depth" + named])
     rows.extend(rows_data)
     note = draw(st.sampled_from([None, "Water strike 1: 18 m, water strike 2: 42 m",
                                  "Water strike at 20 m; rest water level 4.5 m",

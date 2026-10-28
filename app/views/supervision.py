@@ -188,60 +188,91 @@ def render() -> None:
                 )
 
     st.divider()
+    # Every measurement starts blank, and a check is run only on what was
+    # entered. The boxes used to start at plausible values (50 mm over 60 m,
+    # 0.1 cm3, 3.0 m3/h over 2.0 m, 60 m logged and invoiced), and all four
+    # checks went into the report every time the page ran, so a record built
+    # without opening this expander said in print that verticality, sand
+    # content, specific capacity and the drilled metres had all passed,
+    # against numbers nobody measured. The browser app only ever ran a check
+    # whose inputs were typed; this now does the same.
+    field_checks = []
     with st.expander("🧮 Field acceptance checks"):
         fc1, fc2 = st.columns(2)
         with fc1:
             st.markdown("**Chlorine disinfection dose (WHO 20 mg/L)**")
             d1, d2 = st.columns(2)
-            water_col = d1.number_input("Water column (m)", 0.0, 200.0, 40.0, 1.0,
+            water_col = d1.number_input("Water column (m)", 0.0, 200.0, None, 1.0,
                                         key="fx_watercol")
-            casing_id = d2.number_input("Casing ID (mm)", 50.0, 400.0, 103.0, 1.0,
+            casing_id = d2.number_input("Casing ID (mm)", 50.0, 400.0, None, 1.0,
                                         key="fx_casingid")
-            st.caption(disinfection_dose(water_col, casing_id).summary())
+            if water_col is not None and casing_id is not None:
+                st.caption(disinfection_dose(water_col, casing_id).summary())
+            else:
+                st.caption("Enter the water column and the casing inner diameter "
+                           "for the dose.")
 
             st.markdown("**Verticality (plumb test)**")
             v1, v2 = st.columns(2)
-            dev = v1.number_input("Deviation (mm)", 0.0, 1000.0, 50.0, 5.0, key="fx_dev")
-            vdepth = v2.number_input("Depth (m)", 1.0, 300.0, 60.0, 1.0, key="fx_vdepth")
-            v = verticality_check(dev, vdepth, casing_id)
-            (st.success if v.passed else st.error)(f"{v.measured} vs {v.limit}: {v.message}")
+            dev = v1.number_input("Deviation (mm)", 0.0, 1000.0, None, 5.0, key="fx_dev")
+            vdepth = v2.number_input("Depth (m)", 1.0, 300.0, None, 1.0, key="fx_vdepth")
+            if None not in (dev, vdepth, casing_id):
+                v = verticality_check(dev, vdepth, casing_id)
+                field_checks.append(v)
+                (st.success if v.passed else st.error)(
+                    f"{v.measured} vs {v.limit}: {v.message}")
+            else:
+                st.caption("Enter the deviation, the depth and the casing ID above "
+                           "for the check.")
 
         with fc2:
             st.markdown("**Sand content (three 20 L samples)**")
             s1, s2, s3 = st.columns(3)
             sand = [
-                s1.number_input("S1 (cm3)", 0.0, 10.0, 0.1, 0.05, key="fx_sand1"),
-                s2.number_input("S2 (cm3)", 0.0, 10.0, 0.1, 0.05, key="fx_sand2"),
-                s3.number_input("S3 (cm3)", 0.0, 10.0, 0.1, 0.05, key="fx_sand3"),
+                s1.number_input("S1 (cm3)", 0.0, 10.0, None, 0.05, key="fx_sand1"),
+                s2.number_input("S2 (cm3)", 0.0, 10.0, None, 0.05, key="fx_sand2"),
+                s3.number_input("S3 (cm3)", 0.0, 10.0, None, 0.05, key="fx_sand3"),
             ]
-            sc = sand_content_check(sand)
-            (st.success if sc.passed else st.error)(f"{sc.measured}: {sc.message}")
+            # the samples taken, as the browser reads them
+            sand = [value for value in sand if value is not None]
+            if sand:
+                sc = sand_content_check(sand)
+                field_checks.append(sc)
+                (st.success if sc.passed else st.error)(f"{sc.measured}: {sc.message}")
 
             st.markdown("**Specific capacity (handpump rule)**")
             q1, q2 = st.columns(2)
-            q_test = q1.number_input("Discharge (m3/h)", 0.0, 100.0, 3.0, 0.1, key="fx_q")
-            dd = q2.number_input("Drawdown (m)", 0.0, 100.0, 2.0, 0.1, key="fx_dd")
-            spc = specific_capacity_check(q_test, dd)
-            if spc.passed is None:
-                st.info(spc.message)
-            else:
-                (st.success if spc.passed else st.warning)(f"{spc.measured}: {spc.message}")
+            q_test = q1.number_input("Discharge (m3/h)", 0.0, 100.0, None, 0.1, key="fx_q")
+            dd = q2.number_input("Drawdown (m)", 0.0, 100.0, None, 0.1, key="fx_dd")
+            if q_test is not None and dd is not None:
+                spc = specific_capacity_check(q_test, dd)
+                field_checks.append(spc)
+                if spc.passed is None:
+                    st.info(spc.message)
+                else:
+                    (st.success if spc.passed else st.warning)(
+                        f"{spc.measured}: {spc.message}")
 
             st.markdown("**Drilled metres reconciliation**")
             r1, r2 = st.columns(2)
             logged = r1.number_input("Metres in signed daily logs", 0.0,
-                                     2000.0, 60.0, 1.0, key="fx_logged")
-            claimed = r2.number_input("Metres invoiced", 0.0, 2000.0, 60.0,
+                                     2000.0, None, 1.0, key="fx_logged")
+            claimed = r2.number_input("Metres invoiced", 0.0, 2000.0, None,
                                       1.0, key="fx_claimed")
-            recon = metres_reconciliation_check(logged, claimed)
-            (st.success if recon.passed else st.error)(recon.message)
+            if logged is not None and claimed is not None:
+                recon = metres_reconciliation_check(logged, claimed)
+                field_checks.append(recon)
+                (st.success if recon.passed else st.error)(recon.message)
             st.caption(
                 "The daily report template for the driller is in the "
                 "Templates page."
             )
+        if not field_checks:
+            st.caption("Enter measurements above to run the acceptance checks.")
 
-        # measured, so they belong in the record the works are accepted against
-        st.session_state.field_checks = [v, sc, spc, recon]
+    # measured, so they belong in the record the works are accepted against;
+    # only what was measured
+    st.session_state.field_checks = field_checks
 
     with st.expander("📏 Minimum separation distances"):
         st.table(

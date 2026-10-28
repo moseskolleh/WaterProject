@@ -1959,6 +1959,49 @@
     return { lat: reading.lat, lon: reading.lon };
   }
 
+  /* "lat, lon" converted into the site's UTM fields: what the paste box's
+   * Convert does, and what the degree callout does with the pair typed into
+   * the two boxes. */
+  function convertLatLon(text) {
+    var reading = C.readLatLon(text);
+    if (reading.lat === null || reading.lon === null) {
+      /* What the parser refused, and why, is what the operator needs:
+       * "8 27.942" is two readings 2000 km apart and the sentence says so,
+       * where a single generic line said only that something was wrong. */
+      S.toast(reading.message + " Enter 'lat, lon' in decimal " +
+        'degrees - 8.4657, -13.2317 or 8.4657 N, 13.2317 W - or in ' +
+        'degrees and minutes, 8 27.942 N, 13 13.902 W.', 'error');
+      return;
+    }
+    var lat = reading.lat, lon = reading.lon;
+    var utm = C.geographicToUtm(lat, lon);
+    if ((utm.zone !== 28 && utm.zone !== 29) || utm.hemisphere !== 'N') {
+      /* The site fields hold Sierra Leone's two zones. Writing this easting
+       * down beside 28N or 29N would relabel the position rather than
+       * convert it, and land the site inside the country: an unsigned
+       * 13.2317 projected in zone 33 was stored here as a zone-33 easting,
+       * 270 km east of Freetown, with nothing said (ROADMAP
+       * data-ingestion-3). */
+      S.toast(C.pyFixed(lat, 4) + ', ' + C.pyFixed(lon, 4) +
+        ' falls in UTM zone ' + utm.zone + utm.hemisphere +
+        ", outside Sierra Leone's 28N and 29N, so it cannot be " +
+        'stored as a site position. Check the coordinates - a ' +
+        'western longitude needs its minus sign or its W.', 'error');
+      return;
+    }
+    store.set('site.easting', S.round(utm.easting, 1));
+    store.set('site.northing', S.round(utm.northing, 1));
+    store.set('site.utm_zone', utm.zone);
+    S.toast('Converted to UTM zone ' + utm.zone + 'N.', 'ok');
+    if (reading.message) {
+      /* The position was converted, but on a sign the parser supplied
+       * rather than one the crew typed, so it is said out loud rather than
+       * left inside the reading. */
+      S.toast(reading.message, 'warn');
+    }
+    render();
+  }
+
   PAGES.site = function () {
     var site = store.get('site');
     var mapRadius = store.get('site.mapRadiusKm', 40);
@@ -1979,6 +2022,8 @@
       .map(function (row) { return row.chiefdom; });
 
     var latlon = siteLatLon();
+    /* degrees typed into the two boxes: no position until converted */
+    var degreeBoxes = C.degreesInUtmBoxes(site.easting, site.northing);
     var districtWarning = districtNote(site, latlon);
     var mapNode = null;
     if (mapLayers() && mapLayers().adminBoundaries) {
@@ -2036,10 +2081,14 @@
           ]),
         ]),
         el('div.field-row', [
-          field('GPS easting (UTM)', S.numberInput(site.easting, bindNum('easting')),
-            'or a longitude in degrees'),
-          field('GPS northing (UTM)', S.numberInput(site.northing, bindNum('northing')),
-            'or a latitude in degrees'),
+          /* Metres only. These used to invite a longitude and a latitude in
+           * degrees, which this app read as degrees and the Python engine as
+           * metres near the equator: one project, a placard the gate passed
+           * and an identifier nobody could mint. Degrees typed here are now
+           * refused by both engines, and the callout below offers to convert
+           * them. */
+          field('GPS easting (UTM m)', S.numberInput(site.easting, bindNum('easting'))),
+          field('GPS northing (UTM m)', S.numberInput(site.northing, bindNum('northing'))),
           field('UTM zone', S.selectInput(site.utm_zone || '',
             [{ value: '', label: 'infer from the easting' },
               { value: '28', label: '28N' }, { value: '29', label: '29N' }],
@@ -2047,64 +2096,35 @@
           field('Elevation (m)', S.numberInput(site.elevation_m, bindNum('elevation_m'))),
           field('Date', S.textInput(site.date, bind('date'))),
         ]),
+        /* degrees typed into the two boxes, said in the words the gate and
+         * the identifier use, with the conversion offered */
+        degreeBoxes ? el('div.callout.callout-warn', [
+          el('p', degreeBoxes),
+          el('div.btn-row', [button('Convert these degrees to UTM', function () {
+            /* the operator saying the boxes hold degrees: read exactly as a
+             * pasted pair is, so an unsigned longitude is west, and said */
+            convertLatLon(String(Number(site.northing)) + ', ' +
+              String(Number(site.easting)));
+          }, { variant: 'ghost' })]),
+        ]) : null,
         /* Field crews read decimal degrees off a phone or a handheld GPS.
-         * Typing them straight in removes the UTM-conversion friction and the
+         * Pasting them here removes the UTM-conversion friction and the
          * wrong-zone errors that come with it. */
         field('or paste "lat, lon" from a phone or handheld GPS',
           el('div.btn-row', [
             S.textInput('', function (value) { latLonEntry.text = value; },
               { placeholder: '8.4657, -13.2317' }),
             button('Convert to UTM', function () {
-              var reading = C.readLatLon(latLonEntry.text);
-              if (reading.lat === null || reading.lon === null) {
-                /* What the parser refused, and why, is what the operator
-                 * needs: "8 27.942" is two readings 2000 km apart and the
-                 * sentence says so, where a single generic line said only
-                 * that something was wrong. */
-                S.toast(reading.message + " Enter 'lat, lon' in decimal " +
-                  'degrees - 8.4657, -13.2317 or 8.4657 N, 13.2317 W - or in ' +
-                  'degrees and minutes, 8 27.942 N, 13 13.902 W.', 'error');
-                return;
-              }
-              var lat = reading.lat, lon = reading.lon;
-              var utm = C.geographicToUtm(lat, lon);
-              if ((utm.zone !== 28 && utm.zone !== 29) || utm.hemisphere !== 'N') {
-                /* The site fields hold Sierra Leone's two zones. Writing this
-                 * easting down beside 28N or 29N would relabel the position
-                 * rather than convert it, and land the site inside the
-                 * country: an unsigned 13.2317 projected in zone 33 was
-                 * stored here as a zone-33 easting, 270 km east of Freetown,
-                 * with nothing said (ROADMAP data-ingestion-3). */
-                S.toast(C.pyFixed(lat, 4) + ', ' + C.pyFixed(lon, 4) +
-                  ' falls in UTM zone ' + utm.zone + utm.hemisphere +
-                  ", outside Sierra Leone's 28N and 29N, so it cannot be " +
-                  'stored as a site position. Check the coordinates - a ' +
-                  'western longitude needs its minus sign or its W.', 'error');
-                return;
-              }
-              store.set('site.easting', S.round(utm.easting, 1));
-              store.set('site.northing', S.round(utm.northing, 1));
-              store.set('site.utm_zone', utm.zone);
-              S.toast('Converted to UTM zone ' + utm.zone + 'N.', 'ok');
-              if (reading.message) {
-                /* The position was converted, but on a sign the parser
-                 * supplied rather than one the crew typed, so it is said out
-                 * loud rather than left inside the reading. */
-                S.toast(reading.message, 'warn');
-              }
-              render();
+              convertLatLon(latLonEntry.text);
             }, { variant: 'ghost' }),
           ])),
         latlon ? el('p.muted', 'Interpreted position: ' + degreesText(latlon) +
-          (latlon.fromUtm ? ' (converted from UTM zone ' + latlon.zone + ')' : '') +
+          ' (converted from UTM zone ' + latlon.zone + ')' +
           (latlon.chiefdom ? ' — inside ' + latlon.chiefdom + ' chiefdom' +
             (districtOf(latlon.chiefdom) ? ', ' + districtOf(latlon.chiefdom) +
               ' district' : '') : '')) : null,
-        /* a sign the reader supplied is not a sign the crew typed, and a
-         * position outside the country is on no map below: both are said
+        /* a position outside the country is on no map below: it is said
          * where the position is shown, in the words the engine uses */
-        latlon && latlon.note
-          ? el('div.callout.callout-warn', el('p', latlon.note)) : null,
         latlon && latlon.outside
           ? el('div.callout.callout-bad', el('p', latlon.outside)) : null,
         /* the commonest copy-over error on a field sheet is a district that
@@ -2265,17 +2285,16 @@
   }
 
   /* Sierra Leone lies in UTM zones 28N and 29N; the easting alone identifies
-   * the zone, so it is inferred rather than guessed. A pair of small numbers is
-   * read as degrees instead, and read the way a pasted "lat, lon" is, through
-   * the engine's readLatLon: a longitude typed without its western sign is
-   * read as west, and the reading says so. Taken at face value, easting
-   * 13.2317 and northing 8.4657 put the site in central Africa - no marker on
-   * any map, "13.23170 E" in every report, and nothing on the page to say it
-   * was wrong.
+   * the zone, so it is inferred rather than guessed. A pair of small numbers
+   * typed into the two boxes is degrees and no position at all, in both
+   * engines (C.degreesInUtmBoxes): the site page says so and offers to
+   * convert it, reading it the way a pasted "lat, lon" is read, so a
+   * longitude typed without its western sign is read as west and the
+   * reading says so. It was read as degrees here and as metres by the
+   * Python engine, which put the same project 940 km apart.
    *
-   * `note` is the assumption a degree reading rests on, and `outside` the
-   * sentence check_site_consistency writes for a position outside the
-   * country, UTM or degrees; the site page shows both. */
+   * `outside` is the sentence check_site_consistency writes for a position
+   * outside the country; the site page shows it. */
   function siteLatLon() {
     /* read once, in the core, so the readiness gate refuses the position the
      * site page flags */
@@ -6647,8 +6666,14 @@
     ];
 
     if (!asset) {
+      var placed = store.get('site') || {};
+      /* degrees in the two boxes: said in the words the gate uses, rather
+       * than that the project has no position */
+      var degrees = C.degreesInUtmBoxes(placed.easting, placed.northing);
       nodes.push(card('This borehole', [
-        el('div.callout.callout-warn', el('p', 'This project has no recorded ' +
+        el('div.callout.callout-warn', el('p', degrees
+          ? degrees + ' The Site page converts them.'
+          : 'This project has no recorded ' +
           'position yet, so it cannot be given an identifier — there would be ' +
           'nothing to find the borehole by. Enter the GPS position on the ' +
           'Site page.')),
@@ -6664,9 +6689,12 @@
         el('p.asset-id', asset.asset_id),
         el('p.muted', 'The identifier is derived from the position, so two ' +
           'teams at the same wellhead with no connection between them arrive ' +
-          'at the same one. The last character is a check character: it ' +
-          'catches every single mistyped character and every transposition ' +
-          'of two adjacent ones.'),
+          'at the same one. The last character is an ISO 7064 MOD 37,36 check ' +
+          'character: it catches every single mistyped character and almost ' +
+          'every transposition of two adjacent ones.'),
+        C.isLegacyAssetId(asset.asset_id)
+          ? el('div.callout.callout-warn', el('p', C.validateAssetId(asset.asset_id).reason))
+          : null,
         S.statRow([
           S.stat('Status', state.label),
           S.stat('Last inspected', state.last_inspection || 'never'),
@@ -6761,7 +6789,7 @@
         'wrong identifier attaches a repair to somebody else’s borehole.'),
       field('Identifier', S.textInput(store.get('registry.lookup', ''),
         function (v) { store.set('registry.lookup', String(v).trim()); render(); },
-        { placeholder: 'SL-WAR-8FEEVKQ-T' }), ''),
+        { placeholder: 'SL-WAR-8FEEVKQ-E' }), ''),
       lookupResult(store.get('registry.lookup', '')),
     ]));
 
@@ -6772,10 +6800,12 @@
   function lookupResult(typed) {
     if (!typed) return null;
     var verdict = C.validateAssetId(typed);
-    return el('div.callout.callout-' + (verdict.ok ? 'ok' : 'bad'),
-      el('p', verdict.ok
-        ? 'That is a valid identifier: ' + verdict.assetId
-        : verdict.reason));
+    /* one read with the legacy check character is valid, and said */
+    return el('div.callout.callout-' + (verdict.ok ? (verdict.legacy ? 'warn' : 'ok') : 'bad'),
+      verdict.ok
+        ? [el('p', 'That is a valid identifier: ' + verdict.assetId),
+          verdict.reason ? el('p', verdict.reason) : null]
+        : el('p', verdict.reason));
   }
 
   function registryCard() {

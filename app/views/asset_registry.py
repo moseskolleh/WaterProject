@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from groundwater.geo import degrees_in_utm_boxes
 from groundwater.project_io import deserialize_project
 from groundwater.registry import (
     asset_from_dict,
@@ -11,6 +12,7 @@ from groundwater.registry import (
     asset_state,
     AssetEvent,
     EVENT_KINDS,
+    is_legacy_asset_id,
     merge_events,
     parse_asset_id,
     registry_rows,
@@ -50,11 +52,20 @@ def render() -> None:
 
     st.subheader("This borehole")
     if _live is None:
-        st.info(
-            "This project has no recorded position yet, so it cannot be given "
-            "an identifier - there would be nothing to find the borehole by. "
-            "Enter the GPS position in the site details in the sidebar."
-        )
+        _site = _project_state()["site"]
+        _degrees = degrees_in_utm_boxes(_site.easting, _site.northing)
+        if _degrees:
+            # the boxes hold degrees: say so, rather than that there is no
+            # position, and say it in the words the gate uses
+            st.warning(_degrees + " The sidebar's \"Convert these degrees to UTM\" "
+                       "button does it.")
+        else:
+            st.info(
+                "This project has no recorded position yet, so it cannot be "
+                "given an identifier - there would be nothing to find the "
+                "borehole by. Enter the GPS position in the site details in "
+                "the sidebar."
+            )
     else:
         _state = asset_state(_live)
         _c1, _c2, _c3 = st.columns([2, 1, 1])
@@ -65,9 +76,12 @@ def render() -> None:
         st.caption(
             "The identifier is derived from the position, so two teams at the "
             "same wellhead with no connection between them arrive at the same "
-            "one. The last character is a check character: it catches every "
-            "single mistyped character and every transposition of two."
+            "one. The last character is an ISO 7064 MOD 37,36 check "
+            "character: it catches every single mistyped character and almost "
+            "every transposition of two adjacent ones."
         )
+        if is_legacy_asset_id(_live.asset_id):
+            st.warning(validate_asset_id(_live.asset_id)[1])
         st.write(_state.detail)
         _outstanding = [i for i in _state.due if i.state in ("overdue", "unknown")]
         if _outstanding:
@@ -194,10 +208,13 @@ def _look_up_an_identifier() -> None:
     st.subheader("Look up an identifier")
     _typed = st.text_input(
         "Identifier from a headworks plate", key="asset_lookup",
-        placeholder="SL-WAR-8FEEVKQ-T")
+        placeholder="SL-WAR-8FEEVKQ-E")
     if _typed:
         _ok, _reason = validate_asset_id(_typed)
         if _ok:
             st.success(f"That is a valid identifier: {parse_asset_id(_typed)}")
+            if _reason:
+                # read with the legacy check character, and said
+                st.warning(_reason)
         else:
             st.error(_reason)

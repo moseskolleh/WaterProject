@@ -2363,12 +2363,47 @@ await withPage(async (page, base, consoleErrors) => {
       today: '2024-06-01',
     })).build());
 
+    // an identifier minted before the check character followed ISO 7064
+    // still reads, in a warning that says so
+    app.store.set('registry.lookup', 'SL-WAR-8FEEVKQ-T');
+    app.render();
+    const legacyLookup = Array.from(document.querySelectorAll('#page-host .callout-warn p'))
+      .map((n) => n.textContent).join(' ');
+    // and a stored asset carrying it opens as itself, with its history
+    app.store.set('registry.lookup', '');
+    app.store.set('asset', Object.assign({}, C.assetFromDict(app.store.get('asset')),
+      { asset_id: 'SL-WAR-8FEEVKQ-T' }));
+    app.render();
+    const legacyStored = {
+      id: document.querySelector('#page-host .asset-id')?.textContent || '',
+      text: document.querySelector('#page-host').textContent,
+      events: (C.assetFromDict(app.store.get('asset')) || { events: [] }).events.length,
+    };
+    // degrees typed into the boxes: said in the gate's words, not "no position"
+    app.store.set('asset', null);
+    site.easting = -13.2294; site.northing = 8.4831; site.utm_zone = null;
+    app.render();
+    const degreesText = document.querySelector('#page-host').textContent;
+
     app.store.set('registry.lookup', '');
     app.store.set('asset', null);
     site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
     app.render();
-    return { unlocated, located, refusedBadDate, afterOne, afterTwice, lookup, doc };
+    return { unlocated, located, refusedBadDate, afterOne, afterTwice, lookup, doc,
+      legacyLookup, legacyStored, degreesText };
   });
+  check('registry: an identifier minted before the correction still reads, and says so',
+    registry.legacyLookup.includes('That is a valid identifier: SL-WAR-8FEEVKQ-T') &&
+    registry.legacyLookup.includes('it would end in E.'),
+    registry.legacyLookup);
+  check('registry: a stored asset with the legacy character opens as itself',
+    registry.legacyStored.id === 'SL-WAR-8FEEVKQ-T' && registry.legacyStored.events === 1 &&
+    registry.legacyStored.text.includes('SL-WAR-8FEEVKQ-T ends in the check character'),
+    JSON.stringify(registry.legacyStored).slice(0, 300));
+  check('registry: degrees in the UTM boxes are named, not called no position',
+    registry.degreesText.includes('The easting and northing hold -13.2294 and 8.4831') &&
+    !registry.degreesText.includes('nothing to find the borehole by'),
+    registry.degreesText.slice(0, 300));
   check('registry: a borehole with no position gets no identifier',
     registry.unlocated.includes('nothing to find the borehole by'));
   check('registry: the identifier is derived from the position',
@@ -4477,10 +4512,13 @@ await withPage(async (page, base, consoleErrors) => {
    * their names are not Copernicus's */
   await removeAll();
   await page.evaluate(() => {
+    /* the site in the UTM the site page stores: degrees typed into the two
+     * boxes are no position in either engine */
     const store = window.GWT.app.store;
-    store.set('site.easting', -12.0);
-    store.set('site.northing', 8.0);
-    store.set('site.utm_zone', null);
+    const utm = window.GWT.core.geographicToUtm(8.0, -12.0);
+    store.set('site.easting', utm.easting);
+    store.set('site.northing', utm.northing);
+    store.set('site.utm_zone', utm.zone);
   });
   await drop(holes);
   await opened(3);
@@ -4524,9 +4562,10 @@ await withPage(async (page, base, consoleErrors) => {
     const app = window.GWT.app, engine = window.GWT.engine, store = app.store;
     const kept = { easting: store.get('site.easting'), northing: store.get('site.northing'),
       utm_zone: store.get('site.utm_zone') };
-    store.set('site.easting', -11.5);
-    store.set('site.northing', 8.5);
-    store.set('site.utm_zone', null);
+    const utm = window.GWT.core.geographicToUtm(8.5, -11.5);
+    store.set('site.easting', utm.easting);
+    store.set('site.northing', utm.northing);
+    store.set('site.utm_zone', utm.zone);
     const n = 1201, view = new DataView(new ArrayBuffer(2 * n * n));
     for (let row = 0; row < n; row++) {
       for (let col = 0; col < n; col++) {
@@ -5191,7 +5230,14 @@ await withPage(async (page, base, consoleErrors) => {
    * under the figure and saved as the engine writes them */
   const beside = await page.evaluate(async () => {
     const app = window.GWT.app, store = app.store, support = window.GWT.support;
-    store.set('site.northing', 8.475);
+    /* the site in UTM, as the site page stores it */
+    window.__placeSite = (lat, lon) => {
+      const utm = window.GWT.core.geographicToUtm(lat, lon);
+      store.set('site.easting', utm.easting);
+      store.set('site.northing', utm.northing);
+      store.set('site.utm_zone', utm.zone);
+    };
+    window.__placeSite(8.475, -11.5);
     Array.from(document.querySelectorAll('[data-item="terrain"] button'))
       .find((b) => b.textContent === 'Analyse the terrain').click();
     const done = await window.__until(window.__settled);
@@ -5212,7 +5258,7 @@ await withPage(async (page, base, consoleErrors) => {
     const names = Array.from(doc.getElementsByTagNameNS(ns, 'wpt')).map((w) =>
       w.getElementsByTagNameNS(ns, 'name')[0].textContent);
     const project = JSON.parse(got[1].data);
-    store.set('site.northing', 8.5);
+    window.__placeSite(8.5, -11.5);
     return { done, plan: [plan.basis, plan.lines.length, plan.soundings.length].join(),
       same: s.result.planGpx === want.planGpx && s.result.planGeoJson === want.planGeoJson &&
         JSON.stringify(s.result.planCaptions) === JSON.stringify(want.planCaptions),
@@ -5262,9 +5308,9 @@ await withPage(async (page, base, consoleErrors) => {
       return { name: got[0].name, text: text,
         media: Object.keys(files).filter((n) => n.startsWith('word/media/')).length };
     };
-    store.set('site.northing', 8.475);
+    window.__placeSite(8.475, -11.5);
     const here = await build();
-    store.set('site.northing', 8.5);
+    window.__placeSite(8.5, -11.5);
     const moved = await build();
     const s = app.terrainSession();
     return { card: !!button, here: here && { name: here.name, media: here.media,
@@ -5290,9 +5336,10 @@ await withPage(async (page, base, consoleErrors) => {
    * Copernicus GLO-30, at 8 N, 12 W */
   const holesSite = () => page.evaluate(() => {
     const store = window.GWT.app.store;
-    store.set('site.easting', -12.0);
-    store.set('site.northing', 8.0);
-    store.set('site.utm_zone', null);
+    const utm = window.GWT.core.geographicToUtm(8.0, -12.0);
+    store.set('site.easting', utm.easting);
+    store.set('site.northing', utm.northing);
+    store.set('site.utm_zone', utm.zone);
   });
   const holesOnCard = async () => {
     await holesSite();
@@ -5489,9 +5536,10 @@ await withPage(async (page, base, consoleErrors) => {
   await removeAll();
   await page.evaluate(() => {
     const store = window.GWT.app.store;
-    store.set('site.easting', -12.4967);
-    store.set('site.northing', 8.7447);
-    store.set('site.utm_zone', null);
+    const utm = window.GWT.core.geographicToUtm(8.7447, -12.4967);
+    store.set('site.easting', utm.easting);
+    store.set('site.northing', utm.northing);
+    store.set('site.utm_zone', utm.zone);
   });
   await drop(overlap);
   await opened(2);

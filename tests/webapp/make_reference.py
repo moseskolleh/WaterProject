@@ -307,7 +307,55 @@ DRILLING_CASES = [
                     ["60 -", "", "", 0.4, "Granite", 6.5, None]]),
     # a grout written as the range it covers
     _sheet(_TABLE, _ROWS, grout="0-20"),
+    # A log in feet: the headers, the cells, the total depth, a strike cell, a
+    # strike note and rates per foot all say so, and are converted.
+    [["Total depth (ft):", "150 ft"],
+     ["Depth interval (ft)", "Sample / lithology description",
+      "Penetration rate (min/ft)", "Water strike depth (ft)"],
+     ["0-20 ft", "Laterite", "2", ""],
+     ["20-60 ft", "Weathered granite", "4 min/ft", "45 ft"],
+     ["60-150 ft", "Fresh granite", "1.5 ft/min", ""],
+     ["Water strike at 90 ft", "", "", ""]],
+    # every unit the sheet names is feet, so a bare depth is feet too; the
+    # grout and the screens in feet, the screens with their unit on each
+    [["Grouting depth:", "0-20 ft"], ["Screens installed:", "80 ft - 110 ft; 120-130 ft"],
+     ["Depth interval", "Lithology description", "Penetration rate"],
+     ["0-10", "Laterite", "1.5 ft/min"], ["10-140", "Granite", "4 min/ft"],
+     ["Water strike at 30", "", ""], ["Water strike at 95'", "", ""]],
+    # a header naming both units, and a sheet giving depths in both: a bare
+    # depth there is refused, never read as metres
+    [["Depth interval (m/ft)", "Lithology description"],
+     ["0-10", "Laterite"], ["10-40 ft", "Granite"], ["40 ft-50 m", "Granite"]],
+    [["Total depth:", "150"], ["Grouting depth:", "6"],
+     ["Depth interval", "Lithology description", "Water strike"],
+     ["0-20 ft", "Laterite", ""], ["20-45 m", "Granite", "12"],
+     ["Water strike at 14", "", ""]],
+    # a template sheet with one strike typed in feet
+    _sheet(_TABLE, [["0-10", "", "", 1, "Topsoil", 6.5, None],
+                    ["10-30", "", "", 0.5, "Weathered granite", 6.5, "45 ft"],
+                    ["30-60", "", "", 0.4, "Granite, fractured", 6.5, "18"]]),
+    # decimal commas in the interval column, and a lens inside a longer row
+    _sheet(_TABLE, [["0-12,5", "", "", 1, "Topsoil", 6.5, None],
+                    ["12,5-30", "", "", 0.5, "Weathered granite", 6.5, None],
+                    ["30-60", "", "", 0.4, "Granite", 6.5, None]]),
+    _sheet(_TABLE, [["0-30", "", "", 1, "Weathered granite", 6.5, None],
+                    ["5-10", "", "", 1, "Clay lens", 6.5, None],
+                    ["30-45", "", "", 0.4, "Granite", 6.5, None],
+                    ["50-60", "", "", 0.4, "Granite", 6.5, None]]),
+    [["Depth interval", "Lithology description"],
+     ["0-12", "Laterite and saprolite"], ["12-45", "Granite, fractured at 30-32"],
+     ["30-32", "Fracture zone, water"]],
 ]
+
+
+# The two logs the readiness cases add: one in feet, and one whose rows and
+# strikes the reader had to set aside. parity.mjs reads them from the
+# reference, so both engines read the same cells.
+GATE_FEET_LOG = DRILLING_CASES[6]
+GATE_SET_ASIDE_LOG = _sheet(_TABLE, [
+    ["0-10", "", "", 1, "Topsoil", 6.5, "75 m"],
+    ["10 -", "", "", 0.5, "Weathered granite", 6.5, None],
+    ["20-60", "", "", 0.4, "Granite, fractured", 6.5, "1/2 m"]])
 
 
 def drilling_case(grid) -> dict:
@@ -318,6 +366,8 @@ def drilling_case(grid) -> dict:
         "grid": grid,
         "strikes": clean(log.water_strikes_m),
         "grout": clean(log.grouting_depth_m),
+        "total": clean(log.total_depth_m),
+        "screens": [[clean(a), clean(b)] for a, b in log.installed_screens_m],
         "intervals": [[clean(iv.top_m), clean(iv.bottom_m), iv.description,
                        clean(iv.penetration_rate_m_per_min), clean(iv.bit_diameter_in)]
                       for iv in log.intervals],
@@ -1973,6 +2023,7 @@ def build() -> dict:
     ]
 
     # The certification gate, over a project missing one thing at a time.
+    from groundwater.ingestion.drilling import drilling_from_grid as _drilling_from_grid
     from groundwater.readiness import assess_readiness
 
     _log = read_drilling_workbook(DATA / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
@@ -2039,6 +2090,17 @@ def build() -> dict:
             "wq": {"sample": "dr_timbo/dr_timbo_water_quality.xlsx"},
         }), {"field_data": {"reason": "published as a worked example",
                             "by": "M. K."}}),
+        # A log in feet, converted: met, with the conversion stated beside
+        # the gate. A log the reader set part of aside: not complete, and no
+        # longer "every reading carried a unit". Degrees in the UTM boxes:
+        # no position.
+        "feet_log": (dict(_full, drilling_log=_drilling_from_grid(
+            GATE_FEET_LOG, "case.xlsx")), {}),
+        "log_set_aside": (dict(_full, drilling_log=_drilling_from_grid(
+            GATE_SET_ASIDE_LOG, "case.xlsx")), {}),
+        "degree_site": (dict(_full, site=SiteMetadata(
+            community="Dr. Timbo's", district="Western Area Rural",
+            easting=-13.2294, northing=8.4831)), {}),
     }
     out["readiness"] = {}
     for _name, (_state, _over) in _gate_cases.items():
@@ -2142,8 +2204,42 @@ def build() -> dict:
         for t in (_timbo_id, _timbo_id.lower(), _timbo_id.replace("0", "O"),
                   _timbo_id.replace("1", "L"), " " + _timbo_id + " ",
                   _timbo_id[:-1] + "Z", _timbo_id.replace("-", ""),
-                  "SL-WAR-XXXXXXX-9", "not an identifier", "")
+                  "SL-WAR-XXXXXXX-9", "not an identifier", "",
+                  # minted before the check character followed ISO 7064, and
+                  # a mistyping of one that the legacy character lets through
+                  "SL-WAR-8FEEVKQ-T", "sl-war-8feevkq-t", "SL-BO-C4817SW-1",
+                  "SL-BO-P4817SW-1", "SL-PL-8HE2QWG-3", "SL-PL-8HE2QWG-G")
     ]
+    # the check character itself, on the standard's examples and on bodies
+    # the legacy calculation gives another character for
+    out["check_characters"] = [
+        {"body": b, "iso": _registry.check_character(b),
+         "legacy": _registry.legacy_check_character(b),
+         "is_legacy": _registry.is_legacy_asset_id(
+             f"{b}-{_registry.legacy_check_character(b)}")}
+        for b in ("00000000D07A0090", "00000000D07A009000000000",
+                  "188166C7342065419F3A0245", "A12425GABC1234002",
+                  "SL-WAR-8FEEVKQ", "SL-BO-C4817SW", "SL-PL-8HE2QWG",
+                  "SL-KAI-KDH2TCG", "SL-XX-00000ZZ")
+    ]
+    # Degrees typed into the UTM boxes: the same refusal from the identifier
+    # and the gate, and no position, in both engines.
+    from groundwater.geo import degrees_in_utm_boxes as _degrees
+
+    _degree_sites = [(-13.2294, 8.4831), (13.2294, 8.4831), (20.5, 5.25),
+                     (-180.0, 90.0), (0.0, 0.0), (694912.0, 938150.0), (181.0, 8.0)]
+    out["degree_boxes"] = []
+    for _e, _n in _degree_sites:
+        _site = SiteMetadata(district="Western Area Rural", easting=_e, northing=_n)
+        try:
+            _minted = _registry.mint_asset_id(_site)
+        except ValueError as _refused:
+            _minted = "refused: " + str(_refused)
+        _gate = assess_readiness({"site": _site, "sources": {}}, "placard")
+        out["degree_boxes"].append({
+            "easting": _e, "northing": _n, "note": _degrees(_e, _n), "minted": _minted,
+            "site_located": [[r.state, r.detail] for r in _gate.requirements
+                             if r.key == "site_located"][0]})
     _streams = [
         [{"when": "2020-01-10", "kind": "commissioned", "by": "M. Kolleh"},
          {"when": "2023-04-02", "kind": "failure", "note": "rising main parted"}],
@@ -2166,6 +2262,31 @@ def build() -> dict:
         "decommissioned": _streams[0][:1] + [{"when": "2022-08-01",
                                               "kind": "decommissioned"}],
         "merged": _streams[0] + _streams[1],
+        # broken in January and reported again in May: out since January
+        "rebroken": _streams[0][:1] + [
+            {"when": "2024-01-10", "kind": "failure", "by": "M. Kolleh"},
+            {"when": "2024-05-20", "kind": "failure", "note": "still broken"}],
+        # the same visit records the failure and the decommissioning, or a
+        # pump pulled for reuse on the decommissioning day
+        "collapsed": _streams[0][:1] + [
+            {"when": "2023-03-01", "kind": "decommissioned", "note": "backfilled"},
+            {"when": "2023-03-01", "kind": "failure", "note": "hole collapsed"}],
+        "pulled": _streams[0][:1] + [
+            {"when": "2023-03-01", "kind": "repair", "note": "pump pulled for reuse"},
+            {"when": "2023-03-01", "kind": "decommissioned", "note": "dry"}],
+        # records after a decommissioning, and a new commissioning
+        "after_decommissioning": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned"},
+            {"when": "2023-01-05", "kind": "repair", "note": "new seals"},
+            {"when": "2023-02-01", "kind": "restored"}],
+        "recommissioned": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned"},
+            {"when": "2023-01-05", "kind": "repair"},
+            {"when": "2023-06-01", "kind": "commissioned", "by": "A. Bangura"}],
+        # a second decommissioning record, which explains nothing away
+        "decommissioned_twice": _streams[0][:1] + [
+            {"when": "2022-08-01", "kind": "decommissioned", "note": "collapsed"},
+            {"when": "2023-01-05", "kind": "decommissioned", "note": "backfilled"}],
     }
     _today = _date(2024, 6, 1)
     _assets = {}
@@ -2380,6 +2501,7 @@ def build() -> dict:
     out["survey_figures"] = survey_figures_reference(rokel_interps)
     out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
     out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
+    out["gate_logs"] = {"feet": GATE_FEET_LOG, "set_aside": GATE_SET_ASIDE_LOG}
     out["photo_evidence"] = photo_evidence_reference()
     out["field_kit"] = field_kit_reference()
     out["airlift"] = airlift_reference()
@@ -4766,6 +4888,23 @@ def photo_evidence_reference() -> dict:
             "des-backfill-placed-6": {"status": "na"},
             "dev-borehole-disinfected-chlorine": {"status": "na"}}}},
     }
+    # Every critical item needs an answer: answered in both apps' shapes
+    # (the browser's {status}, the Streamlit app's bare code), a No is an
+    # answer, and a code that is none of the four is pending.
+    from groundwater.supervision import load_checklists as _load_checklists
+
+    _critical = [i.item_id for i in _load_checklists() if i.critical]
+    _photographed = {key: photo for key in ("des-casing-screen-assemblage",
+                                            "des-backfill-placed-6",
+                                            "dev-borehole-disinfected-chlorine")}
+    gate["answered"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: ({"status": "yes"} if n % 2 else "Yes ") for n, key in enumerate(_critical)}}}
+    gate["failed"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: {"status": "no", "remark": "not done"} for key in _critical}}}
+    gate["garbled"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: ("maybe" if n < 3 else "na") for n, key in enumerate(_critical)}}}
+    gate["three_of_38"] = {"supervision": {"evidence": _photographed, "responses": {
+        key: {"status": "yes"} for key in _photographed}}}
     return {
         "attached_at": attached,
         "cases": cases,

@@ -573,3 +573,54 @@ def parse_latlon(text: str) -> tuple[float, float] | None:
     """
     reading = read_latlon(text)
     return (reading.lat, reading.lon) if reading.ok else None
+
+
+def utm_boxes_hold_degrees(easting, northing) -> bool:
+    """Whether an easting and northing are small enough to be degrees.
+
+    No UTM easting lies within 180 m of its zone's origin, 500 km west of
+    the central meridian, and nothing in Sierra Leone is within 90 m of the
+    equator, so a pair that small is a longitude and a latitude typed into
+    the two boxes.
+    """
+    if isinstance(easting, bool) or isinstance(northing, bool):
+        return False
+    try:
+        e, n = float(easting), float(northing)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(e) and math.isfinite(n) and abs(e) <= 180 and abs(n) <= 90
+
+
+def _as_typed(value: float) -> str:
+    """A box's value written out plainly, as the browser writes it."""
+    return f"{float(value):.10f}".rstrip("0").rstrip(".")
+
+
+def degrees_in_utm_boxes(easting, northing) -> str:
+    """The sentence refusing degrees typed into the UTM boxes, or ``""``.
+
+    The browser read such a pair as degrees and the Python engine as metres
+    near the equator, so one project had a placard the browser certified,
+    an identifier neither engine could mint and a site the Python engine
+    put outside the country. Neither engine reads a position from them now;
+    the apps offer to convert them, which is the operator saying they are
+    degrees. The position they read as is given in the sentence, read as
+    :func:`read_latlon` reads a pasted pair, so an unsigned longitude is
+    west and the sentence says that was assumed.
+    """
+    if easting is None or northing is None or not utm_boxes_hold_degrees(easting, northing):
+        return ""
+    from .text import phrase
+
+    e_text, n_text = _as_typed(easting), _as_typed(northing)
+    reading = read_latlon(f"{n_text}, {e_text}")
+    if reading.ok:
+        lat, lon = float(reading.lat), float(reading.lon)
+        position = (f"{abs(lat):.5f}° {'N' if lat >= 0 else 'S'}, "
+                    f"{abs(lon):.5f}° {'E' if lon >= 0 else 'W'}")
+    else:
+        position = reading.message.rstrip(".")
+    text = phrase("site.degrees_in_utm_boxes", easting=e_text, northing=n_text,
+                  position=position)
+    return f"{text} {reading.message}" if reading.ok and reading.message else text

@@ -37,7 +37,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from .geo import infer_zone_for_sierra_leone, utm_to_geographic
+from .geo import degrees_in_utm_boxes, infer_zone_for_sierra_leone, utm_to_geographic
+from .text import phrase
+from .utils import and_join
 
 __all__ = [
     "Asset",
@@ -52,6 +54,8 @@ __all__ = [
     "check_character",
     "event_id",
     "format_asset_id",
+    "is_legacy_asset_id",
+    "legacy_check_character",
     "merge_events",
     "mint_asset_id",
     "parse_asset_id",
@@ -110,22 +114,51 @@ POSITION_STEP_M = 10
 _ID_RE = re.compile(r"^SL-([A-Z]{2,4})-([0-9A-Z]{7})-([0-9A-Z])$")
 
 
-def check_character(body: str) -> str:
-    """ISO 7064 MOD 37,36 over ``body``, ignoring separators.
+#: ISO 7064's hybrid system for M = 36: the running sum is reduced modulo M
+#: (36, with 0 written as 36) and doubled modulo M + 1 (37).
+_M = 36
 
-    Chosen over a simpler weighted sum because it detects every single
-    wrong character and every transposition of two adjacent ones - which
-    between them are almost all the mistakes people make copying a code off
-    a headworks plate into a phone.
-    """
-    product = 36
+
+def _check_with(body: str, modulus: int) -> str:
+    product = _M
     for char in body.upper():
         value = _CHECK_ALPHABET.find(char)
         if value < 0:
             continue  # separators and spaces carry no value
-        total = (product % 37) + value
-        product = 2 * (total % 37 or 37)
-    return _CHECK_ALPHABET[(37 - product % 37) % 36]
+        total = (product % (_M + 1)) + value
+        product = 2 * (total % modulus or modulus)
+    return _CHECK_ALPHABET[(_M + 1 - product % (_M + 1)) % _M]
+
+
+def check_character(body: str) -> str:
+    """ISO 7064 MOD 37,36 over ``body``, ignoring separators.
+
+    The running sum is reduced modulo 36 and doubled modulo 37, as the
+    standard's hybrid system has it. It used to be reduced modulo 37, which
+    left 37 final states for 36 check characters, so two of them shared
+    one: about one single mistyped character in 680 still validated, and
+    the identifier did not match the standard's own worked examples.
+
+    Done as the standard has it, every single wrong character is caught.
+    Most transpositions of two adjacent characters are caught too, but not
+    all: of the 45,360 ways two different characters can meet in one of
+    the calculation's 36 states, 72 leave the state unchanged (one in 630),
+    which is the hybrid system's own limit rather than a slip here.
+
+    >>> check_character("00000000D07A0090")
+    'Q'
+    """
+    return _check_with(body, _M)
+
+
+def legacy_check_character(body: str) -> str:
+    """The check character identifiers were minted with before the correction.
+
+    Reduced modulo 37 rather than 36 (see :func:`check_character`). Kept so
+    an identifier already painted on a plate, or already holding a history
+    in a project file, still reads; never used to mint.
+    """
+    return _check_with(body, _M + 1)
 
 
 def _position_code(easting: float, northing: float, zone: int) -> str:
@@ -173,6 +206,14 @@ def mint_asset_id(site) -> str:
             "a borehole with no recorded position cannot be given an "
             "identifier: there would be nothing to find it by"
         )
+    # Degrees typed into the two boxes are not a position in metres. The
+    # browser's readiness gate read them as degrees and passed the plate,
+    # while this refused them as a point near the equator, so a plate was
+    # certified for an identifier nobody could mint. Both engines now refuse
+    # them, in the same words.
+    degrees = degrees_in_utm_boxes(easting, northing)
+    if degrees:
+        raise ValueError(degrees)
     zone = getattr(site, "utm_zone", None) or infer_zone_for_sierra_leone(
         float(easting))
     return format_asset_id(_district_code(getattr(site, "district", "")),
@@ -206,18 +247,43 @@ def parse_asset_id(text: str) -> str | None:
     candidate = f"SL-{district}-{code}-{given}"
     if not _ID_RE.match(candidate):
         return None
-    if check_character(f"SL-{district}-{code}") != given:
+    body = f"SL-{district}-{code}"
+    # An identifier minted before the check character followed ISO 7064
+    # exactly is still the identifier on its plate and in its project file,
+    # so it is read as it is rather than refused or renamed:
+    # validate_asset_id says that it carries the older character.
+    if given not in (check_character(body), legacy_check_character(body)):
         return None
     return candidate
 
 
+def is_legacy_asset_id(asset_id: str) -> bool:
+    """Whether ``asset_id`` checks only against the legacy check character."""
+    parsed = parse_asset_id(asset_id)
+    if not parsed:
+        return False
+    body, given = parsed.rsplit("-", 1)
+    return check_character(body) != given
+
+
 def validate_asset_id(text: str) -> tuple[bool, str]:
-    """``(ok, reason)`` - the reason is written to be shown to the person typing."""
+    """``(ok, reason)`` - the reason is written to be shown to the person typing.
+
+    An identifier carrying the legacy check character is accepted, and its
+    reason is the note saying so rather than an empty string.
+    """
     raw = str(text or "").strip()
     if not raw:
         return False, "No identifier was entered."
     parsed = parse_asset_id(raw)
     if parsed:
+        if is_legacy_asset_id(parsed):
+            # read, and said: while the older character is read, about one
+            # single mistyped character in 36 matches it, so the person
+            # typing is told to compare the identifier with the plate
+            body = parsed.rsplit("-", 1)[0]
+            return True, phrase("registry.legacy_check_character", asset_id=parsed,
+                                expected=check_character(body))
         return True, ""
     tidy = re.sub(r"[\s_]+", "", raw.upper())
     if not tidy.startswith("SL-"):
@@ -251,6 +317,24 @@ EVENT_KINDS = {
     "decommissioned": ("Decommissioned", "decommissioned", False),
     "note": ("Note", None, False),
 }
+
+#: The order events recorded on one day are read in. Sorting them by kind
+#: name put "decommissioned" before "failure", "repair" and "restored", so a
+#: hole recorded as collapsed and decommissioned on one visit read "Not
+#: working" and stayed due an inspection, and a pump pulled for reuse on the
+#: decommissioning day read "Working". This order is a choice, stated: on a
+#: day the borehole is commissioned first, then visited, found broken,
+#: mended, and only then decommissioned, which is the last thing that can
+#: happen to it. Kinds of the same rank keep their name order.
+SAME_DAY_ORDER = {
+    "commissioned": 0, "inspection": 1, "water_sample": 1, "note": 1,
+    "failure": 2, "repair": 3, "restored": 3, "decommissioned": 4,
+}
+
+
+def _day_rank(kind: str) -> int:
+    return SAME_DAY_ORDER.get(kind, 1)
+
 
 FUNCTION_LABELS = {
     "functional": "Working",
@@ -373,7 +457,8 @@ def merge_events(asset_id: str, *streams) -> list[AssetEvent]:
                 # because the alternative is losing it
                 merged[event.event_id] = event
     return sorted(merged.values(),
-                  key=lambda e: (e.when or "9999", e.kind, e.event_id))
+                  key=lambda e: (e.when or "9999", _day_rank(e.kind), e.kind,
+                                 e.event_id))
 
 
 # ---------------------------------------------------------------------------
@@ -603,22 +688,37 @@ def asset_state(asset: Asset, today: date | None = None,
     schedule = schedule or Schedule()
     events = merge_events(asset.asset_id, asset.events)
     dated = [(e.date, e) for e in events if e.date is not None]
-    dated.sort(key=lambda pair: (pair[0], pair[1].kind, pair[1].event_id))
+    dated.sort(key=lambda pair: (pair[0], _day_rank(pair[1].kind), pair[1].kind,
+                                 pair[1].event_id))
     undated = sum(1 for e in events if e.date is None)
 
     function, since, detail = "unknown", None, (
         "Nothing has been recorded against this borehole, so whether it is "
         "working is not known.")
     commissioned = last_inspection = last_sample = None
+    after_decommissioning: list[AssetEvent] = []
     for when, event in dated:
         if when > today:
             continue  # a record dated in the future settles nothing yet
         establishes = EVENT_KINDS.get(event.kind, ("", None, False))[1]
-        if establishes:
+        if (establishes and function == "decommissioned"
+                and event.kind != "commissioned"):
+            # Decommissioning is terminal: a repair or a failure logged after
+            # it stays in the history but does not bring the borehole back.
+            # Only a new commissioning record does. A second decommissioning
+            # record changes nothing, as a second failure report does not.
+            if establishes != "decommissioned":
+                after_decommissioning.append(event)
+        elif establishes and establishes != function:
+            # Only a change moves "since". A villager reporting a broken pump
+            # again in May, as the plate reports of PLAN.md step 7.1 will,
+            # restarted the count from May, so a borehole out since January
+            # showed 12 days out of service rather than 143.
             function, since = establishes, when
             detail = f"{event.label} recorded on {when.isoformat()}"
             if event.by:
                 detail += f" by {event.by}"
+            after_decommissioning = []
         if event.kind == "commissioned" and commissioned is None:
             commissioned = when
         if event.kind == "inspection":
@@ -626,6 +726,11 @@ def asset_state(asset: Asset, today: date | None = None,
         if event.kind == "water_sample":
             last_sample = when
 
+    if function == "decommissioned" and after_decommissioning:
+        detail += ". " + phrase(
+            "registry.after_decommissioning", n=len(after_decommissioning),
+            events=and_join([phrase("registry.event_on", event=e.label.lower(),
+                                    when=e.when) for e in after_decommissioning]))
     out_for = ((today - since).days
                if function == "non_functional" and since else None)
     if undated and function == "unknown":

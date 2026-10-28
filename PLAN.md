@@ -667,7 +667,13 @@ foundations.
   hash (the existing rule).
 - For feature phones, a short SMS format
   (`BH SL-PL-XXXXXXX-C BROKEN`). The MOD 37,36 check character already
-  in the identifier catches a mistyped code.
+  in the identifier catches every single mistyped character and most
+  swapped pairs. While identifiers minted with the older character are
+  still read (QUESTIONS.md item 11), a mistyped code can match that
+  character instead, and the apps say so to the person typing; an SMS
+  has nobody reading the note, so a report naming an identifier that
+  checks only against the older character is held for a person to
+  confirm rather than merged.
 - An SMS gateway adapter is optional, configured by the programme, and
   never required.
 

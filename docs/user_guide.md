@@ -300,6 +300,28 @@ strike in the water strike column. The design module places screens
 against these depths, so accuracy here directly shapes the borehole
 design.
 
+A depth may carry a decimal comma (`12,5-30` is 12.5 to 30 m). A log
+kept in feet is read in feet: say so in the column headers ("Depth
+interval (ft)", "Total depth (ft)", "Penetration rate (min/ft)") or
+against the depths themselves (`0-20 ft`, `45'`, "water strike at 90
+ft"). Both apps convert every depth to metres at 0.3048 m to the foot,
+kept to the centimetre, convert rates per foot to metres a minute, and
+say on the log and beside the readiness gate that they did. A depth
+with no unit of its own is read in the unit its column header (or its
+label, for the total depth) names; failing that, in feet when every
+depth or rate unit the sheet names is feet, and in metres when it names
+only metres or none. Where the sheet names both feet and metres, or a
+header names both ("Depth (m/ft)"), a depth with no unit of its own is
+not read at all, and the log says which cell to write the unit in. A
+row or a strike the reader had to set aside keeps the drilling log from
+being called complete by the readiness gate until the sheet is
+corrected, and a cell it could not read also keeps it from saying that
+every reading carried a unit it could read.
+
+A lens logged inside a longer interval (`0-30`, `5-10`, `30-45`) is
+flagged as an overlap but not as a gap, and the total depth is checked
+against the deepest bottom logged only when the sheet states one.
+
 ## 4a. Drilling log co-pilot (browser app, at the rig)
 
 The browser app keeps the drilling log as the hole is drilled: **Drilling
@@ -685,6 +707,17 @@ content, verticality, specific capacity) and the minimum separation
 distances from pollution sources. When a stage is complete, download
 the signed checklist record from "Checklist record and sign off".
 
+The acceptance boxes start empty, and a check goes into the record only
+when its measurements were entered: a check nobody measured is not
+printed as a pass. Verticality also needs the casing inner diameter
+from the disinfection calculator beside it, as it does in the browser
+app. The record is stamped PROVISIONAL while any critical item has no
+answer, and the stamp counts the blank ones stage by stage. An answer of
+No is an answer - the record states the failure - and so is N/A; a
+blank is what holds it back. That includes the stages not reached yet,
+so a record downloaded at the end of one stage stays provisional until
+the last stage is answered, or is issued on an override that says why.
+
 ## 8a. Depth Spine
 
 In the browser app: [`#/spine`](index.html#/spine).
@@ -723,6 +756,23 @@ on the other pages - the borehole design, the pumping test and the
 water quality verdict - attach to the report automatically; the page
 shows what is attached before you build it.
 
+The Asset registry page ([`#/registry`](index.html#/registry)) gives
+the borehole its identifier and prints its headworks plate. The
+identifier is worked out from the GPS position, so the position has to
+be in UTM metres (section 10). Its last character is an ISO 7064 MOD
+37,36 check character, which catches every single mistyped character
+and almost every pair of neighbouring characters typed the wrong way
+round. Until this release that character was worked out slightly
+differently from the standard. An identifier ending in the older
+character is still read, on the page and from a saved project file,
+with a note saying so and asking for it to be compared with the plate,
+because while the older character is read a mistyped identifier can
+pass as an older one. A project with no saved asset record now shows
+its identifier with the corrected last character, so a plate printed
+from it before carries a different last character from the page; the
+rest of the identifier is the same. QUESTIONS.md item 11 asks what to
+do about plates already made.
+
 ## 10. Site maps
 
 In the browser app: [`#/site`](index.html#/site), and the terrain
@@ -736,7 +786,13 @@ sits, the study area, geology and aquifers, topography and terrain, and
 the interactive map.
 The subsurface maps outside the reports are in the Python app for now.
 Enter the UTM coordinates in the sidebar to place the site star; the
-window slider sets how much ground the local maps cover. Every figure
+window slider sets how much ground the local maps cover. The easting and
+northing boxes take UTM metres only. A latitude and longitude typed into
+them (a pair no larger than 180 and 90) is not read as a position in
+either app: the page says so, in the same words the readiness gate and
+the asset identifier use, and offers to convert it, reading an unsigned
+longitude as west and saying it did. Or paste "lat, lon" into the box
+below and convert that. Every figure
 carries its data attribution, and the study area, geological and
 aquifer maps embed automatically into the geophysical survey and
 handover reports.

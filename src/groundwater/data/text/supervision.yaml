@@ -1,0 +1,24 @@
+# The supervision record's readiness: whether every critical checklist item
+# has an answer. Completeness, not outcome: an answer of No is an answer,
+# and a blank is missing evidence. Both engines read this file:
+# groundwater/readiness.py and the readiness section of gwt-core.js. The
+# template rules are in src/groundwater/text.py; CONTRIBUTING.md says how to
+# add an entry.
+
+# {stages} is a list of open_in_stage, "4 in Siting, 10 in Drilling and 12
+# in Design and installation", in checklist order.
+critical_unanswered: >-
+  No answer is recorded for {n:g} critical checklist {n:plural:item|items}
+  ({stages}). A record cannot vouch for a critical step left blank; an answer
+  of No is an answer, and stays in the record as a failure.
+
+critical_answered: >-
+  Each of the {n:g} critical checklist {n:plural:item|items} has an answer.
+  This asks only that each was answered: an answer of No stays in the record
+  as a failure.
+
+no_critical_items: >-
+  The checklist in use has no critical items.
+
+# One stage in critical_unanswered's list. {stage} is the stage's title.
+open_in_stage: "{n:g} in {stage}"

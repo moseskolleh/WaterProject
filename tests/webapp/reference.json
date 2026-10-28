@@ -129406,6 +129406,776 @@
     ],
     "assumptions": []
    }
+  },
+  "feet_log": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 46 m with 3 lithological intervals.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "19.0 m of screen in 3 runs.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": [
+     "The drilling log gives 9 depths in feet; they were converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 150 ft, is 45.72 m). Check the converted log against the sheet. 3 penetration rates given per foot or in feet per minute or hour were converted to metres per minute."
+    ]
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 46 m with 3 lithological intervals.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": [
+     "The drilling log gives 9 depths in feet; they were converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 150 ft, is 45.72 m). Check the converted log against the sheet. 3 penetration rates given per foot or in feet per minute or hour were converted to metres per minute."
+    ]
+   },
+   "quality": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": [
+     "The drilling log gives 9 depths in feet; they were converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 150 ft, is 45.72 m). Check the converted log against the sheet. 3 penetration rates given per foot or in feet per minute or hour were converted to metres per minute."
+    ]
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": [
+     "The drilling log gives 9 depths in feet; they were converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 150 ft, is 45.72 m). Check the converted log against the sheet. 3 penetration rates given per foot or in feet per minute or hour were converted to metres per minute."
+    ]
+   }
+  },
+  "log_set_aside": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Drilling log, Readable units, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "unmet",
+      "The drilling log reader set part of the sheet aside, so the log is not complete: Depth interval cell \"10 -\" was not read as a depth interval, so this row was skipped; write it as the depths from and to, as \"30-40\". Water strike cell \"1/2 m\" was not read as a depth: it writes a fraction or a date, which names no single depth. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\". Water 1 strike at 75 m below the recorded total depth of 60 m, so it was not recorded; check the cell it came from.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "unmet",
+      "Depth interval cell \"10 -\" was not read as a depth interval, so this row was skipped; write it as the depths from and to, as \"30-40\".; Water strike cell \"1/2 m\" was not read as a depth: it writes a fraction or a date, which names no single depth. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\".",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "19.0 m of screen in 3 runs.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Drilling log, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "unmet",
+      "The drilling log reader set part of the sheet aside, so the log is not complete: Depth interval cell \"10 -\" was not read as a depth interval, so this row was skipped; write it as the depths from and to, as \"30-40\". Water strike cell \"1/2 m\" was not read as a depth: it writes a fraction or a date, which names no single depth. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\". Water 1 strike at 75 m below the recorded total depth of 60 m, so it was not recorded; check the cell it came from.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "quality": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Readable units, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "unmet",
+      "Depth interval cell \"10 -\" was not read as a depth interval, so this row was skipped; write it as the depths from and to, as \"30-40\".; Water strike cell \"1/2 m\" was not read as a depth: it writes a fraction or a date, which names no single depth. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\".",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   }
+  },
+  "degree_site": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "unmet",
+      "The easting and northing hold -13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological intervals.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "19.0 m of screen in 3 runs.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "unmet",
+      "The easting and northing hold -13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological intervals.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "unmet",
+      "The easting and northing hold -13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "unmet",
+      "The easting and northing hold -13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "decision_bands",
+      "met",
+      "Each decision number carries a band: Safe yield and Pump intake below the top of the casing.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   }
   }
  },
  "handover_works": {
@@ -131221,65 +131991,65 @@
    "easting": 694912.0,
    "northing": 938150.0,
    "zone": 28,
-   "id": "SL-WAR-8FEEVKQ-T"
+   "id": "SL-WAR-8FEEVKQ-E"
   },
   {
    "district": "Western Area Rural",
    "easting": 694914.0,
    "northing": 938147.0,
    "zone": 28,
-   "id": "SL-WAR-8FEEVKQ-T"
+   "id": "SL-WAR-8FEEVKQ-E"
   },
   {
    "district": "Bo",
    "easting": 790500.0,
    "northing": 875300.0,
    "zone": 28,
-   "id": "SL-BO-9MSANFA-7"
+   "id": "SL-BO-9MSANFA-3"
   },
   {
    "district": "Kailahun",
    "easting": 280400.0,
    "northing": 925600.0,
    "zone": 29,
-   "id": "SL-KAI-KDH2TCG-K"
+   "id": "SL-KAI-KDH2TCG-1"
   },
   {
    "district": "Nowhere At All",
    "easting": 694912.0,
    "northing": 938150.0,
    "zone": 28,
-   "id": "SL-XX-8FEEVKQ-B"
+   "id": "SL-XX-8FEEVKQ-D"
   }
  ],
  "asset_id_parsing": [
   {
-   "typed": "SL-WAR-8FEEVKQ-T",
-   "parsed": "SL-WAR-8FEEVKQ-T",
+   "typed": "SL-WAR-8FEEVKQ-E",
+   "parsed": "SL-WAR-8FEEVKQ-E",
    "ok": true,
    "reason": ""
   },
   {
-   "typed": "sl-war-8feevkq-t",
-   "parsed": "SL-WAR-8FEEVKQ-T",
+   "typed": "sl-war-8feevkq-e",
+   "parsed": "SL-WAR-8FEEVKQ-E",
    "ok": true,
    "reason": ""
   },
   {
-   "typed": "SL-WAR-8FEEVKQ-T",
-   "parsed": "SL-WAR-8FEEVKQ-T",
+   "typed": "SL-WAR-8FEEVKQ-E",
+   "parsed": "SL-WAR-8FEEVKQ-E",
    "ok": true,
    "reason": ""
   },
   {
-   "typed": "SL-WAR-8FEEVKQ-T",
-   "parsed": "SL-WAR-8FEEVKQ-T",
+   "typed": "SL-WAR-8FEEVKQ-E",
+   "parsed": "SL-WAR-8FEEVKQ-E",
    "ok": true,
    "reason": ""
   },
   {
-   "typed": " SL-WAR-8FEEVKQ-T ",
-   "parsed": "SL-WAR-8FEEVKQ-T",
+   "typed": " SL-WAR-8FEEVKQ-E ",
+   "parsed": "SL-WAR-8FEEVKQ-E",
    "ok": true,
    "reason": ""
   },
@@ -131287,10 +132057,10 @@
    "typed": "SL-WAR-8FEEVKQ-Z",
    "parsed": null,
    "ok": false,
-   "reason": "The check character does not match: this identifier should end in T, not Z. Something in it has been mistyped."
+   "reason": "The check character does not match: this identifier should end in E, not Z. Something in it has been mistyped."
   },
   {
-   "typed": "SLWAR8FEEVKQT",
+   "typed": "SLWAR8FEEVKQE",
    "parsed": null,
    "ok": false,
    "reason": "An identifier looks like SL-WAR-8T4KQ2A-7: country, district, position, check character."
@@ -131299,7 +132069,7 @@
    "typed": "SL-WAR-XXXXXXX-9",
    "parsed": null,
    "ok": false,
-   "reason": "The check character does not match: this identifier should end in B, not 9. Something in it has been mistyped."
+   "reason": "The check character does not match: this identifier should end in T, not 9. Something in it has been mistyped."
   },
   {
    "typed": "not an identifier",
@@ -131312,6 +132082,170 @@
    "parsed": null,
    "ok": false,
    "reason": "No identifier was entered."
+  },
+  {
+   "typed": "SL-WAR-8FEEVKQ-T",
+   "parsed": "SL-WAR-8FEEVKQ-T",
+   "ok": true,
+   "reason": "SL-WAR-8FEEVKQ-T ends in the check character identifiers were given before the toolkit followed ISO 7064 MOD 37,36 exactly; worked out as the standard has it, it would end in E. It is still read, because plates and project files made before the correction carry it, but while the older character is read a mistyped identifier can pass as an older one: compare it with the plate character by character."
+  },
+  {
+   "typed": "sl-war-8feevkq-t",
+   "parsed": "SL-WAR-8FEEVKQ-T",
+   "ok": true,
+   "reason": "SL-WAR-8FEEVKQ-T ends in the check character identifiers were given before the toolkit followed ISO 7064 MOD 37,36 exactly; worked out as the standard has it, it would end in E. It is still read, because plates and project files made before the correction carry it, but while the older character is read a mistyped identifier can pass as an older one: compare it with the plate character by character."
+  },
+  {
+   "typed": "SL-BO-C4817SW-1",
+   "parsed": "SL-BO-C4817SW-1",
+   "ok": true,
+   "reason": "SL-BO-C4817SW-1 ends in the check character identifiers were given before the toolkit followed ISO 7064 MOD 37,36 exactly; worked out as the standard has it, it would end in Z. It is still read, because plates and project files made before the correction carry it, but while the older character is read a mistyped identifier can pass as an older one: compare it with the plate character by character."
+  },
+  {
+   "typed": "SL-BO-P4817SW-1",
+   "parsed": "SL-BO-P4817SW-1",
+   "ok": true,
+   "reason": "SL-BO-P4817SW-1 ends in the check character identifiers were given before the toolkit followed ISO 7064 MOD 37,36 exactly; worked out as the standard has it, it would end in E. It is still read, because plates and project files made before the correction carry it, but while the older character is read a mistyped identifier can pass as an older one: compare it with the plate character by character."
+  },
+  {
+   "typed": "SL-PL-8HE2QWG-3",
+   "parsed": "SL-PL-8HE2QWG-3",
+   "ok": true,
+   "reason": "SL-PL-8HE2QWG-3 ends in the check character identifiers were given before the toolkit followed ISO 7064 MOD 37,36 exactly; worked out as the standard has it, it would end in G. It is still read, because plates and project files made before the correction carry it, but while the older character is read a mistyped identifier can pass as an older one: compare it with the plate character by character."
+  },
+  {
+   "typed": "SL-PL-8HE2QWG-G",
+   "parsed": "SL-PL-8HE2QWG-G",
+   "ok": true,
+   "reason": ""
+  }
+ ],
+ "check_characters": [
+  {
+   "body": "00000000D07A0090",
+   "iso": "Q",
+   "legacy": "L",
+   "is_legacy": false
+  },
+  {
+   "body": "00000000D07A009000000000",
+   "iso": "X",
+   "legacy": "B",
+   "is_legacy": false
+  },
+  {
+   "body": "188166C7342065419F3A0245",
+   "iso": "O",
+   "legacy": "1",
+   "is_legacy": false
+  },
+  {
+   "body": "A12425GABC1234002",
+   "iso": "M",
+   "legacy": "M",
+   "is_legacy": false
+  },
+  {
+   "body": "SL-WAR-8FEEVKQ",
+   "iso": "E",
+   "legacy": "T",
+   "is_legacy": true
+  },
+  {
+   "body": "SL-BO-C4817SW",
+   "iso": "Z",
+   "legacy": "1",
+   "is_legacy": true
+  },
+  {
+   "body": "SL-PL-8HE2QWG",
+   "iso": "G",
+   "legacy": "3",
+   "is_legacy": true
+  },
+  {
+   "body": "SL-KAI-KDH2TCG",
+   "iso": "1",
+   "legacy": "K",
+   "is_legacy": true
+  },
+  {
+   "body": "SL-XX-00000ZZ",
+   "iso": "R",
+   "legacy": "P",
+   "is_legacy": true
+  }
+ ],
+ "degree_boxes": [
+  {
+   "easting": -13.2294,
+   "northing": 8.4831,
+   "note": "The easting and northing hold -13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+   "minted": "refused: The easting and northing hold -13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+   "site_located": [
+    "unmet",
+    "The easting and northing hold -13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read."
+   ]
+  },
+  {
+   "easting": 13.2294,
+   "northing": 8.4831,
+   "note": "The easting and northing hold 13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read. Longitude 13.2294 was read as 13.2294 W: every longitude in Sierra Leone is west, and 13.2294 east is some 2,900 km away in central Africa. Type -13.2294 or 13.2294 W to record the sign rather than leave it assumed.",
+   "minted": "refused: The easting and northing hold 13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read. Longitude 13.2294 was read as 13.2294 W: every longitude in Sierra Leone is west, and 13.2294 east is some 2,900 km away in central Africa. Type -13.2294 or 13.2294 W to record the sign rather than leave it assumed.",
+   "site_located": [
+    "unmet",
+    "The easting and northing hold 13.2294 and 8.4831, which are a longitude and a latitude in degrees (8.48310\u00b0 N, 13.22940\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read. Longitude 13.2294 was read as 13.2294 W: every longitude in Sierra Leone is west, and 13.2294 east is some 2,900 km away in central Africa. Type -13.2294 or 13.2294 W to record the sign rather than leave it assumed."
+   ]
+  },
+  {
+   "easting": 20.5,
+   "northing": 5.25,
+   "note": "The easting and northing hold 20.5 and 5.25, which are a longitude and a latitude in degrees (5.25000\u00b0 N, 20.50000\u00b0 E), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+   "minted": "refused: The easting and northing hold 20.5 and 5.25, which are a longitude and a latitude in degrees (5.25000\u00b0 N, 20.50000\u00b0 E), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+   "site_located": [
+    "unmet",
+    "The easting and northing hold 20.5 and 5.25, which are a longitude and a latitude in degrees (5.25000\u00b0 N, 20.50000\u00b0 E), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read."
+   ]
+  },
+  {
+   "easting": -180.0,
+   "northing": 90.0,
+   "note": "The easting and northing hold -180 and 90, which are a longitude and a latitude in degrees (90.00000\u00b0 N, 180.00000\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+   "minted": "refused: The easting and northing hold -180 and 90, which are a longitude and a latitude in degrees (90.00000\u00b0 N, 180.00000\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+   "site_located": [
+    "unmet",
+    "The easting and northing hold -180 and 90, which are a longitude and a latitude in degrees (90.00000\u00b0 N, 180.00000\u00b0 W), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read."
+   ]
+  },
+  {
+   "easting": 0.0,
+   "northing": 0.0,
+   "note": "The easting and northing hold 0 and 0, which are a longitude and a latitude in degrees (0.00000\u00b0 N, 0.00000\u00b0 E), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+   "minted": "refused: The easting and northing hold 0 and 0, which are a longitude and a latitude in degrees (0.00000\u00b0 N, 0.00000\u00b0 E), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read.",
+   "site_located": [
+    "unmet",
+    "The easting and northing hold 0 and 0, which are a longitude and a latitude in degrees (0.00000\u00b0 N, 0.00000\u00b0 E), not UTM metres, so no position is read from them. Convert them to UTM and record the result as the easting and northing; until then the readiness gate, the maps and the asset identifier have no position to read."
+   ]
+  },
+  {
+   "easting": 694912.0,
+   "northing": 938150.0,
+   "note": "",
+   "minted": "SL-WAR-8FEEVKQ-E",
+   "site_located": [
+    "met",
+    "Position recorded: 694912 mE, 938150 mN (UTM 28N)."
+   ]
+  },
+  {
+   "easting": 181.0,
+   "northing": 8.0,
+   "note": "",
+   "minted": "SL-WAR-G028001-M",
+   "site_located": [
+    "unmet",
+    "Coordinates convert to 0.0001 N, 13.4871 W which is outside Sierra Leone; check easting/northing and the UTM zone."
+   ]
   }
  ],
  "asset_events": [
@@ -131321,7 +132255,7 @@
    "note": "",
    "by": "M. Kolleh",
    "photo": "",
-   "event_id": "2020-01-10/commissioned/MJSN"
+   "event_id": "2020-01-10/commissioned/QABR"
   },
   {
    "when": "2023-04-02",
@@ -131329,7 +132263,7 @@
    "note": "rising main parted",
    "by": "",
    "photo": "",
-   "event_id": "2023-04-02/failure/5MYX"
+   "event_id": "2023-04-02/failure/ATJW"
   },
   {
    "when": "2023-05-11",
@@ -131337,7 +132271,7 @@
    "note": "new seals",
    "by": "A. Bangura",
    "photo": "data:image/jpeg;base64,AAAA",
-   "event_id": "2023-05-11/repair/XQAD"
+   "event_id": "2023-05-11/repair/4G08"
   },
   {
    "when": "2099-01-01",
@@ -131345,7 +132279,7 @@
    "note": "",
    "by": "",
    "photo": "",
-   "event_id": "2099-01-01/restored/XMX5"
+   "event_id": "2099-01-01/restored/TYXP"
   },
   {
    "when": "not written down",
@@ -131353,7 +132287,7 @@
    "note": "",
    "by": "",
    "photo": "",
-   "event_id": "not written down/inspection/8VQ7"
+   "event_id": "not written down/inspection/SN0G"
   }
  ],
  "asset_state": {
@@ -131530,12 +132464,114 @@
     }
    ],
    "undated_events": 1
+  },
+  "rebroken": {
+   "function": "non_functional",
+   "label": "Not working",
+   "since": "2024-01-10",
+   "detail": "Failure recorded on 2024-01-10 by M. Kolleh",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": 143,
+   "due": [
+    {
+     "key": "inspection",
+     "title": "Sanitary inspection",
+     "state": "overdue",
+     "due_on": "2020-07-10",
+     "detail": "Sanitary inspection has never been done; it has been due since 2020-07-10, 1422 days ago. A sanitary inspection is what catches a cracked apron or a latrine dug uphill before the water shows it."
+    },
+    {
+     "key": "water_sample",
+     "title": "Water quality sample",
+     "state": "overdue",
+     "due_on": "2021-01-10",
+     "detail": "Water quality sample has never been done; it has been due since 2021-01-10, 1238 days ago. Water that was safe at handover is not evidence that it is safe now: the aquifer, the headworks and the catchment all change."
+    }
+   ],
+   "undated_events": 0
+  },
+  "collapsed": {
+   "function": "decommissioned",
+   "label": "Decommissioned",
+   "since": "2023-03-01",
+   "detail": "Decommissioned recorded on 2023-03-01",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [],
+   "undated_events": 0
+  },
+  "pulled": {
+   "function": "decommissioned",
+   "label": "Decommissioned",
+   "since": "2023-03-01",
+   "detail": "Decommissioned recorded on 2023-03-01",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [],
+   "undated_events": 0
+  },
+  "after_decommissioning": {
+   "function": "decommissioned",
+   "label": "Decommissioned",
+   "since": "2022-08-01",
+   "detail": "Decommissioned recorded on 2022-08-01. Records dated after the decommissioning (repair on 2023-01-05 and returned to service on 2023-02-01) are kept in the history but do not bring the borehole back into service: a decommissioned borehole returns only through a new commissioning record.",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [],
+   "undated_events": 0
+  },
+  "recommissioned": {
+   "function": "functional",
+   "label": "Working",
+   "since": "2023-06-01",
+   "detail": "Commissioned recorded on 2023-06-01 by A. Bangura",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [
+    {
+     "key": "inspection",
+     "title": "Sanitary inspection",
+     "state": "overdue",
+     "due_on": "2020-07-10",
+     "detail": "Sanitary inspection has never been done; it has been due since 2020-07-10, 1422 days ago. A sanitary inspection is what catches a cracked apron or a latrine dug uphill before the water shows it."
+    },
+    {
+     "key": "water_sample",
+     "title": "Water quality sample",
+     "state": "overdue",
+     "due_on": "2021-01-10",
+     "detail": "Water quality sample has never been done; it has been due since 2021-01-10, 1238 days ago. Water that was safe at handover is not evidence that it is safe now: the aquifer, the headworks and the catchment all change."
+    }
+   ],
+   "undated_events": 0
+  },
+  "decommissioned_twice": {
+   "function": "decommissioned",
+   "label": "Decommissioned",
+   "since": "2022-08-01",
+   "detail": "Decommissioned recorded on 2022-08-01",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [],
+   "undated_events": 0
   }
  },
  "asset_placard": [
   [
    "Identifier",
-   "SL-WAR-8FEEVKQ-T"
+   "SL-WAR-8FEEVKQ-E"
   ],
   [
    "Community",
@@ -131574,10 +132610,10 @@
    "Working"
   ]
  ],
- "asset_qr_payload": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h, India Mark II",
+ "asset_qr_payload": "BOREHOLE SL-WAR-8FEEVKQ-E\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h, India Mark II",
  "registry_rows": [
   {
-   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Identifier": "SL-WAR-8FEEVKQ-E",
    "Community": "Dr. Timbo's",
    "District": "Western Area Rural",
    "Status": "Not known",
@@ -131588,7 +132624,7 @@
    "Events": 0
   },
   {
-   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Identifier": "SL-WAR-8FEEVKQ-E",
    "Community": "Dr. Timbo's",
    "District": "Western Area Rural",
    "Status": "Working",
@@ -131599,7 +132635,7 @@
    "Events": 1
   },
   {
-   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Identifier": "SL-WAR-8FEEVKQ-E",
    "Community": "Dr. Timbo's",
    "District": "Western Area Rural",
    "Status": "Not working",
@@ -131610,7 +132646,7 @@
    "Events": 2
   },
   {
-   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Identifier": "SL-WAR-8FEEVKQ-E",
    "Community": "Dr. Timbo's",
    "District": "Western Area Rural",
    "Status": "Working",
@@ -131621,7 +132657,7 @@
    "Events": 3
   },
   {
-   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Identifier": "SL-WAR-8FEEVKQ-E",
    "Community": "Dr. Timbo's",
    "District": "Western Area Rural",
    "Status": "Working",
@@ -131632,7 +132668,7 @@
    "Events": 3
   },
   {
-   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Identifier": "SL-WAR-8FEEVKQ-E",
    "Community": "Dr. Timbo's",
    "District": "Western Area Rural",
    "Status": "Decommissioned",
@@ -131643,7 +132679,7 @@
    "Events": 2
   },
   {
-   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Identifier": "SL-WAR-8FEEVKQ-E",
    "Community": "Dr. Timbo's",
    "District": "Western Area Rural",
    "Status": "Working",
@@ -131652,18 +132688,84 @@
    "Last sampled": "",
    "Overdue": "Sanitary inspection, Water quality sample",
    "Events": 6
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-E",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Not working",
+   "Since": "2024-01-10",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "Sanitary inspection, Water quality sample",
+   "Events": 3
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-E",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Decommissioned",
+   "Since": "2023-03-01",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "",
+   "Events": 3
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-E",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Decommissioned",
+   "Since": "2023-03-01",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "",
+   "Events": 3
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-E",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Decommissioned",
+   "Since": "2022-08-01",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "",
+   "Events": 4
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-E",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Working",
+   "Since": "2023-06-01",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "Sanitary inspection, Water quality sample",
+   "Events": 4
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-E",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Decommissioned",
+   "Since": "2022-08-01",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "",
+   "Events": 3
   }
  ],
  "registry_stats": {
-  "n_assets": 7,
-  "n_functional": 4,
-  "n_non_functional": 1,
-  "n_decommissioned": 1,
+  "n_assets": 13,
+  "n_functional": 5,
+  "n_non_functional": 2,
+  "n_decommissioned": 5,
   "n_unknown": 1,
-  "functionality_rate": 80.0,
-  "n_overdue_inspection": 4,
-  "n_overdue_sample": 5,
-  "mean_days_out_of_service": 426.0
+  "functionality_rate": 71.42857142857143,
+  "n_overdue_inspection": 6,
+  "n_overdue_sample": 7,
+  "mean_days_out_of_service": 284.5
  },
  "asset_months": [
   {
@@ -142375,6 +143477,8 @@
     42.0
    ],
    "grout": 6.0,
+   "total": 60.0,
+   "screens": [],
    "intervals": [
     [
      0.0,
@@ -142479,6 +143583,8 @@
     8.0
    ],
    "grout": 6.0,
+   "total": 60.0,
+   "screens": [],
    "intervals": [
     [
      0.0,
@@ -142594,6 +143700,8 @@
     35.0
    ],
    "grout": 6.0,
+   "total": 60.0,
+   "screens": [],
    "intervals": [
     [
      0.0,
@@ -142696,6 +143804,8 @@
    ],
    "strikes": [],
    "grout": 6.0,
+   "total": 60.0,
+   "screens": [],
    "intervals": [
     [
      0.0,
@@ -142815,6 +143925,8 @@
     14.0
    ],
    "grout": 6.0,
+   "total": 60.0,
+   "screens": [],
    "intervals": [
     [
      0.0,
@@ -142923,6 +144035,8 @@
    ],
    "strikes": [],
    "grout": 20.0,
+   "total": 60.0,
+   "screens": [],
    "intervals": [
     [
      0.0,
@@ -142947,8 +144061,807 @@
     ]
    ],
    "flags": []
+  },
+  {
+   "grid": [
+    [
+     "Total depth (ft):",
+     "150 ft"
+    ],
+    [
+     "Depth interval (ft)",
+     "Sample / lithology description",
+     "Penetration rate (min/ft)",
+     "Water strike depth (ft)"
+    ],
+    [
+     "0-20 ft",
+     "Laterite",
+     "2",
+     ""
+    ],
+    [
+     "20-60 ft",
+     "Weathered granite",
+     "4 min/ft",
+     "45 ft"
+    ],
+    [
+     "60-150 ft",
+     "Fresh granite",
+     "1.5 ft/min",
+     ""
+    ],
+    [
+     "Water strike at 90 ft",
+     "",
+     "",
+     ""
+    ]
+   ],
+   "strikes": [
+    13.72,
+    27.43
+   ],
+   "grout": null,
+   "total": 45.72,
+   "screens": [],
+   "intervals": [
+    [
+     0.0,
+     6.1,
+     "Laterite",
+     0.1524,
+     null
+    ],
+    [
+     6.1,
+     18.29,
+     "Weathered granite",
+     0.0762,
+     null
+    ],
+    [
+     18.29,
+     45.72,
+     "Fresh granite",
+     0.45720000000000005,
+     null
+    ]
+   ],
+   "flags": [
+    [
+     "info",
+     "feet_converted",
+     "The drilling log gives 9 depths in feet; they were converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 150 ft, is 45.72 m). Check the converted log against the sheet. 3 penetration rates given per foot or in feet per minute or hour were converted to metres per minute."
+    ]
+   ]
+  },
+  {
+   "grid": [
+    [
+     "Grouting depth:",
+     "0-20 ft"
+    ],
+    [
+     "Screens installed:",
+     "80 ft - 110 ft; 120-130 ft"
+    ],
+    [
+     "Depth interval",
+     "Lithology description",
+     "Penetration rate"
+    ],
+    [
+     "0-10",
+     "Laterite",
+     "1.5 ft/min"
+    ],
+    [
+     "10-140",
+     "Granite",
+     "4 min/ft"
+    ],
+    [
+     "Water strike at 30",
+     "",
+     ""
+    ],
+    [
+     "Water strike at 95'",
+     "",
+     ""
+    ]
+   ],
+   "strikes": [
+    9.14,
+    28.96
+   ],
+   "grout": 6.1,
+   "total": 42.67,
+   "screens": [
+    [
+     24.38,
+     33.53
+    ],
+    [
+     36.58,
+     39.62
+    ]
+   ],
+   "intervals": [
+    [
+     0.0,
+     3.05,
+     "Laterite",
+     0.45720000000000005,
+     null
+    ],
+    [
+     3.05,
+     42.67,
+     "Granite",
+     0.0762,
+     null
+    ]
+   ],
+   "flags": [
+    [
+     "info",
+     "feet_converted",
+     "The drilling log gives 11 depths in feet; they were converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 140 ft, is 42.67 m). Check the converted log against the sheet. A depth with no unit of its own was read in feet too, because every unit the sheet names for a depth or a rate is feet. 2 penetration rates given per foot or in feet per minute or hour were converted to metres per minute."
+    ]
+   ]
+  },
+  {
+   "grid": [
+    [
+     "Depth interval (m/ft)",
+     "Lithology description"
+    ],
+    [
+     "0-10",
+     "Laterite"
+    ],
+    [
+     "10-40 ft",
+     "Granite"
+    ],
+    [
+     "40 ft-50 m",
+     "Granite"
+    ]
+   ],
+   "strikes": [],
+   "grout": null,
+   "total": 12.19,
+   "screens": [],
+   "intervals": [
+    [
+     3.05,
+     12.19,
+     "Granite",
+     null,
+     null
+    ]
+   ],
+   "flags": [
+    [
+     "warning",
+     "depth_unit_ambiguous",
+     "Depth interval cell \"0-10\" names no unit, and its column header names both feet and metres, so this row was skipped; write the unit in the cell or the column header, as \"0-20 m\" or \"0-60 ft\"."
+    ],
+    [
+     "warning",
+     "depth_unit_ambiguous",
+     "Depth interval cell \"40 ft-50 m\" names both feet and metres, so this row was skipped; write the unit in the cell or the column header, as \"0-20 m\" or \"0-60 ft\"."
+    ],
+    [
+     "info",
+     "feet_converted",
+     "The drilling log gives 2 depths in feet; they were converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 40 ft, is 12.19 m). Check the converted log against the sheet."
+    ]
+   ]
+  },
+  {
+   "grid": [
+    [
+     "Total depth:",
+     "150"
+    ],
+    [
+     "Grouting depth:",
+     "6"
+    ],
+    [
+     "Depth interval",
+     "Lithology description",
+     "Water strike"
+    ],
+    [
+     "0-20 ft",
+     "Laterite",
+     ""
+    ],
+    [
+     "20-45 m",
+     "Granite",
+     "12"
+    ],
+    [
+     "Water strike at 14",
+     "",
+     ""
+    ]
+   ],
+   "strikes": [],
+   "grout": null,
+   "total": 45.0,
+   "screens": [],
+   "intervals": [
+    [
+     0.0,
+     6.1,
+     "Laterite",
+     null,
+     null
+    ],
+    [
+     20.0,
+     45.0,
+     "Granite",
+     null,
+     null
+    ]
+   ],
+   "flags": [
+    [
+     "warning",
+     "water_strike_unreadable",
+     "Water strike cell \"12\" was not read as a depth: it names no unit, and the sheet gives depths in both feet and metres. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\"."
+    ],
+    [
+     "warning",
+     "water_strike_unreadable",
+     "Water strike cell \"Water strike at 14\" was not read as a depth: it names no unit, and the sheet gives depths in both feet and metres. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\"."
+    ],
+    [
+     "warning",
+     "depth_unit_ambiguous",
+     "Total depth \"150\" names no unit, and the sheet gives depths in both feet and metres, so it was not recorded; write the unit beside it, as \"45 m\" or \"150 ft\"."
+    ],
+    [
+     "warning",
+     "depth_unit_ambiguous",
+     "Grouting depth \"6\" names no unit, and the sheet gives depths in both feet and metres, so it was not recorded; write the unit beside it, as \"45 m\" or \"150 ft\"."
+    ],
+    [
+     "info",
+     "feet_converted",
+     "The drilling log gives 2 depths in feet; they were converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 20 ft, is 6.1 m). Check the converted log against the sheet."
+    ],
+    [
+     "warning",
+     "interval_gap",
+     "Gap in the drilling log between 6.1 m and 20 m."
+    ]
+   ]
+  },
+  {
+   "grid": [
+    [
+     "BOREHOLE DRILLING LOG",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     "Community",
+     "Case",
+     null,
+     "Client",
+     "X",
+     null,
+     null
+    ],
+    [
+     "Drilling method",
+     "DTH",
+     null,
+     "Total depth (m)",
+     60,
+     null,
+     null
+    ],
+    [
+     "Grouting depth (m)",
+     6,
+     null,
+     "Drill rig",
+     null,
+     null,
+     null
+    ],
+    [
+     "Depth interval (m)",
+     "From time",
+     "To time",
+     "Penetration rate (m/min)",
+     "Sample / lithology description",
+     "Drilling diameter (in)",
+     "Water strike depth (m)"
+    ],
+    [
+     "0-10",
+     "",
+     "",
+     1,
+     "Topsoil",
+     6.5,
+     null
+    ],
+    [
+     "10-30",
+     "",
+     "",
+     0.5,
+     "Weathered granite",
+     6.5,
+     "45 ft"
+    ],
+    [
+     "30-60",
+     "",
+     "",
+     0.4,
+     "Granite, fractured",
+     6.5,
+     "18"
+    ]
+   ],
+   "strikes": [
+    13.72,
+    18.0
+   ],
+   "grout": 6.0,
+   "total": 60.0,
+   "screens": [],
+   "intervals": [
+    [
+     0.0,
+     10.0,
+     "Topsoil",
+     1.0,
+     6.5
+    ],
+    [
+     10.0,
+     30.0,
+     "Weathered granite",
+     0.5,
+     6.5
+    ],
+    [
+     30.0,
+     60.0,
+     "Granite, fractured",
+     0.4,
+     6.5
+    ]
+   ],
+   "flags": [
+    [
+     "info",
+     "feet_converted",
+     "The drilling log gives 1 depth in feet; it was converted to metres at 0.3048 m to the foot and kept to the centimetre (the deepest, 45 ft, is 13.72 m). Check the converted log against the sheet."
+    ]
+   ]
+  },
+  {
+   "grid": [
+    [
+     "BOREHOLE DRILLING LOG",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     "Community",
+     "Case",
+     null,
+     "Client",
+     "X",
+     null,
+     null
+    ],
+    [
+     "Drilling method",
+     "DTH",
+     null,
+     "Total depth (m)",
+     60,
+     null,
+     null
+    ],
+    [
+     "Grouting depth (m)",
+     6,
+     null,
+     "Drill rig",
+     null,
+     null,
+     null
+    ],
+    [
+     "Depth interval (m)",
+     "From time",
+     "To time",
+     "Penetration rate (m/min)",
+     "Sample / lithology description",
+     "Drilling diameter (in)",
+     "Water strike depth (m)"
+    ],
+    [
+     "0-12,5",
+     "",
+     "",
+     1,
+     "Topsoil",
+     6.5,
+     null
+    ],
+    [
+     "12,5-30",
+     "",
+     "",
+     0.5,
+     "Weathered granite",
+     6.5,
+     null
+    ],
+    [
+     "30-60",
+     "",
+     "",
+     0.4,
+     "Granite",
+     6.5,
+     null
+    ]
+   ],
+   "strikes": [],
+   "grout": 6.0,
+   "total": 60.0,
+   "screens": [],
+   "intervals": [
+    [
+     0.0,
+     12.5,
+     "Topsoil",
+     1.0,
+     6.5
+    ],
+    [
+     12.5,
+     30.0,
+     "Weathered granite",
+     0.5,
+     6.5
+    ],
+    [
+     30.0,
+     60.0,
+     "Granite",
+     0.4,
+     6.5
+    ]
+   ],
+   "flags": []
+  },
+  {
+   "grid": [
+    [
+     "BOREHOLE DRILLING LOG",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     "Community",
+     "Case",
+     null,
+     "Client",
+     "X",
+     null,
+     null
+    ],
+    [
+     "Drilling method",
+     "DTH",
+     null,
+     "Total depth (m)",
+     60,
+     null,
+     null
+    ],
+    [
+     "Grouting depth (m)",
+     6,
+     null,
+     "Drill rig",
+     null,
+     null,
+     null
+    ],
+    [
+     "Depth interval (m)",
+     "From time",
+     "To time",
+     "Penetration rate (m/min)",
+     "Sample / lithology description",
+     "Drilling diameter (in)",
+     "Water strike depth (m)"
+    ],
+    [
+     "0-30",
+     "",
+     "",
+     1,
+     "Weathered granite",
+     6.5,
+     null
+    ],
+    [
+     "5-10",
+     "",
+     "",
+     1,
+     "Clay lens",
+     6.5,
+     null
+    ],
+    [
+     "30-45",
+     "",
+     "",
+     0.4,
+     "Granite",
+     6.5,
+     null
+    ],
+    [
+     "50-60",
+     "",
+     "",
+     0.4,
+     "Granite",
+     6.5,
+     null
+    ]
+   ],
+   "strikes": [],
+   "grout": 6.0,
+   "total": 60.0,
+   "screens": [],
+   "intervals": [
+    [
+     0.0,
+     30.0,
+     "Weathered granite",
+     1.0,
+     6.5
+    ],
+    [
+     5.0,
+     10.0,
+     "Clay lens",
+     1.0,
+     6.5
+    ],
+    [
+     30.0,
+     45.0,
+     "Granite",
+     0.4,
+     6.5
+    ],
+    [
+     50.0,
+     60.0,
+     "Granite",
+     0.4,
+     6.5
+    ]
+   ],
+   "flags": [
+    [
+     "warning",
+     "interval_overlap",
+     "Depth intervals overlap at 5 m."
+    ],
+    [
+     "warning",
+     "interval_gap",
+     "Gap in the drilling log between 45 m and 50 m."
+    ]
+   ]
+  },
+  {
+   "grid": [
+    [
+     "Depth interval",
+     "Lithology description"
+    ],
+    [
+     "0-12",
+     "Laterite and saprolite"
+    ],
+    [
+     "12-45",
+     "Granite, fractured at 30-32"
+    ],
+    [
+     "30-32",
+     "Fracture zone, water"
+    ]
+   ],
+   "strikes": [],
+   "grout": null,
+   "total": 45.0,
+   "screens": [],
+   "intervals": [
+    [
+     0.0,
+     12.0,
+     "Laterite and saprolite",
+     null,
+     null
+    ],
+    [
+     12.0,
+     45.0,
+     "Granite, fractured at 30-32",
+     null,
+     null
+    ],
+    [
+     30.0,
+     32.0,
+     "Fracture zone, water",
+     null,
+     null
+    ]
+   ],
+   "flags": [
+    [
+     "warning",
+     "interval_overlap",
+     "Depth intervals overlap at 30 m."
+    ]
+   ]
   }
  ],
+ "gate_logs": {
+  "feet": [
+   [
+    "Total depth (ft):",
+    "150 ft"
+   ],
+   [
+    "Depth interval (ft)",
+    "Sample / lithology description",
+    "Penetration rate (min/ft)",
+    "Water strike depth (ft)"
+   ],
+   [
+    "0-20 ft",
+    "Laterite",
+    "2",
+    ""
+   ],
+   [
+    "20-60 ft",
+    "Weathered granite",
+    "4 min/ft",
+    "45 ft"
+   ],
+   [
+    "60-150 ft",
+    "Fresh granite",
+    "1.5 ft/min",
+    ""
+   ],
+   [
+    "Water strike at 90 ft",
+    "",
+    "",
+    ""
+   ]
+  ],
+  "set_aside": [
+   [
+    "BOREHOLE DRILLING LOG",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   [
+    "Community",
+    "Case",
+    null,
+    "Client",
+    "X",
+    null,
+    null
+   ],
+   [
+    "Drilling method",
+    "DTH",
+    null,
+    "Total depth (m)",
+    60,
+    null,
+    null
+   ],
+   [
+    "Grouting depth (m)",
+    6,
+    null,
+    "Drill rig",
+    null,
+    null,
+    null
+   ],
+   [
+    "Depth interval (m)",
+    "From time",
+    "To time",
+    "Penetration rate (m/min)",
+    "Sample / lithology description",
+    "Drilling diameter (in)",
+    "Water strike depth (m)"
+   ],
+   [
+    "0-10",
+    "",
+    "",
+    1,
+    "Topsoil",
+    6.5,
+    "75 m"
+   ],
+   [
+    "10 -",
+    "",
+    "",
+    0.5,
+    "Weathered granite",
+    6.5,
+    null
+   ],
+   [
+    "20-60",
+    "",
+    "",
+    0.4,
+    "Granite, fractured",
+    6.5,
+    "1/2 m"
+   ]
+  ]
+ },
  "photo_evidence": {
   "attached_at": "2026-10-03T09:00:00Z",
   "cases": {
@@ -143122,6 +145035,11 @@
      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
     ],
     [
+     "checklist_answered",
+     "unmet",
+     "No answer is recorded for 38 critical checklist items (4 in Procurement and contract, 5 in Pre-contract inspection, 3 in Siting, 3 in Mobilisation, 5 in Drilling, 5 in Design and installation, 7 in Development and completion, 2 in Demobilisation, 2 in Documentation and handover and 2 in Post-construction monitoring). A record cannot vouch for a critical step left blank; an answer of No is an answer, and stays in the record as a failure."
+    ],
+    [
      "photo_evidence",
      "unmet",
      "Design and installation: \"Casing and screen assemblage sketched, laid out on the ground, measured piece by piece, totalled against the sketch and photographed before installation\" needs a photograph and has none. Design and installation: \"Backfill placed to 6 m below ground and the sanitary seal in the top 6 m (cement slurry at 25 litres of water per 50 kg bag, or bentonite)\" needs a photograph and has none. Development and completion: \"Borehole disinfected with chlorine at 20 mg per litre (1 litre of 0.2 percent solution per 100 litres of well volume) and left for at least 4 hours\" needs a photograph and has none. The gate checks that a photograph is attached, not whether it shows the work done well; that judgement stays with the supervisor."
@@ -143137,6 +145055,11 @@
      "site_located",
      "unmet",
      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "checklist_answered",
+     "unmet",
+     "No answer is recorded for 38 critical checklist items (4 in Procurement and contract, 5 in Pre-contract inspection, 3 in Siting, 3 in Mobilisation, 5 in Drilling, 5 in Design and installation, 7 in Development and completion, 2 in Demobilisation, 2 in Documentation and handover and 2 in Post-construction monitoring). A record cannot vouch for a critical step left blank; an answer of No is an answer, and stays in the record as a failure."
     ],
     [
      "photo_evidence",
@@ -143156,6 +145079,11 @@
      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
     ],
     [
+     "checklist_answered",
+     "unmet",
+     "No answer is recorded for 38 critical checklist items (4 in Procurement and contract, 5 in Pre-contract inspection, 3 in Siting, 3 in Mobilisation, 5 in Drilling, 5 in Design and installation, 7 in Development and completion, 2 in Demobilisation, 2 in Documentation and handover and 2 in Post-construction monitoring). A record cannot vouch for a critical step left blank; an answer of No is an answer, and stays in the record as a failure."
+    ],
+    [
      "photo_evidence",
      "met",
      "Each of the 3 items that need a photograph has one. The gate checks that a photograph is attached, not whether it shows the work done well; that judgement stays with the supervisor."
@@ -143173,9 +145101,102 @@
      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
     ],
     [
+     "checklist_answered",
+     "unmet",
+     "No answer is recorded for 35 critical checklist items (4 in Procurement and contract, 5 in Pre-contract inspection, 3 in Siting, 3 in Mobilisation, 5 in Drilling, 3 in Design and installation, 6 in Development and completion, 2 in Demobilisation, 2 in Documentation and handover and 2 in Post-construction monitoring). A record cannot vouch for a critical step left blank; an answer of No is an answer, and stays in the record as a failure."
+    ],
+    [
      "photo_evidence",
      "met",
      "No checklist item in use needs a photograph."
+    ]
+   ],
+   "answered": [
+    [
+     "field_data",
+     "met",
+     "No input is a bundled example file."
+    ],
+    [
+     "site_located",
+     "unmet",
+     "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "checklist_answered",
+     "met",
+     "Each of the 38 critical checklist items has an answer. This asks only that each was answered: an answer of No stays in the record as a failure."
+    ],
+    [
+     "photo_evidence",
+     "met",
+     "Each of the 3 items that need a photograph has one. The gate checks that a photograph is attached, not whether it shows the work done well; that judgement stays with the supervisor."
+    ]
+   ],
+   "failed": [
+    [
+     "field_data",
+     "met",
+     "No input is a bundled example file."
+    ],
+    [
+     "site_located",
+     "unmet",
+     "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "checklist_answered",
+     "met",
+     "Each of the 38 critical checklist items has an answer. This asks only that each was answered: an answer of No stays in the record as a failure."
+    ],
+    [
+     "photo_evidence",
+     "met",
+     "Each of the 3 items that need a photograph has one. The gate checks that a photograph is attached, not whether it shows the work done well; that judgement stays with the supervisor."
+    ]
+   ],
+   "garbled": [
+    [
+     "field_data",
+     "met",
+     "No input is a bundled example file."
+    ],
+    [
+     "site_located",
+     "unmet",
+     "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "checklist_answered",
+     "unmet",
+     "No answer is recorded for 3 critical checklist items (3 in Procurement and contract). A record cannot vouch for a critical step left blank; an answer of No is an answer, and stays in the record as a failure."
+    ],
+    [
+     "photo_evidence",
+     "met",
+     "No checklist item in use needs a photograph."
+    ]
+   ],
+   "three_of_38": [
+    [
+     "field_data",
+     "met",
+     "No input is a bundled example file."
+    ],
+    [
+     "site_located",
+     "unmet",
+     "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "checklist_answered",
+     "unmet",
+     "No answer is recorded for 35 critical checklist items (4 in Procurement and contract, 5 in Pre-contract inspection, 3 in Siting, 3 in Mobilisation, 5 in Drilling, 3 in Design and installation, 6 in Development and completion, 2 in Demobilisation, 2 in Documentation and handover and 2 in Post-construction monitoring). A record cannot vouch for a critical step left blank; an answer of No is an answer, and stays in the record as a failure."
+    ],
+    [
+     "photo_evidence",
+     "met",
+     "Each of the 3 items that need a photograph has one. The gate checks that a photograph is attached, not whether it shows the work done well; that judgement stays with the supervisor."
     ]
    ]
   },
@@ -143216,6 +145237,349 @@
       },
       "dev-borehole-disinfected-chlorine": {
        "status": "na"
+      }
+     }
+    }
+   },
+   "answered": {
+    "supervision": {
+     "evidence": {
+      "des-casing-screen-assemblage": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "des-backfill-placed-6": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "dev-borehole-disinfected-chlorine": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      }
+     },
+     "responses": {
+      "prc-contractor-registered-country": "Yes ",
+      "prc-contract-uses-bill": {
+       "status": "yes"
+      },
+      "prc-dry-hole-low": "Yes ",
+      "prc-independent-supervision-arranged": {
+       "status": "yes"
+      },
+      "pre-drilling-rig-inspected": "Yes ",
+      "pre-compressor-run-hour": {
+       "status": "yes"
+      },
+      "pre-drill-pipes-adequate": "Yes ",
+      "pre-drill-bits-hammer": {
+       "status": "yes"
+      },
+      "pre-record-taker-designated": "Yes ",
+      "sit-land-ownership-access": {
+       "status": "yes"
+      },
+      "sit-potential-pollution-source": "Yes ",
+      "sit-siting-report-submitted": {
+       "status": "yes"
+      },
+      "mob-contract-signed-pre": "Yes ",
+      "mob-equipment-matches-what": {
+       "status": "yes"
+      },
+      "mob-material-samples-approved": "Yes ",
+      "drl-health-safety-place": {
+       "status": "yes"
+      },
+      "drl-depth-measured-marked": "Yes ",
+      "drl-cutting-samples-taken": {
+       "status": "yes"
+      },
+      "drl-final-drilling-depth": "Yes ",
+      "drl-daily-drilling-log": {
+       "status": "yes"
+      },
+      "des-casing-screen-assemblage": "Yes ",
+      "des-installed-casing-screen": {
+       "status": "yes"
+      },
+      "des-screens-placed-against": "Yes ",
+      "des-gravel-pack-placed": {
+       "status": "yes"
+      },
+      "des-backfill-placed-6": "Yes ",
+      "dev-development-continued-until": {
+       "status": "yes"
+      },
+      "dev-pumping-test-carried": "Yes ",
+      "dev-sand-content-end": {
+       "status": "yes"
+      },
+      "dev-plumb-test-passed": "Yes ",
+      "dev-water-sampled-correctly": {
+       "status": "yes"
+      },
+      "dev-borehole-disinfected-chlorine": "Yes ",
+      "dev-final-decision-recorded": {
+       "status": "yes"
+      },
+      "dem-testing-complete-documentation": "Yes ",
+      "dem-work-completion-certificate": {
+       "status": "yes"
+      },
+      "hnd-drilling-report-completed": "Yes ",
+      "hnd-handover-date-agreed": {
+       "status": "yes"
+      },
+      "pst-groundwater-ph-tested": "Yes ",
+      "pst-drilling-log-pumping": {
+       "status": "yes"
+      }
+     }
+    }
+   },
+   "failed": {
+    "supervision": {
+     "evidence": {
+      "des-casing-screen-assemblage": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "des-backfill-placed-6": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "dev-borehole-disinfected-chlorine": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      }
+     },
+     "responses": {
+      "prc-contractor-registered-country": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "prc-contract-uses-bill": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "prc-dry-hole-low": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "prc-independent-supervision-arranged": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "pre-drilling-rig-inspected": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "pre-compressor-run-hour": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "pre-drill-pipes-adequate": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "pre-drill-bits-hammer": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "pre-record-taker-designated": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "sit-land-ownership-access": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "sit-potential-pollution-source": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "sit-siting-report-submitted": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "mob-contract-signed-pre": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "mob-equipment-matches-what": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "mob-material-samples-approved": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "drl-health-safety-place": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "drl-depth-measured-marked": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "drl-cutting-samples-taken": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "drl-final-drilling-depth": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "drl-daily-drilling-log": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "des-casing-screen-assemblage": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "des-installed-casing-screen": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "des-screens-placed-against": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "des-gravel-pack-placed": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "des-backfill-placed-6": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dev-development-continued-until": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dev-pumping-test-carried": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dev-sand-content-end": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dev-plumb-test-passed": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dev-water-sampled-correctly": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dev-borehole-disinfected-chlorine": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dev-final-decision-recorded": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dem-testing-complete-documentation": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "dem-work-completion-certificate": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "hnd-drilling-report-completed": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "hnd-handover-date-agreed": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "pst-groundwater-ph-tested": {
+       "status": "no",
+       "remark": "not done"
+      },
+      "pst-drilling-log-pumping": {
+       "status": "no",
+       "remark": "not done"
+      }
+     }
+    }
+   },
+   "garbled": {
+    "supervision": {
+     "evidence": {
+      "des-casing-screen-assemblage": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "des-backfill-placed-6": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "dev-borehole-disinfected-chlorine": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      }
+     },
+     "responses": {
+      "prc-contractor-registered-country": "maybe",
+      "prc-contract-uses-bill": "maybe",
+      "prc-dry-hole-low": "maybe",
+      "prc-independent-supervision-arranged": "na",
+      "pre-drilling-rig-inspected": "na",
+      "pre-compressor-run-hour": "na",
+      "pre-drill-pipes-adequate": "na",
+      "pre-drill-bits-hammer": "na",
+      "pre-record-taker-designated": "na",
+      "sit-land-ownership-access": "na",
+      "sit-potential-pollution-source": "na",
+      "sit-siting-report-submitted": "na",
+      "mob-contract-signed-pre": "na",
+      "mob-equipment-matches-what": "na",
+      "mob-material-samples-approved": "na",
+      "drl-health-safety-place": "na",
+      "drl-depth-measured-marked": "na",
+      "drl-cutting-samples-taken": "na",
+      "drl-final-drilling-depth": "na",
+      "drl-daily-drilling-log": "na",
+      "des-casing-screen-assemblage": "na",
+      "des-installed-casing-screen": "na",
+      "des-screens-placed-against": "na",
+      "des-gravel-pack-placed": "na",
+      "des-backfill-placed-6": "na",
+      "dev-development-continued-until": "na",
+      "dev-pumping-test-carried": "na",
+      "dev-sand-content-end": "na",
+      "dev-plumb-test-passed": "na",
+      "dev-water-sampled-correctly": "na",
+      "dev-borehole-disinfected-chlorine": "na",
+      "dev-final-decision-recorded": "na",
+      "dem-testing-complete-documentation": "na",
+      "dem-work-completion-certificate": "na",
+      "hnd-drilling-report-completed": "na",
+      "hnd-handover-date-agreed": "na",
+      "pst-groundwater-ph-tested": "na",
+      "pst-drilling-log-pumping": "na"
+     }
+    }
+   },
+   "three_of_38": {
+    "supervision": {
+     "evidence": {
+      "des-casing-screen-assemblage": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "des-backfill-placed-6": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "dev-borehole-disinfected-chlorine": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      }
+     },
+     "responses": {
+      "des-casing-screen-assemblage": {
+       "status": "yes"
+      },
+      "des-backfill-placed-6": {
+       "status": "yes"
+      },
+      "dev-borehole-disinfected-chlorine": {
+       "status": "yes"
       }
      }
     }

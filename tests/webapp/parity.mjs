@@ -43,7 +43,7 @@ await withPage(async (page, base, consoleErrors) => {
   await page.waitForFunction(() => window.GWT && window.GWT.core && window.GWT.data &&
     window.GWT.docx);
 
-  const parsed = await page.evaluate(async (R_STREAMLIT_YAML) => {
+  const parsed = await page.evaluate(async ([R_STREAMLIT_YAML, GATE_LOGS]) => {
     const S = GWT.support, C = GWT.core, D = GWT.data;
     async function grids(b64) {
       return GWT.support.readXlsx(S.base64ToBytes(b64));
@@ -715,6 +715,14 @@ await withPage(async (page, base, consoleErrors) => {
       demonstration_override: [Object.assign({}, fullProject, {
         sources: { wq: { sample: 'dr_timbo/dr_timbo_water_quality.xlsx' } },
       }), { field_data: { reason: 'published as a worked example', by: 'M. K.' } }],
+      // a log in feet, converted; a log the reader set part of aside; and
+      // degrees in the UTM boxes, which are no position
+      feet_log: [Object.assign({}, fullProject, {
+        drilling_log: C.drillingFromGrid(GATE_LOGS.feet, 'case.xlsx') }), {}],
+      log_set_aside: [Object.assign({}, fullProject, {
+        drilling_log: C.drillingFromGrid(GATE_LOGS.set_aside, 'case.xlsx') }), {}],
+      degree_site: [Object.assign({}, fullProject, { site: { community: "Dr. Timbo's",
+        district: 'Western Area Rural', easting: -13.2294, northing: 8.4831 } }), {}],
     };
     out.readiness = {};
     Object.keys(gateCases).forEach((name) => {
@@ -787,9 +795,27 @@ await withPage(async (page, base, consoleErrors) => {
     out.asset_id_parsing = [timboId, timboId.toLowerCase(),
       timboId.replace(/0/g, 'O'), timboId.replace(/1/g, 'L'), ' ' + timboId + ' ',
       timboId.slice(0, -1) + 'Z', timboId.replace(/-/g, ''),
-      'SL-WAR-XXXXXXX-9', 'not an identifier', ''].map((typed) => {
+      'SL-WAR-XXXXXXX-9', 'not an identifier', '',
+      'SL-WAR-8FEEVKQ-T', 'sl-war-8feevkq-t', 'SL-BO-C4817SW-1',
+      'SL-BO-P4817SW-1', 'SL-PL-8HE2QWG-3', 'SL-PL-8HE2QWG-G'].map((typed) => {
       const v = C.validateAssetId(typed);
       return { typed, parsed: C.parseAssetId(typed), ok: v.ok, reason: v.reason };
+    });
+    out.check_characters = ['00000000D07A0090', '00000000D07A009000000000',
+      '188166C7342065419F3A0245', 'A12425GABC1234002', 'SL-WAR-8FEEVKQ',
+      'SL-BO-C4817SW', 'SL-PL-8HE2QWG', 'SL-KAI-KDH2TCG', 'SL-XX-00000ZZ'].map((b) => ({
+      body: b, iso: C.checkCharacter(b), legacy: C.legacyCheckCharacter(b),
+      is_legacy: C.isLegacyAssetId(b + '-' + C.legacyCheckCharacter(b)),
+    }));
+    out.degree_boxes = [[-13.2294, 8.4831], [13.2294, 8.4831], [20.5, 5.25],
+      [-180.0, 90.0], [0.0, 0.0], [694912.0, 938150.0], [181.0, 8.0]].map(([e, n]) => {
+      const site = { district: 'Western Area Rural', easting: e, northing: n };
+      let minted;
+      try { minted = C.mintAssetId(site); } catch (err) { minted = 'refused: ' + err.message; }
+      const gate = C.assessReadiness({ site: site, sources: {} }, 'placard', {});
+      const located = gate.requirements.filter((q) => q.key === 'site_located')[0];
+      return { easting: e, northing: n, note: C.degreesInUtmBoxes(e, n), minted: minted,
+        site_located: [located.state, located.detail] };
     });
     const streams = [
       [{ when: '2020-01-10', kind: 'commissioned', by: 'M. Kolleh' },
@@ -812,6 +838,26 @@ await withPage(async (page, base, consoleErrors) => {
       decommissioned: streams[0].slice(0, 1).concat([
         { when: '2022-08-01', kind: 'decommissioned' }]),
       merged: streams[0].concat(streams[1]),
+      rebroken: streams[0].slice(0, 1).concat([
+        { when: '2024-01-10', kind: 'failure', by: 'M. Kolleh' },
+        { when: '2024-05-20', kind: 'failure', note: 'still broken' }]),
+      collapsed: streams[0].slice(0, 1).concat([
+        { when: '2023-03-01', kind: 'decommissioned', note: 'backfilled' },
+        { when: '2023-03-01', kind: 'failure', note: 'hole collapsed' }]),
+      pulled: streams[0].slice(0, 1).concat([
+        { when: '2023-03-01', kind: 'repair', note: 'pump pulled for reuse' },
+        { when: '2023-03-01', kind: 'decommissioned', note: 'dry' }]),
+      after_decommissioning: streams[0].slice(0, 1).concat([
+        { when: '2022-08-01', kind: 'decommissioned' },
+        { when: '2023-01-05', kind: 'repair', note: 'new seals' },
+        { when: '2023-02-01', kind: 'restored' }]),
+      recommissioned: streams[0].slice(0, 1).concat([
+        { when: '2022-08-01', kind: 'decommissioned' },
+        { when: '2023-01-05', kind: 'repair' },
+        { when: '2023-06-01', kind: 'commissioned', by: 'A. Bangura' }]),
+      decommissioned_twice: streams[0].slice(0, 1).concat([
+        { when: '2022-08-01', kind: 'decommissioned', note: 'collapsed' },
+        { when: '2023-01-05', kind: 'decommissioned', note: 'backfilled' }]),
     };
     const today = '2024-06-01';
     const assets = {};
@@ -988,7 +1034,7 @@ await withPage(async (page, base, consoleErrors) => {
       one_pager: C.portfolioOnePager(summaries[1]),
     };
     return out;
-  }, reference.streamlit_project_file.yaml);
+  }, [reference.streamlit_project_file.yaml, reference.gate_logs]);
 
   // The designs and logs the borehole-design review found wanting, run from
   // the specs make_reference.py wrote, so both engines see the same input.
@@ -1022,6 +1068,8 @@ await withPage(async (page, base, consoleErrors) => {
       return {
         strikes: log.water_strikes_m,
         grout: log.grouting_depth_m,
+        total: log.total_depth_m,
+        screens: log.installed_screens_m,
         intervals: log.intervals.map((iv) => [iv.top_m, iv.bottom_m, iv.description,
           iv.penetration_rate_m_per_min === undefined ? null : iv.penetration_rate_m_per_min,
           iv.bit_diameter_in === undefined ? null : iv.bit_diameter_in]),
@@ -1043,7 +1091,7 @@ await withPage(async (page, base, consoleErrors) => {
     }
   });
   R.drilling_cases.forEach((ref, i) => {
-    for (const key of ['strikes', 'grout', 'intervals', 'flags']) {
+    for (const key of ['strikes', 'grout', 'total', 'screens', 'intervals', 'flags']) {
       check(`drilling case ${i + 1}: ${key}`,
         JSON.stringify(cases.drilling[i][key]) === JSON.stringify(ref[key]),
         `js ${JSON.stringify(cases.drilling[i][key])}\n     py ${JSON.stringify(ref[key])}`);
@@ -1647,6 +1695,16 @@ await withPage(async (page, base, consoleErrors) => {
   check('registry: a due date never drifts over a short month',
     JSON.stringify(parsed.asset_months) === JSON.stringify(R.asset_months),
     JSON.stringify(parsed.asset_months) + '\n     vs ' + JSON.stringify(R.asset_months));
+  check('registry: the check character is ISO 7064 MOD 37,36, and the legacy one reads',
+    JSON.stringify(parsed.check_characters) === JSON.stringify(R.check_characters),
+    JSON.stringify(parsed.check_characters) + '\n     vs ' +
+    JSON.stringify(R.check_characters));
+  parsed.degree_boxes.forEach((js, i) => {
+    const py = R.degree_boxes[i];
+    check(`site: degrees in the UTM boxes (${js.easting}, ${js.northing}) refused alike`,
+      JSON.stringify(js) === JSON.stringify(py),
+      JSON.stringify(js) + '\n     vs ' + JSON.stringify(py));
+  });
 
   check('a Streamlit .yaml project file is readable by the browser at all',
     parsed.streamlit_project_file.error === null,

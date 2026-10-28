@@ -1,0 +1,69 @@
+# The drilling log reader: the unit a sheet writes its depths in, the
+# consistency of its interval column, and what the readiness gate says when
+# the reader set part of a log aside. Both engines read this file:
+# groundwater/ingestion/drilling.py and groundwater/readiness.py, and the
+# drilling log and readiness sections of gwt-core.js. The template rules are
+# in src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# A sheet in feet. {n} counts every depth converted (each end of an
+# interval, the total, each strike), {feet} is the deepest of them as the
+# sheet wrote it and {metres} what it was recorded as.
+feet_converted: >-
+  The drilling log gives {n:g} {n:plural:depth|depths} in feet;
+  {n:plural:it was|they were} converted to metres at 0.3048 m to the foot
+  and kept to the centimetre (the deepest, {feet:g} ft, is {metres:g} m).
+  Check the converted log against the sheet.
+
+# Said beside it when a depth with no unit of its own was read in feet.
+feet_by_sheet: >-
+  A depth with no unit of its own was read in feet too, because every unit
+  the sheet names for a depth or a rate is feet.
+
+feet_rates: >-
+  {n:g} penetration {n:plural:rate|rates} given per foot or in feet per
+  minute or hour {n:plural:was|were} converted to metres per minute.
+
+# Why a depth with no unit of its own was not read. Each is the end of a
+# sentence that begins with the cell it refuses.
+ambiguous_why:
+  header: names no unit, and its column header names both feet and metres
+  sheet: names no unit, and the sheet gives depths in both feet and metres
+  cell: names both feet and metres
+
+# A cell of numbers and separators that reads as no interval ("30 -").
+interval_unreadable: >-
+  Depth interval cell "{value}" was not read as a depth interval, so this
+  row was skipped; write it as the depths from and to, as "30-40".
+
+row_unit_ambiguous: >-
+  Depth interval cell "{value}" {why}, so this row was skipped; write the
+  unit in the cell or the column header, as "0-20 m" or "0-60 ft".
+
+value_unit_ambiguous: >-
+  {what} "{value}" {why}, so it was not recorded; write the unit beside it,
+  as "45 m" or "150 ft".
+
+# The header fields value_unit_ambiguous can name.
+field_names:
+  borehole_depth_m: Total depth
+  grouting_depth_m: Grouting depth
+  installed_screens: Installed screens
+
+# The interval column, checked row by row against the deepest bottom logged
+# above it, so a lens logged inside a longer interval is an overlap but not
+# a gap. {depth}, {top} and {bottom} are in metres.
+interval_overlap: Depth intervals overlap at {depth:g} m.
+
+interval_gap: Gap in the drilling log between {top:g} m and {bottom:g} m.
+
+# Only a total the sheet states; one worked out from the intervals is their
+# deepest bottom and cannot differ from it.
+depth_mismatch: >-
+  Stated total depth {stated:g} m differs from the deepest logged interval
+  {deepest:g} m.
+
+# The readiness gate's drilling log requirement, when the reader dropped a
+# row or refused a value. {messages} are the reader's own flags.
+gate_set_aside: >-
+  The drilling log reader set part of the sheet aside, so the log is not
+  complete: {messages}

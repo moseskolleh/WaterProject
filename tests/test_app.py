@@ -336,6 +336,76 @@ def test_supervision_flow(app):
     assert not app.exception
 
 
+def test_a_field_check_nobody_measured_is_not_in_the_record(app):
+    """The boxes started at plausible values and all four checks went into
+    the report every run, so a record built without opening the expander
+    said verticality, sand content, specific capacity and the drilled
+    metres had passed, against numbers nobody measured."""
+    from docx import Document
+
+    goto(app, "Supervision")
+    for key in ("fx_watercol", "fx_casingid", "fx_dev", "fx_vdepth", "fx_sand1",
+                "fx_sand2", "fx_sand3", "fx_q", "fx_dd", "fx_logged", "fx_claimed"):
+        assert app.number_input(key=key).value is None, key
+    app.button(key="build_sup_report").click()
+    app.run()
+    assert not app.exception
+    assert app.session_state["field_checks"] == []
+    path = Path(app.session_state["workdir"]) / "Supervision_Checklist_Report.docx"
+    text = "\n".join(p.text for p in Document(str(path)).paragraphs)
+    assert "Field Acceptance Checks" not in text
+    # what is entered is checked, and only that
+    app.number_input(key="fx_dev").set_value(80.0)
+    app.number_input(key="fx_vdepth").set_value(60.0)
+    app.number_input(key="fx_casingid").set_value(103.0)
+    app.number_input(key="fx_sand2").set_value(0.1)
+    app.run()
+    assert not app.exception
+    assert [c.name for c in app.session_state["field_checks"]] == [
+        "Verticality (plumb test)", "Sand content"]
+    assert "1 sample" in app.session_state["field_checks"][1].measured
+    for key in ("fx_dev", "fx_vdepth", "fx_casingid", "fx_sand2"):
+        app.number_input(key=key).set_value(None)
+    app.run()
+    assert not app.exception
+
+
+def test_degrees_typed_into_the_utm_boxes_are_refused_until_converted(app):
+    """The gate, the identifier and the sidebar say the same thing of them,
+    and converting them is the operator's own button."""
+    from groundwater.geo import degrees_in_utm_boxes
+
+    saved = {key: app.session_state.get(key, None)
+             for key in ("meta_easting", "meta_northing", "meta_zone")}
+    try:
+        goto(app, "Asset registry")
+        app.number_input(key="meta_easting").set_value(13.2294)
+        app.number_input(key="meta_northing").set_value(8.4831)
+        app.run()
+        assert not app.exception
+        sentence = degrees_in_utm_boxes(13.2294, 8.4831)
+        warnings = [str(w.value) for w in app.warning]
+        assert sentence in warnings                     # the sidebar
+        assert sentence + (" The sidebar's \"Convert these degrees to UTM\" "
+                           "button does it.") in warnings
+        app.button(key="convert_degree_boxes").click()
+        app.run()
+        assert not app.exception
+        assert app.session_state["meta_zone"] == "28N"
+        assert abs(app.session_state["meta_easting"] - 694912) <= 1
+        assert abs(app.session_state["meta_northing"] - 938150) <= 1
+        # converted on a sign the parser supplied, and said
+        assert "13.2294 was read as 13.2294 W" in app.session_state["latlon_assumed"]
+        assert all(sentence not in str(w.value) for w in app.warning)
+    finally:
+        for key in ("meta_easting", "meta_northing"):
+            app.number_input(key=key).set_value(saved[key] or 0.0)
+        app.selectbox(key="meta_zone").select(saved["meta_zone"] or "29N")
+        app.text_input(key="latlon_paste").set_value("")
+        app.session_state["latlon_assumed"] = ""
+        app.run()
+
+
 def test_supervision_photo_evidence_holds_the_record_until_attached(app):
     """The gate lists each item missing its photograph, in the catalogue's
     words, and a photograph kept with its provenance lifts it."""

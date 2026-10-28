@@ -130,11 +130,14 @@ water quality guidelines.
     certificate that forgets what earlier ones paid is challenged, and a
     certificate that would pay less than nothing pays nothing and says by
     how much the job is overpaid
-17. A borehole asset registry for the second twenty years: a check-summed
-    identifier derived from the position (so two teams at the same wellhead
-    with no connection between them arrive at the same one), a printable
-    headworks plate carrying a QR symbol generated offline, an append-only
-    maintenance history that merges by content when two phones meet, and
+17. A borehole asset registry for the second twenty years: an identifier
+    derived from the position (so two teams at the same wellhead with no
+    connection between them arrive at the same one) and closed by an ISO
+    7064 MOD 37,36 check character (identifiers minted before that
+    character was corrected are still read, with a note saying so), a
+    printable headworks plate carrying a QR symbol generated offline, an
+    append-only maintenance history that merges by content when two phones
+    meet, and
     derived condition and overdue dates. Nothing is assumed working - a
     borehole nobody has reported on is unknown, not functional, and the
     functionality rate is only ever computed over the points whose

@@ -15724,7 +15724,10 @@
     return m === null ? dflt : parseFloat(m[0]);
   }
 
-  var INTERVAL_RE = /(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)/i;
+  /* Each depth may carry a decimal comma, as parseNumber reads one: without
+   * it "12,5-30" was read as the 5-30 m interval inside it, and the only
+   * trace was an overlap flag that blamed the log. */
+  var INTERVAL_RE = /(\d+(?:[.,]\d+)?)\s*(?:-|to)\s*(\d+(?:[.,]\d+)?)/i;
 
   /** Depths are unsigned, so the hyphen is a range separator, never a minus.
    * A date is never an interval: Excel silently turns "5-10" typed into a
@@ -15738,7 +15741,8 @@
     if (value === null || value === undefined || value instanceof Date) return null;
     var m = INTERVAL_RE.exec(String(value));
     if (!m) return null;
-    var top = parseFloat(m[1]), bottom = parseFloat(m[2]);
+    var top = parseNumber(m[1]), bottom = parseNumber(m[2]);
+    if (top === null || bottom === null) return null;
     return bottom < top ? [bottom, top] : [top, bottom];
   }
 
@@ -15906,12 +15910,16 @@
     return below;
   }
 
-  /**
+  /** `raw`, when given, is filled with key -> [label, value]: the label text
+   * and the cell value each field was read from. A number loses its unit on
+   * the way into the fields ("150 ft" is 150), and the drilling log reader
+   * needs both the label's unit ("Total depth (ft)") and the cell's.
    * @param {Grid} grid
    * @param {number} [maxRows]
+   * @param {Record<string, Array<*>>} [raw]
    * @returns {Rec}
    */
-  function extractHeaderFields(grid, maxRows) {
+  function extractHeaderFields(grid, maxRows, raw) {
     var limit = maxRows === undefined ? 30 : maxRows;
     var fields = {}, priorities = {};
     for (var r = 0; r < Math.min(limit, grid.length); r++) {
@@ -15953,10 +15961,14 @@
         if (NUMERIC_HEADER_KEYS.indexOf(key) >= 0) {
           var number = RANGE_BOTTOM_KEYS.indexOf(key) >= 0 ? rangeBottom(value) : null;
           if (number === null) number = parseNumber(value);
-          if (number !== null) { fields[key] = number; priorities[key] = priority; }
+          if (number !== null) {
+            fields[key] = number; priorities[key] = priority;
+            if (raw) raw[key] = [split[0], value];
+          }
         } else {
           fields[key] = cleanText(headerDateText(value));
           priorities[key] = priority;
+          if (raw) raw[key] = [split[0], value];
         }
       }
     }
@@ -16467,6 +16479,84 @@
 
   /* --- drilling logs -------------------------------------------------------- */
 
+  /* The international foot, in metres, exactly. */
+  var FOOT_M = 0.3048;
+
+  /* The codes this reader raises when a cell could not be read: a row
+   * dropped, or a value refused, for its form or its unit
+   * (ingestion/drilling.py UNREADABLE_CODES). The readiness gate reads them,
+   * so "every reading carried a unit the toolkit could read" is not said of
+   * a log that lost one; they are kept here, beside the reader that raises
+   * them. */
+  var DRILLING_UNREADABLE = ['interval_read_as_date', 'interval_unreadable',
+    'depth_unit_ambiguous', 'water_strike_unreadable', 'diameter_implausible'];
+
+  /* Those, and a strike that was read but refused because it lies below the
+   * bottom of the hole: every code that means the log as read is not the
+   * log the crew wrote, so the gate does not call it complete
+   * (REFUSAL_CODES). */
+  var DRILLING_REFUSALS = DRILLING_UNREADABLE.concat(['water_strike_below_total_depth']);
+
+  /* A foot written against a number: "20 ft", "20ft.", "20 feet", "20'", and
+   * the curly apostrophe and the prime a word processor puts in its place.
+   * Two marks together are inches, which no depth is written in. */
+  var FOOT_UNIT_RE = /(\d)\s*(?:feet\b|foot\b|ft\b\.?|['’′](?!['’′]))/gi;
+
+  /* The length unit a column header or a field's label names: "Depth
+   * interval (ft)", "Total depth (m)". A lone apostrophe in brackets is
+   * feet. */
+  var HEADER_FEET_RE = /\b(?:feet|foot|ft)\b|\(\s*['’′]\s*\)/i;
+  var HEADER_METRE_RE = /\b(?:met(?:re|er)s?|mtrs?|m)\b/i;
+  var RATE_FEET_RE = /feet|foot|ft/i;
+
+  /** 'ft', 'm', 'both' or null: the length unit a header names. A header
+   * naming both ("Depth (m/ft)") says nothing about a bare number under it,
+   * and a number under it with no unit of its own is refused.
+   * @param {*} header a header cell
+   * @returns {string|null}
+   */
+  function headerLengthUnit(header) {
+    var text = cleanText(header);
+    var feet = HEADER_FEET_RE.test(text), metres = HEADER_METRE_RE.test(text);
+    if (feet && metres) return 'both';
+    return feet ? 'ft' : (metres ? 'm' : null);
+  }
+
+  /* A cell with the feet and metre units against its numbers dropped, and
+   * the units it carried: [text, units]. A value that is not text is handed
+   * back as it is. */
+  function lengthUnits(value) {
+    if (typeof value !== 'string') return [value, []];
+    var units = [];
+    var text = normaliseDashes(value);
+    var stripped = text.replace(FOOT_UNIT_RE, '$1');
+    if (stripped !== text) units.push('ft');
+    var metric = stripMetreUnits(stripped);
+    if (metric !== stripped) units.push('m');
+    return [metric, units];
+  }
+
+  /* The unit a depth is read in, and why not when it cannot be: [unit, why].
+   * The cell's own unit first, then its column header's (or its field's
+   * label's), then the sheet's: the one unit every depth and rate unit the
+   * sheet names agrees on, or metres, the template's unit, where it names
+   * none. unit is null and why a key of drilling.ambiguous_why when the
+   * depth cannot be read. */
+  function resolveUnit(cellUnits, column, sheet) {
+    if (cellUnits.length > 1) return [null, 'cell'];
+    if (cellUnits.length) return [cellUnits[0], ''];
+    if (column === 'both') return [null, 'header'];
+    if (column) return [column, ''];
+    if (sheet === null) return [null, 'sheet'];
+    return [sheet, ''];
+  }
+
+  /* A depth in `unit` in metres; feet are kept to the centimetre, as a
+   * converted bit size is kept to two decimals. */
+  function inMetres(value, unit) {
+    return unit === 'ft' ? pyRound(value * FOOT_M, 2) : value;
+  }
+
   /* Whether a cell in the interval column was meant as a depth interval. A
    * cell of numbers and separators with nothing else in it ("30 -", "30 40")
    * is a row the crew logged and this parser could not read, and it is
@@ -16476,7 +16566,7 @@
     if (value === null || value === undefined || typeof value === 'boolean') return false;
     if (value instanceof Date) return false;
     if (typeof value === 'number') return true;
-    var text = stripMetreUnits(normaliseDashes(cleanText(value)))
+    var text = String(lengthUnits(cleanText(value))[0])
       .replace(/\b(?:to|from)\b/gi, ' ');
     return /\d/.test(text) && !/[a-z]/i.test(text);
   }
@@ -16533,7 +16623,8 @@
    * 4.5 m strike was not screened. */
   var WATER_LEVEL_RE = new RegExp('\\b(?:s\\.?w\\.?l|r\\.?w\\.?l|' +
     '(?:rest(?:ing)?|static|standing)\\s+(?:water\\s+)?level|water\\s+level)\\b' +
-    '\\.?[^\\d;,.]*?\\d+(?:[.,]\\d+)?\\s*(?:met(?:re|er)s?\\b|m\\b)?', 'gi');
+    '\\.?[^\\d;,.]*?\\d+(?:[.,]\\d+)?\\s*' +
+    '(?:met(?:re|er)s?\\b|m\\b|feet\\b|foot\\b|ft\\b\\.?)?', 'gi');
 
   /* One depth, or a list of them sharing the unit written after the last
    * ("12, 18 and 30 m"), in metres. The lookahead keeps the "m" of a rate
@@ -16544,6 +16635,13 @@
      * two strikes - which is the invention this parser exists to stop. */
     '(?:\\d+(?:[.,]\\d+)?\\s*(?:,|&|\\+|and\\b)\\s*)*' +
     '\\d+(?:[.,]\\d+)?\\s*(?:met(?:re|er)s?|m)\\b(?!\\s*/)', 'gi');
+
+  /* The same in feet ("45 ft", "45 and 90 ft", "45'"), converted to metres.
+   * A strike written "at 90 ft" used to be the bare number 90 and recorded
+   * as a strike at 90 m. */
+  var FEET_LIST_RE = new RegExp(
+    '(?:\\d+(?:[.,]\\d+)?\\s*(?:,|&|\\+|and\\b)\\s*)*' +
+    '\\d+(?:[.,]\\d+)?\\s*(?:feet\\b|foot\\b|ft\\b\\.?|[\'’′](?![\'’′]))(?!\\s*/)', 'gi');
 
   var NUMBER_TOKEN_RE = /\d+(?:[.,]\d+)?/g;
 
@@ -16557,8 +16655,13 @@
 
   /* The unit a penetration rate cell carries: metres per minute or hour, or
    * the time per metre a driller times with a stopwatch and writes the other
-   * way up. The order of the alternatives is load-bearing. */
-  var METRE_SOURCE = '(?:met(?:re|er)s?|m)';
+   * way up. The order of the alternatives is load-bearing.
+   *
+   * A rig sheet in feet times the foot ("4 min/ft") or quotes feet a minute
+   * ("1.5 ft/min"). Neither matched, so "4 min/ft" fell through to the bare
+   * number and was recorded as 4 m/min, some 52 times too fast; the foot is
+   * a length here like the metre, and the rate is converted from it. */
+  var METRE_SOURCE = '(?:met(?:re|er)s?|m|feet|foot|ft)';
   var RATE_UNITS_SOURCE = METRE_SOURCE + '\\s*(?:/|per)\\s*min(?:ute)?s?' +
     '|' + METRE_SOURCE + '\\s*(?:/|per)\\s*(?:hrs?|hours?|h)' +
     '|min(?:ute)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
@@ -16630,19 +16733,35 @@
    * number, none of which is a depth. */
   var FRACTION_RE = /\d\s*\/\s*\d/;
 
-  /**
+  /** A depth in feet is converted, whether the cell says so ("at 90 ft") or
+   * `unit` is 'ft', the unit its column or its sheet gives a bare number.
+   * With `unit` null a bare number is refused, for the reason `refusal`
+   * gives.
    * @param {*} value a cell
+   * @param {string|null} [unit] the unit of a bare number: 'm' (the default) or 'ft'
+   * @param {string} [refusal] why a bare number is refused when `unit` is null
    * @returns {[number[], string]}
    */
-  function parseWaterStrikeDepths(value) {
-    if (value === null || value === undefined) return [[], ''];
+  function parseWaterStrikeDepths(value, unit, refusal) {
+    var read = strikeDepths(value, unit === undefined ? 'm' : unit, refusal || '');
+    return [read[0], read[1]];
+  }
+
+  /* parseWaterStrikeDepths, and beside each depth the number of feet it was
+   * converted from, or null for a depth in metres: [depths, reason, feet]. */
+  function strikeDepths(value, unit, refusal) {
+    if (value === null || value === undefined) return [[], '', []];
     if (value instanceof Date) {
       /* A cell typed as a time comes back as a Date, and reading it as a
        * number recorded the year as a strike depth. */
-      return [[], 'the cell holds a date or a time rather than a depth'];
+      return [[], 'the cell holds a date or a time rather than a depth', []];
     }
-    if (typeof value === 'boolean') return [[], ''];
-    if (typeof value === 'number') return [value > 0 ? [value] : [], ''];
+    if (typeof value === 'boolean') return [[], '', []];
+    if (typeof value === 'number') {
+      if (!(value > 0)) return [[], '', []];
+      if (unit === null) return [[], refusal, []];
+      return [[inMetres(value, unit)], '', [unit === 'ft' ? value : null]];
+    }
 
     /* A water level and a clock time are taken out before any number is
      * read, and counted: a cell whose only numbers were those names no
@@ -16660,18 +16779,28 @@
      * "Water strike 1/2 m" read as a strike at 2 m, which would place a
      * screen. Refusing it and saying so is the only honest answer. */
     if (FRACTION_RE.test(text)) {
-      return [[], 'it writes a fraction or a date, which names no single depth'];
+      return [[], 'it writes a fraction or a date, which names no single depth', []];
     }
-    var depths = [], match, tokens, i, depth;
-    DEPTH_LIST_RE.lastIndex = 0;
-    while ((match = DEPTH_LIST_RE.exec(text)) !== null) {
-      tokens = match[0].match(NUMBER_TOKEN_RE) || [];
-      for (i = 0; i < tokens.length; i++) {
-        depth = parseNumber(tokens[i]);
-        if (depth !== null && depth > 0) depths.push(depth);
+    /* Depths in metres and in feet, in the order the cell writes them. */
+    var found = [], match, tokens, i, depth;
+    [[DEPTH_LIST_RE, false], [FEET_LIST_RE, true]].forEach(function (pair) {
+      var re = /** @type {RegExp} */ (pair[0]), feet = pair[1];
+      re.lastIndex = 0;
+      while ((match = re.exec(text)) !== null) {
+        tokens = match[0].match(NUMBER_TOKEN_RE) || [];
+        for (i = 0; i < tokens.length; i++) {
+          depth = parseNumber(tokens[i]);
+          if (depth !== null && depth > 0) {
+            found.push([match.index, inMetres(depth, feet ? 'ft' : 'm'), feet ? depth : null]);
+          }
+        }
       }
+    });
+    if (found.length) {
+      found.sort(function (a, b) { return a[0] - b[0]; });
+      return [found.map(function (f) { return f[1]; }), '',
+        found.map(function (f) { return f[2]; })];
     }
-    if (depths.length) return [depths, ''];
 
     /* No number carries a unit. A single number is the depth the note is
      * about ("First water strike: 12"); several are a sentence this parser
@@ -16681,15 +16810,18 @@
       var named = [];
       if (levels) named.push('a water level');
       if (clocks) named.push('a clock time');
-      if (named.length) return [[], 'it names ' + named.join(' and ') + ' but no strike depth'];
-      return [[], ''];
+      if (named.length) {
+        return [[], 'it names ' + named.join(' and ') + ' but no strike depth', []];
+      }
+      return [[], '', []];
     }
     if (numbers.length > 1) {
-      return [[], 'it names several numbers and none of them carries a unit'];
+      return [[], 'it names several numbers and none of them carries a unit', []];
     }
     depth = parseNumber(numbers[0]);
-    if (depth === null || depth <= 0) return [[], ''];
-    return [[depth], ''];
+    if (depth === null || depth <= 0) return [[], '', []];
+    if (unit === null) return [[], refusal, []];
+    return [[inMetres(depth, unit)], '', [unit === 'ft' ? depth : null]];
   }
 
   /* The flag raised for a strike cell that cannot be read as a depth.
@@ -16770,15 +16902,18 @@
   function rateInMPerMin(number, unit) {
     if (number === null || number === undefined || !unit) return number;
     var u = String(unit).replace(/\s+/g, '').toLowerCase().replace(/per/g, '/');
+    /* the length the rate is per, or per unit of time of: a foot is 0.3048 m */
+    var length = RATE_FEET_RE.test(u) ? FOOT_M : 1.0;
     if (u.indexOf('min') === 0) {
-      /* minutes per metre: the reciprocal, and a zero is not a rate at all */
-      return number > 0 ? 1.0 / number : null;
+      /* minutes per metre (or foot): the reciprocal, and a zero is not a
+       * rate at all */
+      return number > 0 ? length / number : null;
     }
-    if (u.indexOf('s') === 0) {                       /* seconds per metre */
-      return number > 0 ? 60.0 / number : null;
+    if (u.indexOf('s') === 0) {            /* seconds per metre (or foot) */
+      return number > 0 ? 60.0 * length / number : null;
     }
-    if (u.indexOf('/h') >= 0) return number / 60.0;
-    return number;
+    if (u.indexOf('/h') >= 0) return number * length / 60.0;
+    return length !== 1.0 ? number * length : number;
   }
 
   /** The penetration rate in metres per minute, whichever way up it is
@@ -16827,28 +16962,117 @@
     return out.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
   }
 
+  /* The unit a bare depth is read in where nothing nearer names one: every
+   * depth and rate unit the sheet names agreeing on feet makes it a sheet in
+   * feet; naming none, or only metres, it is in metres, the unit the
+   * template asks for; naming both, there is no unit to read a bare depth
+   * in, and it is refused. */
+  function sheetUnit(statements) {
+    if (statements.length === 1 && statements[0] === 'ft') return 'ft';
+    if (statements.indexOf('ft') >= 0) return null;
+    return 'm';
+  }
+
+  function statementOf(unit) {
+    if (unit === 'both') return ['ft', 'm'];
+    return unit ? [unit] : [];
+  }
+
+  /* The length a rate unit is per, as a statement about the sheet. */
+  function rateLength(unit) {
+    if (!unit) return [];
+    return RATE_FEET_RE.test(unit) ? ['ft'] : ['m'];
+  }
+
+  var DEPTH_FIELDS = ['borehole_depth_m', 'grouting_depth_m', 'installed_screens'];
+
   /**
    * @param {Grid} grid
    * @param {string} [source]
    * @returns {DrillingLog}
    */
   function drillingFromGrid(grid, source) {
-    var fields = extractHeaderFields(grid, grid.length);
+    /** @type {Record<string, Array<*>>} */
+    var rawFields = {};
+    var fields = extractHeaderFields(grid, grid.length, rawFields);
     var site = siteFromFields(fields, source);
     var flags = [], intervals = [], strikes = [], zeroStrikeRows = 0, tooWide = [];
+    var whyText = phraseTable('drilling.ambiguous_why');
     var located = findLogHeader(grid);
 
+    /* What the sheet names its depths in, before any depth is read: a bare
+     * number is read in the unit the sheet gives, and a sheet in feet that
+     * gives its unit only in the total depth or the strike column still
+     * gives it for every depth on the sheet. A drilling log was read in
+     * metres whatever it said, so "Depth interval (ft)", "0-20 ft" and
+     * "Total depth: 150 ft" made a 45.7 m hole a 150 m one, with no flag. */
+    var statements = [];
+    function state(units) {
+      units.forEach(function (u) { if (statements.indexOf(u) < 0) statements.push(u); });
+    }
+    DEPTH_FIELDS.forEach(function (key) {
+      if (!own(rawFields, key)) return;
+      state(statementOf(headerLengthUnit(rawFields[key][0])));
+      state(lengthUnits(rawFields[key][1])[1]);
+    });
+    /** @type {Record<string, string|null>} */
+    var headerUnits = { interval: null, strike: null };
+    var rateUnit = null, diameterUnit = null;
+    /** @type {Record<string, number>} */
+    var cols = {};
+    var r, row;
     if (located) {
-      var cols = located.cols;
+      cols = located.cols;
       var headerCell = function (key) {
         var c = cols[key], headerRow = grid[/** @type {Rec} */ (located).row] || [];
         return (c !== undefined && c < headerRow.length) ? headerRow[c] : null;
       };
       /* the unit the column header names is the unit of a bare number */
-      var rateUnit = headerRateUnit(headerCell('rate'));
-      var diameterUnit = headerDiameterUnit(headerCell('diameter'));
-      for (var r = located.row + 1; r < grid.length; r++) {
-        var row = grid[r] || [];
+      rateUnit = headerRateUnit(headerCell('rate'));
+      diameterUnit = headerDiameterUnit(headerCell('diameter'));
+      headerUnits = { interval: headerLengthUnit(headerCell('interval')),
+        strike: headerLengthUnit(headerCell('strike')) };
+      state(statementOf(headerUnits.interval));
+      state(statementOf(headerUnits.strike));
+      state(rateLength(rateUnit));
+      for (r = located.row + 1; r < grid.length; r++) {
+        row = grid[r] || [];
+        ['interval', 'strike'].forEach(function (key) {
+          var c = cols[key];
+          if (c !== undefined && c < row.length) state(lengthUnits(cleanText(row[c]))[1]);
+        });
+        var rc = cols.rate;
+        if (rc !== undefined && rc < row.length && typeof row[rc] === 'string') {
+          var rateMatch = searchUnit(RATE_UNIT_RE, cleanText(row[rc]));
+          state(rateLength(rateMatch ? rateMatch[2] : null));
+        }
+      }
+    }
+    grid.forEach(function (gridRow) {
+      (gridRow || []).forEach(function (c) {
+        var text = cleanText(c);
+        if (text.toLowerCase().indexOf('water strike') >= 0 &&
+            text.toLowerCase().indexOf('note') !== 0) {
+          state(lengthUnits(text)[1]);
+        }
+      });
+    });
+    var sheet = sheetUnit(statements);
+
+    var feet = { depths: 0, deepest: 0.0, bySheet: false, rates: 0 };
+    /* `value` in metres, counting a conversion from feet */
+    function counted(value, unit, cellUnits, column) {
+      if (unit === 'ft') {
+        feet.depths += 1;
+        feet.deepest = Math.max(feet.deepest, value);
+        if (!cellUnits.length && column !== 'ft' && column !== 'm') feet.bySheet = true;
+      }
+      return inMetres(value, unit);
+    }
+
+    if (located) {
+      for (r = located.row + 1; r < grid.length; r++) {
+        row = grid[r] || [];
         var cell = function (key) {
           var c = cols[key];
           return (c !== undefined && c < row.length) ? row[c] : null;
@@ -16873,22 +17097,33 @@
          * lists only the plain hyphen, so the row was dropped without a word
          * and the gap it left was reported as a gap in the crew's own log
          * (ROADMAP data-ingestion-8). Normalising the dashes reads the
-         * interval as it was written, whichever dash was typed. */
-        /* A metre unit against each depth ("30 m - 40 m", "5m-10m") is
-         * dropped first for the same reason: the row used to be skipped with
-         * its description and its strike. */
-        var interval = parseDepthInterval(stripMetreUnits(normaliseDashes(rawInterval)));
+         * interval as it was written, whichever dash was typed. A unit
+         * against each depth ("30 m - 40 m", "5m-10m", "0-20 ft") is dropped
+         * first for the same reason: the row used to be skipped with its
+         * description and its strike. It is kept to read the depths in. */
+        var split = lengthUnits(rawInterval);
+        var cellUnits = split[1];
+        var interval = parseDepthInterval(split[0]);
         if (!interval) {
           if (readsAsInterval(rawInterval)) {
             flags.push({
               level: 'warning', code: 'interval_unreadable',
-              message: 'Depth interval cell "' + cleanText(rawInterval) + '" was not ' +
-                'read as a depth interval, so this row was skipped; write it as the ' +
-                'depths from and to, as "30-40".',
+              message: phrase('drilling.interval_unreadable', { value: cleanText(rawInterval) }),
             });
           }
           continue;
         }
+        var resolved = resolveUnit(cellUnits, headerUnits.interval, sheet);
+        if (resolved[0] === null) {
+          flags.push({
+            level: 'warning', code: 'depth_unit_ambiguous',
+            message: phrase('drilling.row_unit_ambiguous',
+              { value: cleanText(rawInterval), why: whyText[resolved[1]] }),
+          });
+          continue;
+        }
+        var top = counted(interval[0], resolved[0], cellUnits, headerUnits.interval);
+        var bottom = counted(interval[1], resolved[0], cellUnits, headerUnits.interval);
         var diameter = parseBitDiameterIn(cell('diameter'), diameterUnit);
         if (diameter !== null && diameter > MAX_BIT_DIAMETER_IN) {
           /* a bit size in millimetres with its unit left off: sized as inches
@@ -16896,16 +17131,33 @@
           tooWide.push(cleanText(cell('diameter')));
           diameter = null;
         }
+        var rawRate = cell('rate');
+        var rate = parsePenetrationRateMPerMin(rawRate, rateUnit);
+        var rateSaid = typeof rawRate === 'string'
+          ? searchUnit(RATE_UNIT_RE, cleanText(rawRate)) : null;
+        var said = rateSaid ? rateSaid[2] : rateUnit;
+        if (rate !== null && rate !== undefined && rateLength(said)[0] === 'ft') feet.rates += 1;
         intervals.push({
-          top_m: interval[0], bottom_m: interval[1],
+          top_m: top, bottom_m: bottom,
           description: cleanText(cell('description')),
           from_time: cleanText(cell('from_time')),
           to_time: cleanText(cell('to_time')),
-          penetration_rate_m_per_min: parsePenetrationRateMPerMin(cell('rate'), rateUnit),
+          penetration_rate_m_per_min: rate,
           bit_diameter_in: diameter,
         });
         var rawStrike = cell('strike');
-        var readStrike = parseWaterStrikeDepths(rawStrike);
+        var strikeCellUnits = typeof rawStrike === 'string'
+          ? lengthUnits(cleanText(rawStrike))[1] : [];
+        var strikeUnit = resolveUnit([], headerUnits.strike, sheet);
+        var readStrike = strikeDepths(rawStrike, strikeUnit[0],
+          strikeUnit[1] ? 'it ' + whyText[strikeUnit[1]] : '');
+        var converted = readStrike[2].filter(function (f) { return f !== null; });
+        if (converted.length) {
+          feet.depths += converted.length;
+          feet.deepest = Math.max.apply(null, [feet.deepest].concat(converted));
+          if (!strikeCellUnits.length && headerUnits.strike !== 'ft' &&
+              headerUnits.strike !== 'm') feet.bySheet = true;
+        }
         readStrike[0].forEach(function (depth) { strikes.push(depth); });
         if (readStrike[1]) {
           flags.push(unreadableStrikeFlag(cleanText(rawStrike), readStrike[1]));
@@ -16937,15 +17189,24 @@
     /* Water strikes noted as text lines ("First water strike: 12m"). The note
      * used to be read as the last number after the last colon, so
      * "Water strike: 8 m at 14:30" recorded a 30 m strike and a note naming
-     * two strikes recorded only the first (ROADMAP data-ingestion-9). */
-    grid.forEach(function (row) {
-      (row || []).forEach(function (c) {
+     * two strikes recorded only the first (ROADMAP data-ingestion-9). A bare
+     * number in a note is in the sheet's unit, and "at 90 ft" is in feet. */
+    var noteUnit = resolveUnit([], null, sheet);
+    grid.forEach(function (gridRow) {
+      (gridRow || []).forEach(function (c) {
         var raw = cleanText(c);
         var text = raw.toLowerCase();
         if (text.indexOf('water strike') >= 0 && text.indexOf('note') !== 0) {
-          var read = parseWaterStrikeDepths(raw);
-          read[0].forEach(function (value) {
-            if (strikes.indexOf(value) < 0) strikes.push(value);
+          var read = strikeDepths(raw, noteUnit[0],
+            noteUnit[1] ? 'it ' + whyText[noteUnit[1]] : '');
+          read[0].forEach(function (value, i) {
+            if (strikes.indexOf(value) >= 0) return;
+            strikes.push(value);
+            if (read[2][i] !== null) {
+              feet.depths += 1;
+              feet.deepest = Math.max(feet.deepest, read[2][i]);
+              if (!lengthUnits(raw)[1].length) feet.bySheet = true;
+            }
           });
           if (read[1]) {
             /* A cell in the strike column that is also a note has already
@@ -16959,7 +17220,34 @@
       });
     });
 
-    var total = fields.borehole_depth_m;
+    /* The depths the header block gives, each read in its label's unit or
+     * the one the cell writes beside it. */
+    var fieldNames = phraseTable('drilling.field_names');
+    DEPTH_FIELDS.forEach(function (key) {
+      if (!own(rawFields, key)) return;
+      var label = rawFields[key][0], value = rawFields[key][1];
+      var parts = lengthUnits(value);
+      var column = headerLengthUnit(label);
+      var unit = resolveUnit(parts[1], column, sheet);
+      if (unit[0] === null) {
+        delete fields[key];
+        flags.push({ level: 'warning', code: 'depth_unit_ambiguous',
+          message: phrase('drilling.value_unit_ambiguous', { what: fieldNames[key],
+            value: cleanText(value), why: whyText[unit[1]] }) });
+      } else if (key === 'installed_screens') {
+        fields[key] = parseInstalledScreens(parts[0]).map(function (range) {
+          return [counted(range[0], unit[0], parts[1], column),
+            counted(range[1], unit[0], parts[1], column)];
+        });
+      } else if (unit[0] === 'ft') {
+        fields[key] = counted(Number(fields[key]), unit[0], parts[1], column);
+      }
+    });
+    var screens = Array.isArray(fields.installed_screens) ? fields.installed_screens
+      : parseInstalledScreens(fields.installed_screens || '');
+
+    var stated = fields.borehole_depth_m === undefined ? null : fields.borehole_depth_m;
+    var total = stated;
     if ((total === null || total === undefined) && intervals.length) {
       total = arrMax(intervals.map(function (iv) { return iv.bottom_m; }));
     }
@@ -16986,6 +17274,17 @@
       }
     }
 
+    if (feet.depths || feet.rates) {
+      var told = [];
+      if (feet.depths) {
+        told.push(phrase('drilling.feet_converted', { n: feet.depths, feet: feet.deepest,
+          metres: inMetres(feet.deepest, 'ft') }));
+        if (feet.bySheet) told.push(phrase('drilling.feet_by_sheet'));
+      }
+      if (feet.rates) told.push(phrase('drilling.feet_rates', { n: feet.rates }));
+      flags.push({ level: 'info', code: 'feet_converted', message: told.join(' ') });
+    }
+
     /** @type {DrillingLog} */
     var log = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
@@ -16996,28 +17295,37 @@
       /* the screens the crew actually set, when the sheet records them:
        * with these the drawing is an as-built record, without them it is a
        * design generated by the rules, and says so */
-      installed_screens_m: parseInstalledScreens(fields.installed_screens || ''),
+      installed_screens_m: screens,
       start_date: String(fields.start_date || ''),
       completion_date: String(fields.completion_date || ''),
       status: fields.status || '', source: String(source || ''), flags: [],
     };
 
-    for (var i = 0; i + 1 < intervals.length; i++) {
-      var a = intervals[i], b = intervals[i + 1];
-      if (b.top_m < a.bottom_m - 1e-9) {
+    /* Consistency of the interval column, against the deepest bottom logged
+     * so far rather than the row before: a clay lens logged inside a longer
+     * interval (0-30, 5-10, 30-45) is not a gap from 10 m to 30 m, which the
+     * 0-30 m row covers. */
+    /** @type {number|null} */
+    var deepest = null;
+    for (var k = 0; k < intervals.length; k++) {
+      var b = intervals[k];
+      if (deepest !== null && b.top_m < deepest - 1e-9) {
         flags.push({ level: 'warning', code: 'interval_overlap',
-          message: 'Depth intervals overlap at ' + formatG(b.top_m) + ' m.' });
-      } else if (b.top_m > a.bottom_m + 1e-9) {
+          message: phrase('drilling.interval_overlap', { depth: b.top_m }) });
+      } else if (deepest !== null && b.top_m > deepest + 1e-9) {
         flags.push({ level: 'warning', code: 'interval_gap',
-          message: 'Gap in the drilling log between ' + formatG(a.bottom_m) +
-            ' m and ' + formatG(b.top_m) + ' m.' });
+          message: phrase('drilling.interval_gap', { top: deepest, bottom: b.top_m }) });
       }
+      deepest = deepest === null ? b.bottom_m : Math.max(deepest, b.bottom_m);
     }
-    if (total && intervals.length &&
-        Math.abs(intervals[intervals.length - 1].bottom_m - total) > 1e-6) {
+    /* Only a total the sheet states can differ from the log; one worked out
+     * from the intervals is their deepest bottom. The last row by top used
+     * to be compared, so a nested fracture row at the foot of the table was
+     * "the deepest logged interval", and a derived total was called
+     * "stated". */
+    if (stated && deepest !== null && Math.abs(deepest - stated) > 1e-6) {
       flags.push({ level: 'warning', code: 'depth_mismatch',
-        message: 'Stated total depth ' + formatG(total) + ' m differs from the ' +
-          'deepest logged interval ' + formatG(intervals[intervals.length - 1].bottom_m) + ' m.' });
+        message: phrase('drilling.depth_mismatch', { stated: stated, deepest: deepest }) });
     }
     if (!intervals.length) {
       flags.push({ level: 'error', code: 'no_intervals',
@@ -18044,6 +18352,8 @@
     pumpingFromGrid: pumpingFromGrid, parseInstalledScreens: parseInstalledScreens,
     normaliseDashes: normaliseDashes,
     parseWaterStrikeDepths: parseWaterStrikeDepths,
+    headerLengthUnit: headerLengthUnit, FOOT_M: FOOT_M,
+    DRILLING_UNREADABLE: DRILLING_UNREADABLE, DRILLING_REFUSALS: DRILLING_REFUSALS,
     parseBitDiameterIn: parseBitDiameterIn,
     parsePenetrationRateMPerMin: parsePenetrationRateMPerMin,
     overlapDiscrepancies: overlapDiscrepancies, overlapRatios: overlapRatios,
@@ -20349,11 +20659,69 @@
       'easting/northing and the UTM zone.';
   }
 
-  /** Where a site's recorded position puts it, read as the site page reads
-   * it: a pair small enough to be degrees is a latitude and longitude typed
-   * into the two boxes, anything else UTM in the recorded zone or the one the
-   * easting implies. {lat, lon, note, fromUtm, zone}, or null when there is
-   * no position or it does not convert.
+  /** Whether an easting and northing are small enough to be degrees. No UTM
+   * easting lies within 180 m of its zone's origin, 500 km west of the
+   * central meridian, and nothing in Sierra Leone is within 90 m of the
+   * equator, so a pair that small is a longitude and a latitude typed into
+   * the two boxes (geo.utm_boxes_hold_degrees).
+   * @param {*} easting
+   * @param {*} northing
+   * @returns {boolean}
+   */
+  function utmBoxesHoldDegrees(easting, northing) {
+    if (easting === null || northing === null || easting === undefined ||
+        northing === undefined || typeof easting === 'boolean' ||
+        typeof northing === 'boolean') return false;
+    /* a blank box is no number, as Python's float() refuses one, where
+     * Number() would read it as 0 */
+    if (String(easting).trim() === '' || String(northing).trim() === '') return false;
+    var e = Number(easting), n = Number(northing);
+    return isFinite(e) && isFinite(n) && Math.abs(e) <= 180 && Math.abs(n) <= 90;
+  }
+
+  /* A box's value written out plainly, as Python's _as_typed writes it. */
+  function asTyped(value) {
+    return pyFixed(Number(value), 10).replace(/0+$/, '').replace(/\.$/, '');
+  }
+
+  /** The sentence refusing degrees typed into the UTM boxes, or ''
+   * (geo.degrees_in_utm_boxes). The site page read such a pair as degrees
+   * and the Python engine as metres near the equator, so one project had a
+   * placard this engine certified, an identifier neither could mint and a
+   * site the Python engine put outside the country. Neither engine reads a
+   * position from them now; the apps offer to convert them, which is the
+   * operator saying they are degrees. The position they read as is given,
+   * read as readLatLon reads a pasted pair, so an unsigned longitude is west
+   * and the sentence says that was assumed.
+   * @param {*} easting
+   * @param {*} northing
+   * @returns {string}
+   */
+  function degreesInUtmBoxes(easting, northing) {
+    if (!utmBoxesHoldDegrees(easting, northing)) return '';
+    var eText = asTyped(easting), nText = asTyped(northing);
+    var reading = readLatLon(nText + ', ' + eText);
+    var ok = reading.lat !== null && reading.lon !== null;
+    var position;
+    if (ok) {
+      var lat = Number(reading.lat), lon = Number(reading.lon);
+      position = pyFixed(Math.abs(lat), 5) + '° ' + (lat >= 0 ? 'N' : 'S') + ', ' +
+        pyFixed(Math.abs(lon), 5) + '° ' + (lon >= 0 ? 'E' : 'W');
+    } else {
+      position = String(reading.message).replace(/\.$/, '');
+    }
+    var text = phrase('site.degrees_in_utm_boxes',
+      { easting: eText, northing: nText, position: position });
+    return ok && reading.message ? text + ' ' + reading.message : text;
+  }
+
+  /** Where a site's recorded position puts it: UTM in the recorded zone or
+   * the one the easting implies. {lat, lon, zone}, or null when there is no
+   * position or it does not convert. A pair small enough to be degrees typed
+   * into the two boxes is no position at all: this used to read it as a
+   * latitude and longitude, which the Python engine did not, so the gate
+   * passed a placard whose identifier could not be minted.
+   * degreesInUtmBoxes says why, and the site page offers to convert it.
    * @param {Rec|null} site
    */
   function sitePosition(site) {
@@ -20363,20 +20731,11 @@
         e === '' || n === '') return null;
     e = Number(e); n = Number(n);
     if (!isFinite(e) || !isFinite(n)) return null;
-    /** @type {Rec|null} */
-    var ll;
-    if (Math.abs(e) <= 180 && Math.abs(n) <= 90) {
-      var reading = readLatLon(String(n) + ', ' + String(e));
-      ll = reading.lat === null || reading.lon === null
-        ? { lat: n, lon: e, note: '' }
-        : { lat: reading.lat, lon: reading.lon, note: reading.message };
-      ll.fromUtm = false;
-      return ll;
-    }
+    if (utmBoxesHoldDegrees(e, n)) return null;
     var zone = Number(site.utm_zone) || inferZoneForSierraLeone(e);
-    ll = utmToGeographic(e, n, zone);
+    var ll = utmToGeographic(e, n, zone);
     if (!ll) return null;
-    return { lat: ll.lat, lon: ll.lon, note: '', fromUtm: true, zone: zone };
+    return { lat: ll.lat, lon: ll.lon, zone: zone };
   }
 
   Object.assign(C, {
@@ -20390,6 +20749,7 @@
     geologyParagraph: geologyParagraph,
     HONEST_WINDOW_KM: HONEST_WINDOW_KM, scaleCaveat: scaleCaveat,
     outsideCountryNote: outsideCountryNote, sitePosition: sitePosition,
+    utmBoxesHoldDegrees: utmBoxesHoldDegrees, degreesInUtmBoxes: degreesInUtmBoxes,
   });
 
   /* ================================================================== siting
@@ -25182,8 +25542,18 @@
 
   var UNIT_BLOCKERS = ['time_unit_unknown', 'discharge_unit_unknown',
     'discharge_ambiguous', 'time_reading_unreadable'];
+  /* A drilling log converted from feet is among the assumptions: the depths
+   * were read, but the report should say they were converted, and a bare
+   * depth may have been read in feet because the rest of the sheet was. */
   var UNIT_ASSUMPTIONS = ['discharge_unit_assumed', 'unit_not_reported',
-    'unit_basis_assumed', 'utm_zone_assumed', 'test_type_inferred'];
+    'unit_basis_assumed', 'utm_zone_assumed', 'test_type_inferred', 'feet_converted'];
+
+  /* The flags the drilling log reader raised with one of `codes`, the
+   * reader's own lists (DRILLING_UNREADABLE, DRILLING_REFUSALS), so the gate
+   * and the reader cannot drift. */
+  function drillingFlags(log, codes) {
+    return flagsWithCode(readinessFlags([log]), codes);
+  }
 
   function readinessFlags(objects) {
     var out = [];
@@ -25330,18 +25700,18 @@
           'project. A borehole that cannot be found again on the ground ' +
           'cannot be certified, revisited or maintained.'];
       }
+      /* Degrees typed into the UTM boxes are no position: this gate read
+       * them as degrees and passed a placard whose identifier could not be
+       * minted, while the Python refused them as a point near the equator.
+       * Both refuse them now, in the same words. */
+      var degrees = degreesInUtmBoxes(site.easting, site.northing);
+      if (degrees) return ['unmet', degrees];
       /* check_site_consistency's one error: a position that converts to
        * somewhere outside the country. The site page said so and the gate
        * let the report through unstamped, where the Python holds it back. */
       var position = sitePosition(site);
       var outside = position ? outsideCountryNote(position.lat, position.lon) : '';
       if (outside) return ['unmet', outside];
-      if (position && !position.fromUtm) {
-        return ['met', 'Position recorded: ' + pyFixed(Math.abs(position.lat), 5) +
-          '° ' + (position.lat >= 0 ? 'N' : 'S') + ', ' +
-          pyFixed(Math.abs(position.lon), 5) + '° ' + (position.lon >= 0 ? 'E' : 'W') +
-          '.'];
-      }
       var zone = Number(site.utm_zone) || inferZoneForSierraLeone(Number(site.easting));
       return ['met', 'Position recorded: ' + Math.round(site.easting) + ' mE, ' +
         Math.round(site.northing) + ' mN (UTM ' + zone + 'N).'];
@@ -25353,6 +25723,16 @@
       if (!(log.intervals || []).length) {
         return ['unmet', 'The drilling log records no lithology.'];
       }
+      /* A log the reader dropped a row of, or refused a strike from, is not
+       * the log the crew wrote: the gate used to call it met, and "Logged to
+       * 45 m" stood over a log that had lost its 5-10 m row and both water
+       * strikes. */
+      var refused = drillingFlags(log, DRILLING_REFUSALS);
+      if (refused.length) {
+        var seen = [];
+        refused.forEach(function (f) { if (seen.indexOf(f.message) < 0) seen.push(f.message); });
+        return ['unmet', phrase('drilling.gate_set_aside', { messages: seen.join(' ') })];
+      }
       return ['met', 'Logged to ' + pyFixed(log.total_depth_m, 0) + ' m with ' +
         plural(log.intervals.length, 'lithological interval') + '.'];
     }],
@@ -25360,7 +25740,11 @@
       var analysis = state.pump_analysis;
       var flags = readinessFlags([analysis, state.drilling_log,
         analysis ? analysis.test : null]);
-      var refused = flagsWithCode(flags, UNIT_BLOCKERS);
+      /* and every cell the drilling log reader could not read: "every
+       * reading carried a unit the toolkit could read" was said of a log
+       * whose strike cells it had refused and whose rows it had skipped */
+      var refused = flagsWithCode(flags, UNIT_BLOCKERS)
+        .concat(drillingFlags(state.drilling_log, DRILLING_UNREADABLE));
       if (refused.length) {
         return ['unmet', refused.map(function (f) { return f.message; }).join('; ')];
       }
@@ -25452,6 +25836,42 @@
       var depth = estimate.inputs ? estimate.inputs.total_depth_m : null;
       if (!depth) return ['unmet', 'The cost estimate has no total depth to price against.'];
       return ['met', 'Estimate priced for a ' + Math.round(depth) + ' m borehole.'];
+    }],
+    /* Every critical checklist item has an answer. Completeness, not
+     * outcome: an answer of No is an answer, and the record states the
+     * failure; an item left blank is a step the record cannot vouch for. The
+     * gate used to look only at the photographs, so a record with three
+     * photographed items answered and 35 critical ones blank was certified,
+     * while its own summary said 35 critical items were still open. N/A is
+     * an answer, and an answer that is none of the four is read as pending,
+     * as evaluateChecklist reads it. */
+    checklist_answered: ['Critical items answered', function (state) {
+      var supervision = state.supervision || {};
+      var items = supervision.items || loadChecklists();
+      var responses = supervision.responses || {};
+      var critical = items.filter(function (/** @type {Rec} */ item) { return item.critical; });
+      if (!critical.length) return ['met', phrase('supervision.no_critical_items')];
+      /** @type {Record<string, number>} */
+      var openByStage = {};
+      var titles = [];
+      critical.forEach(function (/** @type {Rec} */ item) {
+        var response = responses[item.item_id];
+        var value = response && typeof response === 'object' ? response.status : response;
+        var status = String(value || 'pending').trim().toLowerCase();
+        if (RESPONSE_STATES.indexOf(status) < 0 || status === 'pending') {
+          var title = stageTitle(item.checklist);
+          if (!own(openByStage, title)) { openByStage[title] = 0; titles.push(title); }
+          openByStage[title] += 1;
+        }
+      });
+      if (titles.length) {
+        var n = titles.reduce(function (sum, t) { return sum + openByStage[t]; }, 0);
+        return ['unmet', phrase('supervision.critical_unanswered', { n: n,
+          stages: andJoin(titles.map(function (t) {
+            return phrase('supervision.open_in_stage', { n: openByStage[t], stage: t });
+          })) })];
+      }
+      return ['met', phrase('supervision.critical_answered', { n: critical.length })];
     }],
     /* Every checklist item that needs a photograph has one. Which items do
      * is the checklist CSV's photo column, and one answered N/A needs none.
@@ -25545,9 +25965,10 @@
     /* an estimate is priced before anything is drilled, so it is judged on
      * its own inputs, not on a log and an as-built design it cannot have */
     costing: ['field_data', 'site_located', 'cost_basis', 'decision_bands', 'no_errors'],
-    /* a supervision record vouches that the critical steps were done, and
-     * for the ones the checklist says need it, a photograph is the evidence */
-    supervision: ['field_data', 'site_located', 'photo_evidence'],
+    /* a supervision record vouches that the critical steps were done: each
+     * needs an answer, and for the ones the checklist says need it, a
+     * photograph is the evidence */
+    supervision: ['field_data', 'site_located', 'checklist_answered', 'photo_evidence'],
     /* The asset documents and the payment certificate. Without an entry each
      * of these fell back to the completion set, so a plate for the headworks
      * was stamped PROVISIONAL for want of a water quality panel - which a
@@ -27656,22 +28077,48 @@
   var UNKNOWN_DISTRICT = 'XX';
   var ASSET_ID_RE = /^SL-([A-Z]{2,4})-([0-9A-Z]{7})-([0-9A-Z])$/;
 
-  /** ISO 7064 MOD 37,36: every single wrong character and every transposition
-   * of two adjacent ones, which between them are almost all the mistakes
-   * people make copying a code off a plate into a phone.
+  /* ISO 7064's hybrid system for M = 36: the running sum is reduced modulo M
+   * (36, with 0 written as 36) and doubled modulo M + 1 (37). */
+  var CHECK_M = 36;
+
+  function checkWith(body, modulus) {
+    var product = CHECK_M;
+    var text = String(body || '').toUpperCase();
+    for (var i = 0; i < text.length; i++) {
+      var value = CHECK_ALPHABET.indexOf(text.charAt(i));
+      if (value < 0) continue;             /* separators carry no value */
+      var total = (product % (CHECK_M + 1)) + value;
+      product = 2 * ((total % modulus) || modulus);
+    }
+    return CHECK_ALPHABET.charAt((CHECK_M + 1 - product % (CHECK_M + 1)) % CHECK_M);
+  }
+
+  /** ISO 7064 MOD 37,36, the running sum reduced modulo 36 and doubled
+   * modulo 37 as the standard's hybrid system has it. It used to be reduced
+   * modulo 37, which left 37 final states for 36 check characters, so two
+   * of them shared one: about one single mistyped character in 680 still
+   * validated, and the identifier did not match the standard's own worked
+   * examples. Done as the standard has it, every single wrong character is
+   * caught; most transpositions of two adjacent characters are too, but not
+   * all: of the 45,360 ways two different characters can meet in one of the
+   * calculation's 36 states, 72 leave the state unchanged (one in 630),
+   * which is the hybrid system's own limit rather than a slip here.
    * @param {*} body
    * @returns {string}
    */
   function checkCharacter(body) {
-    var product = 36;
-    var text = String(body || '').toUpperCase();
-    for (var i = 0; i < text.length; i++) {
-      var value = CHECK_ALPHABET.indexOf(text.charAt(i));
-      if (value < 0) continue;
-      var total = (product % 37) + value;
-      product = 2 * ((total % 37) || 37);
-    }
-    return CHECK_ALPHABET.charAt((37 - product % 37) % 36);
+    return checkWith(body, CHECK_M);
+  }
+
+  /** The check character identifiers were minted with before the
+   * correction: reduced modulo 37 rather than 36. Kept so an identifier
+   * already painted on a plate, or already holding a history in a project
+   * file, still reads; never used to mint.
+   * @param {*} body
+   * @returns {string}
+   */
+  function legacyCheckCharacter(body) {
+    return checkWith(body, CHECK_M + 1);
   }
 
   function positionCode(easting, northing, zone) {
@@ -27718,6 +28165,12 @@
       throw new Error('a borehole with no recorded position cannot be given ' +
         'an identifier: there would be nothing to find it by');
     }
+    /* Degrees typed into the two boxes are not a position in metres. The
+     * readiness gate read them as degrees and passed the plate, while this
+     * refused them, so a plate was certified for an identifier nobody could
+     * mint. Both engines now refuse them, in the same words. */
+    var degrees = degreesInUtmBoxes(s.easting, s.northing);
+    if (degrees) throw new Error(degrees);
     var zone = s.utm_zone || inferZoneForSierraLeone(Number(s.easting));
     return formatAssetId(districtCode(s.district),
       positionCode(s.easting, s.northing, zone));
@@ -27740,16 +28193,44 @@
     }).join('');
     var candidate = 'SL-' + district + '-' + code + '-' + given;
     if (!ASSET_ID_RE.test(candidate)) return null;
-    if (checkCharacter('SL-' + district + '-' + code) !== given) return null;
+    var body = 'SL-' + district + '-' + code;
+    /* An identifier minted before the check character followed ISO 7064
+     * exactly is still the identifier on its plate and in its project file,
+     * so it is read as it is rather than refused or renamed:
+     * validateAssetId says that it carries the older character. */
+    if (given !== checkCharacter(body) && given !== legacyCheckCharacter(body)) return null;
     return candidate;
   }
 
-  /** @param {*} text */
+  /** Whether an identifier checks only against the legacy check character.
+   * @param {*} assetId
+   * @returns {boolean}
+   */
+  function isLegacyAssetId(assetId) {
+    var parsed = parseAssetId(assetId);
+    if (!parsed) return false;
+    var cut = parsed.lastIndexOf('-');
+    return checkCharacter(parsed.slice(0, cut)) !== parsed.slice(cut + 1);
+  }
+
+  /** {ok, reason, assetId}. An identifier carrying the legacy check character
+   * is accepted, and its reason is the note saying so rather than ''.
+   * @param {*} text */
   function validateAssetId(text) {
     var raw = String(text === null || text === undefined ? '' : text).trim();
     if (!raw) return { ok: false, reason: 'No identifier was entered.' };
     var parsed = parseAssetId(raw);
-    if (parsed) return { ok: true, reason: '', assetId: parsed };
+    if (parsed) {
+      if (isLegacyAssetId(parsed)) {
+        /* read, and said: while the older character is read, about one
+         * single mistyped character in 36 matches it, so the person typing
+         * is told to compare the identifier with the plate */
+        return { ok: true, assetId: parsed, legacy: true,
+          reason: phrase('registry.legacy_check_character', { asset_id: parsed,
+            expected: checkCharacter(parsed.slice(0, parsed.lastIndexOf('-'))) }) };
+      }
+      return { ok: true, reason: '', assetId: parsed, legacy: false };
+    }
     var tidy = raw.replace(/[\s_]+/g, '').toUpperCase();
     if (tidy.indexOf('SL-') !== 0) tidy = 'SL-' + tidy;
     var parts = tidy.split('-');
@@ -27780,6 +28261,32 @@
     decommissioned: ['Decommissioned', 'decommissioned', false],
     note: ['Note', null, false]
   };
+
+  /* The order events recorded on one day are read in (registry.py
+   * SAME_DAY_ORDER). Sorting them by kind name put "decommissioned" before
+   * "failure", "repair" and "restored", so a hole recorded as collapsed and
+   * decommissioned on one visit read "Not working" and stayed due an
+   * inspection, and a pump pulled for reuse on the decommissioning day read
+   * "Working". This order is a choice, stated: on a day the borehole is
+   * commissioned first, then visited, found broken, mended, and only then
+   * decommissioned. Kinds of the same rank keep their name order. */
+  var SAME_DAY_ORDER = {
+    commissioned: 0, inspection: 1, water_sample: 1, note: 1,
+    failure: 2, repair: 3, restored: 3, decommissioned: 4
+  };
+
+  function dayRank(kind) {
+    return own(SAME_DAY_ORDER, kind) ? SAME_DAY_ORDER[kind] : 1;
+  }
+
+  /* when, then the day's order, then kind, then id: merge_events' key */
+  function eventOrder(a, b) {
+    var aw = a.when || '9999', bw = b.when || '9999';
+    if (aw !== bw) return aw < bw ? -1 : 1;
+    if (dayRank(a.kind) !== dayRank(b.kind)) return dayRank(a.kind) - dayRank(b.kind);
+    if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+    return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
+  }
 
   var FUNCTION_LABELS = {
     functional: 'Working', non_functional: 'Not working',
@@ -27926,12 +28433,7 @@
         }
       });
     }
-    return order.map(function (key) { return merged[key]; }).sort(function (a, b) {
-      var aw = a.when || '9999', bw = b.when || '9999';
-      if (aw !== bw) return aw < bw ? -1 : 1;
-      if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
-      return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
-    });
+    return order.map(function (key) { return merged[key]; }).sort(eventOrder);
   }
 
   /**
@@ -28003,31 +28505,47 @@
     /* the clock's own date unless the caller passes one */
     var todayDay = /** @type {number} */ (isoDay(when));
     var dated = events.filter(function (e) { return isoDay(e.when) !== null; })
-      .sort(function (a, b) {
-        if (a.when !== b.when) return a.when < b.when ? -1 : 1;
-        if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
-        return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
-      });
+      .sort(eventOrder);
     var undated = events.length - dated.length;
 
     var fn = 'unknown', since = null;
     var detail = 'Nothing has been recorded against this borehole, so whether ' +
       'it is working is not known.';
     var commissioned = null, lastInspection = null, lastSample = null;
+    var afterDecommissioning = [];
     dated.forEach(function (event) {
       if (/** @type {number} */ (isoDay(event.when)) > todayDay) return;
       var establishes = EVENT_KINDS[event.kind][1];
-      if (establishes) {
+      if (establishes && fn === 'decommissioned' && event.kind !== 'commissioned') {
+        /* Decommissioning is terminal: a repair or a failure logged after it
+         * stays in the history but does not bring the borehole back. Only a
+         * new commissioning record does. A second decommissioning record
+         * changes nothing, as a second failure report does not. */
+        if (establishes !== 'decommissioned') afterDecommissioning.push(event);
+      } else if (establishes && establishes !== fn) {
+        /* Only a change moves "since". A villager reporting a broken pump
+         * again in May, as the plate reports of PLAN.md step 7.1 will,
+         * restarted the count from May, so a borehole out since January
+         * showed 12 days out of service rather than 143. */
         fn = establishes;
         since = event.when;
         detail = eventLabel(event.kind) + ' recorded on ' + event.when +
           (event.by ? ' by ' + event.by : '');
+        afterDecommissioning = [];
       }
       if (event.kind === 'commissioned' && !commissioned) commissioned = event.when;
       if (event.kind === 'inspection') lastInspection = event.when;
       if (event.kind === 'water_sample') lastSample = event.when;
     });
 
+    if (fn === 'decommissioned' && afterDecommissioning.length) {
+      detail += '. ' + phrase('registry.after_decommissioning', {
+        n: afterDecommissioning.length,
+        events: andJoin(afterDecommissioning.map(function (e) {
+          return phrase('registry.event_on',
+            { event: eventLabel(e.kind).toLowerCase(), when: e.when });
+        })) });
+    }
     var outFor = fn === 'non_functional' && since ? todayDay - /** @type {number} */ (isoDay(since)) : null;
     if (undated && fn === 'unknown') {
       detail = undated + ' record(s) carry a date nobody can read, so nothing ' +
@@ -28216,8 +28734,10 @@
     DISTRICT_CODES: DISTRICT_CODES, UNKNOWN_DISTRICT: UNKNOWN_DISTRICT,
     EVENT_KINDS: EVENT_KINDS, FUNCTION_LABELS: FUNCTION_LABELS,
     FUNCTION_COLORS: FUNCTION_COLORS, DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
-    checkCharacter: checkCharacter, mintAssetId: mintAssetId,
+    checkCharacter: checkCharacter, legacyCheckCharacter: legacyCheckCharacter,
+    mintAssetId: mintAssetId, isLegacyAssetId: isLegacyAssetId,
     parseAssetId: parseAssetId, validateAssetId: validateAssetId,
+    SAME_DAY_ORDER: SAME_DAY_ORDER,
     eventId: eventId, eventLabel: eventLabel, mergeEvents: mergeEvents,
     assetState: assetState, assetLatLon: assetLatLon, assetLabel: assetLabel,
     assetFromDict: assetFromDict, assetFromProject: assetFromProject,
