@@ -345,6 +345,12 @@ def bundle_texts() -> dict[Path, str]:
     from groundwater.siting.odds import odds_tables
 
     payload["odds"] = odds_tables()
+    # the sanitary inspection form, its score bands, the E. coli grades and
+    # the risk-to-health matrix, data/sanitary_inspection.csv and
+    # sanitary_risk.yaml, as the package parses them (PLAN.md step 7.5)
+    from groundwater.sanitary import sanitary_tables
+
+    payload["sanitary"] = sanitary_tables()
 
     geo = {key: read_geojson(name) for key, name in GEOJSON_LAYERS.items()}
 

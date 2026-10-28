@@ -1965,3 +1965,100 @@ def test_the_design_takes_the_intake_the_pumping_report_prints(sample_data):
     assert reported > analysis.yield_recommendation.pump_installation_depth_m
     design = at.session_state["borehole_design"]
     assert design.pump_intake_m >= reported
+
+
+def test_the_design_chooses_the_rising_main_from_the_sample(sample_data):
+    """PLAN.md step 7.2: with no water quality sheet the design page says the
+    rising main rests on no chemistry; with Dr Timbo's aggressive sample it
+    specifies stainless steel, quoting the indices and the sample, inspected
+    every 6 months, and the bill of quantities prices it over the intake."""
+    from groundwater.text import phrase
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    goto(at, "Pumping test")
+    at.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
+    at.run()
+    goto(at, "Borehole design")
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    assert not at.exception, at.exception
+    design = at.session_state["borehole_design"]
+    assert design.rising_main["chemistry"] == "none"
+    warned = " ".join(str(w.value) for w in at.warning)
+    assert phrase("rising_main.no_sample") in warned
+    assert [m.value for m in at.metric if m.label == "Rising main"] == ["galvanised iron"]
+
+    goto(at, "Water quality")
+    at.selectbox(key="sample_wq").select("dr_timbo/dr_timbo_water_quality.xlsx")
+    at.run()
+    assert not at.exception, at.exception
+    # the design follows the sample without the design page being opened
+    choice = at.session_state["borehole_design"].rising_main
+    assert choice["upgraded"] and choice["material"] == "stainless steel"
+    goto(at, "Borehole design")
+    at.run()
+    assert not at.exception, at.exception
+    design = at.session_state["borehole_design"]
+    choice = design.rising_main
+    assert choice["chemistry"] == "aggressive" and choice["inspection_months"] == 6
+    warned = " ".join(str(w.value) for w in at.warning)
+    assert choice["statement"] in warned
+    assert "WQ-BH1-01 of 20th May, 2018" in warned and "Ryznar index 11.37" in warned
+    metrics = {m.label: m.value for m in at.metric}
+    assert metrics["Rising main"] == "stainless steel"
+    assert metrics["Rising main inspection"] == "every 6 months"
+
+    goto(at, "Costing & BoQ")
+    at.button(key="run_cost").click()
+    at.run()
+    assert not at.exception, at.exception
+    estimate = at.session_state["cost_estimate"]
+    line = next(i for i in estimate.items if i.code == "RSM1")
+    assert line.quantity == design.pump_intake_m
+
+
+def test_a_sanitary_inspection_is_recorded_and_read_with_the_sample(sample_data):
+    """PLAN.md step 7.5: the form on the Asset registry page records an
+    inspection in the borehole's history, with the questions left unanswered
+    marked so, and the statement under it reads that inspection with the
+    E. coli count of the water quality sample on the Water quality page."""
+    from datetime import date
+
+    from groundwater.ingestion import read_quality_workbook
+    from groundwater.quality import assess_sample
+    from groundwater.registry import Asset, AssetEvent, asset_from_dict
+    from groundwater.sanitary import sanitary_risk
+
+    asset = Asset(asset_id="SL-WAR-8FEEVKQ-T", community="Dr. Timbo's",
+                  district="Western Area Rural", easting=694912.0, northing=938150.0,
+                  utm_zone=28, events=[AssetEvent("2020-01-10", "commissioned")])
+    quality = assess_sample(read_quality_workbook(
+        REPO / "examples" / "data" / "dr_timbo" / "dr_timbo_water_quality.xlsx"))
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["asset_record"] = asset.as_dict()
+    at.session_state["wq_assessment"] = quality
+    goto(at, "Asset registry")
+    shown = " ".join(str(i.value) for i in at.info)
+    assert "No sanitary inspection with the form filled in is on record" in shown
+
+    at.date_input(key="sanitary_when").set_value(date(2024, 5, 20))
+    at.text_input(key="sanitary_by").set_value("A. Bangura")
+    for number, answer in ((1, "Y"), (2, "N"), (3, "N"), (4, "Y"), (5, "N"), (6, "N"),
+                           (7, "Y"), (8, "N")):
+        at.radio(key=f"sanitary_q{number}").set_value(answer)
+    next(b for b in at.button if b.label == "Record the inspection").click()
+    at.run()
+    assert not at.exception, at.exception
+
+    recorded = asset_from_dict(at.session_state["asset_record"])
+    inspections = [e for e in recorded.events if e.kind == "inspection"]
+    assert [(e.when, e.by, e.answers) for e in inspections] == [
+        ("2024-05-20", "A. Bangura", "YNNYNNYN--")]
+    expected = sanitary_risk(recorded, date.today(), quality)
+    # three risks found and two questions open: 3 to 5, intermediate either
+    # way, so the matrix gives one priority even for an incomplete form
+    assert (expected["action"], expected["settled"]) == ("higher", True)
+    assert "between 3 and 5 of 10, which the form rates intermediate" in expected["statement"]
+    written = " ".join(str(w.value) for w in at.warning)
+    assert expected["statement"] in written

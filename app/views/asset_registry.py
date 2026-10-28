@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import streamlit as st
 
 from groundwater.project_io import deserialize_project
@@ -22,6 +24,13 @@ from groundwater.reporting.registry import (
     build_asset_placard,
     build_asset_record,
 )
+from groundwater.sanitary import (
+    form_questions,
+    form_rows,
+    inspection_event,
+    sanitary_risk,
+)
+from groundwater.text import phrase, phrase_table
 
 from shared import (
     app_config,
@@ -102,6 +111,8 @@ def render() -> None:
             "kept only in this browser is one bad laptop away from gone."
         )
 
+        _sanitary_inspection(_live)
+
         if _live.events:
             st.subheader("History")
             st.dataframe(
@@ -121,7 +132,8 @@ def render() -> None:
                 "Borehole identification plate")
         if _r2.button("Build asset record (.docx)", key="asset_record_report"):
             _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
-                                        readiness=report_gate("asset"))
+                                        readiness=report_gate("asset"),
+                                        quality=st.session_state.get("wq_assessment"))
             offer_download(
                 build_asset_record(_inputs,
                                    workdir() / f"asset_{_live.asset_id}.docx",
@@ -186,6 +198,64 @@ def render() -> None:
                 "quality sample."
             )
         st.dataframe(registry_rows(_assets), hide_index=True, width="stretch")
+
+
+def _sanitary_inspection(asset) -> None:
+    """The WHO form for a borehole with a handpump, and the risk statement.
+
+    The inspection is recorded against the borehole like any other visit,
+    so it travels in the project file and merges by content (PLAN.md step
+    7.5). The statement is drawn after the form, so an inspection just
+    recorded is the one it reads.
+    """
+    st.subheader(phrase("sanitary.heading"))
+    st.caption(
+        "Answer each question as found at the wellhead: yes where the risk "
+        "is present. A question left unanswered is not counted as a no, so "
+        "an incomplete form gives a range of scores. The statement reads the "
+        "latest inspection with the E. coli count of the water quality "
+        "sample on the Water quality page. The browser app has the same "
+        "form on its Asset registry page."
+    )
+    words = phrase_table("sanitary.answer")
+    with st.form("sanitary_form", clear_on_submit=True):
+        st.markdown("**Record a sanitary inspection**")
+        _c1, _c2 = st.columns([1, 2])
+        _when = _c1.date_input("Date of the inspection", key="sanitary_when")
+        _by = _c2.text_input("Inspected by", key="sanitary_by", placeholder="Name")
+        _answers = [
+            st.radio(f"{number}. {question}", ["-", "Y", "N"],
+                     format_func=lambda k: words[k], horizontal=True,
+                     key=f"sanitary_q{number}")
+            for number, question in enumerate(form_questions(), start=1)
+        ]
+        _note = st.text_input("Note", key="sanitary_note",
+                              placeholder="Anything else seen")
+        if st.form_submit_button("Record the inspection"):
+            asset.events = merge_events(
+                asset.asset_id, asset.events,
+                [inspection_event(_when.isoformat(), "".join(_answers),
+                                  by=_by.strip(), note=_note)])
+            st.session_state["asset_record"] = asset.as_dict()
+            st.success("Recorded in the history. A form filled in again on "
+                       "another phone merges with this one if it says the same.")
+
+    risk = sanitary_risk(asset, date.today(), st.session_state.get("wq_assessment"))
+    if risk["action"] is not None:
+        st.metric("Action priority",
+                  phrase_table("sanitary.priority_short")[risk["action"]])
+    show = {"urgent": st.error, "higher": st.warning}.get(risk["action"] or "", st.info)
+    show(risk["statement"])
+    inspection = risk["inspection"]
+    if inspection is not None:
+        st.caption(phrase("sanitary.form_caption", when=inspection["label"]))
+        st.dataframe(
+            [{phrase("sanitary.col_number"): row[0],
+              phrase("sanitary.col_question"): row[1],
+              phrase("sanitary.col_answer"): row[2]}
+             for row in form_rows(inspection["answers"], inspection["form"])],
+            hide_index=True, width="stretch")
+    st.caption(phrase("sanitary.basis"))
 
 
 @st.fragment

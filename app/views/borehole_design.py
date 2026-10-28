@@ -25,6 +25,38 @@ from shared import (
     _working,
 )
 
+def _show_rising_main(design) -> None:
+    """What the design specifies for the rising main, how often it is
+    inspected, and why: the water quality sample's corrosivity indices and pH
+    (PLAN.md step 7.2, groundwater.design.materials). The browser app's
+    design page shows the same card."""
+    choice = getattr(design, "rising_main", None)
+    if not choice:
+        return
+    st.subheader("Rising main")
+    c1, c2 = st.columns(2)
+    c1.metric(
+        "Rising main", choice["material"],
+        help=("In place of the " + choice["standard"] + " one the handpump line "
+              "includes." if choice["upgraded"]
+              else "The one the handpump line includes."),
+    )
+    c2.metric("Rising main inspection", f"every {choice['inspection_months']:g} months")
+    # aggressive water, or water nobody has analysed, is a warning
+    box = st.info if choice["chemistry"] == "not_aggressive" else st.warning
+    box(choice["statement"])
+    if choice["upgraded"]:
+        st.caption(
+            "The Costing & BoQ page prices it as a line extra over the "
+            "handpump, over the pump intake depth (over the whole depth where "
+            "no intake is known). Load or change the sample on the Water "
+            "quality page and the design follows it."
+        )
+    else:
+        st.caption("Load or change the sample on the Water quality page and "
+                   "the design follows it.")
+
+
 def render() -> None:
     st.header("Borehole design")
     st.caption(
@@ -74,6 +106,7 @@ def render() -> None:
             # the annulus rule and the pump-intake checks are on the design
             # itself now, so the report and the browser app see them too
             show_flags(design.flags)
+            _show_rising_main(design)
         with col_draw:
             drawing = figure(
                 draw_borehole_design, design, log,
@@ -84,8 +117,8 @@ def render() -> None:
             st.image(str(drawing))
             offer_download(drawing, "Download design drawing (.png)")
         st.info(
-            "The Costing & BoQ page can price this design: casing, screen and "
-            "gravel quantities carry over automatically."
+            "The Costing & BoQ page can price this design: casing, screen, "
+            "gravel and rising main quantities carry over automatically."
         )
 
         # The completion report is the document the client is handed for the

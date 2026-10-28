@@ -14676,6 +14676,8 @@
       /* true when the screens are the ones recorded as installed on the log */
       as_built: asBuilt,
       construction_note: asBuilt ? AS_BUILT_NOTE : DESIGN_NOTE,
+      /* the rising main and its inspection, from the water (step 7.2) */
+      rising_main: risingMainChoice(spec.quality || null, rules),
     };
     design.screens = segments.filter(function (s) { return s.kind === 'screen'; });
     design.total_screen_length_m = design.screens.reduce(function (a, s) {
@@ -14740,8 +14742,150 @@
     return rows;
   }
 
+  /* --- the rising main (PLAN.md step 7.2) -----------------------------------
+   * groundwater/design/materials.py. A galvanised iron rising main and its
+   * rods corrode quickly in aggressive water, so the design reads the water
+   * quality assessment and says what it specifies for the rising main and how
+   * often it is inspected, and why. No second classification is made: the
+   * water is aggressive by the corrosivity classification (is_aggressive:
+   * Ryznar above 7.0, Langelier below -0.5 or aggressive index below 10) or
+   * by the handpump corrosion check's pH rule (below 6.5, RWSN Stop the Rot).
+   * With no sample, or one without the indices, the standard material is kept
+   * on no chemistry and the shorter inspection interval applies. */
+
+  /** What the water says: CHEMISTRY_STATES in materials.py. */
+  var CHEMISTRY_STATES = ['aggressive', 'not_aggressive', 'incomplete', 'none'];
+  /** The handpump corrosion check's pH rule: PH_CORROSIVE_BELOW. */
+  var PH_CORROSIVE_BELOW = 6.5;
+
+  /* a design rule, or the toolkit's default where the rules carry none (a
+   * configuration saved before the rule existed) */
+  function designRule(rules, key) {
+    var value = rules ? rules[key] : undefined;
+    return value === undefined || value === null ? configDefaults().design[key] : value;
+  }
+
+  /* two material names are one material, whatever their case and end blanks
+   * (_same_material, trimmed as trim_field trims) */
+  function sameMaterial(a, b) {
+    return trimField(a).toLowerCase() === trimField(b).toLowerCase();
+  }
+
+  /* the Langelier index with its sign, to two decimals; nought is "+0.00" */
+  function signedIndex(value) {
+    return value < 0 ? '-' + pyFixed(-value, 2) : '+' + pyFixed(Math.abs(value), 2);
+  }
+
+  /* how the sample is named after "The water sample" (_sample_name) */
+  function risingMainSampleName(sample) {
+    var ident = trimField(sample.sample_id || '');
+    var when = trimField(sample.sample_date || '');
+    if (ident && when) return phrase('rising_main.sample_named', { id: ident, date: when });
+    if (ident) return phrase('rising_main.sample_undated', { id: ident });
+    if (when) return phrase('rising_main.sample_unnamed', { date: when });
+    return phrase('rising_main.sample_anonymous');
+  }
+
+  /** What the design specifies for the rising main, from the water:
+   * rising_main_choice. quality is the water quality assessment (its
+   * corrosivity read as it stands), a bare sample (assessed for corrosivity
+   * here) or null; rules are the design rules. inspection_months is the named
+   * value the service rounds of step 7.3 read.
+   * @param {QualityAssessment|QualitySample|null} [quality]
+   * @param {DesignConfig} [rules]
+   * @returns {Rec}
+   */
+  function risingMainChoice(quality, rules) {
+    var standard = designRule(rules, 'rising_main_material');
+    var resistant = designRule(rules, 'aggressive_rising_main_material');
+    var usual = designRule(rules, 'rising_main_inspection_months');
+    var shorter = designRule(rules, 'aggressive_rising_main_inspection_months');
+
+    var sample = null, corrosivity = null;
+    if (quality) {
+      if (quality.sample !== undefined && quality.corrosivity !== undefined) {
+        sample = quality.sample || null;
+        corrosivity = quality.corrosivity || (sample ? assessCorrosivity(sample) : null);
+      } else {
+        sample = quality;
+        corrosivity = assessCorrosivity(sample);
+      }
+    }
+    /** @type {Rec} */
+    var out = {
+      material: standard, standard: standard, upgraded: false, chemistry: 'none',
+      sample: '', ph: null, lsi: null, rsi: null, aggressive_index: null,
+      classification: '', by_indices: false, by_ph: false,
+      inspection_months: shorter, statement: '',
+    };
+    var sentences = [];
+    if (!sample || !corrosivity) {
+      sentences.push(phrase('rising_main.no_sample'));
+      sentences.push(phrase('rising_main.kept_unknown', { standard: standard, months: shorter }));
+      out.statement = sentences.join(' ');
+      return out;
+    }
+
+    var name = risingMainSampleName(sample);
+    /* the pH the corrosivity indices were computed from, read the same way */
+    var ph = sampleValue(sample, 'ph');
+    var indexed = ph !== null && corrosivity.lsi !== null && corrosivity.rsi !== null &&
+      corrosivity.aggressive_index !== null;
+    var byIndices = !!(indexed && corrosivity.is_aggressive);
+    var byPh = ph !== null && ph < PH_CORROSIVE_BELOW;
+    out.sample = name; out.ph = ph; out.lsi = corrosivity.lsi; out.rsi = corrosivity.rsi;
+    out.aggressive_index = corrosivity.aggressive_index;
+    out.classification = indexed ? corrosivity.classification : '';
+    out.by_indices = byIndices; out.by_ph = byPh;
+    /** @type {Rec} */
+    var indices = {};
+    if (indexed) {
+      /* the class as a sentence carries it ("rated strongly corrosive") */
+      var cls = corrosivity.classification;
+      indices = { rsi: corrosivity.rsi, lsi: signedIndex(corrosivity.lsi),
+        ai: corrosivity.aggressive_index,
+        classification: cls.charAt(0).toLowerCase() + cls.slice(1) };
+    }
+
+    if (byIndices) {
+      sentences.push(phrase('rising_main.aggressive', Object.assign({ sample: name }, indices)));
+    } else if (byPh) {
+      sentences.push(phrase('rising_main.ph_low', { sample: name, ph: phText(ph) }));
+      sentences.push(indexed ? phrase('rising_main.ph_low_indices', indices)
+        : phrase('rising_main.ph_low_no_indices'));
+    } else if (indexed) {
+      sentences.push(phrase('rising_main.not_aggressive',
+        Object.assign({ sample: name, ph: phText(ph) }, indices)));
+    } else {
+      sentences.push(phrase('rising_main.no_indices', { sample: name }));
+    }
+
+    if (byIndices || byPh) {
+      out.chemistry = 'aggressive';
+      out.inspection_months = shorter;
+      if (sameMaterial(resistant, standard)) {
+        sentences.push(phrase('rising_main.same_material', { material: standard, months: shorter }));
+      } else {
+        out.material = resistant;
+        out.upgraded = true;
+        sentences.push(phrase('rising_main.specified', { material: resistant,
+          standard: standard, months: shorter, usual: usual }));
+        sentences.push(phrase('rising_main.alternative'));
+      }
+    } else if (indexed) {
+      out.chemistry = 'not_aggressive';
+      out.inspection_months = usual;
+      sentences.push(phrase('rising_main.kept', { standard: standard, months: usual }));
+    } else {
+      out.chemistry = 'incomplete';
+      sentences.push(phrase('rising_main.kept_unknown', { standard: standard, months: shorter }));
+    }
+    out.statement = sentences.join(' ');
+    return out;
+  }
+
   /**
-   * @param {Rec} [options] rules, log, interpretation, totalDepthM, staticWaterLevelM, screensM, pumpIntakeM, pumpIntakeFloorM
+   * @param {Rec} [options] rules, log, interpretation, totalDepthM, staticWaterLevelM, screensM, pumpIntakeM, pumpIntakeFloorM, quality (the water quality assessment the rising main is chosen from)
    * @returns {Design}
    */
   function designBorehole(options) {
@@ -14787,6 +14931,7 @@
         screens: chosen.screens, basis: chosenBasis, flags: flags,
         totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
         pumpIntakeFloorM: intakeFloor, rules: rules, log: log, asBuilt: asBuilt,
+        quality: opts.quality || null,
       });
     }
 
@@ -14865,6 +15010,7 @@
       screens: screens, basis: placementBasis(found, screens, rules).concat(fallback),
       flags: flags, totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
       pumpIntakeFloorM: intakeFloor, rules: rules, log: log,
+      quality: opts.quality || null,
     });
   }
 
@@ -14880,6 +15026,18 @@
   var RESOURCE_CATEGORIES = ['equipment', 'labour', 'consumables', 'fuel', 'vehicles'];
   var DEFAULT_EXCHANGE_RATE_SLE_PER_USD = 23.0;
   var DRY_STAGES = ['Siting', 'Mobilisation', 'Drilling'];
+  /* The quantity basis that prices a rising main in place of the one the
+   * handpump line includes, by material in lower case: RISING_MAIN_BASES in
+   * costing/model.py. A material with none, or none in the catalogue, is
+   * flagged on the estimate as unpriced. */
+  /** @type {Record<string, string>} */
+  var RISING_MAIN_BASES = { 'stainless steel': 'per_m_rising_main_stainless_steel' };
+
+  /** @param {string} material */
+  function risingMainBasis(material) {
+    var key = trimField(material).toLowerCase();
+    return own(RISING_MAIN_BASES, key) ? RISING_MAIN_BASES[key] : null;
+  }
 
   /** The rate catalogue: load_rates. min_usd and max_usd are the ends of
    * the triangle the cost distribution draws the rate from, unit_cost_usd
@@ -14984,6 +15142,10 @@
       sanitary_seal_m: null,
       development_hours: 6.0, test_pumping_hours: 30.0,
       mobilisation_distance_km: 0.0, wq_samples: 1, handpumps: 1,
+      /* the rising main the design specifies in place of the handpump
+       * line's, and its length (the pump intake); blank prices the line as
+       * it is, and a null length takes the total depth and says so */
+      rising_main_material: '', rising_main_m: null,
     }, values || {});
   }
 
@@ -15037,6 +15199,11 @@
         'site (drilling at 25 m per day plus four days for moving, set up, ' +
         'development, testing and completion).');
     }
+    if (r.rising_main_material && r.handpumps > 0 &&
+        (r.rising_main_m === null || r.rising_main_m === undefined)) {
+      r.rising_main_m = r.total_depth_m;
+      assumptions.push(phrase('rising_main.length_assumed', { depth: r.rising_main_m }));
+    }
     r.bedrock_m = Math.max(0.0, r.total_depth_m - (r.overburden_m || 0.0));
     r.gravel_pack_m3 = annulusVolumeM3(r.borehole_diameter_in, r.casing_diameter_in,
       r.gravel_interval_m || 0.0, 1.3);
@@ -15057,6 +15224,9 @@
      * to carry gravel the drawing's own flag said could not be placed */
     var packed = (design.annular_fill === undefined ? 'gravel pack'
       : design.annular_fill) !== 'none';
+    /* the rising main the water calls for, over the pump intake depth */
+    var choice = design.rising_main || {};
+    var upgraded = !!choice.upgraded;
     return costingInputs({
       total_depth_m: design.total_depth_m,
       overburden_m: opts.overburdenM === undefined ? null : opts.overburdenM,
@@ -15071,6 +15241,9 @@
         Math.max(0.0, design.sanitary_seal[1] - design.sanitary_seal[0])
       ),
       mobilisation_distance_km: opts.mobilisationDistanceKm || 0.0,
+      rising_main_material: upgraded ? String(choice.material || '') : '',
+      rising_main_m: upgraded && design.pump_intake_m !== undefined
+        ? design.pump_intake_m : null,
     });
   }
 
@@ -15083,7 +15256,10 @@
    * @param {Rec} inputs resolved
    * @returns {Object<string, number>} */
   function quantityTable(inputs) {
-    return {
+    var chosen = risingMainBasis(inputs.rising_main_material);
+    var rising = (inputs.rising_main_m || 0.0) * Number(inputs.handpumps);
+    /** @type {Object<string, number>} */
+    var table = {
       lump_sum: 1.0,
       per_km_round_trip: 2.0 * inputs.mobilisation_distance_km,
       per_crew_day: inputs.crew_days || 0.0,
@@ -15099,6 +15275,11 @@
       per_sample: Number(inputs.wq_samples),
       per_handpump: Number(inputs.handpumps),
     };
+    Object.keys(RISING_MAIN_BASES).forEach(function (key) {
+      var basis = RISING_MAIN_BASES[key];
+      table[basis] = basis === chosen ? rising : 0.0;
+    });
+    return table;
   }
 
   /** Percentage defaults follow the RWSN costing and pricing guidance:
@@ -15136,6 +15317,20 @@
       });
     });
 
+    var held = resolved.inputs;
+    if (held.rising_main_material && held.handpumps > 0 && (held.rising_main_m || 0.0) > 0) {
+      var basis = risingMainBasis(held.rising_main_material);
+      var priced = basis !== null && catalogue.some(function (rate) {
+        return rate.quantity_basis === basis;
+      });
+      /* fail closed: the bill still carries the handpump line's main */
+      if (!priced) {
+        flags.push({
+          level: 'warning', code: 'rising_main_unpriced',
+          message: phrase('rising_main.unpriced', { material: held.rising_main_material }),
+        });
+      }
+    }
     if (resolved.inputs.mobilisation_distance_km <= 0) {
       flags.push({
         level: 'info', code: 'no_mobilisation_distance',
@@ -15756,6 +15951,8 @@
 
   Object.assign(C, {
     designBorehole: designBorehole, designSummaryRows: designSummaryRows,
+    risingMainChoice: risingMainChoice, CHEMISTRY_STATES: CHEMISTRY_STATES,
+    PH_CORROSIVE_BELOW: PH_CORROSIVE_BELOW, RISING_MAIN_BASES: RISING_MAIN_BASES,
     targetZones: targetZones, sealDepthFor: sealDepthFor,
     pumpIntakeFloor: pumpIntakeFloor,
     loggedDiameterIn: loggedDiameterIn, intervalAt: intervalAt,
@@ -21442,10 +21639,14 @@
     if (!costGiven(given.gravel_interval_m)) gravel = defaultGravelIntervalM(depth);
     else if (given.gravel_interval_m === 0) gravel = 0.0;
     else gravel = Math.max(0.0, given.gravel_interval_m + shift);
+    /* a rising main taken as long as the hole is as long as the hole drawn */
+    var rising = base.rising_main_m;
+    if (costGiven(rising) && !costGiven(given.rising_main_m)) rising = depth;
     var r = Object.assign({}, base, {
       total_depth_m: depth, overburden_m: Math.min(over, depth), casing_m: casing,
       gravel_interval_m: gravel,
       crew_days: costGiven(given.crew_days) ? given.crew_days : defaultCrewDays(depth),
+      rising_main_m: rising,
     });
     r.bedrock_m = Math.max(0.0, r.total_depth_m - (r.overburden_m || 0.0));
     r.gravel_pack_m3 = annulusVolumeM3(r.borehole_diameter_in, r.casing_diameter_in,
@@ -26226,10 +26427,15 @@
       }
     }
 
+    var assessment = inputs.assessment || null;
+    if (!assessment && inputs.quality) assessment = assessSample(inputs.quality);
+
     var design = designBorehole({
       log: log, staticWaterLevelM: swl, pumpIntakeM: pumpIntake,
       pumpIntakeFloorM: intakeFloor, rules: config.design,
       screensM: screensM && screensM.length ? screensM : null,
+      /* the rising main, and so the bill, follow the sample */
+      quality: assessment,
     });
 
     /* The spine's price is signed off by a named person, so it has to be the
@@ -26279,8 +26485,6 @@
       edited: !!(screensM && screensM.length),
     };
 
-    var assessment = inputs.assessment || null;
-    if (!assessment && inputs.quality) assessment = assessSample(inputs.quality);
     if (assessment) payload.quality = spineQuality(assessment);
     return payload;
   }
@@ -27977,17 +28181,44 @@
     return value >>> 0;
   }
 
-  /**
+  /* What trimField takes off the ends of a registry field, as a regular
+   * expression's character class: every character either engine's own trim
+   * would take, written out. String.trim and Python's str.strip disagree on
+   * a handful - Python strips U+001C to U+001F and U+0085, JavaScript the
+   * byte order mark U+FEFF - so the same stored answers scored in one
+   * engine and not the other. The union, rather than the ASCII blanks the
+   * field kit's codes are trimmed of, because event identifiers were
+   * already derived from trimmed notes: the union changes no identifier the
+   * two engines agreed on. _TRIMMED in groundwater/registry.py is the twin. */
+  var TRIMMED = '\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a' +
+    '\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff';
+  var TRIM_RE = new RegExp('^[' + TRIMMED + ']+|[' + TRIMMED + ']+$', 'g');
+
+  /** A field with the blanks at its ends taken off, as both engines take
+   * them: the twin of trim_field in groundwater/registry.py.
+   * @param {*} text
+   * @returns {string}
+   */
+  function trimField(text) {
+    return String(text === null || text === undefined ? '' : text).replace(TRIM_RE, '');
+  }
+
+  /** A sanitary inspection's form and answers (PLAN.md step 7.5) are part of
+   * its content; an event without them hashes as it always did.
    * @param {string} assetId
    * @param {string} when an ISO day
    * @param {string} kind
    * @param {*} [note]
    * @param {*} [by]
+   * @param {*} [form]
+   * @param {*} [answers]
    * @returns {string}
    */
-  function eventId(assetId, when, kind, note, by) {
-    var digest = hash32(assetId + '|' + when + '|' + kind + '|' +
-      String(note || '').trim() + '|' + String(by || '').trim());
+  function eventId(assetId, when, kind, note, by, form, answers) {
+    var content = assetId + '|' + when + '|' + kind + '|' +
+      trimField(note || '') + '|' + trimField(by || '');
+    if (form || answers) content += '|' + (form || '') + '|' + (answers || '');
+    var digest = hash32(content);
     var tail = [15, 10, 5, 0].map(function (shift) {
       return CROCKFORD.charAt((digest >>> shift) & 31);
     }).join('');
@@ -28006,15 +28237,22 @@
 
   /** Days since the epoch, or null when the date cannot be read. Kept as a
    * day number rather than a Date so arithmetic never meets a time zone.
+   * The same rule as iso_date in groundwater/registry.py: YYYY-MM-DD and
+   * nothing else, in years 1 to 9999, as Python's date has them.
    * @param {*} text
    * @returns {number|null}
    */
   function isoDay(text) {
-    var match = ISO_DATE_RE.exec(String(text === null || text === undefined ? '' : text).trim());
+    var match = ISO_DATE_RE.exec(trimField(text));
     if (!match) return null;
     var year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
-    if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null;
-    return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+    if (year < 1 || month < 1 || month > 12 || day < 1 ||
+        day > daysInMonth(year, month)) return null;
+    /* setUTCFullYear, not Date.UTC, which reads years 0 to 99 as 1900 to
+     * 1999 and so put a mistyped 0024 eighteen centuries from Python's */
+    var at = new Date(0);
+    at.setUTCFullYear(year, month - 1, day);
+    return Math.floor(at.getTime() / 86400000);
   }
 
   function isLeap(year) {
@@ -28049,20 +28287,48 @@
     year += Math.floor(month / 12);
     month = ((month % 12) + 12) % 12 + 1;
     day = Math.min(day, daysInMonth(year, month));
-    return year + '-' + pad2(month) + '-' + pad2(day);
+    /* the year written in four digits, as Python's isoformat writes it, so
+     * a due date counted from a day before the year 1000 still reads */
+    var y = String(year);
+    while (y.length < 4) y = '0' + y;
+    return y + '-' + pad2(month) + '-' + pad2(day);
   }
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
+  /** A form's answers as stored: Y, N or - for each question, in order. Y
+   * and N are read in either case; anything else, a blank included, is a
+   * question not answered, because an answer nobody can read is not a no.
+   * Read by code point, as Python reads a string, and trimmed as trimField
+   * trims.
+   * @param {*} raw
+   * @returns {string}
+   */
+  function cleanAnswers(raw) {
+    return Array.from(trimField(raw || '')).map(function (c) {
+      return c === 'Y' || c === 'y' ? 'Y' : (c === 'N' || c === 'n' ? 'N' : '-');
+    }).join('');
+  }
+
   function coerceEvent(raw) {
     if (!raw || typeof raw !== 'object') return null;
-    var kind = String(raw.kind || '').trim();
+    var kind = trimField(raw.kind || '');
     if (!own(EVENT_KINDS, kind)) kind = 'note';
-    return {
-      when: String(raw.when || '').trim(), kind: kind,
+    /** @type {Rec} */
+    var event = {
+      when: trimField(raw.when || ''), kind: kind,
       note: String(raw.note || ''), by: String(raw.by || ''),
-      photo: String(raw.photo || ''), event_id: String(raw.event_id || '')
+      photo: String(raw.photo || '')
     };
+    var form = trimField(raw.form || ''), answers = cleanAnswers(raw.answers);
+    /* only an event that has them carries them, so a project file with no
+     * sanitary inspection in it is written as it was before */
+    if (form || answers) {
+      event.form = form;
+      event.answers = answers;
+    }
+    event.event_id = String(raw.event_id || '');
+    return event;
   }
 
   /**
@@ -28073,7 +28339,8 @@
   function identifiedFor(event, assetId) {
     return Object.assign({}, event, {
       event_id: event.event_id ||
-        eventId(assetId, event.when, event.kind, event.note, event.by)
+        eventId(assetId, event.when, event.kind, event.note, event.by,
+          event.form, event.answers)
     });
   }
 
@@ -28391,11 +28658,479 @@
     checkCharacter: checkCharacter, mintAssetId: mintAssetId,
     parseAssetId: parseAssetId, validateAssetId: validateAssetId,
     eventId: eventId, eventLabel: eventLabel, mergeEvents: mergeEvents,
+    cleanAnswers: cleanAnswers, trimField: trimField,
     assetState: assetState, assetLatLon: assetLatLon, assetLabel: assetLabel,
     assetFromDict: assetFromDict, assetFromProject: assetFromProject,
     qrPayload: qrPayload, placardLines: placardLines,
     registryRows: registryRows, registryStats: registryStats,
     addMonths: addMonths, isoDay: isoDay, dayToIso: dayToIso
+  });
+
+  /* ===================================================================
+   * Sanitary inspection - a port of groundwater/sanitary.py (PLAN.md 7.5)
+   *
+   * WHO's ten-question form for a tubewell with a handpump, scored as the
+   * number of risks present, and the E. coli count of the water quality
+   * assessment graded A to E, read together in a risk-to-health matrix into
+   * one statement. The form, the bands, the grades and the matrix are data
+   * (GWT.data.sanitary, from sanitary_inspection.csv and
+   * sanitary_risk.yaml); the words are in text/sanitary.yaml. A question
+   * left unanswered is not a no, a side that is unknown gives no priority,
+   * and a side known only as a range is taken at its worse end.
+   * =================================================================== */
+
+  var SANITARY_FORM = 'tubewell_handpump';
+  var SANITARY_PRIORITIES = ['low', 'higher', 'urgent'];
+  /* the scale the grades are written on, whatever unit the standards table
+   * writes E. coli in */
+  var PER_100_ML = { parameter: 'E. coli', unit: 'CFU/100 mL' };
+
+  /** data/sanitary_inspection.csv and data/sanitary_risk.yaml as the
+   * package parses them, shared: read, never changed.
+   * @returns {Rec} */
+  function sanitaryTables() {
+    var tables = (GWT.data || {}).sanitary;
+    if (!tables) {
+      throw new Error('gwt-data.js is not loaded, or is stale: it carries the ' +
+        'sanitary inspection form (src/groundwater/data/sanitary_*)');
+    }
+    return tables;
+  }
+
+  /** @param {string} form */
+  function sanitaryForm(form) {
+    var forms = sanitaryTables().forms;
+    return own(forms, form) ? forms[form] : null;
+  }
+
+  /** The form's questions, in order.
+   * @param {string} [form]
+   * @returns {string[]} */
+  function formQuestions(form) {
+    var spec = sanitaryForm(form || SANITARY_FORM);
+    return spec ? spec.questions.slice() : [];
+  }
+
+  /** The key of the band a score falls in.
+   * @param {number} score
+   * @param {string} [form]
+   * @returns {string} */
+  function scoreBand(score, form) {
+    var name = form || SANITARY_FORM;
+    var spec = sanitaryForm(name);
+    if (!spec) throw new Error('no sanitary inspection form ' + JSON.stringify(name));
+    for (var i = 0; i < spec.bands.length; i++) {
+      if (spec.bands[i].min <= score && score <= spec.bands[i].max) return spec.bands[i].key;
+    }
+    throw new Error(score + ' is not a score of the ' + name + ' form');
+  }
+
+  /** What a form's answers score, or null when they do not fit it. An
+   * unanswered question may be a yes, so an incomplete form scores a range.
+   * @param {*} answers
+   * @param {string} [form]
+   * @returns {Rec|null} */
+  function scoreAnswers(answers, form) {
+    var name = form === undefined ? SANITARY_FORM : form;
+    var spec = sanitaryForm(name);
+    var text = cleanAnswers(answers);
+    if (!spec || text.length !== spec.questions.length) return null;
+    var n = text.length;
+    var yes = text.split('Y').length - 1;
+    var answered = n - (text.split('-').length - 1);
+    var low = yes, high = yes + (n - answered);
+    return { form: name, n: n, answered: answered, yes: yes, low: low, high: high,
+      band_low: scoreBand(low, name), band_high: scoreBand(high, name),
+      complete: answered === n };
+  }
+
+  /** Number, question and answer for each question, for a table.
+   * @param {*} answers
+   * @param {string} [form]
+   * @returns {string[][]} */
+  function formRows(answers, form) {
+    var words = phraseTable('sanitary.answer');
+    var text = cleanAnswers(answers);
+    return formQuestions(form).map(function (question, i) {
+      return [String(i + 1), question, words[i < text.length ? text.charAt(i) : '-']];
+    });
+  }
+
+  /** A sanitary inspection, as the registry records it.
+   * @param {string} when
+   * @param {*} answers
+   * @param {string} [by]
+   * @param {string} [note]
+   * @param {string} [form]
+   * @returns {Rec} */
+  function inspectionEvent(when, answers, by, note, form) {
+    return { when: trimField(when), kind: 'inspection', note: note || '',
+      by: by || '', photo: '', form: form || SANITARY_FORM,
+      answers: cleanAnswers(answers) };
+  }
+
+  /** The grade of a count per 100 mL: A for none, then B to E.
+   * @param {number} count
+   * @returns {string} */
+  function ecoliGrade(count) {
+    var grades = sanitaryTables().grades;
+    for (var i = 0; i < grades.length; i++) {
+      if (grades[i].max === null || count <= grades[i].max) return grades[i].grade;
+    }
+    throw new Error('the last grade is open above');
+  }
+
+  /** The grades a count of more than bound (or at least it) may be in.
+   * @param {number} bound
+   * @param {boolean} [inclusive]
+   * @returns {string[]} */
+  function ecoliGradesAbove(bound, inclusive) {
+    var grades = sanitaryTables().grades;
+    for (var i = 0; i < grades.length; i++) {
+      var top = grades[i].max;
+      if (top === null || bound < top || (inclusive && bound <= top)) {
+        return [grades[i].grade, grades[grades.length - 1].grade];
+      }
+    }
+    throw new Error('the last grade is open above');
+  }
+
+  function per100ml(value, unit) {
+    return toGuidelineUnit(Number(value), unit, PER_100_ML).value;
+  }
+
+  /* an assessment's remark, made to close a sentence the statement ends: a
+   * remark may or may not end in a full stop of its own, and the statement
+   * adds one, so the remark's is taken off with any blanks after it - the
+   * same characters as sanitary._reason takes */
+  function ecoliReason(remark) {
+    return String(remark || '').replace(/[ \t\n\r\f\v.]+$/, '');
+  }
+
+  /* what one E. coli row of an assessment says, on the grades' scale */
+  function ecoliGraded(row) {
+    /** @type {Rec} */
+    var out = { parameter: row.parameter, kind: 'ungraded', count: null,
+      bound: null, inclusive: false, grade_low: null, grade_high: null,
+      reason: ecoliReason(row.remark), unit: row.unit };
+    if (!row.evaluable || row.status === 'indeterminate') return out;
+    if (row.status === 'below_detection') {
+      return Object.assign(out, { kind: 'none_found', count: 0, grade_low: 'A',
+        grade_high: 'A', reason: '' });
+    }
+    if (row.value !== null && row.value !== undefined) {
+      var count = per100ml(row.value, row.unit);
+      if (count === null) return Object.assign(out, { kind: 'unit', reason: '' });
+      var grade = ecoliGrade(count);
+      return Object.assign(out, { kind: 'counted', count: count, grade_low: grade,
+        grade_high: grade, reason: '' });
+    }
+    if (row.greater_than !== null && row.greater_than !== undefined) {
+      var bound = per100ml(row.greater_than, row.unit);
+      if (bound === null) return Object.assign(out, { kind: 'unit', reason: '' });
+      var inclusive = !!row.greater_than_inclusive;
+      var span = ecoliGradesAbove(bound, inclusive);
+      return Object.assign(out, { kind: bound === 0 && !inclusive ? 'detected' : 'bound',
+        bound: bound, inclusive: inclusive, grade_low: span[0], grade_high: span[1],
+        reason: '' });
+    }
+    return out;
+  }
+
+  /** The E. coli side of the risk from a water quality assessment: null
+   * with no assessment; else the sample's date as written and the worst row
+   * graded of those naming E. coli or an alias, or with none graded the
+   * first the assessment could not grade.
+   * @param {QualityAssessment|null} [assessment]
+   * @returns {Rec|null} */
+  function microbiology(assessment) {
+    if (!assessment) return null;
+    var sample = assessment.sample || {};
+    var when = trimField(sample.sample_date || '');
+    var order = sanitaryTables().grades.map(function (g) { return g.grade; });
+    /** @type {Rec[]} */
+    var graded = [];
+    /** @type {Rec[]} */
+    var ungraded = [];
+    (assessment.rows || []).forEach(function (row) {
+      if (normaliseParameter(row.parameter) !== 'e. coli' || row.status === 'not_measured') return;
+      var result = ecoliGraded(row);
+      (result.grade_low !== null ? graded : ungraded).push(result);
+    });
+    var best;
+    if (graded.length) {
+      /* the first of equals, as Python's max keeps it */
+      best = graded[0];
+      graded.forEach(function (r) {
+        var a = [order.indexOf(r.grade_high), order.indexOf(r.grade_low)];
+        var b = [order.indexOf(best.grade_high), order.indexOf(best.grade_low)];
+        if (a[0] > b[0] || (a[0] === b[0] && a[1] > b[1])) best = r;
+      });
+    } else if (ungraded.length) {
+      best = ungraded[0];
+    } else {
+      best = { parameter: '', kind: 'missing', count: null, bound: null,
+        inclusive: false, grade_low: null, grade_high: null, reason: '', unit: '' };
+    }
+    return Object.assign({ date: when }, best);
+  }
+
+  /** The inspection the risk statement rests on: the latest whose form
+   * scores, dated no later than today (of several that day, the one showing
+   * the most risk); the latest unscored one after it; and, with none that
+   * scores, the latest form recorded that does not.
+   * @param {Rec[]} events merged, in the registry's order
+   * @param {string} today an ISO day
+   * @returns {Rec} */
+  function latestInspection(events, today) {
+    var read = isoDay(today);
+    if (read === null) {
+      throw new Error("the risk statement needs today's date, as YYYY-MM-DD");
+    }
+    var todayDay = read;
+    /** @type {Rec[]} */
+    var inspections = [];
+    /* forms whose date cannot be read: not read, and the statement says so */
+    var undated = 0;
+    (events || []).forEach(function (event) {
+      if (event.kind !== 'inspection') return;
+      var day = isoDay(event.when);
+      if (day === null) {
+        if (event.form || event.answers) undated += 1;
+        return;
+      }
+      if (day > todayDay) return;
+      var score = event.form || event.answers ? scoreAnswers(event.answers, event.form || '') : null;
+      inspections.push({ day: day, event: event, score: score });
+    });
+    var scored = inspections.filter(function (i) { return i.score && i.score.answered; });
+    var unscored = inspections.filter(function (i) { return !(i.score && i.score.answered); });
+    /* the first of the best, as Python's max keeps it
+     * @param {Rec[]} list
+     * @param {function(Rec, Rec): boolean} better */
+    function first(list, better) {
+      var top = list[0];
+      list.forEach(function (i) { if (better(i, top)) top = i; });
+      return top;
+    }
+    var pick = null, sameDay = 0, later = null, blank = null;
+    if (scored.length) {
+      var last = Math.max.apply(null, scored.map(function (i) { return i.day; }));
+      var onDay = scored.filter(function (i) { return i.day === last; });
+      sameDay = onDay.length;
+      pick = first(onDay, function (a, b) {
+        return a.score.high > b.score.high ||
+          (a.score.high === b.score.high && a.score.low > b.score.low);
+      });
+      var after = unscored.filter(function (i) { return i.day > last; });
+      if (after.length) later = first(after, function (a, b) { return a.day > b.day; }).event;
+    } else {
+      var forms = unscored.filter(function (i) { return i.event.form || i.event.answers; });
+      if (forms.length) blank = first(forms, function (a, b) { return a.day > b.day; });
+    }
+    return {
+      event: pick ? pick.event : null, score: pick ? pick.score : null,
+      same_day: sameDay, later: later,
+      unscored: blank ? blank.event : null,
+      unscored_fits: blank ? blank.score !== null : false,
+      undated: undated,
+    };
+  }
+
+  /* the latest water sample the history records, dated no later than
+   * todayDay, with its day; of several that day, the first in the
+   * registry's order, as sanitary._latest_sample keeps it */
+  function latestSampleEvent(events, todayDay) {
+    /** @type {{event: Rec, day: number}|null} */
+    var pick = null;
+    var list = events || [];
+    for (var i = 0; i < list.length; i++) {
+      var day = list[i].kind === 'water_sample' ? isoDay(list[i].when) : null;
+      if (day !== null && day <= todayDay && (pick === null || day > pick.day)) {
+        pick = { event: list[i], day: day };
+      }
+    }
+    return pick;
+  }
+
+  function sanitaryWhen(event) {
+    var by = trimField(event.by);
+    return by ? phrase('sanitary.dated_by', { date: event.when, by: by }) : event.when;
+  }
+
+  function sanitarySpan(low, high, table) {
+    return low === high ? table[low]
+      : phrase('sanitary.span', { low: table[low], high: table[high] });
+  }
+
+  /** The borehole's sanitary risk on today, as one statement: the latest
+   * scored inspection, the E. coli grade of the assessment's sample, and
+   * the two read together, with the action priority to act on (null until
+   * both sides are known well enough to read one). sample_event is the
+   * latest water sample the history records, which the statement names
+   * when no analysis is loaded or when it is later than the one read.
+   * @param {Rec} asset a registry asset; its events are read
+   * @param {string} today an ISO day; records dated after it are not read
+   * @param {QualityAssessment|null} [assessment] the latest sample's
+   * @returns {Rec} */
+  function sanitaryRisk(asset, today, assessment) {
+    var events = mergeEvents((asset && asset.asset_id) || '', (asset && asset.events) || []);
+    var found = latestInspection(events, today);
+    var sampled = latestSampleEvent(events, /** @type {number} */ (isoDay(today)));
+    var micro = microbiology(assessment || null);
+    var grades = sanitaryTables().grades.map(function (g) { return g.grade; });
+    var bandWords = phraseTable('sanitary.band');
+    var sentences = [];
+
+    var event = found.event, score = found.score;
+    var form = event ? event.form : SANITARY_FORM;
+    if (score && event) {
+      if (score.complete) {
+        sentences.push(phrase('sanitary.inspection_complete', { when: sanitaryWhen(event),
+          yes: score.yes, n: score.n, band: bandWords[score.band_low] }));
+      } else {
+        sentences.push(phrase('sanitary.inspection_incomplete', {
+          when: sanitaryWhen(event), answered: score.answered, n: score.n,
+          yes: score.yes, low: score.low, high: score.high,
+          band: sanitarySpan(score.band_low, score.band_high, bandWords) }));
+      }
+      if (found.same_day > 1) {
+        sentences.push(phrase('sanitary.inspection_several',
+          { count: found.same_day, date: event.when }));
+      }
+      if (found.later) {
+        sentences.push(phrase('sanitary.inspection_later', { when: sanitaryWhen(found.later) }));
+      }
+    } else if (found.unscored) {
+      var key = found.unscored_fits ? 'sanitary.inspection_blank'
+        : 'sanitary.inspection_unreadable';
+      sentences.push(phrase(key, { when: sanitaryWhen(found.unscored) }));
+    } else if (found.undated) {
+      sentences.push(phrase('sanitary.inspection_undated_only', { count: found.undated }));
+    } else {
+      sentences.push(phrase('sanitary.inspection_none'));
+    }
+    if (found.undated && (score || found.unscored)) {
+      sentences.push(phrase('sanitary.inspection_undated', { count: found.undated }));
+    }
+
+    var gradeWords = phraseTable('sanitary.grade');
+    if (!micro) {
+      if (sampled) {
+        sentences.push(phrase('sanitary.sample_not_loaded', { when: sanitaryWhen(sampled.event) }));
+      } else {
+        sentences.push(phrase('sanitary.no_sample'));
+      }
+    } else {
+      var dated = micro.date || phrase('sanitary.undated');
+      var kind = micro.kind;
+      if (kind === 'missing') {
+        sentences.push(phrase('sanitary.ecoli_missing', { date: dated }));
+      } else if (kind === 'counted') {
+        sentences.push(phrase('sanitary.ecoli_counted', { parameter: micro.parameter,
+          date: dated, count: micro.count, grade: micro.grade_low,
+          words: gradeWords[micro.grade_low] }));
+      } else if (kind === 'none_found') {
+        sentences.push(phrase('sanitary.ecoli_none_found', { parameter: micro.parameter,
+          date: dated, words: gradeWords.A }));
+      } else if (kind === 'bound' || kind === 'detected') {
+        /** @type {Record<string, string>} */
+        var letters = {};
+        grades.forEach(function (g) { letters[g] = g; });
+        var span = sanitarySpan(micro.grade_low, micro.grade_high, letters);
+        if (kind === 'detected') {
+          sentences.push(phrase('sanitary.ecoli_detected', { parameter: micro.parameter,
+            date: dated, grades: span }));
+        } else {
+          var boundKey = micro.inclusive ? 'sanitary.ecoli_at_least' : 'sanitary.ecoli_over';
+          sentences.push(phrase(boundKey, { parameter: micro.parameter, date: dated,
+            bound: micro.bound, grades: span }));
+        }
+      } else if (kind === 'unit') {
+        sentences.push(phrase('sanitary.ecoli_unit', { parameter: micro.parameter,
+          date: dated, unit: micro.unit }));
+      } else if (micro.reason) {
+        sentences.push(phrase('sanitary.ecoli_ungraded', { parameter: micro.parameter,
+          date: dated, reason: micro.reason }));
+      } else {
+        sentences.push(phrase('sanitary.ecoli_ungraded_bare', { parameter: micro.parameter,
+          date: dated }));
+      }
+      /* a later sample on record is named, so the statement does not pass
+       * off an older analysis as the borehole's latest word */
+      var readOn = isoDay(micro.date);
+      if (sampled && readOn !== null && sampled.day > readOn) {
+        sentences.push(phrase('sanitary.sample_later', { when: sanitaryWhen(sampled.event) }));
+      }
+    }
+
+    /* the cells the two sides allow: a side not known allows every one */
+    var spec = sanitaryForm(form) || /** @type {Rec} */ (sanitaryForm(SANITARY_FORM));
+    var n = spec.questions.length;
+    var scores = [];
+    for (var s = score ? score.low : 0; s <= (score ? score.high : n); s++) scores.push(s);
+    var knownGrade = !!micro && micro.grade_low !== null;
+    var rows = knownGrade && micro
+      ? grades.slice(grades.indexOf(micro.grade_low), grades.indexOf(micro.grade_high) + 1)
+      : grades;
+    var cells = [];
+    rows.forEach(function (g) {
+      scores.forEach(function (sc) { cells.push(spec.matrix[g][sc]); });
+    });
+    var rank = function (p) { return SANITARY_PRIORITIES.indexOf(p); };
+    var low = cells[0], high = cells[0];
+    cells.forEach(function (c) {
+      if (rank(c) < rank(low)) low = c;
+      if (rank(c) > rank(high)) high = c;
+    });
+    var priorityWords = phraseTable('sanitary.priority');
+    var bothKnown = !!score && knownGrade;
+    var action;
+    if (low === high) {
+      action = low;
+      sentences.push(phrase('sanitary.together', { priority: priorityWords[low] }));
+    } else if (bothKnown) {
+      action = high;
+      var level = phraseTable('sanitary.priority_level');
+      sentences.push(phrase('sanitary.together_range', { low: level[low],
+        high: level[high], priority: priorityWords[high] }));
+    } else {
+      action = null;
+      if (low === SANITARY_PRIORITIES[0]) {
+        sentences.push(phrase('sanitary.together_unknown'));
+      } else {
+        sentences.push(phrase('sanitary.together_floor', { priority: priorityWords[low] }));
+      }
+    }
+
+    var verdict = assessment ? assessment.verdict_state : null;
+    if (verdict) {
+      sentences.push(phrase('sanitary.verdict', { verdict: VERDICT_LONG[verdict] }));
+    }
+
+    return {
+      inspection: event ? { when: event.when, by: event.by, form: event.form,
+        answers: event.answers, event_id: event.event_id,
+        label: sanitaryWhen(event) } : null,
+      score: score,
+      microbiology: micro,
+      sample_event: sampled ? { when: sampled.event.when, by: sampled.event.by,
+        event_id: sampled.event.event_id, label: sanitaryWhen(sampled.event) } : null,
+      priority_low: low,
+      priority_high: high,
+      action: action,
+      settled: low === high,
+      statement: sentences.join(' '),
+    };
+  }
+
+  Object.assign(C, {
+    SANITARY_FORM: SANITARY_FORM, SANITARY_PRIORITIES: SANITARY_PRIORITIES,
+    sanitaryTables: sanitaryTables, formQuestions: formQuestions,
+    scoreBand: scoreBand, scoreAnswers: scoreAnswers, formRows: formRows,
+    inspectionEvent: inspectionEvent, ecoliGrade: ecoliGrade,
+    ecoliGradesAbove: ecoliGradesAbove, microbiology: microbiology,
+    latestInspection: latestInspection, sanitaryRisk: sanitaryRisk
   });
 
 

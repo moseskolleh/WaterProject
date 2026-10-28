@@ -844,7 +844,7 @@ await withPage(async (page, base, consoleErrors) => {
     out.registry_rows = C.registryRows(Object.keys(assets).map((k) => assets[k]), today);
     out.registry_stats = C.registryStats(Object.keys(assets).map((k) => assets[k]), today);
     out.asset_months = [['2023-08-31', 6], ['2023-12-31', 2], ['2020-02-29', 12],
-      ['2023-01-31', 1], ['2023-03-30', 11], ['2024-02-29', 12]]
+      ['2023-01-31', 1], ['2023-03-30', 11], ['2024-02-29', 12], ['0024-08-31', 6]]
       .map(([from, months]) => ({ from, months, due: C.addMonths(from, months) }));
 
     out.seasonal_dates = ['10/05/2018', '25/04/2018', '04/25/2018', '2018-09-14',
@@ -4301,6 +4301,142 @@ await withPage(async (page, base, consoleErrors) => {
     }).filter(Boolean);
     check(`calibration in force: the odds, the edges, the weights and the words (${IF.cases.length})`,
       failed.length === 0, failed.slice(0, 3).join('\n     '));
+  }
+
+  // --- Sanitary inspection (PLAN.md step 7.5) ---
+  // The twins of groundwater/sanitary.py on make_reference.py's cases: the
+  // form, its bands, the grades and the matrix as the bundle carries them;
+  // forms scored and laid out; counts graded; and the latest inspection read
+  // with a sample's E. coli count into one statement, with the events as the
+  // registry merges them, all held whole.
+  {
+    const SN = R.sanitary;
+    const sanJs = await page.evaluate(({ SN }) => {
+      const C = GWT.core;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      return {
+        tables: GWT.data.sanitary, questions: C.formQuestions(),
+        cases: SN.cases.map((c) => attempt(() => {
+          const assessment = c.sample ? C.assessSample(c.sample) : null;
+          return { risk: C.sanitaryRisk({ asset_id: SN.asset_id, events: c.events }, c.today, assessment),
+            merged: C.mergeEvents(SN.asset_id, c.events) };
+        })),
+        // today written as neither engine reads a day throws in both
+        todays: SN.todays.map((c) => {
+          const got = attempt(() => C.sanitaryRisk({ asset_id: SN.asset_id, events: c.events }, c.today,
+            C.assessSample(c.sample)));
+          return got.threw && /today's date/.test(got.threw) ? { ok: { throws: true } }
+            : (got.ok ? { ok: { risk: got.ok } } : got);
+        }),
+        days: SN.days.map((d) => attempt(() => ({ day: C.dayToIso(C.isoDay(d.text)) }))),
+        trims: SN.trims.map((t) => attempt(() => ({ trim: C.trimField(t.text),
+          answers: C.cleanAnswers(t.text), score: C.scoreAnswers(t.text) }))),
+        trimmed: (() => {
+          const out = [];
+          for (let c = 0; c < 0x10000; c++) {
+            if (C.trimField(String.fromCharCode(c) + 'x') === 'x') out.push(c);
+          }
+          return out;
+        })(),
+        forms: SN.forms.map((f) => attempt(() => ({ score: C.scoreAnswers(f.answers),
+          rows: C.formRows(f.answers) }))),
+        grades: SN.grades.map((g) => attempt(() => ({ grade: C.ecoliGrade(g.count),
+          above: C.ecoliGradesAbove(g.count, false), above_inclusive: C.ecoliGradesAbove(g.count, true) }))),
+      };
+    }, { SN });
+    const same = firstDifference({ tables: sanJs.tables, questions: sanJs.questions },
+      { tables: SN.tables, questions: SN.questions });
+    check('sanitary: the form, the bands, the grades and the matrix', !same, same);
+    const held = (label, got, list) => {
+      const failed = list.map((c, i) => {
+        const g = got[i];
+        if (!g || g.threw) return `[${c.name || i}] threw ${g ? g.threw : 'no answer'}`;
+        return firstDifference(g.ok, c.expect, `[${c.name || i}]`);
+      }).filter(Boolean);
+      check(`${label} (${list.length})`, failed.length === 0, failed.slice(0, 3).join('\n     '));
+    };
+    held('sanitary: forms scored and laid out', sanJs.forms, SN.forms);
+    held('sanitary: counts graded', sanJs.grades, SN.grades);
+    held('sanitary: the risk statement and the merged events', sanJs.cases, SN.cases);
+    held('sanitary: today read only as YYYY-MM-DD', sanJs.todays, SN.todays);
+    held('sanitary: days read alike (isoDay and iso_date)', sanJs.days, SN.days);
+    held('sanitary: ends of a field and of the answers trimmed alike', sanJs.trims, SN.trims);
+    const trimmedApart = firstDifference(sanJs.trimmed, SN.trimmed);
+    check(`sanitary: the characters a field's ends are trimmed of (${SN.trimmed.length})`,
+      !trimmedApart, trimmedApart);
+    const twice = sanJs.cases.concat(sanJs.todays).map((g, i) => g && g.ok && g.ok.risk
+      && g.ok.risk.statement.includes('..') ? `[${i}] ${g.ok.risk.statement}` : null)
+      .filter(Boolean);
+    check('sanitary: no statement ends a sentence twice', twice.length === 0,
+      twice.slice(0, 2).join('\n     '));
+  }
+
+  // --- The rising main at design time (PLAN.md step 7.2) ---
+  // The twin of groundwater/design/materials.py on make_reference.py's cases:
+  // what the design specifies for the rising main and how often it is
+  // inspected, over every state the water can be in and every rule set, from
+  // the assessment and from the bare sample; and the bill of quantities each
+  // design gives, all held whole.
+  {
+    const RM = R.rising_main;
+    const rmJs = await page.evaluate(({ RM }) => {
+      const C = GWT.core;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      const rules = (over) => Object.assign({}, C.defaultConfig().design, over || {});
+      const quality = (raw, bare) => (raw === null || raw === undefined ? null
+        : (bare ? raw : C.assessSample(raw)));
+      return {
+        choices: RM.choices.map((c) => attempt(() =>
+          C.risingMainChoice(quality(c.sample, c.bare), rules(c.rules)))),
+        bills: RM.bills.map((b) => attempt(() => {
+          const spec = b.spec;
+          const log = {
+            site: { community: 'Case' }, total_depth_m: spec.total, drilling_method: 'DTH',
+            intervals: spec.intervals.map((r) => ({ top_m: r[0], bottom_m: r[1], description: r[2] })),
+            water_strikes_m: [], grouting_depth_m: null, installed_screens_m: [],
+          };
+          const d = C.designBorehole({
+            log, staticWaterLevelM: 8.0, pumpIntakeM: spec.pump === undefined ? null : spec.pump,
+            rules: rules(spec.rules), screensM: spec.screens || null,
+            quality: quality(spec.raw, false),
+          });
+          const inputs = C.inputsFromDesign(d, { mobilisationDistanceKm: 50.0 });
+          inputs.handpumps = spec.handpumps === undefined ? 1 : spec.handpumps;
+          const rates = C.loadRates().filter((r) => r.code !== spec.drop);
+          const estimate = C.estimateBoreholeCost(inputs, rates);
+          return {
+            rising_main: d.rising_main, material: inputs.rising_main_material,
+            length: inputs.rising_main_m, boq: estimate.boq_rows(),
+            flags: estimate.flags.map((f) => [f.level, f.code, f.message]),
+            assumptions: estimate.assumptions, direct: estimate.direct_cost_usd,
+          };
+        })),
+        // rules saved before the rising main settings existed take the defaults
+        fallback: attempt(() => C.risingMainChoice(null, { casing_material: 'uPVC' })),
+        plain: attempt(() => C.risingMainChoice(null, C.defaultConfig().design)),
+      };
+    }, { RM });
+    const held = (label, got, list) => {
+      const failed = list.map((c, i) => {
+        const g = got[i];
+        if (!g || g.threw) return `[${c.name || (c.spec && c.spec.name) || i}] threw ${g ? g.threw : 'no answer'}`;
+        return firstDifference(g.ok, c.expect, `[${c.name || (c.spec && c.spec.name) || i}]`);
+      }).filter(Boolean);
+      check(`${label} (${list.length})`, failed.length === 0, failed.slice(0, 3).join('\n     '));
+    };
+    held('rising main: the material, the interval and the statement', rmJs.choices, RM.choices);
+    held('rising main: the design, its quantities and the bill', rmJs.bills, RM.bills);
+    const fallback = rmJs.fallback.ok && rmJs.plain.ok
+      ? firstDifference(rmJs.fallback.ok, rmJs.plain.ok) : String(rmJs.fallback.threw || rmJs.plain.threw);
+    check('rising main: rules without the settings take the defaults', !fallback, fallback);
+    const states = new Set(rmJs.choices.map((g) => g.ok && g.ok.chemistry));
+    check('rising main: every state of the water is among the cases',
+      ['aggressive', 'not_aggressive', 'incomplete', 'none'].every((k) => states.has(k)),
+      JSON.stringify([...states]));
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

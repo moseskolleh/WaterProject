@@ -40,6 +40,9 @@ _REFERENCES_FOR = {
     "desk_study": ["usgs_geology", "salwaco_geology", "bgs_atlas", "bgs_guide", "wpdx"],
     # the score and the diagram the odds are judged by
     "calibration": ["brier", "murphy_winkler"],
+    # the sanitary inspection form and the risk-to-health matrix the asset
+    # record's sanitary risk reads (PLAN.md step 7.5)
+    "asset": ["who_surveillance_1997"],
 }
 
 

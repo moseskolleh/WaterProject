@@ -80,7 +80,11 @@
     "stickup_m": 0.5,
     "min_screen_below_swl_m": 5.0,
     "apron_note": "concrete apron with drainage channel and soakaway",
-    "fracture_zone_margin_m": 1.0
+    "fracture_zone_margin_m": 1.0,
+    "rising_main_material": "galvanised iron",
+    "aggressive_rising_main_material": "stainless steel",
+    "rising_main_inspection_months": 12,
+    "aggressive_rising_main_inspection_months": 6
   },
   "ves_range": {
     "seed": 1,

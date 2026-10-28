@@ -11,6 +11,7 @@ from .designer import (
     pump_intake_floor,
     seal_depth_for,
 )
+from .materials import rising_main_choice
 from .lithology import (
     LITHOLOGY_CLASSES,
     LithologyClass,
@@ -37,6 +38,7 @@ __all__ = [
     "logged_diameter_in",
     "pump_intake_floor",
     "read_fractures",
+    "rising_main_choice",
     "seal_depth_for",
 ]
 
@@ -52,6 +54,7 @@ _LAZY_MODULES = (
     "designer",
     "drawing",
     "lithology",
+    "materials",
 )
 
 __getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

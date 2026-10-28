@@ -30,6 +30,8 @@ from pathlib import Path
 from .._resources import bundled_text
 from ..config import DesignRules
 from ..models import DataFlag
+from ..registry import trim_field
+from ..text import phrase
 from ..utils import fmt_num, sum_in_order
 
 # Canonical stage order for tables and charts (the six RWSN cost
@@ -52,6 +54,13 @@ RESOURCE_CATEGORIES = ("equipment", "labour", "consumables", "fuel", "vehicles")
 # Default exchange rate for display only (new Sierra Leonean leone per
 # US dollar). Confirm against the current market rate.
 DEFAULT_EXCHANGE_RATE_SLE_PER_USD = 23.0
+
+#: The quantity basis that prices a rising main in place of the one the
+#: handpump line includes (PLAN.md step 7.2), by material, lower case. Its
+#: quantity is the rising main's length for each handpump, and nothing for a
+#: material the design did not specify. A material with no basis here, or
+#: none in the catalogue, is flagged on the estimate as unpriced.
+RISING_MAIN_BASES = {"stainless steel": "per_m_rising_main_stainless_steel"}
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +180,12 @@ class CostingInputs:
     mobilisation_distance_km: float = 0.0  # one way, base to site
     wq_samples: int = 1
     handpumps: int = 1  # set 0 when the pump is a separate contract
+    # The rising main the design specifies in place of the one the handpump
+    # line includes (PLAN.md step 7.2), and its length: blank prices the
+    # handpump line as it is. The length is the pump intake depth; None
+    # takes the total depth, the most it can be, and says so.
+    rising_main_material: str = ""
+    rising_main_m: float | None = None
 
     def resolved(self) -> tuple[CostingInputs, list[str]]:
         """Fill missing fields from rules of thumb; return the assumptions."""
@@ -218,6 +233,9 @@ class CostingInputs:
                 "(drilling at 25 m per day plus four days for moving, "
                 "set up, development, testing and completion)."
             )
+        if r.rising_main_material and r.handpumps > 0 and r.rising_main_m is None:
+            r.rising_main_m = r.total_depth_m
+            assumptions.append(phrase("rising_main.length_assumed", depth=r.rising_main_m))
         return r, assumptions
 
     @property
@@ -306,6 +324,9 @@ def inputs_from_design(design, *, mobilisation_distance_km: float = 0.0,
     # an annulus too thin to take a pack is priced as none: the bill used
     # to carry gravel the drawing's own flag said could not be placed
     packed = getattr(design, "annular_fill", "gravel pack") != "none"
+    # the rising main the water calls for, over the pump intake depth
+    choice = getattr(design, "rising_main", None) or {}
+    upgraded = bool(choice.get("upgraded"))
     return CostingInputs(
         total_depth_m=design.total_depth_m,
         overburden_m=overburden_m,
@@ -321,6 +342,8 @@ def inputs_from_design(design, *, mobilisation_distance_km: float = 0.0,
             max(0.0, seal_bottom - seal_top),
         ),
         mobilisation_distance_km=mobilisation_distance_km,
+        rising_main_material=str(choice.get("material", "")) if upgraded else "",
+        rising_main_m=design.pump_intake_m if upgraded else None,
     )
 
 
@@ -489,10 +512,18 @@ def _quantity(basis: str, inputs: CostingInputs) -> float | None:
     return _quantity_table(inputs).get(basis)
 
 
+def _rising_main_basis(material: str) -> str | None:
+    """The quantity basis that prices ``material`` as a rising main, if any,
+    its case and the blanks at its ends ignored as risingMainBasis ignores them."""
+    return RISING_MAIN_BASES.get(trim_field(material).lower())
+
+
 def _quantity_table(inputs: CostingInputs) -> dict[str, float]:
     """The quantity of every basis the estimate knows, for ``inputs``
     resolved."""
-    return {
+    chosen = _rising_main_basis(inputs.rising_main_material)
+    rising = (inputs.rising_main_m or 0.0) * float(inputs.handpumps)
+    table = {
         "lump_sum": 1.0,
         "per_km_round_trip": 2.0 * inputs.mobilisation_distance_km,
         "per_crew_day": inputs.crew_days or 0.0,
@@ -508,6 +539,9 @@ def _quantity_table(inputs: CostingInputs) -> dict[str, float]:
         "per_sample": float(inputs.wq_samples),
         "per_handpump": float(inputs.handpumps),
     }
+    for basis in RISING_MAIN_BASES.values():
+        table[basis] = rising if basis == chosen else 0.0
+    return table
 
 
 def estimate_borehole_cost(
@@ -561,6 +595,15 @@ def estimate_borehole_cost(
                 note=rate.note,
             )
         )
+    if (resolved.rising_main_material and resolved.handpumps > 0
+            and (resolved.rising_main_m or 0.0) > 0):
+        basis = _rising_main_basis(resolved.rising_main_material)
+        if basis is None or not any(rate.quantity_basis == basis for rate in rates):
+            # fail closed: the bill still carries the handpump line's main
+            flags.append(DataFlag(
+                "warning", "rising_main_unpriced",
+                phrase("rising_main.unpriced", material=resolved.rising_main_material),
+            ))
     if resolved.mobilisation_distance_km <= 0:
         flags.append(
             DataFlag(

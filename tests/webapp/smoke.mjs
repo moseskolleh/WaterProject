@@ -141,6 +141,53 @@ await withPage(async (page, base, consoleErrors) => {
   check('design assembled', state.design && state.screens > 0, `screens=${state.screens}`);
   check('cost estimated', state.estimate && state.cost > 0, `cost=${state.cost}`);
 
+  // The rising main at design time (PLAN.md step 7.2): Dr Timbo's sample is
+  // aggressive, so the design page specifies stainless steel and says why
+  // from the sample, and the bill prices it over the pump intake; with the
+  // water quality sheet removed the choice rests on no chemistry.
+  const risingMain = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+    const cardText = async () => {
+      app.goto('design');
+      await settle();
+      const found = [...document.querySelectorAll('#page-host .card')]
+        .find((c) => (c.querySelector('.card-title') || {}).textContent === 'Rising main');
+      return found ? found.textContent : null;
+    };
+    const line = () => {
+      const item = app.derived.estimate.items.find((i) => i.code === 'RSM1');
+      return item ? [item.quantity, item.unit_cost_usd] : null;
+    };
+    const aggressive = { card: await cardText(), choice: app.derived.design.rising_main,
+      intake: app.derived.design.pump_intake_m, line: line() };
+    app.goto('costing');
+    await settle();
+    aggressive.boq = document.querySelector('#page-host').textContent.includes('RSM1');
+    const kept = app.store.get('sources.quality');
+    app.store.remove('sources.quality');
+    await app.recompute();
+    const none = { card: await cardText(), choice: app.derived.design.rising_main, line: line() };
+    app.store.set('sources.quality', kept);
+    await app.recompute();
+    const back = app.derived.design.rising_main.chemistry;
+    app.goto('overview');
+    return { aggressive, none, back };
+  });
+  const rmA = risingMain.aggressive;
+  check('design: an aggressive sample gives a stainless steel rising main inspected every 6 months, ' +
+    'with the indices and the sample they came from (PLAN.md step 7.2)',
+    rmA.choice.upgraded && rmA.choice.material === 'stainless steel' && rmA.choice.inspection_months === 6 &&
+    !!rmA.card && rmA.card.includes('WQ-BH1-01 of 20th May, 2018') &&
+    rmA.card.includes('Ryznar index 11.37') && rmA.card.includes('every 6 months'),
+    JSON.stringify(rmA));
+  check('costing: the bill prices the stainless rising main over the pump intake',
+    !!rmA.line && rmA.line[0] === rmA.intake && rmA.line[1] > 0 && rmA.boq, JSON.stringify(rmA));
+  check('design: with no water quality sheet the rising main rests on no chemistry, and the bill drops it',
+    risingMain.none.choice.chemistry === 'none' && !!risingMain.none.card &&
+    risingMain.none.card.includes('rests on no chemistry') && risingMain.none.line === null &&
+    risingMain.back === 'aggressive', JSON.stringify(risingMain.none));
+
   // every page renders with a full project, and figures actually draw
   for (const key of PAGES) {
     await page.evaluate((k) => window.GWT.app.goto(k), key);
@@ -2391,6 +2438,71 @@ await withPage(async (page, base, consoleErrors) => {
   check('registry: the record names the days the community went without',
     registry.doc.includes('Not working') && registry.doc.includes('426 days') &&
     registry.doc.includes('rising main parted'));
+
+  // --- the sanitary inspection (PLAN.md step 7.5) -------------------------
+  // The form records an inspection in the borehole's history, a question
+  // left unanswered stays unanswered, and the statement on the page and in
+  // the asset record reads it with the E. coli count of the sample on show.
+  const sanitary = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone];
+    const savedAssessment = d.assessment;
+    app.store.set('asset', null);
+    site.easting = 694912; site.northing = 938150; site.utm_zone = 28;
+    d.assessment = C.assessSample({ site: { community: 'Ref' }, flags: [],
+      sample_date: '2024-05-21', results: [{ parameter: 'E. coli', value: 0, unit: 'CFU/100 mL' }] });
+    app.goto('registry');
+    app.render();
+    const statement = () => document.querySelector('#page-host .sanitary-statement')?.textContent || '';
+    const before = statement();
+    const set = (selector, value) => {
+      const node = document.querySelector('#page-host ' + selector);
+      if (!node) return false;
+      node.value = value;
+      node.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const filled = [
+      set('input[data-sanitary="when"]', '2024-05-20'),
+      set('input[placeholder="Inspector"]', 'A. Bangura'),
+    ].concat([['1', 'Y'], ['2', 'N'], ['3', 'N'], ['4', 'Y'], ['5', 'N'], ['6', 'N'], ['7', 'Y'],
+      ['8', 'N']].map(([q, a]) => set('select[data-sanitary="q' + q + '"]', a)));
+    const btn = Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Record the inspection');
+    if (btn) btn.click();
+    const recorded = C.assetFromDict(app.store.get('asset') || {});
+    const today = new Date().toISOString().slice(0, 10);
+    const expected = recorded ? C.sanitaryRisk(recorded, today, d.assessment) : null;
+    const after = statement();
+    const doc = recorded ? await window.__docText(await (await window.GWT.docx.assetRecordReport({
+      asset: recorded, today: '2024-06-01', assessment: d.assessment,
+    })).build()) : '';
+    const inspections = recorded ? recorded.events.filter((e) => e.kind === 'inspection') : [];
+    app.store.set('asset', null);
+    d.assessment = savedAssessment;
+    site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
+    app.render();
+    return { before, filled, pressed: !!btn, inspections, expected, after, doc };
+  });
+  check('sanitary: with nothing recorded the statement says both sides are unknown or partly so',
+    sanitary.before.includes('No sanitary inspection with the form filled in is on record'),
+    sanitary.before);
+  check('sanitary: the form is filled in and recorded through the page',
+    sanitary.filled.every(Boolean) && sanitary.pressed, JSON.stringify(sanitary.filled));
+  check('sanitary: the inspection is in the history with the unanswered questions open',
+    sanitary.inspections.length === 1 && sanitary.inspections[0].answers === 'YNNYNNYN--' &&
+    sanitary.inspections[0].by === 'A. Bangura' && sanitary.inspections[0].when === '2024-05-20',
+    JSON.stringify(sanitary.inspections));
+  check('sanitary: the page reads the inspection with the sample',
+    !!sanitary.expected && sanitary.after === sanitary.expected.statement &&
+    sanitary.after.includes('between 3 and 5 of 10') &&
+    sanitary.after.includes('E. coli in the water sample (2024-05-21): 0 per 100 mL, grade A'),
+    sanitary.after);
+  check('sanitary: the asset record carries the statement, the form and its source',
+    sanitary.doc.includes('Sanitary risk') && sanitary.doc.includes('between 3 and 5 of 10') &&
+    sanitary.doc.includes('Surveillance and Control of Community Supplies'),
+    sanitary.doc.length + ' chars');
 
   // --- the certification gate ---------------------------------------------
   // The gate never blocks a build: an interim report is a real need, and an

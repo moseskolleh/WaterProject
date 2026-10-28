@@ -1070,6 +1070,15 @@ COST_CASES = {
     "flat catalogue": dict(
         inputs={"total_depth_m": 48.0, "mobilisation_distance_km": 120.0}, flat=True),
     "one sample": dict(inputs={"total_depth_m": 30.0}, samples=1, p=0.7, sid="B"),
+    # a stainless rising main (PLAN.md step 7.2): one taken as long as the
+    # hole is as long as each depth drawn, one over the intake stays put
+    "stainless main as long as the hole, depth drawn": dict(
+        inputs={"total_depth_m": 36.0, "mobilisation_distance_km": 60.0,
+                "rising_main_material": "stainless steel"}, depth=True, p=0.5, sid="A (1)"),
+    "stainless main over the intake, depth drawn": dict(
+        inputs={"total_depth_m": 36.0, "mobilisation_distance_km": 60.0,
+                "rising_main_material": "stainless steel", "rising_main_m": 24.0},
+        depth=True),
     "long odds, few samples": dict(inputs={"total_depth_m": 30.0}, samples=5, p=0.02,
                                    sid="C"),
 }
@@ -1084,6 +1093,9 @@ COST_PROGRAMMES = {
     "one, certain, flat": dict(inputs={"total_depth_m": 45.0, "mobilisation_distance_km": 150.0},
                                n=1, rate=100.0, flat=True),
     "500 at 5 percent": dict(inputs={"total_depth_m": 40.0}, n=500, rate=5.0, samples=40),
+    "ten with a stainless main, depth drawn": dict(
+        inputs={"total_depth_m": 40.0, "mobilisation_distance_km": 100.0,
+                "rising_main_material": "stainless steel"}, n=10, rate=60.0, depth=True),
 }
 
 COST_SHORT = 300
@@ -1795,6 +1807,8 @@ def build() -> dict:
     out["calibration"] = calibration_reference()
     out["calibration_sets"] = calibration_sets_reference()
     out["calibration_in_force"] = calibration_in_force_reference()
+    out["sanitary"] = sanitary_reference()
+    out["rising_main"] = rising_main_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -2303,7 +2317,9 @@ def build() -> dict:
         {"from": d, "months": m, "due": _registry._add_months(
             _date.fromisoformat(d), m).isoformat()}
         for d, m in (("2023-08-31", 6), ("2023-12-31", 2), ("2020-02-29", 12),
-                     ("2023-01-31", 1), ("2023-03-30", 11), ("2024-02-29", 12))
+                     ("2023-01-31", 1), ("2023-03-30", 11), ("2024-02-29", 12),
+                     # a mistyped year before 1000 is written in four digits
+                     ("0024-08-31", 6))
     ]
 
     # The seasonal yield model: the month read off the sheet, and the yield
@@ -4539,6 +4555,313 @@ IN_FORCE_POSITIONS = [[166030.0, 930010.0, 29], [708958.4, 926355.5, 28], [None,
                       [250000.0, 900000.0, None]]
 IN_FORCE_MODELS = [[[400.0, 90.0, 2000.0, 5000.0], [2.0, 18.0, 10.0]], [[300.0, 25.0, 140.0, 4000.0], [1.5, 6.0, 20.0]],
                    [[600.0, 120.0, 1200.0], [3.0, 30.0]], [[250.0, 12.0, 2500.0], [2.0, 10.0]]]
+
+
+# ------------------------------------- the rising main at design time (7.2)
+#
+# What the design specifies for the rising main and how often it is
+# inspected, from a water quality sample, over every state the water can be
+# in (aggressive by the indices, by the pH alone or by both, not aggressive,
+# without the indices, no sample) and the rules that name the materials; and
+# the bill of quantities that follows from a design, with the rising main
+# over the pump intake, taken as long as the hole, unpriced and left out.
+# The cases carry their own inputs, so parity.mjs gives the browser exactly
+# these.
+
+def _rm_sample(results, sample_id="WQ-7", when="2024-05-01"):
+    return {"site": {"community": "Ref"}, "flags": [], "sample_id": sample_id,
+            "sample_date": when,
+            "results": [{"parameter": n, "value": v, "unit": u} for n, v, u in results]}
+
+
+def _rm_object(raw):
+    return WaterQualitySample(
+        site=SiteMetadata(community="Ref"), sample_id=raw["sample_id"],
+        sample_date=raw["sample_date"],
+        results=[WaterQualityResult(**r) for r in raw["results"]])
+
+
+_RM_SOFT = [("pH", 5.8, "pH units"), ("Calcium", 6.0, "mg/L"),
+            ("Alkalinity", 15.0, "mg/L as CaCO3"), ("TDS", 60.0, "mg/L")]
+_RM_HARD = [("pH", 7.8, "pH units"), ("Calcium", 100.0, "mg/L"),
+            ("Alkalinity", 250.0, "mg/L as CaCO3"), ("TDS", 500.0, "mg/L")]
+
+RISING_MAIN_SAMPLES = {
+    "none": None,
+    "soft": _rm_sample(_RM_SOFT),
+    "hard": _rm_sample(_RM_HARD),
+    # the indices keep it, the pH rule does not
+    "acid hard": _rm_sample([("pH", 6.4, "pH units"), ("Calcium", 200.0, "mg/L"),
+                             ("Alkalinity", 500.0, "mg/L as CaCO3"), ("TDS", 1500.0, "mg/L")]),
+    # on the pH rule's limit, which is not below it
+    "limit hard": _rm_sample([("pH", 6.5, "pH units"), ("Calcium", 200.0, "mg/L"),
+                              ("Alkalinity", 500.0, "mg/L as CaCO3"),
+                              ("TDS", 1500.0, "mg/L")]),
+    # a Langelier index that rounds to nought, a Ryznar index on 7.0
+    "nought": _rm_sample([("pH", 7.0, "pH units"), ("Calcium", 90.0, "mg/L"),
+                          ("Alkalinity", 395.0, "mg/L as CaCO3"), ("TDS", 400.0, "mg/L")]),
+    # moderately soft water inside the pH range
+    "moderate": _rm_sample([("pH", 7.2, "pH units"), ("Calcium", 20.0, "mg/L"),
+                            ("Alkalinity", 60.0, "mg/L as CaCO3"), ("TDS", 150.0, "mg/L")]),
+    "scale": _rm_sample([("pH", 8.2, "pH units"), ("Calcium", 120.0, "mg/L"),
+                         ("Alkalinity", 300.0, "mg/L as CaCO3"), ("TDS", 600.0, "mg/L")]),
+    "ec only": _rm_sample([("pH", 6.8, "pH units"), ("Calcium", 10.0, "mg/L"),
+                           ("Alkalinity", 30.0, "mg/L as CaCO3"),
+                           ("Electrical conductivity", 150.0, "uS/cm")]),
+    "low ph only": _rm_sample([("pH", 6.0, "pH units")]),
+    "ph only": _rm_sample([("pH", 7.0, "pH units")]),
+    "near the limit": _rm_sample([("pH", 6.46, "pH units")]),
+    "no calcium": _rm_sample([("pH", 7.2, "pH units"), ("Calcium", 0.0, "mg/L"),
+                              ("Alkalinity", 20.0, "mg/L as CaCO3")]),
+    "no ph": _rm_sample([("Calcium", 10.0, "mg/L"), ("Alkalinity", 30.0, "mg/L as CaCO3")]),
+    "undated": _rm_sample(_RM_SOFT, when=""),
+    "unnamed": _rm_sample(_RM_HARD, sample_id="", when="20th May, 2018"),
+    "anonymous": _rm_sample(_RM_SOFT, sample_id=" ", when="\ufeff"),
+    "blank ends": _rm_sample(_RM_SOFT, sample_id="\ufeffWQ-7 ", when=" 2024-05-01\x1c"),
+}
+
+RISING_MAIN_RULES = {
+    "default": {},
+    "upvc": {"aggressive_rising_main_material": "uPVC"},
+    "same": {"aggressive_rising_main_material": " Galvanised iron "},
+    "intervals": {"rising_main_inspection_months": 24,
+                  "aggressive_rising_main_inspection_months": 3},
+}
+
+_RM_ROWS = [[0, 10, "Laterite"], [10, 30, "Weathered granite"],
+            [30, 50, "Granite, fracture zone 36-38 m"], [50, 60, "Granite"]]
+RISING_MAIN_BILLS = [
+    {"name": "aggressive, over the intake", "sample": "soft", "pump": 34.0},
+    {"name": "aggressive, no intake", "sample": "soft"},
+    {"name": "not aggressive", "sample": "hard", "pump": 34.0},
+    {"name": "no sample", "sample": "none", "pump": 34.0},
+    {"name": "uPVC, unpriced", "sample": "soft", "pump": 34.0, "rules": "upvc"},
+    {"name": "no handpump", "sample": "soft", "pump": 34.0, "handpumps": 0},
+    {"name": "two handpumps", "sample": "acid hard", "pump": 34.0, "handpumps": 2},
+    {"name": "no stainless rate", "sample": "soft", "pump": 34.0, "drop": "RSM1"},
+    {"name": "screens placed", "sample": "low ph only", "pump": 25.0,
+     "screens": [[40, 52]]},
+]
+
+
+def rising_main_reference() -> dict:
+    """The rising main at design time (PLAN.md step 7.2): rising_main_choice
+    over every sample and rule set above, and the bill each design gives."""
+    from groundwater.config import DesignRules
+    from groundwater.costing import estimate_borehole_cost, load_rates
+    from groundwater.design import rising_main_choice
+
+    def quality(raw, bare):
+        if raw is None:
+            return None
+        return _rm_object(raw) if bare else assess_sample(_rm_object(raw))
+
+    choices = []
+    for sample_name, raw in RISING_MAIN_SAMPLES.items():
+        for rules_name, rules in RISING_MAIN_RULES.items():
+            for bare in (False, True):
+                if bare and (raw is None or rules_name != "default"):
+                    continue
+                choices.append({
+                    "name": f"{sample_name}/{rules_name}" + ("/bare" if bare else ""),
+                    "sample": raw, "rules": rules, "bare": bare,
+                    "expect": rising_main_choice(quality(raw, bare), DesignRules(**rules)),
+                })
+
+    bills = []
+    for spec in RISING_MAIN_BILLS:
+        rules = RISING_MAIN_RULES[spec.get("rules", "default")]
+        raw = RISING_MAIN_SAMPLES[spec["sample"]]
+        log = _case_log({"total": 60, "intervals": _RM_ROWS})
+        design = design_borehole(
+            log=log, static_water_level_m=8.0, pump_intake_m=spec.get("pump"),
+            rules=DesignRules(**rules),
+            screens_m=[tuple(s) for s in spec["screens"]] if spec.get("screens") else None,
+            quality=quality(raw, False))
+        inputs = inputs_from_design(design, mobilisation_distance_km=50.0)
+        inputs.handpumps = spec.get("handpumps", 1)
+        rates = [r for r in load_rates() if r.code != spec.get("drop")]
+        estimate = estimate_borehole_cost(inputs, rates)
+        bills.append({
+            "spec": dict(spec, intervals=_RM_ROWS, total=60, rules=rules, raw=raw),
+            "expect": {
+                "rising_main": design.rising_main,
+                "material": inputs.rising_main_material,
+                "length": clean(inputs.rising_main_m),
+                "boq": clean(estimate.boq_rows()),
+                "flags": flags(estimate.flags),
+                "assumptions": list(estimate.assumptions),
+                "direct": clean(estimate.direct_cost_usd),
+            },
+        })
+    return clean({"choices": choices, "bills": bills})
+
+
+def sanitary_reference() -> dict:
+    """Sanitary inspection (PLAN.md step 7.5): forms scored and laid out as a
+    table, counts graded, and the latest inspection read with the E. coli
+    count of a sample into one statement, over every way each side can be
+    known, partly known or unknown. The cases carry their own inputs, so
+    parity.mjs gives the browser exactly these."""
+    from groundwater import sanitary as SAN
+    from groundwater.registry import Asset, clean_answers, iso_date, merge_events, trim_field
+
+    asset_id = "SL-WAR-8FEEVKQ-T"
+    forms = ["YNNYNNYNYN", "YNN--NYN-N", "----------", "NNNNNNNNNN", "YYYYYYYYYY",
+             "yn", "YNY?nnnnnN", ""]
+    counts = [0, 0.5, 1, 10, 10.5, 11, 100, 101, 1000, 1000.5, 25000]
+
+    def form(when, answers, by="", note=""):
+        return SAN.inspection_event(when, answers, by=by, note=note).as_dict()
+
+    inspections = {
+        "none": [],
+        "complete": [form("2024-05-20", "NNYNNNNNNN", by="A. Bangura")],
+        "intermediate": [form("2024-05-20", "YNNYNNYNYN", by=" M. Kolleh ")],
+        "very_high": [form("2024-05-20", "YYYYYYYYYN")],
+        "incomplete": [form("2024-05-20", "YNN--NYN-N")],
+        "nearly_blank": [form("2024-05-20", "Y---------")],
+        # the latest that scores, a later visit with no form after it, and a
+        # form dated after today
+        "later_unscored": [form("2023-11-02", "YYYYYYNNNN"), form("2024-02-01", "YNNNNNNNNN"),
+                           {"when": "2024-04-11", "kind": "inspection", "note": "looked"},
+                           form("2099-01-01", "YYYYYYYYYY")],
+        "same_day": [form("2024-05-20", "NNNNNNNNNN", by="A"), form("2024-05-20", "YYYNNNNNNN", by="B"),
+                     form("2024-05-20", "YYYNNNNNNN", by="C")],
+        "blank": [form("2024-05-20", "----------")],
+        "unreadable": [{"when": "2024-05-20", "kind": "inspection", "form": "tubewell_handpump",
+                        "answers": "YN"},
+                       {"when": "2024-05-21", "kind": "inspection", "form": "hand_dug_well",
+                        "answers": "YNNYNNYNYN"}],
+        "note_only": [{"when": "2024-05-20", "kind": "inspection", "note": "apron cracked"},
+                      {"when": "bad date", "kind": "inspection", "form": "tubewell_handpump",
+                       "answers": "YYYYYYYYYY"}],
+        # dates Python 3.11 read and the browser did not: neither reads them
+        "compact": [form("20240520", "YYYYYYYYYN")],
+        "week": [form("2024-05-20", "NNNNNNNNNN"), form("2024-W21-1", "YYYYYYYYYN"),
+                 form("2024-05-20T09:00", "YYYYYYYYYN")],
+        # ends the two engines' own trims used to read apart
+        "bom": [{"when": "\ufeff2024-05-20", "kind": "\ufeffinspection",
+                 "form": "tubewell_handpump\ufeff", "answers": "\ufeffYNNYNNYNYN",
+                 "by": "\ufeffA. Bangura\x1c"}],
+        "separator": [{"when": "2024-05-20\x1c", "kind": "inspection\x85",
+                       "form": "\x1ftubewell_handpump", "answers": "YNNYNNYNYN\x1c",
+                       "note": "apron cracked\x1e"}],
+        # a water sample the history records: named when no analysis is
+        # loaded, and when it is later than the one read
+        "sampled": [{"when": "2024-03-01", "kind": "water_sample",
+                     "note": "E. coli 12 per 100 mL field kit"},
+                    form("2024-05-20", "YNNYNNYNYN")],
+        "sampled_later": [{"when": "2024-05-25", "kind": "water_sample", "by": "M. Kolleh"},
+                          {"when": "2024-05-26", "kind": "water_sample"},
+                          {"when": "2024-07-01", "kind": "water_sample"},
+                          form("2024-05-20", "NNNNNNNNNN")],
+    }
+    panel = [{"parameter": "Arsenic", "value": 0.001, "unit": "mg/L"},
+             {"parameter": "Fluoride", "value": 0.3, "unit": "mg/L"},
+             {"parameter": "Nitrate (as NO3)", "value": 5.0, "unit": "mg/L"}]
+
+    def sample(*ecoli, when="2024-05-21"):
+        return {"site": {"community": "Ref"}, "flags": [], "sample_date": when,
+                "results": [dict(r) for r in ecoli] + [dict(r) for r in panel]}
+
+    def ecoli(value=None, unit="CFU/100 mL", parameter="E. coli", **kw):
+        return {"parameter": parameter, "value": value, "unit": unit, **kw}
+
+    samples = {
+        "none": None,
+        "clean": sample(ecoli(0.0)),
+        "counted": sample(ecoli(40.0)),
+        "heavy": sample(ecoli(2400.0)),
+        "below": sample(ecoli(None, below_detection=True, detection_limit=1.0)),
+        "absent": sample(ecoli(None, below_detection=True)),
+        "over": sample(ecoli(None, greater_than=50.0)),
+        "at_least": sample(ecoli(None, greater_than=1000.0, greater_than_inclusive=True)),
+        "present": sample(ecoli(None, greater_than=0.0)),
+        "coarse": sample(ecoli(None, below_detection=True, detection_limit=10.0)),
+        "missing": sample(),
+        "per_ml": sample(ecoli(2.0, unit="CFU/mL", parameter="Thermotolerant coliforms")),
+        "two_rows": sample(ecoli(0.0), ecoli(150.0, parameter="Faecal coliforms")),
+        "undated": sample(ecoli(3.0), when=""),
+        "bad_unit": sample(ecoli(3.0, unit="wibbles")),
+        # results the assessment could not grade, whose remarks end in a
+        # full stop of their own or do not
+        "slash_unit": sample(ecoli(3.0, unit="/100 mL")),
+        "unreadable": sample(ecoli(None, unreadable="lots")),
+        "coarse_per_ml": sample(ecoli(None, below_detection=True, detection_limit=1.0,
+                                      unit="CFU/mL")),
+        "chemistry": sample(ecoli(0.0), {"parameter": "Arsenic", "value": 0.05, "unit": "mg/L"}),
+    }
+    pairs = ([(name, "clean") for name in inspections] + [(name, "none") for name in inspections]
+             + [("complete", name) for name in samples] + [("incomplete", name) for name in samples]
+             + [("none", name) for name in samples])
+    cases = []
+    for inspection, which in pairs:
+        raw = samples[which]
+        assessment = None
+        if raw is not None:
+            assessment = assess_sample(WaterQualitySample(
+                site=SiteMetadata(community="Ref"), sample_date=raw["sample_date"],
+                results=[WaterQualityResult(**r) for r in raw["results"]]))
+        events = inspections[inspection]
+        asset = Asset(asset_id=asset_id, events=merge_events(asset_id, events))
+        cases.append({
+            "name": f"{inspection}/{which}", "events": events, "sample": raw,
+            "today": "2024-06-01",
+            "expect": {"risk": SAN.sanitary_risk(asset, "2024-06-01", assessment),
+                       "merged": [e.as_dict() for e in merge_events(asset_id, events)]},
+        })
+    # today written as neither engine reads a day, or with blanks at its ends
+    todays = []
+    clean_sample = samples["clean"]
+    clean_assessment = assess_sample(WaterQualitySample(
+        site=SiteMetadata(community="Ref"), sample_date=clean_sample["sample_date"],
+        results=[WaterQualityResult(**r) for r in clean_sample["results"]]))
+    for today in ("20240601", "2024-W22-6", "2024-06-01T00:00", " 2024-06-01\n",
+                  "\ufeff2024-06-01", "2024-06-01\x1c", "0024-06-01", "0000-06-01"):
+        events = inspections["complete"]
+        asset = Asset(asset_id=asset_id, events=merge_events(asset_id, events))
+        try:
+            expect = {"risk": SAN.sanitary_risk(asset, today, clean_assessment)}
+        except ValueError:
+            expect = {"throws": True}
+        todays.append({"name": repr(today), "events": events, "sample": clean_sample,
+                       "today": today, "expect": expect})
+    # days as both engines read them (iso_date and isoDay), and the ends of
+    # a field and of a form's answers as both trim them
+    texts = ["2024-05-20", "20240520", "2024-W21-1", "2024W211", "2024-05-20T09:00",
+             "2024-5-20", "+2024-05-20", "\u0968\u0966\u0968\u096a-\u0966\u096b-\u0968\u0966",
+             "2023-02-29", "2024-02-29", "0000-01-01", "0001-01-01", "0050-03-01", "0099-12-31",
+             "9999-12-31", " 2024-05-20 ", "\ufeff2024-05-20", "2024-05-20\x1c", "\x852024-05-20",
+             "\u20002024-05-20\u3000", "\u200b2024-05-20", "", None]
+    blank = ("\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2005\u200a\u2028"
+             "\u2029\u202f\u205f\u3000\ufeff")
+    trims = ["\ufeffYNNYNNYNYN", "YNNYNNYNYN\x1c", blank + "YnN-x" + blank,
+             blank + "YNNYNNYNYN" + blank, "\u200bYNNYNNYNYN\u200b", "\x00YN\x00", blank, "",
+             None]
+
+    def day(text):
+        read = iso_date(text)
+        return None if read is None else read.isoformat()
+
+    return clean({
+        "asset_id": asset_id,
+        "cases": cases,
+        "todays": todays,
+        "days": [{"text": t, "expect": {"day": day(t)}} for t in texts],
+        "trims": [{"text": t, "expect": {"trim": trim_field(t), "answers": clean_answers(t),
+                                         "score": SAN.score_answers(t)}} for t in trims],
+        # every code point of the Basic Multilingual Plane that trim_field
+        # takes off an end: the browser's trimField must take the same
+        "trimmed": [c for c in range(0x10000) if trim_field(chr(c) + "x") == "x"],
+        "forms": [{"answers": a, "expect": {"score": SAN.score_answers(a), "rows": SAN.form_rows(a)}}
+                  for a in forms],
+        "grades": [{"count": c, "expect": {
+            "grade": SAN.ecoli_grade(c), "above": list(SAN.ecoli_grades_above(c, False)),
+            "above_inclusive": list(SAN.ecoli_grades_above(c, True))}} for c in counts],
+        "questions": SAN.form_questions(),
+        "tables": SAN.sanitary_tables(),
+    })
 
 
 def calibration_in_force_reference() -> dict:
