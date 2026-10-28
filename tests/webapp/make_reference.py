@@ -330,8 +330,12 @@ def drilling_case(grid) -> dict:
 # The interpretation and report prose over cases the Rokel pair never
 # reaches: a zone whose modelled base lies below the depth of investigation,
 # one wholly below it, a margin cut back to it, a last reading the inversion
-# dropped, poorly resolved boundaries, a near-tie, an exact tie and two
-# sheets carrying one sounding number. parity.mjs builds the same cases.
+# dropped, poorly resolved boundaries, a resistive cover over conductive
+# ground, a 1 m zone on half metres, a sounding too short for the vadose
+# allowance, a near-tie, an exact tie, two sheets carrying one sounding
+# number, a resistance sheet with rows K cannot convert, a resistivity headed
+# as a resistance, and a spacing read twice with no MN recorded. parity.mjs
+# builds the same cases.
 VES_CASE_SPACINGS = [1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0]
 VES_CASES = [
     # name, rho, h, err, h_factor, ab2, rho_app
@@ -345,6 +349,21 @@ VES_CASES = [
     ("two poorly resolved", [1100, 1600, 300, 47], [1.0, 2.0, 7.0], 5.0,
      [3.7, 2.5, 1.1], None, None),
     ("thin resistive at 2.5", [1000, 5000, 100], [2.5, 3], 5.0, None, None, None),
+    # a layer as resistive as basement over a water zone, over clay and over
+    # a conductive half-space: a resistive cover, never the depth to bedrock
+    ("cover over a water zone", [300, 5000, 60, 8000], [0.8, 2, 20], 2.0, None, None, None),
+    ("cover over clay", [300, 5000, 10, 8000], [0.8, 2, 20], 2.0, None, None, None),
+    ("cover over a conductive half-space", [1100, 5000, 47], [1.0, 7.0], 5.0, None, None,
+     None),
+    ("two covers", [300, 5000, 60, 4000, 60, 8000], [0.8, 2, 5, 2, 10], 2.0, None, None,
+     None),
+    ("basement over compact rock", [300, 5000, 1500, 8000], [0.8, 2, 20], 2.0, None, None,
+     None),
+    # a 1 m zone whose two ends round half to even onto the same metre
+    ("half-metre zone", [500, 100, 5000], [3.5, 1.0], 2.0, None, None, None),
+    # a sounding too short to see below the vadose allowance
+    ("short sounding", [400, 90, 3000], [0.6, 8.0], 2.0, None,
+     [1.0, 1.5, 2.0, 3.0, 4.0, 5.0], None),
 ]
 
 
@@ -385,7 +404,53 @@ VES_SHEETS = [
                                                   "Apparent Resistivity (ohm-m)"],
                            [[10.0, 1.0, 410.0], [20.0, 1.0, 260.0], [40.0, 1.0, 140.0],
                             [60.0, 10.0, 70.0]])),
+    # a resistance sheet with two rows where MN/2 is not below AB/2: those
+    # rows are left out and flagged, and the sheet is still read
+    ("R", _ves_sheet("R 1", "Schlumberger", ["No.", "AB/2 (m)", "MN (m)", "R (ohm)"],
+                     [[0.3, 1.0, 12.5], [0.5, 1.0, 9.0], [2.0, 1.0, 4.1], [3.0, 1.0, 1.9],
+                      [5.0, 1.0, 0.62], [10.0, 1.0, 0.18], [15.0, 1.0, 0.09]])),
+    # a resistivity headed as a resistance, but in ohm-metres
+    ("R ohm-m", _ves_sheet("R 2", "Schlumberger", ["No.", "AB/2 (m)", "MN (m)",
+                                                  "Apparent Resistance (Ωm)"],
+                           [[1.0, 0.5, 120.0], [2.0, 0.5, 95.0], [3.0, 0.5, 80.0],
+                            [5.0, 0.5, 70.0], [10.0, 2.0, 90.0]])),
+    # one spacing read twice with no MN column: fitted as two readings
+    ("no MN", _ves_sheet("N 1", "Schlumberger", ["No.", "AB/2 (m)",
+                                                "Apparent Resistivity (ohm-m)"],
+                         [[1.0, 120.0], [2.0, 95.0], [3.0, 80.0], [5.0, 70.0], [10.0, 90.0],
+                          [10.0, 120.0], [15.0, 110.0], [20.0, 140.0], [30.0, 190.0]])),
 ]
+
+
+#: (ab2, mn, rho, array) of soundings whose fitted readings and reading
+#: errors both engines compare: a zero at an MN overlap beside a good
+#: reading, a spacing read twice with no MN recorded, and an MN overlap
+READING_CASES = [
+    ([1, 2, 3, 5, 8, 10, 10, 15, 20, 30, 40, 40, 60, 80, 100],
+     [0.5] * 6 + [4.0] * 5 + [10.0] * 4,
+     [300, 250, 180, 120, 90, 85, 88, 80, 90, 120, 170, 0, 260, 330, 400], "schlumberger"),
+    ([1, 2, 3, 5, 10, 10, 15, 20, 30, 40, 40, 60], [None] * 12,
+     [120, 95, 80, 70, 90, 120, 110, 140, 190, 230, 260, 300], "schlumberger"),
+    ([1, 2, 3, 5, 10, 10, 15, 20, 30, 40, 40, 60], [1.0] * 5 + [4.0] * 5 + [10.0] * 2,
+     [120, 95, 80, 70, 90, 120, 110, 140, 190, 230, 260, 300], "schlumberger"),
+]
+
+
+def reading_cases() -> list:
+    from groundwater.ves.inversion import inversion_readings
+    from groundwater.ves.model_range import reading_errors
+
+    out = []
+    for ab2, mn, rho, array in READING_CASES:
+        sounding = VESSounding(SiteMetadata(), "R", np.array(ab2, dtype=float),
+                               np.array([np.nan if v is None else v for v in mn], dtype=float),
+                               np.array(rho, dtype=float), array_type=array)
+        fitted, fitted_rho, _ = inversion_readings(sounding)
+        sigma, spacings = reading_errors(sounding, fitted, 3.0)
+        out.append({"ab2": ab2, "mn": mn, "rho": rho, "array": array,
+                    "fitted_ab2": clean(fitted), "fitted_rho": clean(fitted_rho),
+                    "sigma": clean(sigma), "spacings": clean(spacings)})
+    return out
 
 
 def _trial_case(trials, chosen_rho, chosen_h, err):
@@ -463,6 +528,8 @@ def ves_text(rokel_inversions, rokel_interps) -> dict:
                 "wenner", 60.0, 24.0, VESConfig(depth_of_investigation_factor=0.4)),
         ],
         "sheets": [[s.sounding_id, s.array_type, flags(s.flags)] for _, s in grids],
+        "sheet_readings": [[clean(s.ab2), clean(s.rho_app)] for _, s in grids],
+        "readings": reading_cases(),
     }
 
 
@@ -480,9 +547,10 @@ RANGE_SHORT = {"samples": 200, "burn_in": 100, "starts": 4, "chains": 2}
 
 
 def _range_soundings() -> list:
-    """Two soundings the Rokel pair does not cover, as readings both engines
-    read: basement within reach under a weathered zone (the sentences with
-    a band), and a Wenner sheet that reads one spacing twice."""
+    """Three soundings the Rokel pair does not cover, as readings both
+    engines read: basement within reach under a weathered zone (the
+    sentences with a band), a Wenner sheet that reads one spacing twice, and
+    a duricrust over a conductive weathered zone."""
     from groundwater.models import SiteMetadata, VESSounding
     from groundwater.ves.forward import forward_schlumberger, forward_wenner
 
@@ -498,6 +566,12 @@ def _range_soundings() -> list:
     rho[6] *= 1.3  # the repeat at 8 m disagrees
     out.append(VESSounding(site=SiteMetadata(), sounding_id="wenner repeat", ab2=a,
                            mn=np.full(len(a), np.nan), rho_app=rho, array_type="wenner"))
+    # a duricrust 1 m down over a conductive weathered zone: every model that
+    # fits reads it as a cover, and none finds basement, where each used to
+    # find it at the duricrust's top
+    rho = forward_schlumberger((np.array([300.0, 5000.0, 60.0]), np.array([1.0, 3.0])), ab2)
+    out.append(VESSounding(site=SiteMetadata(), sounding_id="duricrust over water",
+                           ab2=ab2, mn=np.full(len(ab2), np.nan), rho_app=rho * noise))
     return out
 
 

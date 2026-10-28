@@ -29,13 +29,21 @@ import numpy as np
 from ..ves.arrays import geometric_factor
 from ..models import DataFlag, VESSounding
 from ..text import phrase
-from ..utils import clean_text, parse_number, plural
+from ..utils import and_join, clean_text, parse_number, plural
 from . import common
 
 # "MN/2", "MN / 2", "MN /2 (m)" - a typed header keeps its spaces
 _MN_HALF_RE = re.compile(r"mn\s*/\s*2")
 # "Resistance (ohm)", "R (ohm)", "V/I", "dV/I", "ΔV/I": a measured resistance
 _RESISTANCE_RE = re.compile(r"resistance|^r\s*\(|v\s*/\s*i")
+# The unit of a resistivity, ohm-metres however a sheet writes it: "ohm-m",
+# "ohm.m", "ohm m", "ohmm", "Ωm", "Ω·m", "ohm-metre". Only a resistivity is in
+# ohm-metres, so a column headed "R (ohm-m)" or "Apparent resistance (Ωm)" is
+# one, whatever its name says; such a column used to be read as V/I and
+# multiplied by K (6 at AB/2 1 m with MN 0.5 m, 155 at AB/2 10 m with MN
+# 2 m). The same pattern is in gwt-core.js (RESISTIVITY_UNIT_RE).
+_RESISTIVITY_UNIT_RE = re.compile(
+    "(?:ohm|ω)\\s*[-.·⋅•*]?\\s*m(?:et(?:er|re)s?)?(?![a-z])")
 
 # The array a sheet names, wherever on the sheet it names it: the title of a
 # template ("SCHLUMBERGER ARRAY VES FIELD DATA"), the array field itself, or
@@ -181,6 +189,10 @@ def _find_data_header(grid: list[list]) -> tuple[int, dict] | None:
                 cols["mn_half"] = c
             elif t.startswith("mn"):
                 cols["mn"] = c
+            # a column in ohm-metres is a resistivity, before the resistance
+            # test reads "R (" or "resistance" in its name
+            elif _RESISTIVITY_UNIT_RE.search(t):
+                cols["rho"] = c
             # a sheet that records V/I (a resistance, in ohms) is not a
             # resistivity sheet: "R (ohm)" used to match the "ohm" test below
             # and every reading came through as a resistivity of 0.9
@@ -246,6 +258,7 @@ def _sounding_or_reason(
     else:
         spacing_col, wenner_from_ab2 = cols["a"], False
     blank_run = 0
+    k_undefined: list[float] = []  # AB/2 of resistances K could not convert
     for row in grid[header_row + 1 :]:
         a = parse_number(row[spacing_col]) if spacing_col < len(row) else None
         r = parse_number(row[value_col]) if value_col < len(row) else None
@@ -274,8 +287,14 @@ def _sounding_or_reason(
                 k = float(geometric_factor("wenner", a=a))
             elif k is None:
                 spacing = 2.0 * m if (m is not None and mn_is_half) else m
-                if spacing:
+                # K is defined only for 0 < MN/2 < AB/2, and geometric_factor
+                # raises outside that: one mistyped spacing on a resistance
+                # sheet used to raise out of the reader and lose every sheet
+                # of the workbook. The row is left out and flagged instead.
+                if spacing is not None and 0.0 < spacing / 2.0 < a:
                     k = float(geometric_factor("schlumberger", ab2=a, mn=spacing))
+                elif spacing is not None:
+                    k_undefined.append(a)
             r = k * r if k else None
         if a is None and r is None:
             fully_blank = all(v is None or clean_text(v) == "" for v in row)
@@ -377,6 +396,16 @@ def _sounding_or_reason(
                 sounding.sounding_id,
             )
         )
+    if k_undefined:
+        flags.append(
+            DataFlag(
+                "warning",
+                "k_undefined",
+                phrase("ves.k_undefined", n=len(k_undefined),
+                       spacings=and_join([f"{v:g}" for v in k_undefined])),
+                sounding.sounding_id,
+            )
+        )
     if np.any(np.diff(sounding.ab2) < 0):
         flags.append(
             DataFlag(
@@ -398,12 +427,17 @@ def _sounding_or_reason(
         )
     dup = _duplicate_ab2_count(sounding.ab2)
     if dup:
+        # The splice merges a repeated spacing by geometric mean only on a
+        # Schlumberger sounding with more than one MN segment. A Wenner sheet,
+        # or one with no MN change recorded (no MN column, or one MN
+        # throughout), is fitted reading by reading, and its flags used to
+        # say the pair was merged at an MN change all the same.
+        merged = not is_wenner and len(sounding.segments()) > 1
         flags.append(
             DataFlag(
                 "info",
                 "segment_overlap",
-                f"{dup} AB/2 value(s) repeated with different MN (segment changes); "
-                "both readings kept.",
+                phrase("ves.segment_overlap" if merged else "ves.repeat_reading", n=dup),
                 sounding.sounding_id,
             )
         )
@@ -413,15 +447,9 @@ def _sounding_or_reason(
                 DataFlag(
                     "warning",
                     "segment_overlap_discrepancy",
-                    "At an MN change the two readings at one AB/2 should agree "
-                    "within a few percent; these differ by more than "
-                    f"{(OVERLAP_DISCREPANCY_RATIO - 1) * 100:.0f} percent: "
-                    + "; ".join(discrepant)
-                    + ". That is a field problem (potential-electrode contact, "
-                    "lateral inhomogeneity at the new MN) or a transcription "
-                    "slip, and the inversion merges the pair by geometric "
-                    "mean, so part of the model misfit is made by the splice. "
-                    "Check the sheet before relying on the deep branch.",
+                    phrase("ves.overlap_discrepancy" if merged else "ves.repeat_discrepancy",
+                           percent=(OVERLAP_DISCREPANCY_RATIO - 1) * 100,
+                           pairs="; ".join(discrepant)),
                     sounding.sounding_id,
                 )
             )

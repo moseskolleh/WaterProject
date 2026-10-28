@@ -2590,7 +2590,7 @@
       40
      ]
     ],
-    "depth_to_basement_m": 2.5,
+    "depth_to_basement_m": null,
     "investigation_depth_m": 40.0,
     "max_drilling_depth_m": 40.0,
     "basement_not_resolved": true,
@@ -2603,9 +2603,130 @@
       "The deepest water-bearing layer is the half-space: the sounding did not reach its base within the 40 m it resolves, so the zone is open-ended, the aquifer thickness is a minimum and the drilling depth is a minimum."
      ]
     ],
-    "narrative": "The data at thin resistive at 2.5 resolves a 3 layer subsurface (type K; a resistive layer between two more conductive layers, often dry laterite or duricrust over a conductive saprolite). Layer 1 from 0 m to 2.5 m (2.5 m thick) has a resistivity of about 1,000 ohm-m and is interpreted as dry lateritic topsoil / duricrust. Layer 2 from 2.5 m to 5.5 m (3 m thick) has a resistivity of about 5,000 ohm-m and is interpreted as fresh basement. Layer 3 below 5.5 m has a resistivity of about 100 ohm-m and is interpreted as weathered or fractured zone, potentially water bearing when saturated; its base is not resolved within the depth of investigation. The unusually low resistivity within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water zones are 6 m to at least 40 m. The base of the deepest zone is not resolved: the sounding sees to about 40 m, and the conductive ground continues below that. The depth to bedrock is estimated at about 2.5 m. The Dar-Zarrouk longitudinal conductance of the section is 0.0031 siemens and the transverse resistance is 17,500 ohm m2. The cover overlying the water bearing zone has a longitudinal conductance of 0.0031 siemens, indicating a poor protective capacity against surface contamination.",
-    "suitability": 68.2,
-    "rationale": "Driven by at least 34 m of interpreted water-bearing thickness, the base of the zone being below the depth the sounding resolves (thick); resistivities well within the productive fracture window; overburden of about 2 m that limits the target. Confidence 0.85: a basement the sounding did not reach discount the score before ranking."
+    "narrative": "The data at thin resistive at 2.5 resolves a 3 layer subsurface (type K; a resistive layer between two more conductive layers, often dry laterite or duricrust over a conductive saprolite). Layer 1 from 0 m to 2.5 m (2.5 m thick) has a resistivity of about 1,000 ohm-m and is interpreted as dry lateritic topsoil / duricrust. Layer 2 from 2.5 m to 5.5 m (3 m thick) has a resistivity of about 5,000 ohm-m and is interpreted as resistive cover (a duricrust or a dry layer) over conductive ground. Layer 3 below 5.5 m has a resistivity of about 100 ohm-m and is interpreted as weathered or fractured zone, potentially water bearing when saturated; its base is not resolved within the depth of investigation. The unusually low resistivity within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water zones are 6 m to at least 40 m. The base of the deepest zone is not resolved: the sounding sees to about 40 m, and the conductive ground continues below that. Layer 2 is as resistive as fresh basement, but conductive ground lies below it in the fitted model, so it is read as resistive cover and not as bedrock. The Dar-Zarrouk longitudinal conductance of the section is 0.0031 siemens and the transverse resistance is 17,500 ohm m2. The cover overlying the water bearing zone has a longitudinal conductance of 0.0031 siemens, indicating a poor protective capacity against surface contamination.",
+    "suitability": 75.2,
+    "rationale": "Driven by at least 34 m of interpreted water-bearing thickness, the base of the zone being below the depth the sounding resolves (thick); resistivities well within the productive fracture window. Confidence 0.85: a basement the sounding did not reach discount the score before ranking."
+   },
+   "cover over a water zone": {
+    "water_zones": [
+     [
+      3,
+      23
+     ]
+    ],
+    "depth_to_basement_m": 22.8,
+    "investigation_depth_m": 40.0,
+    "max_drilling_depth_m": 35.0,
+    "basement_not_resolved": false,
+    "drilling_depth_capped": false,
+    "drilling_depth_text": "about 35 m",
+    "flags": [],
+    "narrative": "The data at cover over a water zone resolves a 4 layer subsurface (type KH; a resistive layer between two more conductive layers, often dry laterite or duricrust over a conductive saprolite; a conductive layer between two more resistive layers, the classical signature of a saturated weathered zone above fresh basement). Layer 1 from 0 m to 0.8 m (0.8 m thick) has a resistivity of about 300 ohm-m and is interpreted as topsoil / laterite. Layer 2 from 0.8 m to 2.8 m (2 m thick) has a resistivity of about 5,000 ohm-m and is interpreted as resistive cover (a duricrust or a dry layer) over conductive ground. Layer 3 from 2.8 m to 22.8 m (20 m thick) has a resistivity of about 60 ohm-m and is interpreted as weathered / fractured zone, potentially water bearing when saturated. Layer 4 below 22.8 m has a resistivity of about 8,000 ohm-m and is interpreted as fresh basement. The unusually low resistivity within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water zones are 3 m to 23 m. Layer 2 is as resistive as fresh basement, but conductive ground lies below it in the fitted model, so it is read as resistive cover and not as bedrock. The depth to bedrock is estimated at about 22.8 m. The Dar-Zarrouk longitudinal conductance of the section is 0.336 siemens and the transverse resistance is 11,400 ohm m2. The cover overlying the water bearing zone has a longitudinal conductance of 0.00307 siemens, indicating a poor protective capacity against surface contamination.",
+    "suitability": 82.7,
+    "rationale": "Driven by about 20 m of interpreted water-bearing thickness (thick); resistivities near the edge of the productive window; a fractured zone at the basement contact."
+   },
+   "cover over clay": {
+    "water_zones": [],
+    "depth_to_basement_m": 22.8,
+    "investigation_depth_m": 40.0,
+    "max_drilling_depth_m": 40.0,
+    "basement_not_resolved": false,
+    "drilling_depth_capped": false,
+    "drilling_depth_text": "about 40 m",
+    "flags": [],
+    "narrative": "The data at cover over clay resolves a 4 layer subsurface (type KH; a resistive layer between two more conductive layers, often dry laterite or duricrust over a conductive saprolite; a conductive layer between two more resistive layers, the classical signature of a saturated weathered zone above fresh basement). Layer 1 from 0 m to 0.8 m (0.8 m thick) has a resistivity of about 300 ohm-m and is interpreted as topsoil / laterite. Layer 2 from 0.8 m to 2.8 m (2 m thick) has a resistivity of about 5,000 ohm-m and is interpreted as resistive cover (a duricrust or a dry layer) over conductive ground. Layer 3 from 2.8 m to 22.8 m (20 m thick) has a resistivity of about 10 ohm-m and is interpreted as clay rich saprolite (low permeability). Layer 4 below 22.8 m has a resistivity of about 8,000 ohm-m and is interpreted as fresh basement. No clearly water bearing low resistivity zone is resolved at this point within the investigated depth. Layer 2 is as resistive as fresh basement, but conductive ground lies below it in the fitted model, so it is read as resistive cover and not as bedrock. The depth to bedrock is estimated at about 22.8 m. The Dar-Zarrouk longitudinal conductance of the section is 2 siemens and the transverse resistance is 10,400 ohm m2. This gives a good protective capacity against surface contamination.",
+    "suitability": 20.0,
+    "rationale": "No water-bearing zone was resolved within the investigated depth, so the drilling prospect here is weak."
+   },
+   "cover over a conductive half-space": {
+    "water_zones": [
+     [
+      8,
+      40
+     ]
+    ],
+    "depth_to_basement_m": null,
+    "investigation_depth_m": 40.0,
+    "max_drilling_depth_m": 40.0,
+    "basement_not_resolved": true,
+    "drilling_depth_capped": true,
+    "drilling_depth_text": "at least 40 m",
+    "flags": [
+     [
+      "info",
+      "basement_not_resolved",
+      "The deepest water-bearing layer is the half-space: the sounding did not reach its base within the 40 m it resolves, so the zone is open-ended, the aquifer thickness is a minimum and the drilling depth is a minimum."
+     ]
+    ],
+    "narrative": "The data at cover over a conductive half-space resolves a 3 layer subsurface (type K; a resistive layer between two more conductive layers, often dry laterite or duricrust over a conductive saprolite). Layer 1 from 0 m to 1 m (1 m thick) has a resistivity of about 1,100 ohm-m and is interpreted as dry lateritic topsoil / duricrust. Layer 2 from 1 m to 8 m (7 m thick) has a resistivity of about 5,000 ohm-m and is interpreted as resistive cover (a duricrust or a dry layer) over conductive ground. Layer 3 below 8 m has a resistivity of about 47 ohm-m and is interpreted as weathered or fractured zone, potentially water bearing when saturated; its base is not resolved within the depth of investigation. The unusually low resistivity within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water zones are 8 m to at least 40 m. The base of the deepest zone is not resolved: the sounding sees to about 40 m, and the conductive ground continues below that. Layer 2 is as resistive as fresh basement, but conductive ground lies below it in the fitted model, so it is read as resistive cover and not as bedrock. The Dar-Zarrouk longitudinal conductance of the section is 0.00231 siemens and the transverse resistance is 36,100 ohm m2. The cover overlying the water bearing zone has a longitudinal conductance of 0.00231 siemens, indicating a poor protective capacity against surface contamination.",
+    "suitability": 67.6,
+    "rationale": "Driven by at least 32 m of interpreted water-bearing thickness, the base of the zone being below the depth the sounding resolves (thick); resistivities near the edge of the productive window. Confidence 0.85: a basement the sounding did not reach discount the score before ranking."
+   },
+   "two covers": {
+    "water_zones": [
+     [
+      3,
+      8
+     ],
+     [
+      10,
+      20
+     ]
+    ],
+    "depth_to_basement_m": 19.8,
+    "investigation_depth_m": 40.0,
+    "max_drilling_depth_m": 30.0,
+    "basement_not_resolved": false,
+    "drilling_depth_capped": false,
+    "drilling_depth_text": "about 30 m",
+    "flags": [],
+    "narrative": "The data at two covers resolves a 6 layer subsurface (type KHKH; a resistive layer between two more conductive layers, often dry laterite or duricrust over a conductive saprolite; a conductive layer between two more resistive layers, the classical signature of a saturated weathered zone above fresh basement). Layer 1 from 0 m to 0.8 m (0.8 m thick) has a resistivity of about 300 ohm-m and is interpreted as topsoil / laterite. Layer 2 from 0.8 m to 2.8 m (2 m thick) has a resistivity of about 5,000 ohm-m and is interpreted as resistive cover (a duricrust or a dry layer) over conductive ground. Layer 3 from 2.8 m to 7.8 m (5 m thick) has a resistivity of about 60 ohm-m and is interpreted as weathered / fractured zone, potentially water bearing when saturated. Layer 4 from 7.8 m to 9.8 m (2 m thick) has a resistivity of about 4,000 ohm-m and is interpreted as resistive cover (a duricrust or a dry layer) over conductive ground. Layer 5 from 9.8 m to 19.8 m (10 m thick) has a resistivity of about 60 ohm-m and is interpreted as weathered / fractured zone, potentially water bearing when saturated. Layer 6 below 19.8 m has a resistivity of about 8,000 ohm-m and is interpreted as fresh basement. The unusually low resistivity within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water zones are 3 m to 8 m, 10 m to 20 m. Layers 2 and 4 are as resistive as fresh basement, but conductive ground lies below them in the fitted model, so they are read as resistive cover and not as bedrock. The depth to bedrock is estimated at about 19.8 m. The Dar-Zarrouk longitudinal conductance of the section is 0.254 siemens and the transverse resistance is 19,100 ohm m2. The cover overlying the water bearing zone has a longitudinal conductance of 0.00307 siemens, indicating a poor protective capacity against surface contamination.",
+    "suitability": 76.4,
+    "rationale": "Driven by about 15 m of interpreted water-bearing thickness (modest); resistivities well within the productive fracture window; a fractured zone at the basement contact."
+   },
+   "basement over compact rock": {
+    "water_zones": [],
+    "depth_to_basement_m": 0.8,
+    "investigation_depth_m": 40.0,
+    "max_drilling_depth_m": 40.0,
+    "basement_not_resolved": false,
+    "drilling_depth_capped": false,
+    "drilling_depth_text": "about 40 m",
+    "flags": [],
+    "narrative": "The data at basement over compact rock resolves a 4 layer subsurface (type KH; a resistive layer between two more conductive layers, often dry laterite or duricrust over a conductive saprolite; a conductive layer between two more resistive layers, the classical signature of a saturated weathered zone above fresh basement). Layer 1 from 0 m to 0.8 m (0.8 m thick) has a resistivity of about 300 ohm-m and is interpreted as topsoil / laterite. Layer 2 from 0.8 m to 2.8 m (2 m thick) has a resistivity of about 5,000 ohm-m and is interpreted as fresh basement. Layer 3 from 2.8 m to 22.8 m (20 m thick) has a resistivity of about 1,500 ohm-m and is interpreted as compact or dry weathered rock (regolith). Layer 4 below 22.8 m has a resistivity of about 8,000 ohm-m and is interpreted as fresh basement. No clearly water bearing low resistivity zone is resolved at this point within the investigated depth. The depth to bedrock is estimated at about 0.8 m. The Dar-Zarrouk longitudinal conductance of the section is 0.0164 siemens and the transverse resistance is 40,200 ohm m2. This gives a poor protective capacity against surface contamination.",
+    "suitability": 3.0,
+    "rationale": "No water-bearing zone was resolved within the investigated depth, so the drilling prospect here is weak."
+   },
+   "half-metre zone": {
+    "water_zones": [
+     [
+      4,
+      5
+     ]
+    ],
+    "depth_to_basement_m": 4.5,
+    "investigation_depth_m": 40.0,
+    "max_drilling_depth_m": 15.0,
+    "basement_not_resolved": false,
+    "drilling_depth_capped": false,
+    "drilling_depth_text": "about 15 m",
+    "flags": [],
+    "narrative": "The data at half-metre zone resolves a 3 layer subsurface (type H; a conductive layer between two more resistive layers, the classical signature of a saturated weathered zone above fresh basement). Layer 1 from 0 m to 3.5 m (3.5 m thick) has a resistivity of about 500 ohm-m and is interpreted as topsoil / laterite. Layer 2 from 3.5 m to 4.5 m (1 m thick) has a resistivity of about 100 ohm-m and is interpreted as weathered / fractured zone, potentially water bearing when saturated. Layer 3 below 4.5 m has a resistivity of about 5,000 ohm-m and is interpreted as fresh basement. The unusually low resistivity within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water zones are 4 m to 5 m. The depth to bedrock is estimated at about 4.5 m. The Dar-Zarrouk longitudinal conductance of the section is 0.017 siemens and the transverse resistance is 1,850 ohm m2. The cover overlying the water bearing zone has a longitudinal conductance of 0.007 siemens, indicating a poor protective capacity against surface contamination.",
+    "suitability": 33.6,
+    "rationale": "Driven by about 1 m of interpreted water-bearing thickness (thin); resistivities near the edge of the productive window; a fractured zone at the basement contact; overburden of about 4 m that limits the target."
+   },
+   "short sounding": {
+    "water_zones": [],
+    "depth_to_basement_m": null,
+    "investigation_depth_m": 2.5,
+    "max_drilling_depth_m": 2.5,
+    "basement_not_resolved": false,
+    "drilling_depth_capped": false,
+    "drilling_depth_text": "about 2 m",
+    "flags": [],
+    "narrative": "The data at short sounding resolves a 3 layer subsurface (type H; a conductive layer between two more resistive layers, the classical signature of a saturated weathered zone above fresh basement). Layer 1 from 0 m to 0.6 m (0.6 m thick) has a resistivity of about 400 ohm-m and is interpreted as topsoil / laterite. Layer 2 from 0.6 m to 8.6 m (8 m thick) has a resistivity of about 90 ohm-m and is interpreted as weathered / fractured zone, potentially water bearing when saturated. Layer 3 below 8.6 m has a resistivity of about 3,000 ohm-m and is interpreted as fresh basement. No clearly water bearing low resistivity zone is resolved at this point within the investigated depth. The water-bearing layer from 0.6 m starts within the top 3 m, which are taken as unsaturated, and the sounding resolves only 2.5 m, so it is not counted as a water zone. The depth to bedrock is not resolved within the depth of investigation (about 2.5 m). The Dar-Zarrouk longitudinal conductance of the section is 0.0904 siemens and the transverse resistance is 960 ohm m2. This gives a poor protective capacity against surface contamination.",
+    "suitability": 10.0,
+    "rationale": "No water-bearing zone was resolved within the investigated depth, so the drilling prospect here is weak."
    }
   },
   "near_tie": {
@@ -2708,7 +2829,7 @@
      [
       "info",
       "segment_overlap",
-      "1 AB/2 value(s) repeated with different MN (segment changes); both readings kept."
+      "1 AB/2 value(s) read more than once; the readings are kept, and the inversion fits each one as it stands rather than merging them."
      ]
     ]
    ],
@@ -2738,7 +2859,429 @@
       "Sheet 'S3 copy' carries the sounding number 'S 3', which sheet 'S3' already uses. A sheet copied without renumbering reads as the same point in every table, figure and ranking; give each sounding its own number before the results are used."
      ]
     ]
+   ],
+   [
+    "R 1",
+    "schlumberger",
+    [
+     [
+      "info",
+      "rho_computed_from_resistance",
+      "The sheet records a resistance (V/I), not a resistivity; apparent resistivity was computed as K x R from the electrode spacings."
+     ],
+     [
+      "warning",
+      "k_undefined",
+      "The Schlumberger geometric factor K needs MN/2 between 0 and AB/2, so the resistances read at AB/2 0.3 and 0.5 m could not be turned into resistivities and are left out. Check the spacings on the sheet."
+     ]
+    ]
+   ],
+   [
+    "R 2",
+    "schlumberger",
+    []
+   ],
+   [
+    "N 1",
+    "schlumberger",
+    [
+     [
+      "info",
+      "segment_overlap",
+      "1 AB/2 value(s) read more than once; the readings are kept, and the inversion fits each one as it stands rather than merging them."
+     ],
+     [
+      "warning",
+      "segment_overlap_discrepancy",
+      "Readings repeated at one AB/2 should agree within a few percent; these differ by more than 20 percent: AB/2 10 m: 90 and 120 ohm-m (ratio 1.33). That is a field problem (electrode contact, an electrode moved between the readings, lateral inhomogeneity at a new MN) or a transcription slip, and the inversion fits each reading as it stands, so the disagreement is part of the model misfit. Check the sheet before relying on the model."
+     ]
+    ]
    ]
+  ],
+  "sheet_readings": [
+   [
+    [
+     1.0,
+     2.0,
+     4.0,
+     4.0,
+     10.0,
+     20.0
+    ],
+    [
+     300.0,
+     280.0,
+     200.0,
+     190.0,
+     120.0,
+     90.0
+    ]
+   ],
+   [
+    [
+     10.0,
+     20.0,
+     40.0,
+     40.0,
+     40.0,
+     60.0
+    ],
+    [
+     400.0,
+     250.0,
+     150.0,
+     148.0,
+     78.0,
+     60.0
+    ]
+   ],
+   [
+    [
+     10.0,
+     20.0,
+     40.0,
+     60.0
+    ],
+    [
+     410.0,
+     260.0,
+     140.0,
+     70.0
+    ]
+   ],
+   [
+    [
+     2.0,
+     3.0,
+     5.0,
+     10.0,
+     15.0
+    ],
+    [
+     48.30198704894306,
+     52.228977865930304,
+     48.20773926933538,
+     56.40729609520473,
+     63.54656540048754
+    ]
+   ],
+   [
+    [
+     1.0,
+     2.0,
+     3.0,
+     5.0,
+     10.0
+    ],
+    [
+     120.0,
+     95.0,
+     80.0,
+     70.0,
+     90.0
+    ]
+   ],
+   [
+    [
+     1.0,
+     2.0,
+     3.0,
+     5.0,
+     10.0,
+     10.0,
+     15.0,
+     20.0,
+     30.0
+    ],
+    [
+     120.0,
+     95.0,
+     80.0,
+     70.0,
+     90.0,
+     120.0,
+     110.0,
+     140.0,
+     190.0
+    ]
+   ]
+  ],
+  "readings": [
+   {
+    "ab2": [
+     1,
+     2,
+     3,
+     5,
+     8,
+     10,
+     10,
+     15,
+     20,
+     30,
+     40,
+     40,
+     60,
+     80,
+     100
+    ],
+    "mn": [
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     10.0,
+     10.0,
+     10.0,
+     10.0
+    ],
+    "rho": [
+     300,
+     250,
+     180,
+     120,
+     90,
+     85,
+     88,
+     80,
+     90,
+     120,
+     170,
+     0,
+     260,
+     330,
+     400
+    ],
+    "array": "schlumberger",
+    "fitted_ab2": [
+     1.0,
+     2.0,
+     3.0,
+     5.0,
+     8.0,
+     10.0,
+     15.0,
+     20.0,
+     30.0,
+     40.0,
+     60.0,
+     80.0,
+     100.0
+    ],
+    "fitted_rho": [
+     299.99999999999994,
+     249.9999999999999,
+     180.0,
+     119.99999999999997,
+     90.0,
+     86.48699324175864,
+     79.99999999999997,
+     90.0,
+     119.99999999999997,
+     170.00000000000006,
+     259.99999999999994,
+     329.99999999999994,
+     399.9999999999999
+    ],
+    "sigma": [
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03465215697807024,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03
+    ],
+    "spacings": [
+     10.0
+    ]
+   },
+   {
+    "ab2": [
+     1,
+     2,
+     3,
+     5,
+     10,
+     10,
+     15,
+     20,
+     30,
+     40,
+     40,
+     60
+    ],
+    "mn": [
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "rho": [
+     120,
+     95,
+     80,
+     70,
+     90,
+     120,
+     110,
+     140,
+     190,
+     230,
+     260,
+     300
+    ],
+    "array": "schlumberger",
+    "fitted_ab2": [
+     1.0,
+     2.0,
+     3.0,
+     5.0,
+     10.0,
+     10.0,
+     15.0,
+     20.0,
+     30.0,
+     40.0,
+     40.0,
+     60.0
+    ],
+    "fitted_rho": [
+     120.0,
+     95.0,
+     80.0,
+     70.0,
+     90.0,
+     120.0,
+     110.0,
+     140.0,
+     190.0,
+     230.0,
+     260.0,
+     300.0
+    ],
+    "sigma": [
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.03
+    ],
+    "spacings": []
+   },
+   {
+    "ab2": [
+     1,
+     2,
+     3,
+     5,
+     10,
+     10,
+     15,
+     20,
+     30,
+     40,
+     40,
+     60
+    ],
+    "mn": [
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     10.0,
+     10.0
+    ],
+    "rho": [
+     120,
+     95,
+     80,
+     70,
+     90,
+     120,
+     110,
+     140,
+     190,
+     230,
+     260,
+     300
+    ],
+    "array": "schlumberger",
+    "fitted_ab2": [
+     1.0,
+     2.0,
+     3.0,
+     5.0,
+     10.0,
+     15.0,
+     20.0,
+     30.0,
+     40.0,
+     60.0
+    ],
+    "fitted_rho": [
+     119.99999999999997,
+     95.0,
+     79.99999999999997,
+     70.00000000000003,
+     103.92304845413258,
+     110.00000000000004,
+     139.99999999999994,
+     190.0,
+     244.5403852127497,
+     299.99999999999994
+    ],
+    "sigma": [
+     0.03,
+     0.03,
+     0.03,
+     0.03,
+     0.14693618922014387,
+     0.03,
+     0.03,
+     0.03,
+     0.0682483138664099,
+     0.03
+    ],
+    "spacings": [
+     10.0,
+     40.0
+    ]
+   }
   ]
  },
  "ves_range": {
@@ -5216,12 +5759,8 @@
      270
     ],
     "investigation_depth_m": 40.0,
-    "basement_m": {
-     "p10": 1.2668013376565501,
-     "p50": 1.7607703832219272,
-     "p90": 2.449641564484139
-    },
-    "basement_unresolved": 0.912,
+    "basement_m": null,
+    "basement_unresolved": 1.0,
     "weathered_m": {
      "p10": 30.84614479085282,
      "p50": 31.55224341767814,
@@ -7937,6 +8476,1308 @@
       "Water-bearing weathered zone 9 to 12 m thick (P10 to P90), counted from 3 m down to the 32 m the sounding resolves.",
       "Drilling depth from the P90 of the models that fit: about 25 m.",
       "Basis: 200 models of 3 layers sampled by Metropolis-Hastings in 2 chains, started from the best of 5 fits (the inversion's own and 4 from Latin hypercube starting models), with an error of 3 percent on each reading; the errors were widened 2.3 times, to the misfit the best model reaches. The error model is provisional."
+     ],
+     "caption": "The grey fan is 40 of the sampled models that fit."
+    }
+   },
+   {
+    "id": "duricrust over water",
+    "array": "schlumberger",
+    "ab2": [
+     1.0,
+     1.5,
+     2.0,
+     3.0,
+     4.0,
+     6.0,
+     8.0,
+     10.0,
+     15.0,
+     20.0,
+     30.0,
+     40.0,
+     60.0,
+     80.0,
+     100.0
+    ],
+    "rho": [
+     356.3515354779292,
+     455.19839557116825,
+     540.5192277452779,
+     728.0052740414484,
+     936.0725121430175,
+     1195.3089575242484,
+     1265.5186723291827,
+     1302.320840129736,
+     1210.6443541726264,
+     922.8265376472292,
+     444.58590597888644,
+     220.96998883964181,
+     87.7806791686083,
+     65.50643595812515,
+     60.67820495568744
+    ],
+    "range": {
+     "sounding_id": "duricrust over water",
+     "n_layers": 3,
+     "n_samples": 200,
+     "chains": 2,
+     "starts": 4,
+     "seed": 1,
+     "base_error_percent": 3.0,
+     "overlap_spacings": [],
+     "error_scale": 1.0,
+     "acceptance": 0.26,
+     "accepted": [
+      19,
+      33
+     ],
+     "investigation_depth_m": 50.0,
+     "basement_m": null,
+     "basement_unresolved": 1.0,
+     "weathered_m": {
+      "p10": 44.77276106334625,
+      "p50": 46.9077796432086,
+      "p90": 47.0
+     },
+     "resistivity": [
+      {
+       "p10": 274.60732190046775,
+       "p50": 291.57258285048897,
+       "p90": 304.7329475326823
+      },
+      {
+       "p10": 3417.562768868434,
+       "p50": 7119.413388330369,
+       "p90": 15707.474644216058
+      },
+      {
+       "p10": 58.1730132002924,
+       "p50": 60.43887367205422,
+       "p90": 61.43193204011872
+      }
+     ],
+     "interface_m": [
+      {
+       "p10": 0.8876332465614741,
+       "p50": 0.989167583168903,
+       "p90": 1.0826848194495686
+      },
+      {
+       "p10": 1.9386542019886612,
+       "p50": 3.0922203567914,
+       "p90": 5.227238936653751
+      }
+     ],
+     "drilling_depth_m": 50.0,
+     "drilling_depth_capped": true,
+     "chosen_error_percent": 2.0817110512932206,
+     "best_error_percent": 2.081711051112906,
+     "ab2": [
+      1.0,
+      1.5,
+      2.0,
+      3.0,
+      4.0,
+      6.0,
+      8.0,
+      10.0,
+      15.0,
+      20.0,
+      30.0,
+      40.0,
+      60.0,
+      80.0,
+      100.0
+     ],
+     "fan": [
+      [
+       [
+        305.8462303247211,
+        6118.436388145888,
+        59.337174787196226
+       ],
+       [
+        1.0401611941450961,
+        2.4351340987974535
+       ]
+      ],
+      [
+       [
+        274.60732190046775,
+        3417.562768868434,
+        60.45897855912744
+       ],
+       [
+        0.8702012867173154,
+        4.357037649936435
+       ]
+      ],
+      [
+       [
+        274.60732190046775,
+        3417.562768868434,
+        60.45897855912744
+       ],
+       [
+        0.8702012867173154,
+        4.357037649936435
+       ]
+      ],
+      [
+       [
+        291.6385138816153,
+        3636.3877063709483,
+        60.65858478746453
+       ],
+       [
+        0.931682288375917,
+        4.071837274516402
+       ]
+      ],
+      [
+       [
+        282.4106035536198,
+        5159.910764456542,
+        59.78352426357272
+       ],
+       [
+        0.9462266671300238,
+        2.9237890191032543
+       ]
+      ],
+      [
+       [
+        280.4201768394622,
+        6777.543042511315,
+        59.88031512125259
+       ],
+       [
+        0.9631077686572199,
+        2.213511809965804
+       ]
+      ],
+      [
+       [
+        280.4201768394622,
+        6777.543042511315,
+        59.88031512125259
+       ],
+       [
+        0.9631077686572199,
+        2.213511809965804
+       ]
+      ],
+      [
+       [
+        283.7365659602715,
+        6933.331185286304,
+        61.82161800559758
+       ],
+       [
+        0.957050628626736,
+        2.167840435891829
+       ]
+      ],
+      [
+       [
+        304.7329475326823,
+        11808.208722275478,
+        61.43193204011872
+       ],
+       [
+        1.0826848194495686,
+        1.2589403937690145
+       ]
+      ],
+      [
+       [
+        304.7329475326823,
+        11808.208722275478,
+        61.43193204011872
+       ],
+       [
+        1.0826848194495686,
+        1.2589403937690145
+       ]
+      ],
+      [
+       [
+        295.1327020501176,
+        10765.895646247393,
+        61.784498225192735
+       ],
+       [
+        1.0316436959202329,
+        1.3699309488579208
+       ]
+      ],
+      [
+       [
+        294.4416481975577,
+        8174.810557058661,
+        60.557139063416834
+       ],
+       [
+        1.0172466118607768,
+        1.7845649726057846
+       ]
+      ],
+      [
+       [
+        302.83798121706536,
+        15575.388868234386,
+        60.77972727937408
+       ],
+       [
+        1.0891885019118634,
+        0.941226140399051
+       ]
+      ],
+      [
+       [
+        302.22436464031125,
+        19539.330758094253,
+        61.45405351580022
+       ],
+       [
+        1.096727779950513,
+        0.7673170512993015
+       ]
+      ],
+      [
+       [
+        283.62895909985343,
+        15707.474644216058,
+        61.08854025443904
+       ],
+       [
+        0.989167583168903,
+        0.9494866188197583
+       ]
+      ],
+      [
+       [
+        283.62895909985343,
+        15707.474644216058,
+        61.08854025443904
+       ],
+       [
+        0.989167583168903,
+        0.9494866188197583
+       ]
+      ],
+      [
+       [
+        283.62895909985343,
+        15707.474644216058,
+        61.08854025443904
+       ],
+       [
+        0.989167583168903,
+        0.9494866188197583
+       ]
+      ],
+      [
+       [
+        283.62895909985343,
+        15707.474644216058,
+        61.08854025443904
+       ],
+       [
+        0.989167583168903,
+        0.9494866188197583
+       ]
+      ],
+      [
+       [
+        283.62895909985343,
+        15707.474644216058,
+        61.08854025443904
+       ],
+       [
+        0.989167583168903,
+        0.9494866188197583
+       ]
+      ],
+      [
+       [
+        283.62895909985343,
+        15707.474644216058,
+        61.08854025443904
+       ],
+       [
+        0.989167583168903,
+        0.9494866188197583
+       ]
+      ],
+      [
+       [
+        300.71534213353635,
+        7971.3637350505805,
+        60.31850043489028
+       ],
+       [
+        1.0397647200700015,
+        1.8792249642134657
+       ]
+      ],
+      [
+       [
+        284.58232667566216,
+        6831.111607931153,
+        58.68313303476502
+       ],
+       [
+        0.9992285677024666,
+        2.201557772865051
+       ]
+      ],
+      [
+       [
+        294.9710461011158,
+        8602.31000169988,
+        60.45560348527258
+       ],
+       [
+        1.0498350108232202,
+        1.7435022270639904
+       ]
+      ],
+      [
+       [
+        262.6556408210804,
+        5101.525450170269,
+        61.86742174162077
+       ],
+       [
+        0.8545110526158156,
+        3.005862251379448
+       ]
+      ],
+      [
+       [
+        271.96897841790695,
+        5864.514480644054,
+        59.83265807825149
+       ],
+       [
+        0.902450404046992,
+        2.6534217549984183
+       ]
+      ],
+      [
+       [
+        272.7382027290138,
+        7180.414869321691,
+        60.58289991511947
+       ],
+       [
+        0.9259208125111325,
+        2.1631289181953677
+       ]
+      ],
+      [
+       [
+        295.77423932334517,
+        4792.042233143181,
+        60.36251321083693
+       ],
+       [
+        0.9522379544068555,
+        3.2493595531885915
+       ]
+      ],
+      [
+       [
+        292.44896455012747,
+        3203.0613510475896,
+        57.97372908169284
+       ],
+       [
+        0.8914333138310475,
+        4.840569271910265
+       ]
+      ],
+      [
+       [
+        297.3521079209305,
+        3087.3230983344624,
+        57.9447583019035
+       ],
+       [
+        0.8993535431137684,
+        4.997706863671679
+       ]
+      ],
+      [
+       [
+        301.37154407780554,
+        3952.3380690352774,
+        58.428147849155664
+       ],
+       [
+        0.944853304099515,
+        3.9321187201325847
+       ]
+      ],
+      [
+       [
+        279.779753933898,
+        3360.9173949788146,
+        59.17990359544775
+       ],
+       [
+        0.8416261894543235,
+        4.668902004040945
+       ]
+      ],
+      [
+       [
+        294.02786899078086,
+        3699.6590142123005,
+        58.48258474345681
+       ],
+       [
+        0.9035084614053162,
+        4.195656320771194
+       ]
+      ],
+      [
+       [
+        291.2428406912421,
+        3729.688335182341,
+        58.1730132002924
+       ],
+       [
+        0.896965170086195,
+        4.109031866912672
+       ]
+      ],
+      [
+       [
+        309.1266731697325,
+        5390.005707252966,
+        57.52270939554613
+       ],
+       [
+        1.0161879204657227,
+        2.8339529242195374
+       ]
+      ],
+      [
+       [
+        304.2880429279232,
+        8438.64388904277,
+        60.43887367205422
+       ],
+       [
+        1.0473872308540404,
+        1.7727118607420709
+       ]
+      ],
+      [
+       [
+        304.2880429279232,
+        8438.64388904277,
+        60.43887367205422
+       ],
+       [
+        1.0473872308540404,
+        1.7727118607420709
+       ]
+      ],
+      [
+       [
+        304.2880429279232,
+        8438.64388904277,
+        60.43887367205422
+       ],
+       [
+        1.0473872308540404,
+        1.7727118607420709
+       ]
+      ],
+      [
+       [
+        312.07670453534956,
+        6983.024711721192,
+        60.278675925026384
+       ],
+       [
+        1.0639930801858906,
+        2.1376938365598144
+       ]
+      ],
+      [
+       [
+        317.8136413271222,
+        10383.804769024013,
+        60.18196956458548
+       ],
+       [
+        1.1337046160404622,
+        1.4588708830096395
+       ]
+      ],
+      [
+       [
+        304.7218611935436,
+        10605.16096685321,
+        59.46812025615621
+       ],
+       [
+        1.098343479161436,
+        1.4274009919689157
+       ]
+      ]
+     ],
+     "fan_curves": [
+      [
+       358.9058381423933,
+       441.44056165842875,
+       542.6096293864895,
+       746.2228290128626,
+       920.7840691870383,
+       1165.967191654308,
+       1290.6509854982583,
+       1323.9775223409165,
+       1175.0089686213391,
+       906.2169052514569,
+       452.78261386072154,
+       218.84402619171442,
+       83.91193054768507,
+       64.89090063389062,
+       61.7404778922031
+      ],
+      [
+       343.88080720444503,
+       439.17318769903954,
+       545.9769427185831,
+       746.6507819429025,
+       913.6784828120099,
+       1148.166627046292,
+       1269.3425146221434,
+       1303.4225890482735,
+       1162.573881498857,
+       901.9060384172424,
+       456.3041993216157,
+       223.15414193396492,
+       86.29339647520925,
+       66.43167805137972,
+       63.0526690625785
+      ],
+      [
+       343.88080720444503,
+       439.17318769903954,
+       545.9769427185831,
+       746.6507819429025,
+       913.6784828120099,
+       1148.166627046292,
+       1269.3425146221434,
+       1303.4225890482735,
+       1162.573881498857,
+       901.9060384172424,
+       456.3041993216157,
+       223.15414193396492,
+       86.29339647520925,
+       66.43167805137972,
+       63.0526690625785
+      ],
+      [
+       354.01658057826734,
+       444.10044303397035,
+       548.451938107281,
+       749.0223323174037,
+       917.3779252072513,
+       1153.5466643816435,
+       1274.5307735837298,
+       1307.223376103768,
+       1161.7239614755701,
+       897.8814029116218,
+       451.31353032300757,
+       219.9740671840447,
+       85.67486486307092,
+       66.45585023140342,
+       63.197846646913206
+      ],
+      [
+       344.10333512971476,
+       434.4370945529912,
+       540.3052409903211,
+       746.2522418768193,
+       920.6273983323133,
+       1166.2417918680585,
+       1292.6278549273416,
+       1328.0357382004645,
+       1183.3614650406337,
+       916.3339434315741,
+       461.1708593746322,
+       223.88181849064142,
+       85.3991094545969,
+       65.57233837637165,
+       62.26921311025916
+      ],
+      [
+       340.7389867500713,
+       430.1490983761205,
+       535.8658099468012,
+       742.7878739971418,
+       918.1619920230412,
+       1164.3510712185216,
+       1290.300278628832,
+       1325.067024029715,
+       1179.2347494898077,
+       911.9827065959449,
+       457.98287373997425,
+       222.13672646174666,
+       85.07189584709317,
+       65.56556678177668,
+       62.3266110506994
+      ],
+      [
+       340.7389867500713,
+       430.1490983761205,
+       535.8658099468012,
+       742.7878739971418,
+       918.1619920230412,
+       1164.3510712185216,
+       1290.300278628832,
+       1325.067024029715,
+       1179.2347494898077,
+       911.9827065959449,
+       457.98287373997425,
+       222.13672646174666,
+       85.07189584709317,
+       65.56556678177668,
+       62.3266110506994
+      ],
+      [
+       345.76213196945474,
+       437.29131082290814,
+       545.1341979616699,
+       755.4879796355183,
+       933.180328247259,
+       1181.303566808033,
+       1306.607279473211,
+       1339.2274823053212,
+       1186.1746122690467,
+       913.2972861151782,
+       455.6618984072886,
+       220.92279921698946,
+       86.31818965762045,
+       67.43111984698783,
+       64.2800278569033
+      ],
+      [
+       354.56268936141385,
+       433.86290886835553,
+       532.7973513658719,
+       734.6728599060968,
+       908.6492912059816,
+       1153.533561875694,
+       1279.3268221000528,
+       1314.8391578349765,
+       1172.6049370635424,
+       908.9645100697196,
+       458.97649179603576,
+       224.14013369438516,
+       86.9248825684295,
+       67.22852845004695,
+       63.93134738239135
+      ],
+      [
+       354.56268936141385,
+       433.86290886835553,
+       532.7973513658719,
+       734.6728599060968,
+       908.6492912059816,
+       1153.533561875694,
+       1279.3268221000528,
+       1314.8391578349765,
+       1172.6049370635424,
+       908.9645100697196,
+       458.97649179603576,
+       224.14013369438516,
+       86.9248825684295,
+       67.22852845004695,
+       63.93134738239135
+      ],
+      [
+       349.72353300825114,
+       434.1215817904799,
+       537.000129339756,
+       742.6769732729233,
+       917.8572558309338,
+       1162.3483153714615,
+       1285.7080556990416,
+       1317.8356831030649,
+       1167.325563789352,
+       898.9515273626034,
+       448.9428920104608,
+       218.17789241300966,
+       85.88658703577767,
+       67.32018226999077,
+       64.21635005405119
+      ],
+      [
+       350.0274520623089,
+       435.2582900559014,
+       538.5121519160492,
+       743.9416523280822,
+       918.4399745472136,
+       1161.0448920133367,
+       1282.0353687199843,
+       1311.7292721693289,
+       1156.6333357779924,
+       886.6644037658305,
+       439.06138776195485,
+       212.09973886572016,
+       83.6043435378258,
+       65.8570847187051,
+       62.9043940792684
+      ],
+      [
+       351.99679980405523,
+       430.4212018212079,
+       528.4196934637876,
+       728.5085557375853,
+       900.8155566607604,
+       1142.873332322637,
+       1266.640462692591,
+       1300.8857546006502,
+       1158.0905300893742,
+       896.1421437456047,
+       451.12985561565506,
+       219.96664220317666,
+       85.59226841895918,
+       66.42850117901503,
+       63.22562248382664
+      ],
+      [
+       350.7174443101714,
+       428.3960203587529,
+       525.8179393498356,
+       725.6069385533802,
+       898.5338135190005,
+       1143.660615391618,
+       1271.8401580269958,
+       1310.8031942054056,
+       1177.2880102990007,
+       918.907867041542,
+       469.5873157846322,
+       230.79859752929406,
+       88.48009517871503,
+       67.55345139927624,
+       64.03623502684874
+      ],
+      [
+       342.9937882493965,
+       432.30819435073766,
+       538.9151794686834,
+       748.4172415284229,
+       925.4710865873261,
+       1172.277186670744,
+       1296.915366795064,
+       1329.5236154897066,
+       1177.978950676811,
+       907.1756448948307,
+       452.5694144818252,
+       219.20835277144545,
+       85.35723884881565,
+       66.60566332047955,
+       63.49514115259342
+      ],
+      [
+       342.9937882493965,
+       432.30819435073766,
+       538.9151794686834,
+       748.4172415284229,
+       925.4710865873261,
+       1172.277186670744,
+       1296.915366795064,
+       1329.5236154897066,
+       1177.978950676811,
+       907.1756448948307,
+       452.5694144818252,
+       219.20835277144545,
+       85.35723884881565,
+       66.60566332047955,
+       63.49514115259342
+      ],
+      [
+       342.9937882493965,
+       432.30819435073766,
+       538.9151794686834,
+       748.4172415284229,
+       925.4710865873261,
+       1172.277186670744,
+       1296.915366795064,
+       1329.5236154897066,
+       1177.978950676811,
+       907.1756448948307,
+       452.5694144818252,
+       219.20835277144545,
+       85.35723884881565,
+       66.60566332047955,
+       63.49514115259342
+      ],
+      [
+       342.9937882493965,
+       432.30819435073766,
+       538.9151794686834,
+       748.4172415284229,
+       925.4710865873261,
+       1172.277186670744,
+       1296.915366795064,
+       1329.5236154897066,
+       1177.978950676811,
+       907.1756448948307,
+       452.5694144818252,
+       219.20835277144545,
+       85.35723884881565,
+       66.60566332047955,
+       63.49514115259342
+      ],
+      [
+       342.9937882493965,
+       432.30819435073766,
+       538.9151794686834,
+       748.4172415284229,
+       925.4710865873261,
+       1172.277186670744,
+       1296.915366795064,
+       1329.5236154897066,
+       1177.978950676811,
+       907.1756448948307,
+       452.5694144818252,
+       219.20835277144545,
+       85.35723884881565,
+       66.60566332047955,
+       63.49514115259342
+      ],
+      [
+       342.9937882493965,
+       432.30819435073766,
+       538.9151794686834,
+       748.4172415284229,
+       925.4710865873261,
+       1172.277186670744,
+       1296.915366795064,
+       1329.5236154897066,
+       1177.978950676811,
+       907.1756448948307,
+       452.5694144818252,
+       219.20835277144545,
+       85.35723884881565,
+       66.60566332047955,
+       63.49514115259342
+      ],
+      [
+       354.2563091052902,
+       437.51841434710957,
+       539.5469835429459,
+       744.754512274114,
+       920.5077603796165,
+       1167.2894509209873,
+       1293.252811742765,
+       1327.7426783038652,
+       1180.8144206651432,
+       912.6261486232218,
+       457.8980897779914,
+       222.12707477706778,
+       85.39653974780191,
+       65.98651100966555,
+       62.763496970694035
+      ],
+      [
+       340.35528687551727,
+       425.0423393886499,
+       526.9986443835335,
+       729.528814433741,
+       902.6601055684623,
+       1147.6330287524147,
+       1275.2316006669582,
+       1313.2306854767248,
+       1176.855327485898,
+       916.2391320773263,
+       465.2063980282641,
+       226.6028948045959,
+       85.18356912001224,
+       64.59106839031278,
+       61.17007074249108
+      ],
+      [
+       346.5893932166884,
+       427.36162576331384,
+       526.8537988132475,
+       728.0274378962526,
+       901.1729987295541,
+       1146.233163673132,
+       1273.9098949757727,
+       1312.1020964739237,
+       1176.5071462480705,
+       916.7065251278678,
+       466.72801270607704,
+       228.50095909797426,
+       87.1234093699353,
+       66.45934142052016,
+       62.99946697103968
+      ],
+      [
+       336.76357417238336,
+       437.8467822793906,
+       550.859863865642,
+       763.8914612203662,
+       942.0887683595339,
+       1191.9712734052405,
+       1319.5785398201,
+       1354.1439749962178,
+       1203.2053105367847,
+       929.2718185080034,
+       465.9400933047966,
+       226.21489179627224,
+       87.41234134125875,
+       67.69799592173274,
+       64.40102250138813
+      ],
+      [
+       340.03758832601164,
+       436.6303758568041,
+       547.4758887950688,
+       760.1804278209866,
+       939.552656341712,
+       1192.4974373409395,
+       1323.4347306543916,
+       1361.254746008862,
+       1216.2304137898318,
+       944.0118380155791,
+       476.45918945677244,
+       230.9253793876241,
+       86.58133787200626,
+       65.78892356386388,
+       62.35131879462193
+      ],
+      [
+       337.9971844668426,
+       432.2872792572804,
+       541.8346186278673,
+       753.8286348014684,
+       933.1151178352974,
+       1186.078533733286,
+       1317.475174100844,
+       1356.2154191148747,
+       1214.193419221484,
+       944.4016509141767,
+       478.69306211132937,
+       232.94883143844447,
+       87.70618717531215,
+       66.63255768608929,
+       63.13538765157193
+      ],
+      [
+       358.38336091836265,
+       450.3948141557137,
+       558.4830040235693,
+       769.0512958365883,
+       947.4919398729751,
+       1199.3498790647188,
+       1329.5431314831937,
+       1366.5216634532576,
+       1219.041691457112,
+       944.89582607171,
+       475.97181442582445,
+       230.65867691719262,
+       86.97561003742084,
+       66.33647065178042,
+       62.908944325617824
+      ],
+      [
+       360.29820777294776,
+       455.12149643244317,
+       562.4125925369788,
+       764.9683396649948,
+       933.7471213892003,
+       1171.6951812303075,
+       1296.8361118336393,
+       1334.7715431548668,
+       1199.2258337339922,
+       936.870456766847,
+       478.41089344272075,
+       233.29722437206635,
+       86.1308465576418,
+       64.28800468725166,
+       60.615322650414214
+      ],
+      [
+       364.07083673107326,
+       457.82477738577444,
+       564.2343012205378,
+       765.3004548704748,
+       932.612406532418,
+       1167.9929342408009,
+       1291.4875726109344,
+       1328.6251034435763,
+       1193.1694025962288,
+       932.0020408955737,
+       475.9549114165767,
+       232.2526917593674,
+       85.97520248191222,
+       64.25304042419788,
+       60.59112058791624
+      ],
+      [
+       364.2530302352917,
+       456.0207980797545,
+       563.1820274394322,
+       770.6768019829079,
+       945.8291286580339,
+       1193.0793851453577,
+       1321.4389136022833,
+       1358.222421748926,
+       1212.6582607418545,
+       940.7110897996249,
+       474.0643638918607,
+       229.12646429343363,
+       85.14411195215621,
+       64.38780899630098,
+       60.949730327512896
+      ],
+      [
+       355.6436093070614,
+       457.3949604406702,
+       569.5797253719115,
+       778.0654070063238,
+       950.9002869759086,
+       1193.9624747244818,
+       1320.8440561599518,
+       1358.1248594057988,
+       1216.276772675411,
+       947.0101280517329,
+       480.78463739696934,
+       233.77340221006483,
+       86.94784958915494,
+       65.42537555655684,
+       61.81705503767739
+      ],
+      [
+       361.9407546605358,
+       457.95016264082403,
+       567.5533335009009,
+       776.1424716676597,
+       950.7134675707548,
+       1196.1490965505602,
+       1322.920298246886,
+       1358.4222646070236,
+       1210.5848025393968,
+       937.5593556651309,
+       471.20515609046646,
+       227.4814202496961,
+       84.85692354982547,
+       64.39328139475197,
+       60.99896896496108
+      ],
+      [
+       359.91357691132924,
+       456.496592915238,
+       566.3656821270029,
+       774.8849848457082,
+       949.0224660825546,
+       1192.8871973708797,
+       1317.4853950013417,
+       1350.704290186969,
+       1198.6763883299332,
+       924.5033265993108,
+       461.31887960365145,
+       221.87931275425296,
+       83.43243400930146,
+       63.85859397489912,
+       60.620273289285365
+      ],
+      [
+       365.18608311961924,
+       451.1244557628538,
+       555.2817948863756,
+       763.0317982844756,
+       940.5698425780547,
+       1190.3070591989472,
+       1317.7437229542347,
+       1352.0810095644406,
+       1200.463963067772,
+       925.817020315479,
+       461.43118075977543,
+       221.30413712883603,
+       82.58590320489282,
+       63.07650279246383,
+       59.89027115196538
+      ],
+      [
+       357.58791848247563,
+       440.8177641153778,
+       543.1162170043126,
+       749.264144569358,
+       925.7763992993025,
+       1172.9844119603308,
+       1298.340921027573,
+       1331.6721814108735,
+       1181.3938073521879,
+       910.8697867956032,
+       455.0951735441244,
+       220.27377882932154,
+       85.04264611642412,
+       66.01149987718219,
+       62.85700705706063
+      ],
+      [
+       357.58791848247563,
+       440.8177641153778,
+       543.1162170043126,
+       749.264144569358,
+       925.7763992993025,
+       1172.9844119603308,
+       1298.340921027573,
+       1331.6721814108735,
+       1181.3938073521879,
+       910.8697867956032,
+       455.0951735441244,
+       220.27377882932154,
+       85.04264611642412,
+       66.01149987718219,
+       62.85700705706063
+      ],
+      [
+       357.58791848247563,
+       440.8177641153778,
+       543.1162170043126,
+       749.264144569358,
+       925.7763992993025,
+       1172.9844119603308,
+       1298.340921027573,
+       1331.6721814108735,
+       1181.3938073521879,
+       910.8697867956032,
+       455.0951735441244,
+       220.27377882932154,
+       85.04264611642412,
+       66.01149987718219,
+       62.85700705706063
+      ],
+      [
+       363.6648744144792,
+       445.0023017108657,
+       545.7620548144818,
+       750.2629206527522,
+       926.0905927959841,
+       1172.6872177914638,
+       1297.6212586435456,
+       1330.5686557726708,
+       1179.62390612736,
+       908.9220526336701,
+       453.6167624918596,
+       219.41180472693168,
+       84.75361915926942,
+       65.83295676111607,
+       62.69417463257224
+      ],
+      [
+       363.48619907499733,
+       438.16476177151344,
+       533.5053471761789,
+       732.4404281673519,
+       906.3688599285194,
+       1153.7408040306098,
+       1283.3218468701016,
+       1322.9007022541416,
+       1188.6064908671121,
+       927.8521570498931,
+       473.6189405583645,
+       231.81189107453196,
+       87.49241239408224,
+       66.28084404133494,
+       62.740769872358925
+      ],
+      [
+       352.56187856846407,
+       429.41146446071315,
+       526.0898326012724,
+       725.1862335781348,
+       898.2080019861842,
+       1144.4595560737214,
+       1274.2069665874335,
+       1314.7756747842204,
+       1184.1623331284368,
+       926.5143509690179,
+       474.70140562466594,
+       232.64040703492077,
+       87.17482610333371,
+       65.62588649587616,
+       62.029793908948136
+      ]
+     ],
+     "start_points": [
+      [
+       9.210459977175072,
+       6.398683462591581,
+       4.679330467377456,
+       2.572392648792876,
+       -1.0276649823732442
+      ],
+      [
+       7.295645101576227,
+       9.016348089055281,
+       8.072318367229286,
+       2.927623585510282,
+       2.7881149622391725
+      ],
+      [
+       2.138244788371266,
+       2.5829327433318463,
+       3.1430267288276914,
+       -1.0238363712042462,
+       3.986327442106263
+      ],
+      [
+       5.156404911960048,
+       5.291185289483106,
+       6.2585376844114915,
+       1.3842535083779621,
+       1.1023018040428787
+      ]
+     ],
+     "start_errors": [
+      48.78784755931464,
+      48.78562347360661,
+      2.081711098884318,
+      2.081711051112906
+     ],
+     "drilling_depth_quantiles_m": [
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0,
+      50.0
+     ],
+     "text": [
+      "Basement not resolved in 100 percent of the models that fit, within the 50 m the sounding resolves.",
+      "Water-bearing weathered zone 45 to 47 m thick (P10 to P90), counted from 3 m down to the 50 m the sounding resolves.",
+      "Drilling depth from the P90 of the models that fit: at least 50 m, cut back to the 50 m the sounding resolves.",
+      "Basis: 200 models of 3 layers sampled by Metropolis-Hastings in 2 chains, started from the best of 5 fits (the inversion's own and 4 from Latin hypercube starting models), with an error of 3 percent on each reading. The error model is provisional."
      ],
      "caption": "The grey fan is 40 of the sampled models that fit."
     }

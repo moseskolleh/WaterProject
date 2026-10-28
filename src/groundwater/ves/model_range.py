@@ -62,7 +62,7 @@ from ..ingestion.ves import overlap_ratios
 from ..models import VESSounding
 from ..text import phrase
 from ..utils import and_join, fmt_num
-from .interpret import _unit_label, depth_of_investigation
+from .interpret import VADOSE_M, _unit_label, basement_top, depth_of_investigation
 from .inversion import (
     _H_BOUNDS,
     _RHO_BOUNDS,
@@ -269,15 +269,20 @@ def reading_errors(
 
     A Wenner sheet has no MN to change, and a spacing read twice on one is
     two readings the fit sees apart, so their scatter is in the misfit
-    already: only a Schlumberger overlap adds to the error.
+    already: only a Schlumberger overlap adds to the error. The splice also
+    leaves as two readings a spacing read twice on a Schlumberger sheet with
+    no MN change recorded, so a spacing ``ab2`` holds more than once was not
+    merged and its error is the base alone. It used to take the overlap term
+    on each copy, and the basis listed the spacing once per copy.
     """
     base = base_error_percent / 100.0
     at = ({} if sounding.array_type.startswith("wenner")
           else dict(overlap_ratios(sounding.ab2, sounding.rho_app)))
+    fitted = [float(v) for v in ab2]
     sigma = np.empty(len(ab2))
     spacings = []
-    for i, value in enumerate(ab2):
-        ratio = at.get(float(value))
+    for i, value in enumerate(fitted):
+        ratio = at.get(value) if fitted.count(value) == 1 else None
         if ratio is None:
             sigma[i] = base
             continue
@@ -300,21 +305,20 @@ def _summary(theta: list[float], n: int, investigation: float, ves: VESConfig):
         tops.append(tops[-1] + math.exp(v))
     weathered = 0.0
     deepest = None
-    basement = None
     for i in range(n):
         top = tops[i]
         bottom = tops[i + 1] if i + 1 < n else math.inf
         if _unit_label(rho[i], i == 0, i == n - 1, ves)[1]:
-            z_top = max(top, 3.0)  # the top few metres are vadose
+            z_top = max(top, VADOSE_M)  # the top few metres are vadose
             if z_top < investigation:
                 z_bottom = min(bottom, investigation)
                 if z_bottom - z_top >= 1.0:
                     weathered += z_bottom - z_top
                     deepest = z_bottom
-        if basement is None and rho[i] >= ves.fresh_basement_min_rho and top > 0:
-            basement = top
-    if basement is None and rho[-1] >= ves.fractured_zone_rho[1]:
-        basement = tops[n - 1]
+    # resistive ground with nothing conductive below it, by the
+    # interpretation's own rule: a layer as resistive as basement over
+    # conductive ground is a cover, not a basement found in every model
+    basement = basement_top(rho, tops, ves)
     if basement is not None and basement > investigation:
         basement = None
     deepest = investigation if deepest is None else deepest + ves.max_drilling_margin_m

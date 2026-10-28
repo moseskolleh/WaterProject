@@ -945,15 +945,20 @@
       });
     });
 
-    /* merge duplicates by geometric mean */
+    /* Merge duplicates by geometric mean, over the readings that can be: a
+     * zero or blank at an overlap made the mean 0 or NaN, and the inversion
+     * then dropped the spacing with the good reading beside it. A spacing with
+     * no usable reading stays NaN, which the inversion leaves out. */
     var unique = ab2All.slice().sort(function (a, b) { return a - b; })
       .filter(function (v, k, a) { return k === 0 || v !== a[k - 1]; });
     var merged = unique.map(function (u) {
       var logs = [];
       for (var k = 0; k < ab2All.length; k++) {
-        if (ab2All[k] === u) logs.push(Math.log(rhoAll[k]));
+        if (ab2All[k] === u && isFinite(rhoAll[k]) && rhoAll[k] > 0) {
+          logs.push(Math.log(rhoAll[k]));
+        }
       }
-      return Math.exp(arrMean(logs));
+      return logs.length ? Math.exp(arrMean(logs)) : NaN;
     });
     return { ab2: unique, rho: merged, shifts: shifts };
   }
@@ -1654,7 +1659,10 @@
    * percentage, plus half the log ratio at an MN overlap, added in
    * quadrature as two independent errors are. A Wenner sheet has
    * no MN to change, and a spacing it reads twice is two readings the fit
-   * sees apart, so only a Schlumberger overlap adds to the error.
+   * sees apart, so only a Schlumberger overlap adds to the error. The splice
+   * also leaves as two readings a spacing read twice on a Schlumberger sheet
+   * with no MN change recorded, so a spacing ab2 holds more than once was not
+   * merged and its error is the base alone.
    * @param {Sounding} sounding
    * @param {number[]} ab2
    * @param {number} basePercent
@@ -1666,9 +1674,15 @@
     if (String(sounding.array_type || '').indexOf('wenner') !== 0) {
       overlapRatios(sounding.ab2, sounding.rho_app).forEach(function (o) { at[o[0]] = o[1]; });
     }
+    /** @type {Record<string, number>} */
+    var count = {};
+    ab2.forEach(function (value) { count[value] = (count[value] || 0) + 1; });
     var sigma = [], spacings = [];
     ab2.forEach(function (value) {
-      if (!Object.prototype.hasOwnProperty.call(at, value)) { sigma.push(base); return; }
+      if (count[value] > 1 || !Object.prototype.hasOwnProperty.call(at, value)) {
+        sigma.push(base);
+        return;
+      }
       var d = 0.5 * Math.log(at[value]);
       sigma.push(Math.sqrt(base * base + d * d));
       spacings.push(value);
@@ -1682,11 +1696,11 @@
     var rho = [], tops = [0.0], i;
     for (i = 0; i < n; i++) rho.push(Math.exp(theta[i]));
     for (i = n; i < theta.length; i++) tops.push(tops[tops.length - 1] + Math.exp(theta[i]));
-    var weathered = 0.0, deepest = null, basement = null;
+    var weathered = 0.0, deepest = null;
     for (i = 0; i < n; i++) {
       var top = tops[i], bottom = i + 1 < n ? tops[i + 1] : Infinity;
       if (unitLabel(rho[i], i === 0, i === n - 1, ves)[1]) {
-        var zTop = Math.max(top, 3.0);  /* the top few metres are vadose */
+        var zTop = Math.max(top, VADOSE_M);  /* the top few metres are vadose */
         if (zTop < investigation) {
           var zBottom = Math.min(bottom, investigation);
           if (zBottom - zTop >= 1.0) {
@@ -1695,9 +1709,11 @@
           }
         }
       }
-      if (basement === null && rho[i] >= ves.fresh_basement_min_rho && top > 0) basement = top;
     }
-    if (basement === null && rho[n - 1] >= ves.fractured_zone_rho[1]) basement = tops[n - 1];
+    /* resistive ground with nothing conductive below it, by the
+     * interpretation's own rule: a layer as resistive as basement over
+     * conductive ground is a cover, not a basement found in every model */
+    var basement = basementTop(rho, tops, ves);
     if (basement !== null && basement > investigation) basement = null;
     deepest = deepest === null ? investigation : deepest + ves.max_drilling_margin_m;
     return [basement, weathered, deepest, tops.slice(1), rho];
@@ -8029,7 +8045,48 @@
    * forms the main aquifer, and fresh basement at depth.
    */
 
-  function unitLabel(rho, isTop, isBottom, cfg) {
+  /* The top few metres are taken as unsaturated: a water zone starts no
+   * shallower than this (interpret.py VADOSE_M). */
+  var VADOSE_M = 3.0;
+
+  /* Whether a layer below the top is conductive ground: one the rules read as
+   * water-bearing or clay-rich weathered ground, rather than as compact or dry
+   * rock or basement - under both the top of the water-bearing window and the
+   * fresh basement edge (interpret.py _conductive). */
+  function isConductive(rho, cfg) {
+    return rho < cfg.fractured_zone_rho[1] && rho < cfg.fresh_basement_min_rho;
+  }
+
+  /* For each layer, whether any deeper layer is conductive ground. */
+  function conductiveBelow(rho, cfg) {
+    var out = [], seen = false;
+    for (var i = rho.length - 1; i >= 0; i--) {
+      out[i] = seen;
+      seen = seen || isConductive(rho[i], cfg);
+    }
+    return out;
+  }
+
+  /* interpret.py basement_top: the top of fresh basement, or null. Fresh
+   * basement is resistive ground with no conductive ground beneath it in the
+   * fitted model: the first layer below the surface that reaches the fresh
+   * basement edge with nothing conductive under it, else a half-space of
+   * 800 ohm-m or more. A layer that reaches the edge over conductive ground
+   * is a resistive cover (a duricrust or a dry layer), not bedrock; it used
+   * to be taken as basement whatever lay below. The interpretation and the
+   * range of models (rangeSummary) both read it from here. */
+  function basementTop(rho, tops, cfg) {
+    var below = conductiveBelow(rho, cfg);
+    for (var i = 0; i < rho.length; i++) {
+      if (rho[i] >= cfg.fresh_basement_min_rho && tops[i] > 0 && !below[i]) return tops[i];
+    }
+    if (rho[rho.length - 1] >= cfg.fractured_zone_rho[1]) return tops[rho.length - 1];
+    return null;
+  }
+
+  /* overConductive: whether conductive ground lies anywhere below the layer;
+   * a layer as resistive as fresh basement over it is a resistive cover. */
+  function unitLabel(rho, isTop, isBottom, cfg, overConductive) {
     var hi = cfg.fractured_zone_rho[1];
     if (isTop) {
       if (rho >= cfg.laterite_min_rho) return ['dry lateritic topsoil / duricrust', false];
@@ -8037,7 +8094,10 @@
       if (rho <= cfg.clay_max_rho) return ['clayey topsoil', false];
       return ['topsoil / laterite', false];
     }
-    if (rho >= cfg.fresh_basement_min_rho) return ['fresh basement', false];
+    if (rho >= cfg.fresh_basement_min_rho) {
+      if (overConductive) return [phrase('ves.unit_resistive_cover'), false];
+      return ['fresh basement', false];
+    }
     if (rho >= hi) {
       if (isBottom) {
         return ['slightly weathered or fractured bedrock (limited water potential)', false];
@@ -8199,8 +8259,9 @@
     }
 
     var layers = [];
+    var below = conductiveBelow(rho, cfg);
     for (i = 0; i < n; i++) {
-      var labelled = unitLabel(rho[i], i === 0, i === n - 1, cfg);
+      var labelled = unitLabel(rho[i], i === 0, i === n - 1, cfg, below[i]);
       layers.push({
         number: i + 1,
         rho: rho[i],
@@ -8217,20 +8278,30 @@
      * open-ended there, as the half-space is: the model put that base where
      * no reading reaches. A water-bearing layer that starts at or below the
      * depth of investigation was never seen at all, so it is no zone, and
-     * the narrative says so. */
+     * the narrative says so. One that starts above it, on a sounding too
+     * short to see below the vadose allowance, is no zone either, but does
+     * not lie below the depth of investigation. */
     var zones = [];
     var basementNotResolved = false;
-    var openBase = null, unseenTops = [];
+    var openBase = null, unseenTops = [], vadoseTops = [];
     layers.forEach(function (layer) {
       if (!layer.water_bearing) return;
-      var top = Math.max(layer.top_m, 3.0);
-      if (top >= investigation) { unseenTops.push(layer.top_m); return; }
+      var top = Math.max(layer.top_m, VADOSE_M);
+      if (top >= investigation) {
+        (layer.top_m >= investigation ? unseenTops : vadoseTops).push(layer.top_m);
+        return;
+      }
       var bottom = Math.min(layer.bottom_m, investigation);
       if (layer.bottom_m > investigation) {
         basementNotResolved = bottom - top >= 1.0;
         openBase = layer.bottom_m;
       }
-      if (bottom - top >= 1.0) zones.push([pyRound(top), pyRound(bottom)]);
+      if (bottom - top >= 1.0) {
+        /* each end rounded half to even, but never to a zone of no
+         * thickness: 3.5 to 4.5 m came out "4 m to 4 m", an aquifer of 0 m */
+        var zTop = pyRound(top);
+        zones.push([zTop, Math.max(pyRound(bottom), zTop + 1)]);
+      }
     });
     zones.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
     var merged = [];
@@ -8241,17 +8312,12 @@
     });
     zones = merged;
 
-    var depthToBasement = null;
-    for (i = 0; i < layers.length; i++) {
-      if (layers[i].rho >= cfg.fresh_basement_min_rho && layers[i].top_m > 0) {
-        depthToBasement = layers[i].top_m;
-        break;
-      }
-    }
-    if (depthToBasement === null &&
-        layers[layers.length - 1].rho >= cfg.fractured_zone_rho[1]) {
-      depthToBasement = layers[layers.length - 1].top_m;
-    }
+    /* resistive ground with nothing conductive below it (basementTop); a layer
+     * as resistive as basement over conductive ground is a cover */
+    var depthToBasement = basementTop(rho, tops, cfg);
+    var covers = layers.filter(function (layer, k) {
+      return layer.number > 1 && below[k] && layer.rho >= cfg.fresh_basement_min_rho;
+    }).map(function (layer) { return layer.number; });
     /* a basement top below the depth of investigation is where the model
      * happened to put it, not a depth the sounding measured */
     var bedrockUnseen = depthToBasement !== null && depthToBasement > investigation;
@@ -8349,7 +8415,8 @@
       fit_quality: fitQuality,
       max_spacing_m: maxSpacing,
     };
-    interp.narrative = interpretationNarrative(interp, unseenTops, bedrockUnseen);
+    interp.narrative = interpretationNarrative(interp, unseenTops, bedrockUnseen,
+      vadoseTops, covers);
     return interp;
   }
 
@@ -8709,7 +8776,10 @@
       : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
   }
 
-  function interpretationNarrative(interp, unseenTops, bedrockUnseen) {
+  /* vadoseTops: the tops of the water-bearing layers a sounding too short to
+   * see below the vadose allowance does not count; covers: the numbers of the
+   * layers as resistive as fresh basement over conductive ground. */
+  function interpretationNarrative(interp, unseenTops, bedrockUnseen, vadoseTops, covers) {
     var curve = describeCurveType(interp.curve_type);
     /* "resolves a 3 layer subsurface" over a boundary known only to x/ 3.7
      * claimed a layer the curve does not settle */
@@ -8750,13 +8820,14 @@
         'this point within the investigated depth.');
     }
     if (unseenTops && unseenTops.length) {
-      var one = unseenTops.length === 1;
-      parts.push('The water-bearing ' + (one ? 'layer' : 'layers') + ' from ' +
-        andJoin(unseenTops.map(function (t) { return fmtNum(t) + ' m'; })) + ' ' +
-        (one ? 'lies' : 'lie') + ' below the ' + fmtNum(interp.investigation_depth_m) +
-        ' m the sounding resolves, so ' +
-        (one ? 'it is not counted as a water zone' : 'they are not counted as water zones') +
-        '.');
+      parts.push(phrase('ves.unseen_layers', { n: unseenTops.length,
+        tops: andJoin(unseenTops.map(function (t) { return fmtNum(t) + ' m'; })),
+        doi: interp.investigation_depth_m }));
+    }
+    if (vadoseTops && vadoseTops.length) {
+      parts.push(phrase('ves.vadose_layers', { n: vadoseTops.length,
+        tops: andJoin(vadoseTops.map(function (t) { return fmtNum(t) + ' m'; })),
+        vadose: VADOSE_M, doi: interp.investigation_depth_m }));
     }
     if (interp.fit_error_percent !== null && interp.fit_error_percent !== undefined) {
       if (interp.fit_quality === 'unreliable') {
@@ -8769,6 +8840,10 @@
           fmtNum(interp.fit_error_percent, 3) + ' percent (ERR), above the ' +
           'target, so the layer depths are approximate.');
       }
+    }
+    if (covers && covers.length) {
+      parts.push(phrase('ves.resistive_cover', { n: covers.length,
+        layers: andJoin(covers.map(function (k) { return String(k); })) }));
     }
     if (interp.depth_to_basement_m !== null) {
       parts.push('The depth to bedrock is estimated at about ' +
@@ -16181,6 +16256,13 @@
 
   /* "Resistance (ohm)", "R (ohm)", "V/I", "dV/I": a measured resistance */
   var RESISTANCE_RE = /resistance|^r\s*\(|v\s*\/\s*i/;
+  /* The unit of a resistivity, ohm-metres however a sheet writes it: "ohm-m",
+   * "ohm.m", "ohm m", "ohmm", "Ωm", "Ω·m", "ohm-metre". Only a
+   * resistivity is in ohm-metres, so a column headed "R (ohm-m)" is one,
+   * whatever its name says; such a column used to be read as V/I and
+   * multiplied by K. The same pattern as ingestion/ves.py _RESISTIVITY_UNIT_RE. */
+  var RESISTIVITY_UNIT_RE =
+    /(?:ohm|ω)\s*[-.·⋅•*]?\s*m(?:et(?:er|re)s?)?(?![a-z])/;
 
   /* The array a sheet names, wherever on the sheet it names it: the title of a
    * template ("SCHLUMBERGER ARRAY VES FIELD DATA"), the array field itself, or
@@ -16316,6 +16398,10 @@
           cols.mn_half = c;
         } else if (t.indexOf('mn') === 0) {
           cols.mn = c;
+        } else if (RESISTIVITY_UNIT_RE.test(t)) {
+          /* a column in ohm-metres is a resistivity, before the resistance
+           * test reads "R (" or "resistance" in its name */
+          cols.rho = c;
         } else if (RESISTANCE_RE.test(t)) {
           /* a sheet that records V/I (a resistance, in ohms) is not a
            * resistivity sheet: "R (ohm)" used to match the "ohm" test below
@@ -16391,6 +16477,8 @@
       spacingCol = cols.a; wennerFromAb2 = false;
     }
     var blankRun = 0;
+    /** @type {number[]} AB/2 of resistances K could not convert */
+    var kUndefined = [];
 
     for (var r = located.row + 1; r < grid.length; r++) {
       var row = grid[r] || [];
@@ -16417,7 +16505,15 @@
           k = geometricFactor('wenner', { a: a });
         } else if (k === null) {
           var spacing = (m !== null && mnIsHalf) ? 2.0 * m : m;
-          if (spacing) k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+          /* K is defined only for 0 < MN/2 < AB/2, and geometricFactor throws
+           * outside that: one mistyped spacing on a resistance sheet used to
+           * throw out of the reader and lose every sheet of the workbook. The
+           * row is left out and flagged instead. */
+          if (spacing !== null && spacing / 2.0 > 0 && spacing / 2.0 < a) {
+            k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+          } else if (spacing !== null) {
+            kUndefined.push(a);
+          }
         }
         rr = k ? k * rr : null;
       }
@@ -16507,6 +16603,12 @@
         message: phrase('ves.nonpositive_spacing', { n: badSpacings }),
         context: soundingId });
     }
+    if (kUndefined.length) {
+      flags.push({ level: 'warning', code: 'k_undefined',
+        message: phrase('ves.k_undefined', { n: kUndefined.length,
+          spacings: andJoin(kUndefined.map(function (v) { return formatG(v); })) }),
+        context: soundingId });
+    }
     for (var d = 1; d < ab2.length; d++) {
       if (ab2[d] - ab2[d - 1] < 0) {
         flags.push({ level: 'warning', code: 'ab2_not_sorted',
@@ -16527,21 +16629,19 @@
     ab2.forEach(function (v) { seen[v] = (seen[v] || 0) + 1; });
     Object.keys(seen).forEach(function (v) { if (seen[v] > 1) dup += 1; });
     if (dup) {
+      /* The splice merges a repeated spacing by geometric mean only on a
+       * Schlumberger sounding with more than one MN segment. A Wenner sheet, or
+       * one with no MN change recorded, is fitted reading by reading, and its
+       * flags used to say the pair was merged at an MN change all the same. */
+      var merged = !isWenner && soundingSegments(sounding).length > 1;
       flags.push({ level: 'info', code: 'segment_overlap',
-        message: dup + ' AB/2 value(s) repeated with different MN (segment ' +
-          'changes); both readings kept.', context: soundingId });
+        message: phrase(merged ? 'ves.segment_overlap' : 'ves.repeat_reading', { n: dup }),
+        context: soundingId });
       var discrepant = overlapDiscrepancies(ab2, rho);
       if (discrepant.length) {
         flags.push({ level: 'warning', code: 'segment_overlap_discrepancy',
-          message: 'At an MN change the two readings at one AB/2 should agree ' +
-            'within a few percent; these differ by more than ' +
-            pyFixed((OVERLAP_DISCREPANCY_RATIO - 1) * 100, 0) + ' percent: ' +
-            discrepant.join('; ') +
-            '. That is a field problem (potential-electrode contact, lateral ' +
-            'inhomogeneity at the new MN) or a transcription slip, and the ' +
-            'inversion merges the pair by geometric mean, so part of the model ' +
-            'misfit is made by the splice. Check the sheet before relying on the ' +
-            'deep branch.',
+          message: phrase(merged ? 'ves.overlap_discrepancy' : 'ves.repeat_discrepancy', {
+            percent: (OVERLAP_DISCREPANCY_RATIO - 1) * 100, pairs: discrepant.join('; ') }),
           context: soundingId });
       }
     }

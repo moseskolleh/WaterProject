@@ -82,7 +82,20 @@ resistivity from the instrument.
 
 At every segment change (for example AB/2 = 3, 10, 40 and 70 m),
 repeat the same AB/2 with the old MN and again with the new MN. Both
-readings are used; do not delete either one.
+readings are used; do not delete either one. The inversion merges the
+two by geometric mean. A spacing read twice with no MN change recorded
+(no MN column, or the same MN throughout), and any repeat on a Wenner
+sheet, is fitted as two readings, and the flags say so.
+
+A sheet may record the instrument's resistance (V/I, in ohms, headed
+for example "R (ohm)") in place of the apparent resistivity. The
+reader then multiplies each reading by the geometric factor K, from the
+sheet's K column or from AB/2 and MN. K needs MN/2 between 0 and AB/2,
+so a row outside that is left out with a warning that names its AB/2;
+the rest of the sheet and the workbook are read. A column whose unit is
+ohm-metres (ohm-m, ohm.m, Ωm, Ω·m) is a resistivity whatever its
+heading says, so "R (ohm-m)" is read as it stands and not multiplied
+again.
 
 A sounding is inverted from four spacings up, and is fitted with no
 more layers than leave it one reading to spare: two layers below six
@@ -91,6 +104,13 @@ at four or five spacings is therefore read as two layers, however many
 the ground has. A row whose AB/2 is 0 (a formula over a blank cell, or
 a placeholder) is kept as read, flagged "A spacing must be positive",
 and left out of the inversion.
+
+The depth to bedrock is the top of resistive ground with nothing
+conductive below it in the fitted model. A layer as resistive as fresh
+basement (3,000 ohm-m by default) that lies over a water-bearing or
+clay-rich layer is read as a resistive cover, such as a duricrust or a
+dry layer, and the interpretation says so; bedrock is then looked for
+below the conductive ground.
 
 ## 2a. VES co-pilot (browser app, at the peg)
 

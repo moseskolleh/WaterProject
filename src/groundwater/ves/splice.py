@@ -12,6 +12,8 @@ mean.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from ..models import VESSounding
@@ -86,9 +88,17 @@ def splice_segments(
     ab2_all = np.asarray(ab2_all)
     rho_all = np.asarray(rho_all)
 
-    # merge duplicates by geometric mean
+    # Merge duplicates by geometric mean, over the readings that can be: a
+    # zero or blank at an overlap made the mean 0 or NaN, and the inversion
+    # then dropped the spacing with the good reading beside it. A spacing
+    # with no usable reading stays NaN, which the inversion leaves out.
     unique = np.unique(ab2_all)
-    rho_merged = np.array(
-        [np.exp(np.mean(np.log(rho_all[ab2_all == u]))) for u in unique]
-    )
+    rho_merged = np.array([_geometric_mean(rho_all[ab2_all == u]) for u in unique])
     return unique, rho_merged, shifts
+
+
+def _geometric_mean(readings: np.ndarray) -> float:
+    usable = readings[np.isfinite(readings) & (readings > 0)]
+    if not len(usable):
+        return math.nan
+    return float(np.exp(np.mean(np.log(usable))))

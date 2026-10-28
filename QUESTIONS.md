@@ -116,3 +116,18 @@ need real project inputs or decisions to finish calibrating it.
    many layers as it has spacings, so a model keeps one degree of
    freedom; keeping two would refuse three layers to soundings of six
    and seven spacings.
+
+12. **Two choices in the VES interpretation want a geophysicist's
+   confirmation (added with the VES reading audit).** Both are stated
+   in `groundwater/ves/interpret.py`. (a) A layer at or over the fresh
+   basement edge is taken as basement only where no layer below it in
+   the fitted model is conductive ground, which the rules read as any
+   layer under both the 800 ohm-m top of the water-bearing window and
+   the edge: water-bearing ground and clay-rich saprolite alike. Over
+   such ground it is read as a resistive cover (a duricrust or a dry
+   layer). The fitted model is believed for this below the depth of
+   investigation too, so a conductive layer the model puts deeper than
+   the sounding sees still makes the layer above it a cover. (b) A water
+   zone whose two rounded ends meet (exactly 1 m on two half metres,
+   such as 3.5 to 4.5 m) ends 1 m below its rounded top, "4 m to 5 m",
+   rather than being widened at both ends.

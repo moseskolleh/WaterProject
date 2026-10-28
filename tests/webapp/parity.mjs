@@ -331,10 +331,13 @@ await withPage(async (page, base, consoleErrors) => {
     // The interpretation and report prose over the cases make_reference.py
     // builds as VES_CASES, VES_SHEETS and MODELS_TRIED_CASES: a zone past the
     // depth of investigation, one wholly below it, a margin cut back to it, a
-    // dropped last reading, poorly resolved boundaries, a near-tie, an exact
-    // tie, two sheets with one sounding number and a Wenner sheet with an MN
-    // column. The inputs are written out twice on purpose; they are the
-    // contract.
+    // dropped last reading, poorly resolved boundaries, resistive covers over
+    // conductive ground, a 1 m zone on half metres, a sounding too short for
+    // the vadose allowance, a near-tie, an exact tie, two sheets with one
+    // sounding number, a Wenner sheet with an MN column, a resistance sheet
+    // with rows K cannot convert, a resistivity headed as a resistance and a
+    // repeat with no MN recorded. The inputs are written out twice on
+    // purpose; they are the contract.
     const SPACINGS = [1, 2, 5, 10, 20, 40, 80];
     const caseInterp = (sid, rho, h, err, hFactor, ab2, rhoApp) => {
       const spacing = ab2 || SPACINGS;
@@ -356,6 +359,16 @@ await withPage(async (page, base, consoleErrors) => {
       ['two poorly resolved', [1100, 1600, 300, 47], [1, 2, 7], 5.0, [3.7, 2.5, 1.1],
         null, null],
       ['thin resistive at 2.5', [1000, 5000, 100], [2.5, 3], 5.0, null, null, null],
+      ['cover over a water zone', [300, 5000, 60, 8000], [0.8, 2, 20], 2.0, null, null, null],
+      ['cover over clay', [300, 5000, 10, 8000], [0.8, 2, 20], 2.0, null, null, null],
+      ['cover over a conductive half-space', [1100, 5000, 47], [1.0, 7.0], 5.0, null, null,
+        null],
+      ['two covers', [300, 5000, 60, 4000, 60, 8000], [0.8, 2, 5, 2, 10], 2.0, null, null,
+        null],
+      ['basement over compact rock', [300, 5000, 1500, 8000], [0.8, 2, 20], 2.0, null, null,
+        null],
+      ['half-metre zone', [500, 100, 5000], [3.5, 1.0], 2.0, null, null, null],
+      ['short sounding', [400, 90, 3000], [0.6, 8.0], 2.0, null, [1, 1.5, 2, 3, 4, 5], null],
     ];
     const cases = {};
     vesCases.forEach(([name, rho, h, err, hFactor, ab2, rhoApp]) => {
@@ -397,7 +410,35 @@ await withPage(async (page, base, consoleErrors) => {
         [20, 1, 250], [40, 1, 150], [40, 4, 148], [40, 10, 78], [60, 10, 60]]) },
       { name: 'S3 copy', rows: vesSheet('S 3', 'Schlumberger', withMn, [[10, 1, 410],
         [20, 1, 260], [40, 1, 140], [60, 10, 70]]) },
+      { name: 'R', rows: vesSheet('R 1', 'Schlumberger', ['No.', 'AB/2 (m)', 'MN (m)', 'R (ohm)'],
+        [[0.3, 1, 12.5], [0.5, 1, 9.0], [2, 1, 4.1], [3, 1, 1.9], [5, 1, 0.62], [10, 1, 0.18],
+          [15, 1, 0.09]]) },
+      { name: 'R ohm-m', rows: vesSheet('R 2', 'Schlumberger',
+        ['No.', 'AB/2 (m)', 'MN (m)', 'Apparent Resistance (Ωm)'],
+        [[1, 0.5, 120], [2, 0.5, 95], [3, 0.5, 80], [5, 0.5, 70], [10, 2, 90]]) },
+      { name: 'no MN', rows: vesSheet('N 1', 'Schlumberger',
+        ['No.', 'AB/2 (m)', 'Apparent Resistivity (ohm-m)'],
+        [[1, 120], [2, 95], [3, 80], [5, 70], [10, 90], [10, 120], [15, 110], [20, 140],
+          [30, 190]]) },
     ], 'x.xlsx');
+    /* the fitted readings and their errors, over make_reference.py's
+     * READING_CASES: a zero at an MN overlap, a repeat with no MN recorded and
+     * an MN overlap */
+    const readingCases = [
+      [[1, 2, 3, 5, 8, 10, 10, 15, 20, 30, 40, 40, 60, 80, 100],
+        [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 4, 4, 4, 4, 4, 10, 10, 10, 10],
+        [300, 250, 180, 120, 90, 85, 88, 80, 90, 120, 170, 0, 260, 330, 400]],
+      [[1, 2, 3, 5, 10, 10, 15, 20, 30, 40, 40, 60], new Array(12).fill(NaN),
+        [120, 95, 80, 70, 90, 120, 110, 140, 190, 230, 260, 300]],
+      [[1, 2, 3, 5, 10, 10, 15, 20, 30, 40, 40, 60], [1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 10, 10],
+        [120, 95, 80, 70, 90, 120, 110, 140, 190, 230, 260, 300]],
+    ].map(([ab2, mn, rho]) => {
+      const s = { sounding_id: 'R', array_type: 'schlumberger', ab2, mn, rho_app: rho, flags: [] };
+      const fitted = C.inversionReadings(s);
+      const errors = C.readingErrors(s, fitted.ab2, 3.0);
+      return { fitted_ab2: fitted.ab2, fitted_rho: fitted.rho, sigma: errors.sigma,
+        spacings: errors.spacings };
+    });
     const trialCase = (trials, err) => ({ trials, fit_error_percent: err,
       model: C.layeredModel([300, 100, 150], [3, 30]) });
     const withFactor = Object.assign({}, C.defaultConfig().ves,
@@ -427,6 +468,8 @@ await withPage(async (page, base, consoleErrors) => {
       ],
       sheets: sheets.map((s) => [s.sounding_id, s.array_type,
         s.flags.map((f) => [f.level, f.code, f.message])]),
+      sheet_readings: sheets.map((s) => [s.ab2, s.rho_app]),
+      readings: readingCases,
     };
 
     // a siting survey with no borehole yet: the design comes from the
@@ -1368,6 +1411,30 @@ await withPage(async (page, base, consoleErrors) => {
       check(`ves text: ${key}, word for word`, JSON.stringify(js) === JSON.stringify(py),
         `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
     });
+  // what the readers read off each sheet (a resistance times K, so to 1e-12),
+  // and the readings the inversion fits with their errors: the spacings
+  // exactly, a merged reading (a geometric mean) and an error to 1e-12
+  const allClose = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length &&
+    a.every((v, i) => close(v, b[i], 1e-12));
+  (VT.sheet_readings || []).forEach((py, i) => {
+    const js = parsed.ves_text.sheet_readings[i];
+    check(`ves sheet ${i}: the readings read`,
+      JSON.stringify(js[0]) === JSON.stringify(py[0]) && allClose(js[1], py[1]),
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+  });
+  check('ves text: the reference carries the fitted readings', !!VT.readings,
+    'regenerate tests/webapp/reference.json with make_reference.py');
+  (VT.readings || []).forEach((py, i) => {
+    const js = parsed.ves_text.readings[i];
+    check(`ves readings ${i}: the spacings fitted and those an overlap widens`,
+      JSON.stringify([js.fitted_ab2, js.spacings]) === JSON.stringify([py.fitted_ab2, py.spacings]),
+      `js ${JSON.stringify([js.fitted_ab2, js.spacings])}\n     ` +
+      `py ${JSON.stringify([py.fitted_ab2, py.spacings])}`);
+    check(`ves readings ${i}: the readings fitted and their errors`,
+      allClose(js.fitted_rho, py.fitted_rho) && allClose(js.sigma, py.sigma),
+      `js ${JSON.stringify([js.fitted_rho, js.sigma])}\n     ` +
+      `py ${JSON.stringify([py.fitted_rho, py.sigma])}`);
+  });
 
   // --- Geographic -> UTM ---
   parsed.geo.forEach((g, i) => {

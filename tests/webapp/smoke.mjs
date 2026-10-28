@@ -5730,13 +5730,19 @@ await withPage(async (page, base, consoleErrors) => {
       .find((c) => (c.querySelector('.card-title') || {}).textContent === title);
     const press = (label) => [...named(C.phrase('calibration_sets.page_heading')).querySelectorAll('button')]
       .find((b) => b.textContent === label).click();
-    const basement = () => (app.derived.interpretations || [])
-      .filter((i) => i.sounding_id === 'A (1)').map((i) => i.depth_to_basement_m)[0];
+    /* Rokel A as read: its depth to basement and what its 1,637 ohm-m second
+     * layer is taken for. Under the set's 579.7 ohm-m edge that layer is as
+     * resistive as basement, and over the 47 ohm-m water zone a resistive
+     * cover, so the depth to basement stays null (it used to read 1.02 m). */
+    const rokelA = () => (app.derived.interpretations || [])
+      .filter((i) => i.sounding_id === 'A (1)')
+      .map((i) => [i.depth_to_basement_m, i.layers[1].unit])[0];
+    const cover = C.phrase('ves.unit_resistive_cover');
     const settled = async (want) => {
-      for (let t = 0; t < 400 && !(basement() !== undefined && want(basement())); t++) {
+      for (let t = 0; t < 400 && !(rokelA() !== undefined && want(rokelA()[1])); t++) {
         await new Promise((r) => setTimeout(r, 25));
       }
-      return basement();
+      return rokelA();
     };
     const log = [[0, 2, 'laterite'], [2, 8, 'clay'], [8, 22, 'weathered'], [22, 50, 'basement']];
     const layers = [[0, 2, 900], [2, 8, 12], [8, 22, 140], [22, null, 2400]];
@@ -5775,7 +5781,7 @@ await withPage(async (page, base, consoleErrors) => {
       press(C.phrase('calibration_sets.page_adopt'));
       const held = app.store.get('calibration');
       out.adopted = held && [held.version, held.adopted_by];
-      out.after = await settled((v) => v !== null);
+      out.after = await settled((unit) => unit === cover);
       out.shown = card().textContent.includes(C.phrase('calibration_sets.page_in_force', { name: C.setName(held) }));
       out.notSaved = !('calibration' in app.projectPayload().state);
       const payload = app.projectPayload();
@@ -5790,7 +5796,8 @@ await withPage(async (page, base, consoleErrors) => {
       out.file = got.length && got[0].name === 'calibration.yaml' && got[0].data === C.setYaml(held);
       press(C.phrase('calibration_sets.page_default'));
       out.dropped = app.store.get('calibration') === null;
-      out.back = await settled((v) => v === null);
+      out.back = await settled((unit) => unit !== cover);
+      out.cover = cover;
       support.pickFile = async () => new File([C.setYaml(held)], 'calibration.yaml');
       press(C.phrase('calibration_sets.page_load_button'));
       for (let t = 0; t < 200 && !app.store.get('calibration'); t++) await new Promise((r) => setTimeout(r, 25));
@@ -5815,11 +5822,13 @@ await withPage(async (page, base, consoleErrors) => {
     'named person adopts it; then it is in force, and the Rokel survey is read by its basement edge',
     sets.empty && sets.review && sets.unnamed[0] === null && sets.unnamed[1][1] === 'error' &&
     JSON.stringify(sets.adopted) === '[1,"A. Kamara"]' && sets.shown &&
-    sets.before === null && Math.abs(sets.after - 1.02) < 0.01, JSON.stringify(sets));
+    JSON.stringify(sets.before) === JSON.stringify([null, 'compact or dry weathered rock (regolith)']) &&
+    JSON.stringify(sets.after) === JSON.stringify([null, sets.cover]), JSON.stringify(sets));
   check('calibration sets: the set in force belongs to this browser: no project file carries it, opening ' +
     'one keeps it, and it is downloaded, dropped and loaded back from calibration.yaml; a set nobody ' +
     'adopted is refused',
-    sets.notSaved && sets.keptOverLoad && sets.file && sets.dropped && sets.back === null && sets.loaded &&
+    sets.notSaved && sets.keptOverLoad && sets.file && sets.dropped &&
+    JSON.stringify(sets.back) === JSON.stringify(sets.before) && sets.loaded &&
     sets.refused[1] === 1 && sets.refused[0][1] === 'error', JSON.stringify(sets));
 
   check('no console errors', consoleErrors.length === 0,

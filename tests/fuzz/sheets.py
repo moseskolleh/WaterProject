@@ -286,7 +286,9 @@ def ves_sheet(draw, index: int, varied: bool = False) -> dict:
     rho_head = (draw(st.sampled_from(["R (ohm)", "V/I (ohm)", "Resistance (ohm)"]))
                 if resistance else
                 draw(st.sampled_from(["Apparent Resistivity (ohm-m)", "Rho (ohm.m)",
-                                      "ρa (Ω·m)", "Resistivity", "App. Res. (ohm-m)"])))
+                                      "ρa (Ω·m)", "Resistivity", "App. Res. (ohm-m)",
+                                      # a resistivity named as a resistance, in ohm-metres
+                                      "R (ohm-m)", "Apparent Resistance (Ωm)"])))
     header = ["No.", spacing_head] + ([mn_head] if mn_head else []) + [rho_head]
 
     # The header block

@@ -24,6 +24,7 @@ import numpy as np
 
 from ..config import VESConfig
 from ..models import DataFlag, LayeredModel, VESSounding
+from ..text import phrase
 from ..utils import and_join, fmt_num, ordinal, sum_in_order
 from .classify import classify_curve, describe_curve_type
 from .inversion import inversion_readings
@@ -31,6 +32,8 @@ from .inversion import inversion_readings
 __all__ = [
     "LayerInterpretation",
     "SiteInterpretation",
+    "basement_top",
+    "conductive_below",
     "depth_of_investigation",
     "fit_confidence",
     "interpret_model",
@@ -127,10 +130,64 @@ class SiteInterpretation:
     max_spacing_m: float | None = None
 
 
+#: The top few metres are taken as unsaturated: a water zone starts no
+#: shallower than this.
+VADOSE_M = 3.0
+
+
+def _conductive(rho: float, config: VESConfig) -> bool:
+    """Whether a layer below the top is conductive ground: one the rules
+    read as water-bearing or clay-rich weathered ground, rather than as
+    compact or dry rock or basement - under both the top of the
+    water-bearing window (800 ohm-m by default) and the fresh basement
+    edge."""
+    return rho < config.fractured_zone_rho[1] and rho < config.fresh_basement_min_rho
+
+
+def conductive_below(rho, config: VESConfig) -> list[bool]:
+    """For each layer, whether any deeper layer of the model is conductive
+    ground (:func:`_conductive`)."""
+    out = [False] * len(rho)
+    seen = False
+    for i in range(len(rho) - 1, -1, -1):
+        out[i] = seen
+        seen = seen or _conductive(float(rho[i]), config)
+    return out
+
+
+def basement_top(rho, tops, config: VESConfig) -> float | None:
+    """The depth the rules take as the top of fresh basement, or None.
+
+    Fresh basement is resistive ground with no conductive ground beneath it
+    in the fitted model: the top of the first layer below the surface that
+    reaches ``fresh_basement_min_rho`` with nothing conductive under it,
+    else the top of a half-space of 800 ohm-m or more. A layer that reaches
+    the edge over conductive ground is a resistive cover - a duricrust or a
+    dry layer - and not bedrock. It used to be taken as basement whatever
+    lay below, so a 5,000 ohm-m duricrust 0.8 m down over a 20 m water zone
+    gave a depth to bedrock of 0.8 m, the water zone under the bedrock, and
+    an overburden "too thin to store much water". The interpretation and
+    the range of models (``model_range._summary``) both read it from here.
+    """
+    below = conductive_below(rho, config)
+    for i in range(len(rho)):
+        if rho[i] >= config.fresh_basement_min_rho and tops[i] > 0 and not below[i]:
+            return float(tops[i])
+    if rho[-1] >= config.fractured_zone_rho[1]:
+        return float(tops[-1])
+    return None
+
+
 def _unit_label(
-    rho: float, is_top: bool, is_bottom: bool, config: VESConfig
+    rho: float, is_top: bool, is_bottom: bool, config: VESConfig,
+    over_conductive: bool = False,
 ) -> tuple[str, bool]:
-    """Label a layer and judge whether it is potentially water bearing."""
+    """Label a layer and judge whether it is potentially water bearing.
+
+    ``over_conductive`` is whether conductive ground lies anywhere below the
+    layer (:func:`conductive_below`): a layer as resistive as fresh basement
+    with conductive ground under it is a resistive cover, not basement.
+    """
     lo, hi = config.fractured_zone_rho
     if is_top:
         if rho >= config.laterite_min_rho:
@@ -141,6 +198,8 @@ def _unit_label(
             return "clayey topsoil", False
         return "topsoil / laterite", False
     if rho >= config.fresh_basement_min_rho:
+        if over_conductive:
+            return phrase("ves.unit_resistive_cover"), False
         return "fresh basement", False
     if rho >= hi:
         if is_bottom:
@@ -191,9 +250,11 @@ def interpret_model(
         investigation = 0.0
 
     layers: list[LayerInterpretation] = []
+    below = conductive_below(rho, config)
     for i in range(n):
         unit, water = _unit_label(
-            float(rho[i]), is_top=(i == 0), is_bottom=(i == n - 1), config=config
+            float(rho[i]), is_top=(i == 0), is_bottom=(i == n - 1), config=config,
+            over_conductive=below[i],
         )
         layers.append(
             LayerInterpretation(
@@ -217,24 +278,37 @@ def interpret_model(
     # where no reading reaches, and a zone "4 m to 60 m" from a sounding that
     # sees 40 m reports the model's extrapolation as a measured aquifer. A
     # water-bearing layer that starts at or below the depth of investigation
-    # was never seen at all, so it is no zone, and the narrative says so.
+    # was never seen at all, so it is no zone, and the narrative says so. One
+    # that starts above it, on a sounding too short to see below the vadose
+    # allowance, is no zone either, but it does not lie below the depth of
+    # investigation: a layer "from 0.6 m" was said to lie "below the 2.5 m
+    # the sounding resolves".
     zones: list[tuple[float, float]] = []
     basement_not_resolved = False
     open_base: float | None = None  # the modelled base of the zone cut at the DOI
     unseen_tops: list[float] = []  # water-bearing layers below the DOI
+    vadose_tops: list[float] = []  # ones the DOI does not see below the vadose
     for layer in layers:
         if not layer.water_bearing:
             continue
-        top = max(layer.top_m, 3.0)  # the top few metres are vadose
+        top = max(layer.top_m, VADOSE_M)  # the top few metres are vadose
         if top >= investigation:
-            unseen_tops.append(layer.top_m)
+            if layer.top_m >= investigation:
+                unseen_tops.append(layer.top_m)
+            else:
+                vadose_tops.append(layer.top_m)
             continue
         bottom = min(layer.bottom_m, investigation)
         if layer.bottom_m > investigation:
             basement_not_resolved = bottom - top >= 1.0
             open_base = layer.bottom_m
         if bottom - top >= 1.0:
-            zones.append((round(top), round(bottom)))
+            # Each end is rounded half to even, but never to a zone of no
+            # thickness: a layer from 3.5 to 4.5 m came out "4 m to 4 m", an
+            # aquifer of 0 m and a score of 0, though it passed the 1 m test.
+            # Only that case moves, to the metre below the rounded top.
+            z_top, z_bottom = round(top), round(bottom)
+            zones.append((z_top, max(z_bottom, z_top + 1)))
     # merge touching zones
     merged: list[tuple[float, float]] = []
     for zone in sorted(zones):
@@ -245,13 +319,11 @@ def interpret_model(
     zones = merged
 
     # ---- depth to basement -------------------------------------------------
-    depth_to_basement = None
-    for layer in layers:
-        if layer.rho >= config.fresh_basement_min_rho and layer.top_m > 0:
-            depth_to_basement = layer.top_m
-            break
-    if depth_to_basement is None and layers[-1].rho >= config.fractured_zone_rho[1]:
-        depth_to_basement = layers[-1].top_m
+    # resistive ground with nothing conductive below it (basement_top); a
+    # layer as resistive as basement over conductive ground is a cover
+    depth_to_basement = basement_top(rho, tops, config)
+    covers = [layer.number for layer, over in zip(layers, below, strict=True)
+              if layer.number > 1 and over and layer.rho >= config.fresh_basement_min_rho]
     # A basement top below the depth of investigation is where the model
     # happened to put it, not a depth the sounding measured, and the siting
     # score and the bedrock map would otherwise read it as one.
@@ -376,7 +448,7 @@ def interpret_model(
         interp.site_easting = sounding.site.easting
         interp.site_northing = sounding.site.northing
         interp.site_elevation_m = sounding.site.elevation_m
-    interp.narrative = _narrative(interp, unseen_tops, bedrock_unseen)
+    interp.narrative = _narrative(interp, unseen_tops, bedrock_unseen, vadose_tops, covers)
     return interp
 
 
@@ -469,8 +541,16 @@ def _narrative(
     interp: SiteInterpretation,
     unseen_tops: list[float] | tuple = (),
     bedrock_unseen: bool = False,
+    vadose_tops: list[float] | tuple = (),
+    covers: list[int] | tuple = (),
 ) -> str:
-    """Interpretation paragraph for the report, one block per sounding."""
+    """Interpretation paragraph for the report, one block per sounding.
+
+    ``vadose_tops`` are the tops of the water-bearing layers a sounding too
+    short to see below the vadose allowance does not count; ``covers`` the
+    numbers of the layers as resistive as fresh basement that lie over
+    conductive ground, read as resistive cover.
+    """
     n = interp.model.n_layers
     curve = describe_curve_type(interp.curve_type)
     # "resolves a 3 layer subsurface" over a boundary known only to x/ 3.7
@@ -522,14 +602,17 @@ def _narrative(
             "point within the investigated depth."
         )
     if unseen_tops:
-        one = len(unseen_tops) == 1
-        parts.append(
-            f"The water-bearing {'layer' if one else 'layers'} from "
-            f"{and_join([f'{fmt_num(t)} m' for t in unseen_tops])} "
-            f"{'lies' if one else 'lie'} below the "
-            f"{fmt_num(interp.investigation_depth_m)} m the sounding resolves, so "
-            f"{'it is not counted as a water zone' if one else 'they are not counted as water zones'}."
-        )
+        parts.append(phrase(
+            "ves.unseen_layers", n=len(unseen_tops),
+            tops=and_join([f"{fmt_num(t)} m" for t in unseen_tops]),
+            doi=interp.investigation_depth_m,
+        ))
+    if vadose_tops:
+        parts.append(phrase(
+            "ves.vadose_layers", n=len(vadose_tops),
+            tops=and_join([f"{fmt_num(t)} m" for t in vadose_tops]),
+            vadose=VADOSE_M, doi=interp.investigation_depth_m,
+        ))
     if interp.fit_error_percent is not None:
         err = interp.fit_error_percent
         if interp.fit_quality == "unreliable":
@@ -543,6 +626,9 @@ def _narrative(
                 f"The model reproduces the readings to {fmt_num(err, 3)} percent "
                 "(ERR), above the target, so the layer depths are approximate."
             )
+    if covers:
+        parts.append(phrase("ves.resistive_cover", n=len(covers),
+                            layers=and_join([str(k) for k in covers])))
     if interp.depth_to_basement_m is not None:
         parts.append(
             f"The depth to bedrock is estimated at about "
