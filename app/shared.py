@@ -76,11 +76,11 @@ try:
         render_static,
         static_build_available,
     )
-    from groundwater.depth_spine.view import SpineInputs
+    from groundwater.depth_spine.view import SpineCosting, SpineInputs
 
     SPINE_ERROR = ""
 except Exception as _spine_exc:  # noqa: BLE001 - optional import  # pragma: no cover
-    build_spine_view = depth_spine = SpineInputs = None
+    build_spine_view = depth_spine = SpineInputs = SpineCosting = None
     component_available = static_build_available = lambda: False
     render_static = None
     SPINE_ERROR = str(_spine_exc)
@@ -140,6 +140,63 @@ IN_BROWSER = sys.platform == "emscripten"  # running under Pyodide (GitHub Pages
 @st.cache_data
 def cached_rates():
     return load_rates()
+
+
+#: The Costing page's inputs and the value each starts at. The page draws its
+#: widgets from these, and the Depth Spine prices its design with the same
+#: values, so the price signed on the spine is the one the Costing page
+#: shows, whether or not that page has been opened yet.
+COSTING_DEFAULTS = {
+    "cost_overburden": 0.0,
+    "cost_distance": 100.0,
+    "cost_overheads": 15.0,
+    "cost_margin": 20.0,
+    "cost_contingency": 10.0,
+    "cost_fx": 23.0,
+    "cost_handpumps": 1,
+    "cost_samples": 1,
+    "cost_dev_hours": 6.0,
+    "cost_test_hours": 30.0,
+    "cost_vat": 0.0,
+}
+
+
+def costing_setting(key: str):
+    """A Costing page input: as the page left it, or as it starts."""
+    return st.session_state.get(key, COSTING_DEFAULTS[key])
+
+
+def working_rates():
+    """The rate catalogue as the Costing page has it edited: each edited rate
+    keeps its relative spread, so the distribution is drawn around it."""
+    overrides = st.session_state.get("rates_overrides") or {}
+    return [r.with_likely(float(overrides.get(r.code, r.unit_cost_usd)))
+            for r in cached_rates()]
+
+
+def spine_costing():
+    """The Costing page's settings, as the Depth Spine prices its design with
+    them: ``(SpineCosting, mobilisation distance in km)``.
+
+    The spine used to price at the catalogue rates, the default percentages
+    and no mobilisation at all, so a named person could sign a price on its
+    "Costing & BoQ" stage that the Costing page did not show for the same
+    design. The browser's spine already took that page's settings.
+    """
+    return SpineCosting(
+        rates=working_rates(),
+        overheads_percent=float(costing_setting("cost_overheads")),
+        margin_percent=float(costing_setting("cost_margin")),
+        contingency_percent=float(costing_setting("cost_contingency")),
+        vat_percent=float(costing_setting("cost_vat")),
+        exchange_rate_sle_per_usd=float(costing_setting("cost_fx")),
+        # 0 applies the rule of thumb on the Costing page, as None does here
+        overburden_m=float(costing_setting("cost_overburden")) or None,
+        wq_samples=int(costing_setting("cost_samples")),
+        handpumps=int(costing_setting("cost_handpumps")),
+        development_hours=float(costing_setting("cost_dev_hours")),
+        test_pumping_hours=float(costing_setting("cost_test_hours")),
+    ), float(costing_setting("cost_distance"))
 
 
 @st.cache_data

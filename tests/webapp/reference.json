@@ -2155,7 +2155,7 @@
   "quality_ratios": [
    [
     "pH",
-    0.6941,
+    1.1017,
     "WHO acceptability",
     "range"
    ],
@@ -2338,6 +2338,174 @@
   ],
   "edited_cost_direct": 6243.0,
   "edited": true
+ },
+ "spine_costed": {
+  "settings": {
+   "mobilisation_km": 120.0,
+   "rate": [
+    "SIT1",
+    600.0
+   ],
+   "overheads": 25.0,
+   "margin": 10.0,
+   "contingency": 5.0,
+   "vat": 15.0,
+   "exchange": 25.0,
+   "overburden": 12.0,
+   "wq_samples": 2,
+   "handpumps": 0,
+   "development_hours": 8.0,
+   "test_pumping_hours": 36.0
+  },
+  "money": {
+   "directCost": 6431.0,
+   "overheads": 1607.75,
+   "totalCost": 8038.75,
+   "margin": 803.88,
+   "price": 8842.62,
+   "vat": 1326.39,
+   "costPerMetre": 114.84,
+   "overheadsPercent": 25.0,
+   "marginPercent": 10.0,
+   "contingencyPercent": 5.0,
+   "vatPercent": 15.0,
+   "exchangeRate": 25.0
+  },
+  "quantity_basis": {
+   "totalDepthM": 70.0,
+   "casingM": 51.5,
+   "screenM": 19.0,
+   "gravelIntervalM": 0.0,
+   "overburdenM": 12.0
+  },
+  "items": [
+   [
+    "SIT1",
+    1.0,
+    600.0,
+    600.0
+   ],
+   [
+    "MOB1",
+    240.0,
+    2.5,
+    600.0
+   ],
+   [
+    "MOB2",
+    7.0,
+    135.0,
+    945.0
+   ],
+   [
+    "MOB3",
+    7.0,
+    65.0,
+    455.0
+   ],
+   [
+    "MOB4",
+    1.0,
+    150.0,
+    150.0
+   ],
+   [
+    "DRL1",
+    12.0,
+    7.0,
+    84.0
+   ],
+   [
+    "DRL2",
+    58.0,
+    11.0,
+    638.0
+   ],
+   [
+    "DRL3",
+    70.0,
+    6.0,
+    420.0
+   ],
+   [
+    "DRL4",
+    12.0,
+    3.0,
+    36.0
+   ],
+   [
+    "CAS1",
+    51.5,
+    12.0,
+    618.0
+   ],
+   [
+    "CAS2",
+    19.0,
+    20.0,
+    380.0
+   ],
+   [
+    "CAS4",
+    4.0,
+    13.0,
+    52.0
+   ],
+   [
+    "CAS5",
+    1.0,
+    40.0,
+    40.0
+   ],
+   [
+    "DEV1",
+    8.0,
+    18.0,
+    144.0
+   ],
+   [
+    "DEV2",
+    8.0,
+    6.0,
+    48.0
+   ],
+   [
+    "TST1",
+    36.0,
+    10.0,
+    360.0
+   ],
+   [
+    "TST2",
+    36.0,
+    6.0,
+    216.0
+   ],
+   [
+    "WQL1",
+    2.0,
+    120.0,
+    240.0
+   ],
+   [
+    "WQL2",
+    1.0,
+    25.0,
+    25.0
+   ],
+   [
+    "WHD1",
+    1.0,
+    260.0,
+    260.0
+   ],
+   [
+    "WHD2",
+    1.0,
+    120.0,
+    120.0
+   ]
+  ]
  },
  "siting": [
   {
@@ -126039,6 +126207,16 @@
   "6.4999": "The water is chemically aggressive (Ryznar index 13.2, Langelier index -3.4). It will corrode metal fittings. The pH of 6.4999 is below the 6.5 to 8.5 acceptability range, which adds to the attack on metal; soft, low-alkalinity basement groundwater is aggressive even at a pH inside that range.",
   "8.46": "The water is chemically aggressive (Ryznar index 11.3, Langelier index -1.4). It will corrode metal fittings. The pH of 8.5 is within the 6.5 to 8.5 acceptability range, and the water is aggressive all the same, which is typical of soft basement groundwater."
  },
+ "spine_range_ratio": {
+  "5.9": 1.1017,
+  "5.4": 1.2037,
+  "6.5": 1.0,
+  "7.0": 0.9286,
+  "8.5": 1.0,
+  "9.5": 1.1176,
+  "0.0": null,
+  "-1.0": null
+ },
  "spine_quality": [
   {
    "parameter": "Arsenic",
@@ -136316,6 +136494,1055 @@
   ],
   "uncertain": 0
  },
+ "extraction": {
+  "cells": [
+   [
+    "120.4",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "078,7",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "2,933",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "1.234,5",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "80m",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "80 m",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "120.4 ohm-m",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "120.4ohm.m",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "120.4 \u03a9m",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "120.4 \u2126m",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "120.4 \u03c9\u00b7m",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "1e3",
+    1.0,
+    "",
+    true
+   ],
+   [
+    ".5",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "-3",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "5 min",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "2.5 m3/h",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "0.8 l/s",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "4 m/min",
+    1.0,
+    "",
+    true
+   ],
+   [
+    "12O.4",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "9B.1",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "8O.2",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "12O",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "1l",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "1 234",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "1/2",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "12.",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "45 ft",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "<0.01",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "08:30",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "1,2,3",
+    0.5,
+    "contains characters other than a number",
+    false
+   ],
+   [
+    "m",
+    0.4,
+    "does not parse as a number",
+    false
+   ],
+   [
+    "",
+    0.6,
+    "empty cell in a numeric column",
+    false
+   ],
+   [
+    "--",
+    0.4,
+    "does not parse as a number",
+    false
+   ]
+  ],
+  "payloads": {
+   "all_six": {
+    "document_kind": "ves",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [
+     {
+      "title": "Readings",
+      "columns": [
+       "No.",
+       "AB/2 (m)",
+       "MN/2 (m)",
+       "K",
+       "Resistance (ohm)",
+       "App. Resistivity (ohm-m)"
+      ],
+      "rows": [
+       [
+        "1",
+        "1.5",
+        "0.25",
+        "13.74",
+        "8.76",
+        "120.4"
+       ],
+       [
+        "2",
+        "2",
+        "0.25",
+        "24.74",
+        "3.97",
+        "98.1"
+       ],
+       [
+        "3",
+        "3",
+        "0.25",
+        "56.16",
+        "1.43",
+        "80.2"
+       ],
+       [
+        "4",
+        "4",
+        "0.25",
+        "100.14",
+        "0.659",
+        "66.0"
+       ],
+       [
+        "5",
+        "6",
+        "0.25",
+        "225.8",
+        "0.227",
+        "51.3"
+       ]
+      ]
+     }
+    ],
+    "uncertain_cells": [
+     {
+      "table_index": 0,
+      "row": 1,
+      "column": 1,
+      "reason": "smudged"
+     }
+    ],
+    "notes": ""
+   },
+   "resistance_and_k": {
+    "document_kind": "ves",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [
+     {
+      "title": "Readings",
+      "columns": [
+       "No.",
+       "AB/2 (m)",
+       "MN/2 (m)",
+       "K",
+       "Resistance (ohm)"
+      ],
+      "rows": [
+       [
+        "1",
+        "1.5",
+        "0.25",
+        "13.74",
+        "8.76"
+       ],
+       [
+        "2",
+        "2",
+        "0.25",
+        "24.74",
+        "3.97"
+       ],
+       [
+        "3",
+        "3",
+        "0.25",
+        "56.16",
+        "1.43"
+       ],
+       [
+        "4",
+        "4",
+        "0.25",
+        "100.14",
+        "0.659"
+       ],
+       [
+        "5",
+        "6",
+        "0.25",
+        "225.8",
+        "0.227"
+       ]
+      ]
+     }
+    ],
+    "uncertain_cells": [
+     {
+      "table_index": 0,
+      "row": 1,
+      "column": 1,
+      "reason": "smudged"
+     }
+    ],
+    "notes": ""
+   },
+   "resistance_only": {
+    "document_kind": "ves",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [
+     {
+      "title": "Readings",
+      "columns": [
+       "No.",
+       "AB/2 (m)",
+       "MN/2 (m)",
+       "Resistance (ohm)"
+      ],
+      "rows": [
+       [
+        "1",
+        "1.5",
+        "0.25",
+        "8.76"
+       ],
+       [
+        "2",
+        "2",
+        "0.25",
+        "3.97"
+       ],
+       [
+        "3",
+        "3",
+        "0.25",
+        "1.43"
+       ],
+       [
+        "4",
+        "4",
+        "0.25",
+        "0.659"
+       ],
+       [
+        "5",
+        "6",
+        "0.25",
+        "0.227"
+       ]
+      ]
+     }
+    ],
+    "uncertain_cells": [
+     {
+      "table_index": 0,
+      "row": 1,
+      "column": 1,
+      "reason": "smudged"
+     }
+    ],
+    "notes": ""
+   },
+   "resistance_no_mn": {
+    "document_kind": "ves",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [
+     {
+      "title": "Readings",
+      "columns": [
+       "No.",
+       "AB/2 (m)",
+       "Resistance (ohm)"
+      ],
+      "rows": [
+       [
+        "1",
+        "1.5",
+        "8.76"
+       ],
+       [
+        "2",
+        "2",
+        "3.97"
+       ],
+       [
+        "3",
+        "3",
+        "1.43"
+       ],
+       [
+        "4",
+        "4",
+        "0.659"
+       ],
+       [
+        "5",
+        "6",
+        "0.227"
+       ]
+      ]
+     }
+    ],
+    "uncertain_cells": [
+     {
+      "table_index": 0,
+      "row": 1,
+      "column": 1,
+      "reason": "smudged"
+     }
+    ],
+    "notes": ""
+   },
+   "no_mn": {
+    "document_kind": "ves",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [
+     {
+      "title": "Readings",
+      "columns": [
+       "No.",
+       "AB/2 (m)",
+       "App. Resistivity (ohm-m)"
+      ],
+      "rows": [
+       [
+        "1",
+        "1.5",
+        "120.4"
+       ],
+       [
+        "2",
+        "2",
+        "98.1"
+       ],
+       [
+        "3",
+        "3",
+        "80.2"
+       ],
+       [
+        "4",
+        "4",
+        "66.0"
+       ],
+       [
+        "5",
+        "6",
+        "51.3"
+       ]
+      ]
+     }
+    ],
+    "uncertain_cells": [
+     {
+      "table_index": 0,
+      "row": 1,
+      "column": 1,
+      "reason": "smudged"
+     }
+    ],
+    "notes": ""
+   },
+   "wenner": {
+    "document_kind": "ves",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [
+     {
+      "title": "Readings",
+      "columns": [
+       "No.",
+       "a (m)",
+       "Apparent Resistivity (ohm-m)"
+      ],
+      "rows": [
+       [
+        "1",
+        "1",
+        "120.4"
+       ],
+       [
+        "2",
+        "2",
+        "98.1"
+       ]
+      ]
+     }
+    ],
+    "uncertain_cells": [
+     {
+      "table_index": 0,
+      "row": 1,
+      "column": 1,
+      "reason": "smudged"
+     }
+    ],
+    "notes": ""
+   },
+   "unheaded": {
+    "document_kind": "ves",
+    "header": [],
+    "tables": [
+     {
+      "title": "Readings",
+      "columns": [
+       "Field readings",
+       "(Schlumberger",
+       "array)",
+       ""
+      ],
+      "rows": [
+       [
+        "No.",
+        "AB/2 (m)",
+        "MN (m)",
+        "Apparent Resistivity (ohm-m)"
+       ],
+       [
+        "1",
+        "1.5",
+        "0.5",
+        "120.4"
+       ]
+      ]
+     }
+    ],
+    "uncertain_cells": [
+     {
+      "table_index": 0,
+      "row": 1,
+      "column": 1,
+      "reason": "smudged"
+     }
+    ],
+    "notes": ""
+   },
+   "untitled": {
+    "document_kind": "ves",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [
+     {
+      "title": "",
+      "columns": [
+       "No.",
+       "a (m)",
+       "Apparent Resistivity (ohm-m)"
+      ],
+      "rows": [
+       [
+        "1",
+        "1",
+        "120.4"
+       ]
+      ]
+     }
+    ],
+    "uncertain_cells": [
+     {
+      "table_index": 0,
+      "row": 1,
+      "column": 1,
+      "reason": "smudged"
+     }
+    ],
+    "notes": ""
+   },
+   "no_table": {
+    "document_kind": "ves",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [],
+    "uncertain_cells": [],
+    "notes": ""
+   },
+   "no_table_pumping": {
+    "document_kind": "pumping_test",
+    "header": [
+     {
+      "name": "Community",
+      "value": "Rokel",
+      "confidence": 0.95
+     },
+     {
+      "name": "Sounding Number",
+      "value": "VES 3",
+      "confidence": 0.95
+     }
+    ],
+    "tables": [],
+    "uncertain_cells": [],
+    "notes": ""
+   }
+  },
+  "fills": {
+   "all_six": {
+    "review": [
+     "table 'Readings' row 2, column 'AB/2 (m)' = '2' (smudged)"
+    ],
+    "ab2": [
+     1.5,
+     2.0,
+     3.0,
+     4.0,
+     6.0
+    ],
+    "mn": [
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5
+    ],
+    "rho": [
+     120.4,
+     98.1,
+     80.2,
+     66.0,
+     51.3
+    ],
+    "flags": [],
+    "id": "VES 3",
+    "community": "Rokel",
+    "instrument": "",
+    "array": "schlumberger"
+   },
+   "resistance_and_k": {
+    "review": [
+     "table 'Readings' row 2, column 'AB/2 (m)' = '2' (smudged)"
+    ],
+    "ab2": [
+     1.5,
+     2.0,
+     3.0,
+     4.0,
+     6.0
+    ],
+    "mn": [
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5
+    ],
+    "rho": [
+     120.3624,
+     98.2178,
+     80.30879999999999,
+     65.99226,
+     51.256600000000006
+    ],
+    "flags": [
+     "rho_computed_from_resistance"
+    ],
+    "id": "VES 3",
+    "community": "Rokel",
+    "instrument": "",
+    "array": "schlumberger"
+   },
+   "resistance_only": {
+    "review": [
+     "table 'Readings' row 2, column 'AB/2 (m)' = '2' (smudged)"
+    ],
+    "ab2": [
+     1.5,
+     2.0,
+     3.0,
+     4.0,
+     6.0
+    ],
+    "mn": [
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5
+    ],
+    "rho": [
+     120.40153844882882,
+     98.2179673236679,
+     80.3030352165721,
+     65.9911171840621,
+     51.257047638725965
+    ],
+    "flags": [
+     "rho_computed_from_resistance"
+    ],
+    "id": "VES 3",
+    "community": "Rokel",
+    "instrument": "",
+    "array": "schlumberger"
+   },
+   "resistance_no_mn": {
+    "review": [
+     "table 'Readings' cannot be placed in the VES template: its resistances need a K or an MN column to become apparent resistivities, and it has neither. Headings read: 'No.', 'AB/2 (m)', 'Resistance (ohm)'. Enter its readings by hand",
+     "table 'Readings' row 2, column 'AB/2 (m)' = '2' (smudged)"
+    ],
+    "refused": "Table 'Readings' cannot be placed in the VES template: its resistances need a K or an MN column to become apparent resistivities, and it has neither. Headings read: 'No.', 'AB/2 (m)', 'Resistance (ohm)'. Enter its readings by hand."
+   },
+   "no_mn": {
+    "review": [
+     "table 'Readings' row 2, column 'AB/2 (m)' = '2' (smudged)"
+    ],
+    "ab2": [
+     1.5,
+     2.0,
+     3.0,
+     4.0,
+     6.0
+    ],
+    "mn": [
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "rho": [
+     120.4,
+     98.1,
+     80.2,
+     66.0,
+     51.3
+    ],
+    "flags": [],
+    "id": "VES 3",
+    "community": "Rokel",
+    "instrument": "",
+    "array": "schlumberger"
+   },
+   "wenner": {
+    "review": [
+     "table 'Readings' cannot be placed in the VES template: its spacing column is the Wenner spacing a, and the template is a Schlumberger sheet. Headings read: 'No.', 'a (m)', 'Apparent Resistivity (ohm-m)'. Enter its readings by hand",
+     "table 'Readings' row 2, column 'a (m)' = '2' (smudged)"
+    ],
+    "refused": "Table 'Readings' cannot be placed in the VES template: its spacing column is the Wenner spacing a, and the template is a Schlumberger sheet. Headings read: 'No.', 'a (m)', 'Apparent Resistivity (ohm-m)'. Enter its readings by hand."
+   },
+   "unheaded": {
+    "review": [
+     "table 'Readings' cannot be placed in the VES template: no column is headed as the AB/2 spacing; no column is headed as an apparent resistivity or a resistance. Headings read: 'Field readings', '(Schlumberger', 'array)', ''. Enter its readings by hand",
+     "table 'Readings' row 2, column '(Schlumberger' = '1.5' (smudged)"
+    ],
+    "refused": "Table 'Readings' cannot be placed in the VES template: no column is headed as the AB/2 spacing; no column is headed as an apparent resistivity or a resistance. Headings read: 'Field readings', '(Schlumberger', 'array)', ''. Enter its readings by hand."
+   },
+   "untitled": {
+    "review": [
+     "table 'Table 1' cannot be placed in the VES template: its spacing column is the Wenner spacing a, and the template is a Schlumberger sheet. Headings read: 'No.', 'a (m)', 'Apparent Resistivity (ohm-m)'. Enter its readings by hand",
+     "table 'Table 1' row 2, column 'a (m)' = '' (smudged)"
+    ],
+    "refused": "Table 'Table 1' cannot be placed in the VES template: its spacing column is the Wenner spacing a, and the template is a Schlumberger sheet. Headings read: 'No.', 'a (m)', 'Apparent Resistivity (ohm-m)'. Enter its readings by hand."
+   },
+   "no_table": {
+    "review": [
+     "no table was found on the sheet, so no reading was extracted: enter the readings by hand"
+    ]
+   },
+   "no_table_pumping": {
+    "review": [
+     "no table was found on the sheet, so no reading was extracted: enter the readings by hand"
+    ]
+   }
+  },
+  "replies_in": {
+   "cut_off": [
+    "max_tokens",
+    [
+     {
+      "type": "thinking",
+      "thinking": "..."
+     },
+     {
+      "type": "text",
+      "text": "{\"document_kind\": \"ves\", \"hea"
+     }
+    ]
+   ],
+   "cut_off_thinking": [
+    "max_tokens",
+    [
+     {
+      "type": "thinking",
+      "thinking": "..."
+     }
+    ]
+   ],
+   "refusal": [
+    "refusal",
+    []
+   ],
+   "no_text": [
+    "end_turn",
+    [
+     {
+      "type": "thinking",
+      "thinking": "..."
+     }
+    ]
+   ],
+   "not_json": [
+    "end_turn",
+    [
+     {
+      "type": "text",
+      "text": "Here is the sheet: {"
+     }
+    ]
+   ],
+   "not_an_object": [
+    "end_turn",
+    [
+     {
+      "type": "text",
+      "text": "[1, 2]"
+     }
+    ]
+   ],
+   "no_reason": [
+    null,
+    [
+     {
+      "type": "text",
+      "text": "null"
+     }
+    ]
+   ],
+   "complete": [
+    "end_turn",
+    [
+     {
+      "type": "text",
+      "text": "{\"document_kind\": \"ves\"}"
+     }
+    ]
+   ]
+  },
+  "replies": {
+   "cut_off": {
+    "error": "The transcription was cut off at the output limit (stop reason: max_tokens) before the sheet was finished, so nothing was read from it. Extract the sheet in parts: photograph or scan each table on its own."
+   },
+   "cut_off_thinking": {
+    "error": "The transcription was cut off at the output limit (stop reason: max_tokens) before the sheet was finished, so nothing was read from it. Extract the sheet in parts: photograph or scan each table on its own."
+   },
+   "refusal": {
+    "error": "The extraction request was declined by the model; check the document content."
+   },
+   "no_text": {
+    "error": "The model returned no transcription (stop reason: end_turn). Try a clearer scan."
+   },
+   "not_json": {
+    "error": "The model's reply is not a complete transcription (stop reason: end_turn), so nothing was read from it. Try the extraction again."
+   },
+   "not_an_object": {
+    "error": "The model's reply is not a complete transcription (stop reason: end_turn), so nothing was read from it. Try the extraction again."
+   },
+   "no_reason": {
+    "error": "The model's reply is not a complete transcription (stop reason: unknown), so nothing was read from it. Try the extraction again."
+   },
+   "complete": {
+    "kind": "ves"
+   }
+  },
+  "pdfs": {
+   "captioned": {
+    "b64": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvQ29udGVudHMgNCAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA2IDAgUiAvRmlsdGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeNptk0tvozAQgO/9FXNsD6G2eeRxIw3ZrTZJV8DuaqVe2MRtvDUYGVMp/74GjPKwheDANzOfZ2wv87vHNQaMIH+7w4D0gyFCMNVvXsJ99vR982u7TNJvSQpxmsZ/4XeSwfo52axgFefxA+T/rxL9sE98EmXZVkydFpCKD8qv4nx0EcgZrdQCNuyTVe/wp1BUwnOlv1WhmKgKbinwkLlijZJsr3N/CqlgIz6EbTGxmWirQ1d/15b/qFz0XcQTfFs7mpvaehkLIIj4ExROcGAVHgPXjPIDZG1N5SdrhK689eCH4JwerdrhMNOd8K4QxmcWLx8JvN6Xrw9XIQSdQ7Y7V8DsokZdF1LPFFLa6BHpuaqTThHHcnKb1q0qml00ImnRjanR8dn+yPthvesNKaQsTo5kf1Biu6GReKHdiWHols3OjOAXL7B0mAzQ1jlJLzPEKRuzlr5nHYVwHvTQt2Ru0slG4pKNjEQz78WSTaMeBrbMSXqZIU6ZYWSOvaklC4ctD22ZIZEtM8QpM8xH5IZ2smA89Yo2+nbsgDWgjhTeWs6h1n8rxQoOlNO9kuJAoamLvT6DwyVJ8i/cGRKcCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCjYgMCBvYmoKNDQ0CmVuZG9iagp4cmVmCjAgNwowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDc1OSAwMDAwMCBuIAowMDAwMDAwODI5IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNyAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKODQ4CiUlRU9GCg==",
+    "tables": [
+     {
+      "columns": [
+       "No.",
+       "AB/2 (m)",
+       "MN (m)",
+       "Apparent Resistivity (ohm-m)"
+      ],
+      "rows": [
+       [
+        "1",
+        "1.5",
+        "0.5",
+        "21O.4"
+       ],
+       [
+        "2",
+        "2",
+        "0.5",
+        "2B3.1"
+       ],
+       [
+        "3",
+        "3",
+        "0.5",
+        "268.O"
+       ],
+       [
+        "4",
+        "4",
+        "0.5",
+        "291.7"
+       ],
+       [
+        "5",
+        "6",
+        "0.5",
+        "302.5"
+       ]
+      ]
+     }
+    ],
+    "uncertain": [
+     [
+      0,
+      0,
+      3,
+      "contains characters other than a number"
+     ],
+     [
+      0,
+      1,
+      3,
+      "contains characters other than a number"
+     ],
+     [
+      0,
+      2,
+      3,
+      "contains characters other than a number"
+     ]
+    ],
+    "review": [
+     "table 'Table 1' row 1, column 'Apparent Resistivity (ohm-m)' = '21O.4' (contains characters other than a number)",
+     "table 'Table 1' row 2, column 'Apparent Resistivity (ohm-m)' = '2B3.1' (contains characters other than a number)",
+     "table 'Table 1' row 3, column 'Apparent Resistivity (ohm-m)' = '268.O' (contains characters other than a number)"
+    ]
+   },
+   "no_text": {
+    "b64": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvQ29udGVudHMgNCAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA2IDAgUiAvRmlsdGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeNoz0DNVKOcyM1AwMzBQyOUyMYCwcriCAUQMBRsKZW5kc3RyZWFtCmVuZG9iago1IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBlMSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKNiAwIG9iagoyOQplbmRvYmoKeHJlZgowIDcKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjQxIDAwMDAwIG4gCjAwMDAwMDAzNDQgMDAwMDAgbiAKMDAwMDAwMDQxNCAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDcgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQzMgolJUVPRgo=",
+    "error": "That PDF carries no text layer - it is an image of a sheet rather than a typed one. Use the AI assisted extraction instead."
+   }
+  }
+ },
  "pumping_cases": {
   "rejected_recovery": {
    "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 9.44, null, \"Pump setting (m)\", 67, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.93, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 9.44, 0, null, null, null, null, null, null, null, null, null, 0, 42.26, 0], [1, 13.1, 3.66, null, null, null, null, null, null, null, null, null, 1, 42.86, 0.06], [2, 15.5, 2.4, null, null, null, null, null, null, null, null, null, 2, 40.28, 0.42], [3, 17.41, 1.91, null, null, null, null, null, null, null, null, null, 3, 38.81, 0.39], [4, 18.37, 0.96, null, null, null, null, null, null, null, null, null, 4, 37.8, 0.25], [5, 19.34, 0.97, null, null, null, null, null, null, null, null, null, 5, 37.05, 1.47], [10, 27.34, 8, null, null, null, null, null, null, null, null, null, 10, 34.86, 1.29], [15, 30.76, 3.42, null, null, null, null, null, null, null, null, null, 15, 33.73, 1.12], [20, 33.34, 2.58, null, null, null, null, null, null, null, null, null, 20, 33.02, 2], [25, 37.77, 4.43, null, null, null, null, null, null, null, null, null, 25, 32.52, 0.08], [30, 42.26, 4.49, null, null, null, null, null, null, null, null, null, 30, 32.15, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 35, 31.86, 0.73], [null, null, null, null, null, null, null, null, null, null, null, null, 40, 31.63, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, 45, 31.44, 0.63], [null, null, null, null, null, null, null, null, null, null, null, null, 50, 31.28, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 55, 31.14, 0.9], [null, null, null, null, null, null, null, null, null, null, null, null, 60, 31.02, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Notes: record depth to water in metres below the measuring point. The Drawdown and Recovery columns are the change between successive readings; the analysis recomputes true drawdown from the static water level. Recovery time is minutes since the pump stopped. Record the discharge of every step; results stay provisional until discharge is supplied.\", null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
@@ -140514,6 +141741,7 @@
      ],
      "length_m": 89.44271909999159,
      "bearing_deg": 63.43494882292201,
+     "bearing_text": "63",
      "layer2_rho": [
       150.0,
       160.0
@@ -140656,6 +141884,7 @@
      ],
      "length_m": 89.44271909999159,
      "bearing_deg": 63.43494882292201,
+     "bearing_text": "63",
      "layer2_rho": [
       60.0,
       60.0
@@ -140780,6 +142009,7 @@
      ],
      "length_m": 123.61361749815084,
      "bearing_deg": 11.981244487289095,
+     "bearing_text": "12",
      "layer2_rho": [
       60.0,
       60.0,
@@ -140919,6 +142149,7 @@
      ],
      "length_m": 300.0,
      "bearing_deg": 90.0,
+     "bearing_text": "90",
      "layer2_rho": [
       60.0,
       60.0,
@@ -141050,6 +142281,7 @@
      ],
      "length_m": 5000.0,
      "bearing_deg": 90.0,
+     "bearing_text": "90",
      "layer2_rho": [
       60.0,
       60.0,
@@ -141183,6 +142415,7 @@
      ],
      "length_m": 20750.89916124118,
      "bearing_deg": 119.53734091673388,
+     "bearing_text": "120",
      "layer2_rho": [
       60.0,
       70.0
@@ -141476,6 +142709,7 @@
      ],
      "length_m": 200.0,
      "bearing_deg": 90.0,
+     "bearing_text": "90",
      "layer2_rho": [
       150.0,
       60.0,
@@ -141609,6 +142843,7 @@
      ],
      "length_m": 200.0,
      "bearing_deg": 90.0,
+     "bearing_text": "90",
      "layer2_rho": [
       60.0,
       60.0,
@@ -141690,6 +142925,274 @@
      "to the depth of investigation (50 m)"
     ]
    },
+   "northsouth": {
+    "suitability": {
+     "state": {
+      "n_points": 3,
+      "surface": false,
+      "tie": true,
+      "leaders": [
+       "VES 1",
+       "VES 2"
+      ],
+      "unplaced": [],
+      "recommended": null
+     },
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
+     "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
+     "labels": [
+      "VES 1\nRank 1, weighted 75\nVery good suitability",
+      "VES 2\nRank 2, weighted 72\nGood suitability",
+      "VES 3\nRank 3, weighted 70\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 72",
+      "VES 3\nRank 3, weighted 70"
+     ],
+     "eastings": [
+      178000.0,
+      178000.0,
+      178000.0
+     ],
+     "zone": 29,
+     "study_area": "Study area at Kuntolo, with the survey points and its location in Sierra Leone inset. VES 1 and VES 2 cannot be told apart on geophysical grounds, so neither is starred."
+    },
+    "traverse": {
+     "reason": null,
+     "labels": [
+      "VES 1",
+      "VES 2",
+      "VES 3"
+     ],
+     "chainage_m": [
+      0.0,
+      99.99999999999999,
+      199.99999999999997
+     ],
+     "indices": [
+      0,
+      1,
+      2
+     ],
+     "length_m": 199.99999999999997,
+     "bearing_deg": 0.0,
+     "bearing_text": "0",
+     "layer2_rho": [
+      60.0,
+      60.0,
+      60.0
+     ]
+    },
+    "ground": {
+     "reason": null,
+     "caption": "Ground surface along the survey traverse, from the elevation recorded at each sounding.",
+     "chainage_m": [
+      0.0,
+      99.99999999999999,
+      199.99999999999997
+     ],
+     "open_gaps": [],
+     "max_gap_m": 500.0
+    },
+    "maps": {
+     "depth_to_bedrock": {
+      "reason": null,
+      "caption": "Depth to bedrock across the surveyed ground, from the layered models. The soundings lie on one line and enclose no area, so no surface is drawn; the values are printed at the points.",
+      "minimum": [
+       false,
+       false,
+       false
+      ],
+      "labels": [
+       "VES 1\n18.5",
+       "VES 2\n16.5",
+       "VES 3\n14.5"
+      ]
+     },
+     "aquifer_thickness": {
+      "reason": null,
+      "caption": "Interpreted thickness of the weathered and fractured zone - the section a borehole is completed in. The soundings lie on one line and enclose no area, so no surface is drawn; the values are printed at the points.",
+      "minimum": [
+       false,
+       false,
+       false
+      ],
+      "labels": [
+       "VES 1\n15",
+       "VES 2\n13",
+       "VES 3\n11"
+      ]
+     },
+     "bedrock_elevation": {
+      "reason": null,
+      "caption": "The bedrock surface as a landform, from the ground elevation recorded at each sounding less its depth to basement. A low in this surface is a buried valley, which basement groundwater drains towards. The soundings lie on one line and enclose no area, so no surface is drawn; the values are printed at the points.",
+      "minimum": [
+       false,
+       false,
+       false
+      ],
+      "labels": [
+       "VES 1\n51.5",
+       "VES 2\n54.5",
+       "VES 3\n57.5"
+      ]
+     },
+     "protective_capacity": {
+      "reason": null,
+      "caption": "Protective capacity of the cover over the aquifer, from the longitudinal conductance of the overlying layers. It rates how well the ground above the aquifer resists downward contamination; it says nothing about yield. The soundings lie on one line and enclose no area, so no surface is drawn; the values are printed at the points.",
+      "minimum": [
+       false,
+       false,
+       false
+      ]
+     }
+    },
+    "model_depth": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "drawn_depth": [
+     "to the depth of investigation (50 m)",
+     "to the depth of investigation (50 m)",
+     "to the depth of investigation (50 m)"
+    ]
+   },
+   "nsjitter": {
+    "suitability": {
+     "state": {
+      "n_points": 3,
+      "surface": true,
+      "tie": true,
+      "leaders": [
+       "VES 1",
+       "VES 2"
+      ],
+      "unplaced": [],
+      "recommended": null
+     },
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The surface between the points is interpolated and blanked outside the ground they enclose.",
+     "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
+     "labels": [
+      "VES 1\nRank 1, weighted 75\nVery good suitability",
+      "VES 2\nRank 2, weighted 72\nGood suitability",
+      "VES 3\nRank 3, weighted 70\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 72",
+      "VES 3\nRank 3, weighted 70"
+     ],
+     "eastings": [
+      178000.0,
+      178000.3,
+      177999.9
+     ],
+     "zone": 29,
+     "study_area": "Study area at Kuntolo, with the survey points and its location in Sierra Leone inset. VES 1 and VES 2 cannot be told apart on geophysical grounds, so neither is starred."
+    },
+    "traverse": {
+     "reason": null,
+     "labels": [
+      "VES 1",
+      "VES 2",
+      "VES 3"
+     ],
+     "chainage_m": [
+      0.0,
+      99.99983749930651,
+      200.00002499999846
+     ],
+     "indices": [
+      0,
+      1,
+      2
+     ],
+     "length_m": 200.00002499999846,
+     "bearing_deg": 359.9713519956498,
+     "bearing_text": "0",
+     "layer2_rho": [
+      60.0,
+      60.0,
+      60.0
+     ]
+    },
+    "ground": {
+     "reason": null,
+     "caption": "Ground surface along the survey traverse, from the elevation recorded at each sounding.",
+     "chainage_m": [
+      0.0,
+      99.99983749930651,
+      200.00002499999846
+     ],
+     "open_gaps": [],
+     "max_gap_m": 500.0
+    },
+    "maps": {
+     "depth_to_bedrock": {
+      "reason": null,
+      "caption": "Depth to bedrock across the surveyed ground, from the layered models. The surface is interpolated between the soundings and blanked outside the ground they enclose.",
+      "minimum": [
+       false,
+       false,
+       false
+      ],
+      "labels": [
+       "VES 1",
+       "VES 2",
+       "VES 3"
+      ]
+     },
+     "aquifer_thickness": {
+      "reason": null,
+      "caption": "Interpreted thickness of the weathered and fractured zone - the section a borehole is completed in. The surface is interpolated between the soundings and blanked outside the ground they enclose.",
+      "minimum": [
+       false,
+       false,
+       false
+      ],
+      "labels": [
+       "VES 1",
+       "VES 2",
+       "VES 3"
+      ]
+     },
+     "bedrock_elevation": {
+      "reason": null,
+      "caption": "The bedrock surface as a landform, from the ground elevation recorded at each sounding less its depth to basement. A low in this surface is a buried valley, which basement groundwater drains towards. The surface is interpolated between the soundings and blanked outside the ground they enclose.",
+      "minimum": [
+       false,
+       false,
+       false
+      ],
+      "labels": [
+       "VES 1",
+       "VES 2",
+       "VES 3"
+      ]
+     },
+     "protective_capacity": {
+      "reason": null,
+      "caption": "Protective capacity of the cover over the aquifer, from the longitudinal conductance of the overlying layers. It rates how well the ground above the aquifer resists downward contamination; it says nothing about yield. The surface is interpolated between the soundings and blanked outside the ground they enclose.",
+      "minimum": [
+       false,
+       false,
+       false
+      ]
+     }
+    },
+    "model_depth": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "drawn_depth": [
+     "to the depth of investigation (50 m)",
+     "to the depth of investigation (50 m)",
+     "to the depth of investigation (50 m)"
+    ]
+   },
    "open": {
     "suitability": {
      "state": {
@@ -141742,6 +143245,7 @@
      ],
      "length_m": 126.28599594314201,
      "bearing_deg": 15.171624442119779,
+     "bearing_text": "15",
      "layer2_rho": [
       60.0,
       70.0,
@@ -141841,6 +143345,7 @@
      ],
      "length_m": 126.28599594314201,
      "bearing_deg": 15.171624442119779,
+     "bearing_text": "15",
      "layer2_rho": [
       60.0,
       70.0,
@@ -141945,6 +143450,7 @@
      ],
      "length_m": 104.4030650891055,
      "bearing_deg": 73.30075576600639,
+     "bearing_text": "73",
      "layer2_rho": [
       60.0,
       60.0
@@ -142039,6 +143545,7 @@
      ],
      "length_m": 946.793854130242,
      "bearing_deg": 89.5353730792896,
+     "bearing_text": "90",
      "layer2_rho": [
       55.0,
       64.0,
@@ -142599,6 +144106,100 @@
      "VES 3",
      178200.0,
      1000000.0,
+     72.0,
+     [
+      320,
+      60,
+      4200
+     ],
+     [
+      2.5,
+      12
+     ]
+    ]
+   ],
+   "northsouth": [
+    [
+     "VES 1",
+     178000.0,
+     1000000.0,
+     70.0,
+     [
+      320,
+      60,
+      4200
+     ],
+     [
+      2.5,
+      16
+     ]
+    ],
+    [
+     "VES 2",
+     178000.0,
+     1000100.0,
+     71.0,
+     [
+      320,
+      60,
+      4200
+     ],
+     [
+      2.5,
+      14
+     ]
+    ],
+    [
+     "VES 3",
+     178000.0,
+     1000200.0,
+     72.0,
+     [
+      320,
+      60,
+      4200
+     ],
+     [
+      2.5,
+      12
+     ]
+    ]
+   ],
+   "nsjitter": [
+    [
+     "VES 1",
+     178000.0,
+     1000000.0,
+     70.0,
+     [
+      320,
+      60,
+      4200
+     ],
+     [
+      2.5,
+      16
+     ]
+    ],
+    [
+     "VES 2",
+     178000.3,
+     1000100.0,
+     71.0,
+     [
+      320,
+      60,
+      4200
+     ],
+     [
+      2.5,
+      14
+     ]
+    ],
+    [
+     "VES 3",
+     177999.9,
+     1000200.0,
      72.0,
      [
       320,

@@ -1226,6 +1226,36 @@ def test_a_traverse_is_the_same_section_whichever_order_it_arrives_in():
     assert backwards.bearing_deg == pytest.approx(forwards.bearing_deg)
 
 
+def test_a_north_south_traverse_runs_northwards_through_gps_scatter():
+    """Within a degree of north-south a line runs northwards, as the code said.
+
+    Only an exactly north-south line did: the same three pegs read 0.3 m
+    east and 0.1 m west, as a handheld GPS reads them, ran from the south
+    end, every station reversed and the title at bearing 180, while the
+    exact survey ran from VES 1 at bearing 0.
+    """
+    from groundwater.mapping.subsurface import bearing_text
+
+    _soundings, interps = _traverse(n=3)
+    for offsets in ((0.0, 0.0, 0.0), (0.0, 0.3, -0.1), (0.2, 0.0, 0.1)):
+        for k, (interp, east) in enumerate(zip(interps, offsets, strict=True)):
+            interp.site_easting = KUNTOLO["easting"] + east
+            interp.site_northing = KUNTOLO["northing"] + 100.0 * k
+        for listed in (interps, list(reversed(interps))):
+            profile = traverse_profile(listed)
+            assert list(profile.labels) == ["VES 1", "VES 2", "VES 3"], offsets
+            assert profile.chainage_m == pytest.approx([0.0, 100.0, 200.0], abs=0.01)
+            assert bearing_text(profile.bearing_deg) == "0", profile.bearing_deg
+    # a line more than a degree off north-south still runs eastwards
+    for k, interp in enumerate(interps):
+        interp.site_easting = KUNTOLO["easting"] - 2.0 * k
+        interp.site_northing = KUNTOLO["northing"] + 100.0 * k
+    profile = traverse_profile(interps)
+    assert list(profile.labels) == ["VES 3", "VES 2", "VES 1"]
+    assert bearing_text(profile.bearing_deg) == "179"
+    assert [bearing_text(b) for b in (359.6, 359.4, 90.0, 0.4)] == ["0", "359", "90", "0"]
+
+
 def test_scattered_soundings_are_reported_as_not_a_section():
     _soundings, interps = _traverse(scatter_m=250.0, seed=11)
     profile = traverse_profile(interps)

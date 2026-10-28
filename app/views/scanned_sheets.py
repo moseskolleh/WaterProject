@@ -67,5 +67,11 @@ def render() -> None:
                 from groundwater.extraction import fill_ves_template
 
                 template_path = workdir() / (path.stem + "_ves_template.xlsx")
-                fill_ves_template(document, template_path)
-                offer_download(template_path, "Download filled VES template (.xlsx)")
+                try:
+                    fill_ves_template(document, template_path)
+                except ValueError as exc:
+                    # readings the template cannot take are refused, with the
+                    # reason, rather than written as a template with none
+                    st.warning(str(exc))
+                else:
+                    offer_download(template_path, "Download filled VES template (.xlsx)")

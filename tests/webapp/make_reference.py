@@ -48,8 +48,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from groundwater.depth_spine.view import SpineInputs, build_view
-from groundwater.costing import CostingInputs, inputs_from_design
+from groundwater.depth_spine.view import SpineCosting, SpineInputs, build_view
+from groundwater.costing import CostingInputs, inputs_from_design, load_rates
 from groundwater.design import design_borehole
 from groundwater.hydraulics import analyse_pumping_test, test_type_text
 from groundwater.ingestion import (
@@ -1678,6 +1678,49 @@ def build() -> dict:
         "edited": spine_edited["edited"],
     }
 
+    # The spine priced with the Costing page's settings rather than its
+    # defaults. The Streamlit spine could not be given them, so the price
+    # signed there was the catalogue's; the settings travel with the answer
+    # so the browser prices with the very same ones.
+    _rates = load_rates()
+    _edited_rate = (_rates[0].code, round(_rates[0].unit_cost_usd * 1.5, 2))
+    spine_settings = {
+        "mobilisation_km": 120.0, "rate": list(_edited_rate),
+        "overheads": 25.0, "margin": 10.0, "contingency": 5.0, "vat": 15.0,
+        "exchange": 25.0, "overburden": 12.0, "wq_samples": 2, "handpumps": 0,
+        "development_hours": 8.0, "test_pumping_hours": 36.0,
+    }
+    spine_costed = build_view(SpineInputs(
+        name="Dr Timbo", log=log, analysis=analysis, assessment=assessed,
+        mobilisation_distance_km=spine_settings["mobilisation_km"],
+        costing=SpineCosting(
+            rates=[r.with_likely(_edited_rate[1]) if r.code == _edited_rate[0] else r
+                   for r in _rates],
+            overheads_percent=spine_settings["overheads"],
+            margin_percent=spine_settings["margin"],
+            contingency_percent=spine_settings["contingency"],
+            vat_percent=spine_settings["vat"],
+            exchange_rate_sle_per_usd=spine_settings["exchange"],
+            overburden_m=spine_settings["overburden"],
+            wq_samples=spine_settings["wq_samples"],
+            handpumps=spine_settings["handpumps"],
+            development_hours=spine_settings["development_hours"],
+            test_pumping_hours=spine_settings["test_pumping_hours"],
+        ),
+    ))
+    out["spine_costed"] = {
+        "settings": spine_settings,
+        "money": {key: clean(spine_costed["costing"][key])
+                  for key in ("directCost", "overheads", "totalCost", "margin",
+                              "price", "vat", "costPerMetre", "overheadsPercent",
+                              "marginPercent", "contingencyPercent", "vatPercent",
+                              "exchangeRate")},
+        "quantity_basis": {k: clean(v) for k, v
+                           in spine_costed["costing"]["quantityBasis"].items()},
+        "items": [[i["code"], clean(i["quantity"]), clean(i["unitCost"]),
+                   clean(i["amount"])] for i in spine_costed["costing"]["items"]],
+    }
+
     # The drill-target scorecard, over the real Rokel soundings.
     rokel_inversions = [invert_sounding(s) for s in soundings]
     rokel_interps = [
@@ -2000,6 +2043,14 @@ def build() -> dict:
     # unit, so a ratio computed from the raw value agrees there and the break
     # only shows on a converted one.
     from groundwater.depth_spine.view import _quality as _spine_quality
+
+    # A pH outside its 6.5 to 8.5 range is past the limit line on either
+    # side of it: below the range it used to be drawn on the compliant side.
+    out["spine_range_ratio"] = {
+        str(ph): next(row["ratio"] for row in _spine_quality(assess_sample(
+            _wq(WaterQualityResult("pH", ph))))["rows"] if row["parameter"] == "pH")
+        for ph in (5.9, 5.4, 6.5, 7.0, 8.5, 9.5, 0.0, -1.0)
+    }
 
     out["spine_quality"] = [
         {
@@ -2506,6 +2557,7 @@ def build() -> dict:
     }
 
     out["pdf_sheet"] = pdf_sheet_reference()
+    out["extraction"] = extraction_reference()
     out["pumping_cases"] = pumping_cases()
     out["regional"] = regional_reference()
     out["survey_figures"] = survey_figures_reference(rokel_interps)
@@ -5414,6 +5466,18 @@ SURVEY_CASES = {
         ("VES 2", _E + 100, _N, 71.0, [320, 60, 4200], [2.5, 14]),
         ("VES 3", _E + 200, _N, 72.0, [320, 60, 4200], [2.5, 12]),
     ],
+    # due north, and the same pegs as a handheld GPS reads them, a few tens
+    # of centimetres east or west: both run from VES 1 northwards
+    "northsouth": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E, _N + 100, 71.0, [320, 60, 4200], [2.5, 14]),
+        ("VES 3", _E, _N + 200, 72.0, [320, 60, 4200], [2.5, 12]),
+    ],
+    "nsjitter": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E + 0.3, _N + 100, 71.0, [320, 60, 4200], [2.5, 14]),
+        ("VES 3", _E - 0.1, _N + 200, 72.0, [320, 60, 4200], [2.5, 12]),
+    ],
     # every water zone open below the depth of investigation
     "open": [
         ("VES 1", _E, _N, 70.0, [320, 60], [2.5]),
@@ -5487,7 +5551,7 @@ def survey_figures_reference(rokel_interps) -> dict:
         suitability_label,
         suitability_map_note,
     )
-    from groundwater.mapping.subsurface import spacing_note
+    from groundwater.mapping.subsurface import bearing_text, spacing_note
     from groundwater.reporting.geophysical import (
         _SUBSURFACE_MAPS,
         _drawn_depth_text,
@@ -5561,6 +5625,8 @@ def survey_figures_reference(rokel_interps) -> dict:
             "indices": list(profile.indices),
             "length_m": clean(profile.length_m),
             "bearing_deg": clean(profile.bearing_deg),
+            # as a section title prints it: just west of north is 0, not 360
+            "bearing_text": bearing_text(profile.bearing_deg),
             # the model each station takes, by position in the list
             "layer2_rho": [clean(interps[k].model.resistivities[1])
                            for k in profile.indices],
@@ -5650,12 +5716,20 @@ def _typed_field_sheet_pdf() -> bytes:
         y = 630 - i * 18
         for x, value in zip((60, 110, 200, 280), row, strict=True):
             placed.append((x, y, str(value)))
+    return _placed_sheet_pdf(placed)
 
+
+def _placed_sheet_pdf(placed) -> bytes:
+    """A one-page PDF with each (x, y, text) placed by Tm/Tj in Helvetica.
+    An empty list draws a line and no text at all, as a scanner's page
+    carries none."""
     ops = ["BT", "/F1 10 Tf"]
     for x, y, text in placed:
         escaped = str(text).replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
         ops.append(f"1 0 0 1 {x} {y} Tm ({escaped}) Tj")
     ops.append("ET")
+    if not placed:
+        ops = ["0.5 w", "60 600 m", "400 600 l", "S"]
     # level 9 and no timestamp, so the same table always gives the same bytes
     content = zlib.compress("\n".join(ops).encode("latin-1"), 9)
 
@@ -5700,6 +5774,174 @@ def pdf_sheet_reference() -> dict:
                    for t in document.tables],
         "uncertain": len(document.uncertain_cells),
     }
+
+
+# ------------------------------------------------------- reading field sheets
+
+#: Cells the text-layer grader is given, under a numeric heading. parse_number
+#: takes the first number in a cell, so the grader asks whether that number
+#: is all there is: a scanner's letter O for a zero ("12O.4") is a misread.
+EXTRACTION_CELLS = [
+    "120.4", "078,7", "2,933", "1.234,5", "80m", "80 m", "120.4 ohm-m",
+    "120.4ohm.m", "120.4 \u03a9m", "120.4 \u2126m", "120.4 \u03c9\u00b7m", "1e3", ".5",
+    "-3", "5 min", "2.5 m3/h", "0.8 l/s", "4 m/min",
+    "12O.4", "9B.1", "8O.2", "12O", "1l", "1 234", "1/2", "12.", "45 ft",
+    "<0.01", "08:30", "1,2,3", "m", "", "--",
+]
+
+#: AI replies with a VES table, headed the ways field sheets head one: the
+#: template takes what the VES reader reads back, and refuses the rest.
+_RK_ROWS = [["1", "1.5", "0.25", "13.74", "8.76", "120.4"],
+            ["2", "2", "0.25", "24.74", "3.97", "98.1"],
+            ["3", "3", "0.25", "56.16", "1.43", "80.2"],
+            ["4", "4", "0.25", "100.14", "0.659", "66.0"],
+            ["5", "6", "0.25", "225.8", "0.227", "51.3"]]
+_RK_COLUMNS = ["No.", "AB/2 (m)", "MN/2 (m)", "K", "Resistance (ohm)",
+               "App. Resistivity (ohm-m)"]
+EXTRACTION_TABLES = {
+    "all_six": [0, 1, 2, 3, 4, 5],
+    "resistance_and_k": [0, 1, 2, 3, 4],
+    "resistance_only": [0, 1, 2, 4],
+    "resistance_no_mn": [0, 1, 4],
+    "no_mn": [0, 1, 5],
+}
+
+
+def _extraction_payload(columns, rows, header=True):
+    return {
+        "document_kind": "ves",
+        "header": [{"name": "Community", "value": "Rokel", "confidence": 0.95},
+                   {"name": "Sounding Number", "value": "VES 3", "confidence": 0.95}]
+        if header else [],
+        "tables": [{"title": "Readings", "columns": columns, "rows": rows}],
+        "uncertain_cells": [{"table_index": 0, "row": 1, "column": 1,
+                             "reason": "smudged"}],
+        "notes": "",
+    }
+
+
+def extraction_payloads() -> dict:
+    out = {}
+    for name, keep in EXTRACTION_TABLES.items():
+        out[name] = _extraction_payload(
+            [_RK_COLUMNS[i] for i in keep], [[row[i] for i in keep] for row in _RK_ROWS])
+    out["wenner"] = _extraction_payload(
+        ["No.", "a (m)", "Apparent Resistivity (ohm-m)"],
+        [["1", "1", "120.4"], ["2", "2", "98.1"]])
+    out["unheaded"] = _extraction_payload(
+        ["Field readings", "(Schlumberger", "array)", ""],
+        [["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+         ["1", "1.5", "0.5", "120.4"]], header=False)
+    # a table the transcription left untitled is named "Table 1" in both
+    out["untitled"] = _extraction_payload(
+        ["No.", "a (m)", "Apparent Resistivity (ohm-m)"], [["1", "1", "120.4"]])
+    out["untitled"]["tables"][0]["title"] = ""
+    out["no_table"] = dict(_extraction_payload([], []), tables=[], uncertain_cells=[])
+    out["no_table_pumping"] = dict(out["no_table"], document_kind="pumping_test")
+    return out
+
+
+#: The replies an extraction can come back with: (stop reason, content).
+EXTRACTION_REPLIES = {
+    "cut_off": ("max_tokens", [{"type": "thinking", "thinking": "..."},
+                               {"type": "text", "text": '{"document_kind": "ves", "hea'}]),
+    "cut_off_thinking": ("max_tokens", [{"type": "thinking", "thinking": "..."}]),
+    "refusal": ("refusal", []),
+    "no_text": ("end_turn", [{"type": "thinking", "thinking": "..."}]),
+    "not_json": ("end_turn", [{"type": "text", "text": "Here is the sheet: {"}]),
+    "not_an_object": ("end_turn", [{"type": "text", "text": "[1, 2]"}]),
+    "no_reason": (None, [{"type": "text", "text": "null"}]),
+    "complete": ("end_turn", [{"type": "text", "text": '{"document_kind": "ves"}'}]),
+}
+
+
+def captioned_sheet_placed() -> list:
+    """The typed VES sheet with a caption above its headings, a note under its
+    readings and three cells a scanner misread: the caption used to become the
+    Python reader's header and the note a reading, and "12O.4" passed as 12."""
+    placed = list(_PDF_HEADER)
+    placed.append((60, 668, "Field readings (Schlumberger array)"))
+    rows = [list(r) for r in _PDF_ROWS[:5]]
+    rows[0][3], rows[1][3], rows[2][3] = "21O.4", "2B3.1", "268.O"
+    for i, row in enumerate(rows):
+        y = 630 - i * 18
+        for x, value in zip((60, 110, 200, 280), row, strict=True):
+            placed.append((x, y, str(value)))
+    placed.append((60, 630 - 5 * 18, "Notes: MN is the full potential electrode spacing."))
+    return placed
+
+
+def extraction_reference() -> dict:
+    """What reading a field sheet gives, in the cases the two engines each got
+    wrong: the grader, the filled template read back, the replies an AI
+    transcription can end with, and two PDFs - a captioned sheet with misread
+    cells, and one with no text layer at all."""
+    from groundwater.extraction.claude import ClaudeExtractor, _reply_payload
+    from groundwater.extraction.pdf_text import _cell_confidence, extract_pdf_text
+    from groundwater.extraction.review import fill_ves_template
+    from groundwater.ingestion import read_ves_workbook
+    from groundwater.utils import is_whole_number
+
+    out: dict = {
+        "cells": [[cell, *_cell_confidence(cell, "Apparent Resistivity (ohm-m)"),
+                   is_whole_number(cell)] for cell in EXTRACTION_CELLS],
+        "payloads": extraction_payloads(),
+        "fills": {},
+        "replies_in": {name: [stop, content]
+                       for name, (stop, content) in EXTRACTION_REPLIES.items()},
+        "replies": {},
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, payload in out["payloads"].items():
+            document = ClaudeExtractor._to_document(payload, "scan.jpg")
+            entry: dict = {"review": document.review_items}
+            if not document.tables:
+                # both apps offer the template only for a VES table
+                out["fills"][name] = entry
+                continue
+            try:
+                path = fill_ves_template(document, Path(tmp) / f"{name}.xlsx")
+            except ValueError as exc:
+                entry["refused"] = str(exc)
+            else:
+                s = read_ves_workbook(path)[0]
+                entry.update({
+                    "ab2": clean(s.ab2), "mn": clean(s.mn), "rho": clean(s.rho_app),
+                    "flags": [f.code for f in s.flags], "id": s.sounding_id,
+                    "community": s.site.community, "instrument": s.instrument,
+                    "array": s.array_type,
+                })
+            out["fills"][name] = entry
+
+        for name, (stop, content) in EXTRACTION_REPLIES.items():
+            reply = SimpleNamespace(stop_reason=stop,
+                                    content=[SimpleNamespace(**b) for b in content])
+            try:
+                out["replies"][name] = {"kind": _reply_payload(reply)["document_kind"]}
+            except RuntimeError as exc:
+                out["replies"][name] = {"error": str(exc)}
+
+        pdfs = {"captioned": _placed_sheet_pdf(captioned_sheet_placed()),
+                "no_text": _placed_sheet_pdf([])}
+        out["pdfs"] = {}
+        for name, pdf in pdfs.items():
+            path = Path(tmp) / f"{name}.pdf"
+            path.write_bytes(pdf)
+            entry = {"b64": base64.b64encode(pdf).decode("ascii")}
+            try:
+                document = extract_pdf_text(path)
+            except ValueError as exc:
+                entry["error"] = str(exc)
+            else:
+                entry.update({
+                    "tables": [{"columns": list(t.columns), "rows": [list(r) for r in t.rows]}
+                               for t in document.tables],
+                    "uncertain": [[c.table_index, c.row, c.column, c.reason]
+                                  for c in document.uncertain_cells],
+                    "review": document.review_items,
+                })
+            out["pdfs"][name] = entry
+    return out
 
 
 # Loose enough to absorb a different BLAS build, tight enough that a real

@@ -16,6 +16,7 @@ import json
 import mimetypes
 from pathlib import Path
 
+from ..text import phrase
 from .models import (
     ExtractedDocument,
     ExtractedField,
@@ -107,6 +108,36 @@ Accuracy matters more than completeness: flag anything doubtful rather than
 guessing silently."""
 
 
+def _reply_payload(response) -> dict:
+    """The transcription a reply carries, or the reason it carries none.
+
+    A refusal leaves content empty, and hitting the output cap can leave
+    only thinking blocks; either way there is no transcription to parse,
+    and a bare StopIteration would say nothing about why. A long sheet can
+    also run out of output part of the way through its JSON, which went
+    straight to the parser and came back as "Expecting value: line 1
+    column 3430": the reply is refused for its stop reason before it is
+    parsed, and anything else that is not JSON is refused naming it.
+    """
+    stop_reason = str(response.stop_reason or "unknown")
+    if stop_reason == "refusal":
+        raise RuntimeError(phrase("extraction.declined"))
+    if stop_reason == "max_tokens":
+        raise RuntimeError(phrase("extraction.cut_off"))
+    text = next((b.text for b in response.content or [] if b.type == "text"), None)
+    if text is None:
+        raise RuntimeError(phrase("extraction.no_transcription", stop_reason=stop_reason))
+    try:
+        payload = json.loads(text)
+    except ValueError as exc:
+        raise RuntimeError(
+            phrase("extraction.unreadable_reply", stop_reason=stop_reason)
+        ) from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(phrase("extraction.unreadable_reply", stop_reason=stop_reason))
+    return payload
+
+
 class ClaudeExtractor:
     """Extract field sheet content from scans using the Claude API."""
 
@@ -161,22 +192,7 @@ class ClaudeExtractor:
                 }
             ],
         )
-        if response.stop_reason == "refusal":
-            raise RuntimeError(
-                "The extraction request was declined by the model; check the "
-                "document content."
-            )
-        # A refusal leaves content empty, and hitting the output cap can leave
-        # only thinking blocks; either way there is no transcription to parse,
-        # and a bare StopIteration would say nothing about why.
-        text = next((b.text for b in response.content if b.type == "text"), None)
-        if text is None:
-            raise RuntimeError(
-                "The model returned no transcription "
-                f"(stop reason: {response.stop_reason}). Try a clearer scan."
-            )
-        payload = json.loads(text)
-        return self._to_document(payload, str(path))
+        return self._to_document(_reply_payload(response), str(path))
 
     # ------------------------------------------------------------------
 
@@ -192,7 +208,9 @@ class ClaudeExtractor:
         ]
         tables = [
             ExtractedTable(
-                title=t.get("title", f"Table {i + 1}"),
+                # an empty title is named as the browser names it, so the
+                # review items that quote it read the same in both engines
+                title=t.get("title") or f"Table {i + 1}",
                 columns=[str(c) for c in t.get("columns", [])],
                 rows=[[str(c) for c in row] for row in t.get("rows", [])],
             )

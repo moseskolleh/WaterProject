@@ -26,6 +26,7 @@ from groundwater.siting.odds import programme_offer, programme_rate
 from groundwater.text import phrase, phrase_table
 
 from shared import (
+    COSTING_DEFAULTS,
     app_config,
     cached_rates,
     compute_cost_estimate,
@@ -41,6 +42,7 @@ from shared import (
     site_from_state,
     survey_measurements,
     workdir,
+    working_rates,
 )
 
 def _first_point_odds():
@@ -128,38 +130,47 @@ def render() -> None:
         )
     with col2:
         overburden = st.number_input(
-            "Overburden thickness (m)", min_value=0.0, value=0.0, step=1.0,
+            "Overburden thickness (m)", min_value=0.0,
+            value=COSTING_DEFAULTS["cost_overburden"], step=1.0,
             key="cost_overburden",
             help="Weathered zone drilled by rotary; 0 applies the rule of "
             "thumb (half the depth, at most 30 m).",
         )
     with col3:
         distance = st.number_input(
-            "Mobilisation distance, one way (km)", min_value=0.0, value=100.0,
-            step=10.0, key="cost_distance",
+            "Mobilisation distance, one way (km)", min_value=0.0,
+            value=COSTING_DEFAULTS["cost_distance"], step=10.0, key="cost_distance",
         )
 
     with st.expander("Adjust assumptions and percentages"):
+        # each starts at COSTING_DEFAULTS, which the Depth Spine prices with
+        # too until the page has been opened
+        start = COSTING_DEFAULTS
         c1, c2, c3, c4 = st.columns(4)
-        overheads_pct = c1.number_input("Overheads (%)", 0.0, 100.0, 15.0, 1.0,
+        overheads_pct = c1.number_input("Overheads (%)", 0.0, 100.0,
+                                        start["cost_overheads"], 1.0,
                                         key="cost_overheads",
                                         help="RWSN: usually 10 to 20 percent of contract value.")
-        margin_pct = c2.number_input("Margin (%)", 0.0, 100.0, 20.0, 1.0,
+        margin_pct = c2.number_input("Margin (%)", 0.0, 100.0, start["cost_margin"], 1.0,
                                      key="cost_margin")
-        contingency_pct = c3.number_input("Contingency (%)", 0.0, 100.0, 10.0, 1.0,
+        contingency_pct = c3.number_input("Contingency (%)", 0.0, 100.0,
+                                          start["cost_contingency"], 1.0,
                                           key="cost_contingency")
-        fx = c4.number_input("Exchange rate (SLE per USD)", 1.0, 1000.0, 23.0, 0.5,
+        fx = c4.number_input("Exchange rate (SLE per USD)", 1.0, 1000.0, start["cost_fx"], 0.5,
                              key="cost_fx")
         c5, c6, c7, c8 = st.columns(4)
-        handpumps = c5.number_input("Handpumps", 0, 5, 1, key="cost_handpumps")
-        samples = c6.number_input("Water quality samples", 0, 10, 1, key="cost_samples")
-        dev_hours = c7.number_input("Development (h)", 0.0, 200.0, 6.0, 1.0,
+        handpumps = c5.number_input("Handpumps", 0, 5, start["cost_handpumps"],
+                                    key="cost_handpumps")
+        samples = c6.number_input("Water quality samples", 0, 10, start["cost_samples"],
+                                  key="cost_samples")
+        dev_hours = c7.number_input("Development (h)", 0.0, 200.0, start["cost_dev_hours"], 1.0,
                                     key="cost_dev_hours")
-        test_hours = c8.number_input("Test pumping (h)", 0.0, 200.0, 30.0, 1.0,
+        test_hours = c8.number_input("Test pumping (h)", 0.0, 200.0,
+                                     start["cost_test_hours"], 1.0,
                                      key="cost_test_hours")
         c9, c10 = st.columns(2)
         vat_pct = c9.number_input(
-            "VAT/GST (%) - optional", 0.0, 50.0, 0.0, 1.0, key="cost_vat",
+            "VAT/GST (%) - optional", 0.0, 50.0, start["cost_vat"], 1.0, key="cost_vat",
             help="Optional; leave at 0 to keep tax out of the price. "
             "Sierra Leone GST is 15 percent where it applies.",
         )
@@ -179,8 +190,7 @@ def render() -> None:
         overrides = st.session_state.get("rates_overrides", {})
         # the minimum and maximum the distribution draws from, kept in
         # proportion to the rate as it is edited (read-only here)
-        working = [r.with_likely(float(overrides.get(r.code, r.unit_cost_usd)))
-                   for r in base_rates]
+        working = working_rates()
         rate_rows = [
             {
                 "Code": r.code,

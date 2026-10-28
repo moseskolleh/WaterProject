@@ -161,42 +161,55 @@ def _find_data_header(grid: list[list]) -> tuple[int, dict] | None:
     Returns (row_index, {"no": c, "ab2": c, "a": c, "mn": c, "rho": c}).
     """
     for r, row in enumerate(grid):
-        texts = common.row_text(row)
-        cols: dict[str, int] = {}
-        for c, t in enumerate(texts):
-            if not t:
-                continue
-            if "ab/2" in t or t == "ab2" or "ab / 2" in t:
-                cols["ab2"] = c
-            # The Wenner spacing column, headed "a" or "a (m)", meant nothing
-            # to the reader at all, so a Wenner sheet was dropped whole as
-            # having no data table (ROADMAP data-ingestion-11)
-            elif t in _WENNER_A_HEADERS:
-                cols["a"] = c
-            # half-MN first, and tolerant of the spaces a typed header carries:
-            # "MN / 2 (m)" does not contain the literal "/2", so it used to fall
-            # through to the full-MN branch and halve every potential spacing
-            elif t.startswith("mn") and _MN_HALF_RE.search(t):
-                cols["mn_half"] = c
-            elif t.startswith("mn"):
-                cols["mn"] = c
-            # a sheet that records V/I (a resistance, in ohms) is not a
-            # resistivity sheet: "R (ohm)" used to match the "ohm" test below
-            # and every reading came through as a resistivity of 0.9
-            elif _RESISTANCE_RE.search(t):
-                cols["resistance"] = c
-            elif (
-                "resistivity" in t or t.startswith("rho") or "ohm" in t
-                or "apparent" in t or "ρ" in t or "ω" in t
-            ):
-                cols["rho"] = c
-            elif t in ("k", "k (m)", "k(m)", "geometric factor"):
-                cols["k"] = c
-            elif t in ("no.", "no", "reading", "n"):
-                cols["no"] = c
+        cols = reading_columns(row)
         if ("ab2" in cols or "a" in cols) and ("rho" in cols or "resistance" in cols):
             return r, cols
     return None
+
+
+def reading_columns(headings: list) -> dict[str, int]:
+    """What each heading of a VES table names, by the rules this reader reads
+    a header row with: ``{"ab2" | "a" | "mn" | "mn_half" | "resistance" |
+    "rho" | "k" | "no": column}``, the last column of a kind winning.
+
+    The extraction fills the VES template with it, so a sheet's columns are
+    placed by the same rules that read the template back: a "Resistance
+    (ohm)" column is a resistance and "MN/2" is half the potential spacing,
+    there as here.
+    """
+    cols: dict[str, int] = {}
+    for c, t in enumerate(common.row_text(headings)):
+        if not t:
+            continue
+        if "ab/2" in t or t == "ab2" or "ab / 2" in t:
+            cols["ab2"] = c
+        # The Wenner spacing column, headed "a" or "a (m)", meant nothing
+        # to the reader at all, so a Wenner sheet was dropped whole as
+        # having no data table (ROADMAP data-ingestion-11)
+        elif t in _WENNER_A_HEADERS:
+            cols["a"] = c
+        # half-MN first, and tolerant of the spaces a typed header carries:
+        # "MN / 2 (m)" does not contain the literal "/2", so it used to fall
+        # through to the full-MN branch and halve every potential spacing
+        elif t.startswith("mn") and _MN_HALF_RE.search(t):
+            cols["mn_half"] = c
+        elif t.startswith("mn"):
+            cols["mn"] = c
+        # a sheet that records V/I (a resistance, in ohms) is not a
+        # resistivity sheet: "R (ohm)" used to match the "ohm" test below
+        # and every reading came through as a resistivity of 0.9
+        elif _RESISTANCE_RE.search(t):
+            cols["resistance"] = c
+        elif (
+            "resistivity" in t or t.startswith("rho") or "ohm" in t
+            or "apparent" in t or "ρ" in t or "ω" in t
+        ):
+            cols["rho"] = c
+        elif t in ("k", "k (m)", "k(m)", "geometric factor"):
+            cols["k"] = c
+        elif t in ("no.", "no", "reading", "n"):
+            cols["no"] = c
+    return cols
 
 
 def _sounding_from_grid(

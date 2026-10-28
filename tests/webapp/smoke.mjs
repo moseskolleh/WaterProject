@@ -2016,6 +2016,50 @@ await withPage(async (page, base, consoleErrors) => {
     scan.ab2.length === 8 && Math.abs(scan.rho[0] - 210.4) < 1e-9,
     `${scan.soundingId} / ${scan.community} / ${scan.ab2.length} readings`);
 
+  // A sheet of resistances with MN/2 and K, as crews keep one, goes into the
+  // page's own template under headings the reader multiplies out; one whose
+  // readings the template cannot take is not offered as a template, and the
+  // page says why. "Resistance (ohm)" used to land in the resistivity column.
+  const headed = await page.evaluate(async () => {
+    const S = window.GWT.support, C = window.GWT.core, app = window.GWT.app;
+    const columns = ['No.', 'AB/2 (m)', 'MN/2 (m)', 'K', 'Resistance (ohm)'];
+    const rows = [['1', '1.5', '0.25', '13.74', '8.76'], ['2', '2', '0.25', '24.74', '3.97'],
+      ['3', '3', '0.25', '56.16', '1.43']];
+    const sheet = (keep) => C.extractionDocumentFrom({
+      document_kind: 'ves', header: [], uncertain_cells: [], notes: '',
+      tables: [{ title: 'Readings', columns: keep.map((i) => columns[i]),
+        rows: rows.map((r) => keep.map((i) => r[i])) }],
+    }, 'scan.jpg');
+    const filled = await S.writeXlsx([{ name: 'VES 1',
+      rows: C.fillVesTemplateSheets(sheet([0, 1, 2, 3, 4]), app.templates.ves.sheets()[0].rows) }]);
+    const sounding = C.readVesSheets(await S.readXlsx(filled), 'filled.xlsx')[0];
+    const before = app.derived.extraction;
+    const buttons = async (doc) => {
+      app.derived.extraction = doc;
+      await app.goto('extract');
+      return {
+        offered: Array.from(document.querySelectorAll('#page-host button'))
+          .some((b) => b.textContent === 'Download filled VES template (.xlsx)'),
+        text: document.querySelector('#page-host').textContent,
+      };
+    };
+    const placed = await buttons(sheet([0, 1, 2, 3, 4]));
+    const refused = await buttons(sheet([0, 1, 4]));
+    app.derived.extraction = before;
+    await app.goto('overview');
+    return { rho: sounding.rho_app, mn: sounding.mn,
+      expected: rows.map((r) => Number(r[3]) * Number(r[4])), placed, refused };
+  });
+  check('scan: a sheet of resistances and MN/2 reads back as resistivities and full MN',
+    headed.rho.length === 3 && headed.rho.every((v, i) => Math.abs(v - headed.expected[i]) < 1e-9) &&
+    headed.mn.every((v) => v === 0.5), JSON.stringify(headed.rho) + ' ' + JSON.stringify(headed.mn));
+  check('scan: a table the template cannot take is not offered as one, and the page says why',
+    headed.placed.offered && !headed.refused.offered &&
+    headed.refused.text.includes('cannot be placed in the VES template') &&
+    !headed.refused.text.includes('Nothing flagged'),
+    JSON.stringify([headed.placed.offered, headed.refused.offered,
+      headed.refused.text.slice(0, 400)]));
+
   // --- A pumping test written on a Word field sheet ---
   // Built here from the sample workbook so the two readers are compared on
   // the same readings: a .docx that carries the workbook's own numbers must

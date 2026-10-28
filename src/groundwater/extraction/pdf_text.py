@@ -3,8 +3,9 @@
 Uses pdfplumber (``pip install groundwater-toolkit[extract]``) to pull
 words and tables, then matches header labels with the same canonical
 patterns the template parsers use. Clean numeric parses get full
-confidence; anything ambiguous is flagged for review. Image-only scans
-yield no text here and should go through the AI extractor instead.
+confidence; anything ambiguous is flagged for review. An image-only
+scan has no text here, and is refused with a sentence that sends it to
+the AI extractor, as the browser's reader refuses it.
 
 Two things a field sheet does that a naive reader gets wrong, and which
 this module handles from word positions rather than from the page's
@@ -36,7 +37,8 @@ from collections.abc import Iterable
 from typing import Any
 
 from ..ingestion.common import match_label, split_inline_value
-from ..utils import clean_text, parse_number
+from ..text import phrase, phrase_table
+from ..utils import clean_text, is_whole_number, parse_number
 from .models import (
     ExtractedDocument,
     ExtractedField,
@@ -138,6 +140,12 @@ def extract_pdf_text(path: str | Path) -> ExtractedDocument:
                 )
 
     text_blob = "\n".join(all_text)
+    if not text_blob.strip():
+        # A scanner's PDF is a picture of the sheet. Read as an empty
+        # document, its review workbook said every value had been extracted
+        # with high confidence; the browser's reader refuses it, in these
+        # words.
+        raise ValueError(phrase("extraction.no_text_layer"))
     return ExtractedDocument(
         source=str(path),
         document_kind=_guess_kind(text_blob),
@@ -225,8 +233,17 @@ def _tables_from_lines(
 ) -> list[tuple[list[str], list[list[str]]]]:
     """Tables from the layout, for sheets with no ruling lines.
 
-    A run of consecutive multi-word lines that share a column structure
-    is a table. The first line of the run is its header row.
+    A run of consecutive lines of two or more columns that share a column
+    structure is a table. The first line of the run is its header row.
+
+    A line's columns are its pieces between column breaks (the gaps
+    ``_line_text`` writes as three spaces), not its words. Counted in
+    words, a caption above the headings ("Field readings (Schlumberger
+    array)") joined the run and became the header, the real headings
+    became the first reading, and nothing in the table was checked as a
+    number; a note under it ("Notes: MN is the full potential electrode
+    spacing.") became a reading of its own. The browser's reader counts
+    the same pieces.
     """
     tables: list[tuple[list[str], list[list[str]]]] = []
     run: list[_Line] = []
@@ -247,7 +264,7 @@ def _tables_from_lines(
         # label/value pairs already read as header fields; folding them into
         # the reading table would put "Community: Rokel" where an AB/2
         # spacing belongs.
-        if len(line) >= 2 and position not in header_lines:
+        if len(_split_line(_line_text(line))) >= 2 and position not in header_lines:
             run.append(line)
         else:
             flush()
@@ -295,16 +312,26 @@ def _clean_table(raw: Iterable[Iterable]) -> tuple[list[str], list[list[str]]] |
 
 
 def _cell_confidence(cell: str, column: str) -> tuple[float, str]:
-    """Numeric columns should parse as numbers; empty cells in numeric
-    columns and non-numeric junk are review items."""
+    """Numeric columns should hold numbers; empty cells in numeric columns,
+    non-numeric junk and a number with something else in the cell are
+    review items.
+
+    parse_number takes the first number in a cell, so a scanner's "12O.4"
+    (a letter O for a zero) used to pass as clean and reach the template
+    as 12. The whole cell has to be the number, bar a unit after it
+    (``utils.is_whole_number``).
+    """
     numeric_column = any(
         marker in column.lower()
         for marker in ("(m)", "m)", "ohm", "rate", "level", "depth", "time", "value", "ab/2", "mn")
     )
     if not numeric_column:
         return 1.0, ""
+    reasons = phrase_table("extraction.cell_reason")
     if cell == "":
-        return 0.6, "empty cell in a numeric column"
+        return 0.6, reasons["empty"]
     if parse_number(cell) is None:
-        return 0.4, "does not parse as a number"
+        return 0.4, reasons["unreadable"]
+    if not is_whole_number(cell):
+        return 0.5, reasons["partial"]
     return 1.0, ""

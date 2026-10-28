@@ -15753,21 +15753,51 @@
     if (typeof value === 'boolean') return dflt;
     var text = String(value).trim();
     if (!text) return dflt;
-    if (text.indexOf(',') >= 0) {
-      /* A comma is a thousands separator only when exactly three digits
-       * follow it and end the number; any other comma between digits is a
-       * decimal comma, which crews trained on French-language sheets type
-       * as a matter of course. "1,5" used to parse as 15 and "078,7" as 787. */
-      if (text.indexOf('.') >= 0 && text.lastIndexOf(',') > text.lastIndexOf('.')) {
-        text = text.replace(/\./g, '').replace(/,/g, '.');
-      } else {
-        text = text.replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
-        text = text.replace(/(\d),(?=\d)/g, '$1.');
-        text = text.replace(/,/g, '');
-      }
-    }
-    var m = NUMBER_RE.exec(text);
+    var m = NUMBER_RE.exec(withoutCommas(text));
     return m === null ? dflt : parseFloat(m[0]);
+  }
+
+  /** text with its commas read as parseNumber reads them. A comma is a
+   * thousands separator only when exactly three digits follow it and end the
+   * number; any other comma between digits is a decimal comma, which crews
+   * trained on French-language sheets type as a matter of course. "1,5" used
+   * to parse as 15 and "078,7" as 787.
+   * @param {string} text
+   * @returns {string}
+   */
+  function withoutCommas(text) {
+    if (text.indexOf(',') < 0) return text;
+    if (text.indexOf('.') >= 0 && text.lastIndexOf(',') > text.lastIndexOf('.')) {
+      return text.replace(/\./g, '').replace(/,/g, '.');
+    }
+    text = text.replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
+    text = text.replace(/(\d),(?=\d)/g, '$1.');
+    return text.replace(/,/g, '');
+  }
+
+  /* The whole of a cell that is one number, and the units a field sheet
+   * writes after a reading: utils.py _WHOLE_NUMBER_RE and _UNIT_SUFFIX_RE. A
+   * letter that is not one of the units is a misread rather than a unit: "12O"
+   * is 120 with a scanner's letter O, not 12 of something. Ohms are written
+   * with the Greek capital omega or with the ohm sign, which a text layer may
+   * carry instead. */
+  var WHOLE_NUMBER_RE = /^[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?$/;
+  var UNIT_SUFFIX_RE =
+    /\s*(?:m|cm|mm|min|s|h|hr|%|ohm(?:[-. ]?m)?|[\u03a9\u2126](?:[-.\u00b7]?m)?|m3\/h|l\/s|m\/min)$/i;
+
+  /** Whether a cell is one number and nothing else, bar a unit after it.
+   * utils.py is_whole_number. parseNumber is lenient on purpose and takes the
+   * first number it finds, which is what reading "80m" needs; it is also
+   * what reads a scanner's "12O.4" as 12, so a grader asks this instead.
+   * @param {*} value a cell
+   * @returns {boolean}
+   */
+  function isWholeNumber(value) {
+    if (value === null || value === undefined || typeof value === 'boolean') return false;
+    if (typeof value === 'number') return isFinite(value);
+    if (value instanceof Date) return false;
+    var text = String(value).trim().replace(UNIT_SUFFIX_RE, '');
+    return WHOLE_NUMBER_RE.test(withoutCommas(text));
   }
 
   /* Each depth may carry a decimal comma, as parseNumber reads one: without
@@ -16174,47 +16204,59 @@
 
   function findVesDataHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
-      var texts = rowText(grid[r]);
-      /** @type {Record<string, number>} */
-      var cols = {};
-      for (var c = 0; c < texts.length; c++) {
-        var t = texts[c];
-        if (!t) continue;
-        if (t.indexOf('ab/2') >= 0 || t === 'ab2' || t.indexOf('ab / 2') >= 0) {
-          cols.ab2 = c;
-        } else if (WENNER_A_HEADERS.indexOf(t) >= 0) {
-          /* The Wenner spacing column, headed "a" or "a (m)", meant nothing to
-           * the reader at all, so a Wenner sheet was dropped whole as having
-           * no data table (ROADMAP data-ingestion-11) */
-          cols.a = c;
-        } else if (t.indexOf('mn') === 0 && MN_HALF_RE.test(t)) {
-          /* half-MN first, and tolerant of the spaces a typed header carries:
-           * "MN / 2 (m)" does not contain the literal "/2", so it would fall
-           * through to the full-MN branch and halve every potential spacing */
-          cols.mn_half = c;
-        } else if (t.indexOf('mn') === 0) {
-          cols.mn = c;
-        } else if (RESISTANCE_RE.test(t)) {
-          /* a sheet that records V/I (a resistance, in ohms) is not a
-           * resistivity sheet: "R (ohm)" used to match the "ohm" test below
-           * and every reading came through as a resistivity of 0.9 */
-          cols.resistance = c;
-        } else if (t.indexOf('resistivity') >= 0 || t.indexOf('rho') === 0 ||
-                   t.indexOf('ohm') >= 0 || t.indexOf('apparent') >= 0 ||
-                   t.indexOf('\u03c1') >= 0 || t.indexOf('\u03c9') >= 0) {
-          cols.rho = c;
-        } else if (['k', 'k (m)', 'k(m)', 'geometric factor'].indexOf(t) >= 0) {
-          cols.k = c;
-        } else if (['no.', 'no', 'reading', 'n'].indexOf(t) >= 0) {
-          cols.no = c;
-        }
-      }
+      var cols = vesReadingColumns(grid[r]);
       if (('ab2' in cols || 'a' in cols) &&
           ('rho' in cols || 'resistance' in cols)) {
         return { row: r, cols: cols };
       }
     }
     return null;
+  }
+
+  /** What each heading of a VES table names, by the rules the reader reads a
+   * header row with (ves.py reading_columns), the last column of a kind
+   * winning. The extraction fills the VES template with it, so a sheet's
+   * columns are placed by the same rules that read the template back.
+   * @param {Array<*>} headings
+   * @returns {Record<string, number>}
+   */
+  function vesReadingColumns(headings) {
+    var texts = rowText(headings || []);
+    /** @type {Record<string, number>} */
+    var cols = {};
+    for (var c = 0; c < texts.length; c++) {
+      var t = texts[c];
+      if (!t) continue;
+      if (t.indexOf('ab/2') >= 0 || t === 'ab2' || t.indexOf('ab / 2') >= 0) {
+        cols.ab2 = c;
+      } else if (WENNER_A_HEADERS.indexOf(t) >= 0) {
+        /* The Wenner spacing column, headed "a" or "a (m)", meant nothing to
+         * the reader at all, so a Wenner sheet was dropped whole as having
+         * no data table (ROADMAP data-ingestion-11) */
+        cols.a = c;
+      } else if (t.indexOf('mn') === 0 && MN_HALF_RE.test(t)) {
+        /* half-MN first, and tolerant of the spaces a typed header carries:
+         * "MN / 2 (m)" does not contain the literal "/2", so it would fall
+         * through to the full-MN branch and halve every potential spacing */
+        cols.mn_half = c;
+      } else if (t.indexOf('mn') === 0) {
+        cols.mn = c;
+      } else if (RESISTANCE_RE.test(t)) {
+        /* a sheet that records V/I (a resistance, in ohms) is not a
+         * resistivity sheet: "R (ohm)" used to match the "ohm" test below
+         * and every reading came through as a resistivity of 0.9 */
+        cols.resistance = c;
+      } else if (t.indexOf('resistivity') >= 0 || t.indexOf('rho') === 0 ||
+                 t.indexOf('ohm') >= 0 || t.indexOf('apparent') >= 0 ||
+                 t.indexOf('\u03c1') >= 0 || t.indexOf('\u03c9') >= 0) {
+        cols.rho = c;
+      } else if (['k', 'k (m)', 'k(m)', 'geometric factor'].indexOf(t) >= 0) {
+        cols.k = c;
+      } else if (['no.', 'no', 'reading', 'n'].indexOf(t) >= 0) {
+        cols.no = c;
+      }
+    }
+    return cols;
   }
 
   /**
@@ -18388,7 +18430,7 @@
   }
 
   Object.assign(C, {
-    cleanText: cleanText, parseNumber: parseNumber,
+    cleanText: cleanText, parseNumber: parseNumber, isWholeNumber: isWholeNumber,
     parseDepthInterval: parseDepthInterval,
     matchLabel: matchLabel, matchLabelPriority: matchLabelPriority,
     splitInlineValue: splitInlineValue, extractHeaderFields: extractHeaderFields,
@@ -26406,6 +26448,27 @@
     };
   }
 
+  /** How far a value sits towards, or past, its binding limit: view.py
+   * _limit_ratio. Against a range it is the larger of the value over the top
+   * and the bottom over the value, so a value outside the range is past the
+   * line on whichever side it falls; the value over the top alone drew the
+   * Dr Timbo sample's pH of 5.9 at 0.69 times its 6.5 to 8.5 limit, on the
+   * compliant side. A value of zero or less under a range that starts above
+   * zero has no ratio.
+   * @param {number|null|undefined} value in the guideline's unit
+   * @param {Rec} limit
+   * @returns {number|null}
+   */
+  function spineLimitRatio(value, limit) {
+    if (value === null || value === undefined || !limit.maximum) return null;
+    var ratio = Number(value) / Number(limit.maximum);
+    if (limit.minimum) {
+      if (value <= 0) return null;
+      ratio = Math.max(ratio, Number(limit.minimum) / Number(value));
+    }
+    return ratio;
+  }
+
   /** @param {QualityAssessment} assessment */
   function spineQuality(assessment) {
     var rows = (assessment.rows || []).map(function (r) {
@@ -26420,10 +26483,7 @@
         /* The limit is written in the guideline's unit, so the value has to
          * be on that scale too. Dividing the raw reported number by it drew
          * a compliant ug/L result a thousand times past its line. */
-        if (r.value_in_guideline_unit !== null &&
-            r.value_in_guideline_unit !== undefined && limit.maximum) {
-          ratio = Number(r.value_in_guideline_unit) / Number(limit.maximum);
-        }
+        ratio = spineLimitRatio(r.value_in_guideline_unit, limit);
       }
       return {
         parameter: r.parameter, value: spineRound(r.value, 4), unit: r.unit,
@@ -26597,6 +26657,14 @@
     if (money.handpumps !== undefined && money.handpumps !== null) {
       costInputs.handpumps = money.handpumps;
     }
+    /* the Streamlit Costing page sets the pumping hours too (view.py
+     * SpineCosting); the browser's leaves them at the defaults */
+    if (money.developmentHours !== undefined && money.developmentHours !== null) {
+      costInputs.development_hours = money.developmentHours;
+    }
+    if (money.testPumpingHours !== undefined && money.testPumpingHours !== null) {
+      costInputs.test_pumping_hours = money.testPumpingHours;
+    }
     var estimate = estimateBoreholeCost(costInputs, money.rates || null, {
       overheadsPercent: money.overheadsPercent,
       marginPercent: money.marginPercent,
@@ -26705,17 +26773,83 @@
     return index < list.length ? list[index] : 1.0;
   }
 
+  /** The columns of an extracted VES table the template takes, and what it
+   * lacks: review.py ves_template_columns. `placed` maps ab2, mn or mn_half,
+   * rho or resistance, and k to the table's columns; `missing` holds the
+   * extraction.ves_missing keys that keep the readings out of the template.
+   * The columns are read by the VES reader's own rules, which are the rules
+   * that read the filled template back. Picked by substring instead, a sheet
+   * headed AB/2, MN/2, K, Resistance (ohm), App. Resistivity (ohm-m) had its
+   * resistances written into the apparent-resistivity column and its
+   * half-spacings into the full MN column, with nothing flagged.
+   * @param {Rec} table an extracted table
+   * @returns {{placed: Record<string, number>, missing: string[]}}
+   */
+  function vesTemplateColumns(table) {
+    var cols = vesReadingColumns(table.columns || []);
+    /** @type {Record<string, number>} */
+    var placed = {};
+    var missing = [];
+    if ('ab2' in cols) placed.ab2 = cols.ab2;
+    else missing.push('a' in cols ? 'wenner' : 'spacing');
+    if ('mn' in cols) placed.mn = cols.mn;
+    else if ('mn_half' in cols) placed.mn_half = cols.mn_half;
+    if ('rho' in cols) {
+      placed.rho = cols.rho;
+    } else if ('resistance' in cols) {
+      placed.resistance = cols.resistance;
+      if ('k' in cols) placed.k = cols.k;
+      /* the reader works K out from AB/2 and MN; with neither K nor MN every
+       * row would be dropped */
+      else if (!('mn' in placed) && !('mn_half' in placed)) missing.push('factor');
+    } else {
+      missing.push('value');
+    }
+    return { placed: placed, missing: missing };
+  }
+
+  function vesUnplaced(table, missing) {
+    var reasons = phraseTable('extraction.ves_missing');
+    return phrase('extraction.ves_unplaced', {
+      table: String(table.title),
+      missing: missing.map(function (key) { return reasons[key]; }).join('; '),
+      headings: (table.columns || []).map(function (c) {
+        return "'" + c + "'";
+      }).join(', ') || 'none',
+    });
+  }
+
+  /** What needs checking about the sheet as a whole, before any one value:
+   * review.py sheet_review_items. A sheet whose table was not found, or a VES
+   * sheet whose readings the template cannot take, has lost every reading,
+   * and its review used to say "None: all values extracted with high
+   * confidence".
+   * @param {Rec} document an extracted document
+   * @returns {string[]}
+   */
+  function sheetReviewItems(document) {
+    var tables = document.tables || [];
+    if (!tables.length) return [phrase('extraction.no_table')];
+    if (document.document_kind === 'ves') {
+      var missing = vesTemplateColumns(tables[0]).missing;
+      if (missing.length) return [vesUnplaced(tables[0], missing)];
+    }
+    return [];
+  }
+
   /** Everything a human still has to look at, in the words the review sheet
-   * uses. Mirrors ExtractedDocument.review_items.
+   * uses. Mirrors ExtractedDocument.review_items: the sheet as a whole first,
+   * then the header fields and the cells.
    * @param {Rec} document an extracted document
    * @returns {string[]}
    */
   function reviewItems(document) {
-    var items = (document.header || []).filter(function (f) { return f.needs_review; })
-      .map(function (f) {
-        return "header field '" + f.name + "' = '" + f.value + "' (confidence " +
-          pyFixed(f.confidence, 2) + ')';
-      });
+    var items = sheetReviewItems(document).concat(
+      (document.header || []).filter(function (f) { return f.needs_review; })
+        .map(function (f) {
+          return "header field '" + f.name + "' = '" + f.value + "' (confidence " +
+            pyFixed(f.confidence, 2) + ')';
+        }));
     (document.uncertain_cells || []).forEach(function (cell) {
       var table = (document.tables || [])[cell.table_index];
       if (!table) return;
@@ -27096,10 +27230,15 @@
    *
    * pdfplumber finds a table by its drawn rules; that needs the graphics
    * operators and the page's line art. Here the same job is done from word
-   * positions: a run of consecutive lines that share a column structure is a
-   * table. It finds the tables on a generated field sheet, and it is honest
-   * about what it is - the page says so, and every numeric cell that does not
-   * parse is flagged for review either way. */
+   * positions: a run of consecutive lines of two or more columns that share a
+   * column structure is a table. It finds the tables on a generated field
+   * sheet, and it is honest about what it is - the page says so, and every
+   * numeric cell that does not parse is flagged for review either way.
+   *
+   * A line's columns are its pieces between column breaks (the gaps lineText
+   * writes as three spaces), as pdf_text.py _tables_from_lines counts them.
+   * The Python reader counted words, so a caption above the headings became
+   * the header there, and a note under the table a reading. */
   function tablesFromLines(lines, isHeaderLine) {
     var tables = [];
     var run = [];
@@ -27121,7 +27260,8 @@
        * label/value pairs that have already been read as header fields;
        * folding them into the reading table would put "Community: Rokel"
        * where an AB/2 spacing belongs */
-      if (line.words.length >= 2 && !(isHeaderLine && isHeaderLine(line))) {
+      if (splitHeaderLine(lineText(line)).length >= 2 &&
+          !(isHeaderLine && isHeaderLine(line))) {
         run.push(line);
       } else {
         flush();
@@ -27164,8 +27304,11 @@
   var NUMERIC_COLUMN_MARKERS = ['(m)', 'm)', 'ohm', 'rate', 'level', 'depth',
     'time', 'value', 'ab/2', 'mn'];
 
-  /** Numeric columns should parse as numbers; an empty cell in a numeric column
-   * and non-numeric junk are both review items.
+  /** Numeric columns should hold numbers; an empty cell in a numeric column,
+   * non-numeric junk and a number with something else in the cell are all
+   * review items. parseNumber takes the first number in a cell, so a
+   * scanner's "12O.4" used to pass as clean and reach the template as 12: the
+   * whole cell has to be the number, bar a unit after it (isWholeNumber).
    * @param {*} cell
    * @param {*} column the column's header
    * @returns {[number, string]}
@@ -27176,8 +27319,10 @@
       return lower.indexOf(marker) >= 0;
     });
     if (!numeric) return [1.0, ''];
-    if (cell === '') return [0.6, 'empty cell in a numeric column'];
-    if (parseNumber(cell) === null) return [0.4, 'does not parse as a number'];
+    var reasons = phraseTable('extraction.cell_reason');
+    if (cell === '') return [0.6, reasons.empty];
+    if (parseNumber(cell) === null) return [0.4, reasons.unreadable];
+    if (!isWholeNumber(cell)) return [0.5, reasons.partial];
     return [1.0, ''];
   }
 
@@ -27286,10 +27431,7 @@
     }
 
     var blob = allText.join('\n');
-    if (!blob.trim()) {
-      throw new Error('That PDF carries no text layer - it is an image of a ' +
-        'sheet rather than a typed one. Use the AI assisted extraction instead.');
-    }
+    if (!blob.trim()) throw new Error(phrase('extraction.no_text_layer'));
     return {
       source: sourceName || 'document.pdf',
       document_kind: guessDocumentKind(blob),
@@ -27358,6 +27500,13 @@
   /** The standard VES template, filled from an extracted VES sheet. Header
    * fields go through the same label patterns the parsers use, so the filled
    * workbook reads back through the normal reader after review.
+   *
+   * The readings go in as the sheet has them, under headings the VES reader
+   * reads the way the sheet meant them (review.py fill_ves_template): a
+   * half-spacing column is headed "MN/2 (m)", so the reader doubles it, and a
+   * sheet that records resistances has them headed "Resistance (ohm)", with
+   * its K column beside them where it has one. A table whose readings cannot
+   * be placed that way is refused, with the reason.
    * @param {Rec} document an extracted document of kind 'ves'
    * @param {Grid} blankRows the template's own rows
    */
@@ -27369,6 +27518,12 @@
       throw new Error('No data table was extracted from that sheet.');
     }
     var table = document.tables[0];
+    var layout = vesTemplateColumns(table);
+    if (layout.missing.length) {
+      var reason = vesUnplaced(table, layout.missing);
+      throw new Error(reason.charAt(0).toUpperCase() + reason.slice(1) + '.');
+    }
+    var placed = layout.placed;
     var rows = blankRows.map(function (row) { return (row || []).slice(); });
 
     /* canonical key -> [row, column] in the template, 0-based */
@@ -27380,6 +27535,9 @@
       elevation_m: [5, 1], date: [5, 3],
       supervisor: [6, 1], instrument: [6, 3],
     };
+    /* the blank template's own sounding number is not the sheet's: left in,
+     * it was read back as if the sheet had given it */
+    if (rows[cellMap.sounding_id[0]]) rows[cellMap.sounding_id[0]][cellMap.sounding_id[1]] = '';
     (document.header || []).forEach(function (field) {
       /* The AI path names a field the way the sheet does ("Sounding Number"),
        * which the label patterns resolve. The text-layer path has already
@@ -27398,20 +27556,6 @@
       if (cell.table_index === 0) flagged[cell.row + ':' + cell.column] = true;
     });
 
-    function findColumn() {
-      var needles = Array.prototype.slice.call(arguments);
-      for (var i = 0; i < table.columns.length; i++) {
-        var low = String(table.columns[i]).toLowerCase();
-        for (var n = 0; n < needles.length; n++) {
-          if (low.indexOf(needles[n]) >= 0) return i;
-        }
-      }
-      return null;
-    }
-    var colAb2 = findColumn('ab/2', 'ab2');
-    var colMn = findColumn('mn');
-    var colRho = findColumn('resist', 'ohm', 'rho');
-
     /* the blank template's reading grid starts on the row after the column
      * headings; everything below it is replaced by the extracted readings */
     var firstReading = 9;
@@ -27419,14 +27563,37 @@
       if ((rows[i] || [])[0] === 'No.') { firstReading = i + 1; break; }
     }
     rows.length = firstReading;
+    /* template column (0-based) <- the extracted table's column, under the
+     * blank template's own headings, changed where the sheet's columns are
+     * not what they say */
+    var headings = (rows[firstReading - 1] || []).slice(0, 4);
+    /** @type {Array<[number, number]>} */
+    var targets = [[placed.ab2, 1]];
+    if ('mn' in placed) {
+      targets.push([placed.mn, 2]);
+    } else if ('mn_half' in placed) {
+      targets.push([placed.mn_half, 2]);
+      headings[2] = 'MN/2 (m)';
+    }
+    if ('rho' in placed) {
+      targets.push([placed.rho, 3]);
+    } else {
+      targets.push([placed.resistance, 3]);
+      headings[3] = 'Resistance (ohm)';
+      if ('k' in placed) {
+        targets.push([placed.k, 4]);
+        headings.push('K');
+      }
+    }
+    rows[firstReading - 1] = headings;
     table.rows.forEach(function (row, index) {
       /** @type {Array<*>} */
-      var out = [index + 1, '', '', ''];
-      /** @type {Array<[number|null, number]>} */ ([[colAb2, 1], [colMn, 2], [colRho, 3]])
-        .forEach(function (pair) {
-          if (pair[0] === null || pair[0] >= row.length) return;
-          out[pair[1]] = { v: row[pair[0]], flag: (index + ':' + pair[0]) in flagged };
-        });
+      var out = headings.map(function () { return ''; });
+      out[0] = index + 1;
+      targets.forEach(function (pair) {
+        if (pair[0] >= row.length) return;
+        out[pair[1]] = { v: row[pair[0]], flag: (index + ':' + pair[0]) in flagged };
+      });
       rows.push(out);
     });
     return rows;
@@ -27599,20 +27766,38 @@
         (detail ? ': ' + detail : '.'));
     }
     var message = await response.json();
-    if (message.stop_reason === 'refusal') {
-      throw new Error('The extraction request was declined by the model; ' +
-        'check the document content.');
-    }
-    /* a refusal leaves content empty, and hitting the output cap can leave
-     * only thinking blocks; either way there is nothing to parse */
+    return extractionDocumentFrom(replyPayload(message), opts.source || 'scan');
+  }
+
+  /** The transcription a reply carries, or the reason it carries none.
+   * claude.py _reply_payload. A refusal leaves content empty, and hitting the
+   * output cap can leave only thinking blocks or part of the JSON, which went
+   * straight to JSON.parse and came back as "Unexpected end of JSON input":
+   * the reply is refused for its stop reason before it is parsed, and
+   * anything else that is not JSON is refused naming it.
+   * @param {Rec} message the API's reply
+   * @returns {Rec}
+   */
+  function replyPayload(message) {
+    var stopReason = String(message.stop_reason || 'unknown');
+    if (stopReason === 'refusal') throw new Error(phrase('extraction.declined'));
+    if (stopReason === 'max_tokens') throw new Error(phrase('extraction.cut_off'));
     var textBlock = (message.content || []).filter(function (b) {
       return b.type === 'text';
     })[0];
     if (!textBlock) {
-      throw new Error('The model returned no transcription (stop reason: ' +
-        (message.stop_reason || 'unknown') + '). Try a clearer scan.');
+      throw new Error(phrase('extraction.no_transcription', { stop_reason: stopReason }));
     }
-    return extractionDocumentFrom(JSON.parse(textBlock.text), opts.source || 'scan');
+    var payload;
+    try {
+      payload = JSON.parse(textBlock.text);
+    } catch (e) {
+      throw new Error(phrase('extraction.unreadable_reply', { stop_reason: stopReason }));
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error(phrase('extraction.unreadable_reply', { stop_reason: stopReason }));
+    }
+    return payload;
   }
 
   /* --- a pumping test written on a Word field sheet -------------------------
@@ -27710,7 +27895,8 @@
     extractPdfText: extractPdfText, cellConfidence: cellConfidence,
     reviewWorkbookSheets: reviewWorkbookSheets,
     fillVesTemplateSheets: fillVesTemplateSheets,
-    extractWithClaude: extractWithClaude,
+    vesTemplateColumns: vesTemplateColumns, sheetReviewItems: sheetReviewItems,
+    extractWithClaude: extractWithClaude, replyPayload: replyPayload,
     extractionDocumentFrom: extractionDocumentFrom,
     EXTRACTION_MODEL: EXTRACTION_MODEL, EXTRACTION_SCHEMA: EXTRACTION_SCHEMA,
     EXTRACTION_PROMPT: EXTRACTION_PROMPT,
@@ -30041,6 +30227,20 @@
 
   /* --- the traverse ------------------------------------------------------- */
 
+  /* The east component of a unit direction within a degree of north-south. */
+  var NORTH_SOUTH_EAST_COMPONENT = Math.sin(1.0 * Math.PI / 180.0);
+
+  /** A traverse's bearing as a title prints it, to the degree: subsurface.py
+   * bearing_text. A line just west of north runs at a bearing just under 360,
+   * which is written as 0, the bearing of the line it is within a degree of.
+   * @param {number} bearingDeg
+   * @returns {string}
+   */
+  function bearingText(bearingDeg) {
+    var text = pyFixed(bearingDeg, 0);
+    return text === '360' ? '0' : text;
+  }
+
   /** subsurface.py traverse_profile: the soundings projected onto the best-fit
    * line through their recorded positions.
    *
@@ -30110,9 +30310,14 @@
     /* The sign of a singular vector is arbitrary, so the same five soundings
      * handed over in a different order came back as a section drawn the other
      * way round - the same ground, mirrored, with the chainages reversed. The
-     * line is made to run eastwards, or northwards where it is exactly
-     * north-south, so a survey has one section rather than two. */
-    if (direction[0] < 0 || (direction[0] === 0 && direction[1] < 0)) {
+     * line is made to run eastwards, or northwards where it is within a degree
+     * of north-south, so a survey has one section rather than two. Only an
+     * exactly north-south line used to run northwards: one whose eastings
+     * differed by 0.3 m, as a handheld GPS reads the same pegs, ran from the
+     * south end, its stations reversed and its title at bearing 180. */
+    if (Math.abs(direction[0]) < NORTH_SOUTH_EAST_COMPONENT) {
+      if (direction[1] < 0) direction = [-direction[0], -direction[1]];
+    } else if (direction[0] < 0) {
       direction = [-direction[0], -direction[1]];
     }
     var normal = [-direction[1], direction[0]];
@@ -30138,7 +30343,7 @@
     var length = arrMax(chainage);
     var maxOffset = arrMax(offset.map(function (v) { return Math.abs(v); }));
     var bearing = ((Math.atan2(direction[0], direction[1]) * 180.0 / Math.PI) %
-      180.0 + 180.0) % 180.0;
+      360.0 + 360.0) % 360.0;
     return {
       reason: null,
       labels: pick(labels),
@@ -30260,7 +30465,7 @@
     var title = opts.title;
     if (title === undefined || title === null) {
       title = 'Interpreted geoelectric section, ' + pyFixed(profile.length_m, 0) +
-        ' m along bearing ' + pyFixed(profile.bearing_deg, 0) + ' degrees';
+        ' m along bearing ' + bearingText(profile.bearing_deg) + ' degrees';
       if (!profile.is_collinear) {
         title += ' (soundings up to ' + pyFixed(profile.max_offset_m, 0) +
           ' m off the line)';
@@ -32172,7 +32377,7 @@
     subsurfaceMapSpec: subsurfaceMapSpec,
     pointsEncloseAnArea: pointsEncloseAnArea,
     singularValues2: singularValues2, principalAxis: principalAxis,
-    traverseProfile: traverseProfile, wideGaps: wideGaps,
+    traverseProfile: traverseProfile, bearingText: bearingText, wideGaps: wideGaps,
     correlationNote: correlationNote, rhoColourRange: rhoColourRange,
     geoelectricSectionGeometry: geoelectricSectionGeometry,
     pseudosectionGeometry: pseudosectionGeometry,

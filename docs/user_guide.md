@@ -743,6 +743,21 @@ Moving a screen clears the design and costing signatures, since a
 signature has to belong to the numbers that were in front of the
 person at the time.
 
+The price on the costing stage is the Costing & BoQ page's price for
+the design on the section, in both apps: the unit rates as edited
+there, and its overheads, margin, contingency, VAT, exchange rate,
+overburden, mobilisation distance and counts, as they stand, or as
+they start if that page has not been opened yet. The Streamlit app's
+Costing page starts at a 100 km mobilisation distance and the
+browser's at 0 km, so the two apps' prices differ until it is set.
+
+The water quality chart draws each determinand as a multiple of its
+own limit, so one line separates compliant from not. Against a range,
+such as pH 6.5 to 8.5, a value is drawn past the line on whichever side
+of the range it falls: the larger of the value over the top of the
+range and the bottom of the range over the value. The Dr Timbo
+sample's pH of 5.9 is drawn at 6.5 / 5.9 = 1.10 times its limit.
+
 ## 9. Handover
 
 In the browser app: [`#/handover`](index.html#/handover).
@@ -1280,7 +1295,11 @@ apparent-resistivity pseudo-section, which involves no inversion at
 all - each point is a reading at the station and spacing it was taken
 with, so it is still right if the inversion is wrong. Its vertical
 axis is AB/2, the electrode half-spacing, and is labelled as such
-rather than converted to a depth.
+rather than converted to a depth. Both sections run eastwards along the
+line, or northwards where the line is within a degree of north-south,
+whatever order the soundings were entered in, so a few tens of
+centimetres of GPS scatter on a north-south line no longer turns the
+section round.
 
 Every interpolated surface is blanked outside the ground the soundings
 enclose. A contour past the last peg is the interpolator continuing a
@@ -1514,6 +1533,42 @@ workbook. Check each highlighted cell against the paper before the
 data is used; nothing is accepted silently, and extraction never
 writes into the project on its own - correct the workbook, then upload
 the corrected sheet on the page that needs it.
+
+A PDF straight from a scanner is usually a picture of the sheet with
+no text in it. Both apps refuse it on the text path (in the Streamlit
+app, Extract with the AI box unticked) and say to use the AI
+extraction, rather than handing back an empty workbook.
+
+The review list starts with anything wrong with the sheet as a whole:
+no table found at all, or a VES reading table the VES template cannot
+take. A line of a single phrase - a caption above the column headings,
+a note under the readings - is not read as part of the table. Under a
+numeric heading, a cell is held back when it holds anything besides
+one number and a unit after it, so a scanner's "12O.4" (a letter O for
+a zero) is flagged "contains characters other than a number" instead
+of being read as 12. The units accepted after a number are m, cm, mm,
+min, s, h, hr, %, ohm, ohm-m, m3/h, l/s and m/min; anything else, a
+"<" or a "ft" included, is flagged for you to confirm.
+
+For a VES sheet the page also offers the standard VES template, filled
+in. Its columns are placed by the same rules the VES reader reads the
+template back with: an MN/2 column stays headed MN/2, so the reader
+doubles it; an apparent-resistivity column is taken ahead of a
+resistance column; and a sheet that records only resistances keeps
+them as resistances, beside its K column, so the reader works out the
+apparent resistivity (from AB/2 and MN where there is no K) and says
+so. A table with no AB/2 column, with neither an apparent resistivity
+nor a resistance, with the Wenner spacing a (the template is the
+Schlumberger sheet), or with resistances and neither K nor MN, is not
+put into the template; the page says why, and those readings are
+entered by hand. The template carries no instrument or sounding number
+the sheet did not give.
+
+The AI transcription of a long sheet - a stepped pumping test with its
+recovery runs to several hundred cells - can run out of output part of
+the way through. The page then says the transcription was cut off and
+nothing was read from it: photograph or scan each table on its own and
+extract them one at a time.
 
 ## 13. Where results go
 

@@ -303,8 +303,11 @@ groundwater extract field_sheet.pdf --out ./review       # a text-layer PDF into
 
 `recompute` prints one line per saved source and exits non-zero when one
 could not be rebuilt, so a shell loop over a folder of project files
-stops on the file that needs attention. `python -m groundwater` is the
-same thing.
+stops on the file that needs attention. `extract` writes the review
+workbook, and the filled VES template when the sheet's reading table can
+go into one (it says why when it cannot), and prints how many items the
+review lists; a scanned PDF with no text layer is refused with a pointer
+to the AI extraction. `python -m groundwater` is the same thing.
 
 ## Package layout
 

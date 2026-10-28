@@ -540,7 +540,10 @@ class TraverseProfile:
     max_offset_m: float
     #: max offset as a fraction of the traverse length
     straightness: float
-    #: bearing of the profile line, degrees clockwise from north
+    #: the bearing the chainage runs along, degrees clockwise from north:
+    #: under 180 for a line run eastwards, and within a degree of 0 (or of
+    #: 360, just west of north) for one within a degree of north-south,
+    #: which runs northwards
     bearing_deg: float
     eastings: np.ndarray
     northings: np.ndarray
@@ -564,6 +567,20 @@ class TraverseProfile:
     @property
     def length_m(self) -> float:
         return float(self.chainage_m.max() - self.chainage_m.min())
+
+
+#: The east component of a unit direction within a degree of north-south.
+_NORTH_SOUTH_EAST_COMPONENT = math.sin(math.radians(1.0))
+
+
+def bearing_text(bearing_deg: float) -> str:
+    """A traverse's bearing as a title prints it, to the degree.
+
+    A line just west of north runs at a bearing just under 360, which is
+    written as 0, the bearing of the line it is within a degree of.
+    """
+    text = f"{bearing_deg:.0f}"
+    return "0" if text == "360" else text
 
 
 def traverse_profile(interpretations: list) -> TraverseProfile:
@@ -631,8 +648,14 @@ def traverse_profile(interpretations: list) -> TraverseProfile:
     # handed over in a different order came back as a section drawn the other
     # way round - the same ground, mirrored, with the chainages reversed. The
     # line is made to run eastwards, or northwards where it is within a degree
-    # of north-south, so a survey has one section rather than two.
-    if direction[0] < 0 or (direction[0] == 0 and direction[1] < 0):
+    # of north-south, so a survey has one section rather than two. Only an
+    # exactly north-south line used to run northwards: one whose eastings
+    # differed by 0.3 m, as a handheld GPS reads the same pegs, ran from the
+    # south end, its stations reversed and its title at bearing 180.
+    if abs(direction[0]) < _NORTH_SOUTH_EAST_COMPONENT:
+        if direction[1] < 0:
+            direction = -direction
+    elif direction[0] < 0:
         direction = -direction
     normal = np.array([-direction[1], direction[0]])
     along = coords @ direction
@@ -645,7 +668,7 @@ def traverse_profile(interpretations: list) -> TraverseProfile:
     # above, and the principal axis runs through the widest spread of them
     length = float(chainage.max())
     max_offset = float(np.abs(across).max())
-    bearing = (math.degrees(math.atan2(direction[0], direction[1]))) % 180.0
+    bearing = (math.degrees(math.atan2(direction[0], direction[1]))) % 360.0
     return TraverseProfile(
         labels=[labels[k] for k in order],
         chainage_m=chainage,
@@ -692,7 +715,7 @@ def geoelectric_section_along_traverse(
     if title is None:
         title = (
             f"Interpreted geoelectric section, {profile.length_m:.0f} m along "
-            f"bearing {profile.bearing_deg:.0f} degrees"
+            f"bearing {bearing_text(profile.bearing_deg)} degrees"
         )
         if not profile.is_collinear:
             title += (
