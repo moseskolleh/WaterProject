@@ -644,7 +644,10 @@ def ves_range_reference(soundings, inversions) -> dict:
 # pull request: two layers, the top 0.2 to 2 m thick at 4 to 200,000 ohm-m,
 # over 3.2 to 40 ohm-m, and models of three and four layers whose thinnest
 # layer is not the top one, since the quadrature's cut follows the top
-# layer's thickness and the contrast to the least resistivity.
+# layer's thickness and the contrast to the least resistivity. Two more put
+# 300 and 900 m of 0.5 ohm-m on 200,000 ohm-m: there the potential (J0)
+# integral's transform turns at x = 3e-9 to 8e-9 for a 1 m radius, which
+# one panel on (0, 1e-6) left 1.1e-3 out in Wenner and finite MN.
 # The starting models are held to 1e-12 on soundings whose first spacing
 # was read twice, where np.interp at the first abscissa reads the second
 # reading and the browser's interp used to read the first. interp itself is
@@ -661,6 +664,10 @@ FORWARD_LAYERED = [
     ([10.0, 150000.0, 10.0], [3.0, 0.5]),
     ([150000.0, 100.0, 10.0], [0.5, 15.0]),
     ([0.5, 200000.0], [0.2]),
+    # thick conductive cover on the most resistive basement, where the
+    # potential integral's transform falls below x = 1e-6
+    ([0.5, 200000.0], [300.0]),
+    ([0.5, 0.5, 0.5, 200000.0], [300.0, 300.0, 300.0]),
 ]
 
 #: inversion_readings of regressions/ves-thin-resistive-top-layer.json and
@@ -782,7 +789,8 @@ def ves_bessel_reference() -> dict:
 # search had given up. Each is held here: three short soundings' layer
 # counts, trials, models and uncertainty factors, and the refusal of a model
 # they cannot determine; fits run to caps of 0, 1 and 3 iterations, and why
-# each stopped; a sheet with a row at AB/2 = 0, its flags and its inversion;
+# each stopped; a sheet with a row at AB/2 = 0, its flags and its inversion,
+# and one with two such rows, whose flag the catalogue puts in the plural;
 # interp over the logarithms of spacings with a 0 among them; and how the
 # Rokel pair's inversions stopped and whether they converged. How many
 # iterations a full inversion takes is not compared: the two engines' last
@@ -848,6 +856,12 @@ def ves_fit_reference(rokel_inversions) -> dict:
                       [[0.0, 0.4, 1150.0]]
                       + [[float(a), 0.4, float(r)] for a, r in zip(spacings, readings, strict=True)])
     zero, _reason = _sounding_or_reason(rows, source="x.xlsx", sheet_name="Z")
+    # and with two rows not above 0, where the catalogued flag takes its plural
+    rows_two = _ves_sheet("Z 2", "Schlumberger",
+                          ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+                          [[-1.0, 0.4, 1150.0], [0.0, 0.4, 1150.0]]
+                          + [[float(a), 0.4, float(r)] for a, r in zip(spacings, readings, strict=True)])
+    two, _reason = _sounding_or_reason(rows_two, source="x.xlsx", sheet_name="Z")
 
     xp_raw, fp = [0.0, 1.0, 2.0, 3.0], [1150.0, 1165.0, 1193.0, 1303.0]
     x = [-1.0, 0.5, 1.0, 1.5, 2.5, 5.0]
@@ -858,6 +872,7 @@ def ves_fit_reference(rokel_inversions) -> dict:
         "capped_ab2": FIT_AB2, "capped_rho": clean(rho), "capped": capped,
         "zero_rows": clean(rows), "zero_flags": flags(zero.flags),
         "zero_ab2": clean(zero.ab2), "zero_fit": _fit_dict(invert_sounding(zero)),
+        "zeros_rows": clean(rows_two), "zeros_flags": flags(two.flags),
         "interp": {"xp_raw": xp_raw, "fp": fp, "x": x,
                    "value": clean(np.interp(probes, logs, np.log(fp)))},
         "rokel_stops": [[inv.model.sounding_id, inv.converged, inv.stopped]

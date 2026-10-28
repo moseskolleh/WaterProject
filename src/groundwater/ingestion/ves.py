@@ -28,6 +28,7 @@ import numpy as np
 
 from ..ves.arrays import geometric_factor
 from ..models import DataFlag, VESSounding
+from ..text import phrase
 from ..utils import clean_text, parse_number, plural
 from . import common
 
@@ -372,9 +373,7 @@ def _sounding_or_reason(
             DataFlag(
                 "warning",
                 "nonpositive_spacing",
-                "A spacing must be positive; "
-                f"{plural(bad_spacings, 'reading')} at a spacing of 0 or less "
-                f"{'is' if bad_spacings == 1 else 'are'} left out of the inversion.",
+                phrase("ves.nonpositive_spacing", n=bad_spacings),
                 sounding.sounding_id,
             )
         )

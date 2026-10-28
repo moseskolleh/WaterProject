@@ -1,0 +1,14 @@
+# What the VES reader and the inversion say about a sounding, in the words
+# both engines write: the reader's flags (groundwater/ingestion/ves.py and
+# the VES sheet reader in gwt-core.js) and the inversion's refusals
+# (groundwater/ves/inversion.py and invertSounding). The template rules are
+# in src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+nonpositive_spacing: >-
+  A spacing must be positive; {n:g} {n:plural:reading|readings} at a spacing
+  of 0 or less {n:plural:is|are} left out of the inversion.
+
+too_many_layers: >-
+  Too few spacings for a {layers:g}-layer model: its {parameters:g}
+  parameters need at least {needed:g} spacings, and the sounding has
+  {spacings:g}

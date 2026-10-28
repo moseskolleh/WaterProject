@@ -2338,7 +2338,9 @@ await withPage(async (page, base, consoleErrors) => {
   // rho1 / rho_a: the browser's former tables, good to 5e-9, were 3e-3 out
   // at 200,000 ohm-m over 3.2. Each forward model the inversion uses is held
   // to 1e-6 relative over the grid, without waiting for the fuzz suite to
-  // draw such a case. The starting models are arithmetic on the readings and
+  // draw such a case; the grid's thick conductive covers hold the J0 table's
+  // panels below 1e-6, without which Wenner was 1.1e-3 out there, to
+  // Python's. The starting models are arithmetic on the readings and
   // are held to 1e-12, on soundings whose first spacing was read twice.
   const VF = R.ves_forward;
   const forwardJs = await page.evaluate((VF) => {
@@ -2489,6 +2491,7 @@ await withPage(async (page, base, consoleErrors) => {
       const entry = JSON.parse(JSON.stringify(C.inversionCacheEntry(key, capSounding, atCap)));
       const back = C.inversionFromCache(entry, key, capSounding, cfg);
       const zero = C.readVesSheets([{ name: 'Z', rows: RF.zero_rows }], 'x.xlsx')[0];
+      const two = C.readVesSheets([{ name: 'Z', rows: RF.zeros_rows }], 'x.xlsx')[0];
       return {
         short: short, capped: capped,
         at_cap: { iterations: atCap.n_iterations, stopped: atCap.stopped,
@@ -2499,6 +2502,7 @@ await withPage(async (page, base, consoleErrors) => {
           rho: atCap.model.resistivities },
         zero_flags: zero.flags.map((f) => [f.level, f.code, f.message]),
         zero_ab2: zero.ab2, zero_fit: fitDict(C.invertSounding(zero)),
+        zeros_flags: two.flags.map((f) => [f.level, f.code, f.message]),
         interp: RF.interp.x.map((x) => C.interp(Math.log(x), RF.interp.xp_raw.map(Math.log),
           RF.interp.fp.map(Math.log))),
         max_iterations: cfg.ves.max_iterations,
@@ -2552,6 +2556,10 @@ await withPage(async (page, base, consoleErrors) => {
       JSON.stringify(fitJs.zero_ab2) === JSON.stringify(RF.zero_ab2),
       `js ${JSON.stringify(fitJs.zero_flags)}\n     py ${JSON.stringify(RF.zero_flags)}`);
     sameFit('ves fit: the sheet with a row at AB/2 = 0', fitJs.zero_fit, RF.zero_fit);
+    check('ves fit: two rows not above 0 are flagged in the plural, word for word',
+      JSON.stringify(fitJs.zeros_flags) === JSON.stringify(RF.zeros_flags) &&
+      RF.zeros_flags.some((f) => f[1] === 'nonpositive_spacing' && f[2].includes('2 readings')),
+      `js ${JSON.stringify(fitJs.zeros_flags)}\n     py ${JSON.stringify(RF.zeros_flags)}`);
     check('ves fit: interp over log abscissae with log 0 among them, as np.interp',
       RF.interp.value.every((py, k) => (py === null ? Number.isNaN(fitJs.interp[k])
         : fitJs.interp[k] === py)),

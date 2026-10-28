@@ -157,7 +157,8 @@
    * and sin(x) apart; against 1.17 these agree to 3e-16 on [0, 30] and to
    * 1.5e-14 out to 2e5. J1 returns x / 2 below sqrt(eps), as xsf's own
    * source does and neither release yet does, which moves only results
-   * below 1.5e-8, where the tables never reach: they start at 1e-6.
+   * below 1.5e-8, where the J1 table never reaches: its lowest node is
+   * 2.0e-8. (The J0 table reaches 2e-16, where both give 1.)
    * parity.mjs holds both functions, and their zeros, to scipy. The
    * coefficients are written to the shortest digits that give the same
    * doubles.
@@ -628,18 +629,35 @@
     return quadratureCut(r / scale, rho[0] / arrMin(rho));
   }
 
+  /* Where the J0 table's panels start, and how many share the decades from
+   * there to 1e-6 (forward.py _J0_FLOOR, which sets out why). Below x =
+   * r / (rho_n S), S the conductance over the basement, the potential
+   * integrand is the whole rho_n - rho1, and a Wenner or finite-MN reading
+   * carries the piece under the lowest panel whole. One GL-8 panel on
+   * (0, 1e-6) left Wenner 1.1e-3 out under 300 m of 0.5 ohm-m on 200,000;
+   * inside the inversion's bounds that point is above 1e-14 for any radius
+   * over 4 micrometres. The J1 table needs none of this: its integrand
+   * carries x J1(x), and on (0, 1e-6) adds less than 2e-19 times the
+   * largest resistivity. */
+  var J0_FLOOR = 1e-14;
+  var J0_LOW_PANELS = 16;
+
   function buildTables(order, nZeros) {
     var zeros = besselZeros(order, nZeros);
     var bessel = order === 0 ? besselJ0 : besselJ1;
 
-    /* section 1: GL-8 on (0, 1e-6) and on 14 log-spaced panels from 1e-6 to
-     * the first zero. Starting at 1e-6, as the tables once did, left out
-     * (rho_n - rho1) x 1e-6 of the potential (J0) integral, an error of
-     * that many ohm-m in every Wenner and finite-MN reading. */
+    /* section 1: GL-8 on 14 log-spaced panels from 1e-6 to the first zero,
+     * and below them on (0, 1e-6) for J1; for J0, on J0_LOW_PANELS more
+     * log-spaced panels down to J0_FLOOR and then on (0, J0_FLOOR) */
     var gl8 = gaussLegendre(8);
-    var edges = [0.0].concat(geomspace(1e-6, zeros[0], 15));
-    var s1n = new Float64Array(15 * 8), s1w = new Float64Array(15 * 8), at = 0;
-    for (var p = 0; p < 15; p++) {
+    var edges = geomspace(1e-6, zeros[0], 15);
+    if (order === 0) {
+      edges = geomspace(J0_FLOOR, 1e-6, J0_LOW_PANELS + 1).slice(0, -1).concat(edges);
+    }
+    edges = [0.0].concat(edges);
+    var nS1 = edges.length - 1;
+    var s1n = new Float64Array(nS1 * 8), s1w = new Float64Array(nS1 * 8), at = 0;
+    for (var p = 0; p < nS1; p++) {
       var lo = edges[p], hi = edges[p + 1];
       var mid = 0.5 * (lo + hi), half = 0.5 * (hi - lo);
       for (var k = 0; k < 8; k++) {
@@ -975,9 +993,8 @@
   }
 
   function tooManyLayers(n, nSpacings) {
-    return 'Too few spacings for a ' + n + '-layer model: its ' + (2 * n - 1) +
-      ' parameters need at least ' + (2 * n) + ' spacings, and the sounding has ' +
-      nSpacings;
+    return phrase('ves.too_many_layers', { layers: n, parameters: 2 * n - 1,
+      needed: 2 * n, spacings: nSpacings });
   }
 
   /* inversion.py _stationary: whether a fit stopped at theta is at a minimum
@@ -16487,9 +16504,8 @@
     var badSpacings = ab2.filter(function (v) { return !(v > 0); }).length;
     if (badSpacings) {
       flags.push({ level: 'warning', code: 'nonpositive_spacing',
-        message: 'A spacing must be positive; ' + plural(badSpacings, 'reading') +
-          ' at a spacing of 0 or less ' + (badSpacings === 1 ? 'is' : 'are') +
-          ' left out of the inversion.', context: soundingId });
+        message: phrase('ves.nonpositive_spacing', { n: badSpacings }),
+        context: soundingId });
     }
     for (var d = 1; d < ab2.length; d++) {
       if (ab2[d] - ab2[d - 1] < 0) {
