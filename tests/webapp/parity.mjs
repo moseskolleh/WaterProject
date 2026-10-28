@@ -2535,8 +2535,14 @@ await withPage(async (page, base, consoleErrors) => {
         js.converged === c.converged,
         `js ${js.iterations} ${js.stopped} ${js.converged} vs py ${c.iterations} ` +
         `${c.stopped} ${c.converged}`);
-      check(`ves fit: max_iterations ${c.cap}: the model within 1e-6`,
-        nums(js.rho, c.rho, 1e-6) && nums(js.h, c.h, 1e-6) && close(js.err, c.err, 1e-6),
+      /* A fit stopped after a few iterations is not at a minimum, so the
+       * numerical Jacobian carries each platform's last-bit Math.exp/log
+       * differences forward, multiplied at every step: about 3e-10 after
+       * one iteration and 1.4e-6 after three, between Node 22's V8 and the
+       * CI Chromium, while a newer Chromium happened to land inside 1e-6.
+       * A different step path would differ by orders more than 1e-4. */
+      check(`ves fit: max_iterations ${c.cap}: the model within 1e-4`,
+        nums(js.rho, c.rho, 1e-4) && nums(js.h, c.h, 1e-4) && close(js.err, c.err, 1e-4),
         `js ${JSON.stringify([js.rho, js.h, js.err])}\n     py ${JSON.stringify([c.rho, c.h, c.err])}`);
     });
     const cap = fitJs.at_cap;
