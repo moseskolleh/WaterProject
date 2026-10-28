@@ -287,15 +287,41 @@ def _fitted() -> dict:
     return CS.fit_set(pooled, "2026-10-20")
 
 
-def test_a_fitted_set_lists_the_boreholes_it_used_and_what_for():
+def test_a_fitted_set_counts_the_boreholes_it_used_and_names_none():
     s = _fitted()
     assert s["version"] is None and s["adopted_by"] == "" and s["fitted_on"] == "2026-10-20"
     assert s["success_yield_m3_per_h"] == 1.0
-    assert len(s["boreholes"]) == 30 and s["left_out"] == {"unknown": 1, "definition": 0}
-    assert s["boreholes"][0] == {"id": "e000", "success": False, "forecast": True,
-                                 "uses": ["prior", "clay_max_rho", "fresh_basement_min_rho", "weights"]}
-    # only their ledger ids: no project, place or borehole name
-    assert set(s["boreholes"][0]) == {"id", "success", "forecast", "uses"}
+    assert s["boreholes"] == 30 and s["left_out"] == {"unknown": 1, "definition": 0}
+    # issued, once adopted, under the licence in the settings, by nobody yet
+    assert (s["licence"], s["organisation"], s["contact"], s["sources"]) == ("CC BY 4.0", "", "", [])
+    # no ledger id, project, place or borehole name in the file
+    text = CS.set_yaml(CS.adopt_set(s, "A. Kamara", "2026-10-21"))
+    assert not any(word in text for word in ("e000", "e029", "Rokel", "VES"))
+
+
+def test_a_set_used_for_the_weights_alone_counts_its_boreholes_once():
+    pooled = [_entry(k, success=k % 2 == 0, parts=_PARTS, odds=False, layers=[]) for k in range(20)] \
+        + [_entry(100 + k, parts=_PARTS) for k in range(5)]
+    s = CS.fit_set(pooled, "2026-10-20", _ledger(fit_weights_min_each=10))
+    # 20 for the weights alone, and 5 for the prior, the edges and the weights
+    assert s["weights"]["fitted"] and s["boreholes"] == 25
+    # 15 succeeded and 10 failed: with the weights not fitted, only the 5
+    assert CS.fit_set(pooled, "2026-10-20", _ledger(fit_weights_min_each=11))["boreholes"] == 5
+
+
+def test_adopting_issues_the_set_in_the_name_of_an_organisation():
+    s = CS.adopt_set(_fitted(), "A. Kamara", "2026-10-21", organisation="  Rural\tWater  Trust ",
+                     contact=" wells@example.org\n")
+    assert (s["organisation"], s["contact"], s["licence"]) == ("Rural Water Trust", "wells@example.org",
+                                                               "CC BY 4.0")
+    # the file declares them before anything else it holds
+    assert CS.set_yaml(s).splitlines()[3:6] == ['licence: "CC BY 4.0"', 'organisation: "Rural Water Trust"',
+                                                'contact: "wells@example.org"']
+    assert CS.adopt_set(_fitted(), "A. Kamara", "2026-10-21")["organisation"] == ""
+    # another licence in the settings, and none
+    other = CS.fit_set([], "2026-10-20", _ledger(set_licence=" CC  BY-SA 4.0 "))
+    assert other["licence"] == "CC BY-SA 4.0"
+    assert CS.fit_set([], "2026-10-20", _ledger(set_licence=""))["licence"] == ""
 
 
 def test_adopting_numbers_the_set_after_the_one_in_force():
@@ -334,7 +360,7 @@ def test_the_default_names_the_provisional_calibration_as_the_odds_named_it():
 def test_a_fitted_set_is_reviewed_beside_the_set_in_force_before_anyone_adopts_it():
     review = CS.set_review(_fitted())
     assert review["title"] == "Calibration set fitted on 2026-10-20" and review["adoptable"]
-    lead, left, fits, weights, now, adopt = review["summary"]
+    lead, left, fits, weights, now, adopt, licence = review["summary"]
     assert lead.startswith("It uses 30 boreholes from the pooled ledgers") and "1 m3/h" in lead
     assert left == ("Left out: 1 drilled point whose success is not known, and 0 judged at another "
                     "definition of success.")
@@ -343,6 +369,7 @@ def test_a_fitted_set_is_reviewed_beside_the_set_in_force_before_anyone_adopts_i
     assert "200 pairs" in weights
     assert now == "In force now: " + CS.set_name(CS.default_set()) + "."
     assert adopt.startswith("Nothing changes until a named person adopts it.")
+    assert licence.startswith("Adopted, it is issued under CC BY 4.0, in the name of the organisation")
     prior, edges, parts = review["tables"]
     assert [prior["key"], edges["key"], parts["key"]] == ["prior", "edges", "weights"]
     assert prior["rows"] == [["B-L on pCm", "30", "20", "43 percent", "43 percent",
@@ -358,7 +385,7 @@ def test_the_review_reads_the_set_in_force_it_was_fitted_under():
     config = CS.apply_set(Config(), CS.adopt_set(_fitted(), "A. Kamara", "2026-10-21"))
     pooled = [_entry(k, success=k % 3 != 0, parts=_parts(0.5, 0.5, 0.5, 0.9 if k % 3 else 0.1)) for k in range(30)]
     review = CS.set_review(CS.fit_set(pooled, "2026-11-02", config), config)
-    assert review["summary"][-2].startswith("In force now: calibration set 1, fitted on 2026-10-20")
+    assert review["summary"][-3].startswith("In force now: calibration set 1, fitted on 2026-10-20")
     prior, edges, _ = review["tables"]
     # the table's 43 percent, set 1's 57 in force, and the fit from the table again
     assert prior["rows"][0][3:] == ["43 percent", "57 percent", "57 percent, worth 40 boreholes"]
@@ -400,14 +427,25 @@ def test_the_file_writes_whole_numbers_without_a_point():
 
 
 @pytest.mark.parametrize("change, why", [
-    (lambda s: s.update(format="something else"), "of format 1"),
-    (lambda s: s.update(format_version=2), "of format 1"),
-    (lambda s: s.update(format_version=True), "of format 1"),
+    (lambda s: s.update(format="something else"), r"reads \(1 to 2\)"),
+    (lambda s: s.update(format_version=3), r"reads \(1 to 2\)"),
+    (lambda s: s.update(format_version=True), r"reads \(1 to 2\)"),
+    (lambda s: s.update(format_version=2.0), r"reads \(1 to 2\)"),
     (lambda s: s.pop("prior"), 'field "prior" is missing'),
+    (lambda s: s.pop("licence"), 'field "licence" is missing'),
+    (lambda s: s.update(contact=None), '"contact"'),
     (lambda s: s["prior"][0].update(rate=1.0), '"prior.rate"'),
     (lambda s: s["prior"][0].update(boreholes=-1), '"prior.boreholes"'),
+    (lambda s: s["prior"][0].update(boreholes=0, successes=0, expected=0), "holds no borehole"),
+    (lambda s: s["prior"][0].update(successes=31), "counts more successes, or expects more"),
+    (lambda s: s["prior"][0].update(expected=30.5), "counts more successes, or expects more"),
+    (lambda s: s["prior"].append(dict(s["prior"][0])), "gives the prior of B-L on pCm twice"),
     (lambda s: s["edges"][0].update(edge="laterite_min_rho"), '"edges.edge"'),
-    (lambda s: s["boreholes"][0].update(uses=["everything"]), '"boreholes.uses"'),
+    (lambda s: s["edges"][1].update(edge="clay_max_rho"), "gives the clay_max_rho edge of pCm twice"),
+    (lambda s: s["edges"][0].update(boreholes=0), "holds no borehole"),
+    (lambda s: s.update(boreholes=[]), '"boreholes"'),
+    (lambda s: s.update(boreholes=None), "not whole as a pooled set"),
+    (lambda s: s.update(sources={}), '"sources"'),
     (lambda s: s.update(adopted_by="  "), "who adopted it disagree"),
     (lambda s: s.update(version=None), "who adopted it disagree"),
     (lambda s: s["weights"]["value"].update(overburden=0.9), "do not add up to 1"),
@@ -425,6 +463,37 @@ def test_a_file_that_is_not_a_set_is_refused_in_a_sentence():
     for text in ("", "- a\n- b\n", "key: [unclosed\n"):
         with pytest.raises(ValueError, match="not a calibration set the toolkit can read"):
             CS.read_set(text)
+
+
+def _format_one(s: dict) -> dict:
+    """``s`` as a file of format 1 (PLAN.md step 5.3) held it: its
+    boreholes listed by their ledger ids, and no licence, organisation,
+    contact or sources."""
+    old = {key: value for key, value in s.items() if key not in ("licence", "organisation", "contact", "sources")}
+    old["format_version"] = 1
+    old["boreholes"] = [{"id": f"3f2a{k:08x}", "success": k % 3 != 0, "forecast": k != 4,
+                         "uses": ["prior", "clay_max_rho", "fresh_basement_min_rho", "weights"]}
+                        for k in range(s["boreholes"])]
+    return old
+
+
+def test_a_file_of_format_1_is_read_with_its_ledger_ids_counted_and_dropped():
+    s = CS.adopt_set(_fitted(), "A. Kamara", "2026-10-21")
+    raw = _format_one(s)
+    text = CS.set_yaml(raw)
+    assert "format_version: 1" in text and "3f2a00000000" in text
+    read = CS.read_set(text)
+    assert read == dict(s, licence="") and read["format_version"] == 2 and read["boreholes"] == 30
+    assert "3f2a" not in CS.set_yaml(read)
+    assert CS.set_name(read) == CS.set_name(s)
+    # put in force as it was
+    assert CS.apply_set(Config(), raw).calibration == read
+    # and still checked as format 1 was
+    raw["boreholes"][3]["uses"] = ["everything"]
+    with pytest.raises(ValueError, match='"boreholes.uses"'):
+        CS.clean_set(raw)
+    with pytest.raises(ValueError, match='"boreholes"'):
+        CS.clean_set(dict(raw, boreholes=30))
 
 
 # ------------------------------------------- the browser's engine, held to it
@@ -447,7 +516,8 @@ process.stdout.write(JSON.stringify(cases.map((r) => {
     const pooled = C.poolLedgers(r.items);
     const prior = C.fitPrior(pooled, cfg), edges = C.fitEdges(pooled, cfg), weights = C.fitWeights(pooled, cfg);
     const fitted = C.fitSet(pooled, r.on, cfg);
-    const adopted = attempt(() => C.adoptSet(fitted, r.by, r.on, r.inForce ? C.cleanSet(r.inForce) : null));
+    const adopted = attempt(() => C.adoptSet(fitted, r.by, r.on, r.inForce ? C.cleanSet(r.inForce) : null,
+      r.organisation, r.contact));
     const shown = adopted.ok || fitted;
     const text = C.setYaml(shown);
     return { ok: {
@@ -514,16 +584,19 @@ def _hand(rng: random.Random, good: dict) -> list:
     out = [good]
     for _ in range(6):
         bad = json.loads(json.dumps(good))
-        target = rng.choice(["top", "prior", "edges", "weights", "boreholes"])
+        target = rng.choice(["top", "prior", "edges", "weights"])
         if target == "top":
             bad[rng.choice(list(bad))] = rng.choice([None, "x", -1, 1.5, True, [], {}])
         elif target == "weights" and bad["weights"]:
             bad["weights"][rng.choice(list(bad["weights"]))] = rng.choice([None, "x", -1, 2, {}])
-        elif bad[target if target != "boreholes" else "boreholes"]:
+        elif bad[target]:
             row = rng.choice(bad[target])
             row[rng.choice(list(row))] = rng.choice([None, "x", -1, 1.5, True, [], "laterite_min_rho"])
         out.append(bad)
     out.append([good])
+    if isinstance(good.get("boreholes"), int):
+        # the same set as a file of format 1 held it
+        out.append(_format_one(good))
     return out
 
 
@@ -532,7 +605,8 @@ def _case(seed: int) -> dict:
     items = [[f"P{j}", {"entries": [_raw(rng, 100 * j + k, ) for k in range(rng.randint(0, 40))]}]
              for j in range(rng.randint(1, 3))]
     settings = {"ledger": {"fit_min_boreholes": rng.choice([5, 1, 2, 40]),
-                           "fit_weights_min_each": rng.choice([10, 1, 3, 100])},
+                           "fit_weights_min_each": rng.choice([10, 1, 3, 100]),
+                           "set_licence": rng.choice(["CC BY 4.0", "", " CC  BY-SA 4.0 "])},
                 "odds": {"success_yield_m3_per_h": rng.choice([1.0, 1.0, 3.6])},
                 "ves": rng.choice([{}, {"clay_max_rho": 35.0, "fresh_basement_min_rho": 1200.0}])}
     in_force = None
@@ -544,7 +618,8 @@ def _case(seed: int) -> dict:
     rates = [[[round(rng.uniform(0.05, 20.0), 3) for _ in range(rng.randint(0, 8))], rng.randint(0, 8)]
              for _ in range(10)]
     return {"items": items, "settings": settings, "on": rng.choice(["2026-10-20", "", "20 Oct 2026"]),
-            "by": rng.choice(_NAMES), "inForce": in_force, "layers": layers, "rates": rates, "seed": seed}
+            "by": rng.choice(_NAMES), "organisation": rng.choice(_NAMES), "contact": rng.choice(["", " x@y.z "]),
+            "inForce": in_force, "layers": layers, "rates": rates, "seed": seed}
 
 
 def _settings(settings: dict) -> Config:
@@ -567,7 +642,8 @@ def _python(case: dict) -> dict:
     pooled = L.pool_ledgers([tuple(item) for item in case["items"]])
     fitted = CS.fit_set(pooled, case["on"], config)
     in_force = CS.clean_set(case["inForce"]) if case["inForce"] else None
-    adopted = _attempt(lambda: CS.adopt_set(fitted, case["by"], case["on"], in_force))
+    adopted = _attempt(lambda: CS.adopt_set(fitted, case["by"], case["on"], in_force,
+                                            organisation=case["organisation"], contact=case["contact"]))
     shown = adopted.get("ok") or fitted
     text = CS.set_yaml(shown)
     good = json.loads(json.dumps(shown))

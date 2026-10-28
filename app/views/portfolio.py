@@ -182,9 +182,11 @@ def _calibration(pooled) -> None:
 def _calibration_sets(pooled) -> None:
     """The calibration set in force for the session (PLAN.md step 5.3): its
     name and what it changes, to download, to replace with a file or to
-    return to the provisional default; and with pooled ledgers, a set fitted
-    to them and reviewed beside it, for a named person to adopt and put in
-    force. Nothing changes until someone does."""
+    return to the provisional default; with pooled ledgers, a set fitted to
+    them and reviewed beside it; and sets other organisations adopted,
+    pooled into one and reviewed the same way (PLAN.md step 5.5). Either is
+    for a named person to adopt and put in force. Nothing changes until
+    someone does."""
     import datetime
     import hashlib
     import json
@@ -194,7 +196,6 @@ def _calibration_sets(pooled) -> None:
         in_force,
         set_changes,
         set_name,
-        set_review,
         set_yaml,
     )
 
@@ -211,6 +212,7 @@ def _calibration_sets(pooled) -> None:
     path = workdir() / "calibration.yaml"
     path.write_text(set_yaml(held), encoding="utf-8")
     offer_download(path, phrase("calibration_sets.page_download"), keep=False)
+    st.caption(phrase("calibration_sets.page_share"))
     upload = st.file_uploader(phrase("calibration_sets.page_load"), type=["yaml", "yml"],
                               key="calibration_upload")
     st.button(phrase("calibration_sets.page_load_button"), key="calibration_load", disabled=upload is None,
@@ -218,20 +220,30 @@ def _calibration_sets(pooled) -> None:
     if held["version"] != 0:
         st.button(phrase("calibration_sets.page_default"), key="calibration_default",
                   on_click=_return_to_default)
+    today = datetime.date.today().isoformat()
     if not pooled:
         st.info(phrase("calibration_sets.page_fit_none"))
-        return
-    today = datetime.date.today().isoformat()
-    # a fit is reviewed while the files it was fitted to and the set it
-    # was fitted under are the ones on the page
-    basis = hashlib.sha256(json.dumps([pooled, held], sort_keys=True).encode("utf-8")).hexdigest()
-    if st.button(phrase("calibration_sets.page_fit"), key="calibration_fit",
-                 help=phrase("calibration_sets.page_fit_help")):
-        st.session_state["calibration_candidate"] = {"set": fit_set(pooled, today, config), "basis": basis}
-    fitted = st.session_state.get("calibration_candidate")
-    if not fitted or fitted["basis"] != basis:
-        return
-    review = set_review(fitted["set"], config)
+    else:
+        # a fit is reviewed while the files it was fitted to and the set it
+        # was fitted under are the ones on the page
+        basis = hashlib.sha256(json.dumps([pooled, held], sort_keys=True).encode("utf-8")).hexdigest()
+        if st.button(phrase("calibration_sets.page_fit"), key="calibration_fit",
+                     help=phrase("calibration_sets.page_fit_help")):
+            st.session_state["calibration_candidate"] = {"set": fit_set(pooled, today, config), "basis": basis}
+        fitted = st.session_state.get("calibration_candidate")
+        if fitted and fitted["basis"] == basis:
+            _review(fitted["set"], config, held, today, "calibration", "calibration_candidate")
+    _pool(config, held, today)
+
+
+def _review(candidate, config, held, today, key: str, kept: str) -> None:
+    """A fitted or pooled set's review beside the set in force, and where it
+    fits anything, the name of whoever adopts it, their organisation and a
+    contact, and the button that adopts it. ``key`` prefixes the widgets'
+    keys and ``kept`` is the session key the set under review is kept in."""
+    from groundwater.calibration_sets import set_review
+
+    review = set_review(candidate, config)
     with st.container(border=True):
         st.markdown(f"**{review['title']}**")
         for line in review["summary"]:
@@ -241,10 +253,64 @@ def _calibration_sets(pooled) -> None:
             st.dataframe([dict(zip(table["header"], row, strict=True)) for row in table["rows"]],
                          hide_index=True, width="stretch")
         if review["adoptable"]:
-            st.text_input(phrase("calibration_sets.page_adopter"), key="calibration_adopter",
+            st.text_input(phrase("calibration_sets.page_adopter"), key=f"{key}_adopter",
                           help=phrase("calibration_sets.page_adopter_help"))
-            st.button(phrase("calibration_sets.page_adopt"), key="calibration_adopt", type="primary",
-                      on_click=_adopt, args=(fitted["set"], held, today))
+            # the organisation the sidebar brands the reports with, to start
+            st.text_input(phrase("calibration_sets.page_organisation"), key=f"{key}_organisation",
+                          value=st.session_state.get("org_name", "") or "",
+                          help=phrase("calibration_sets.page_organisation_help"))
+            st.text_input(phrase("calibration_sets.page_contact"), key=f"{key}_contact",
+                          help=phrase("calibration_sets.page_contact_help"))
+            st.button(phrase("calibration_sets.page_adopt"), key=f"{key}_adopt", type="primary",
+                      on_click=_adopt, args=(candidate, held, today, key, kept))
+
+
+def _pool(config, held, today) -> None:
+    """Calibration sets other organisations adopted, pooled into one
+    (PLAN.md step 5.5) and reviewed beside the set in force. A file that is
+    not a set, or a set that cannot be pooled, is refused in a sentence
+    naming it, and nothing is pooled."""
+    import hashlib
+    import json
+
+    st.markdown(f"**{phrase('calibration_sets.page_pool')}**")
+    st.caption(phrase("calibration_sets.page_pool_help"))
+    files = st.file_uploader(phrase("calibration_sets.page_pool_load"), type=["yaml", "yml"],
+                             accept_multiple_files=True, key="calibration_pool_upload")
+    st.button(phrase("calibration_sets.page_pool_button"), key="calibration_pool", disabled=not files,
+              on_click=_pool_files, args=(config, today))
+    pooled = st.session_state.get("calibration_pooled")
+    # reviewed while the set in force it was pooled beside is the one in force
+    basis = hashlib.sha256(json.dumps(held, sort_keys=True).encode("utf-8")).hexdigest()
+    if pooled and pooled["basis"] == basis:
+        _review(pooled["set"], config, held, today, "calibration_pool", "calibration_pooled")
+
+
+def _pool_files(config, today) -> None:
+    """Pool the uploaded set files (a button's callback, run before the
+    page), or say why not."""
+    import hashlib
+    import json
+
+    import yaml
+
+    from groundwater.calibration_sets import in_force, pool_sets
+
+    files = st.session_state.get("calibration_pool_upload") or []
+    raws = []
+    for upload in files:
+        try:
+            raws.append(yaml.safe_load(upload.getvalue().decode("utf-8", errors="replace")))
+        except yaml.YAMLError:
+            raws.append(None)
+    st.session_state.pop("calibration_pooled", None)
+    try:
+        pooled = pool_sets(raws, today, config, labels=[upload.name for upload in files])
+    except ValueError as exc:
+        st.session_state["calibration_told"] = ("error", str(exc))
+        return
+    basis = hashlib.sha256(json.dumps(in_force(config), sort_keys=True).encode("utf-8")).hexdigest()
+    st.session_state["calibration_pooled"] = {"set": pooled, "basis": basis}
 
 
 def _put_in_force(s) -> bool:
@@ -284,17 +350,20 @@ def _load_set() -> None:
     _put_in_force(s)
 
 
-def _adopt(candidate, held, today) -> None:
-    """Adopt the fitted set in the name typed beside it and put it in force."""
+def _adopt(candidate, held, today, key: str, kept: str) -> None:
+    """Adopt the set under review in the name typed beside it, for the
+    organisation and contact typed with it, and put it in force."""
     from groundwater.calibration_sets import adopt_set
 
     try:
-        adopted = adopt_set(candidate, st.session_state.get("calibration_adopter", ""), today, held)
+        adopted = adopt_set(candidate, st.session_state.get(f"{key}_adopter", ""), today, held,
+                            organisation=st.session_state.get(f"{key}_organisation", ""),
+                            contact=st.session_state.get(f"{key}_contact", ""))
     except ValueError as exc:
         st.session_state["calibration_told"] = ("error", str(exc))
         return
     if _put_in_force(adopted):
-        st.session_state.pop("calibration_candidate", None)
+        st.session_state.pop(kept, None)
 
 
 @st.fragment

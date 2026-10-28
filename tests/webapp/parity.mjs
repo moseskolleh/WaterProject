@@ -4546,6 +4546,49 @@ await withPage(async (page, base, consoleErrors) => {
     check('calibration sets: the provisional default, its name and its file', !found, found);
   }
 
+  // --- Pooling calibration sets (PLAN.md step 5.5) ---
+  // poolSets on make_reference.py's sets of several organisations: each
+  // pooled set held whole with its review, and its name and file once a
+  // named person adopts it; every refusal in the same words; and each set's
+  // fingerprint, a file of format 1 among them.
+  {
+    const CP = R.calibration_pooling;
+    const poolJs = await page.evaluate(({ CP }) => {
+      const C = GWT.core;
+      const cases = CP.cases.map((c) => {
+        try {
+          const cfg = C.withConfig(c.settings);
+          const pooled = C.poolSets(c.sets, '2026-10-28', cfg, c.labels);
+          const adopted = C.adoptSet(pooled, ' C.\tConteh ', '2026-10-29', C.inForce(cfg), 'Salone Water Forum',
+            'forum@example.org');
+          return { ok: { set: pooled, review: C.setReview(pooled, cfg), name: C.setName(adopted),
+            yaml: C.setYaml(adopted) } };
+        } catch (e) {
+          return { threw: String(e && e.message || e) };
+        }
+      });
+      const prints = CP.fingerprints.map((p) => {
+        try { return C.setFingerprint(p.set); } catch (e) { return 'threw ' + e.message; }
+      });
+      return { cases, prints };
+    }, { CP });
+    const failed = CP.cases.map((c, i) => {
+      const got = poolJs.cases[i];
+      if (c.expect.threw) {
+        return got.threw === c.expect.threw ? null
+          : `[${i}] js ${JSON.stringify(got).slice(0, 200)} vs py ${c.expect.threw}`;
+      }
+      if (got.threw) return `[${i}] threw ${got.threw}`;
+      return firstDifference(got.ok, c.expect, `[${i}]`);
+    }).filter(Boolean);
+    check(`calibration pooling: sets of several organisations pooled, reviewed, named and written, or refused ` +
+      `(${CP.cases.length})`, failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const prints = CP.fingerprints.map((p, i) => poolJs.prints[i] === p.fingerprint ? null
+      : `[${i}] js ${poolJs.prints[i]} vs py ${p.fingerprint}`).filter(Boolean);
+    check(`calibration pooling: each set's fingerprint (${CP.fingerprints.length})`, prints.length === 0,
+      prints.join('\n     '));
+  }
+
   // --- A calibration set in force (PLAN.md step 5.3, part b) ---
   // withConfig puts make_reference.py's sets in force, or refuses one nobody
   // adopted, in the words Python does: the odds at each kind of ground with

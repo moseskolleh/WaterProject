@@ -34,8 +34,11 @@ Results (plain state, written by a page or by the recompute on load)
     was built from, offered only while they are the ones on the page), its
     calibration set fitted and under review (``calibration_candidate``: the
     set and a digest of the pooled ledgers and the set in force it was
-    fitted under, reviewed only while both hold) and the sentence its last
-    put-in-force left for the next run (``calibration_told``), the
+    fitted under, reviewed only while both hold), the set pooled from other
+    organisations' files and under review (``calibration_pooled``: the set
+    and a digest of the set in force it was pooled beside, reviewed only
+    while that holds) and the sentence its last put-in-force or refusal
+    left for the next run (``calibration_told``), the
     topographic map's source and read report
     (``topo_source``, ``topo_report``) and what it was drawn from
     (``topo_inputs``: the elevation files' upload ids and the source

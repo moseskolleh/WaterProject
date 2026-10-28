@@ -1692,25 +1692,97 @@ named person says so. It is shown even with no files on the page.
   against the drilling logs) and the weights. A set that fits nothing
   has nothing to adopt.
 - **Adopt it.** Type the name of the person adopting it and press
-  *Adopt the set and put it in force*. It is numbered after the set in
+  *Adopt the set and put it in force*. The organisation that issues the
+  set and a contact (an email address, say) go in the file too; the
+  organisation starts as the one the reports are branded with, and
+  either may be left blank. The set is numbered after the set in
   force, names the set it replaces, and is in force from then on: every
   page reads by it, and a survey already inverted is read by it again,
   each sounding by the edges fitted for the geology unit under it. The
   range of models of a sounding read by other edges is sampled again
   when asked for. Without a name nothing is adopted.
 - **Keep it.** *Download the set in force (calibration.yaml)* saves it,
-  with the boreholes it used (by their ledger ids only), the date it was
-  fitted and who adopted it. *Put it in force* reads a calibration.yaml
-  back; a file that is not a set, or a set nobody adopted, is refused
-  and the set in force stays. *Return to the provisional default* drops
-  it. The same file, named in a `config.yaml` as `calibration:
-  calibration.yaml`, puts it in force for the Python package.
+  with the number of boreholes it used, the date it was fitted, who
+  adopted it, and the licence, organisation and contact it was issued
+  under. *Put it in force* reads a calibration.yaml back; a file that is
+  not a set, or a set nobody adopted, is refused and the set in force
+  stays. *Return to the provisional default* drops it. The same file,
+  named in a `config.yaml` as `calibration: calibration.yaml`, puts it in
+  force for the Python package.
 - **Whose it is.** The set in force belongs to the session (the
   Streamlit app) or to the browser (the standalone app), not to a
   project: no project file carries one, and opening a project or a
   sample leaves it in force. In the browser app it outlives a refresh,
   and *Reset everything* returns it to the default; the Streamlit app
   forgets it with the session, so download it to keep it.
+
+**Sharing a set file** (PLAN.md step 5.5). A calibration.yaml is made to
+be passed to other organisations, so that what each has learnt about the
+ground can be pooled without anyone handing over a client's project
+files. It is issued under the licence in `ledger.set_licence`, Creative
+Commons Attribution 4.0 (CC BY 4.0,
+https://creativecommons.org/licenses/by/4.0/) unless you set another:
+anyone may use and adapt it as long as they credit the organisation that
+issued it, which a pooled set does by listing it.
+
+- **What the file holds.** For each ground its boreholes fell in (a BGS
+  aquifer class on a USGS geology unit): how many boreholes, how many
+  succeeded, the count adjusted for the survey evidence that sited them,
+  and the rate fitted. For each geology unit: the clay and fresh basement
+  edges, with the number of boreholes and of layers under and over each.
+  The suitability weights, if it fitted them, and how they rank the
+  boreholes' pairs. How many drilled points were left out, and why. The
+  yield it judged success at, the number of boreholes it used, the dates
+  it was fitted and adopted, who adopted it and the set it replaced, and
+  the licence, organisation and contact it was issued under.
+- **What it does not hold.** No project, client, community, chiefdom or
+  district name, no position, no sounding or borehole name and no ledger
+  id. A file saved before step 5.5 listed its boreholes by their ledger
+  ids. Each id was a hash of a sounding's name, place and position, so
+  anyone who could guess the community and the sounding's name could
+  recover the position by trying the positions around it. Such a file is
+  still read, as a count, and nothing writes the ids now.
+- **What it can still tell a reader.** That the organisation drilled so
+  many boreholes on a given geology unit, and how many succeeded. On a
+  unit with few boreholes, someone who knows where the organisation works
+  may guess which programme they were. Share a set only where that is
+  acceptable.
+
+**Pool sets from other organisations** sits at the foot of the card, and
+needs no project file on the page. Choose two or more calibration.yaml
+files (*Pool the files*). The pooled set is reviewed beside the set in
+force, as a fitted set is, and adopted by a named person in the same way.
+
+- **How they are pooled.** Each ground's boreholes, successes and
+  evidence-adjusted counts are added up over the sets, and its rate is
+  worked out from the provisional prior counted once, as a single fit's
+  is. A ground too small to fit in any one set (under
+  `ledger.fit_min_boreholes`) can be fitted in the sum. Each edge of a
+  geology unit is the mean of the sets' fitted edges, weighted by the
+  boreholes behind each and taken on a logarithmic scale, rounded to
+  0.1 ohm-m. An edge no set fitted stays as it is. A pooled clay edge
+  that would reach the top of the water-bearing window, or a basement
+  edge that would not clear the clay edge the unit is read with, is not
+  fitted, and the review says so. The suitability weights are not pooled:
+  they are fitted to how each pair of a borehole that succeeded and one
+  that failed ranks, which no set file carries.
+- **What is refused**, naming the file: fewer than two files; a file that
+  is not a set; the provisional default; a set nobody adopted; a set with
+  no licence, which every file saved before step 5.5 is (fit it again and
+  adopt it); a set issued under another licence than `ledger.set_licence`,
+  since the toolkit cannot read what a licence allows; sets judged at
+  different yields; the same set twice, even renamed or adopted again; a
+  pooled set together with a set it holds, or two pooled sets that hold
+  one same set; and a set whose prior started from another provisional
+  rate than this toolkit's.
+- **The review** lists the sets pooled, with each one's organisation,
+  name, licence and contact, then the priors and the edges beside the set
+  in force. Where two sets name the same organisation it warns: sets one
+  organisation fitted at different times from a growing ledger share
+  boreholes, and no set file can tell which, so pool them only if they
+  were fitted to different boreholes.
+- **To keep the set in force's counts**, download it and add its file
+  among the ones you pool: the pooled set replaces it when adopted.
 
 ## 11. Saving your work
 

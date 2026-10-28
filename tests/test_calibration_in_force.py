@@ -46,9 +46,10 @@ _QE = (708958.4, 926355.5, 28)
 def _set(**changes) -> dict:
     """An adopted set: the prior of B-L on pCm and of I-L on any unit fitted,
     CSF-L/M on pCm counted and not fitted; both edges of pCm fitted and
-    none of Qe's; and the weights."""
+    none of Qe's; and the weights. Written as a file of format 1 (step 5.3)
+    held it, its boreholes listed by id, which is read as format 2."""
     s = {
-        "format": CS.FORMAT, "format_version": CS.FORMAT_VERSION, "version": 3, "fitted_on": "2027-03-01",
+        "format": CS.FORMAT, "format_version": 1, "version": 3, "fitted_on": "2027-03-01",
         "adopted_by": "A. Kamara", "adopted_on": "2027-03-02",
         "replaces": {"version": 2, "fitted_on": "2026-11-01", "adopted_by": "B. Sesay", "adopted_on": "2026-11-02"},
         "success_yield_m3_per_h": 1.0,

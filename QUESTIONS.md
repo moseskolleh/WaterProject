@@ -310,3 +310,26 @@ need real project inputs or decisions to finish calibrating it.
    corrosivity each record carries from its design's rising main, so a
    borehole whose project was saved before step 7.3 counts as "not known"
    until its project is opened and saved again with its water sample.
+
+21. **Pooling calibration sets between organisations (added with PLAN.md
+   step 5.5).** Each of these is a choice made here, stated where it is
+   made (`groundwater/calibration_sets.py`), and wants the owner's
+   confirmation. (a) A set is issued under CC BY 4.0
+   (`ledger.set_licence`), and only sets issued under that same licence
+   are pooled, since the toolkit cannot read what another allows; say
+   whether the programme's partners want another licence, or a list of
+   licences that may be pooled together. (b) A pooled edge is the mean of
+   the sets' fitted edges, weighted by the boreholes behind each, taken on
+   a logarithmic scale; it is not an edge fitted to the pooled layers,
+   which the set files do not carry, and it says nothing of the layers it
+   misreads. Carrying each unit's layer resistivities in the file would
+   let a pooled edge be fitted as one set's is, at the cost of a larger
+   file. (c) Each set's evidence-adjusted count is the one its own fit
+   expected, and the pooled count is their sum, not a fit to all the
+   boreholes together. (d) The suitability weights are not pooled. (e)
+   Two sets that name the same organisation are pooled with a warning
+   rather than refused; an organisation may run two programmes with
+   separate ledgers, but one that pools two of its own sets fitted at
+   different times counts its earlier boreholes twice. (f) A set saved
+   before step 5.5 declares no licence and is refused for pooling; it can
+   still be put in force.

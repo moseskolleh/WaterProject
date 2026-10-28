@@ -104,7 +104,8 @@
     "min_group": 5,
     "reliability_bins": 5,
     "fit_min_boreholes": 5,
-    "fit_weights_min_each": 10
+    "fit_weights_min_each": 10,
+    "set_licence": "CC BY 4.0"
   },
   "cost_range": {
     "seed": 1,
