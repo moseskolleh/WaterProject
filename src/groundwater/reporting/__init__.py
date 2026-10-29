@@ -66,6 +66,7 @@ _LAZY_MODULES = (
     "calibration",
     "citations",
     "context",
+    "calibration",
 )
 
 __getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

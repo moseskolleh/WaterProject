@@ -1,0 +1,36 @@
+# The borehole design's words: design/designer.py and designBorehole in
+# gwt-core.js. The template rules are in src/groundwater/text.py;
+# CONTRIBUTING.md says how to add an entry. The older basis sentences and
+# flags are still worded once in each engine.
+
+# The annular fill in the design basis, by where its top falls against the
+# top screen. The rule puts it gravel_pack_above_top_screen_m above the top
+# screen; the seal can hold it lower, and the basis used to print the rule's
+# height whatever the fill reached. {fill} is "gravel pack" or "formation
+# stabiliser".
+fill_above: >-
+  {fill} ({material}) from {top:g} m to the bottom, {margin:g} m above the top
+  screen
+
+fill_level: >-
+  {fill} ({material}) from {top:g} m to the bottom, level with the top screen
+
+fill_below: >-
+  {fill} ({material}) from {top:g} m to the bottom, {margin:g} m below the top
+  screen
+
+# A fill the seal holds under its rule height. Screens the design places
+# start low enough for the full height, so this is a screen the analyst set
+# or one recorded as installed.
+fill_short: >-
+  The {fill} is drawn from {top:g} m, the foot of the {seal:g} m seal, and the
+  top screen is at {screen:g} m: the design rules put the {fill} {rule:g} m
+  above the top screen, so that grout placed on it cannot reach the screen. A
+  top screen at {need:g} m or deeper leaves room for it.
+
+# What a screen the design places stays below, when the seal and the fill
+# above the top screen are what decide it: the reason a depth the log names
+# is not screened, or not all of it ("it lies within ..."), and why a hole
+# has no room for a screen ("The ... leaves no room").
+under_seal: >-
+  the {seal:g} m grouted interval with the {pack:g} m of {fill} under it

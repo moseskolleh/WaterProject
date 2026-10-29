@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from ..models import DataFlag, WaterQualitySample
 from ..utils import sum_in_order
 from .standards import (
+    MOLAR_MASS,
     Limit,
     StandardEntry,
     canonical_values,
@@ -62,10 +63,13 @@ _CANCER_SLOPE = {"arsenic": 1.5}
 # nitrite as the whole ion (as NO3 / as NO2). Convert the measured "as ion"
 # concentration to a nitrogen basis before dividing by the RfD, else the
 # hazard quotient is overstated by the mass ratio (NO3/N = 62/14 = 4.43,
-# NO2/N = 46/14 = 3.29).
+# NO2/N = 46/14 = 3.29). A result reported as nitrogen reaches here on the
+# ion's scale, under the ion's key (standards.canonical_values), so it is
+# scored once and on the same footing, and is kept out of the WQI as the ion
+# is.
 _AS_NITROGEN_FACTOR = {
-    "nitrate (as no3)": 62.004 / 14.007,
-    "nitrite (as no2)": 46.005 / 14.007,
+    "nitrate (as no3)": MOLAR_MASS["NO3"] / MOLAR_MASS["N"],
+    "nitrite (as no2)": MOLAR_MASS["NO2"] / MOLAR_MASS["N"],
 }
 
 

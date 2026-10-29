@@ -25,7 +25,8 @@ import math
 from dataclasses import dataclass, field
 
 from ..models import DataFlag, WaterQualitySample
-from .standards import canonical_values, normalise_parameter
+from ..text import phrase
+from .standards import canonical_values, index_key, normalise_parameter
 
 # milli-equivalents per mg for the Larson-Skold ratio
 _MEQ = {
@@ -62,7 +63,7 @@ def _value(sample: WaterQualitySample, key: str) -> float | None:
     if key in canonical:
         return canonical[key]
     for result in sample.results:
-        if normalise_parameter(result.parameter) == key:
+        if index_key(normalise_parameter(result.parameter)) == key:
             if result.value is not None:
                 # present but not convertible: refuse it rather than use the
                 # raw number on an unknown scale
@@ -128,8 +129,14 @@ def assess_corrosivity(sample: WaterQualitySample) -> CorrosivityAssessment:
             tds = 250.0
             assumptions.append("TDS assumed 250 mg/L (neither TDS nor EC reported).")
     if temp is None or temp <= 0:
+        # "not reported" was said of a temperature written as "27 oC", which
+        # was reported in a unit that could not be read
+        unread = temp is None and any(
+            normalise_parameter(r.parameter) == "temperature" and r.value is not None
+            for r in sample.results)
         temp = 25.0
-        assumptions.append("Temperature assumed 25 C (not reported).")
+        assumptions.append(phrase("quality.temperature_unreadable" if unread
+                                  else "quality.temperature_not_reported"))
 
     if ph is None or calcium is None or alkalinity is None or calcium <= 0 or alkalinity <= 0:
         assessment.verdict = (

@@ -228,6 +228,37 @@ DESIGN_CASES = [
     {"total": 60, "grout": 20, "swl": 5, "installed": [[15, 25], [48, 54], [54, 60]],
      "intervals": [[0, 10, "Laterite"], [10, 60, "Granite"]],
      "rules": {"borehole_diameter_in": 8.0, "casing_diameter_in": 4.0}},
+    # the gravel pack above the top screen: a fracture at the foot of the
+    # grout, a zone in the pack's room, a seal at the rule's 6 m over a
+    # shallow fracture, a hole with no room for a screen below seal and pack,
+    # and analyst screens the seal holds the pack below, level with and short
+    # of; the 19 mm annulus of the default hole keeps the seal alone
+    {"total": 60, "grout": 20, "swl": 5,
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 10, "Laterite"], [10, 20, "Granite"], [20, 26, "Granite, fractured"],
+                   [26, 60, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5,
+     "intervals": [[0, 10, "Laterite"], [10, 20, "Granite"], [20, 26, "Granite, fractured"],
+                   [26, 60, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5,
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 10, "Laterite"], [10, 45, "Granite, fracture zone 20-21 m"],
+                   [45, 60, "Granite"]]},
+    {"total": 30, "swl": 2, "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 7, "Laterite"], [7, 12, "Granite, fractured, water bearing"],
+                   [12, 30, "Granite"]]},
+    {"total": 24, "grout": 20, "swl": 5,
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 24, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5, "screens": [[15, 25]],
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 60, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5, "screens": [[20, 30]],
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 60, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5, "screens": [[21, 30]],
+     "rules": {"borehole_diameter_in": 8.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 60, "Granite"]]},
 ]
 
 
@@ -2792,6 +2823,7 @@ def build() -> dict:
     out["extraction"] = extraction_reference()
     out["pumping_cases"] = pumping_cases()
     out["time_cells"] = time_cells_reference()
+    out["quality_units"] = quality_units_reference()
     out["regional"] = regional_reference()
     out["survey_figures"] = survey_figures_reference(rokel_interps)
     out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
@@ -5649,8 +5681,9 @@ def sanitary_reference() -> dict:
         "undated": sample(ecoli(3.0), when=""),
         "bad_unit": sample(ecoli(3.0, unit="wibbles")),
         # results the assessment could not grade, whose remarks end in a
-        # full stop of their own or do not
-        "slash_unit": sample(ecoli(3.0, unit="/100 mL")),
+        # full stop of their own or do not ("/100 mL" was one until the
+        # water quality audit read it as a count per 100 mL)
+        "unread_unit": sample(ecoli(3.0, unit="colonies")),
         "unreadable": sample(ecoli(None, unreadable="lots")),
         "coarse_per_ml": sample(ecoli(None, below_detection=True, detection_limit=1.0,
                                       unit="CFU/mL")),
@@ -6517,6 +6550,213 @@ def time_cells_reference() -> list:
                     "value": clean(quantity.value), "status": quantity.status,
                     "unit": quantity.unit_text, "written": written})
     return out
+
+
+#: Laboratory results the quality, units and design audit found misread,
+#: each as [parameter, value, unit] or [parameter, None, unit, extra], where
+#: extra names the other WaterQualityResult fields. The browser reads the same
+#: rows from reference.json.
+_QPANEL = [["pH", 7.0, "pH units"], ["E. coli", 0.0, "CFU/100 mL"],
+           ["Arsenic", 0.001, "mg/L"], ["Fluoride", 0.2, "mg/L"]]
+_QIONS = [["Calcium", 40.078, "mg/L"], ["Magnesium", 12.1525, "mg/L"],
+          ["Sodium", 16.426355, "mg/L"], ["Chloride", 35.453, "mg/L"],
+          ["Bicarbonate", 61.017, "mg/L"], ["Sulfate", 48.03, "mg/L"]]
+QUALITY_CASES = {
+    # nitrate and nitrite reported as nitrogen, by name and by unit
+    "nitrogen_by_name": _QPANEL + [["Nitrate (NO3-N)", 20.0, "mg/L"],
+                                   ["Nitrite (NO2-N)", 0.5, "mg/L"]],
+    "nitrogen_spellings": _QPANEL + [["Nitrate (N)", 2.0, "mg/L"],
+                                     ["Nitrite (NO2 as N)", 0.1, "mg/L"],
+                                     ["Ammonium (NH4-N)", 0.2, "mg/L"]],
+    "nitrogen_combined_by_name": _QPANEL + [["Nitrate (NO3-N)", 9.0, "mg/L"],
+                                            ["Nitrite (NO2-N)", 0.5, "mg/L"]],
+    "nitrogen_contradicted": _QPANEL + [["Nitrite (NO3-N)", 0.5, "mg/L"],
+                                        ["Nitrate", 3.0, "mg/L"]],
+    "nitrate_in_mg_n": _QPANEL + [["Nitrate", 10.0, "mg/L as N"]],
+    "nitrate_n_in_mg_no3": _QPANEL + [["Nitrate-N", 44.0, "mg/L as NO3"]],
+    "nitrate_basis_contradicted": _QPANEL + [["Nitrate (as NO3)", 10.0, "mg/L as N"]],
+    # the same water, nitrate as the ion and as nitrogen, through the indices
+    "ions_as_ion": _QPANEL + _QIONS + [["Nitrate", 10.0 * 62.004 / 14.007, "mg/L"]],
+    "ions_as_n_by_name": _QPANEL + _QIONS + [["Nitrate (as N)", 10.0, "mg/L"]],
+    "ions_as_n_by_unit": _QPANEL + _QIONS + [["Nitrate", 10.0, "mg/L as N"]],
+    "ions_both_forms": _QPANEL + _QIONS + [["Nitrate-N", 10.0, "mg/L"],
+                                           ["Nitrate", 10.0 * 62.004 / 14.007, "mg/L"]],
+    "nitrite_as_n_indices": _QPANEL + _QIONS + [["Nitrate", 4.0, "mg/L"],
+                                                ["Nitrite-N", 0.5, "mg/L"],
+                                                ["Iron", 0.1, "mg/L"]],
+    "nitrate_n_below_detection": _QPANEL + _QIONS + [
+        ["Nitrate-N", None, "mg/L", {"detection_limit": 0.1, "below_detection": True}]],
+    # calcium, magnesium, bicarbonate and carbonate as CaCO3
+    "caco3_as_element": _QPANEL + [
+        ["Nitrate", 4.43, "mg/L"], ["Sodium", 36.126486, "mg/L"],
+        ["Chloride", 17.7265, "mg/L"], ["Alkalinity", 100.09, "mg/L as CaCO3"],
+        ["Sulfate", 24.015, "mg/L"], ["TDS", 200, "mg/L"], ["Temperature", 27, "deg C"],
+        ["Calcium", 20.039, "mg/L"], ["Magnesium", 6.076, "mg/L"]],
+    "caco3_as_caco3": _QPANEL + [
+        ["Nitrate", 4.43, "mg/L"], ["Sodium", 36.126486, "mg/L"],
+        ["Chloride", 17.7265, "mg/L"], ["Alkalinity", 100.09, "mg/L as CaCO3"],
+        ["Sulfate", 24.015, "mg/L"], ["TDS", 200, "mg/L"], ["Temperature", 27, "deg C"],
+        ["Calcium", 50.037383, "mg/L as CaCO3"], ["Magnesium", 25.020968, "mg/L as CaCO3"]],
+    "caco3_carbonates": _QPANEL + [
+        ["Nitrate", 4.0, "mg/L"], ["Calcium", 20.0, "mg/L as Ca"],
+        ["Magnesium", 5.0, "mg/L as Ca"], ["Bicarbonate", 100.0, "mg/L as CaCO3"],
+        ["Carbonate", 5.0, "mg/L as CaCO3"], ["Sodium", 10.0, "mg/L as CaCO3"]],
+    # E. coli and coliform counts in units with a space, or none readable
+    "ecoli_per_100_ml_spaced": _QPANEL[:1] + [["E. coli", 12.0, "No./100 mL"],
+                                              ["Arsenic", 0.001, "mg/L"],
+                                              ["Fluoride", 0.2, "mg/L"],
+                                              ["Nitrate", 3.0, "mg/L"]],
+    "counts_in_any_unit": _QPANEL + [
+        ["Nitrate", 3.0, "mg/L"],
+        ["Total coliforms", None, "colonies", {"greater_than": 0.0}],
+        ["Faecal coliforms", None, "mg/L", {"greater_than": 0.0}],
+        ["Total coliforms", None, "per 100 mL", {"greater_than": 0.0}]],
+    "count_bound_needs_unit": _QPANEL + [
+        ["Nitrate", 3.0, "mg/L"],
+        ["Total coliforms", None, "colonies", {"greater_than": 5.0}]],
+    # a determinand with no guideline value, in a unit that cannot be read
+    "no_limit_units": _QPANEL + [
+        ["Nitrate", 3.1, "mg/L"], ["Calcium", 8.0, "mg/L Ca"],
+        ["Alkalinity", 30.0, "mg/L CaCO3"], ["Temperature", 29.0, "wibbles"],
+        ["Potassium", None, "wibbles", {"greater_than": 1.0}],
+        ["Silica", None, "mg/L", {"greater_than": 10.0}],
+        ["Magnesium", 5.0, "mg/L as Ca"]],
+    "temperature_oc": _QPANEL + [
+        ["Nitrate", 3.1, "mg/L"], ["Temperature", 29.0, "oC"], ["Calcium", 8.0, "mg/L"],
+        ["Alkalinity", 30.0, "mg/L as CaCO3"]],
+    "temperature_degree_ordinal": _QPANEL + [
+        ["Nitrate", 3.1, "mg/L"], ["Temperature", 29.0, "\u00baC"], ["Calcium", 8.0, "mg/L"],
+        ["Alkalinity", 30.0, "mg/L as CaCO3"]],
+    "temperature_unreadable": _QPANEL + [
+        ["Nitrate", 3.1, "mg/L"], ["Temperature", 29.0, "degrees"], ["Calcium", 8.0, "mg/L"],
+        ["Alkalinity", 30.0, "mg/L as CaCO3"]],
+}
+
+#: Laboratory sheets as grids, read by both sheet readers and assessed.
+_QHEAD = [["Laboratory", "Central Lab"], ["Sample ID", "S"], []]
+QUALITY_SHEETS = [
+    # a unit written after a measured value, against its column
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+              ["Arsenic", "ug/L", "0.05 mg/L", ""], ["Fluoride", "mg/L", 0.2, ""],
+              ["Nitrate", "mg/L", 3.1, ""], ["Manganese", "ug/L", "<0.05 mg/L", ""],
+              ["Lead", "", "8 ug/L", ""], ["Iron", "mg/L", "5 NTU", ""],
+              ["Alkalinity", "mg/L as CaCO3", "46 mg/L", ""],
+              ["Nitrite", "mg/L", "0.1 mg/L as N", ""], ["Zinc", "mg/L", "0.5 ND", ""],
+              ["Copper", "mg/L", "0.2 (field)", ""], ["Sulfate", "mg/L", "20*", ""],
+              ["Temperature", "", "27 oC", ""]],
+    # a unit in the result column's header
+    _QHEAD + [["Parameter", "Unit", "Result (ug/L)"],
+              ["Arsenic", "", 5], ["Lead", "mg/L", 0.003], ["Manganese", "-", 40],
+              ["Cadmium", "", "<1"], ["E. coli", "", 0]],
+    _QHEAD + [["Parameter", "Result (lab)"], ["Arsenic", 0.004], ["Lead", "2 ug/L"]],
+    # counts per 100 mL written with a space
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "No./100 mL", "Present", ""],
+              ["Total coliforms", "per 100 mL", 12, ""], ["Arsenic", "mg/L", 0.001, ""],
+              ["Fluoride", "mg/L", 0.2, ""], ["Nitrate", "mg/L", 3.1, ""]],
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "/100 mL", "Absent", ""],
+              ["Total coliforms", "MPN/100 mL", 0, ""], ["Arsenic", "mg/L", 0.001, ""],
+              ["Fluoride", "mg/L", 0.2, ""], ["Nitrate (NO3-N)", "mg/L", 2.0, ""]],
+]
+
+#: Units the audit found unread or read apart, by spelling.
+UNIT_SPELLINGS = [
+    "/100 mL", "No./100 mL", "per 100 mL", "CFU/100mL", "MPN/100 mL", "#/100 mL",
+    "count/100 mL", "per 100 millilitres", "cfu / 100 ml", "/100ml", "N\u00ba/100 mL",
+    "N\u00b0 per 100 mL", "\u00b0N/100 mL", "oC", "\u00baC",
+    "\u00b0 C", "o C", "mg/L as NO3-N", "mg/L as NO3\u2013N", "mg/l as nitrogen",
+    "mg/L as NO2-N", "mg/L as N", "mg/L as Ca", "mg/L as CaCO3", "mg/L CaCO3", "mg/L Ca",
+]
+
+#: Parameter names that say nitrogen, and some that do not.
+PARAMETER_NAMES = [
+    "Nitrate (NO3-N)", "Nitrate (N)", "Nitrate (NO3 as N)", "Nitrate (as NO3-N)",
+    "Nitrate (NO3--N)", "Nitrate (NO3 \u2013 N)", "nitrate (no3n)", "Nitrate (nitrogen)",
+    "Nitrite (NO2-N)", "Nitrite (no2 - n)", "Ammonia (NH3-N)", "Ammonium (NH4-N)",
+    "Ammonium (as NH4-N)", "Nitrite (NO3-N)", "Nitrate (NO2-N)", "Nitrate (NO3)",
+    "Nitrate (as NO3)", "Nitrate (as N)", "Nitrate", "NO3-N", "Nitrate-N (mg/L)",
+    "Calcium (as CaCO3)",
+]
+
+#: Cells read in the time dimension by units.read_quantity, which took a
+#: clock for its first number.
+QUANTITY_CELLS = [
+    ("0:30", "Time (mm:ss)"), ("1:30", "Time (mm:ss)"), ("2:00", "Time (hh:mm)"),
+    ("1:30", "Time (min)"), ("00:05:30", "Time"), ("1:60", "Time (min)"),
+    ("1:30 pm", "Time"), (True, "Time (min)"), ("12 pump stopped", "Time (min)"),
+    ("90 s", "Time (min)"), ("1.5 hrs", "Time (min)"),
+]
+
+
+def _quality_result(row) -> WaterQualityResult:
+    extra = row[3] if len(row) > 3 else {}
+    return WaterQualityResult(row[0], row[1], row[2], **extra)
+
+
+def _quality_summary(a) -> dict:
+    return {
+        "state": a.verdict_state,
+        "statuses": [r.status for r in a.rows],
+        "reasons": [r.reason for r in a.rows],
+        "remarks": [r.remark for r in a.rows],
+        "converted": [clean(r.value_in_guideline_unit) for r in a.rows],
+        "guidelines": [r.who_health for r in a.rows],
+        "uncertainties": list(a.uncertainties),
+        "flags": [[f.level, f.code, f.message] for f in a.flags],
+        "ionic": None if a.ionic is None else {
+            "error": clean(a.ionic.error_percent),
+            "cations": clean(a.ionic.cations_meq), "anions": clean(a.ionic.anions_meq)},
+        "hazard": None if a.health_risk is None else {
+            "index": a.health_risk.hazard_index,
+            "quotients": a.health_risk.hazard_quotients},
+        "wqi": None if a.wqi is None else {
+            "value": a.wqi.value, "rating": a.wqi.rating, "n": a.wqi.n_parameters,
+            "top": [list(c) for c in a.wqi.top_contributors]},
+        "corrosivity": {
+            "lsi": a.corrosivity.lsi, "rsi": a.corrosivity.rsi,
+            "classification": a.corrosivity.classification,
+            "assumptions": list(a.corrosivity.assumptions)},
+        "verdict": a.verdict,
+        "recommendations": quality_recommendations(a),
+    }
+
+
+def quality_units_reference() -> dict:
+    """What the quality, units and design audit's cases come to in Python."""
+    from groundwater.quality.standards import normalise_parameter
+    from groundwater.units import parse_unit, read_quantity
+
+    def unit(text):
+        u = parse_unit(text)
+        return None if u is None else [u.canonical, u.dimension, u.factor, u.offset, u.basis]
+
+    cases = {}
+    for name, rows in QUALITY_CASES.items():
+        sample = WaterQualitySample(site=SiteMetadata(community="Ref"),
+                                    results=[_quality_result(r) for r in rows])
+        cases[name] = {"rows": rows, **_quality_summary(assess_sample(sample))}
+    sheets = []
+    for grid in QUALITY_SHEETS:
+        sample = quality_from_grid(grid, "sheet.xlsx")
+        sheets.append({
+            "grid": grid,
+            "results": [[r.parameter, clean(r.value), r.unit, clean(r.detection_limit),
+                         r.below_detection, clean(r.greater_than), r.greater_than_inclusive,
+                         r.unreadable] for r in sample.results],
+            **_quality_summary(assess_sample(sample)),
+        })
+    quantities = []
+    for cell, header in QUANTITY_CELLS:
+        q = read_quantity(cell, header, dimension="time")
+        quantities.append({"cell": cell, "header": header, "value": clean(q.value),
+                           "status": q.status, "unit": q.unit_text})
+    return {
+        "cases": cases, "sheets": sheets, "quantities": quantities,
+        "units": [[text, unit(text)] for text in UNIT_SPELLINGS],
+        "names": [[name, normalise_parameter(name)] for name in PARAMETER_NAMES],
+    }
 
 
 def pumping_cases() -> dict:

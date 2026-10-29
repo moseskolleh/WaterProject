@@ -176,6 +176,27 @@ _ALIASES = {
 # and not the table's own qualifier ("(total)")
 _TRAILING_QUALIFIER_RE = re.compile(r"\s*\((?!\s*as\s)[^)]*\)\s*$")
 
+#: A trailing bracket that names nitrogen as the basis: "Nitrate (NO3-N)",
+#: "Nitrate (N)", "Nitrite (NO2 as N)", "Nitrate (as NO3-N)". It was
+#: stripped like a symbol, so "Nitrate (NO3-N)" became "nitrate" and was
+#: held to the 50 mg/L guideline for nitrate as the ion, where 20 mg/L as N
+#: is 88.5 mg/L as nitrate.
+_NITROGEN_QUALIFIER_RE = re.compile(
+    r"^(?P<base>.+?)\s*\(\s*(?:as\s+)?"
+    r"(?:(?P<ion>no3|no2|nh4|nh3)\s*(?:[-–—]{0,2}|\s+as)\s*)?"
+    r"(?:n|nitrogen)\s*\)$"
+)
+
+#: The table key each name takes when it is reported as nitrogen, and the
+#: ion a qualifier may name for it. A qualifier naming another ion ("Nitrite
+#: (NO3-N)") contradicts the name, and is left to resolve to nothing.
+_AS_NITROGEN_KEYS = {
+    "nitrate": ("nitrate (as n)", ("no3",)),
+    "nitrite": ("nitrite (as n)", ("no2",)),
+    "ammonia": ("ammonia (as n)", ("nh3", "nh4")),
+    "ammonium": ("ammonia (as n)", ("nh3", "nh4")),
+}
+
 
 def normalise_parameter(name: str) -> str:
     """The standards-table key a certificate's parameter name refers to.
@@ -189,6 +210,10 @@ def normalise_parameter(name: str) -> str:
     key = re.sub(r"\s+", " ", str(name or "").strip().lower())
     if key in _ALIASES:
         return _ALIASES[key]
+    nitrogen = _NITROGEN_QUALIFIER_RE.match(key)
+    if nitrogen and nitrogen.group("base") in _AS_NITROGEN_KEYS:
+        as_n, ions = _AS_NITROGEN_KEYS[nitrogen.group("base")]
+        return as_n if nitrogen.group("ion") in (None, *ions) else key
     stripped = _TRAILING_QUALIFIER_RE.sub("", key)
     if stripped != key:
         # "chromium (total)" strips to "chromium", which the aliases map
@@ -229,11 +254,76 @@ _PARAMETER_BASIS_RE = re.compile(r"\(\s*as\s+([^)]+?)\s*\)")
 def _parameter_basis(parameter: str) -> str:
     """The chemical basis a parameter name states: "Nitrate (as NO3)" -> "no3"."""
     match = _PARAMETER_BASIS_RE.search(str(parameter or ""))
-    return match.group(1).lower().replace(" ", "") if match else ""
+    if not match:
+        return ""
+    basis = match.group(1).lower().replace(" ", "")
+    # "as NO3-N" is nitrogen, as units.py reads a unit's basis
+    return "n" if re.fullmatch(r"(?:no3|no2|nh4|nh3)-{0,2}n|nitrogen", basis) else basis
+
+
+#: Molar masses, g/mol, to three decimals: the figures the ionic balance and
+#: the hazard index already used, and calcium carbonate's 100.087, on which
+#: the corrosivity indices' 2.497 from calcium to CaCO3 rests.
+MOLAR_MASS = {
+    "N": 14.007, "NO3": 62.004, "NO2": 46.005, "Ca": 40.078, "Mg": 24.305,
+    "CaCO3": 100.087, "HCO3": 61.017, "CO3": 60.009,
+}
+
+#: The basis an entry's values are written on, where its name does not say:
+#: calcium is reported as the element, so "mg/L as Ca" is its own scale.
+_NATIVE_BASIS = {"calcium": "ca", "magnesium": "mg", "bicarbonate": "hco3",
+                 "carbonate": "co3"}
+
+#: What puts a value stated on one chemical basis onto the basis its entry
+#: is written on, and that basis as a remark names it. Each is a ratio of
+#: molar masses, so it is a conversion rather than an assumption: 10 mg/L as
+#: N is 10 x 62.004 / 14.007 = 44.27 mg/L as NO3, and 50 mg/L of calcium as
+#: CaCO3 is 50 x 40.078 / 100.087 = 20.02 mg/L of calcium. A bicarbonate as
+#: CaCO3 carries two equivalents per mole of CaCO3. Calcium and magnesium
+#: as CaCO3 used to be taken at face value, 2.5 and 4.1 times the element,
+#: and a balanced analysis was flagged as an unreliable one.
+_BASIS_FACTORS: dict[tuple[str, str], tuple[float, str]] = {
+    ("nitrate (as no3)", "n"): (MOLAR_MASS["NO3"] / MOLAR_MASS["N"], "NO3"),
+    ("nitrate (as n)", "no3"): (MOLAR_MASS["N"] / MOLAR_MASS["NO3"], "N"),
+    ("nitrite (as no2)", "n"): (MOLAR_MASS["NO2"] / MOLAR_MASS["N"], "NO2"),
+    ("nitrite (as n)", "no2"): (MOLAR_MASS["N"] / MOLAR_MASS["NO2"], "N"),
+    ("calcium", "caco3"): (MOLAR_MASS["Ca"] / MOLAR_MASS["CaCO3"], "Ca"),
+    ("magnesium", "caco3"): (MOLAR_MASS["Mg"] / MOLAR_MASS["CaCO3"], "Mg"),
+    ("bicarbonate", "caco3"): (2 * MOLAR_MASS["HCO3"] / MOLAR_MASS["CaCO3"], "HCO3"),
+    ("carbonate", "caco3"): (MOLAR_MASS["CO3"] / MOLAR_MASS["CaCO3"], "CO3"),
+}
+
+#: The entries a value reported as nitrogen is graded on, and the ion's
+#: entry, factor and formula that put it on the ion's scale. The row is
+#: graded against the as-N guideline; the charge balance, the hazard index
+#: and the water quality index are written for the ion, and read it there.
+AS_NITROGEN = {
+    "nitrate (as n)": ("nitrate (as no3)", MOLAR_MASS["NO3"] / MOLAR_MASS["N"], "NO3"),
+    "nitrite (as n)": ("nitrite (as no2)", MOLAR_MASS["NO2"] / MOLAR_MASS["N"], "NO2"),
+}
+
+
+def index_key(key: str) -> str:
+    """The key the indices read a result under: the ion's, for nitrogen."""
+    return AS_NITROGEN[key][0] if key in AS_NITROGEN else key
+
+
+def basis_conversion(reported_unit: str, entry: StandardEntry) -> tuple[float, str] | None:
+    """``(factor, basis)``: what puts the unit's basis on the entry's.
+
+    The factor a value in ``reported_unit`` is multiplied by and the basis
+    it is put on, for the remark and the flag of a row
+    :func:`to_standard_unit` converted; ``None`` where no factor is known.
+    """
+    source = parse_unit(str(reported_unit or ""))
+    if source is None or not source.basis:
+        return None
+    return _BASIS_FACTORS.get((normalise_parameter(entry.parameter), source.basis))
 
 
 def to_standard_unit(
-    value: float, reported_unit: str, entry: StandardEntry
+    value: float, reported_unit: str, entry: StandardEntry,
+    parameter: str | None = None,
 ) -> tuple[float | None, str]:
     """Put a reported value on the scale the standards table uses.
 
@@ -244,8 +334,16 @@ def to_standard_unit(
 
     ``reason`` is ``""`` on a clean conversion, ``"unit_assumed"`` when the
     laboratory reported no usable unit and the guideline's own was assumed,
-    ``"unit_basis_assumed"`` when one side names a chemical basis the other
-    does not, or an ``INDETERMINATE_REASONS`` code on refusal.
+    ``"unit_basis_converted"`` when the unit states a chemical basis the
+    entry is not written on and a fixed factor puts it there
+    (:data:`_BASIS_FACTORS`), ``"unit_basis_assumed"`` when one side names a
+    chemical basis the other does not and nothing converts it, or an
+    ``INDETERMINATE_REASONS`` code on refusal.
+
+    ``parameter`` is the name as the laboratory wrote it. A basis that name
+    states and the unit contradicts ("Nitrate (as NO3)" in "mg/L as N") is
+    refused; "Nitrate" in "mg/L as N" is converted. Without it the entry's
+    own name speaks for the sheet, which refuses both.
     """
     reported = str(reported_unit or "").strip()
     guideline = str(entry.unit or "").strip()
@@ -295,15 +393,21 @@ def to_standard_unit(
         # deciding: "Nitrate (as NO3)" reported in "mg/L as N" is a different
         # number by a factor of 4.4, and grading it at face value passed a
         # sample at 44 mg/L as NO3 that the guideline puts over its limit.
-        named = _parameter_basis(entry.parameter)
-        if named and named != source.basis:
+        native = (_parameter_basis(entry.parameter)
+                  or _NATIVE_BASIS.get(normalise_parameter(entry.parameter), ""))
+        if source.basis == native:
+            return converted, ""
+        written = _parameter_basis(entry.parameter if parameter is None else parameter)
+        factor = basis_conversion(reported, entry)
+        if factor is not None and not (written and written != source.basis):
+            return converted * factor[0], "unit_basis_converted"
+        if native:
             return None, "unit_basis_conflict"
-        if not named:
-            # Nothing states the guideline's basis, so the reading is taken
-            # but it is worth an analyst's eye: calcium as Ca and calcium as
-            # CaCO3 differ by a factor of 2.5.
-            return converted, "unit_basis_assumed"
-    elif target.basis and not source.basis:
+        # Nothing states the guideline's basis, so the reading is taken but
+        # it is worth an analyst's eye: an 'as CaCO3' figure is about 2.5
+        # times the same concentration expressed as the element.
+        return converted, "unit_basis_assumed"
+    if target.basis and not source.basis:
         return converted, "unit_basis_assumed"
     return converted, ""
 
@@ -323,6 +427,7 @@ def canonical_values(
     """
     table = table if table is not None else load_standards()
     values: dict[str, float] = {}
+    as_nitrogen: dict[str, float] = {}
     for result in getattr(sample, "results", []):
         if result.value is None:
             continue
@@ -334,9 +439,23 @@ def canonical_values(
             # it either.
             values[key] = float(result.value)
             continue
-        converted, _ = to_standard_unit(float(result.value), result.unit, entry)
-        if converted is not None:
-            values[key] = converted
+        converted, _ = to_standard_unit(float(result.value), result.unit, entry,
+                                        result.parameter)
+        if converted is None:
+            continue
+        if key in AS_NITROGEN:
+            # Nitrate and nitrite reported as nitrogen go on the ion's scale,
+            # under the ion's key: the meq factor, the reference dose and the
+            # water quality index's exclusion are written for the ion. Kept
+            # out, nitrate as N left a balanced analysis 10 percent short, the
+            # hazard index without its nitrate, and the index led by nitrite.
+            ion, factor, _ = AS_NITROGEN[key]
+            as_nitrogen[ion] = converted * factor
+            continue
+        values[key] = converted
+    for ion, value in as_nitrogen.items():
+        # a certificate that reports both forms is not counted twice
+        values.setdefault(ion, value)
     return values
 
 

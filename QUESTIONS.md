@@ -376,3 +376,23 @@ need real project inputs or decisions to finish calibrating it.
    one; (f) confirm that the reports waiting on a phone belong to that
    browser rather than to a project file, so that saving a project does
    not keep them and *Reset everything* deletes them.
+
+24. **Three choices in the water quality reader and the borehole design
+   want confirmation (added with the water quality, units and design
+   audit).** None is a standard; each is stated where it is made
+   (`groundwater/ingestion/waterquality.py`, `groundwater/quality/assess.py`
+   and `groundwater/design/designer.py`). (a) A unit in the result
+   column's header ("Result (ug/L)") is the unit of every row whose own
+   unit cell is blank, and a row that unit cannot measure, such as E. coli
+   under "Result (mg/L)", is refused rather than read in its guideline's
+   unit; a laboratory chemist may prefer the header to bind only the rows
+   it can measure. (b) "Present" or "TNTC" in a unit that cannot be read
+   is graded as a count above zero, while a number in such a unit is still
+   refused: zero is zero on every count scale, but 12 of an unknown unit
+   cannot be put against a limit that is not zero. (c) The top screen the
+   design places is kept the gravel pack's height
+   (`gravel_pack_above_top_screen_m`) below the foot of the seal, so the
+   pack is never shortened to fit a screen; the alternative, a screen at
+   the seal's foot with a shorter pack, is what the design did before and
+   what a screen set by hand still gets, with a warning. A hydrogeologist
+   should confirm which a Sierra Leone contract wants.

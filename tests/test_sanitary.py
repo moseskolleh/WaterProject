@@ -228,7 +228,7 @@ def test_a_count_whose_unit_is_not_per_100_ml_is_not_graded():
 
 
 @pytest.mark.parametrize("result", [
-    _ecoli(3.0, unit="/100 mL"),
+    _ecoli(3.0, unit="colonies"),
     _ecoli(None, unreadable="lots"),
     _ecoli(None, below_detection=True, detection_limit=1.0, unit="CFU/mL"),
     _ecoli(None, below_detection=True, detection_limit=10.0),

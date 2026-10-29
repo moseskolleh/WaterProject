@@ -428,6 +428,11 @@ Key behaviours built in from the real field sheets:
   back to the stop; a time of day is refused rather than guessed at
 - the length of each step is read in its unit (`1 hr`), and the casing
   and riser diameters a sheet records set its casing-storage period
+- a unit written in a laboratory result cell (`0.05 mg/L`) or in the
+  result column's header (`Result (ug/L)`) is read; nitrate and nitrite
+  reported as nitrogen (`Nitrate (NO3-N)`) are held to the guideline for
+  nitrogen, and calcium or magnesium `as CaCO3` is put on the element's
+  scale before the charge balance and the corrosivity indices use it
 - metadata consistency checks flag copy-over errors (district that
   does not contain the GPS coordinates, differing client or community
   between sheets of one project)
