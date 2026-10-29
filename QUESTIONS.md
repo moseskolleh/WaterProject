@@ -483,3 +483,30 @@ need real project inputs or decisions to finish calibrating it.
    set's own file or the project file should go in, whether a processed
    table should be allowed to rest on the bundle's manifest alone, and
    where the programme keeps a bundle's hash.
+
+28. **Two choices in the costing and the siting score want confirmation
+   (added with the costing, siting and decisions audit).** Each is stated
+   where it is made (`groundwater/costing/model.py` and
+   `groundwater/siting/suitability.py`). (a) The no water, no pay price
+   of a successful borehole carries each expected failure as a dry
+   attempt: the siting, set-up and drilling lines, marked up as the
+   borehole is, without the journey from the base. That is how the
+   programme estimate, the cost distribution and the value of one more
+   measurement already count a dry hole. RWSN's pricing guide (Costing
+   and Pricing, Publication 2014-12, in `WaterProjectFiles/`) tells a
+   driller paid only for successful wells to "increase the price of each
+   successful well to cover your costs". It gives no formula. What a
+   failure costs depends on what has been done to the hole by the time it
+   is judged, and the same guide warns that "when mud drilling in
+   sediments you will only know if you have been successful once you have
+   installed your casing and screens". A contract that judges success
+   after the test, or a hole mud-drilled in the coastal sediments, puts
+   more into each failure. The price of a failure is a parameter
+   (`failed_attempt_usd`); neither app asks for it. Passing the borehole's
+   own price reproduces the earlier figure, the price over the success
+   rate, which priced every failure as a completed and equipped borehole.
+   (b) Two points are tied when the gap between their weighted scores,
+   taken to the tenth of a point the reports print it to, is under the
+   margin. So a real gap of 2.96 is not a tie on a 3-point margin, where
+   before it was. The alternative, printing the gap to more places, would
+   keep it a tie and say "2.96".

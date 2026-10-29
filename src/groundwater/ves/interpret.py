@@ -693,12 +693,14 @@ def ranking_weight(interp: SiteInterpretation, config: VESConfig | None = None) 
     executive summary and the suitability section all rank on the same
     quantity. There used to be two scores - the interpretation's own and
     the scorecard's - and a report could recommend one point in the
-    summary and another in the scorecard section.
+    summary and another in the scorecard section. To the 0.0001 it is exact
+    to, as the scorecard ranks it, so two points it ranks by sounding id are
+    not ranked here by a last bit.
     """
-    from ..siting.suitability import assess_siting  # circular at module level
+    from ..siting.suitability import _exact, assess_siting  # circular at module level
 
     result = assess_siting([interp], config)[0]
-    return result.suitability * result.confidence
+    return _exact(result.weighted)
 
 
 def rank_interpretations(

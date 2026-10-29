@@ -445,6 +445,28 @@ def test_costing_flow(app):
     assert not app.exception
 
 
+def test_no_water_no_pay_is_priced_on_dry_attempts(app):
+    """The warning priced every expected failure as a whole completed
+    borehole; it now carries a dry attempt for each, and says what that is."""
+    from groundwater.utils import fmt_usd
+
+    goto(app, "Costing & BoQ")
+    app.number_input(key="cost_success").set_value(80.0)
+    app.button(key="run_cost").click()
+    app.run()
+    assert not app.exception
+    estimate = app.session_state["cost_estimate"]
+    loaded = estimate.price_per_successful_well_usd(80.0)
+    assert loaded == pytest.approx(estimate.price_with_vat_usd
+                                   + estimate.dry_attempt_price_usd / 4)
+    said = [str(w.value) for w in app.warning if "No water no pay" in str(w.value)]
+    assert said and f"${fmt_usd(loaded)}" in said[0]
+    assert f"(${fmt_usd(estimate.dry_attempt_price_usd)})" in said[0]
+    assert "siting, set-up and drilling" in said[0]
+    app.number_input(key="cost_success").set_value(100.0)
+    app.run()
+
+
 def test_supervision_flow(app):
     from groundwater.supervision import load_checklists
 

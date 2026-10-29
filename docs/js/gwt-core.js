@@ -8949,7 +8949,8 @@
    */
   function rankingWeight(interp, cfg) {
     var result = C.assessSiting([interp], cfg)[0];
-    return result.suitability * result.confidence;
+    /* to the 0.0001 it is exact to, as the scorecard ranks it (weightedExact) */
+    return weightedExact(result.suitability * result.confidence);
   }
 
   /**
@@ -15688,6 +15689,9 @@
     'Test pumping', 'Water quality', 'Wellhead'];
   var RESOURCE_CATEGORIES = ['equipment', 'labour', 'consumables', 'fuel', 'vehicles'];
   var DEFAULT_EXCHANGE_RATE_SLE_PER_USD = 23.0;
+  /* the stages an attempt that finds no water still pays for: _DRY_STAGES.
+   * The programme estimate, the cost distribution and the risk-loaded price
+   * all count a dry attempt so. */
   var DRY_STAGES = ['Siting', 'Mobilisation', 'Drilling'];
   /* The quantity basis that prices a rising main in place of the one the
    * handpump line includes, by material in lower case: RISING_MAIN_BASES in
@@ -15701,6 +15705,9 @@
     var key = trimField(material).toLowerCase();
     return own(RISING_MAIN_BASES, key) ? RISING_MAIN_BASES[key] : null;
   }
+
+  /* a dry attempt does not pay this basis: the rig has made the journey */
+  var COST_JOURNEY = 'per_km_round_trip';
 
   /** The rate catalogue: load_rates. min_usd and max_usd are the ends of
    * the triangle the cost distribution draws the rate from, unit_cost_usd
@@ -15976,6 +15983,9 @@
         code: rate.code, stage: rate.stage, category: rate.category,
         item: rate.item, unit: rate.unit, quantity: quantity,
         unit_cost_usd: rate.unit_cost_usd, note: rate.note,
+        /* so that the journey from the base can be told from the other
+         * mobilisation lines */
+        quantity_basis: rate.quantity_basis,
         amount_usd: quantity * rate.unit_cost_usd,
       });
     });
@@ -16037,14 +16047,45 @@
       cost_per_meter_usd: inputs.total_depth_m ? totalCost / inputs.total_depth_m : 0.0,
     }, pct);
 
+    /* An attempt that finds no water: its siting, set-up and drilling lines,
+     * without the journey from the base, added stage by stage as the
+     * programme estimate adds them (dry_attempt_direct_usd), and priced as
+     * the borehole is (dry_attempt_price_usd). */
+    var dryTotals = DRY_STAGES.map(function (stage) {
+      return items.reduce(function (a, i) {
+        return i.stage === stage && i.quantity_basis !== COST_JOURNEY ? a + i.amount_usd : a;
+      }, 0.0);
+    });
+    estimate.dry_attempt_direct_usd = dryTotals.reduce(function (a, v) { return a + v; }, 0);
+    estimate.dry_attempt_price_usd = costPrice(estimate.dry_attempt_direct_usd,
+      pct.overheads_percent, pct.margin_percent, pct.vat_percent);
+
     estimate.in_local = function (usd) { return usd * pct.exchange_rate_sle_per_usd; };
-    /* Under a no-water-no-pay contract the price of each successful borehole
-     * must carry the cost of the expected failures. */
-    estimate.price_per_successful_well_usd = function (successRatePercent) {
+    /** price_per_successful_well_usd: the risk-loaded price under a no water,
+     * no pay contract. The client pays nothing for an attempt that finds no
+     * water, so each successful borehole carries the (1 - p) / p attempts
+     * expected to fail before it, each at failedAttemptUsd: by default the
+     * dry attempt the programme estimate and the cost distribution count.
+     * What a failure costs is what has been done to the hole when it is
+     * judged, which the contract and the ground decide (RWSN's pricing guide:
+     * in mud drilling in sediments, only once the casing and screens are
+     * in); the borehole's own price with VAT prices every failure as a whole
+     * completed borehole, which is what this returned before (the price over
+     * the success rate).
+     * @param {number} successRatePercent
+     * @param {number|null} [failedAttemptUsd]
+     * @returns {number} */
+    estimate.price_per_successful_well_usd = function (successRatePercent, failedAttemptUsd) {
       if (!(successRatePercent > 0 && successRatePercent <= 100)) {
         throw new Error('success rate must be in (0, 100]');
       }
-      return priceWithVat / (successRatePercent / 100.0);
+      var failed = failedAttemptUsd === undefined || failedAttemptUsd === null
+        ? estimate.dry_attempt_price_usd : failedAttemptUsd;
+      if (!(typeof failed === 'number' && isFinite(failed) && failed >= 0.0)) {
+        throw new Error('the price of a failed attempt must be a number, 0 or more');
+      }
+      var p = successRatePercent / 100.0;
+      return priceWithVat + failed * ((1.0 - p) / p);
     };
     estimate.by_stage = function () {
       var totals = {}, order = STAGES.slice();
@@ -16112,9 +16153,9 @@
       exchangeRate: opts.exchangeRate,
     });
 
-    var dryCost = well.by_stage().filter(function (sv) {
-      return DRY_STAGES.indexOf(sv[0]) >= 0;
-    }).reduce(function (a, sv) { return a + sv[1]; }, 0);
+    /* the well carries no journey (charged at package level), so this is
+     * its siting, set-up and drilling */
+    var dryCost = well.dry_attempt_direct_usd;
 
     var kmRate = catalogue.filter(function (r) {
       return r.quantity_basis === 'per_km_round_trip';
@@ -16178,8 +16219,10 @@
    * @returns {string[][]}
    */
   function costSummaryRows(estimate) {
+    /* costUsd, half to even as Python's f"{x:,.0f}": toLocaleString rounds a
+     * half up, and a 4,132.5 direct cost printed 4,133 against 4,132 */
     function pair(usd) {
-      return [thousandsFixed(usd, 0), thousandsFixed(estimate.in_local(usd), 0)];
+      return [costUsd(usd), costUsd(estimate.in_local(usd))];
     }
     var rows = [
       ['Direct works cost'].concat(pair(estimate.direct_cost_usd)),
@@ -16207,8 +16250,10 @@
    * @returns {string[][]}
    */
   function programmeSummaryRows(programme) {
+    /* costUsd: transport at 2.50 USD a km lands on a half for half of all
+     * attempt counts, and toLocaleString printed 313 against 312 */
     function pair(usd) {
-      return [thousandsFixed(usd, 0), thousandsFixed(programme.in_local(usd), 0)];
+      return [costUsd(usd), costUsd(programme.in_local(usd))];
     }
     var dry = (programme.n_attempted - programme.n_successful) *
       programme.dry_attempt_cost_usd;
@@ -22101,28 +22146,38 @@
     return 'Poor';
   }
 
-  /** Thickness-weighted geometric mean resistivity across the water zones.
+  /** siting/suitability.py _water_zone_rho: the thickness-weighted geometric
+   * mean resistivity of the water-bearing layers inside the water zones, or
+   * null where there are none. Only the water-bearing layers: the zones are
+   * rounded to whole metres, so every layer inside a zone took in the slice
+   * of dry layer or basement the rounding added, and a 150 ohm-m layer from
+   * 5.4 to 14.6 m read 189 ohm-m and ranked behind the same layer from 5.6
+   * to 14.4 m. The odds read the water-zone resistivity through this too.
+   * The logarithms are relative to the first such layer's resistivity, so a
+   * zone of one resistivity reads exactly it.
    * @param {Interpretation} interp
    * @returns {number|null}
    */
-  function zoneGeomeanRho(interp) {
-    var acc = 0.0, total = 0.0;
+  function waterZoneRho(interp) {
+    var reference = 0.0, acc = 0.0, total = 0.0;
     interp.water_zones.forEach(function (zone) {
       var top = zone[0], bottom = zone[1];
       interp.layers.forEach(function (layer) {
+        if (!layer.water_bearing) return;
         var lo = Math.max(layer.top_m, top);
         var hi = Math.min(isFinite(layer.bottom_m) ? layer.bottom_m : bottom, bottom);
         if (hi > lo) {
-          acc += Math.log(layer.rho) * (hi - lo);
+          if (total === 0.0) reference = layer.rho;
+          acc += Math.log(layer.rho / reference) * (hi - lo);
           total += hi - lo;
         }
       });
     });
-    return total > 0 ? Math.exp(acc / total) : null;
+    return total > 0 ? reference * Math.exp(acc / total) : null;
   }
 
   function resistivityFitScore(interp, vesConfig) {
-    var mid = zoneGeomeanRho(interp);
+    var mid = waterZoneRho(interp);
     if (mid === null) return 0.0;
     var centre = Math.sqrt(vesConfig.fractured_zone_rho[0] *
       vesConfig.fractured_zone_rho[1]);
@@ -22202,10 +22257,26 @@
     return text;
   }
 
+  /* A weighted score, or a difference of two, to the 0.0001 it is exact to:
+   * _exact. A score to 0.1 times a confidence to 0.001 is a multiple of
+   * 0.0001, but in doubles not always the one nearest it (32.0 x 0.85 is
+   * 27.2 and 34.0 x 0.8 is 27.200000000000003), so equal scores were ranked
+   * by a last bit rather than by sounding id. */
+  function weightedExact(weighted) { return pyRound(weighted, 4); }
+
+  /* How far the first point's weighted score is ahead of the second's: _gap */
+  function weightedGap(first, second) {
+    return weightedExact(first.suitability * first.confidence -
+      second.suitability * second.confidence);
+  }
+
   /** siting/suitability.py tied_leaders: the two highest-ranked points when the
    * ranking cannot separate them, else null. One test for the tie sentence,
    * the preference table's "=1st" and the report's summary and conclusions,
-   * decided on the confidence-weighted scores as they are, not as printed.
+   * decided on the gap between the confidence-weighted scores to the tenth
+   * of a point the tie sentence prints it to: 64.1 less 61.1 is
+   * 2.999999999999993 in doubles and 2.96 prints as 3.0, and both were
+   * called "ahead by 3.0 points, within the 3-point margin".
    * @param {Rec[]} results what assessSiting returns
    * @param {number} [withinPoints]
    * @returns {Rec[]|null}
@@ -22218,8 +22289,7 @@
     });
     if (ranked.length < 2) return null;
     var first = ranked[0], second = ranked[1];
-    if (Math.abs(first.suitability * first.confidence -
-                 second.suitability * second.confidence) >= within) return null;
+    if (pyRound(Math.abs(weightedGap(first, second)), 1) >= within) return null;
     return [first, second];
   }
 
@@ -22236,7 +22306,7 @@
     var w1 = first.suitability * first.confidence, w2 = second.suitability * second.confidence;
     /* "by name only" is true only of equal scores; said of 82.3 against 79.5
      * it told the client the order was alphabetical when it was not */
-    var gap = w1 - w2;
+    var gap = weightedGap(first, second);
     var order = gap === 0
       ? first.sounding_id + ' is listed first by name only'
       : first.sounding_id + ' is ahead by ' +
@@ -22312,10 +22382,12 @@
         index: index,
       };
     });
-    /* rank on the confidence-weighted score, highest first; ties broken by
-     * sounding id for stability, and said in words by rankingTie() */
+    /* rank on the confidence-weighted score, highest first, compared to the
+     * 0.0001 it is exact to; equal scores are ranked by sounding id, and a
+     * tie is said in words by rankingTie() */
     var ranked = results.slice().sort(function (a, b) {
-      return (b.suitability * b.confidence) - (a.suitability * a.confidence) ||
+      return weightedExact(b.suitability * b.confidence) -
+        weightedExact(a.suitability * a.confidence) ||
         (a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0);
     });
     ranked.forEach(function (result, i) { result.rank = i + 1; });
@@ -22324,7 +22396,7 @@
 
   Object.assign(C, {
     assessSiting: assessSiting,
-    suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
+    suitabilityGrade: suitabilityGrade, waterZoneRho: waterZoneRho,
     rankingTie: rankingTie, tiedLeaders: tiedLeaders,
     suitabilityVerdict: suitabilityVerdict,
   });
@@ -22519,30 +22591,6 @@
       if ('below' in bands[i] && value < bands[i].below) return bands[i];
     }
     return bands[bands.length - 1];
-  }
-
-  /* The thickness-weighted geometric mean resistivity of the water-bearing
-   * layers inside the water zones, or null: _water_zone_rho. Not
-   * zoneGeomeanRho, which takes every layer inside a zone, so the slice of
-   * dry layer or basement that rounding a zone to whole metres added moved
-   * the mean across a band edge. The logarithms are relative to the first
-   * such layer's resistivity, so a zone of one resistivity reads exactly it. */
-  function waterZoneRho(interp) {
-    var reference = 0.0, acc = 0.0, total = 0.0;
-    interp.water_zones.forEach(function (zone) {
-      var top = zone[0], bottom = zone[1];
-      interp.layers.forEach(function (layer) {
-        if (!layer.water_bearing) return;
-        var lo = Math.max(layer.top_m, top);
-        var hi = Math.min(isFinite(layer.bottom_m) ? layer.bottom_m : bottom, bottom);
-        if (hi > lo) {
-          if (total === 0.0) reference = layer.rho;
-          acc += Math.log(layer.rho / reference) * (hi - lo);
-          total += hi - lo;
-        }
-      });
-    });
-    return total > 0 ? reference * Math.exp(acc / total) : null;
   }
 
   /* [key, band, value, ratio] for the three survey classes: _survey_evidence */
@@ -22891,8 +22939,6 @@
 
   var COST_RATES = 0, COST_DEPTH = 1, COST_OUTCOME = 2;
   var COST_CURVE_STEPS = 100;
-  /* a dry attempt does not pay this basis: the rig has made the journey */
-  var COST_JOURNEY = 'per_km_round_trip';
 
   /** The triangle's inverse distribution function: triangle_quantile.
    * @param {number} lo
@@ -23360,6 +23406,19 @@
   var MEASUREMENT_KINDS = ['sounding', 'profiling'];
   /* how far the tilt of the even spread is searched either way: _TILT */
   var MEASUREMENT_TILT = 1.0e4;
+  /* _SAME_CHANCE: two chances of a working borehole within this share of
+   * each other are the same chance. The choice is taken on the chances, not
+   * on the costs worked out from them, which came out a last bit apart
+   * either way for two points in the same bands and sent the client to the
+   * second-ranked point "at 37 percent, against 37"; a reading whose factor
+   * is exactly the threshold fell on the side the last bit of the even
+   * spread's exponentials put it, which differs between engines. A tie
+   * keeps the choice. */
+  var MEASUREMENT_SAME_CHANCE = 1e-9;
+
+  /* _better: whether the chance a is higher than b by more than
+   * MEASUREMENT_SAME_CHANCE of it; a tie is not better */
+  function measurementBetter(a, b) { return a - b > MEASUREMENT_SAME_CHANCE * b; }
 
   /** How often each band is seen among dry boreholes and among working
    * ones, from the bands' likelihood ratios alone: the most even spread
@@ -23409,7 +23468,9 @@
   }
 
   /** The decision before and after a measurement: preposterior. classes is
-   * a list of classes, each a list of [factor, ifSuccess, ifDry].
+   * a list of classes, each a list of [factor, ifSuccess, ifDry]. Each
+   * choice is taken on the chances, two within MEASUREMENT_SAME_CHANCE of
+   * each other counting as a tie, and a tie keeps the choice.
    * @param {number} p @param {number} q
    * @param {number} completedUsd @param {number} dryUsd
    * @param {number[][][]} classes
@@ -23423,8 +23484,9 @@
     }
     var move = measurementAlternativeUsd(completedUsd, dryUsd, q);
     var here = measurementDrillHereUsd(p, completedUsd, dryUsd, move);
-    /* a tie keeps the first-ranked point */
-    var stayHere = here <= move;
+    /* drilling here costs dry x (q - p) / q more than moving, so the choice
+     * is the chances' alone; a tie keeps the first-ranked point */
+    var stayHere = !measurementBetter(q, p);
     var now = stayHere ? here : move;
 
     /* every combination of one band from each class, the first outermost */
@@ -23446,9 +23508,12 @@
       var chance = p * s + (1.0 - p) * f;
       if (chance <= 0.0) return;
       var after = p * s / chance;
-      var costHere = measurementDrillHereUsd(after, completedUsd, dryUsd, move);
-      var saving = stayHere ? costHere - move : move - costHere;
-      if (saving > 0.0) {
+      /* the reading changes the choice where the chance after it is on the
+       * other side of the alternative's, and not where it ties with it */
+      var changes = stayHere ? measurementBetter(q, after) : measurementBetter(after, q);
+      if (changes) {
+        var costHere = measurementDrillHereUsd(after, completedUsd, dryUsd, move);
+        var saving = stayHere ? costHere - move : move - costHere;
         value += chance * saving;
         change[0] += chance;
         change[1] += chance * after;
@@ -23586,7 +23651,8 @@
     /** @type {?Rec} */
     var alternative = null;
     ranking.slice(1).forEach(function (i) {
-      if (alternative === null || odds[i].probability > alternative.probability) {
+      if (alternative === null ||
+          measurementBetter(odds[i].probability, alternative.probability)) {
         alternative = odds[i];
       }
     });
@@ -36492,8 +36558,10 @@
     var order = ranking || ranked.map(function (p) { return p.label; });
     var tied = tie;
     if (tied === undefined || tied === null) {
+      /* the gap to the tenth of a point, as tiedLeaders takes it: 64.1 less
+       * 61.1 is 2.999999999999993 in doubles, not under 3 */
       tied = ranked.length >= 2 && ranked[0].rank === 1 && ranked[1].rank === 2 &&
-        Math.abs(Number(ranked[0].value) - Number(ranked[1].value)) <
+        pyRound(Math.abs(Number(ranked[0].value) - Number(ranked[1].value)), 1) <
         defaultConfig().ves.ranking_tie_points;
     }
     tied = !!tied;

@@ -719,6 +719,18 @@ until a hydrogeologist confirms it and drilled outcomes calibrate it, and
 the reports say so. The suitability score stays beside the odds for
 comparison.
 
+The suitability score's resistivity part reads the water-bearing
+layers inside the point's water zones, as the odds do. A zone is
+rounded to whole metres, and the slice of dry cover or basement the
+rounding takes in is not part of it. The points are ranked on the
+score discounted by the fit's confidence, and equal weighted scores
+are ranked by sounding id. Two points whose weighted scores are less
+than the tie margin apart (3 points, `ves.ranking_tie_points` in the
+project's configuration) are called indistinguishable, and the choice
+between them is left to access and sanitary distances. The gap is
+taken to the tenth of a point the reports print it to, so a gap
+printed as 3.0 is never called inside a 3-point margin.
+
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
 Drilled → Tested → Assessed → Handover), and the cards below summarise
@@ -780,6 +792,22 @@ contract price, and every rule of thumb applied is listed under
   rising main from the water quality sample in the same way.
 - Download the bill of quantities (`.xlsx`, with live formulas the
   contractor can edit) or the full cost estimate report (`.docx`).
+- With an "Expected success rate" under 100 percent, the Streamlit
+  page gives the price of each successful borehole under a no water,
+  no pay contract. The client pays nothing for a dry hole, so each
+  successful borehole carries the dry attempts expected before it,
+  (100 - rate) / rate of them, each priced as a dry attempt: the
+  siting, set-up and drilling lines with the overheads, margin and
+  any VAT, but not the journey from the base, the casing, development,
+  test pumping, water sample or wellhead. At 80 percent a 60 m
+  borehole at the default rates is US$ 9,232, as the programme
+  estimate prices each of twenty such boreholes with no rig moves
+  between them. A contract that judges
+  success only after the hole has been cased and tested costs each
+  failure more, and so does mud drilling in sediments, where success is
+  known only once the casing and screens are in (RWSN's pricing guide).
+  From the Python API, `price_per_successful_well_usd(rate,
+  failed_attempt_usd)` takes that price (QUESTIONS.md item 15).
 - The programme estimate uses the siting success rate typed for it.
   Once soundings are inverted, the page offers the chance of a working
   borehole at the survey's first-ranked point beside it, with a **Use
@@ -840,7 +868,11 @@ Going to the alternative is taken to cost its expected cost per working
 borehole, from the distribution's mean completed borehole and mean dry
 attempt; drilling at the point first costs the completed borehole if
 it works, and the dry attempt and then the alternative if it does not.
-The cheaper choice is the one with the better odds.
+The cheaper choice is the one with the better odds. Two chances within
+one part in a billion of each other are the same chance. At the same
+odds the first-ranked point is kept, and a reading that leaves the
+point's chance equal to the alternative's keeps the choice. The
+alternative is the higher-ranked of two points at the same odds.
 
 The measurement could read any band of the evidence the odds use (the
 depth to basement and whether basement was resolved, for a sounding

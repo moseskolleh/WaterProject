@@ -24,6 +24,7 @@ from groundwater.costing.distribution import (
 from groundwater.reporting.costing import build_cost_report, CostReportInputs
 from groundwater.siting.odds import programme_offer, programme_rate
 from groundwater.text import phrase, phrase_table
+from groundwater.utils import fmt_usd
 
 from shared import (
     COSTING_DEFAULTS,
@@ -179,8 +180,10 @@ def render() -> None:
         c10.number_input(
             "Expected success rate (%)", 1.0, 100.0, 100.0, 5.0,
             key="cost_success",
-            help="Under a no water no pay contract the successful wells "
-            "must carry the failures: price / success rate.",
+            help="Under a no water no pay contract each successful well "
+            "carries the dry attempts expected before it: the price plus a "
+            "dry attempt (siting, set-up and drilling) for each of the "
+            "(100 - rate) / rate failures.",
         )
 
     with st.expander("Unit rate catalogue (edit to match local prices)"):
@@ -290,8 +293,13 @@ def render() -> None:
             st.warning(
                 f"No water no pay at {rate:g}% success: each successful "
                 f"well must be priced at "
-                f"${estimate.price_per_successful_well_usd(rate):,.0f} "
-                "to carry the expected failures."
+                f"${fmt_usd(estimate.price_per_successful_well_usd(rate))} "
+                "to carry the expected failures, each a dry attempt that "
+                "pays for siting, set-up and drilling "
+                f"(${fmt_usd(estimate.dry_attempt_price_usd)}) but not the "
+                "journey, casing, development, test pumping, water sample or "
+                "wellhead. A contract that judges success only after the hole "
+                "is cased and tested costs each failure more."
             )
 
         if "cost_artifacts" not in st.session_state:

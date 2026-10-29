@@ -205,6 +205,16 @@ def fmt_num(value, sig: int = 3, unit: str = "") -> str:
     return f"{text} {unit}".strip() if unit else text
 
 
+def fmt_usd(value: float) -> str:
+    """A sum of money to the whole unit with thousands separated, as
+    ``f"{value:,.0f}"`` writes it: a half goes to even, on the exact value.
+    Every cost table and cost sentence is written with it, and the browser
+    with ``costUsd``, which rounds the same way; ``toLocaleString`` rounds a
+    half up, and the two engines' cost reports printed 313 against 312.
+    """
+    return f"{value:,.0f}"
+
+
 def fmt_range(a, b, unit: str = "m", sep: str = "-") -> str:
     """Format a depth range such as ``20-30 m``."""
     return f"{fmt_num(a)}{sep}{fmt_num(b)} {unit}".strip()

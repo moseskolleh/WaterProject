@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from ..utils import sum_in_order
+from ..utils import fmt_usd, sum_in_order
 from .model import (
     CostEstimate,
     CostingInputs,
@@ -20,9 +20,6 @@ from .model import (
     estimate_borehole_cost,
     load_rates,
 )
-
-# Stages a dry (abandoned) attempt still pays for.
-_DRY_STAGES = ("Siting", "Mobilisation", "Drilling")
 
 
 @dataclass
@@ -73,7 +70,7 @@ class ProgrammeEstimate:
 
     def summary_rows(self) -> list[tuple[str, str, str]]:
         def pair(usd: float) -> tuple[str, str]:
-            return f"{usd:,.0f}", f"{self.in_local(usd):,.0f}"
+            return fmt_usd(usd), fmt_usd(self.in_local(usd))
 
         rows = [
             ("Successful boreholes required", f"{self.n_successful}", ""),
@@ -147,7 +144,9 @@ def estimate_programme_cost(
         kwargs["exchange_rate_sle_per_usd"] = exchange_rate_sle_per_usd
     well = estimate_borehole_cost(well_inputs, rates, **kwargs)
 
-    dry_cost = sum_in_order(v for s, v in well.by_stage() if s in _DRY_STAGES)
+    # the well carries no journey (charged at package level), so this is
+    # its siting, set-up and drilling
+    dry_cost = well.dry_attempt_direct_usd
 
     km_rates = [r for r in rates if r.quantity_basis == "per_km_round_trip"]
     km_rate = sum_in_order(r.unit_cost_usd for r in km_rates)

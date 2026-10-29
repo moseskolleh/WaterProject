@@ -448,3 +448,93 @@ def test_the_geophysical_report_prices_it_under_the_odds(tmp_path):
     assert len(values) == 2
     for v in values:
         assert " ".join(measurement_text(v)) in text
+
+
+def _same_ground(sid, rho, err):
+    """A point with one 22 m water zone of ``rho`` ohm-m, fitted to ``err``."""
+    def layer(top, bottom, r, wet):
+        return SimpleNamespace(top_m=top, bottom_m=bottom, rho=r, water_bearing=wet)
+
+    return SimpleNamespace(
+        sounding_id=sid, water_zones=[(8.0, 30.0)], fit_error_percent=err,
+        layers=[layer(0, 8, 400, False), layer(8, 30, rho, True),
+                layer(30, float("inf"), 3000, False)])
+
+
+#: a 60 m borehole 50 km from the base: the cost distribution's mean
+#: completed borehole and mean dry attempt
+_COMPLETED, _DRY = 9060.953887811545, 4288.96670020555
+
+
+def test_two_points_at_the_same_odds_keep_the_first_ranked_whatever_the_last_bit():
+    """Two points in the same bands on the same ground have the same chance,
+    so the tie keeps the first-ranked point. The two costs it was decided
+    on came out a last bit apart either way, and 6 of these 100 pairs sent
+    the client to the second point "at 37 percent, against 37"."""
+    from groundwater.siting.odds import success_odds
+
+    grounds = [("B-L", "pCm"), ("I-L", "Pi"), ("CSF-L/M", "pCm"), ("U-M/H", "Qe"), (None, None)]
+    for code, glg in grounds:
+        for rho in (10, 30, 120, 500, 1500):
+            for err in (3.0, 7.0, 15.0, 25.0):
+                pair = [success_odds(_same_ground(sid, rho, err), None, code, glg)
+                        for sid in ("VES-1", "VES-2")]
+                assert pair[0].probability == pair[1].probability
+                for v in measurement_values(pair, [0, 1], _COMPLETED, _DRY):
+                    assert v.decision_now == "here", (code, glg, rho, err)
+    # one of them, on its own: drilling here and moving cost 16,230.039072024
+    # either way, the first a last bit above the second
+    p = 0.374319015437347
+    worked = preposterior(p, p, _COMPLETED, _DRY, [])
+    assert worked["drill_here_usd"] > worked["alternative_usd"]
+    assert worked["decision_now"] == "here" and worked["now_usd"] == worked["drill_here_usd"]
+
+
+def test_a_reading_at_the_threshold_keeps_the_choice_whatever_the_costs():
+    """VES-1's evidence multiplies its odds by 1.5 x 1.0 x 0.6 = 0.9 and
+    VES-2's by 0.4 x 0.9 x 0.9 = 0.324 on the same ground, so the choice
+    changes on readings whose factors multiply to less than 0.36. A second
+    sounding that reads a thin, resolved basement over a clayey zone
+    multiplies them by exactly 0.36: a tie, which keeps the choice. It was
+    counted with the readings that change it or not by the last bit of the
+    even spread's exponentials, so the share that changes it read 9 percent
+    at one set of costs and 7 at another, and differed between engines."""
+    from groundwater.siting.odds import success_odds
+
+    def survey():
+        ranges = [SimpleNamespace(basement_m=SimpleNamespace(p50=20.0), basement_unresolved=0.0),
+                  SimpleNamespace(basement_m=SimpleNamespace(p50=3.0), basement_unresolved=0.5)]
+        return [success_odds(_same_ground(sid, rho, 3.0), r, "B-L", "pCm")
+                for sid, rho, r in (("VES-1", 10, ranges[0]), ("VES-2", 30, ranges[1]))]
+
+    seen = set()
+    for completed, dry in ((8658.491187606725, 4288.96670020555),
+                           (7891.717914862075, 3630.7302310008904), (_COMPLETED, _DRY)):
+        v = measurement_values(survey(), [0, 1], completed, dry)[0]
+        assert v.kind == "sounding" and v.decision_now == "here"
+        assert v.threshold == pytest.approx(0.36, rel=1e-12)
+        seen.add((v.change_chance, v.change_probability))
+        rows = measurement_decision_rows(v)
+        assert rows[1][1] == "93" and rows[2][1] == "7"
+    assert len(seen) == 1
+    # the tied readings exist, and sit with the readings that keep the choice
+    v = measurement_values(survey(), [0, 1], _COMPLETED, _DRY)[0]
+    depth = [r for r in v.readings if r.evidence == "depth"]
+    rho = [r for r in v.readings if r.evidence == "resistivity"]
+    tied = [(a, b) for a in depth for b in rho
+            if a.factor * b.factor == pytest.approx(v.threshold, rel=1e-12)]
+    assert tied
+    kept = sum(a.chance * b.chance for a, b in tied)
+    assert v.keep_chance > kept > 0.0
+
+
+def test_alternatives_at_the_same_odds_take_the_higher_ranked():
+    """The alternative is the other point with the best odds, the
+    higher-ranked of any tied: a last bit no longer passes it down."""
+    first = _point(0.6, sid="A")
+    b, c = _point(0.4, sid="B"), _point(math.nextafter(0.4, 1.0), sid="C")
+    values = measurement_values([first, b, c], [0, 1, 2], 5000.0, 2000.0)
+    assert {v.alternative_id for v in values} == {"B"}
+    # a real lead still counts
+    c = _point(0.41, sid="C")
+    assert measurement_values([first, b, c], [0, 1, 2], 5000.0, 2000.0)[0].alternative_id == "C"
