@@ -178,8 +178,14 @@ def annular_space_check(
     )
 
 
+#: How far the invoiced metres may run over the signed daily logs before the
+#: reconciliation fails. It mirrors the casing reconciliation rule in the
+#: supervision guidance (installed against drilled depth, within 3 m).
+METRES_TOLERANCE_M = 3.0
+
+
 def metres_reconciliation_check(
-    logged_m: float, claimed_m: float, tolerance_m: float = 3.0
+    logged_m: float, claimed_m: float, tolerance_m: float = METRES_TOLERANCE_M
 ) -> FieldCheck:
     """Compare invoiced metres against the signed daily drilling logs.
 

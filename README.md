@@ -75,17 +75,23 @@ water quality guidelines.
    Group - and what that rock means for a borehole. It annotates rather
    than reclassifies: the polygon is still the 1:5,000,000 one, and where
    the two sources disagree the figure says both
-10. Twelve documents: geophysical survey, borehole completion, pumping
+10. Thirteen documents: geophysical survey, borehole completion, pumping
     test, water quality, project handover, cost estimate, supervision
     checklist record, interim payment certificate, borehole asset record,
     the laminated identification plate for the headworks, the desk
     study, put together before anyone travels to the site and stamped as a
-    pre-field document, and the calibration report, which scores a
-    portfolio's recorded forecasts against what was drilled. Every one of
+    pre-field document, the calibration report, which scores a
+    portfolio's recorded forecasts against what was drilled, and the
+    contractor scorecards, which set each drilling contractor's boreholes
+    out across a portfolio: metres claimed against the signed logs, failed
+    acceptance checks, variation orders, time against the contract and dry
+    holes against the forecast, each with the number of boreholes it rests
+    on, and a ranking only on five forecast boreholes or more. Every one of
     the site's reports opens on a map of the area; the plate is a single
     laminated sheet and carries the asset QR code instead, and the
-    calibration report, which covers many sites, carries neither. The web app
-    saves and reloads the whole working state as a project file
+    calibration report and the scorecards, which cover many sites, carry
+    neither. The web app saves and reloads the whole working state as a
+    project file
 11. A rehabilitate-or-drill check: existing water points near the site
     from the Water Point Data Exchange (WPdx+, CC BY 4.0), turned into a
     recommendation - a broken improved source nearby is a rehabilitation

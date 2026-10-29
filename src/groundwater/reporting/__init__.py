@@ -7,7 +7,7 @@ four out of twelve.
 None of them is imported until it is read. The .docx writer pulls
 python-docx, and the geophysical report pulls the map and VES plotting
 stacks with it, so a caller after one report should not pay for the
-other eleven. Deferring also keeps a half-finished builder from blocking
+others. Deferring also keeps a half-finished builder from blocking
 the rest, which is why the Phase 2 ones were deferred to begin with.
 """
 
@@ -17,6 +17,7 @@ __all__ = [
     "ReportBuilder",
     "build_asset_placard",
     "build_asset_record",
+    "build_calibration_report",
     "build_completion_report",
     "build_cost_report",
     "build_desk_study_report",
@@ -27,6 +28,7 @@ __all__ = [
     "build_pumping_report",
     "build_quality_report",
     "build_round_sheet",
+    "build_scorecard_report",
     "build_supervision_report",
 ]
 
@@ -34,6 +36,7 @@ _LAZY = {
     "ReportBuilder": ".docx_utils",
     "build_asset_placard": ".registry",
     "build_asset_record": ".registry",
+    "build_calibration_report": ".calibration",
     "build_completion_report": ".completion",
     "build_cost_report": ".costing",
     "build_desk_study_report": ".desk_study",
@@ -44,6 +47,7 @@ _LAZY = {
     "build_pumping_report": ".pumping",
     "build_quality_report": ".quality",
     "build_round_sheet": ".rounds",
+    "build_scorecard_report": ".scorecards",
     "build_supervision_report": ".supervision",
 }
 
@@ -66,7 +70,7 @@ _LAZY_MODULES = (
     "calibration",
     "citations",
     "context",
-    "calibration",
+    "scorecards",
 )
 
 __getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

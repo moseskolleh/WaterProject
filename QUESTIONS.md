@@ -396,3 +396,31 @@ need real project inputs or decisions to finish calibrating it.
    the seal's foot with a shorter pack, is what the design did before and
    what a screen set by hand still gets, with a warning. A hydrogeologist
    should confirm which a Sierra Leone contract wants.
+
+25. **Contractor scorecards (added with PLAN.md step 6.3).** Each of these
+   is a choice made here, stated where it is made
+   (`groundwater/scorecards.py`, `groundwater/config.py`) and in the
+   report, and wants the owner's confirmation. (a) A contractor is
+   ranked, and its dry holes judged against the forecast, only on at least
+   five boreholes forecast before drilling whose outcome is known
+   (`ledger.scorecard_min_boreholes`), the plan's own floor. With five
+   boreholes each forecast at a 70 percent chance, anything from none of
+   them dry to three is within the range, so five allows a ranking rather
+   than settling one. (b) The ranking measure is the dry holes found less
+   the number the forecasts expected, for each forecast borehole. It sets
+   a contractor against the ground it was sent to, as the survey forecast
+   it, which a plain dry-hole rate does not; it also charges the
+   contractor with the survey's errors. Say whether another measure, or
+   none, is wanted. (c) The range is a binomial's at the forecasts' mean
+   chance, as the calibration report judges its band. The count of dry
+   holes on forecasts of different chances is a Poisson binomial, whose
+   variance is smaller, and its range could be worked out exactly instead.
+   (d) The acceptance checks counted are the supervision checklist's items
+   in the stages from mobilisation to demobilisation
+   (`ledger.scorecard_stages`): procurement, the pre-contract inspection
+   and siting come before the contract is let or are the client's, and
+   the handover and the monitoring after it are not the drilling
+   contractor's alone. Say whether the programme's contracts put other
+   stages on the contractor. (e) A log's completion date written in
+   figures alone is not read, even where only one reading is possible,
+   so that the dates read are not only those late in their month.

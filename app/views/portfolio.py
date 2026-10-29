@@ -41,7 +41,7 @@ def render() -> None:
         type=["yaml", "yml", "json"], accept_multiple_files=True,
     )
     read, skipped = project_files(f.getvalue() for f in files or [])
-    summaries = [summary for summary, _ in read]
+    summaries = [summary for summary, _, _ in read]
     if skipped:
         st.warning(f"{skipped} file(s) could not be read as a project and were skipped.")
     pooled: list = []
@@ -110,8 +110,48 @@ def render() -> None:
         )
 
         _site_detail(summaries)
+        _scorecards(read)
         pooled = _pooled_ledger(read)
     _calibration_sets(pooled)
+
+
+def _scorecards(read) -> None:
+    """The contractor scorecards over the files (PLAN.md step 6.3): the
+    summary, the scorecards and the checks that failed on the page, and the
+    whole report as a Word document. The browser app shows the same."""
+    import datetime
+    import hashlib
+    import json
+
+    from groundwater.reporting.scorecards import build_scorecard_report
+    from groundwater.scorecards import scorecard_content
+
+    st.subheader(phrase("scorecards.page_heading"))
+    st.caption(phrase("scorecards.page_lead"))
+    config = app_config()
+    files = [(site_label(summary), works, ledger) for summary, ledger, works in read]
+    issued = datetime.date.today().isoformat()
+    content = scorecard_content(files, issued, config)
+    for text in content["summary"]:
+        st.markdown(text)
+    for section in content["sections"]:
+        if section["key"] not in ("cards", "checks"):
+            continue
+        for table in section["tables"]:
+            st.caption(table["caption"])
+            st.dataframe([dict(zip(table["header"], row, strict=True)) for row in table["rows"]],
+                         hide_index=True, width="stretch")
+    # the report is offered while the files it was built from are the ones
+    # on the page; other files want it built again
+    basis = hashlib.sha256(json.dumps(files, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    if st.button(phrase("scorecards.page_build"), key="build_scorecards", help=phrase("scorecards.page_build_help")):
+        path = build_scorecard_report(files, workdir() / "Contractor_Scorecards.docx", issued, config)
+        st.session_state["scorecard_report"] = {"path": str(path), "basis": basis}
+    built = st.session_state.get("scorecard_report")
+    if built and built["basis"] == basis:
+        # not kept among the session's deliverables, which would go on
+        # offering it once other files are on the page
+        offer_download(Path(built["path"]), "Download the contractor scorecards (.docx)", keep=False)
 
 
 def _pooled_ledger(read) -> list:
@@ -123,7 +163,7 @@ def _pooled_ledger(read) -> list:
     from groundwater.ledger import ledger_rows, ledger_summary, pool_ledgers
 
     st.subheader("Predictions and outcomes")
-    pooled = pool_ledgers([(site_label(summary), ledger) for summary, ledger in read])
+    pooled = pool_ledgers([(site_label(summary), ledger) for summary, ledger, _ in read])
     st.caption(ledger_summary(pooled))
     header, rows = ledger_rows(pooled)
     if rows:

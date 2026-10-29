@@ -4812,6 +4812,72 @@ await withPage(async (page, base, consoleErrors) => {
       failed.length === 0, failed.slice(0, 3).join('\n     '));
   }
 
+  // --- Contractor scorecards (PLAN.md step 6.3) ---
+  // The twins of groundwater/scorecards.py on make_reference.py's drawn
+  // portfolios, each under one of four settings: the works record made from
+  // each project and read back clean, the boreholes pooled with the ledgers
+  // of files saved before the record, the scorecards and the report's
+  // content, all held whole; hand-edited records; dates as logs write them;
+  // Dr Timbo's own log as the browser reads the workbook; and a Streamlit
+  // project file's record, through the browser's YAML reader.
+  {
+    const SR = R.scorecards;
+    const scJs = await page.evaluate(async ({ SR }) => {
+      const C = GWT.core, S = GWT.support, D = GWT.data;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      const sheets = await GWT.support.readXlsx(S.base64ToBytes(D.samples.dr_timbo.files.drilling.b64));
+      const timboLog = C.drillingFromGrid(sheets[0].rows, 'dr_timbo_drilling_log.xlsx');
+      return {
+        cases: SR.cases.map((c) => attempt(() => {
+          const cfg = C.withConfig({ ledger: c.settings });
+          const records = c.projects.map((p) => C.worksRecord(p.site, p.log, p.analysis, p.ledger, p.answers,
+            p.metres, p.procurement, cfg));
+          const files = c.projects.map((p, i) => [p.label, p.on_file ? records[i] : null, p.ledger_file]);
+          const boreholes = C.scorecardBoreholes(files);
+          const clean = records.map((w) => C.cleanWorks(w));
+          return { records: records, boreholes: boreholes, cards: C.contractorScorecards(boreholes, cfg),
+            content: C.scorecardContent(files, c.issued, cfg), clean: clean };
+        })),
+        hand: SR.hand.map((h) => attempt(() => C.cleanWorks(h.raw))),
+        days: SR.days.map((d) => attempt(() => C.writtenDay(d.text))),
+        timbo: attempt(() => {
+          const t = SR.timbo.inputs;
+          const record = C.worksRecord(t.site, timboLog, null, null, t.answers, t.metres, t.procurement);
+          return { record: record, content: C.scorecardContent([['Dr Timbo', record, null]], '2026-10-29') };
+        }),
+        file: attempt(() => C.cleanWorks(S.parseYaml(SR.file.yaml).works)),
+      };
+    }, { SR });
+    const failed = SR.cases.map((c, i) => {
+      const got = scJs.cases[i];
+      if (!got || got.threw) return `[${i}] threw ${got ? got.threw : 'no answer'}`;
+      const { clean, ...made } = got.ok;
+      // and each record reads back as it was made
+      return firstDifference(made, c.expect, `[${i} ${JSON.stringify(c.settings)}]`) ||
+        firstDifference(clean, c.expect.records, `[${i}] read back`);
+    }).filter(Boolean);
+    check(`scorecards: works records, boreholes, scorecards and the report (${SR.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const each = (label, gots, wants) => {
+      const wrong = wants.map((want, i) => {
+        const got = gots[i];
+        if (!got || got.threw) return `[${i}] threw ${got ? got.threw : 'no answer'}`;
+        return firstDifference(got.ok, want.expect, `[${i}]`);
+      }).filter(Boolean);
+      check(`${label} (${wants.length})`, wrong.length === 0, wrong.slice(0, 3).join('\n     '));
+    };
+    each('scorecards: hand-edited works records cleaned', scJs.hand, SR.hand);
+    each('scorecards: dates as a drilling log writes them', scJs.days, SR.days);
+    const timbo = scJs.timbo.ok ? firstDifference(scJs.timbo.ok, { record: SR.timbo.record,
+      content: SR.timbo.content }) : `threw ${scJs.timbo.threw}`;
+    check('scorecards: Dr Timbo\'s log, as the browser reads the workbook', !timbo, timbo);
+    const file = scJs.file.ok !== undefined ? firstDifference(scJs.file.ok, SR.file.expect)
+      : `threw ${scJs.file.threw}`;
+    check('scorecards: read out of a Streamlit project file as Python reads it', !file, file);
+  }
+
   // --- Sanitary inspection (PLAN.md step 7.5) ---
   // The twins of groundwater/sanitary.py on make_reference.py's cases: the
   // form, its bands, the grades and the matrix as the bundle carries them;

@@ -6606,6 +6606,99 @@ await withPage(async (page, base, consoleErrors) => {
       '[1,"C. Conteh","Salone Water Forum","forum@example.org",["Kono Wells","Rural Water Trust"]]' &&
     pooling.shown && pooling.dropped, JSON.stringify(pooling));
 
+  // Contractor scorecards (PLAN.md step 6.3): Dr Timbo's borehole with an
+  // item of the supervision checklist failed, the drilled metres reconciled,
+  // its estimate awarded as the contract, a variation order signed and a
+  // completion date due typed on the Procurement page (one written in
+  // figures refused). The project file carries the works record, and the
+  // Portfolio page sets the borehole out on the scorecards and saves
+  // Contractor_Scorecards.docx.
+  await page.evaluate(() => window.GWT.app.loadSample('dr_timbo'));
+  await page.waitForFunction(() => {
+    const app = window.GWT.app;
+    return !!app.derived.log && !!app.derived.estimate;
+  }, null, { timeout: 120000 });
+  const scorecards = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const named = (title) => [...document.querySelectorAll('#page-host .card')]
+      .find((c) => (c.querySelector('.card-title') || {}).textContent === title);
+    const press = (title, label) => [...named(title).querySelectorAll('button')]
+      .find((b) => b.textContent === label).click();
+    const out = {};
+    app.store.set('site.contractor', '');
+    app.store.set('supervision.responses.drl-daily-drilling-log',
+      { item_id: 'drl-daily-drilling-log', status: 'no', remark: 'unsigned on day 2' });
+    app.store.set('supervision.responses.dev-plumb-test-passed',
+      { item_id: 'dev-plumb-test-passed', status: 'yes', remark: '' });
+    app.store.set('supervision.checks.loggedM', 70);
+    app.store.set('supervision.checks.claimedM', 75);
+    out.before = app.currentWorks().contract;
+    await app.goto('procurement');
+    press('Award the contract', 'Award this estimate as the contract');
+    const due = () => named('Contract').querySelector('[data-procurement="due"]');
+    out.field = !!due();
+    due().value = '10/05/2018';
+    due().dispatchEvent(new Event('change'));
+    out.refused = named('Contract').textContent.includes(C.phrase('scorecards.page_due_unread'));
+    due().value = ' 2018-05-10 ';
+    due().dispatchEvent(new Event('change'));
+    out.accepted = !named('Contract').textContent.includes(C.phrase('scorecards.page_due_unread'));
+    const line = app.store.get('procurement').contract.lines[0];
+    app.store.set('procurement.variations', [
+      { ref: 'VO-1', date: '2018-05-12', code: line.code, quantity_delta: 2, rate_usd: null,
+        reason: 'Deeper', authorised_by: 'A. Kamara' },
+      { ref: 'VO-2', date: '2018-05-12', code: line.code, quantity_delta: 1, rate_usd: null,
+        reason: '', authorised_by: '' }]);
+    const works = app.projectPayload().works;
+    out.works = works && [works.contractor, works.drilled, works.completion_date, works.completion_due,
+      works.logged_m, works.claimed_m, JSON.stringify(works.checklist), works.contract, works.variations_signed,
+      works.variations_unsigned, works.variation_usd > 0];
+    await app.goto('portfolio');
+    press('Saved projects', 'Start from the open project');
+    const card = named(C.phrase('scorecards.page_heading'));
+    const text = card ? card.textContent : '';
+    out.card = ['1 borehole drilled by 1 contractor, from 1 project file.',
+      '+5 m on 1 borehole (75 m claimed, 70 m logged); 1 claimed more than 3 m over the logs',
+      '1 failed on 1 of 1 borehole checked', '1 signed, +$', '1 unsigned, not valued',
+      '1 of 1 finished late, 3 days in all, at most 3', 'Not ranked: 0 forecast, 5 needed',
+      'Daily drilling log signed by the rig operator and the supervisor at the end of every day']
+      .map((piece) => text.includes(piece));
+    const got = [];
+    const download = support.download;
+    support.download = (name, data) => { got.push({ name, data }); };
+    try {
+      const files = app.derived.portfolio.map((s, i) => [C.portfolioSiteLabel(s), app.derived.portfolioWorks[i],
+        app.derived.portfolioLedgers[i]]);
+      await app.buildScorecards(files, [...card.querySelectorAll('button')]
+        .find((b) => b.textContent === C.phrase('scorecards.page_build')));
+    } finally {
+      support.download = download;
+    }
+    if (got.length) {
+      const files = await support.unzip(new Uint8Array(await got[0].data.arrayBuffer()));
+      const xml = new DOMParser().parseFromString(new TextDecoder().decode(files['word/document.xml']),
+        'application/xml');
+      const words = Array.from(xml.getElementsByTagName('w:t')).map((t) => t.textContent).join(' ');
+      out.report = [got[0].name, ['scorecards.cards_heading', 'scorecards.checks_heading', 'scorecards.dry_heading',
+        'scorecards.method_heading'].every((id) => words.includes(C.phrase(id)))];
+    }
+    app.derived.portfolio = null;
+    app.derived.portfolioLedgers = null;
+    app.derived.portfolioWorks = null;
+    return out;
+  });
+  check('scorecards: the Procurement page takes the contract\'s completion date and refuses one written in ' +
+    'figures; the project file carries the works record of the checklist, the metres, the contract, its ' +
+    'variation orders and the log', scorecards.before === false && scorecards.field && scorecards.refused &&
+    scorecards.accepted && JSON.stringify(scorecards.works) === JSON.stringify(['WiNGiN Heavy Duty Machines Co. Ltd',
+      true, '13th May, 2018', '2018-05-10', 70, 75,
+      '{"development":{"answered":1,"failed":[]},"drilling":{"answered":1,"failed":["drl-daily-drilling-log"]}}',
+      true, 1, 1, true]), JSON.stringify(scorecards));
+  check('scorecards: the Portfolio page sets the borehole out on its contractor\'s scorecard, with the check ' +
+    'that failed, and saves Contractor_Scorecards.docx with its four sections',
+    scorecards.card.every(Boolean) && JSON.stringify(scorecards.report) === '["Contractor_Scorecards.docx",true]',
+    JSON.stringify(scorecards));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

@@ -48,10 +48,12 @@ Results (plain state, written by a page or by the recompute on load)
     when the result is, and their paths, its summary, captions and read
     report, and the files and source it was worked out from, under the
     same rule; the analysis's own layers are not kept),
-    ``asset_record``, ``proc_contract_lines``, ``proc_measured``,
-    ``proc_variations``, ``artifacts`` (built files, label -> path; a
+    ``asset_record``, ``artifacts`` (built files, label -> path; a
     project load takes the outgoing site's maps off it),
-    ``project_summary``, ``inversion_cache`` and ``recompute_diagnostics``.
+    ``project_summary``, ``inversion_cache`` and ``recompute_diagnostics``;
+    on the Portfolio page, the contractor scorecards built
+    (``scorecard_report``: the path and a digest of the files' records it
+    was built from, offered only while they are the ones on the page).
 
 The calibration set in force (session-wide, PLAN.md step 5.3)
     ``calibration_set`` (``shared.CALIBRATION_SET``): the set a named
@@ -63,12 +65,18 @@ The calibration set in force (session-wide, PLAN.md step 5.3)
 Project inputs (saved in the project file)
     Every key starting with one of ``groundwater.project_io.PERSIST_PREFIXES``
     (``meta_``, ``org_``, ``chk_``, ``rmk_``, ``cost_``, ``fx_``, ``ho_``,
-    ``wiz_``, ``q_``, ``design_``) but the guided start's buttons
-    (``shared.UNSAVED_BUTTONS``), the stored sources ``src_<role>`` (an
+    ``wiz_``, ``q_``, ``design_``, ``proc_``) but the buttons keyed with
+    them (``shared.UNSAVED_BUTTONS``), the stored sources ``src_<role>`` (an
     uploaded file's name and bytes, or a bundled sample's path),
-    ``rates_overrides``, ``ho_committee_data`` and ``sup_evidence`` (the
+    ``rates_overrides``, ``ho_committee_data``, ``sup_evidence`` (the
     photographs attached to supervision checklist items, each with its
-    provenance record, saved under ``evidence``).
+    provenance record, saved under ``evidence``), and the contract awarded
+    on the Procurement page (``proc_contract_lines``, ``proc_measured``,
+    ``proc_variations``, saved under ``procurement``; a load clears the
+    outgoing project's with every other ``proc_`` key). A save also writes
+    the works record ``shared.current_works`` makes of the project, under
+    ``works``, for the Portfolio page's contractor scorecards; it is worked
+    out again at every save and not kept in the session.
 
 Invalidation markers
     ``pump_source_sig``, ``cost_design_sig``, ``wiz_prefill_sig`` and
@@ -160,7 +168,7 @@ CARRIED_KEYS = frozenset({
     # and the day for SMS messages that carry none, which is not
     "org_report_url", "reports_received_on",
     "proc_ref", "proc_retention", "proc_advance", "proc_number", "proc_date",
-    "proc_previous",
+    "proc_previous", "proc_due",
 })
 
 

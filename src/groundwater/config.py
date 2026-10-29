@@ -316,9 +316,7 @@ class LedgerConfig:
     # tell a good band from a bad one. Provisional.
     min_boreholes: int = _LEDGER["min_boreholes"]
     # A hit rate is given for a geology unit, survey team or contractor only
-    # on at least this many boreholes whose outcome is known; the plan's
-    # contractor scorecards (step 6.3) never rank on fewer than five either.
-    # Provisional.
+    # on at least this many boreholes whose outcome is known. Provisional.
     min_group: int = _LEDGER["min_group"]
     # The reliability diagram groups the forecast chances into this many
     # equal bins between 0 and 1: fifths, which a few dozen forecasts can
@@ -344,6 +342,24 @@ class LedgerConfig:
     # toolkit's; an organisation may issue its sets under another, and a
     # set whose licence is blank cannot be pooled.
     set_licence: str = _LEDGER["set_licence"]
+    # The contractor scorecards (PLAN.md step 6.3, scorecards.py) judge a
+    # contractor's dry holes against the forecast, and rank it, only on at
+    # least this many boreholes forecast before drilling whose outcome is
+    # known; below it they give the counts and say why it is not ranked. The
+    # plan never ranks a contractor on fewer than five boreholes. With five,
+    # each forecast at a 30 percent chance of a dry hole, the range runs
+    # from none of them dry to three, so this is a floor rather than a
+    # sample that settles anything. A value below one is read as one: a
+    # contractor with no forecast has nothing to be ranked by. Provisional.
+    scorecard_min_boreholes: int = _LEDGER["scorecard_min_boreholes"]
+    # The supervision checklist's stages (data/supervision_checklists.csv)
+    # whose items a scorecard counts as the contractor's acceptance checks:
+    # the stages from mobilisation to demobilisation, the works the
+    # contractor carries out on site. Procurement, the pre-contract
+    # inspection and siting come before the contract is let or are the
+    # client's, and the handover and the monitoring after it are not the
+    # drilling contractor's alone. A choice of the toolkit's. Provisional.
+    scorecard_stages: tuple = tuple(_LEDGER["scorecard_stages"])
 
 
 # ---------------------------------------------------------------------------

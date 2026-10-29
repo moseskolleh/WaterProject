@@ -345,7 +345,7 @@ def test_a_field_check_nobody_measured_is_not_in_the_record(app):
 
     goto(app, "Supervision")
     for key in ("fx_watercol", "fx_casingid", "fx_dev", "fx_vdepth", "fx_sand1",
-                "fx_sand2", "fx_sand3", "fx_q", "fx_dd", "fx_logged", "fx_claimed"):
+                "fx_sand2", "fx_sand3", "fx_q", "fx_dd", "fx_logs_m", "fx_invoiced_m"):
         assert app.number_input(key=key).value is None, key
     app.button(key="build_sup_report").click()
     app.run()
@@ -1881,6 +1881,209 @@ def test_a_set_put_in_force_reads_the_survey_on_show_again(sample_data):
     at.run()
     assert not at.exception, at.exception
     assert at.session_state["ves_results"][2][0].depth_to_basement_m is None
+
+
+def test_the_project_file_carries_the_works_record_and_brings_the_contract_back(sample_data, monkeypatch):
+    """PLAN.md step 6.3: what the project records of its contractor's work
+    goes into the project file as the works record, from the checklist, the
+    drilled metres typed (blank until they are), the contract awarded with
+    its variation orders and completion date, and the log. The contract, its
+    tables and its date come back when the file is loaded, and a project
+    loaded after it does not inherit them."""
+    import sys
+
+    import yaml
+
+    if str(REPO / "app") not in sys.path:
+        sys.path.insert(0, str(REPO / "app"))
+    import shared
+    from groundwater.project_io import serialize_project
+    from groundwater.text import phrase
+
+    saved = []
+
+    def capture(session, version):
+        data = serialize_project(session, version)
+        saved.append(data)
+        return data
+
+    monkeypatch.setattr(shared, "serialize_project", capture)
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    goto(at, "Borehole design")
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    goto(at, "Costing & BoQ")
+    at.button(key="run_cost").click()
+    at.run()
+    goto(at, "Supervision")
+    # nothing typed is nothing reconciled, and no metres go into the record
+    assert at.session_state["fx_logs_m"] is None and at.session_state["fx_invoiced_m"] is None
+    reconciled = "Drilled metres reconciliation"
+    assert reconciled not in [c.name for c in at.session_state["field_checks"]]
+    assert yaml.safe_load(saved[-1])["works"]["logged_m"] is None
+    at.number_input(key="fx_logs_m").set_value(70.0)
+    at.number_input(key="fx_invoiced_m").set_value(75.0)
+    at.session_state["chk_drl-daily-drilling-log"] = "No"
+    at.run()
+    assert not at.exception, at.exception
+    checks = {c.name: c.passed for c in at.session_state["field_checks"]}
+    assert checks[reconciled] is False
+
+    goto(at, "Procurement")
+    at.text_input(key="proc_ref").set_value("WSD/2018/1")
+    at.text_input(key="proc_due").set_value("10/05/2018")
+    at.run()
+    assert phrase("scorecards.page_due_unread") in [str(w.value) for w in at.warning]
+    at.text_input(key="proc_due").set_value("2018-05-10")
+    at.button(key="proc_award").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert phrase("scorecards.page_due_unread") not in [str(w.value) for w in at.warning]
+    lines = at.session_state["proc_contract_lines"]
+    at.session_state["proc_variations"] = [
+        {"Ref": "VO-1", "Date": "2018-05-12", "Code": lines[0]["code"], "Quantity change": 2.0,
+         "New rate (USD)": None, "Reason": "Water deeper", "Authorised by": "A. Kamara"},
+        {"Ref": "VO-2", "Date": "", "Code": lines[0]["code"], "Quantity change": 1.0,
+         "New rate (USD)": None, "Reason": "", "Authorised by": ""}]
+    at.run()
+    assert not at.exception, at.exception
+
+    # what Save project holds now; the next session saves its own
+    data = saved[-1]
+    payload = yaml.safe_load(data)
+    works = payload["works"]
+    assert (works["contractor"], works["drilled"], works["completion_date"]) == (
+        "WiNGiN Heavy Duty Machines Co. Ltd", True, "13th May, 2018")
+    assert (works["logged_m"], works["claimed_m"]) == (70.0, 75.0)
+    assert works["checklist"]["drilling"]["failed"] == ["drl-daily-drilling-log"]
+    assert (works["contract"], works["variations_signed"], works["variations_unsigned"]) == (True, 1, 1)
+    assert works["variation_usd"] == round(2.0 * lines[0]["rate_usd"], 2)
+    assert works["completion_due"] == "2018-05-10"
+    assert len(payload["procurement"]["lines"]) == len(lines)
+    assert [v["Ref"] for v in payload["procurement"]["variations"]] == ["VO-1", "VO-2"]
+    assert payload["state"]["proc_ref"] == "WSD/2018/1" and payload["state"]["proc_due"] == "2018-05-10"
+    assert "proc_award" not in payload["state"] and "proc_build" not in payload["state"]
+
+    fresh = AppTest.from_file(APP, default_timeout=600)
+    fresh.run()
+    fresh.file_uploader(key="project_upload").set_value(("timbo_project.yaml", data, "application/x-yaml"))
+    fresh.run()
+    fresh.button(key="project_load").click()
+    fresh.run()
+    assert not fresh.exception, fresh.exception
+    assert fresh.session_state["proc_contract_lines"] == payload["procurement"]["lines"]
+    assert fresh.session_state["proc_variations"] == payload["procurement"]["variations"]
+    assert fresh.session_state["proc_due"] == "2018-05-10"
+    goto(fresh, "Procurement")
+    assert "Contract sum" in [m.label for m in fresh.metric]
+    # the next project brings its own contract, here none
+    other = serialize_project({"meta_community": "Kuntolo"}, "0.3.0")
+    fresh.file_uploader(key="project_upload").set_value(("kuntolo_project.yaml", other, "application/x-yaml"))
+    fresh.run()
+    fresh.button(key="project_load").click()
+    fresh.run()
+    assert not fresh.exception, fresh.exception
+    assert "proc_contract_lines" not in fresh.session_state
+    assert not fresh.session_state["proc_due"]
+
+
+def test_the_variation_table_is_read_once_for_the_certificate_and_the_record():
+    """PLAN.md step 6.3: the Procurement page's certificate and the works
+    record read its variation orders through one function. A signature of
+    white space is none, as the browser's form has it, and an empty number
+    cell, None or NaN, is no quantity and no new rate."""
+    import sys
+
+    if str(REPO / "app") not in sys.path:
+        sys.path.insert(0, str(REPO / "app"))
+    import shared
+
+    rows = [{"Ref": "VO-1", "Date": None, "Code": "DRL", "Quantity change": float("nan"), "New rate (USD)": "",
+             "Reason": None, "Authorised by": " \t "},
+            {"Ref": "VO-2", "Date": "", "Code": "  ", "Quantity change": 5.0, "Authorised by": "A. Kamara"},
+            {"Ref": "VO-3", "Date": "2018-05-12", "Code": "CAS", "Quantity change": 2, "New rate (USD)": 12.5,
+             "Reason": "Deeper", "Authorised by": " A. Kamara "},
+            "not a row"]
+    assert shared.procurement_variations(rows) == [
+        {"ref": "VO-1", "date": "", "code": "DRL", "quantity_delta": 0.0, "rate_usd": None, "reason": "",
+         "authorised_by": ""},
+        {"ref": "VO-3", "date": "2018-05-12", "code": "CAS", "quantity_delta": 2.0, "rate_usd": 12.5,
+         "reason": "Deeper", "authorised_by": "A. Kamara"}]
+    assert shared.procurement_variations(None) == []
+
+
+def _works_project(community: str, contractor: str, status: str, completion: str, due: str,
+                   logged: float, claimed: float, failed: bool) -> bytes:
+    """A saved project whose works record holds a drilled borehole: its
+    contractor, the drilling checklist answered, the metres reconciled and a
+    contract with one signed variation order."""
+    from types import SimpleNamespace
+
+    from groundwater.project_io import serialize_project
+    from groundwater.scorecards import works_record
+
+    log = SimpleNamespace(borehole_ref="BH-1", total_depth_m=45.0, intervals=[], water_strikes_m=[], status=status,
+                          completion_date=completion,
+                          site=SimpleNamespace(easting=None, northing=None, utm_zone=None, contractor=contractor))
+    record = works_record(SimpleNamespace(contractor="", community=community, district="Port Loko"), log, None,
+                          None, {"drl-daily-drilling-log": "no" if failed else "yes"},
+                          {"logged_m": logged, "claimed_m": claimed},
+                          {"lines": [{"code": "DRL", "item": "Drilling", "unit": "m", "quantity": 45.0,
+                                      "rate_usd": 40.0}],
+                           "variations": [{"ref": "VO-1", "code": "DRL", "quantity_delta": 5.0,
+                                           "authorised_by": "A. Kamara"}], "due": due})
+    return serialize_project({"project_summary": {"community": community, "district": "Port Loko", "status": status},
+                              "works_record": record}, "0.3.0")
+
+
+def test_the_portfolio_shows_the_contractor_scorecards(sample_data):
+    """PLAN.md step 6.3: the Portfolio page sets the files' boreholes out by
+    contractor, every figure with the boreholes it rests on, the checks that
+    failed listed, and the whole report offered for these files only."""
+    from docx import Document
+
+    from groundwater.text import phrase
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Portfolio"
+    at.run()
+    rokel = _works_project("Rokel", "Kaba Drilling", "Successful", "13th May, 2018", "2018-05-10", 60.0, 66.0, True)
+    files = [("rokel.yaml", rokel, "application/x-yaml"), ("rokel_copy.yaml", rokel, "application/x-yaml"),
+             ("kuntolo.yaml", _works_project("Kuntolo", "WiNGiN", "Dry hole", "05/06/2018", "2018-06-01", 50.0,
+                                             50.0, False), "application/x-yaml")]
+    at.file_uploader(key="portfolio_upload").set_value(files)
+    at.run()
+    assert not at.exception, at.exception
+    assert phrase("scorecards.page_heading") in [str(h.value) for h in at.subheader]
+    shown = [str(m.value) for m in at.markdown]
+    # the copy of Rokel's file counts its borehole once
+    assert "2 boreholes drilled by 2 contractors, from 3 project files." in shown
+    assert phrase("scorecards.summary_unranked", minimum=5) in shown
+    cards = next(d.value for d in at.dataframe if phrase("scorecards.col_metres") in d.value.columns)
+    assert list(cards[phrase("scorecards.col_contractor")]) == ["Kaba Drilling", "WiNGiN"]
+    assert list(cards[phrase("scorecards.col_metres")]) == [
+        "+6 m on 1 borehole (66 m claimed, 60 m logged); 1 claimed more than 3 m over the logs",
+        "0 m on 1 borehole (50 m claimed, 50 m logged)"]
+    assert list(cards[phrase("scorecards.col_time")]) == ["1 of 1 finished late, 3 days in all, at most 3",
+                                                         "1 date not read"]
+    assert list(cards[phrase("scorecards.col_dry")]) == ["0 of 1 dry", "1 of 1 dry"]
+    failed = next(d.value for d in at.dataframe if phrase("scorecards.col_failed_on") in d.value.columns)
+    assert list(failed[phrase("scorecards.col_contractor")]) == ["Kaba Drilling"]
+
+    at.button(key="build_scorecards").click()
+    at.run()
+    assert not at.exception, at.exception
+    built = at.session_state["scorecard_report"]
+    text = "\n".join(p.text for p in Document(built["path"]).paragraphs)
+    assert phrase("scorecards.title") in text and phrase("scorecards.method_heading") in text
+    label = "Download the contractor scorecards (.docx)"
+    assert any(b.label == label for b in at.download_button)
+    # other files want the report built again
+    at.file_uploader(key="portfolio_upload").set_value(files[:1])
+    at.run()
+    assert not at.exception, at.exception
+    assert not any(b.label == label for b in at.download_button)
 
 
 def test_portfolio_drilldown_flow(sample_data):
