@@ -115,3 +115,104 @@ sustainable_not_held: >-
   dry-season level the test does not show the recommended rate holding across
   the spread of its own data (see the pumping test report). Confirm it by
   monitoring the pumping level through a dry season.
+
+# What the pumping test readers and the analysis say about the sheet and the
+# fits (ingestion/pumping.py and hydraulics/analysis.py; pumpingFromGrid and
+# analysePumpingTest in gwt-core.js).
+missing_discharge: >-
+  Discharge not recorded for step(s) {steps}. Drawdown and recovery curves are
+  produced, but transmissivity and yield results are pending until discharge
+  values are supplied.
+missing_discharge_some: >-
+  Discharge not recorded for step(s) {steps}. Drawdown and recovery curves are
+  produced, and each result that needs a missing rate goes without it: the
+  drawdown fits take the first step's rate, the recovery and the specific
+  capacity the last step's, and the step-test fit leaves out a step with none.
+# Why a yield is pending when the sheet gave no pumping readings at all (a
+# time column of times of day, or in a unit that cannot be read): it used to
+# say the discharge was missing, beside a discharge the sheet records.
+no_readings_pending: no pumping readings were read from the sheet
+recovery_rate_missing: >-
+  The rate pumped when the pump stopped, {step}'s, is not recorded, so the
+  recovery is not analysed: Theis recovery reads the residual drawdown against
+  that rate, and another step's rate would give it another transmissivity.
+time_clock_read: >-
+  {count:g} {kind} {count:plural:reading is|readings are} written as a clock
+  and read as {format}: {example} is minute {minutes:g} since the pump
+  {event}.
+time_clock_formats:
+  hm: hours and minutes, as Excel reads a time typed into a cell
+  ms: minutes and seconds, as the column header says
+time_of_day: >-
+  The earliest pumping reading is written as {example}, a time of day rather
+  than the time since the pump started (a test's first reading is taken
+  within its first hour), so no reading on the sheet was used: this toolkit
+  does not turn times of day into elapsed time. Write the minutes since the
+  pump started, or hours and minutes as 1:30, and for the recovery the
+  minutes since it stopped.
+step_length_unreadable: >-
+  The length of each step is written as '{written}', which this toolkit cannot
+  read as a length of time, so it was not used: each step is taken to have run
+  as long as its own readings show. Write it in minutes, or with its unit, as
+  '60 min' or '1 h'.
+diameter_unreadable: >-
+  The {what} diameter is written as '{written}', which this toolkit cannot read
+  as a diameter (a positive length with its unit), so it was not used and the
+  analysis takes the {what} from its settings. Write it with its unit, as
+  '5 in' or '125 mm'.
+diameters_inconsistent: >-
+  The sheet gives a casing of {casing:g} in and a riser of {riser:g} in, and
+  a casing no wider than its riser leaves no water standing between them, so
+  neither was used and the analysis takes both from its settings.
+recovery_on_test_clock: >-
+  The recovery times start at {first:g} min, at or after the {duration:g}
+  minutes the pump ran, so they are read as counted from the start of the
+  test, and {duration:g} min is taken off each to give the time since the pump
+  stopped. Head the time column 'Time since pump stopped (min)' if they
+  already count from the stop.
+
+# Joining the blocks a constant discharge test, or a recovery, is written in.
+block_by_heading: >-
+  block {number:g} counts its time within its own hour and its heading
+  '{heading}' covers {start:g} to {end:g} min, so {offset:g} min were added to
+  it and its first reading, at {first:g} min, is minute {placed:g} of the
+  {what}
+block_continued: >-
+  block {number:g} restarts its time at {first:g} min, inside the {end:g} min
+  already read, and its heading names no minutes, so it was read as continuing
+  from the last reading before it and {offset:g} min were added to it
+block_ambiguous: >-
+  Block {number:g} of the {readings} starts at {first:g} min, inside the
+  {end:g} min already read, and runs past them to {last:g} min, so the sheet
+  does not say whether its times count from the start of the {what} or from
+  the start of the block.
+block_backwards: >-
+  Block {number:g} of the {readings} still starts at {placed:g} min once
+  placed, before the {end:g} min already read, so its readings would run
+  backwards into the block before it.
+block_left_out: >-
+  {note} The block was left out of the series rather than joined at a minute
+  nobody can check. Head each block with the minutes it covers, as in
+  '{example}'.
+blocks_joined: >-
+  The {readings} are written in {count:g} blocks: {notes}. The blocks have
+  been joined into one series running {first:g} to {last:g} min.
+
+# The fits.
+cj_unreadable: >-
+  Across the fitted window {start:g}-{end:g} min the drawdown rises by less
+  than {resolution:g} m, which a dipper cannot tell from a level that holds,
+  so Cooper-Jacob does not apply
+cj_on_stabilised: >-
+  its fitted window {start:g}-{end:g} minutes takes in the level that held from
+  {tail:g} minutes, where the drawdown had stopped growing, so its slope is not
+  the aquifer's
+drawdown_stabilised: >-
+  The pumped water level held at about {level:.2f} m {minutes}: its fitted
+  line moved by less than {resolution:g} m over those minutes, having risen
+  {early:.2f} m a log cycle over the log cycle before. A recharge boundary or
+  leakage is indicated, so the Theis/Cooper-Jacob projection to the design
+  period is not the governing check; the stabilised level is.
+# where it held: on the test's clock, or on the last step's own
+stabilised_minutes: from {start:g} to {end:g} minutes
+stabilised_minutes_step: from {start:g} to {end:g} minutes into step {step:g}

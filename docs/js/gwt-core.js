@@ -9184,15 +9184,18 @@
       throw new Error('Drawdown does not increase with log time; ' +
         'Cooper-Jacob does not apply');
     }
-    /* T is inversely proportional to the slope, so a tail that has flattened
-     * to within reading resolution gave thousands of m2/day with a straight
-     * face; a line that does not explain the window is no better. */
-    if (fit.slope < cfg.cooper_jacob_min_slope_m) {
-      throw new Error('The fitted window ' + formatG(fitWindow[0]) + '-' +
-        formatG(fitWindow[1]) + ' min is flat (' + pyFixed(Math.max(fit.slope, 0), 3) +
-        ' m per log cycle, under ' + formatG(cfg.cooper_jacob_min_slope_m) +
-        ' m): the drawdown has stabilised or the slope is below reading ' +
-        'resolution, so Cooper-Jacob does not apply');
+    /* T is inversely proportional to the slope, so a window whose drawdown
+     * moves by less than a dipper reads gave thousands of m2/day with a
+     * straight face; a line that does not explain the window is no better.
+     * The test is the one the Theis and recovery fits apply, the rise across
+     * the readings; it was a fixed 0.02 m per log cycle, which also refused
+     * a straight, readable handpump line in an aquifer of a few hundred
+     * m2/day. A window on a tail that has flattened after rising is judged
+     * in analysePumpingTest (stabilisedTail). */
+    var logWindow = window.map(function (k) { return Math.log(t[k]) / Math.LN10; });
+    if (fit.slope * (arrMax(logWindow) - arrMin(logWindow)) < READING_RESOLUTION_M) {
+      throw new Error(phrase('pumping.cj_unreadable', { start: fitWindow[0],
+        end: fitWindow[1], resolution: READING_RESOLUTION_M }));
     }
     if (fit.r2 < cfg.cooper_jacob_min_r2) {
       throw new Error('The straight line explains too little of the window ' +
@@ -9261,8 +9264,8 @@
    * S towards zero, and the transmissivity reported is wherever the
    * optimiser stopped - 1282 m2/day here and 2190 in the Python package for
    * the same sheet, both adopted at established confidence. The test is the
-   * reading resolution across the whole record, not the 0.02 m per log cycle
-   * cooperJacob asks of its late window: a handpump rate in an aquifer of a
+   * reading resolution across the whole record, as cooperJacob asks of its
+   * late window: a handpump rate in an aquifer of a
    * few hundred m2/day draws down 1 to 2 cm a log cycle, and over three log
    * cycles of readings the curve still returns T to within a few percent. A
    * fit that drives S to the floor is refused for the same reason as a flat
@@ -9767,6 +9770,71 @@
     return CASING_STORAGE_COEFFICIENT * area / specificCapacity;
   }
 
+  /** config with the casing and riser the field sheet records (analysis.py
+   * sheet_config): the casing-storage period, the Papadopulos-Cooper casing
+   * radius and the sentences naming the casing all read them from there. A
+   * sheet that records one of the two is read with the configuration's
+   * other, and where that pair leaves no water between casing and riser the
+   * configuration's pair is kept.
+   * @param {PumpingTest} test
+   * @param {PumpingConfig} [config]
+   * @returns {PumpingConfig}
+   */
+  function sheetConfig(test, config) {
+    var cfg = config || defaultConfig().pumping;
+    var recorded = {};
+    ['casing_diameter_in', 'riser_diameter_in'].forEach(function (key) {
+      if (test[key] !== null && test[key] !== undefined) recorded[key] = test[key];
+    });
+    if (!Object.keys(recorded).length) return cfg;
+    var merged = Object.assign({}, cfg, recorded);
+    return merged.casing_diameter_in > merged.riser_diameter_in ? merged : cfg;
+  }
+
+  /** [start, end, level, earlySlope] where the drawdown has stopped growing,
+   * or null (analysis.py stabilised_tail). The readings of the last
+   * stabilised_span_log10 log cycles are the tail, and the log cycle before
+   * them is what it is held against: the level has stabilised when the
+   * tail's fitted line moves by less than a dipper reads across it, and its
+   * slope is under stabilised_slope_ratio of the slope before it, which rose
+   * by at least a dipper's reading. It was judged on the last three
+   * readings, within 5 cm of each other, which an ordinary Theis drawdown
+   * read hourly at the end of a 24-hour test met.
+   * @param {ArrayLike<number>} timeMin
+   * @param {ArrayLike<number>} levelM
+   * @param {PumpingConfig} [config]
+   * @returns {number[]|null}
+   */
+  function stabilisedTail(timeMin, levelM, config) {
+    var cfg = config || defaultConfig().pumping;
+    var t = [], wl = [], i;
+    for (i = 0; i < timeMin.length; i++) {
+      if (isFinite(timeMin[i]) && isFinite(levelM[i]) && timeMin[i] > 0) {
+        t.push(timeMin[i]); wl.push(levelM[i]);
+      }
+    }
+    if (t.length < 6) return null;
+    var end = arrMax(t);
+    var cut = end / Math.pow(10, cfg.stabilised_span_log10);
+    var tailT = [], tailWl = [], beforeT = [], beforeWl = [];
+    for (i = 0; i < t.length; i++) {
+      var lt = Math.log(t[i]) / Math.LN10;
+      if (t[i] >= cut) { tailT.push(lt); tailWl.push(wl[i]); }
+      else if (t[i] >= cut / 10.0) { beforeT.push(lt); beforeWl.push(wl[i]); }
+    }
+    if (tailT.length < 3 || beforeT.length < 3) return null;
+    var late = lineFit(tailT, tailWl).slope;
+    var early = lineFit(beforeT, beforeWl).slope;
+    if (Math.abs(late) * (arrMax(tailT) - arrMin(tailT)) >= READING_RESOLUTION_M) return null;
+    if (early * (arrMax(beforeT) - arrMin(beforeT)) < READING_RESOLUTION_M) return null;
+    if (late >= cfg.stabilised_slope_ratio * early) return null;
+    var held = 0;
+    tailWl.forEach(function (v) { held += v; });
+    var start = Infinity;
+    for (i = 0; i < t.length; i++) if (t[i] >= cut && t[i] < start) start = t[i];
+    return [start, end, held / tailWl.length, early];
+  }
+
   /** The deepest water level any pumping step reached, metres below datum.
    * @param {PumpingTest} test
    * @returns {number|null}
@@ -9959,9 +10027,10 @@
       if (transmissivity === null || transmissivity === undefined) {
         var anyQ = (test.steps || []).some(function (s) { return s.discharge_m3_per_h; });
         /* opts.noTransmissivityReason says why, when fits ran and every one
-         * was rejected on its own result */
-        missing.push(anyQ
-          ? (opts.noTransmissivityReason ||
+         * was rejected on its own result; a sheet with no pumping readings
+         * has no step to carry a rate (analysis.py) */
+        missing.push(!(test.steps || []).length ? phrase('pumping.no_readings_pending')
+          : anyQ ? (opts.noTransmissivityReason ||
             'transmissivity could not be fitted from the readings')
           : 'discharge is missing on the field sheet');
       }
@@ -9981,6 +10050,12 @@
     var logTerm = Math.log(2.25 * transmissivity * tDesign /
       (effectiveRadiusM * effectiveRadiusM * assumedStorativity)) / Math.LN10;
 
+    /* B Q + C Q^2 is the drawdown at the end of a step, so the projection
+     * from a step test runs from the length of a step: the one the sheet
+     * states, or the first step's own last reading, as the short-test check
+     * reads it. A blank length used to project from the whole test. */
+    var tStepMin = pumpedDurationMin(test)[0] || test.pumping_duration_min || 180.0;
+
     function projectedDrawdown(qM3PerH) {
       var qDay = qM3PerH * 24.0;
       var s = 2.303 * qDay / (4.0 * Math.PI * /** @type {number} */ (transmissivity)) * logTerm;
@@ -9988,7 +10063,6 @@
         /* B Q + C Q^2 is the drawdown at the step duration; the Cooper-Jacob
          * time projection from step length to design period replaces the
          * plain projection above rather than adding to it. */
-        var tStepMin = test.step_length_min || test.pumping_duration_min || 180.0;
         s = stepDrawdownAt(stepResult, qDay);
         s += 2.303 * qDay / (4.0 * Math.PI * /** @type {number} */ (transmissivity)) *
           Math.log(tDesign / (tStepMin / MIN_PER_DAY)) / Math.LN10;
@@ -9996,8 +10070,11 @@
       return s;
     }
 
-    /* bisect Q so projected drawdown equals the usable drawdown */
-    var qLo = 0.01, qHi = 200.0;
+    /* Bisect Q so projected drawdown equals the usable drawdown. The bracket
+     * starts at nothing, which projects no drawdown: it started at 0.01 m3/h
+     * and nothing checked that the root lay above it, so any yield below that
+     * came back as 0.01 whatever the transmissivity. */
+    var qLo = 0.0, qHi = 200.0;
     if (projectedDrawdown(qHi) <= usable) {
       /* The search would hand back its ceiling as if it were an answer.
        * Either the transmissivity is implausible or the drawdown budget is
@@ -10178,18 +10255,23 @@
       'the supply must not fail in a dry year.';
   }
 
-  /** "2.4 m3/h (1.8 to 3.1)" - never a bare number for an assumed one.
+  /** "2.4 m3/h (range over the assumptions, 1.8 to 3.1)": never a bare
+   * number for an assumed one, and never a bare range either, beside the
+   * bootstrap's P10 to P90 band the decision lines print on the same yield.
    * @param {Rec|null} [rec] a yield recommendation
    * @returns {string}
    */
   function yieldRangeText(rec) {
     if (!rec || rec.safe_yield_m3_per_h === null) return 'pending';
-    var text = formatG(roundSig(rec.safe_yield_m3_per_h, 2), 2) + ' m3/h';
-    if (rec.safe_yield_low_m3_per_h !== null && rec.safe_yield_high_m3_per_h !== null) {
-      text += ' (' + formatG(roundSig(rec.safe_yield_low_m3_per_h, 2), 2) + ' to ' +
-        formatG(roundSig(rec.safe_yield_high_m3_per_h, 2), 2) + ')';
+    var value = formatG(roundSig(rec.safe_yield_m3_per_h, 2), 2);
+    if (rec.safe_yield_low_m3_per_h === null || rec.safe_yield_high_m3_per_h === null ||
+        rec.safe_yield_low_m3_per_h === undefined ||
+        rec.safe_yield_high_m3_per_h === undefined) {
+      return value + ' m3/h';
     }
-    return text;
+    return phrase('decision.yield_envelope', { value: value,
+      low: formatG(roundSig(rec.safe_yield_low_m3_per_h, 2), 2),
+      high: formatG(roundSig(rec.safe_yield_high_m3_per_h, 2), 2) });
   }
 
   /* Run every applicable analysis on a parsed pumping test. Methods that need
@@ -10310,8 +10392,9 @@
    */
   function analysePumpingTest(test, config, options) {
     var opts = options || {};
-    var cfg = (config && config.pumping) ? config.pumping
-      : (config || defaultConfig().pumping);
+    /* the casing and riser the sheet records, where it records them */
+    var cfg = sheetConfig(test, (config && config.pumping) ? config.pumping
+      : (config || defaultConfig().pumping));
     var observationRadiusM = opts.observationRadiusM;
     var progress = opts.onProgress || function () {};
     /** @type {PumpingAnalysis} */
@@ -10331,8 +10414,10 @@
        * is disqualified as well, but its line may be sound, so it can still
        * be adopted as the best of the poor fits; a wrong result never can. */
       invalid_fits: {},
-      /* how long casing storage controls the drawdown in this borehole */
+      /* how long casing storage controls the drawdown in this borehole, and
+       * the casing and riser diameters it was worked out from */
       casing_storage_min: null,
+      casing_diameter_in: cfg.casing_diameter_in, riser_diameter_in: cfg.riser_diameter_in,
       /* the large-diameter fit, adopted only when no other fit can be, and
        * why it is invalid when its storativity is; the Bourdet derivative;
        * the bands (spread.py) */
@@ -10369,22 +10454,37 @@
     var swl = test.static_water_level_m;
     var hasSwl = swl !== null && swl !== undefined;
 
+    var held = null;
     if (test.steps && test.steps.length && hasSwl) {
       var last = test.steps[test.steps.length - 1];
       analysis.max_drawdown_m = arrMax(last.water_level_m.filter(isFinite)) - swl;
-      var tail = last.water_level_m.slice(-3);
-      if (tail.length >= 2 && (arrMax(tail) - arrMin(tail)) <= 0.05) {
-        analysis.stabilised_level_m = arrMean(tail);
+      /* The last step is judged on its own clock, the minutes since it began
+       * (analysis.py). */
+      var timedSteps = test.steps.filter(function (s) {
+        return (s.time_min || []).some(function (v) { return isFinite(v); });
+      });
+      var lastAt = timedSteps.indexOf(last), began = 0.0;
+      if (lastAt > 0) {
+        var lastOffsets = stepOffsetsMin(timedSteps);
+        var previousStep = timedSteps[lastAt - 1];
+        began = arrMax(previousStep.time_min.filter(function (v) { return isFinite(v); })) +
+          lastOffsets[lastAt - 1] - lastOffsets[lastAt];
+      }
+      held = stabilisedTail(last.time_min.map(function (v) { return v - began; }),
+        last.water_level_m, cfg);
+      if (held) {
+        analysis.stabilised_level_m = held[2];
         /* Theis assumes an infinite aquifer whose drawdown never stops
          * growing with log time; a level that has held still is being fed
          * by something, and projecting it to 365 days is the wrong question. */
         flags.push({
           level: 'warning', code: 'drawdown_stabilised',
-          message: 'The pumped water level held at about ' +
-            pyFixed(analysis.stabilised_level_m, 2) + ' m over the last ' +
-            'readings: a recharge boundary or leakage is indicated, so the ' +
-            'Theis/Cooper-Jacob projection to the design period is not the ' +
-            'governing check; the stabilised level is.',
+          message: phrase('pumping.drawdown_stabilised', { level: held[2],
+            minutes: test.steps.length > 1
+              ? phrase('pumping.stabilised_minutes_step', { start: held[0], end: held[1],
+                step: last.step_number })
+              : phrase('pumping.stabilised_minutes', { start: held[0], end: held[1] }),
+            resolution: READING_RESOLUTION_M, early: held[3] }),
         });
       }
     }
@@ -10527,14 +10627,18 @@
     progress(0.5, 'recovery');
     if (test.recovery_level_m && hasSwl && test.recovery_time_min) {
       var residual = test.recovery_level_m.map(function (v) { return v - swl; });
-      var qRec = null;
+      /* The recovery is read against the rate pumped when the pump stopped,
+       * the last step's; it used to be the latest step with a rate, so a step
+       * test with its last rate blank read its recovery against step 3's. */
       var recSteps = test.steps || [];
-      for (var k = recSteps.length - 1; k >= 0; k--) {
-        if (recSteps[k].discharge_m3_per_h !== null &&
-            recSteps[k].discharge_m3_per_h !== undefined) {
-          qRec = recSteps[k].discharge_m3_per_h;
-          break;
-        }
+      var lastStep = recSteps.length ? recSteps[recSteps.length - 1] : null;
+      var qRec = lastStep && lastStep.discharge_m3_per_h !== undefined
+        ? lastStep.discharge_m3_per_h : null;
+      if (qRec === null && lastStep && hasDischarge(test)) {
+        flags.push({ level: 'warning', code: 'recovery_rate_missing',
+          message: phrase('pumping.recovery_rate_missing',
+            { step: 'step ' + lastStep.step_number }),
+          context: lastStep.label || ('step ' + lastStep.step_number) });
       }
       var equivalentInfo = equivalentPumpingTimeMin(test);
       var tPump = equivalentInfo[0], equivalent = equivalentInfo[1];
@@ -10717,6 +10821,19 @@
       });
     }
 
+    /* A Cooper-Jacob window that takes in a level that has stopped growing
+     * reads the flattening as a small slope; judged where the drawdown fits
+     * are, so only when the stabilised step is the first (analysis.py). */
+    var cjHeld = analysis.cooper_jacob;
+    if (held && cjHeld && test.steps.length === 1 && cjHeld.fit_window_min[1] >= held[0]) {
+      var heldReason = phrase('pumping.cj_on_stabilised', {
+        start: cjHeld.fit_window_min[0], end: cjHeld.fit_window_min[1], tail: held[0] });
+      if (!Object.prototype.hasOwnProperty.call(analysis.disqualified, 'cooper_jacob')) {
+        analysis.disqualified.cooper_jacob = heldReason;
+      }
+      analysis.invalid_fits.cooper_jacob = heldReason;
+    }
+
     /* the large-diameter fit is held to a storativity an aquifer can have,
      * and to describing the readings no worse than the Theis curve does
      * without the casing (analysis.py) */
@@ -10855,6 +10972,7 @@
     CASING_STORAGE_COEFFICIENT: CASING_STORAGE_COEFFICIENT,
     testTypeText: testTypeText, equivalentPumpingTimeMin: equivalentPumpingTimeMin,
     stepDurationsMin: stepDurationsMin, stepOffsetsMin: stepOffsetsMin,
+    sheetConfig: sheetConfig, stabilisedTail: stabilisedTail,
     LEVEL_FLAGS: LEVEL_FLAGS,
     levelsInDoubt: levelsInDoubt, hasDischarge: hasDischarge,
     casingStorageMin: casingStorageMin, deepestPumpingLevel: deepestPumpingLevel,
@@ -12034,11 +12152,127 @@
       status: 'assumed', dimension: dimension };
   }
 
+  /* units.py read_clock: an elapsed time typed as a clock, "1:30",
+   * "01:30:00", "1:30:00.5". A cell Excel formats as a time reaches this
+   * reader as that text (support.js) and the Python one as a time, and the
+   * first number of it was read as the minutes: 01:30 became minute 1 and
+   * 00:05 minute 0. */
+  var CLOCK_RE = /^\s*([0-9]{1,3}):([0-5][0-9])(?::([0-5][0-9](?:\.[0-9]+)?))?\s*$/;
+  /* Text that starts as a clock and is not one - "1:60", "1:5", "1:30 pm",
+   * "10:00 (approx)", "1: 30" - or that writes hours and minutes as words -
+   * "1h 30m", "1 hr 30 min". Each was read for its first number, so 1:30 pm
+   * and 1h 30m were both minute 1; they are refused instead (units.py
+   * _NOT_A_CLOCK_RE). */
+  var NOT_A_CLOCK_RE = new RegExp('^\\s*[-+]?[0-9]+(?:[.,][0-9]+)?\\s*' +
+    '(?::\\s*[0-9]|(?:hours?|hrs?|h|minutes?|mins?|m)\\.?\\s*[0-9])', 'i');
+  /* A duration of a day or more, in a cell formatted h:mm, reaches here as a
+   * Date on Excel's serial calendar: up to its phantom 29 February 1900 the
+   * serial is the days since 31 December 1899. Any other date is a date. */
+  var SERIAL_ZERO_MS = Date.UTC(1899, 11, 31);
+  var SERIAL_PHANTOM_MS = Date.UTC(1900, 1, 28);
+
+  /** How a two-part clock in a column is read: 'hm' or 'ms'. A header that
+   * names its clock - "Time (mm:ss)", "Time (min:sec)" - says "5:30" is five
+   * and a half minutes; otherwise it is read as Excel reads "5:30" typed into
+   * a cell, five hours and a half (units.py clock_format).
+   * @param {Array<*>|null} hints the labels the clock may be named in
+   * @returns {string}
+   */
+  function clockFormat(hints) {
+    var list = hints || [];
+    for (var i = 0; i < list.length; i++) {
+      var re = new RegExp(BRACKETED_UNIT_RE.source, 'g');
+      var raw = String(list[i] === null || list[i] === undefined ? '' : list[i]);
+      var match;
+      while ((match = re.exec(raw)) !== null) {
+        var parts = match[1].split(':').map(function (p) { return p.trim().toLowerCase(); });
+        if (parts.length >= 2 && ['h', 'm'].indexOf(parts[0].charAt(0)) >= 0 &&
+            ['m', 's'].indexOf(parts[1].charAt(0)) >= 0) {
+          return parts[0].charAt(0) === 'm' ? 'ms' : 'hm';
+        }
+      }
+    }
+    return 'hm';
+  }
+
+  /* "01:30:00": a time cell as support.js writes one */
+  function clockText(seconds) {
+    var ms = Math.round(seconds * 1000);
+    var two = function (/** @type {number} */ n) { return String(n).padStart(2, '0'); };
+    var text = two(Math.floor(ms / 3600000)) + ':' + two(Math.floor(ms / 60000) % 60) +
+      ':' + two(Math.floor(ms / 1000) % 60);
+    return ms % 1000 ? text + '.' + String((ms % 1000) * 1000).padStart(6, '0') : text;
+  }
+
+  /** {minutes, written} for an elapsed time written as a clock, or null for
+   * a cell that is not one (units.py read_clock).
+   * @param {*} cell
+   * @param {string} [format] what clockFormat says of the column
+   * @returns {{minutes: number, written: string}|null}
+   */
+  function readClock(cell, format) {
+    if (cell instanceof Date) {
+      var ms = cell.getTime();
+      if (!(ms > SERIAL_ZERO_MS && ms < SERIAL_PHANTOM_MS)) return null;
+      var seconds = (ms - SERIAL_ZERO_MS) / 1000;
+      return { minutes: seconds / 60, written: clockText(seconds) };
+    }
+    if (typeof cell !== 'string') return null;
+    var m = CLOCK_RE.exec(cell);
+    if (!m) return null;
+    var first = parseInt(m[1], 10), second = parseInt(m[2], 10);
+    var minutes;
+    if (m[3] !== undefined) minutes = first * 60 + second + parseFloat(m[3]) / 60;
+    else if (format === 'ms') minutes = first + second / 60;
+    else minutes = first * 60 + second;
+    return { minutes: minutes, written: cleanText(cell) };
+  }
+
+  /** A date, or a date and time of day: never an elapsed time.
+   * @param {*} cell
+   * @returns {boolean}
+   */
+  function isDateCell(cell) {
+    return cell instanceof Date && readClock(cell) === null;
+  }
+
+  /** {quantity, clock}: an elapsed time in minutes, and the clock it was
+   * written as ('' when none). A clock is read as one, status 'clock'; a date
+   * is refused, status 'unknown', since a reading's time since the pump
+   * started cannot be told from the day it was taken, and so is text that
+   * starts as a clock and is not one ("1:60", "1:30 pm") or writes hours and
+   * minutes as words ("1h 30m"); anything else is readQuantity in the time
+   * dimension (units.py read_time).
+   * @param {*} cell
+   * @param {Array<*>|null} hints the labels the unit may be written in
+   * @returns {{quantity: Rec, clock: string}}
+   */
+  function readTime(cell, hints) {
+    var clock = readClock(cell, clockFormat(hints));
+    if (clock) {
+      return { quantity: { value: clock.minutes, raw_value: clock.minutes, unit_text: '',
+        status: 'clock', dimension: 'time' }, clock: clock.written };
+    }
+    /* an Excel TRUE is no time either: Python read it as minute 1 and this
+     * reader left it out without a word */
+    if (typeof cell === 'boolean') {
+      return { quantity: { value: null, raw_value: null, unit_text: cell ? 'TRUE' : 'FALSE',
+        status: 'unknown', dimension: 'time' }, clock: '' };
+    }
+    if (isDateCell(cell) || (typeof cell === 'string' && NOT_A_CLOCK_RE.test(cell))) {
+      return { quantity: { value: null, raw_value: null, unit_text: cleanText(cell),
+        status: 'unknown', dimension: 'time' }, clock: '' };
+    }
+    return { quantity: readQuantity(cell, hints, 'time'), clock: '' };
+  }
+
   Object.assign(C, {
     normaliseUnit: normaliseUnit, parseUnit: parseUnit,
     convertUnit: convertUnit, unitsComparable: unitsComparable,
     canonicalUnit: canonicalUnit, unitFromLabel: unitFromLabel,
     readQuantity: readQuantity, CANONICAL_UNITS: CANONICAL_UNITS,
+    clockFormat: clockFormat, readClock: readClock, isDateCell: isDateCell,
+    readTime: readTime,
   });
 
   /* ======================================================== water quality
@@ -16077,6 +16311,10 @@
     drill_rig: ['^drill\\s*rig'],
     installed_screens: ['^screens?\\s*installed', '^installed\\s*screens?',
                         '^screens?\\s*(set|as\\s*built)'],
+    /* the casing and riser a pumping test co-pilot writes on its sheet,
+     * which set how long casing storage lasts */
+    casing_diameter_in: ['^casing\\s*diameter'],
+    riser_diameter_in: ['^riser(\\s*pipe)?\\s*diameter'],
   };
 
   var COMPILED_LABELS = (function () {
@@ -16161,12 +16399,16 @@
     return below;
   }
 
-  /**
+  /** found, when given, is filled with key -> [label, value]: the label as
+   * written and the value cell as it stands, for a reader that has to read
+   * the value in the unit its label or its own text names ("Length of each
+   * step (min)": "1 hr").
    * @param {Grid} grid
    * @param {number} [maxRows]
+   * @param {Rec} [found]
    * @returns {Rec}
    */
-  function extractHeaderFields(grid, maxRows) {
+  function extractHeaderFields(grid, maxRows, found) {
     var limit = maxRows === undefined ? 30 : maxRows;
     var fields = {}, priorities = {};
     for (var r = 0; r < Math.min(limit, grid.length); r++) {
@@ -16208,10 +16450,14 @@
         if (NUMERIC_HEADER_KEYS.indexOf(key) >= 0) {
           var number = RANGE_BOTTOM_KEYS.indexOf(key) >= 0 ? rangeBottom(value) : null;
           if (number === null) number = parseNumber(value);
-          if (number !== null) { fields[key] = number; priorities[key] = priority; }
+          if (number !== null) {
+            fields[key] = number; priorities[key] = priority;
+            if (found) found[key] = [split[0], value];
+          }
         } else {
           fields[key] = cleanText(headerDateText(value));
           priorities[key] = priority;
+          if (found) found[key] = [split[0], value];
         }
       }
     }
@@ -17825,9 +18071,13 @@
     return best;
   }
 
-  /* Returns {times, levels, unitText}. unitText is '' when nothing was
-   * declared (minutes assumed) and '?<text>' when a unit was declared that
-   * could not be read, in which case the caller drops the group. */
+  /* Returns {times, levels, unitText, skipped, clocks}. unitText is '' when
+   * nothing was declared (minutes assumed) and '?<text>' when a unit was
+   * declared that could not be read, in which case the caller drops the
+   * group. clocks names the readings written as a clock, [index, as
+   * written]: each is read as the elapsed time it shows (readTime). Read for
+   * the first number in it, 01:30 was minute 1 and 00:05 minute 0. A date is
+   * one of the skipped cells. */
   function readSeries(grid, headerRow, group) {
     var header = group.time_header || '';
     /* A unit the header declares applies to the whole column, so an
@@ -17837,23 +18087,29 @@
     var declared = unitFromLabel(header, 'time');
     if (declared.written && !declared.unit) {
       return { times: [], levels: [], unitText: '?' + declared.written,
-        skipped: [] };
+        skipped: [], clocks: [] };
     }
-    var times = [], levels = [], skipped = [], unitText = declared.written;
+    var times = [], levels = [], skipped = [], clocks = [], unitText = declared.written;
     for (var r = headerRow + 1; r < grid.length; r++) {
       var row = grid[r] || [];
       var cell = group.time < row.length ? row[group.time] : null;
       var wl = group.level < row.length ? parseNumber(row[group.level]) : null;
-      var quantity = readQuantity(cell, [header], 'time');
+      var read = readTime(cell, [header]);
+      var quantity = read.quantity;
       if (quantity.status === 'absent' || wl === null) continue;
       if (quantity.status === 'unknown') {
-        skipped.push(String(cell));   // never silent
+        // never silent; a date as Python's str() writes it, a TRUE as Excel
+        // shows it
+        skipped.push(cell instanceof Date ? cleanText(cell)
+          : typeof cell === 'boolean' ? quantity.unit_text : String(cell));
         continue;
       }
-      if (quantity.unit_text) unitText = quantity.unit_text;
+      if (read.clock) clocks.push([times.length, read.clock]);
+      else if (quantity.unit_text) unitText = quantity.unit_text;
       times.push(quantity.value); levels.push(wl);
     }
-    return { times: times, levels: levels, unitText: unitText, skipped: skipped };
+    return { times: times, levels: levels, unitText: unitText, skipped: skipped,
+      clocks: clocks };
   }
 
   /* The row's own leading label, e.g. "Discharge per step (m3/h)". */
@@ -17945,7 +18201,16 @@
     return '';
   }
 
-  /* Join the hourly blocks of a constant discharge test into one series.
+  /* What a joined series is called, for the constant discharge readings and
+   * the recovery: [readings, what a block's minutes count from, an example
+   * heading] (pumping.py _BLOCK_SERIES). */
+  var BLOCK_SERIES = {
+    constant: ['constant discharge readings', 'test', 'Constant discharge 121-180 min'],
+    recovery: ['recovery readings', 'recovery', 'Recovery 61-120 min'],
+  };
+
+  /* Join the hourly blocks of a constant discharge test, or of a recovery,
+   * into one series.
    *
    * A constant discharge sheet is written in hourly column groups side by
    * side and each group's elapsed time is often counted within its own hour:
@@ -17953,19 +18218,23 @@
    * the groups and sorting the result interleaved them into a sawtooth -
    * minute 1 of every hour, then minute 2 of every hour - and every drawdown
    * curve and every transmissivity fitted to it was wrong (ROADMAP
-   * data-ingestion-10).
+   * data-ingestion-10). A long recovery is written the same way, and only
+   * its first block used to be read, without a word.
    *
-   * Each block's place in the test is read off the sheet: the minutes its own
-   * heading names ("Constant discharge 61-120 min"), or, when the heading
+   * Each block's place in the series is read off the sheet: the minutes its
+   * own heading names ("Constant discharge 61-120 min"), or, when the heading
    * names none, the last reading of the block before it, which is what a
    * block whose times go backwards continues from. A block that is neither -
    * one starting inside the readings already taken and running past them - is
    * left out and named, because a block placed at a minute nobody can check
    * produces a curve nobody can trust.
    *
-   * Returns {times, levels, joined, dropped}; joined and dropped are
-   * sentences naming what was done, for the caller to raise as flags. */
-  function joinConstantBlocks(blocks) {
+   * series is 'constant' or 'recovery', for the sentences. Returns {times,
+   * levels, joined, dropped}; joined and dropped are sentences naming what
+   * was done, for the caller to raise as flags. */
+  function joinBlocks(blocks, series) {
+    var names = BLOCK_SERIES[series || 'constant'];
+    var readings = names[0], what = names[1];
     var times = [], levels = [], joined = [], dropped = [], end = null;
     blocks.forEach(function (block, index) {
       var number = index + 1;
@@ -17989,35 +18258,25 @@
          * and a four-hour test ended at 226 minutes. */
         offset = Math.max(span[0] - 1.0, 0.0);
         if (offset) {
-          note = 'block ' + number + ' counts its time within its own hour and ' +
-            "its heading '" + heading + "' covers " + formatG(span[0]) + ' to ' +
-            formatG(span[1]) + ' min, so ' + formatG(offset) + ' min were added ' +
-            'to it and its first reading, at ' + formatG(first) + ' min, is minute ' +
-            formatG(first + offset) + ' of the test';
+          note = phrase('pumping.block_by_heading', { number: number, heading: heading,
+            start: span[0], end: span[1], offset: offset, first: first,
+            placed: first + offset, what: what });
         }
       } else if (span !== null || end === null || first > end) {
         offset = 0;
       } else if (last <= end) {
         offset = end;
-        note = 'block ' + number + ' restarts its time at ' +
-          formatG(first) + ' min, inside the ' + formatG(end) + ' min already ' +
-          'read, and its heading names no minutes, so it was read as ' +
-          'continuing from the last reading before it and ' + formatG(offset) +
-          ' min were added to it';
+        note = phrase('pumping.block_continued', { number: number, first: first,
+          end: end, offset: offset });
       } else {
-        dropped.push('Block ' + number + ' of the constant discharge readings ' +
-          'starts at ' + formatG(first) + ' min, inside the ' + formatG(end) +
-          ' min already read, and runs past them to ' + formatG(last) +
-          ' min, so the sheet does not say whether its times count from the ' +
-          'start of the test or from the start of the block.');
+        dropped.push(phrase('pumping.block_ambiguous', { number: number,
+          readings: readings, first: first, end: end, last: last, what: what }));
         return;
       }
       var shifted = t.map(function (v) { return v + offset; });
       if (end !== null && shifted[0] < end) {
-        dropped.push('Block ' + number + ' of the constant discharge readings ' +
-          'still starts at ' + formatG(shifted[0]) + ' min once placed, ' +
-          'before the ' + formatG(end) + ' min already read, so its readings ' +
-          'would run backwards into the block before it.');
+        dropped.push(phrase('pumping.block_backwards', { number: number,
+          readings: readings, placed: shifted[0], end: end }));
         return;
       }
       if (note) joined.push(note);
@@ -18034,13 +18293,81 @@
     };
   }
 
+  /* joinBlocks, with what it did raised as flags: {times, levels, flags}
+   * (pumping.py _join_flags). */
+  function joinFlags(blocks, series) {
+    var names = BLOCK_SERIES[series];
+    var joinedBlocks = joinBlocks(blocks, series);
+    var flags = joinedBlocks.dropped.map(function (note) {
+      return { level: 'warning', code: series + '_block_unreadable',
+        message: phrase('pumping.block_left_out', { note: note, example: names[2] }) };
+    });
+    if (joinedBlocks.joined.length && joinedBlocks.times.length) {
+      flags.push({ level: 'info', code: series + '_blocks_joined',
+        message: phrase('pumping.blocks_joined', { readings: names[0],
+          count: blocks.length, notes: joinedBlocks.joined.join('; '),
+          first: arrMin(joinedBlocks.times), last: arrMax(joinedBlocks.times) }) });
+    }
+    return { times: joinedBlocks.times, levels: joinedBlocks.levels, flags: flags };
+  }
+
+  /* Words in a recovery block's time header or heading that say its times
+   * count from the pump stopping: "Time since pump stopped", "after
+   * shut-off", "since pump off"; "since start" does not (pumping.py
+   * _SINCE_STOP_RE). */
+  var SINCE_STOP_RE = /stop|shut|\boff\b/;
+
+  /* A value cell whose text starts as a number does: "8", "50 mm", "-2". */
+  var STARTS_AS_NUMBER_RE = /^\s*[-+]?\.?[0-9]/;
+
+  /* The casing and riser diameters the sheet records, in inches, from what
+   * extractHeaderFields found; a diameter with no unit, or none the toolkit
+   * reads, is refused with a flag (pumping.py _diameters). */
+  function sheetDiameters(found, flags) {
+    var out = {};
+    [['casing_diameter_in', 'casing'], ['riser_diameter_in', 'riser']].forEach(function (k) {
+      if (!Object.prototype.hasOwnProperty.call(found, k[0])) return;
+      var label = found[k[0]][0], value = found[k[0]][1];
+      /* text that does not start with a number is the next label or a note
+       * standing where the value would be, not a diameter: with the
+       * co-pilot's riser left blank, the "Planned rate (m3/h)" label under it
+       * was read as a riser of 3 inches (pumping.py _diameters) */
+      if (typeof value === 'string' && !STARTS_AS_NUMBER_RE.test(value)) return;
+      var quantity = typeof value === 'number' || typeof value === 'string'
+        ? readQuantity(value, [label], 'length')
+        : { value: null, raw_value: null, unit_text: '', status: 'unknown', dimension: 'length' };
+      if (quantity.status === 'absent') return;
+      if (quantity.status === 'unknown' || quantity.status === 'assumed' ||
+          quantity.value === null || !(quantity.value > 0)) {
+        flags.push({ level: 'warning', code: 'diameter_unreadable',
+          message: phrase('pumping.diameter_unreadable', { what: k[1],
+            written: cleanText(value) }) });
+        return;
+      }
+      var unit = parseUnit(quantity.unit_text, 'length');
+      out[k[0]] = unit && unit.canonical === 'in' ? Number(quantity.raw_value)
+        : quantity.value / 0.0254;
+    });
+    /* a casing no wider than its riser leaves no casing storage at all: a
+     * slip on the sheet, not a borehole (pumping.py _diameters) */
+    if (out.casing_diameter_in !== undefined && out.riser_diameter_in !== undefined &&
+        out.casing_diameter_in <= out.riser_diameter_in) {
+      flags.push({ level: 'warning', code: 'diameters_inconsistent',
+        message: phrase('pumping.diameters_inconsistent', {
+          casing: out.casing_diameter_in, riser: out.riser_diameter_in }) });
+      return {};
+    }
+    return out;
+  }
+
   /**
    * @param {Grid} grid
    * @param {string} [source]
    * @returns {PumpingTest}
    */
   function pumpingFromGrid(grid, source) {
-    var fields = extractHeaderFields(grid, grid.length);
+    var found = {};
+    var fields = extractHeaderFields(grid, grid.length, found);
     var site = siteFromFields(fields, source);
     var flags = [];
     var located = findGroups(grid);
@@ -18106,7 +18433,8 @@
         }
         /* Each block is handed back with the group it came from, because a
          * constant test's blocks are placed by the heading the sheet prints
-         * over them before they are joined into one series. */
+         * over them before they are joined into one series, and with the
+         * readings in it written as a clock. */
         if (series.times.length) {
           series.group = g;
           out.push(series);
@@ -18117,6 +18445,49 @@
 
     var pumpingSeries = seriesOfKind('pumping');
     var recoverySeries = seriesOfKind('recovery');
+
+    /* A test's first reading is taken in its first hour, so an earliest
+     * pumping reading written as a clock past it, 08:05, is a time of day,
+     * and the sheet is refused rather than read as a test that began eight
+     * hours in. A block whose heading names its minutes is held to its
+     * heading instead. The earliest reading, not the first row: rows written
+     * out of order put a later reading at the top (pumping.py _assemble). */
+    if (pumpingSeries.length) {
+      var block0 = pumpingSeries[0];
+      var span0 = blockSpanMin(String(block0.group.block_heading || ''));
+      var earliest = 0;
+      for (var e = 1; e < block0.times.length; e++) {
+        if (block0.times[e] < block0.times[earliest]) earliest = e;
+      }
+      var t0 = block0.times[earliest];
+      var clock0 = block0.clocks.filter(function (/** @type {Array<*>} */ c) {
+        return c[0] === earliest;
+      })[0];
+      if (clock0 && clockFormat([block0.group.time_header || '']) === 'hm' &&
+          t0 > 60.0 && (span0 === null || t0 > span0[1])) {
+        flags.push({ level: 'error', code: 'time_of_day',
+          message: phrase('pumping.time_of_day', { example: clock0[1] }) });
+        pumpingSeries = [];
+        recoverySeries = [];
+      }
+    }
+
+    [['pumping', pumpingSeries, 'started'], ['recovery', recoverySeries, 'stopped']]
+      .forEach(function (kind) {
+        var read = [];
+        /** @type {Rec[]} */ (kind[1]).forEach(function (series) {
+          series.clocks.forEach(function (/** @type {Array<*>} */ c) {
+            read.push([series.times[c[0]], c[1],
+              clockFormat([series.group.time_header || ''])]);
+          });
+        });
+        if (read.length) {
+          flags.push({ level: 'info', code: 'time_clock_read',
+            message: phrase('pumping.time_clock_read', { count: read.length,
+              kind: kind[0], format: phraseTable('pumping.time_clock_formats')[read[0][2]],
+              event: kind[2], example: read[0][1], minutes: read[0][0] }) });
+        }
+      });
 
     var testType = String(fields.test_type || '').trim().toLowerCase();
     var stated = !!testType;
@@ -18137,29 +18508,40 @@
       /* The hourly column groups are one continuous series on a constant
        * test, but each block's times are often counted within its own hour,
        * so every block is put back in its place before they are joined. */
-      var blockCount = pumpingSeries.length;
-      var joinedBlocks = joinConstantBlocks(pumpingSeries);
-      joinedBlocks.dropped.forEach(function (note) {
-        flags.push({
-          level: 'warning', code: 'constant_block_unreadable',
-          message: note + ' The block was left out of the series rather than ' +
-            'joined at a minute nobody can check. Head each block with the ' +
-            "minutes it covers, as in 'Constant discharge 121-180 min'.",
-        });
-      });
-      if (joinedBlocks.joined.length && joinedBlocks.times.length) {
-        flags.push({
-          level: 'info', code: 'constant_blocks_joined',
-          message: 'The constant discharge readings are written in ' +
-            blockCount + ' blocks: ' + joinedBlocks.joined.join('; ') +
-            '. The blocks have been joined into one series running ' +
-            formatG(arrMin(joinedBlocks.times)) + ' to ' +
-            formatG(arrMax(joinedBlocks.times)) + ' min.',
-        });
-      }
+      var joinedBlocks = joinFlags(pumpingSeries, 'constant');
+      Array.prototype.push.apply(flags, joinedBlocks.flags);
       pumpingSeries = joinedBlocks.times.length
         ? [{ times: joinedBlocks.times, levels: joinedBlocks.levels }] : [];
     }
+
+    /* A recovery written in blocks is joined by the same rules. */
+    var recoveryTime = null, recoveryLevel = null;
+    if (recoverySeries.length > 1) {
+      var joinedRecovery = joinFlags(recoverySeries, 'recovery');
+      Array.prototype.push.apply(flags, joinedRecovery.flags);
+      if (joinedRecovery.times.length) {
+        recoveryTime = joinedRecovery.times;
+        recoveryLevel = joinedRecovery.levels;
+      }
+    } else if (recoverySeries.length) {
+      recoveryTime = recoverySeries[0].times;
+      recoveryLevel = recoverySeries[0].levels;
+    }
+
+    /* The length of each step is read in the unit its label or its own cell
+     * names: "1 hr" was a step of 1 minute. */
+    var stepLength = null;
+    if (Object.prototype.hasOwnProperty.call(found, 'step_length_min')) {
+      var lengthRead = readTime(found.step_length_min[1], [found.step_length_min[0]]);
+      if (lengthRead.quantity.status === 'unknown') {
+        flags.push({ level: 'warning', code: 'step_length_unreadable',
+          message: phrase('pumping.step_length_unreadable', {
+            written: cleanText(found.step_length_min[1]) }) });
+      } else if (lengthRead.quantity.value !== null && lengthRead.quantity.value > 0) {
+        stepLength = lengthRead.quantity.value;
+      }
+    }
+    var diameters = sheetDiameters(found, flags);
 
     var discharges = findStepDischarges(grid);
     var steps = pumpingSeries.map(function (s, i) {
@@ -18219,12 +18601,7 @@
       }
     }
 
-    var recoveryTime = null, recoveryLevel = null;
-    if (recoverySeries.length) {
-      recoveryTime = recoverySeries[0].times;
-      recoveryLevel = recoverySeries[0].levels;
-      testType += '+recovery';
-    }
+    if (recoveryTime !== null) testType += '+recovery';
 
     var swl = fields.static_water_level_m === undefined ? null : fields.static_water_level_m;
     /* on the test's clock: a step test whose times restart each step pumped
@@ -18234,15 +18611,39 @@
       ? arrMax(steps.map(function (s, i) { return arrMax(s.time_min) + stepOffsets[i]; }))
       : null;
 
+    /* Recovery times written on the test's clock - 241, 242 after a
+     * 240-minute test - were taken as minutes since the pump stopped. A
+     * recovery whose first reading comes at or after the minute the pump
+     * stopped is on the test's clock unless its header says it counts from
+     * the stop, and is moved back by the pumping time (pumping.py). */
+    if (recoveryTime !== null && pumpingDuration !== null && recoveryTime.length) {
+      var firstRecovery = arrMin(recoveryTime);
+      var saysSince = recoverySeries.some(function (s) {
+        return SINCE_STOP_RE.test((String(s.group.time_header || '') + ' ' +
+          String(s.group.block_heading || '')).toLowerCase());
+      });
+      if (!saysSince && firstRecovery >= pumpingDuration) {
+        var stopped = pumpingDuration;
+        recoveryTime = recoveryTime.map(function (v) { return v - stopped; });
+        flags.push({ level: 'info', code: 'recovery_on_test_clock',
+          message: phrase('pumping.recovery_on_test_clock', { first: firstRecovery,
+            duration: pumpingDuration }) });
+      }
+    }
+
     /** @type {PumpingTest} */
     var test = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
       test_type: testType, static_water_level_m: swl,
       borehole_depth_m: fields.borehole_depth_m === undefined ? null : fields.borehole_depth_m,
       pump_setting_m: fields.pump_setting_m === undefined ? null : fields.pump_setting_m,
-      step_length_min: fields.step_length_min === undefined ? null : fields.step_length_min,
+      step_length_min: stepLength,
       steps: steps, recovery_time_min: recoveryTime, recovery_level_m: recoveryLevel,
       pumping_duration_min: pumpingDuration, source: String(source || ''), flags: [],
+      casing_diameter_in: diameters.casing_diameter_in === undefined
+        ? null : diameters.casing_diameter_in,
+      riser_diameter_in: diameters.riser_diameter_in === undefined
+        ? null : diameters.riser_diameter_in,
     };
 
     if (swl === null) {
@@ -18252,10 +18653,10 @@
     var missingQ = steps.filter(function (s) { return s.discharge_m3_per_h === null; })
       .map(function (s) { return s.step_number; });
     if (missingQ.length) {
+      /* every result is pending only when no step has a rate */
       flags.push({ level: 'warning', code: 'missing_discharge',
-        message: 'Discharge not recorded for step(s) ' + missingQ.join(', ') +
-          '. Drawdown and recovery curves are produced, but transmissivity and ' +
-          'yield results are pending until discharge values are supplied.' });
+        message: phrase(missingQ.length === steps.length ? 'pumping.missing_discharge'
+          : 'pumping.missing_discharge_some', { steps: missingQ.join(', ') }) });
     }
     if (swl !== null) {
       /* The recovery limb is checked too: a recovery that overshoots the

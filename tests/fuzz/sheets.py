@@ -46,6 +46,11 @@ def _cell(value):
         if "time" in value:
             h, m = value["time"].split(":")
             return datetime.time(int(h), int(m))
+        if "duration" in value:
+            # elapsed hours and minutes, a day or more of them if need be:
+            # openpyxl writes it in a cell formatted [h]:mm:ss
+            h, m = value["duration"].split(":")
+            return datetime.timedelta(hours=int(h), minutes=int(m))
         raise ValueError(f"unknown cell {value!r}")
     return value
 

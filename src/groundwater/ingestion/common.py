@@ -63,6 +63,10 @@ LABEL_PATTERNS: dict[str, list[str]] = {
     "drill_rig": [r"^drill\s*rig"],
     "installed_screens": [r"^screens?\s*installed", r"^installed\s*screens?",
                           r"^screens?\s*(set|as\s*built)"],
+    # the casing and riser a pumping test co-pilot writes on its sheet, which
+    # set how long casing storage lasts (hydraulics.analysis)
+    "casing_diameter_in": [r"^casing\s*diameter"],
+    "riser_diameter_in": [r"^riser(\s*pipe)?\s*diameter"],
 }
 
 _COMPILED = {
@@ -196,7 +200,8 @@ def split_inline_value(cell_text: str) -> tuple[str, str | None]:
     return text, None
 
 
-def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
+def extract_header_fields(grid: list[list], max_rows: int = 30,
+                          found: dict | None = None) -> dict:
     """Scan the top of a sheet for ``Label -> value`` pairs.
 
     A value is taken from the same cell after a colon when present,
@@ -204,6 +209,11 @@ def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
     occurrence of a key wins, except that a more specific label wording
     later in the sheet ("Depth of Borehole") overrides a generic one
     seen earlier ("Depth").
+
+    ``found``, when given, is filled with ``key -> (label, value)``: the
+    label as written and the value cell as it stands, for a reader that has
+    to read the value in the unit its label or its own text names ("Length
+    of each step (min)": "1 hr").
     """
     fields: dict = {}
     priorities: dict[str, int] = {}
@@ -246,9 +256,13 @@ def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
                 if number is not None:
                     fields[key] = number
                     priorities[key] = priority
+                    if found is not None:
+                        found[key] = (label_text, value)
             else:
                 fields[key] = clean_text(_date_text(value))
                 priorities[key] = priority
+                if found is not None:
+                    found[key] = (label_text, value)
     return fields
 
 

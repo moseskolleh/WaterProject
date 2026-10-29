@@ -122,12 +122,17 @@ class PumpingConfig:
     pump_submergence_min_m: float = _PUMPING["pump_submergence_min_m"]  # minimum water column above pump
     seasonal_allowance_m: float = _PUMPING["seasonal_allowance_m"]  # dry season decline allowance
     cooper_jacob_u_max: float = _PUMPING["cooper_jacob_u_max"]  # validity criterion for straight line fit
-    # A late-time slope below what a dipper can resolve (2 cm per log cycle)
-    # is reading noise or a level that has stabilised, and 2.303 Q / (4 pi
-    # slope) turns it into a transmissivity of thousands of m2/day that no
-    # basement borehole has. The fit is refused rather than reported.
-    cooper_jacob_min_slope_m: float = _PUMPING["cooper_jacob_min_slope_m"]  # m per log cycle
     cooper_jacob_min_r2: float = _PUMPING["cooper_jacob_min_r2"]  # the line has to explain the window
+    # Where the pumped level has stopped growing (hydraulics.analysis
+    # stabilised_tail): the readings of the last stabilised_span_log10 log
+    # cycles move by less than a dipper reads, and their slope is under
+    # stabilised_slope_ratio of the slope over the log cycle before them. A
+    # Theis drawdown keeps its slope (a ratio near 1) and a recharge boundary
+    # flattens it; a half is a choice between the two, not a standard, as is
+    # judging the last half log cycle. A Cooper-Jacob window on such a tail
+    # is not adopted.
+    stabilised_span_log10: float = _PUMPING["stabilised_span_log10"]
+    stabilised_slope_ratio: float = _PUMPING["stabilised_slope_ratio"]
     # Fits below this R squared are passed over when choosing which
     # transmissivity the yield rests on (recovery first, then Cooper-Jacob,
     # then Theis, which is a curve fit with no R squared and always eligible).

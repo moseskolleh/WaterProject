@@ -1832,8 +1832,9 @@
       var casingSource = analysis.transmissivity_source;
       var adoptedInside = casingSource && Object.prototype.hasOwnProperty.call(
         analysis.disqualified || {}, casingSource);
+      /* the casing the analysis took: the sheet's, where it records one */
       b.paragraph('Casing storage: with a ' +
-        C.formatG((context.config && context.config.pumping
+        C.formatG(analysis.casing_diameter_in || (context.config && context.config.pumping
           ? context.config.pumping : C.defaultConfig().pumping).casing_diameter_in) +
         ' inch casing and the specific capacity at the end of the first step, the ' +
         'water standing in the casing supplies the pump for about the first ' +

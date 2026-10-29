@@ -24,10 +24,11 @@ CFU/100 mL, flow m3/h, time min, length m.
 
 from __future__ import annotations
 
+import datetime
 import re
 from dataclasses import dataclass
 
-from .utils import parse_number
+from .utils import clean_text, parse_number
 
 __all__ = [
     "Unit",
@@ -38,6 +39,10 @@ __all__ = [
     "canonical_unit",
     "unit_from_label",
     "read_quantity",
+    "clock_format",
+    "read_clock",
+    "read_time",
+    "is_date_cell",
     "AMBIGUOUS_UNITS",
     "CANONICAL_UNITS",
 ]
@@ -312,6 +317,8 @@ class Quantity:
         no unit was declared anywhere, so the canonical one was assumed.
     ``"unknown"``
         a unit was declared and could not be read. ``value`` is ``None``.
+    ``"clock"``
+        an elapsed time written as a clock, "1:30" (:func:`read_time`).
     """
 
     value: float | None
@@ -453,3 +460,119 @@ def convert(value: float, from_unit: str, to_unit: str,
         return None
     base = float(value) * source.factor + source.offset
     return (base - target.offset) / target.factor
+
+
+# ---------------------------------------------------------------------------
+# Elapsed time written as a clock
+# ---------------------------------------------------------------------------
+
+#: An elapsed time typed as a clock: "1:30", "01:30:00", "1:30:00.5". A cell
+#: Excel formats as a time reaches the readers as a time (openpyxl) or as
+#: this text (the browser's reader), and the first number of it was read as
+#: the minutes: 01:30 became minute 1 and 00:05 minute 0. The digits are
+#: ASCII ones, as the browser's regular expressions read them.
+_CLOCK_RE = re.compile(r"^\s*([0-9]{1,3}):([0-5][0-9])(?::([0-5][0-9](?:\.[0-9]+)?))?\s*$")
+#: Text that starts as a clock and is not one - "1:60", "1:5", "1:30 pm",
+#: "10:00 (approx)", "1: 30" - or that writes hours and minutes as words -
+#: "1h 30m", "1 hr 30 min". Each was read for its first number, so 1:30 pm
+#: and 1h 30m were both minute 1; they are refused instead.
+_NOT_A_CLOCK_RE = re.compile(
+    r"^\s*[-+]?[0-9]+(?:[.,][0-9]+)?\s*"
+    r"(?::\s*[0-9]|(?:hours?|hrs?|h|minutes?|mins?|m)\.?\s*[0-9])",
+    re.IGNORECASE,
+)
+
+#: openpyxl hands a duration of a day or more, in a cell formatted h:mm, back
+#: as a datetime on Excel's serial calendar. Up to its phantom 29 February
+#: 1900 the serial is the number of days since 31 December 1899, so such a
+#: datetime is a duration; any other date is a date.
+_SERIAL_ZERO = datetime.datetime(1899, 12, 31)
+_SERIAL_PHANTOM = datetime.datetime(1900, 2, 28)
+
+
+def clock_format(*hints: str) -> str:
+    """How a two-part clock in a column is read: ``"hm"`` or ``"ms"``.
+
+    A header that names its clock - "Time (mm:ss)", "Time (min:sec)" - says
+    that "5:30" is five and a half minutes. Otherwise it is read as Excel
+    reads "5:30" typed into a cell: five hours and a half. A clock with
+    seconds, "00:05:30", is hours, minutes and seconds either way.
+    """
+    for hint in hints:
+        for match in _BRACKETED_RE.finditer(str(hint or "")):
+            parts = [p.strip().lower() for p in match.group(1).split(":")]
+            if (len(parts) >= 2 and parts[0][:1] in ("h", "m")
+                    and parts[1][:1] in ("m", "s")):
+                return "ms" if parts[0].startswith("m") else "hm"
+    return "hm"
+
+
+def _clock_text(seconds: float) -> str:
+    """``"01:30:00"``: a time cell as the browser's reader writes one."""
+    ms = round(seconds * 1000)
+    text = f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d}"
+    return text + (f".{ms % 1000 * 1000:06d}" if ms % 1000 else "")
+
+
+def read_clock(cell, fmt: str = "hm") -> tuple[float, str] | None:
+    """``(minutes, as_written)`` for an elapsed time written as a clock.
+
+    A time cell, a duration, a day-or-more duration on Excel's serial
+    calendar and clock text all qualify; ``None`` for anything else, so the
+    cell is read as a number. ``fmt`` is :func:`clock_format`'s answer for
+    the column.
+    """
+    if isinstance(cell, datetime.timedelta):
+        seconds = cell.total_seconds()
+    elif isinstance(cell, datetime.datetime):
+        if cell.tzinfo is not None or not _SERIAL_ZERO < cell < _SERIAL_PHANTOM:
+            return None
+        seconds = (cell - _SERIAL_ZERO).total_seconds()
+    elif isinstance(cell, datetime.time):
+        # worked as the browser works the "01:30:00.5" its reader writes
+        return (cell.hour * 60 + cell.minute
+                + (cell.second + cell.microsecond / 1e6) / 60), str(cell)
+    elif isinstance(cell, str):
+        match = _CLOCK_RE.match(cell)
+        if match is None:
+            return None
+        first, second, third = int(match.group(1)), int(match.group(2)), match.group(3)
+        if third is not None:
+            minutes = first * 60 + second + float(third) / 60
+        elif fmt == "ms":
+            minutes = first + second / 60
+        else:
+            minutes = float(first * 60 + second)
+        return minutes, clean_text(cell)
+    else:
+        return None
+    return seconds / 60, _clock_text(seconds)
+
+
+def is_date_cell(cell) -> bool:
+    """A date, or a date and time of day: never an elapsed time."""
+    return isinstance(cell, datetime.date) and read_clock(cell) is None
+
+
+def read_time(cell, *hints: str) -> tuple[Quantity, str]:
+    """An elapsed time in minutes, and the clock it was written as.
+
+    A clock (:func:`read_clock`) is read as one, with status ``"clock"`` and
+    the clock as written beside it. A date is refused, status ``"unknown"``:
+    a reading's time since the pump started cannot be told from the day it
+    was taken; so is text that starts as a clock and is not one, such as
+    "1:60" or "1:30 pm", and hours and minutes written as words, "1h 30m".
+    Anything else is :func:`read_quantity` in the time dimension, with
+    ``""`` beside it.
+    """
+    clock = read_clock(cell, clock_format(*hints))
+    if clock is not None:
+        minutes, written = clock
+        return Quantity(minutes, minutes, "", "clock", "time"), written
+    # an Excel TRUE is no time either: Python read it as minute 1 and the
+    # browser left it out without a word
+    if isinstance(cell, bool):
+        return Quantity(None, None, "TRUE" if cell else "FALSE", "unknown", "time"), ""
+    if is_date_cell(cell) or (isinstance(cell, str) and _NOT_A_CLOCK_RE.match(cell)):
+        return Quantity(None, None, clean_text(cell), "unknown", "time"), ""
+    return read_quantity(cell, *hints, dimension="time"), ""

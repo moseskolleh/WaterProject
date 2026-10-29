@@ -688,8 +688,16 @@ await withPage(async (page, base, consoleErrors) => {
       analysis: d.analysis, seasonal,
     })).build());
     const moved = (d.design.flags || []).find((f) => f.code === 'pump_intake_moved');
+    // the same sheet carrying the casing and riser a co-pilot writes on it
+    const sheetTest = JSON.parse(JSON.stringify(d.analysis.test));
+    sheetTest.casing_diameter_in = 8;
+    sheetTest.riser_diameter_in = 2;
+    const sheetCasing = await window.__docText(await (await window.GWT.docx.pumpingReport({
+      style: app.config().style, site: app.store.get('site'), figures: [],
+      analysis: C.analysePumpingTest(sheetTest, app.config()),
+    })).build());
     const out = {
-      pumping, intake: intake[0],
+      pumping, sheetCasing, intake: intake[0],
       yieldDepth: d.analysis.yield_recommendation.pump_installation_depth_m,
       designIntake: d.design.pump_intake_m,
       requested: moved ? moved.message : null,
@@ -704,6 +712,18 @@ await withPage(async (page, base, consoleErrors) => {
     !timbo.pumping.includes('no straight line is read from it') &&
     timbo.pumping.includes('the Cooper-Jacob value is adopted only as the best available'),
     timbo.pumping.slice(0, 400));
+  // The yield table printed the assumption envelope bare, "0.39 m3/h (0.22 to
+  // 0.71)", in the report whose decision line gives the P10 to P90 band of
+  // the same yield; and the casing paragraph named the project's casing where
+  // the sheet recorded its own.
+  check('pumping report: the yield\'s range over the assumptions says what it is',
+    timbo.pumping.includes('0.39 m3/h (range over the assumptions, 0.22 to 0.71)') &&
+    !timbo.pumping.includes('0.39 m3/h (0.22 to 0.71)'), timbo.pumping.slice(0, 400));
+  check('pumping report: the casing is the one the sheet records',
+    timbo.pumping.includes('Casing storage: with a 5 inch casing') &&
+    timbo.sheetCasing.includes('Casing storage: with a 8 inch casing and the specific ' +
+      'capacity at the end of the first step, the water standing in the casing supplies ' +
+      'the pump for about the first 300 minutes'), timbo.sheetCasing.slice(0, 400));
   check('the design is given the intake the pumping report prints',
     timbo.intake > timbo.yieldDepth &&
     timbo.pumping.includes('Install the pump intake at ' + timbo.intake + ' m') &&

@@ -259,6 +259,10 @@ class PumpingTest:
     pumping_duration_min: float | None = None  # total pumping before recovery
     flags: list[DataFlag] = field(default_factory=list)
     source: str = ""
+    # the casing and riser diameters the sheet records, in inches, which the
+    # analysis takes over its configuration's; None where the sheet is silent
+    casing_diameter_in: float | None = None
+    riser_diameter_in: float | None = None
 
     @property
     def has_discharge(self) -> bool:

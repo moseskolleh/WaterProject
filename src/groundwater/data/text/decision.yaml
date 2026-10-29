@@ -64,6 +64,12 @@ yield_basis_alone: >-
   taken
 yield_no_spread: the spread of this test has not been worked out
 yield_no_low: no yield is projected at the low end of the transmissivity band
+# The yield tables and the readiness gate's detail print the safe yield with
+# the range it takes over the assumptions it rests on (the fitted
+# transmissivities, storativity, effective radius and dry-season decline),
+# which is not the band above; the numbers come pre-formatted, to two
+# significant figures.
+yield_envelope: "{value} m3/h (range over the assumptions, {low} to {high})"
 
 # The pump setting (step 3.2).
 pump_name: Pump intake below the top of the casing

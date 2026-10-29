@@ -1040,3 +1040,299 @@ def test_a_grout_written_as_a_range_is_its_bottom():
         grid = _drilling_grid([["0-30", None, None, None, "Fractured granite", 6.5, None]])
         grid[3] = ["Grouting depth (m)", cell]
         assert drilling_from_grid(grid).grouting_depth_m == 20.0, cell
+
+
+# --- the audit of the pumping test reader ------------------------------------
+
+def _pumping_grid(blocks, *, recovery=None, headings=None, step_length=None,
+                  rates=(2.0,), test_type="constant", time_head="Time (min)",
+                  recovery_head="Time (min)", extra=()):
+    """A pumping sheet as a grid of cells, laid out as the template lays it:
+    ``blocks`` of (time, level) side by side, then a recovery block."""
+    rows = [["PUMPING TEST FIELD SHEET"],
+            ["Community", "Test", None, "Static water level (m)", 10.0],
+            ["Depth of Borehole (m)", 60.0, None, "Pump setting (m)", 45.0],
+            ["Test type (step or constant)", test_type, None,
+             "Length of each step (min)", step_length]]
+    q_row = ["Discharge per step (m3/h)"]
+    for i, q in enumerate(rates):
+        q_row += [f"Step {i + 1} Q", q, None]
+    rows.append(q_row)
+    rows += [list(row) for row in extra]
+    groups = list(blocks) + ([recovery] if recovery is not None else [])
+    heads = list(headings or [None] * len(groups))
+    rows.append(sum(([h, None, None] for h in heads), []))
+    header = []
+    for _ in blocks:
+        header += [time_head, "Water Level (m)", "Drawdown (m)"]
+    if recovery is not None:
+        header += [recovery_head, "Water Level (m)", "Recovery (m)"]
+    rows.append(header)
+    for i in range(max(len(g) for g in groups)):
+        row = []
+        for g in groups:
+            row += [g[i][0], g[i][1], None] if i < len(g) else [None, None, None]
+        rows.append(row)
+    return rows
+
+
+def _clock(minutes):
+    """A minute of elapsed time as text a crew types into a clock cell."""
+    return f"{int(minutes) // 60}:{int(minutes) % 60:02d}"
+
+
+_DAY = [1, 2, 3, 5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480]
+
+
+def test_elapsed_times_written_as_clocks_are_hours_and_minutes(tmp_path):
+    """A time cell, a duration and "1:30" typed as text all reached the reader
+    as a clock, and the first number in it was taken for the minutes: 01:30
+    was minute 1, 00:05 minute 0, and an eight-hour test pumped for eight
+    minutes."""
+    import datetime
+
+    from openpyxl import Workbook
+
+    from groundwater.ingestion.pumping import _assemble
+
+    levels = [round(12.0 + 0.5 * np.log10(t), 3) for t in _DAY]
+    cells = {60: datetime.time(1, 0), 90: datetime.timedelta(hours=1, minutes=30),
+             120: "2:00", 180: "03:00:00", 240: datetime.time(4, 0),
+             # a day or more in a cell formatted h:mm comes back on Excel's
+             # serial calendar, as a datetime in January 1900
+             360: datetime.datetime(1899, 12, 31, 6, 0),
+             480: datetime.timedelta(hours=8)}
+    rows = _pumping_grid([[(cells.get(t, t), wl) for t, wl in zip(_DAY, levels, strict=True)]])
+    wb = Workbook()
+    for row in rows:
+        wb.active.append(row)
+    wb.save(tmp_path / "clock.xlsx")
+    tests = [read_pumping_workbook(tmp_path / "clock.xlsx"), _assemble(rows, "clock.xlsx")]
+    for test in tests:
+        assert list(test.steps[0].time_min) == _DAY
+        assert test.pumping_duration_min == 480
+        assert not any(f.code == "time_not_increasing" for f in test.flags)
+        read = next(f for f in test.flags if f.code == "time_clock_read")
+        assert read.level == "info"
+        assert read.message == (
+            "7 pumping readings are written as a clock and read as hours and minutes, "
+            "as Excel reads a time typed into a cell: 01:00:00 is minute 60 since the "
+            "pump started.")
+
+    # a column that names its clock as minutes and seconds is read so
+    mmss = _pumping_grid([[("0:30", 12.0), ("1:00", 12.2), ("5:30", 12.6),
+                           ("10:00", 12.8), ("30:00", 13.1)]], time_head="Time (mm:ss)")
+    assert list(_assemble(mmss, "mmss.xlsx").steps[0].time_min) == [0.5, 1, 5.5, 10, 30]
+
+
+def test_a_date_in_a_time_column_is_refused_not_read_as_its_year():
+    """A date cell under "Time (min)" was read as 2026 minutes in Python and
+    dropped without a word in the browser."""
+    import datetime
+
+    from groundwater.ingestion.pumping import _assemble
+
+    readings = [(t, 12.0 + 0.1 * t) for t in (1, 2, 3, 5, 10)]
+    readings.insert(3, (datetime.datetime(2026, 3, 1, 8, 5), 12.4))
+    test = _assemble(_pumping_grid([readings]), "dated.xlsx")
+    assert list(test.steps[0].time_min) == [1, 2, 3, 5, 10]
+    flag = next(f for f in test.flags if f.code == "time_reading_unreadable")
+    assert "'2026-03-01 08:05:00'" in flag.message
+
+
+def test_a_time_column_of_times_of_day_is_refused():
+    """08:05, 08:06 ... under "Time (min)" is the clock on the wall, not the
+    time since the pump started; read as hours and minutes it would be a test
+    that began eight hours in. The sheet is refused and says why."""
+    from groundwater.ingestion.pumping import _assemble
+
+    readings = [(f"08:{m:02d}", 12.0 + 0.01 * m) for m in (5, 6, 7, 9, 15, 25, 35)]
+    test = _assemble(_pumping_grid([readings], recovery=[(1, 13.0), (2, 12.8)]),
+                     "wall.xlsx")
+    assert test.steps == [] and test.recovery_time_min is None
+    flag = next(f for f in test.flags if f.code == "time_of_day")
+    assert flag.level == "error"
+    assert flag.message.startswith(
+        "The earliest pumping reading is written as 08:05, a time of day rather than the "
+        "time since the pump started (a test's first reading is taken within its first "
+        "hour), so no reading on the sheet was used")
+    assert not any(f.code == "time_clock_read" for f in test.flags)
+    # judged on the earliest reading, not the top row: a sheet whose rows run
+    # out of order is still read when its earliest reading is in the first hour
+    shuffled = [(_clock(t), 12.0 + 0.01 * t) for t in (90, 5, 60, 1, 120, 30)]
+    test_shuffled = _assemble(_pumping_grid([shuffled]), "shuffled.xlsx")
+    assert sorted(test_shuffled.steps[0].time_min) == [1, 5, 30, 60, 90, 120]
+    assert not any(f.code == "time_of_day" for f in test_shuffled.flags)
+    # the yield waits on the readings, not on the discharge the sheet records
+    from groundwater.hydraulics import analyse_pumping_test
+
+    pending = analyse_pumping_test(test).yield_recommendation.pending_reason
+    assert pending == "no pumping readings were read from the sheet"
+    # a block whose heading names the minutes it covers is held to its heading
+    hour_two = [(_clock(t), 12.0 + 0.01 * t) for t in (61, 62, 65, 70, 90, 120)]
+    headed = _assemble(_pumping_grid([hour_two], headings=["Constant discharge 61-120 min"]),
+                       "headed.xlsx")
+    assert list(headed.steps[0].time_min) == [61, 62, 65, 70, 90, 120]
+    assert not any(f.code == "time_of_day" for f in headed.flags)
+
+
+def test_a_recovery_written_in_blocks_is_read_whole():
+    """A two-hour recovery written in hourly blocks kept its first block only,
+    without a word, and the residual drawdown at the end of monitoring was the
+    60-minute one."""
+    from groundwater.ingestion.pumping import _assemble
+
+    pumping = [(t, round(12.0 + 0.5 * np.log10(t), 3)) for t in _DAY[:9]]
+    first = [(t, round(10.5 - 0.004 * t, 3)) for t in (1, 2, 5, 10, 20, 30, 45, 60)]
+    second = [(t, round(10.26 - 0.002 * t, 3)) for t in (5, 10, 20, 30, 45, 60)]
+    rows = _pumping_grid([pumping], recovery=first,
+                         headings=["Constant discharge 0-60 min", "Recovery 0-60 min"])
+    # a second recovery block beside the first, counted within its own hour
+    rows[5] += ["Recovery 61-120 min", None, None]
+    rows[6] += ["Time (min)", "Water Level (m)", "Recovery (m)"]
+    for i, row in enumerate(rows[7:]):
+        row += [second[i][0], second[i][1], None] if i < len(second) else [None] * 3
+    test = _assemble(rows, "two_hours.xlsx")
+    assert list(test.recovery_time_min) == [1, 2, 5, 10, 20, 30, 45, 60,
+                                            65, 70, 80, 90, 105, 120]
+    assert test.recovery_level_m[-1] == second[-1][1]
+    joined = next(f for f in test.flags if f.code == "recovery_blocks_joined")
+    assert joined.message.startswith("The recovery readings are written in 2 blocks: "
+                                     "block 2 counts its time within its own hour")
+    assert "is minute 65 of the recovery" in joined.message
+
+
+def test_recovery_times_on_the_tests_clock_are_moved_to_the_stop():
+    """Recovery times written on the test's own clock, 241 after a 240-minute
+    test, were taken as minutes since the pump stopped: a recovery of an
+    aquifer of 20 m2/day read 0.62."""
+    from groundwater.ingestion.pumping import _assemble
+
+    pumping = [(t, round(12.0 + 0.5 * np.log10(t), 3)) for t in _DAY[:13]]
+    since = [1, 2, 3, 5, 10, 20, 30, 60]
+    recovery = [(240 + t, round(10.0 + 0.4 * np.log10((240 + t) / t), 3)) for t in since]
+    test = _assemble(_pumping_grid([pumping], recovery=recovery), "clock.xlsx")
+    assert list(test.recovery_time_min) == since
+    flag = next(f for f in test.flags if f.code == "recovery_on_test_clock")
+    assert flag.message.startswith("The recovery times start at 241 min, at or after "
+                                   "the 240 minutes the pump ran")
+    # a header that says the times count from the stop is taken at its word
+    stated = _assemble(_pumping_grid([pumping], recovery=recovery,
+                                     recovery_head="Time since pump stopped (min)"),
+                       "stated.xlsx")
+    assert list(stated.recovery_time_min) == [240 + t for t in since]
+    assert not any(f.code == "recovery_on_test_clock" for f in stated.flags)
+
+
+def test_the_length_of_each_step_is_read_in_its_unit():
+    """"1 hr" in the length cell was a step of 1 minute: a short test inside
+    its casing-storage period, projected 5.7 log cycles."""
+    from groundwater.ingestion.pumping import _assemble
+
+    blocks = [[(60 * k + t, 12.0 + k + 0.2 * np.log10(t)) for t in (1, 2, 5, 10, 30, 60)]
+              for k in range(2)]
+    for written, expected in ((60, 60.0), ("60 min", 60.0), ("1 hr", 60.0),
+                              ("1 hour", 60.0), ("1:00", 60.0), ("90 s", 1.5)):
+        test = _assemble(_pumping_grid(blocks, step_length=written, rates=(1.0, 2.0),
+                                       test_type="step"), "steps.xlsx")
+        assert test.step_length_min == expected, written
+    refused = _assemble(_pumping_grid(blocks, step_length="1 fortnight", rates=(1.0, 2.0),
+                                      test_type="step"), "steps.xlsx")
+    assert refused.step_length_min is None
+    flag = next(f for f in refused.flags if f.code == "step_length_unreadable")
+    assert flag.message.startswith("The length of each step is written as '1 fortnight'")
+
+
+def test_the_casing_and_riser_on_the_sheet_are_read():
+    """A pumping test co-pilot writes the casing and riser on the sheet, and
+    no reader took them."""
+    from groundwater.ingestion.pumping import _assemble
+
+    pumping = [(t, 12.0 + 0.5 * np.log10(t)) for t in _DAY[:9]]
+    sheet = _pumping_grid([pumping], extra=[
+        [None] * 16 + ["Casing diameter (in)", 8],
+        [None] * 16 + ["Riser diameter (in)", "50 mm"],
+    ])
+    test = _assemble(sheet, "copilot.xlsx")
+    assert test.casing_diameter_in == 8.0
+    assert test.riser_diameter_in == pytest.approx(50 / 25.4)
+    # a diameter with no unit is neither metres nor inches
+    test = _assemble(_pumping_grid([pumping], extra=[["Casing diameter", 6]]), "bare.xlsx")
+    assert test.casing_diameter_in is None
+    flag = next(f for f in test.flags if f.code == "diameter_unreadable")
+    assert flag.message.startswith("The casing diameter is written as '6', which this "
+                                   "toolkit cannot read as a diameter")
+    # a casing no wider than its riser would leave no casing storage at all
+    swapped = _assemble(_pumping_grid([pumping], extra=[
+        [None] * 16 + ["Casing diameter (in)", 2],
+        [None] * 16 + ["Riser diameter (in)", 5],
+    ]), "swapped.xlsx")
+    assert swapped.casing_diameter_in is None and swapped.riser_diameter_in is None
+    flag = next(f for f in swapped.flags if f.code == "diameters_inconsistent")
+    assert flag.message.startswith("The sheet gives a casing of 2 in and a riser of 5 in")
+    # the co-pilot's pairs stand one under another: with the riser left blank
+    # the label under it is not its value, and "Planned rate (m3/h)" was read
+    # as a riser of 3 inches
+    blank = _assemble(_pumping_grid([pumping], extra=[
+        [None] * 16 + ["Casing diameter (in)", 8],
+        [None] * 16 + ["Riser diameter (in)", None],
+        [None] * 16 + ["Planned rate (m3/h)", 2.93],
+    ]), "blank.xlsx")
+    assert (blank.casing_diameter_in, blank.riser_diameter_in) == (8.0, None)
+    assert not any(f.code.startswith("diameter") for f in blank.flags)
+
+
+def test_a_missing_last_rate_does_not_say_every_result_is_pending():
+    """With the first step's rate on the sheet the drawdown fits run and a
+    yield follows, and the flag said every result was pending beside it."""
+    from groundwater.ingestion.pumping import _assemble
+
+    blocks = [[(60 * k + t, 12.0 + k + 0.2 * np.log10(t)) for t in (1, 2, 5, 10, 30, 60)]
+              for k in range(3)]
+    some = _assemble(_pumping_grid(blocks, rates=(1.0, 2.0, None), test_type="step"), "s")
+    flag = next(f for f in some.flags if f.code == "missing_discharge")
+    assert flag.message.startswith("Discharge not recorded for step(s) 3. Drawdown and "
+                                   "recovery curves are produced, and each result")
+    none = _assemble(_pumping_grid(blocks, rates=(None, None, None), test_type="step"), "n")
+    flag = next(f for f in none.flags if f.code == "missing_discharge")
+    assert flag.message.endswith("but transmissivity and yield results are pending "
+                                 "until discharge values are supplied.")
+
+
+def _fuzz_regression_workbook(tmp_path, name):
+    """A committed fuzz regression's sheets as the .xlsx both engines read."""
+    import json
+    import sys
+    from pathlib import Path
+
+    fuzz = Path(__file__).parent / "fuzz"
+    sys.path.insert(0, str(fuzz))
+    try:
+        from sheets import workbook_bytes
+    finally:
+        sys.path.remove(str(fuzz))
+    case = json.loads((fuzz / "regressions" / f"{name}.json").read_text(encoding="utf-8"))
+    path = tmp_path / f"{name}.xlsx"
+    path.write_bytes(workbook_bytes(case["sheets"]))
+    return path
+
+
+def test_the_fuzz_sheet_of_clock_cells_reads_to_its_true_times(tmp_path):
+    """The fuzz suite replays this sheet through both engines, which agreed
+    on it while both were wrong; here it is held to the times it records."""
+    test = read_pumping_workbook(_fuzz_regression_workbook(tmp_path, "pumping-clock-time-cells"))
+    assert list(test.steps[0].time_min) == [
+        1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480, 720,
+        960, 1200, 1440, 1800]
+    assert test.pumping_duration_min == 1800
+    assert list(test.recovery_time_min) == [1, 2, 3, 5, 10, 20, 30, 45, 60, 90, 120]
+    codes = [f.code for f in test.flags]
+    assert codes.count("time_clock_read") == 2 and "time_not_increasing" not in codes
+
+    dated = read_pumping_workbook(_fuzz_regression_workbook(tmp_path, "pumping-date-in-time-column"))
+    assert list(dated.steps[0].time_min) == [1, 2, 3, 5, 8, 15, 20, 30, 45, 60, 90]
+    flag = next(f for f in dated.flags if f.code == "time_reading_unreadable")
+    # the date, which was minute 2026, and an Excel TRUE, which was minute 1
+    assert flag.message.startswith("2 pumping reading(s) carried text this toolkit could "
+                                   "not read as a time and were left out "
+                                   "('2026-03-01 08:10:00', 'TRUE').")
