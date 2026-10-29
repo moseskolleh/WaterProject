@@ -310,6 +310,9 @@
     /* a calibration set fitted on the Portfolio page and under review: the
      * set and what it was fitted from (calibrationSetsCard) */
     calibrationCandidate: null,
+    /* a calibration set pooled from other organisations' files and under
+     * review: the set and the set in force it was pooled beside */
+    calibrationPooled: null,
   };
 
   /* ------------------------------------------------------------------ chrome */
@@ -7470,9 +7473,11 @@
 
   /* The calibration set in force in this browser (PLAN.md step 5.3): its
    * name and what it changes, to download, to replace with a file or to
-   * return to the provisional default; and with pooled ledgers, a set fitted
-   * to them and reviewed beside it, for a named person to adopt and put in
-   * force. Nothing changes until someone does. */
+   * return to the provisional default; with pooled ledgers, a set fitted to
+   * them and reviewed beside it; and sets other organisations adopted,
+   * pooled into one and reviewed the same way (PLAN.md step 5.5). Either is
+   * for a named person to adopt and put in force. Nothing changes until
+   * someone does. */
   function calibrationSetsCard(pooled) {
     var cfg = config();
     var held = C.inForce(cfg);
@@ -7490,33 +7495,78 @@
           putSetInForce(C.defaultSet());
         }, { variant: 'ghost' }) : null,
       ]),
+      el('p.muted', C.phrase('calibration_sets.page_share')),
       field(C.phrase('calibration_sets.page_load'), button(C.phrase('calibration_sets.page_load_button'),
         loadSetFile, { variant: 'ghost' })),
     ];
     if (!pooled.length) {
       body.push(el('p.muted', C.phrase('calibration_sets.page_fit_none')));
-      return card(C.phrase('calibration_sets.page_heading'), body.filter(Boolean));
+    } else {
+      /* a fit is reviewed while the files it was fitted to and the set it
+       * was fitted under are the ones on the page */
+      var basis = JSON.stringify([pooled, held]);
+      body.push(el('div.btn-row', [
+        button(C.phrase('calibration_sets.page_fit'), function () {
+          derived.calibrationCandidate = { set: C.fitSet(pooled, localDate(), cfg), basis: basis };
+          render();
+        }, { title: C.phrase('calibration_sets.page_fit_help') }),
+      ]));
+      var fitted = derived.calibrationCandidate;
+      if (fitted && fitted.basis === basis) {
+        body.push(setReviewNode(fitted.set, held, cfg, function () { derived.calibrationCandidate = null; }));
+      }
     }
-    /* a fit is reviewed while the files it was fitted to and the set it was
-     * fitted under are the ones on the page */
-    var basis = JSON.stringify([pooled, held]);
-    body.push(el('div.btn-row', [
-      button(C.phrase('calibration_sets.page_fit'), function () {
-        derived.calibrationCandidate = { set: C.fitSet(pooled, localDate(), cfg), basis: basis };
-        render();
-      }, { title: C.phrase('calibration_sets.page_fit_help') }),
-    ]));
-    var fitted = derived.calibrationCandidate;
-    if (fitted && fitted.basis === basis) body.push(setReviewNode(fitted.set, held, cfg));
+    /* sets from other organisations, pooled, reviewed while the set in
+     * force they were pooled beside is the one in force */
+    body.push(el('h3', C.phrase('calibration_sets.page_pool')));
+    body.push(el('p.muted', C.phrase('calibration_sets.page_pool_help')));
+    body.push(field(C.phrase('calibration_sets.page_pool_load'),
+      button(C.phrase('calibration_sets.page_pool_button'), function () { poolSetFiles(cfg); },
+        { variant: 'ghost' })));
+    var pooledSet = derived.calibrationPooled;
+    if (pooledSet && pooledSet.basis === JSON.stringify(held)) {
+      body.push(setReviewNode(pooledSet.set, held, cfg, function () { derived.calibrationPooled = null; }));
+    }
     return card(C.phrase('calibration_sets.page_heading'), body.filter(Boolean));
   }
 
-  /* A fitted set's review beside the set in force, and where it fits
-   * anything, the name of whoever adopts it and the button that does. */
-  function setReviewNode(candidate, held, cfg) {
+  /* calibration.yaml files other organisations adopted, pooled into one set
+   * for review (PLAN.md step 5.5); a file that is not a set, or a set that
+   * cannot be pooled, is refused in a sentence naming its file. */
+  async function poolSetFiles(cfg) {
+    var list = await S.pickFile('.yaml,.yml', true);
+    if (!list || !list.length) return;
+    var raws = [], labels = [];
+    for (var i = 0; i < list.length; i++) {
+      labels.push(list[i].name);
+      try {
+        raws.push(S.parseYaml(await S.readFile(list[i], 'text')));
+      } catch (e) {
+        raws.push(null);
+      }
+    }
+    derived.calibrationPooled = null;
+    try {
+      derived.calibrationPooled = { set: C.poolSets(raws, localDate(), cfg, labels),
+        basis: JSON.stringify(C.inForce(cfg)) };
+    } catch (e) {
+      S.toast(/** @type {Error} */ (e).message, 'error');
+    }
+    render();
+  }
+
+  /* A fitted or pooled set's review beside the set in force, and where it
+   * fits anything, the name of whoever adopts it, their organisation (the
+   * one the reports are branded with, to start) and a contact, and the
+   * button that adopts it; done() drops the review once it is adopted. */
+  function setReviewNode(candidate, held, cfg, done) {
     var review = C.setReview(candidate, cfg);
     var adopter = S.textInput('', function () {},
       { 'aria-label': C.phrase('calibration_sets.page_adopter') });
+    var organisation = S.textInput(cfg.style.organisation || '', function () {},
+      { 'aria-label': C.phrase('calibration_sets.page_organisation') });
+    var contact = S.textInput('', function () {},
+      { 'aria-label': C.phrase('calibration_sets.page_contact') });
     return el('div.calibration-review', [
       el('h3', review.title),
       review.summary.map(function (text) { return el('p', text); }),
@@ -7525,17 +7575,22 @@
       }).flat(),
       review.adoptable ? field(C.phrase('calibration_sets.page_adopter'), adopter,
         C.phrase('calibration_sets.page_adopter_help')) : null,
+      review.adoptable ? field(C.phrase('calibration_sets.page_organisation'), organisation,
+        C.phrase('calibration_sets.page_organisation_help')) : null,
+      review.adoptable ? field(C.phrase('calibration_sets.page_contact'), contact,
+        C.phrase('calibration_sets.page_contact_help')) : null,
       review.adoptable ? el('div.btn-row', [
         button(C.phrase('calibration_sets.page_adopt'), function () {
           var adopted;
           try {
             adopted = C.adoptSet(candidate, /** @type {HTMLInputElement} */ (adopter).value,
-              localDate(), held);
+              localDate(), held, /** @type {HTMLInputElement} */ (organisation).value,
+              /** @type {HTMLInputElement} */ (contact).value);
           } catch (e) {
             S.toast(e.message, 'error');
             return;
           }
-          if (putSetInForce(adopted)) derived.calibrationCandidate = null;
+          if (putSetInForce(adopted)) done();
         }),
       ]) : null,
     ].flat().filter(Boolean));
