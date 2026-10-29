@@ -3083,6 +3083,134 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(valueJs.costs) === JSON.stringify(VM.surveys[0].values.map((v) => v.cost_usd)),
     JSON.stringify(valueJs.costs));
 
+  // Costing, siting and the value of a measurement: the cases an audit of
+  // the two engines found, each run from the spec make_reference.py wrote.
+  // The suitability fit on the water layer and not on what rounding a zone
+  // adds; the tie on the gap as printed, and equal weighted scores ranked by
+  // sounding id rather than by a last bit; two points at the same odds, and
+  // a reading whose factor is exactly the threshold, kept on the chances in
+  // both engines whatever the costs; the no water, no pay price on dry
+  // attempts; and the cost and programme tables rounded half to even.
+  // Numbers are held to 1e-9 (the even spread goes through exp and pow) and
+  // every word and table cell exactly.
+  const CS = R.costing_siting;
+  const csJs = await page.evaluate((CS) => {
+    const C = GWT.core;
+    const asDict = (v) => Object.assign({}, v, { summary: C.measurementSummary(v),
+      text: C.measurementText(v), basis: C.measurementBasis(v),
+      reading_rows: C.measurementReadingRows(v),
+      decision_header: C.measurementDecisionHeader(v),
+      decision_rows: C.measurementDecisionRows(v),
+      readings_caption: C.measurementReadingsCaption(v) });
+    const suitRows = (results) => results.map((r) => [r.sounding_id, r.suitability, r.grade,
+      r.confidence, r.rank, r.components.resistivity_fit, r.rationale]);
+    const layered = CS.specs.water_layer.map(([sid, rho, thick]) =>
+      C.interpretModel(null, C.layeredModel(rho, thick,
+        { fit_error_percent: 3.0, sounding_id: sid })));
+    const bare = CS.specs.last_bit.map(([sid, dtb, c]) => ({
+      sounding_id: sid, water_zones: [], layers: [], aquifer_thickness_m: 0.0,
+      depth_to_basement_m: dtb, confidence: c, site_easting: null, site_northing: null }));
+    const lastBit = C.assessSiting(bare);
+    const scored = (sid, s, c, rank) => ({ sounding_id: sid, suitability: s, grade: 'Good',
+      components: { aquifer_thickness: 1.0, resistivity_fit: 1.0, overburden: 1.0,
+        basal_fracture: 1.0 }, rationale: 'Driven by ' + sid + '.', rank: rank,
+      confidence: c });
+    const [completed, dry] = CS.specs.same_odds_costs[0];
+    return {
+      water_layer: {
+        zones: layered.map((i) => i.water_zones),
+        ranked: suitRows(C.assessSiting(layered)),
+      },
+      last_bit: { ranked: suitRows(lastBit), tie: C.rankingTie(lastBit),
+        preference: C.rankInterpretations(bare).map((i) => i.sounding_id) },
+      gaps: CS.specs.gaps.map(([[s1, c1], [s2, c2], within]) => {
+        const pair = [scored('VES-1', s1, c1, 1), scored('VES-2', s2, c2, 2)];
+        const points = pair.map((r, k) => ({ label: r.sounding_id, easting: 178000.0 + 50 * k,
+          northing: 1000000.0, value: C.pyRound(r.suitability * r.confidence, 1),
+          kind: 'Good', rank: r.rank }));
+        return { tied: C.tiedLeaders(pair, within) !== null,
+          tie: C.rankingTie(pair, within), verdict: C.suitabilityVerdict(pair, within),
+          map_tie: C.suitabilityMapState(points).tie };
+      }),
+      same_odds: CS.same_odds.map((s) => ({ odds: s.odds,
+        values: C.measurementValues(s.odds, [0, 1], completed, dry).map(asDict) })),
+      threshold: CS.specs.same_odds_costs.map(([c, d]) =>
+        C.measurementValues(CS.threshold_odds, [0, 1], c, d).map(asDict)),
+      alternatives: C.measurementValues(CS.tied_alternatives, [0, 1, 2], 5000.0, 2000.0)
+        .map(asDict),
+      estimates: CS.specs.estimates.map(([depth, km, vat]) => {
+        const e = C.estimateBoreholeCost(C.costingInputs({ total_depth_m: depth,
+          mobilisation_distance_km: km }), null, { vatPercent: vat });
+        return {
+          dry_attempt_direct_usd: e.dry_attempt_direct_usd,
+          dry_attempt_price_usd: e.dry_attempt_price_usd,
+          price_with_vat_usd: e.price_with_vat_usd,
+          per_successful: CS.specs.rates.map((r) => e.price_per_successful_well_usd(r)),
+          per_successful_whole: CS.specs.rates.map((r) =>
+            e.price_per_successful_well_usd(r, e.price_with_vat_usd)),
+          summary_rows: C.costSummaryRows(e),
+        };
+      }),
+      refused: (() => {
+        const e = C.estimateBoreholeCost(C.costingInputs({ total_depth_m: 60.0 }));
+        let n = 0;
+        [[80.0, -1.0], [80.0, NaN], [80.0, Infinity], [80.0, '5'], [0.0, null]].forEach(([r, f]) => {
+          try { e.price_per_successful_well_usd(r, f); } catch (err) { n += 1; }
+        });
+        return n;
+      })(),
+      programmes: CS.specs.programmes.map(([depth, km, wells, rate, vat]) => {
+        const p = C.estimateProgrammeCost(C.costingInputs({ total_depth_m: depth,
+          mobilisation_distance_km: km }), wells, { successRatePercent: rate, vatPercent: vat });
+        return { dry_attempt_cost_usd: p.dry_attempt_cost_usd,
+          transport_cost_usd: p.transport_cost_usd, summary_rows: C.programmeSummaryRows(p) };
+      }),
+    };
+  }, CS);
+  {
+    let d = oddsWithin(csJs.water_layer, CS.water_layer, 'water_layer');
+    check('siting: the resistivity fit reads the water layer, not the slices rounding a zone adds',
+      d === null, d);
+    d = oddsWithin(csJs.last_bit, CS.last_bit, 'last_bit');
+    check('siting: equal weighted scores a last bit apart are ranked by sounding id, ' +
+      'in the scorecard and the preference table', d === null, d);
+    CS.gaps.forEach((ref, i) => {
+      const [[s1, c1], [s2, c2], within] = CS.specs.gaps[i];
+      const g = oddsWithin(csJs.gaps[i], ref, `gaps[${i}]`);
+      check(`siting: ${s1} x ${c1} against ${s2} x ${c2} on a ${within}-point margin, ` +
+        'tied or not on the gap as printed, in the text, verdict and map', g === null, g);
+    });
+    CS.same_odds.forEach((ref, i) => {
+      const [code, glg, rho, err] = CS.specs.same_odds[i];
+      const g = oddsWithin(csJs.same_odds[i], ref, `same_odds[${i}]`);
+      check(`measurement: two points alike on ${code || 'no class'} / ${glg || 'no unit'} ` +
+        `at ${rho} ohm-m and ${err}% keep the first-ranked point, every figure and sentence`,
+        g === null, g);
+    });
+    CS.threshold.forEach((ref, i) => {
+      const g = oddsWithin(csJs.threshold[i], ref, `threshold[${i}]`);
+      check(`measurement: a reading at the threshold keeps the choice at costs ${
+        CS.specs.same_odds_costs[i].map((x) => Math.round(x)).join(' and ')}`, g === null, g);
+    });
+    d = oddsWithin(csJs.alternatives, CS.alternatives, 'alternatives');
+    check('measurement: alternatives at the same odds take the higher ranked', d === null, d);
+    CS.estimates.forEach((ref, i) => {
+      const [depth, km, vat] = CS.specs.estimates[i];
+      const g = oddsWithin(csJs.estimates[i], ref, `estimates[${i}]`, 1e-12);
+      check(`costing: ${depth} m, ${km} km, VAT ${vat}%: no water no pay on dry attempts, and ` +
+        'the summary rows half to even', g === null, g);
+    });
+    check('costing: a failure priced below 0, as no number or as text, and a success rate ' +
+      'of 0, are refused as Python refuses them', csJs.refused === CS.refused,
+      `js refused ${csJs.refused}, py ${CS.refused}`);
+    CS.programmes.forEach((ref, i) => {
+      const [depth, km, wells, rate, vat] = CS.specs.programmes[i];
+      const g = oddsWithin(csJs.programmes[i], ref, `programmes[${i}]`, 1e-12);
+      check(`costing: a programme of ${wells} at ${rate}% (${depth} m, ${km} km, VAT ${vat}%), ` +
+        'its summary rows half to even', g === null, g);
+    });
+  }
+
   // One way of reporting uncertainty (PLAN.md step 3.6). Both engines are
   // handed the same results - the drilling depth's quantiles, hand-built
   // pumping bands, the odds and cost sections' own dicts - and every decision

@@ -56,9 +56,13 @@ from dataclasses import dataclass, field, replace
 
 from ..config import Config
 from ..text import phrase, phrase_table
+from ..utils import fmt_usd
 from .model import (
+    _DRY_STAGES,
+    _JOURNEY,
     CostingInputs,
     RateItem,
+    _price,
     _quantity_table,
     default_casing_m,
     default_crew_days,
@@ -67,7 +71,7 @@ from .model import (
     estimate_borehole_cost,
     load_rates,
 )
-from .programme import _DRY_STAGES, estimate_programme_cost
+from .programme import estimate_programme_cost
 
 __all__ = [
     "CostDistribution",
@@ -110,9 +114,6 @@ _RATES, _DEPTH, _OUTCOME = 0, 1, 2
 
 #: The cumulative curve the figures draw: the cost at every percent.
 CURVE_STEPS = 100
-
-#: A dry attempt does not pay this basis: the rig has made the journey.
-_JOURNEY = "per_km_round_trip"
 
 
 def triangle_quantile(lo: float, mode: float, hi: float, u: float) -> float:
@@ -209,15 +210,6 @@ class _Quantities:
             hit = [table.get(b) for b in self.bases]
             self._cache[depth] = hit
         return hit
-
-
-def _price(direct: float, overheads: float, margin: float, vat: float) -> float:
-    """The contract price with any VAT on a direct cost, worked out in the
-    order CostEstimate works it out, so a borehole drawn at every likely rate
-    is priced to the bit as the bill of quantities prices it."""
-    total = direct + direct * overheads / 100.0
-    price = total + total * margin / 100.0
-    return price + price * vat / 100.0
 
 
 class _Rates:
@@ -573,8 +565,7 @@ def sample_programme_cost(
 
 # --------------------------------------------------------------------- prose
 
-def _usd(value: float) -> str:
-    return f"{value:,.0f}"
+_usd = fmt_usd
 
 
 def cost_range_text(d: CostDistribution) -> list[str]:

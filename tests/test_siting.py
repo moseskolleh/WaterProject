@@ -323,3 +323,80 @@ def test_map_points_are_brought_into_one_zone():
     eastings = [p.easting for p in points]
     assert max(eastings) - min(eastings) < 1000.0
     assert all(e > 550_000 for e in eastings)
+
+
+def test_the_resistivity_fit_reads_the_water_layer_not_what_rounding_adds():
+    """Two points with one 150 ohm-m water layer each. VES-A's (5.4 to
+    14.6 m) rounds out to the zone 5 to 15 m, which took in 0.4 m of the
+    1,500 ohm-m cover and 0.4 m of the 5,000 ohm-m basement: its zone read
+    189 ohm-m, its fit 0.713 against VES-B's 0.854, and the thicker water
+    layer ranked second. The fit is the water layer's, as the odds read it."""
+    from groundwater.models import LayeredModel
+    from groundwater.siting.odds import _water_zone_rho
+
+    def point(sid, top, bottom):
+        model = LayeredModel(resistivities=[1500.0, 150.0, 5000.0],
+                             thicknesses=[top, bottom - top], fit_error_percent=3.0,
+                             sounding_id=sid)
+        return interpret_model(None, model)
+
+    a, b = point("VES-A", 5.4, 14.6), point("VES-B", 5.6, 14.4)
+    assert a.water_zones == [(5, 15)] and b.water_zones == [(6, 14)]
+    assert _water_zone_rho(a) == _water_zone_rho(b) == 150.0
+    ranked = assess_siting([a, b])
+    assert [r.sounding_id for r in ranked] == ["VES-A", "VES-B"]
+    assert ranked[0].components.resistivity_fit == ranked[1].components.resistivity_fit
+    assert ranked[0].components.resistivity_fit == pytest.approx(0.854, abs=5e-4)
+    assert ranked[0].suitability == 75.4 and ranked[0].grade == "Very good"
+
+
+def test_a_gap_printed_at_the_margin_is_not_a_tie():
+    """64.1 less 61.1 is 2.999999999999993 in doubles: the pair was called
+    "ahead by 3.0 points, within the 3-point margin" while 80.0 against 77.0
+    was not, and a gap of 2.96 printed as 3.0 was called within it too. The
+    tie is decided on the gap to the tenth of a point it is printed to."""
+    from groundwater.mapping import MapPoint, suitability_map_state
+    from groundwater.siting import ranking_tie, tied_leaders
+
+    for top, second in ((64.1, 61.1), (80.0, 77.0), (64.06, 61.1), (82.96, 79.95)):
+        pair = [_scored("VES-1", top, rank=1), _scored("VES-2", second, rank=2)]
+        assert tied_leaders(pair) is None and ranking_tie(pair) == "", (top, second)
+    # 2.94 prints as 2.9, inside the margin
+    near = [_scored("VES-1", 64.04, rank=1), _scored("VES-2", 61.1, rank=2)]
+    assert "VES-1 is ahead by 2.9 points, within the 3-point margin" in ranking_tie(near)
+    # the margin is the project's: at 2.5, 64.1 and 61.6 are 2.5 apart, not tied
+    assert tied_leaders([_scored("A", 64.1, rank=1), _scored("B", 61.6, rank=2)],
+                        within_points=2.5) is None
+    # the map, left to decide the tie itself on its rounded values, agrees
+    points = [MapPoint(label=label, easting=178000.0 + 50 * k, northing=1000000.0,
+                       value=value, kind="Good", rank=k + 1)
+              for k, (label, value) in enumerate((("VES-1", 64.1), ("VES-2", 61.1)))]
+    assert suitability_map_state(points)["tie"] is False
+
+
+def test_equal_weighted_scores_are_ranked_by_sounding_id_not_by_a_last_bit():
+    """19.0 x 0.8 is 15.200000000000001 in doubles and 16.0 x 0.95 is 15.2:
+    the same weighted score, so the points are ranked by sounding id and the
+    tie sentence says the order is by name only. The last bit put VES 2
+    first and called it ahead by less than 0.1 points."""
+    from types import SimpleNamespace
+
+    from groundwater.siting import ranking_tie
+
+    def bare(sid, depth_to_basement, confidence):
+        # no water zone: the score is the overburden's alone
+        return SimpleNamespace(
+            sounding_id=sid, water_zones=[], layers=[], aquifer_thickness_m=0.0,
+            depth_to_basement_m=depth_to_basement, confidence=confidence,
+            site_easting=None, site_northing=None)
+
+    points = [bare("VES 2", 38.0, 0.8), bare("VES 1", 47.0, 0.95)]
+    ranked = assess_siting(points)
+    assert [(r.sounding_id, r.suitability, r.confidence) for r in ranked] == [
+        ("VES 1", 16.0, 0.95), ("VES 2", 19.0, 0.8)]
+    assert ranked[0].weighted != ranked[1].weighted  # a last bit apart
+    assert "VES 1 is listed first by name only" in ranking_tie(ranked)
+    # the preference table's ranking is the scorecard's
+    from groundwater.ves.interpret import rank_interpretations
+
+    assert [i.sounding_id for i in rank_interpretations(points)] == ["VES 1", "VES 2"]

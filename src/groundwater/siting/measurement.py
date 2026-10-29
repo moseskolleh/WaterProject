@@ -19,6 +19,8 @@ works that out as a preposterior analysis anyone can follow on paper:
    when p is above q: it costs dry x (q - p) / q more than going to the
    alternative, so the completed borehole's cost cancels from the value, and
    a reader can check it with the dry attempt and the two chances alone.
+   The choice is therefore taken on the two chances; equal chances (to one
+   part in 10^9, :data:`_SAME_CHANCE`) keep the first-ranked point.
 2. **What the measurement could read.** Each class of evidence in
    ``success_evidence.yaml`` has a band for each reading and a likelihood
    ratio for each band. A sounding reads the depth to basement and whether
@@ -38,7 +40,8 @@ works that out as a preposterior analysis anyone can follow on paper:
    reads each combination of bands is its share among working boreholes
    times p plus its share among dry ones times (1 - p), and the chance at
    the point after it follows by Bayes's rule. The decision is taken again
-   with that chance.
+   with that chance; a reading that leaves the point's chance equal to the
+   alternative's keeps the choice.
 4. **The value.** The expected value of the sample information (EVSI) is
    the cost of the best decision now less the expected cost of the best
    decision after the measurement: what is saved, on average, in the
@@ -56,6 +59,7 @@ import math
 from dataclasses import dataclass, field
 
 from ..text import phrase, phrase_table
+from ..utils import fmt_usd
 from ..ves.model_range import _share
 from .odds import SuccessOdds, odds_tables
 
@@ -87,6 +91,17 @@ KINDS = ("sounding", "profiling")
 #: however far it goes; a tilt this large already puts all but 1e-300 of the
 #: spread on the bands nearest a ratio of 1.
 _TILT = 1.0e4
+
+#: Two chances of a working borehole within this share of each other are
+#: the same chance. The choice is taken on the chances, not on the costs
+#: worked out from them: two points in the same bands have the same chance,
+#: but the two costs come out a last bit apart either way, and 6 of 100 such
+#: pairs sent the client to the second-ranked point "at 37 percent, against
+#: 37". A reading whose factor is exactly the threshold is the same: its
+#: chance after it is the alternative's, and it fell on the side the last
+#: bit of the even spread's exponentials put it, which differs between
+#: engines and moved with the cost inputs. A tie keeps the choice.
+_SAME_CHANCE = 1e-9
 
 
 @dataclass
@@ -201,6 +216,12 @@ def _alternative_usd(completed: float, dry: float, q: float) -> float:
     return completed + dry * ((1.0 - q) / q)
 
 
+def _better(a: float, b: float) -> bool:
+    """Whether the chance ``a`` is higher than ``b`` by more than
+    :data:`_SAME_CHANCE` of it: a tie is not better."""
+    return a - b > _SAME_CHANCE * b
+
+
 def _drill_here_usd(p: float, completed: float, dry: float, alternative: float) -> float:
     """Drilling at the point first: the completed borehole if it works, the
     dry attempt and then the alternative if it does not."""
@@ -217,7 +238,11 @@ def preposterior(p: float, q: float, completed_usd: float, dry_usd: float,
     Returns the fields of :class:`MeasurementValue` that are numbers worked
     out here. The value is summed reading by reading as what changing the
     decision saves where it is cheaper, so it is zero, not a rounding error
-    either side of it, where no reading changes the decision.
+    either side of it, where no reading changes the decision. Each choice,
+    before and after a reading, is taken on the chances, two within
+    :data:`_SAME_CHANCE` of each other counting as a tie, and a tie keeps
+    the choice: the first-ranked point before the measurement, and the
+    choice now after a reading.
     """
     if not (0.0 < p < 1.0 and 0.0 < q < 1.0):
         raise ValueError("the chances at the point and the alternative must be in (0, 1)")
@@ -225,8 +250,9 @@ def preposterior(p: float, q: float, completed_usd: float, dry_usd: float,
         raise ValueError("the completed borehole and the dry attempt must cost more than 0")
     move = _alternative_usd(completed_usd, dry_usd, q)
     here = _drill_here_usd(p, completed_usd, dry_usd, move)
-    # a tie keeps the first-ranked point
-    stay_here = here <= move
+    # drilling here costs dry x (q - p) / q more than moving, so the choice
+    # is the chances' alone; a tie keeps the first-ranked point
+    stay_here = not _better(q, p)
     now = here if stay_here else move
 
     # every combination of one band from each class, the first class
@@ -242,9 +268,12 @@ def preposterior(p: float, q: float, completed_usd: float, dry_usd: float,
         if chance <= 0.0:
             continue
         after = p * s / chance
-        cost_here = _drill_here_usd(after, completed_usd, dry_usd, move)
-        saving = cost_here - move if stay_here else move - cost_here
-        if saving > 0.0:
+        # the reading changes the choice where the chance after it is on the
+        # other side of the alternative's, and not where it ties with it
+        changes = _better(q, after) if stay_here else _better(after, q)
+        if changes:
+            cost_here = _drill_here_usd(after, completed_usd, dry_usd, move)
+            saving = cost_here - move if stay_here else move - cost_here
             value += chance * saving
             change[0] += chance
             change[1] += chance * after
@@ -373,7 +402,7 @@ def measurement_values(odds: list[SuccessOdds], ranking: list[int],
     first = odds[ranking[0]]
     alternative = None
     for i in ranking[1:]:
-        if alternative is None or odds[i].probability > alternative.probability:
+        if alternative is None or _better(odds[i].probability, alternative.probability):
             alternative = odds[i]
     return [measurement_value(first, alternative, completed_usd, dry_usd, kind)
             for kind in KINDS]
@@ -381,8 +410,7 @@ def measurement_values(odds: list[SuccessOdds], ranking: list[int],
 
 # -------------------------------------------------------------------- prose
 
-def _usd(value: float) -> str:
-    return f"{value:,.0f}"
+_usd = fmt_usd
 
 
 def _what(v: MeasurementValue) -> str:

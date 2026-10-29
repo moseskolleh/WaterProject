@@ -69,6 +69,19 @@ class SitingSuitability:
         return self.suitability * self.confidence
 
 
+def _exact(weighted: float) -> float:
+    """A weighted score, or a difference of two, to the 0.0001 it is exact to.
+
+    The score is held to 0.1 and the confidence to 0.001, so their product
+    is a multiple of 0.0001; in doubles it is not always the one nearest
+    it. 32.0 x 0.85 is 27.2 and 34.0 x 0.8 is 27.200000000000003, so the
+    second point outranked the first by a last bit, where equal scores are
+    ranked by sounding id. Compared at four places, equal products are
+    equal.
+    """
+    return round(weighted, 4)
+
+
 def _grade(score: float) -> str:
     if score >= 75:
         return "Very good"
@@ -83,24 +96,40 @@ def _thickness_score(interp: SiteInterpretation) -> float:
     return min(interp.aquifer_thickness_m / _THICKNESS_TARGET_M, 1.0)
 
 
-def _zone_geomean_rho(interp: SiteInterpretation) -> float | None:
-    """Thickness-weighted geometric mean resistivity across the water zones."""
+def _water_zone_rho(interp) -> float | None:
+    """The thickness-weighted geometric mean resistivity of the water-bearing
+    layers inside the water zones; None where there are none.
+
+    Only the water-bearing layers: the zones are rounded to whole metres, so
+    every layer inside a zone took in the slice of dry layer or basement the
+    rounding added. A 150 ohm-m layer from 5.4 to 14.6 m has the zone 5 to
+    15 m, and 0.4 m each of 1,500 ohm-m above it and 5,000 ohm-m below put
+    its mean at 189 ohm-m, so it scored 0.713 for the fit where the same
+    layer from 5.6 to 14.4 m scored 0.854, and the thicker water layer
+    ranked second. The odds read the water-zone resistivity through this
+    too. The logarithms are taken relative to the first such layer's
+    resistivity, so a zone of one resistivity reads exactly that and not a
+    rounding error either side of an edge (exp(ln 50) is 49.999...).
+    """
+    reference = 0.0
     acc = 0.0
     total = 0.0
     for top, bottom in interp.water_zones:
         for layer in interp.layers:
+            if not layer.water_bearing:
+                continue
             lo = max(layer.top_m, top)
-            hi = min(
-                layer.bottom_m if math.isfinite(layer.bottom_m) else bottom, bottom
-            )
+            hi = min(layer.bottom_m if math.isfinite(layer.bottom_m) else bottom, bottom)
             if hi > lo:
-                acc += math.log(layer.rho) * (hi - lo)
+                if total == 0.0:
+                    reference = layer.rho
+                acc += math.log(layer.rho / reference) * (hi - lo)
                 total += hi - lo
-    return math.exp(acc / total) if total > 0 else None
+    return reference * math.exp(acc / total) if total > 0 else None
 
 
 def _resistivity_fit_score(interp: SiteInterpretation, config: VESConfig) -> float:
-    mid = _zone_geomean_rho(interp)
+    mid = _water_zone_rho(interp)
     if mid is None:
         return 0.0
     lo, hi = config.fractured_zone_rho
@@ -188,17 +217,28 @@ def tied_leaders(
     One test for every place that has to know: the tie sentence, the
     preference table's "=1st" and the summary, conclusions and
     recommendations, which otherwise named a single winner in the same
-    document that called the two indistinguishable. Decided on the
-    confidence-weighted scores as they are, not as printed. ``None`` when
+    document that called the two indistinguishable. Decided on the gap
+    between the confidence-weighted scores, to the tenth of a point the tie
+    sentence prints it to: 64.1 less 61.1 is 2.999999999999993 in doubles,
+    and a gap of 2.96 prints as 3.0, so both were called "ahead by 3.0
+    points, within the 3-point margin" while 80.0 against 77.0 was not.
+    Rounded so, a gap the sentence would print at the margin or above is
+    not a tie, and gaps that print alike are treated alike. ``None`` when
     the ranking is clear or there is one point.
     """
     ranked = sorted(results, key=lambda r: r.rank if r.rank is not None else 99)
     if len(ranked) < 2:
         return None
     first, second = ranked[0], ranked[1]
-    if abs(first.weighted - second.weighted) >= within_points:
+    if round(abs(_gap(first, second)), 1) >= within_points:
         return None
     return first, second
+
+
+def _gap(first: SitingSuitability, second: SitingSuitability) -> float:
+    """How far the first point's weighted score is ahead of the second's,
+    to the 0.0001 it is exact to (:func:`_exact`)."""
+    return _exact(first.weighted - second.weighted)
 
 
 def ranking_tie(results: list[SitingSuitability], within_points: float = 3.0) -> str:
@@ -215,7 +255,7 @@ def ranking_tie(results: list[SitingSuitability], within_points: float = 3.0) ->
     first, second = pair
     # "by name only" is true only of equal scores; said of 82.3 against 79.5
     # it told the client the order was alphabetical when it was not
-    gap = first.weighted - second.weighted
+    gap = _gap(first, second)
     if gap == 0:
         order = f"{first.sounding_id} is listed first by name only"
     else:
@@ -292,9 +332,10 @@ def assess_siting(
                 index=index,
             )
         )
-    # rank on the confidence-weighted score, highest first; ties broken by
-    # sounding id for stability, and said in words by ranking_tie()
-    ranked = sorted(results, key=lambda r: (-r.weighted, r.sounding_id))
+    # rank on the confidence-weighted score, highest first, compared to the
+    # 0.0001 it is exact to; equal scores are ranked by sounding id, and a
+    # tie is said in words by ranking_tie()
+    ranked = sorted(results, key=lambda r: (-_exact(r.weighted), r.sounding_id))
     for rank, result in enumerate(ranked, start=1):
         result.rank = rank
     return ranked

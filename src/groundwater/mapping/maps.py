@@ -506,9 +506,11 @@ def _suitability_ranking(
     if ranking is None:
         ranking = [p.label for p in ranked]
     if tie is None:
+        # the gap to the tenth of a point, as tied_leaders takes it: 64.1
+        # less 61.1 is 2.999999999999993 in doubles, not under 3
         tie = (
             len(ranked) >= 2 and ranked[0].rank == 1 and ranked[1].rank == 2
-            and abs(float(ranked[0].value) - float(ranked[1].value))
+            and round(abs(float(ranked[0].value) - float(ranked[1].value)), 1)
             < VESConfig().ranking_tie_points
         )
     leaders = list(ranking[: 2 if tie else 1])

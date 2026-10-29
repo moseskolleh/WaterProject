@@ -1379,6 +1379,195 @@ def measurement_reference(odds: dict, cost_range: dict) -> dict:
     }
 
 
+# ------------------------- costing, siting and the value of a measurement
+#
+# What an audit of the two engines' costing, siting and decision arithmetic
+# found, each held here on the input that showed it. A water zone rounded to
+# whole metres took in a slice of the dry cover and the basement, and the
+# suitability fit was scored on them. A gap of 2.999999999999993 between two
+# weighted scores, and one of 2.96 printed as 3.0, were called within the
+# 3-point margin. Equal weighted scores a last bit apart were ranked by the
+# last bit, not by sounding id. Two points at the same odds, and a reading
+# whose factor is exactly the threshold, were decided by costs a last bit
+# apart, the second differently in each engine. A no water, no pay price
+# charged every expected failure a whole completed borehole. And the
+# browser's cost and programme summary tables rounded a half up where Python
+# rounds it to even. Every input is a spec the browser runs through its own
+# engine.
+
+#: two points on one 150 ohm-m water layer, the first thicker, as layered
+#: models both engines interpret
+SITING_WATER_LAYER = [["VES-A", [1500.0, 150.0, 5000.0], [5.4, 14.6 - 5.4]],
+                      ["VES-B", [1500.0, 150.0, 5000.0], [5.6, 14.4 - 5.6]]]
+
+#: points with no water zone, scored on their overburden alone, and their
+#: confidences: 19.0 x 0.8 and 16.0 x 0.95 are 15.2 a last bit apart
+SITING_LAST_BIT = [["VES 2", 38.0, 0.8], ["VES 1", 47.0, 0.95], ["VES 3", None, 1.0]]
+
+#: [first, second] weighted scores (suitability, confidence) and the margin
+SITING_GAPS = [[[64.1, 1.0], [61.1, 1.0], 3.0], [[80.0, 1.0], [77.0, 1.0], 3.0],
+               [[64.06, 1.0], [61.1, 1.0], 3.0], [[64.04, 1.0], [61.1, 1.0], 3.0],
+               [[64.1, 1.0], [61.6, 1.0], 2.5], [[19.0, 0.8], [16.0, 0.95], 3.0],
+               [[82.3, 1.0], [79.5, 1.0], 3.0], [[70.0, 0.9], [66.1, 1.0], 3.0]]
+
+#: identical points on the ground and at the water-zone resistivity and fit
+#: that sent the client to the second-ranked one, and two that did not
+SAME_ODDS = [["B-L", "pCm", 500, 3.0], ["I-L", "Pi", 500, 3.0], ["CSF-L/M", "pCm", 500, 3.0],
+             ["CSF-L/M", "pCm", 1500, 25.0], ["U-M/H", "Qe", 120, 15.0],
+             ["U-M/H", "Qe", 1500, 7.0], ["B-L", "pCm", 30, 3.0], [None, None, 120, 3.0]]
+
+#: the cost distribution's mean completed borehole and mean dry attempt for
+#: a 60 m borehole 50 km out, 60 m on site and 45 m 20 km out
+SAME_ODDS_COSTS = [[9060.953887811545, 4288.96670020555],
+                   [8658.491187606725, 4288.96670020555],
+                   [7891.717914862075, 3630.7302310008904]]
+
+#: single boreholes: depth, one-way distance, VAT; 11 and 13 m have a
+#: direct cost on a half
+NWNP_ESTIMATES = [[60.0, 0.0, 0.0], [60.0, 40.0, 15.0], [11.0, 0.0, 0.0], [13.0, 0.0, 15.0],
+                  [85.0, 120.0, 0.0]]
+NWNP_RATES = [100.0, 80.0, 50.0, 35.0, 12.5]
+
+#: programmes: depth, one-way distance, wells, success rate, VAT. Transport
+#: at 2.50 USD a km lands on a half for half of all attempt counts
+PROGRAMME_ROWS = [[60.0, 40.0, 2, 60.0, 0.0], [60.0, 40.0, 21, 35.0, 0.0],
+                  [60.0, 40.0, 5, 60.0, 15.0], [11.0, 40.0, 2, 100.0, 0.0],
+                  [13.0, 40.0, 5, 35.0, 15.0], [85.0, 40.0, 21, 60.0, 0.0]]
+
+
+def _same_ground(sid, rho, err):
+    def layer(top, bottom, r, wet):
+        return SimpleNamespace(top_m=top, bottom_m=bottom, rho=r, water_bearing=wet)
+
+    return SimpleNamespace(
+        sounding_id=sid, water_zones=[(8.0, 30.0)], fit_error_percent=err,
+        layers=[layer(0, 8, 400, False), layer(8, 30, rho, True),
+                layer(30, float("inf"), 3000, False)])
+
+
+def _scored_point(sid, suitability, confidence, rank):
+    from groundwater.siting import SitingSuitability, SuitabilityComponents
+
+    return SitingSuitability(
+        sounding_id=sid, suitability=suitability, grade="Good",
+        components=SuitabilityComponents(1.0, 1.0, 1.0, 1.0),
+        rationale=f"Driven by {sid}.", rank=rank, confidence=confidence)
+
+
+def _suit_rows(results) -> list:
+    return [[r.sounding_id, clean(r.suitability), r.grade, clean(r.confidence), r.rank,
+             clean(r.components.resistivity_fit), r.rationale] for r in results]
+
+
+def costing_siting_reference() -> dict:
+    from groundwater.costing import estimate_borehole_cost, estimate_programme_cost
+    from groundwater.mapping import MapPoint, suitability_map_state
+    from groundwater.siting import tied_leaders
+    from groundwater.siting.measurement import measurement_values
+    from groundwater.siting.odds import success_odds
+    from groundwater.ves.interpret import rank_interpretations
+
+    layered = []
+    for sid, rho, thick in SITING_WATER_LAYER:
+        model = LayeredModel(resistivities=rho, thicknesses=thick, fit_error_percent=3.0,
+                             sounding_id=sid)
+        layered.append(interpret_model(None, model))
+    water_layer = {"zones": [[[clean(t), clean(b)] for t, b in i.water_zones] for i in layered],
+                   "ranked": _suit_rows(assess_siting(layered))}
+
+    bare = [SimpleNamespace(sounding_id=sid, water_zones=[], layers=[], aquifer_thickness_m=0.0,
+                            depth_to_basement_m=dtb, confidence=c, site_easting=None,
+                            site_northing=None)
+            for sid, dtb, c in SITING_LAST_BIT]
+    ranked = assess_siting(bare)
+    last_bit = {"ranked": _suit_rows(ranked), "tie": ranking_tie(ranked),
+                "preference": [i.sounding_id for i in rank_interpretations(bare)]}
+
+    gaps = []
+    for (s1, c1), (s2, c2), within in SITING_GAPS:
+        pair = [_scored_point("VES-1", s1, c1, 1), _scored_point("VES-2", s2, c2, 2)]
+        points = [MapPoint(label=r.sounding_id, easting=178000.0 + 50 * k, northing=1000000.0,
+                           value=round(r.weighted, 1), kind="Good", rank=r.rank)
+                  for k, r in enumerate(pair)]
+        gaps.append({"tied": tied_leaders(pair, within) is not None,
+                     "tie": ranking_tie(pair, within),
+                     "verdict": suitability_verdict(pair, within),
+                     "map_tie": suitability_map_state(points)["tie"]})
+
+    def odds_pair(code, glg, rho, err):
+        return [_odds_dict(success_odds(_same_ground(sid, rho, err), None, code, glg))
+                for sid in ("VES-1", "VES-2")]
+
+    same_odds = []
+    for code, glg, rho, err in SAME_ODDS:
+        pair = odds_pair(code, glg, rho, err)
+        completed, dry = SAME_ODDS_COSTS[0]
+        values = measurement_values([_odds_object(o) for o in pair], [0, 1], completed, dry)
+        same_odds.append({"odds": pair, "values": [_measurement_dict(v) for v in values]})
+
+    ranges = [_odds_range((20.0, 20.0, 20.0), 0.0), _odds_range((3.0, 3.0, 3.0), 0.5)]
+    threshold_odds = [_odds_dict(success_odds(_same_ground(sid, rho, 3.0), r, "B-L", "pCm"))
+                      for sid, rho, r in (("VES-1", 10, ranges[0]), ("VES-2", 30, ranges[1]))]
+    threshold = [[_measurement_dict(v) for v in measurement_values(
+        [_odds_object(o) for o in threshold_odds], [0, 1], completed, dry)]
+        for completed, dry in SAME_ODDS_COSTS]
+
+    def point(p, sid):
+        return {"probability": p, "prior": 0.5, "sounding_id": sid, "range_sampled": False,
+                "evidence": [{"key": "fit", "weight": 1.0}]}
+
+    tied_alternatives = [point(0.6, "A"), point(0.4, "B"), point(math.nextafter(0.4, 1.0), "C")]
+    alternatives = [_measurement_dict(v) for v in measurement_values(
+        [_odds_object(o) for o in tied_alternatives], [0, 1, 2], 5000.0, 2000.0)]
+
+    estimates = []
+    for depth, km, vat in NWNP_ESTIMATES:
+        e = estimate_borehole_cost(CostingInputs(total_depth_m=depth,
+                                                 mobilisation_distance_km=km),
+                                   vat_percent=vat)
+        estimates.append({
+            "dry_attempt_direct_usd": e.dry_attempt_direct_usd,
+            "dry_attempt_price_usd": e.dry_attempt_price_usd,
+            "price_with_vat_usd": e.price_with_vat_usd,
+            "per_successful": [e.price_per_successful_well_usd(r) for r in NWNP_RATES],
+            "per_successful_whole": [e.price_per_successful_well_usd(r, e.price_with_vat_usd)
+                                     for r in NWNP_RATES],
+            "summary_rows": clean(e.summary_rows()),
+        })
+
+    # a failure priced below 0, as no number or as text is refused, as is a
+    # success rate of 0
+    e = estimate_borehole_cost(CostingInputs(total_depth_m=60.0))
+    refused = 0
+    for rate, failed in ((80.0, -1.0), (80.0, float("nan")), (80.0, float("inf")),
+                         (80.0, "5"), (0.0, None)):
+        try:
+            e.price_per_successful_well_usd(rate, failed)
+        except (TypeError, ValueError):
+            refused += 1
+
+    programmes = []
+    for depth, km, wells, rate, vat in PROGRAMME_ROWS:
+        p = estimate_programme_cost(CostingInputs(total_depth_m=depth,
+                                                  mobilisation_distance_km=km),
+                                    wells, success_rate_percent=rate, vat_percent=vat)
+        programmes.append({"dry_attempt_cost_usd": p.dry_attempt_cost_usd,
+                           "transport_cost_usd": p.transport_cost_usd,
+                           "summary_rows": clean(p.summary_rows())})
+
+    return {
+        "specs": {"water_layer": SITING_WATER_LAYER, "last_bit": SITING_LAST_BIT,
+                  "gaps": SITING_GAPS, "same_odds": SAME_ODDS,
+                  "same_odds_costs": SAME_ODDS_COSTS,
+                  "estimates": NWNP_ESTIMATES, "rates": NWNP_RATES,
+                  "programmes": PROGRAMME_ROWS},
+        "water_layer": water_layer, "last_bit": last_bit, "gaps": gaps,
+        "same_odds": same_odds, "threshold_odds": threshold_odds, "threshold": threshold,
+        "tied_alternatives": tied_alternatives, "alternatives": alternatives,
+        "estimates": estimates, "refused": refused, "programmes": programmes,
+    }
+
+
 # --------------------------------------- one way of reporting uncertainty (3.6)
 #
 # Every decision number is built from results the other sections already
@@ -1908,6 +2097,7 @@ def build() -> dict:
                      r["basement_unresolved"]) for r in out["ves_range"]["short"]])
     out["cost_range"] = cost_range_reference(out["ves_range"]["short"])
     out["measurement"] = measurement_reference(out["odds"], out["cost_range"])
+    out["costing_siting"] = costing_siting_reference()
     out["decisions"] = decisions_reference(out["odds"], out["cost_range"])
     out["ledger"] = ledger_reference(rokel_interps, [sd.site for sd in soundings],
                                      out["ves_range"]["short"],
@@ -5831,10 +6021,10 @@ SURVEY_CASES = {
         ("VES 1", None, None, None, [320, 150, 4200], [2.5, 6]),
         ("VES 2", None, None, None, [320, 60, 4200], [2.5, 20]),
     ],
-    # 75.3 against 71.5: a tie on a five-point margin, not on three
+    # 75.3 against 71.1: a tie on a five-point margin, not on three
     "margin": [
         ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
-        ("VES 2", _E + 80, _N + 40, 72.0, [320, 60, 4200], [2.5, 11]),
+        ("VES 2", _E + 80, _N + 40, 72.0, [320, 60, 4200], [2.5, 12.5]),
     ],
     # 75.3 and 75.3, with a third point elsewhere
     "tie": [
