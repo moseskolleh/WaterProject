@@ -19,6 +19,225 @@ const PAGES = ['overview', 'guided', 'site', 'ves', 'vescopilot', 'design', 'dri
   'templates', 'extract',
   'waterpoints', 'coverage', 'portfolio', 'registry', 'settings', 'about'];
 
+/* Keyboard walkthroughs (PLAN.md step 9.4): the app driven by the keys
+ * alone, on a page freshly loaded with an empty project so that the first
+ * Tab starts from the top of the document. tests/webapp/a11y.mjs runs
+ * axe-core over the same pages. */
+async function keyboardWalkthroughs(page) {
+  const focused = () => page.evaluate(() => {
+    const a = document.activeElement;
+    return {
+      id: a.id, skip: a.classList.contains('skip-link'),
+      text: a.textContent.trim(), label: a.getAttribute('aria-label') || '',
+      nav: !!a.closest('#app-nav'), dialog: !!a.closest('[role="dialog"]'),
+      top: !!a.closest('#top-actions'), shown: a.getBoundingClientRect().width > 8,
+    };
+  });
+  const where = () => page.evaluate(() => ({
+    hash: location.hash, nav: window.GWT.app.store.get('nav'),
+    current: (document.querySelector('#app-nav [aria-current="page"]') || {}).textContent || '',
+  }));
+  await page.evaluate(() => window.GWT.app.goto('site'));
+  await page.reload({ waitUntil: 'load' });
+  /* Site & maps is drawn twice, the second time when its maps have loaded */
+  await page.waitForFunction(() => window.GWT && window.GWT.app &&
+    document.querySelector('#page-host .page-head') &&
+    !document.querySelector('#page-host').textContent.includes('Loading the maps and figures'));
+
+  // Toasts are announced from two live regions that are in the page before
+  // the first toast is: an error interrupts, anything else waits its turn.
+  const regions = await page.evaluate(() => {
+    const host = document.querySelector('.toast-host');
+    const polite = host && host.querySelector('[role="status"][aria-live="polite"]');
+    const alert = host && host.querySelector('[role="alert"][aria-live="assertive"]');
+    const before = { polite: !!polite, alert: !!alert, empty: !document.querySelector('.toast') };
+    const S = window.GWT.support;
+    const ok = S.toast('Saved.', 'ok'), bad = S.toast('Could not read it.', 'error');
+    const out = { before, ok: !!polite && polite.contains(ok), error: !!alert && alert.contains(bad),
+      atomic: [polite, alert].map((r) => r && r.getAttribute('aria-atomic')) };
+    ok.remove(); bad.remove();
+    return out;
+  });
+  check('keyboard: toasts land in live regions that were there first, an error in the alert one',
+    regions.before.polite && regions.before.alert && regions.before.empty && regions.ok &&
+    regions.error && regions.atomic.join() === 'false,false', JSON.stringify(regions));
+
+  // From the top: Tab reaches the skip link, shown when focused; then the
+  // top bar's three buttons and every navigation item, in the order the
+  // navigation lists them.
+  await page.keyboard.press('Tab');
+  const skip = await focused();
+  const items = await page.evaluate(() => Array.from(document.querySelectorAll('#app-nav .nav-item'))
+    .map((b) => b.textContent.trim()));
+  const walked = [];
+  for (let i = 0; i < 3 + items.length; i += 1) {
+    await page.keyboard.press('Tab');
+    walked.push(await focused());
+  }
+  check('keyboard: Tab goes from the skip link through the top bar and every navigation item in order',
+    skip.skip && skip.shown && items.length === PAGES.length &&
+    JSON.stringify(walked.slice(0, 2).map((f) => f.text)) === '["Save project","Open project"]' &&
+    JSON.stringify(walked.slice(3).map((f) => f.text)) === JSON.stringify(items) &&
+    walked.slice(3).every((f) => f.nav), JSON.stringify({ skip, walked: walked.map((f) => f.text) }));
+
+  // The navigation is drawn again with every page; the keyboard on one of
+  // its items stays on that item, where it used to be dropped mid-Tab.
+  await page.evaluate(() => window.GWT.app.render());
+  const kept = await focused();
+  check('keyboard: the navigation drawn again keeps the keyboard on its item',
+    kept.nav && kept.text === 'About & method', JSON.stringify(kept));
+
+  // Enter on a navigation item opens its page and puts the keyboard on it.
+  await page.keyboard.press('Enter');
+  const opened = { at: await where(), focus: await focused() };
+  check('keyboard: Enter on a navigation item opens its page, marks it current and focuses the page',
+    opened.at.hash === '#/about' && opened.at.nav === 'about' && opened.at.current === 'About & method' &&
+    opened.focus.id === 'main', JSON.stringify(opened));
+
+  // Shift+Tab walks back to the skip link, and Enter on it moves the
+  // keyboard to the page without leaving it: the link names #main, which
+  // the router used to read as an unknown address and answer with the
+  // Overview.
+  let back = 0;
+  for (; back < 40 && !(await focused()).skip; back += 1) await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  const skipped = { back, at: await where(), focus: await focused() };
+  check('keyboard: the skip link puts the keyboard on the page and leaves the page and address alone',
+    back === 3 + items.length + 1 && skipped.focus.id === 'main' && skipped.at.hash === '#/about' &&
+    skipped.at.nav === 'about', JSON.stringify(skipped));
+
+  // The theme button, pressed three times with Enter, goes round the three
+  // themes and keeps the keyboard; its name says which theme is on.
+  await page.focus('#top-actions button[title="Switch theme"]');
+  const themes = [];
+  for (let i = 0; i < 3; i += 1) {
+    await page.keyboard.press('Enter');
+    themes.push({ theme: await page.evaluate(() => window.GWT.app.store.get('theme')), focus: await focused() });
+  }
+  check('keyboard: the theme button goes round the themes, says which is on and keeps the keyboard',
+    JSON.stringify(themes.map((t) => t.theme)) === '["auto","light","dark"]' &&
+    JSON.stringify(themes.map((t) => t.focus.label)) === JSON.stringify(['Switch theme, now as the device is set',
+      'Switch theme, now light', 'Switch theme, now dark']) && themes.every((t) => t.focus.top),
+    JSON.stringify(themes));
+
+  // A dialog: Enter on "Reset everything" opens it as a dialog named by its
+  // title, with the keyboard on its close button; Tab and Shift+Tab go round
+  // inside it; a dialog opened over it takes the keyboard, and Escape closes
+  // that one alone; Escape again closes the first and the keyboard is back
+  // on the button that opened it, with nothing reset.
+  await page.evaluate(() => window.GWT.app.store.set('site.community', 'Kychom'));
+  await page.evaluate(() => window.GWT.app.goto('settings'));
+  await page.evaluate(() => Array.from(document.querySelectorAll('#page-host button'))
+    .find((b) => b.textContent === 'Reset everything').focus());
+  await page.keyboard.press('Enter');
+  const dialog = await page.evaluate(() => {
+    const box = document.querySelector('.modal-overlay .modal');
+    if (!box) return null;
+    const title = document.getElementById(box.getAttribute('aria-labelledby') || '');
+    return { role: box.getAttribute('role'), modal: box.getAttribute('aria-modal'),
+      title: title ? title.textContent : null };
+  });
+  const first = await focused();
+  const round = [];
+  for (let i = 0; i < 4; i += 1) {
+    await page.keyboard.press('Tab');
+    round.push(await focused());
+  }
+  await page.keyboard.press('Shift+Tab');
+  const backRound = await focused();
+  check('keyboard: a dialog is a dialog named by its title, takes the keyboard, and Tab and Shift+Tab ' +
+    'stay inside it',
+    !!dialog && dialog.role === 'dialog' && dialog.modal === 'true' && dialog.title === 'Reset the workspace?' &&
+    first.dialog && first.label === 'Close' && first.text === '×' &&
+    JSON.stringify(round.map((f) => f.text)) === '["Reset","Close","×","Reset"]' &&
+    round.every((f) => f.dialog) && backRound.text === '×' && backRound.dialog,
+    JSON.stringify({ dialog, first, round, backRound }));
+
+  await page.evaluate(() => {
+    const S = window.GWT.support;
+    S.modal('Second', S.el('p', 'Over the first.'));
+  });
+  const second = await focused();
+  await page.keyboard.press('Escape');
+  const afterOne = { open: await page.evaluate(() => document.querySelectorAll('.modal-overlay').length),
+    focus: await focused() };
+  await page.keyboard.press('Escape');
+  const afterTwo = { open: await page.evaluate(() => document.querySelectorAll('.modal-overlay').length),
+    focus: await focused(), community: await page.evaluate(() => window.GWT.app.store.get('site.community')) };
+  check('keyboard: Escape closes the top dialog alone, then the first, and the keyboard goes back to ' +
+    'what opened each, with nothing done',
+    second.dialog && afterOne.open === 1 && afterOne.focus.dialog && afterOne.focus.text === '×' &&
+    afterTwo.open === 0 && afterTwo.focus.text === 'Reset everything' && afterTwo.community === 'Kychom',
+    JSON.stringify({ second, afterOne, afterTwo }));
+
+  // Confirming it: the dialog closes itself, the keyboard goes to the page
+  // (the button that opened it has been drawn again), and the toast is in
+  // the polite region.
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !document.querySelector('.modal-overlay') &&
+    window.GWT.app.store.get('site.community') === '');
+  const confirmed = await page.evaluate(() => ({
+    focus: document.activeElement.id,
+    toast: Array.from(document.querySelectorAll('.toast-host [role="status"] .toast'))
+      .map((t) => t.textContent),
+  }));
+  check('keyboard: confirming the dialog closes it and puts the keyboard on the page',
+    confirmed.focus === 'main' && confirmed.toast.includes('Workspace reset.'), JSON.stringify(confirmed));
+
+  // The navigation drawer on a phone: the toggle says whether it is open,
+  // opening it puts the keyboard on the page it shows, Escape closes it and
+  // goes back to the toggle, choosing a page closes it, and the keyboard
+  // leaving it for the page it covers closes it too.
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.evaluate(() => window.GWT.app.goto('quality'));
+  /* the drawer's visibility follows its slide, 0.22 s */
+  await page.waitForTimeout(300);
+  const drawer = () => page.evaluate(() => ({
+    expanded: document.querySelector('#nav-toggle').getAttribute('aria-expanded'),
+    controls: document.querySelector('#nav-toggle').getAttribute('aria-controls'),
+    visible: getComputedStyle(document.querySelector('#app-nav')).visibility === 'visible',
+  }));
+  await page.focus('#nav-toggle');
+  const shut = await drawer();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const open = { state: await drawer(), focus: await focused() };
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  const escaped = { state: await drawer(), focus: await focused() };
+  check('keyboard: the drawer toggle says whether it is open; opening puts the keyboard on the current ' +
+    'page, Escape closes it and returns to the toggle',
+    shut.expanded === 'false' && shut.controls === 'app-nav' && !shut.visible &&
+    open.state.expanded === 'true' && open.state.visible && open.focus.nav && open.focus.text === 'Water quality' &&
+    escaped.state.expanded === 'false' && !escaped.state.visible && escaped.focus.id === 'nav-toggle',
+    JSON.stringify({ shut, open, escaped }));
+
+  // Shift+Tab from Water quality is the Pumping co-pilot, the item above it.
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const chosen = { state: await drawer(), at: await where(), focus: await focused() };
+  await page.focus('#nav-toggle');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const above = items.indexOf('Pumping co-pilot');
+  for (let i = 0; i <= above; i += 1) await page.keyboard.press('Shift+Tab');
+  await page.waitForTimeout(300);
+  const left = { state: await drawer(), focus: await focused() };
+  check('keyboard: choosing a page from the drawer closes it and focuses the page; the keyboard leaving ' +
+    'the drawer for the top bar closes it',
+    chosen.state.expanded === 'false' && !chosen.state.visible && chosen.at.nav === 'pumpcopilot' &&
+    chosen.focus.id === 'main' && above > 0 &&
+    left.state.expanded === 'false' && !left.state.visible && !left.focus.nav && left.focus.top,
+    JSON.stringify({ chosen, left }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => window.GWT.app.goto('overview'));
+}
+
 await withPage(async (page, base, consoleErrors) => {
   const downloads = [];
   page.on('download', (d) => downloads.push(d.suggestedFilename()));
@@ -26,6 +245,8 @@ await withPage(async (page, base, consoleErrors) => {
   await page.goto(base + '/index.html', { waitUntil: 'load' });
   await page.waitForFunction(() => window.GWT && window.GWT.app);
   check('app boots', true);
+
+  await keyboardWalkthroughs(page);
 
   // Long Tasks from here on. The inversion and the pumping analysis run in
   // the engine worker, and the checks below hold the page's own thread to it:

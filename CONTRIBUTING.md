@@ -12,7 +12,7 @@ same sessions step by step, so `nox -s check` passing here means CI passes:
 
 ```bash
 python -m pip install -e '.[dev,app,extract]'
-npm install --no-save playwright@1.56.1
+npm install --no-save playwright@1.56.1 axe-core@4.10.3
 npx playwright install chromium
 nox -s check      # lint, types, tests, bundles, parity, fuzz, browser, depth_spine, js
 nox -s build      # regenerate every generated file, in order
@@ -23,7 +23,13 @@ nox -s release    # wheel, sdist and example packs in dist/
 The sessions run in the current environment rather than in virtualenvs of
 their own: the install above is what they test, the matrix in CI installs
 the same way on each Python version, and the browser suites need
-Playwright from `node_modules` beside the checkout. `check` also needs npm,
+Playwright from `node_modules` beside the checkout. axe-core, the
+accessibility checker `tests/webapp/a11y.mjs` puts into every page, is
+installed beside it, in the same command: a second `npm install --no-save`
+removes what the first put there. Both are test tools, never shipped; the
+browser session refuses any axe-core but the version CI pins
+(`AXE_CORE_VERSION` in `.github/workflows/ci.yml`), since a newer one knows
+more rules. `check` also needs npm,
 for the Depth Spine: it runs `npm ci`, the TypeScript check, `oxlint` and
 both Vite builds in `ui/depth-spine`, then fails if the result differs
 from what is committed under `src/groundwater/depth_spine/`. Those
@@ -64,6 +70,7 @@ node tests/webapp/review.mjs
 node tests/webapp/smoke.mjs
 node tests/webapp/copilot.mjs
 node tests/webapp/fieldkit.mjs
+node tests/webapp/a11y.mjs    # axe-core on every page; fails on serious or critical
 # check: depth_spine
 (cd ui/depth-spine && npm ci && npx tsc -b && npm run lint && npm run build:all)
 git diff --exit-code -- src/groundwater/depth_spine/frontend \

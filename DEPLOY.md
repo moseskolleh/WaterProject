@@ -88,17 +88,20 @@ the PNG sizes the manifest names.
 ### Checking it before you publish
 
 ```bash
-npm install --no-save playwright@1.56.1 && npx playwright install chromium
+npm install --no-save playwright@1.56.1 axe-core@4.10.3 && npx playwright install chromium
 python tests/webapp/make_reference.py --check    # the reference values are current
 node tests/webapp/parity.mjs                     # browser engine vs the package
 node tests/webapp/offline.mjs                    # the app, and the Depth Spine, with no network
 node tests/webapp/review.mjs                     # what reaches the .docx a user downloads
 node tests/webapp/smoke.mjs                      # every page and report, in Chromium
+node tests/webapp/a11y.mjs                       # axe-core on every page
 ```
 
-Playwright is pinned to the version CI and `CONTRIBUTING.md` use: an
-unpinned install fetches whatever is newest, whose browser build the
-checks have never run against.
+Playwright and axe-core are pinned to the versions CI and `CONTRIBUTING.md`
+use: an unpinned install fetches whatever is newest, whose browser build the
+checks have never run against, and a newer axe-core checks rules this app
+has never been held to. They go in one `npm install`, because a second
+`--no-save` install removes what the first put there.
 
 `parity.mjs` runs the real sample workbooks through the browser
 readers and analyses and compares the result against

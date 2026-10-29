@@ -25,6 +25,11 @@ env:
   # One version for the npm install, the browser cache key and the browser
   # download, so a bump cannot leave a cached browser the library cannot use.
   PLAYWRIGHT_VERSION: "1.56.1"
+  # axe-core, the accessibility checker tests/webapp/a11y.mjs puts into each
+  # page: a test-only tool, installed beside Playwright and never shipped.
+  # noxfile.py reads the version from here and holds a local run to it,
+  # since a newer axe knows more rules.
+  AXE_CORE_VERSION: "4.10.3"
 
 # Each step below calls a session from noxfile.py, which is where the commands
 # themselves live. "nox -s check" runs the same sessions in the same order on
@@ -210,13 +215,14 @@ jobs:
           # browser reader is then held to on the same bytes.
           pip install -e ".[dev,extract]"
 
-      # Playwright is installed on its own, not from a lockfile, so the npm
-      # cache is keyed on its version rather than through setup-node.
+      # Playwright and axe-core are installed on their own, not from a
+      # lockfile, so the npm cache is keyed on their versions rather than
+      # through setup-node.
       - name: Cache npm
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
+          key: npm-${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}-axe-${{ env.AXE_CORE_VERSION }}
 
       - name: Cache the Playwright browser
         id: playwright-cache
@@ -226,10 +232,12 @@ jobs:
           key: ms-playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
 
       # The system libraries Chromium links against are not in the cache, so
-      # a cache hit still installs those; it skips only the download.
-      - name: Install Playwright and its browser
+      # a cache hit still installs those; it skips only the download. Both
+      # packages go in one npm install: a second --no-save install removes
+      # what the first one put there.
+      - name: Install Playwright, axe-core and the browser
         run: |
-          npm install --no-save "playwright@$PLAYWRIGHT_VERSION"
+          npm install --no-save "playwright@$PLAYWRIGHT_VERSION" "axe-core@$AXE_CORE_VERSION"
           if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
             npx playwright install-deps chromium
           else
@@ -247,6 +255,8 @@ jobs:
       - name: Numerical parity with the Python toolkit
         run: nox -s parity
 
+      # The last of the suites is the accessibility check: axe-core over
+      # every page, failing on a serious or critical violation.
       - name: Drive the app end to end
         run: nox -s browser
 
