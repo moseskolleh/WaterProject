@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..config import Config
+from ..verification import Issue
 from ..rounds import round_text, rounds_text, stop_sheet
 from ..text import phrase
 from .docx_utils import ReportBuilder
@@ -25,11 +26,12 @@ __all__ = ["build_round_sheet"]
 
 
 def build_round_sheet(rounds: dict, out_path: str | Path,
-                      config: Config | None = None) -> Path:
+                      config: Config | None = None, issue: Issue | None = None) -> Path:
     """Write the round sheet of ``rounds`` (what
     :func:`~groundwater.rounds.service_rounds` returns) to ``out_path``."""
     rb = ReportBuilder(config.style if config else None,
-                       title=f"Service rounds - {rounds['as_of']}")
+                       title=f"Service rounds - {rounds['as_of']}", kind="rounds", issue=issue,
+                       config=config)
     words = rounds_text(rounds)
     if not rounds["rounds"]:
         rb.paragraph(phrase("rounds.sheet_title"), bold=True, align="center", size_pt=16)

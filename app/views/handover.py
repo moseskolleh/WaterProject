@@ -14,7 +14,8 @@ from groundwater.reporting.handover import (
 from shared import (
     app_config,
     DEFAULT_COMMITTEE,
-    offer_download,
+    issue_for,
+    offer_document,
     report_gate,
     site_from_state,
     workdir,
@@ -130,7 +131,8 @@ def render() -> None:
             ),
             workdir() / "Handover_Report.docx",
             app_config(),
+            issue=issue_for("handover"),
         )
         # feeds the lifecycle stepper on the Overview page
         st.session_state["handover_built"] = True
-        offer_download(report_path, "Download handover report (.docx)")
+        offer_document(report_path, "Download handover report (.docx)")

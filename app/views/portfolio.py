@@ -19,10 +19,13 @@ from groundwater.text import phrase
 from shared import (
     app_config,
     figure,
+    issue_for,
     kept_upload,
     offer_download,
+    project_file_evidence,
     project_files,
     put_set_in_force,
+    record_issue,
     workdir,
 )
 
@@ -41,6 +44,10 @@ def render() -> None:
         type=["yaml", "yml", "json"], accept_multiple_files=True,
     )
     read, skipped = project_files(f.getvalue() for f in files or [])
+    # each file pooled, by its hash, which a calibration report over the
+    # pooled ledgers is issued from (PLAN.md step 8.1)
+    evidence = [project_file_evidence(f.name, f.getvalue()) for f in files or []
+                if not project_files([f.getvalue()])[1]]
     summaries = [summary for summary, _ in read]
     if skipped:
         st.warning(f"{skipped} file(s) could not be read as a project and were skipped.")
@@ -110,14 +117,15 @@ def render() -> None:
         )
 
         _site_detail(summaries)
-        pooled = _pooled_ledger(read)
+        pooled = _pooled_ledger(read, evidence)
     _calibration_sets(pooled)
 
 
-def _pooled_ledger(read) -> list:
+def _pooled_ledger(read, evidence=()) -> list:
     """The files' ledgers of predictions and outcomes, pooled (PLAN.md step
     5.1): each point once, the drilled ones listed beside what was found.
-    Returns the pooled entries."""
+    Returns the pooled entries. ``evidence`` is the files', which a
+    calibration report is issued from."""
     import json
 
     from groundwater.ledger import ledger_rows, ledger_summary, pool_ledgers
@@ -135,15 +143,15 @@ def _pooled_ledger(read) -> list:
         path = workdir() / "pooled_ledger.json"
         path.write_text(json.dumps(pooled, indent=1, ensure_ascii=False), encoding="utf-8")
         offer_download(path, "Download the pooled ledger (.json)", keep=False)
-        _calibration(pooled)
+        _calibration(pooled, evidence)
     return pooled
 
 
-def _calibration(pooled) -> None:
+def _calibration(pooled, evidence=()) -> None:
     """The calibration report over the pooled ledgers (PLAN.md step 5.2):
     its summary and its two figures on the page, and the whole report, with
-    the band, the odds and the hit rates, as a Word document."""
-    import datetime
+    the band, the odds and the hit rates, as a Word document, issued from
+    the project files pooled (``evidence``)."""
     import hashlib
     import json
 
@@ -153,7 +161,8 @@ def _calibration(pooled) -> None:
 
     st.subheader("Calibration")
     config = app_config()
-    issued = datetime.date.today().isoformat()
+    issue = issue_for("calibration", files=evidence)
+    issued = issue.issued_on
     content = calibration_content(pooled, issued, config)
     for text in content["summary"][1:]:
         st.markdown(text)
@@ -170,13 +179,17 @@ def _calibration(pooled) -> None:
     if st.button("Build the calibration report (.docx)", key="build_calibration",
                  help="The band, the odds and the hit rates by geology, survey team and contractor"):
         path = build_calibration_report(pooled, workdir() / "Calibration_Report.docx", issued, config,
-                                        figures_dir=workdir() / "calibration_figures")
-        st.session_state["calibration_report"] = {"path": str(path), "pooled": pooled_sig}
+                                        figures_dir=workdir() / "calibration_figures", issue=issue)
+        record = record_issue(path)
+        st.session_state["calibration_report"] = {"path": str(path), "pooled": pooled_sig,
+                                                  "code": record["code"] if record else ""}
     built = st.session_state.get("calibration_report")
     if built and built["pooled"] == pooled_sig:
         # not kept among the session's deliverables, which would go on
         # offering it once other files are on the page
         offer_download(Path(built["path"]), "Download the calibration report (.docx)", keep=False)
+        if built.get("code"):
+            st.caption(phrase("verification.cover_code", code=built["code"]))
 
 
 def _calibration_sets(pooled) -> None:

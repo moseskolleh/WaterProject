@@ -971,6 +971,79 @@ The browser app keeps the chiefdom table and the day with the project;
 the Streamlit app saves the chiefdom table with the project and starts
 the day at today each time the page is opened.
 
+## 9c. Documents anyone can check
+
+In the browser app: [`#/verify`](index.html#/verify), *Verify a
+document* under *Project*. In the Streamlit app: the *Verify a document*
+page. On the command line: `groundwater verify`.
+
+**What every document carries.** Each document either app writes (the
+reports, the plate, the asset record, the certificate, the field kit, the
+desk study, the calibration report and the round sheets) carries a
+manifest inside the .docx file, which Word does not show. It records the
+day the document was issued (the day it was built, from the device's
+clock; a worked example built by a script gives none), which app and
+version wrote it, the calibration set in force, whether it was
+certifiable, issued on override or provisional and what was outstanding
+or overridden, every evidence file it was issued from with its SHA-256
+fingerprint, and the fingerprint of every part of the document itself.
+The evidence of a document about the borehole is every sheet the project
+holds and the photographs the document embeds, by the fingerprint of the
+file as it arrived; a calibration report's is the project files pooled,
+a round sheet's those of the register; the field kit and the desk study
+list none.
+
+**The code.** Every page's footer reads *Document 0A1B-2C3D-5 - page n*,
+except a cover's: a document with a cover carries the code and its QR
+symbol at the foot of the cover instead. The code is eight letters and digits and a check
+character, as the borehole identifier has. It is worked out from what the
+document says and records, so a copy whose text has been changed and its
+manifest brought into line no longer gives its own code.
+
+**Where the record is kept.** Building a document keeps its issue record
+(its code and fingerprint, kind, title, day and readiness) in the
+project, which saves it in the project file, and, for a document about
+the borehole, in the borehole's asset record, which the Asset registry
+page lists under *Documents issued*; a record stored after the document
+was issued takes its issue records from the project. The app says the
+code when it saves the document.
+
+**Checking a copy.** Open the page and choose the .docx. It is read on
+the device and sent nowhere; in the browser app the page works with no
+network. The page answers four questions:
+
+1. *Did the toolkit issue it?* Its manifest's fingerprint against the
+   issue records held: those of the project open in the app, and of any
+   project files added on the page (either app's, or the files of an
+   asset register). With none, the page says it cannot confirm the
+   document was issued.
+2. *Has it changed since?* Each part of the document against the
+   fingerprint its manifest recorded. A changed, removed or added part is
+   named: change one digit in the text and the page names
+   `word/document.xml (the text of the document)`. A document opened and
+   saved again in Word is a changed document, because Word rewrites its
+   parts.
+3. *Was it certifiable or provisional?* As the manifest records the
+   certification gate when the document was issued.
+4. *Which evidence was it issued from?* Each file by name and SHA-256,
+   so a copy of a workbook or a photograph can be checked against it.
+
+A code read off a paper copy, or off its QR symbol with a phone, can be
+typed into *Look up a code*, which says what was issued under it, when,
+and how ready.
+
+**What it cannot catch yet.** Until documents are signed (PLAN.md step
+8.2), someone who rewrites a document throughout - its text, its
+manifest, its code and its symbol - makes a copy that agrees with
+itself. Only the issue record catches that, which is why a copy checked
+with no record is *unconfirmed*, never *verified*. Keep the project file,
+or the register's files, where a forger cannot reach them.
+
+On the command line, `groundwater verify report.docx --project
+project.yaml` prints the same answers and exits 0 for a verified copy,
+2 for one unchanged but not confirmed, and 1 otherwise; `--code` looks a
+code up.
+
 ## 10. Site maps
 
 In the browser app: [`#/site`](index.html#/site), and the terrain
@@ -1688,6 +1761,12 @@ a file saved before that with an empty ledger, and a file of a later
 schema than the app knows still opens, with a warning that what the app
 does not recognise is not restored. Loading another project replaces
 the ledger with that project's own.
+
+A project file also carries the **issue record of every document built
+from it** (section 9c), and went to schema 3 to carry them, for the same
+reason: an older version of either app warns that it does not restore
+everything in the file rather than dropping the records on its next
+save. A file saved before that opens with none.
 
 ## 12. Scanned sheets
 

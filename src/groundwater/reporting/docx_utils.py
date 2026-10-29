@@ -9,10 +9,16 @@ identical file).
 House language rules are enforced here: em and en dashes are replaced
 with plain hyphens and a lint helper flags contractions so template
 text stays in plain professional English.
+
+Every document is sealed when it is saved (PLAN.md step 8.1): it carries a
+manifest of what it is and of every part's hash, a short code in every
+page's footer and, on a document with a cover, a QR symbol of the code at
+the foot of the cover (:mod:`groundwater.verification`).
 """
 
 from __future__ import annotations
 
+import io
 import re
 import zipfile
 from pathlib import Path
@@ -24,7 +30,17 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
+from .. import qr
 from ..config import HouseStyle
+from ..text import phrase
+from ..verification import (
+    ENGINE,
+    Issue,
+    calibration_facts,
+    manifest_facts,
+    readiness_facts,
+    seal_package,
+)
 
 _CONTRACTION_RE = re.compile(
     r"\b(?:can't|won't|don't|doesn't|didn't|isn't|aren't|wasn't|weren't|"
@@ -73,17 +89,47 @@ def _hex_to_rgb(color: str) -> RGBColor:
     return RGBColor(int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16))
 
 
-class ReportBuilder:
-    """Assemble a styled report document section by section."""
+#: Stands in for the document's code in the footers until the code is known,
+#: which is only once every other part has been written.
+_CODE_PLACEHOLDER = "GWTDOCUMENTCODEPLACEHOLDER"
 
-    def __init__(self, style: HouseStyle | None = None, title: str = "Report"):
+#: The QR symbol of the code on the cover: level H, since a cover is
+#: photocopied, stamped and filed, and 2.6 cm across. Both are choices.
+_QR_ECC = "H"
+_QR_WIDTH_CM = 2.6
+
+
+def _code_png(code: str) -> bytes:
+    return qr.to_png(qr.encode(phrase("verification.qr", code=code), ecc=_QR_ECC), scale=8, stored=True)
+
+
+class ReportBuilder:
+    """Assemble a styled report document section by section.
+
+    ``kind`` is what the document's manifest calls it (a readiness report
+    kind, or ``desk_study``, ``field_kit``, ``calibration``, ``rounds``),
+    ``issue`` the day it is issued on and the evidence it is issued from,
+    and ``config`` the configuration whose calibration set is in force.
+    """
+
+    def __init__(self, style: HouseStyle | None = None, title: str = "Report",
+                 kind: str = "", issue: Issue | None = None, config=None):
         self.style = style or HouseStyle()
         self.doc = docx.Document()
         self.title = title
+        self.kind = kind
+        self.issue = issue or Issue()
+        self.calibration = getattr(config, "calibration", None)
         self._figure_no = 0
         self._table_no = 0
         # every heading, in order, for the table of contents
         self._headings: list[tuple[int, str]] = []
+        # the readiness the document was gated on, for its manifest; None
+        # where no gate was run
+        self._gate = None
+        self._has_cover = False
+        #: the issue record of the document, once it is saved
+        self.record: dict | None = None
         self._setup_styles()
         self._setup_page()
 
@@ -125,8 +171,12 @@ class ReportBuilder:
         self._add_page_numbers(section)
 
     def _add_page_numbers(self, section) -> None:
+        """Every page's footer: the document's code and the page number.
+        The code is a placeholder until the document is saved."""
         footer_para = section.footer.paragraphs[0]
         footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        label = footer_para.add_run(phrase("verification.footer", code=_CODE_PLACEHOLDER) + " ")
+        label.font.size = Pt(9)
         run = footer_para.add_run()
         for element, _text in (("begin", None), (None, "PAGE"), ("end", None)):
             if element:
@@ -150,7 +200,10 @@ class ReportBuilder:
         subtitle_lines: list[str] | None = None,
         details: list[tuple[str, str]] | None = None,
     ) -> None:
-        """Simple clean cover: organisation, title block, detail lines."""
+        """Simple clean cover: organisation, title block, detail lines. The
+        document's code and its QR symbol go at the foot of the cover when
+        it is saved."""
+        self._has_cover = True
         if self.style.logo_path and Path(self.style.logo_path).exists():
             p = self.doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -206,6 +259,7 @@ class ReportBuilder:
         was overridden and by whom, in the document itself rather than in a
         console message nobody keeps.
         """
+        self.record_readiness(readiness)
         if readiness is None or readiness.is_certifiable:
             return
         # remembered for the executive summary, which used to open with an
@@ -239,6 +293,12 @@ class ReportBuilder:
         if lines:
             self.bullets(lines)
         self.page_break()
+
+    def record_readiness(self, readiness) -> None:
+        """Keep the readiness the document was gated on for its manifest;
+        called by :meth:`provisional_stamp`, and by a document that is gated
+        but carries no stamp (the plate)."""
+        self._gate = readiness
 
     def pre_field_stamp(self, title: str, lead: str) -> None:
         """Say on the page after the cover that this document was put
@@ -548,27 +608,74 @@ class ReportBuilder:
     # save
     # ------------------------------------------------------------------
 
+    def _cover_footer(self) -> str:
+        """The foot of the cover, on the first page only: the QR symbol of
+        the code, the code and what it is for. Returns the symbol's part
+        name; the symbol and the code are placeholders until the save."""
+        section = self.doc.sections[0]
+        section.different_first_page_header_footer = True
+        footer = section.first_page_footer
+        para = footer.paragraphs[0]
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = para.add_run()
+        run.add_picture(io.BytesIO(_code_png("0000-0000-0")), width=Cm(_QR_WIDTH_CM))
+        rid = run._r.xpath(".//a:blip/@r:embed")[0]
+        code = footer.add_paragraph()
+        code.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        label = code.add_run(phrase("verification.cover_code", code=_CODE_PLACEHOLDER))
+        label.font.size = Pt(9)
+        label.font.bold = True
+        note = footer.add_paragraph()
+        note.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        words = note.add_run(phrase("verification.cover_note"))
+        words.font.size = Pt(7.5)
+        words.font.italic = True
+        return str(footer.part.related_parts[rid].partname).lstrip("/")
+
     def save(self, path: str | Path) -> Path:
+        """Write the document, sealed: its manifest names every part by its
+        hash, and its code is printed in the footers (and on the cover).
+        Fixed zip timestamps and sorted entries, so identical content
+        produces an identical file. The issue record is :attr:`record`."""
+        from .. import __version__
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         core = self.doc.core_properties
         core.title = self.title
         core.author = self.style.organisation or "Groundwater Toolkit"
         self._fill_table_of_contents()
-        self.doc.save(path)
-        _normalise_zip_timestamps(path)
+        section = self.doc.sections[0]
+        footers = [str(section.footer.part.partname).lstrip("/")]
+        image = None
+        if self._has_cover:
+            image = self._cover_footer()
+            footers.append(str(section.first_page_footer.part.partname).lstrip("/"))
+        buffer = io.BytesIO()
+        self.doc.save(buffer)
+        with zipfile.ZipFile(buffer, "r") as zin:
+            entries = {name: zin.read(name) for name in zin.namelist()}
+        held = {name: entries.pop(name) for name in footers + ([image] if image else [])}
+        marker = _CODE_PLACEHOLDER.encode("ascii")
+        if any(held[name].count(marker) != 1 for name in footers):
+            raise RuntimeError("a footer does not hold the document code exactly once")
+
+        def carriers(code: str) -> dict:
+            out = {name: held[name].replace(marker, code.encode("ascii")) for name in footers}
+            if image:
+                out[image] = _code_png(code)
+            return out
+
+        issue = self.issue
+        facts = manifest_facts(self.kind, self.title, issue.issued_on, (ENGINE, __version__),
+                               calibration_facts(self.calibration), readiness_facts(self._gate),
+                               issue.evidence)
+        sealed = seal_package(entries, facts, carriers)
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zout:
+            for name in sorted(sealed["entries"]):
+                info = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o600 << 16
+                zout.writestr(info, sealed["entries"][name])
+        self.record = sealed["record"]
         return path
-
-
-def _normalise_zip_timestamps(path: Path) -> None:
-    """Rewrite the .docx zip with fixed timestamps and sorted entries so
-    identical content produces an identical file."""
-    with zipfile.ZipFile(path, "r") as zin:
-        entries = sorted(zin.namelist())
-        contents = {name: zin.read(name) for name in entries}
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zout:
-        for name in entries:
-            info = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_DEFLATED
-            info.external_attr = 0o600 << 16
-            zout.writestr(info, contents[name])

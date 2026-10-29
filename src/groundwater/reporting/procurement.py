@@ -21,6 +21,7 @@ from typing import Any
 from pathlib import Path
 
 from ..config import Config
+from ..verification import Issue
 from ..models import SiteMetadata
 from ..procurement import Certificate, Contract, contract_summary
 from .context import _figures_dir, add_area_section
@@ -44,11 +45,12 @@ class PaymentCertificateInputs:
 
 
 def build_payment_certificate(inputs: PaymentCertificateInputs,
-                              out_path, config: Config | None = None):
+                              out_path, config: Config | None = None, issue: Issue | None = None):
     contract = inputs.contract
     certificate = inputs.certificate
     rb = ReportBuilder(config.style if config else None,
-                       title=f"Interim Payment Certificate {certificate.number}")
+                       title=f"Interim Payment Certificate {certificate.number}",
+                       kind="procurement", issue=issue, config=config)
 
     rb.cover(
         [f"Interim Payment Certificate No. {certificate.number}"],

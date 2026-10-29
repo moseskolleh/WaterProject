@@ -20,7 +20,8 @@ from groundwater.reporting.procurement import (
 
 from shared import (
     app_config,
-    offer_download,
+    issue_for,
+    offer_document,
     report_gate,
     workdir,
     _working,
@@ -194,6 +195,7 @@ def render() -> None:
                         contract=_contract, certificate=_certificate,
                         prepared_by=st.session_state.get("meta_supervisor", ""),
                         readiness=report_gate("procurement")),
-                    workdir() / f"IPC_{int(_number)}.docx", app_config())
-            offer_download(_path,
+                    workdir() / f"IPC_{int(_number)}.docx", app_config(),
+                    issue=issue_for("procurement"))
+            offer_document(_path,
                            f"Interim payment certificate {int(_number)}")

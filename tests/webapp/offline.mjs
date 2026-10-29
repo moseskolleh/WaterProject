@@ -181,6 +181,35 @@ await withPage(async (page, base, consoleErrors) => {
     offlineMap.after.includes('charts') && offlineMap.maps >= 2 && !offlineMap.failed,
     JSON.stringify(offlineMap));
 
+  // The Verify a document page (PLAN.md step 8.1) checks a copy with no
+  // network: the page, the package reader and the four answers are all in
+  // the first screen's scripts.
+  const offlineVerify = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, S = window.GWT.support;
+    const facts = C.manifestFacts('pumping', 'Offline', '2026-10-29', ['gwt-core', 'test'], null, null, []);
+    const sealed = C.sealPackage({
+      '[Content_Types].xml': '<Types xmlns="t"><Default Extension="xml" ContentType="application/xml"/></Types>',
+      'word/_rels/document.xml.rels': '<Relationships xmlns="r"></Relationships>',
+      'word/document.xml': '<w:document>1.25</w:document>',
+    }, facts);
+    const bytes = await S.zip(Object.keys(sealed.entries).map((name) => ({ name, data: sealed.entries[name] })));
+    const pickFile = S.pickFile;
+    S.pickFile = async () => new File([bytes], 'offline.docx');
+    try {
+      await app.goto('verify');
+      Array.from(document.querySelectorAll('#page-host button'))
+        .find((b) => b.textContent === 'Choose a document (.docx)').click();
+      for (let t = 0; t < 200 && !app.verifySession.bytes; t++) await new Promise((r) => setTimeout(r, 25));
+      await new Promise((r) => setTimeout(r, 60));
+      return document.querySelector('#page-host').textContent
+        .includes(C.phraseTable('verification.verdicts').unconfirmed);
+    } finally {
+      S.pickFile = pickFile;
+      app.verifySession.bytes = null;
+    }
+  });
+  check('no network: the Verify a document page checks a copy', offlineVerify === true);
+
   const answers = await page.evaluate(async (FOREIGN) => {
     const out = {};
     /* a file of the app's that genuinely was never downloaded */

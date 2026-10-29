@@ -10,6 +10,8 @@ calls the apps make; nothing is computed differently.
     groundwater portfolio FILES... [--csv OUT] [--map OUT.png]
     groundwater templates DIR
     groundwater extract FILE.pdf [--out DIR]
+    groundwater verify FILE.docx [--project FILE ...]
+    groundwater verify --code CODE --project FILE ...
 """
 
 from __future__ import annotations
@@ -184,6 +186,69 @@ def cmd_extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def _issue_records(projects: Sequence[str]) -> tuple[list | None, list[str]]:
+    """The issue records the named project files carry, and a line for each
+    file that could not be read; None where no file was named."""
+    import yaml
+
+    from .verification import issue_records_of
+
+    if not projects:
+        return None, []
+    records: list = []
+    problems = []
+    for name in projects:
+        path = Path(name)
+        try:
+            payload = yaml.safe_load(path.read_bytes().decode("utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+            problems.append(f"{path.name}: not read ({exc.__class__.__name__})")
+            continue
+        if not isinstance(payload, dict):
+            problems.append(f"{path.name}: not a project file")
+            continue
+        records += issue_records_of(payload)
+    return records, problems
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Say whether a document was issued by the toolkit and is unchanged.
+
+    Exit status 0 when it is verified against an issue record, 2 when it is
+    unchanged but no record was given to confirm it was issued, and 1 for
+    everything else; with --code, 0 when a record holds the code."""
+    from .verification import lookup_code, verify_document
+
+    records, problems = _issue_records(args.project or [])
+    for line in problems:
+        print(f"skipped {line}", file=sys.stderr)
+    if args.code is not None:
+        found = lookup_code(args.code, records or [])
+        for line in found["lines"]:
+            print(line)
+        return 0 if found["records"] else 1
+    if not args.file:
+        print("name a document to verify, or a --code to look up", file=sys.stderr)
+        return 1
+    try:
+        data = Path(args.file).read_bytes()
+    except OSError as exc:
+        print(f"{args.file}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+    report = verify_document(data, records)
+    for line in report["lines"]:
+        print(line)
+    for name in report["changed"] + report["missing"] + report["added"]:
+        print(f"  part: {name}")
+    if report["facts"]:
+        for entry in report["facts"]["evidence"]:
+            print(f"  evidence: {entry['name']} {entry['sha256']}")
+    if report["code"]:
+        print(f"code: {report['code']}")
+        print(f"sha256: {report['sha256']}")
+    return {"verified": 0, "unconfirmed": 2}.get(report["verdict"], 1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="groundwater",
@@ -213,6 +278,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("file")
     p.add_argument("--out", help="folder for the review workbook (default: beside the PDF)")
     p.set_defaults(func=cmd_extract)
+
+    p = sub.add_parser("verify", help="check a document the toolkit issued (.docx)")
+    p.add_argument("file", nargs="?", help="the document to check")
+    p.add_argument("--project", action="append",
+                   help="a saved project file whose issue records to check it against "
+                        "(.yaml or .gwt.json; may be given more than once)")
+    p.add_argument("--code", help="look a code read off a cover up in the project files instead")
+    p.set_defaults(func=cmd_verify)
     return parser
 
 

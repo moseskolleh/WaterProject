@@ -17,6 +17,7 @@ from pathlib import Path
 from docx.shared import RGBColor
 
 from ..config import Config
+from ..verification import Issue
 from ..quality.assess import STATUS_LABELS, WaterQualityAssessment, unquantified_text
 from ..quality.diagrams import facies_of, plot_piper, plot_stiff
 from ..quality.standards import (
@@ -228,6 +229,7 @@ def build_quality_report(
     inputs: QualityReportInputs,
     out_path: str | Path,
     config: Config | None = None,
+    issue: Issue | None = None,
 ) -> Path:
     config = config or Config()
     assessment = inputs.assessment
@@ -241,7 +243,8 @@ def build_quality_report(
     # the first site's figures.
     slug = safe_slug(sample.borehole_ref or site.community, "site")
 
-    rb = ReportBuilder(config.style, title=f"Water Quality Report - {site.community}")
+    rb = ReportBuilder(config.style, title=f"Water Quality Report - {site.community}",
+                       kind="quality", issue=issue, config=config)
     rb.cover(
         title_lines=["WATER QUALITY REPORT"],
         subtitle_lines=[

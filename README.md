@@ -178,6 +178,24 @@ water quality guidelines.
     assembled offline. It opens on a blank background rather than a
     basemap, because switching one on is a request to the network and
     that is the operator's decision to make
+19. Documents anyone can check. Every document either app writes carries
+    a manifest inside the .docx: the day it was issued, the engine and
+    version that wrote it, the calibration set in force, whether it was
+    certifiable, issued on override or provisional (and what was
+    outstanding), the SHA-256 of every evidence file it was issued from
+    and of every part of the document itself. A short code, such as
+    `0A1B-2C3D-5`, is printed in every page's footer, and a document with
+    a cover carries it with a QR symbol at the foot of the cover. The
+    document's hash is kept in the project file and, for a document about
+    the borehole, in its asset record (a record stored later takes them
+    from the project). The *Verify a document* page in
+    both apps, and `groundwater verify`, say whether the toolkit issued a
+    copy (its hash against those records), whether it has changed since
+    (naming each part that has), whether it was certifiable or
+    provisional, and which evidence it was issued from; in the browser it
+    needs no network. Until documents are signed (PLAN.md step 8.2) a copy
+    rewritten throughout, manifest and code included, is caught only by
+    the issue record, which is why the check says so when none is given
 
 ## Try it online
 
@@ -297,7 +315,10 @@ project layout:
     reports/         generated .docx reports
 ```
 
-Re-running on the same raw data produces byte-identical outputs.
+Re-running on the same raw data produces byte-identical outputs. Each
+example's reports list the workbooks they were issued from by their
+SHA-256 and give no issue date, since a worked example is not issued on
+a day.
 
 ## Web interface
 
@@ -321,12 +342,17 @@ groundwater recompute project.yaml --json summary.json   # rebuild a saved proje
 groundwater portfolio *.yaml --csv programme.csv --map programme.png
 groundwater templates ./templates                        # the five field templates
 groundwater extract field_sheet.pdf --out ./review       # a text-layer PDF into a review workbook
+groundwater verify report.docx --project project.yaml    # was it issued, and is it unchanged?
+groundwater verify --code 0A1B-2C3D-5 --project project.yaml
 ```
 
 `recompute` prints one line per saved source and exits non-zero when one
 could not be rebuilt, so a shell loop over a folder of project files
-stops on the file that needs attention. `python -m groundwater` is the
-same thing.
+stops on the file that needs attention. `verify` prints the four answers
+and the parts that changed, and exits 0 for a document verified against
+an issue record in the project files named, 2 for one unchanged but with
+no record given to confirm it, and 1 for anything else. `python -m
+groundwater` is the same thing.
 
 ## Package layout
 
@@ -363,6 +389,8 @@ groundwater/
     sanitary.py   the sanitary inspection form, scored and read with the
                   E. coli count into one risk statement
     qr.py         a dependency-free QR encoder for the headworks plate
+    verification.py  the manifest every document carries, its code, and
+                  the check of a copy against it and its issue record
 ```
 
 ## Reference library

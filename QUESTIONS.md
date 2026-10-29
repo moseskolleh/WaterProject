@@ -262,3 +262,29 @@ need real project inputs or decisions to finish calibrating it.
    `readings_sample` and `readings_visit` in
    `groundwater/data/text/rounds.yaml`), which are this sheet's choice and
    follow no published form.
+
+19. **What a document's manifest lists, and how it is marked (added with
+   PLAN.md step 8.1).** Every document either app writes carries a
+   manifest, a code in its footers and, under a cover, a QR symbol of the
+   code. Each of these is a choice made here, not a standard, and wants the
+   programme's confirmation: (a) the code is the first 40 bits of a
+   SHA-256 in eight Crockford base-32 characters and an ISO 7064 MOD 37,36
+   check character, as the asset identifier has; 40 bits names one issue
+   among the few a programme makes, and the full hash behind it is what is
+   checked, but two different documents can share a code once in about a
+   million million; (b) the QR symbol is at error-correction level H and
+   2.6 cm across, at the foot of the cover, and the plate carries none, so
+   that the one symbol on the headworks is the borehole's; (c) a document
+   about the borehole lists as its evidence every sheet the project holds
+   (not only the ones that report reads) and the photographs it embeds, a
+   calibration report the project files pooled, a round sheet those of the
+   register, and the field kit and the desk study none; a photograph is
+   listed by the hash its provenance record took of the file as it
+   arrived, not of the copy the project keeps; (d) the day a document is
+   issued is the day it is built, from the device's clock, and a worked
+   example built by a script gives none; (e) a copy is checked against
+   the issue records of the project files given, and until documents are
+   signed (step 8.2) a copy rewritten throughout is caught by nothing
+   else. Say whether a document should also be issued on a day the user
+   names, whether its evidence should be narrowed to the sheets it reads,
+   and where the programme keeps the issue records it checks against.

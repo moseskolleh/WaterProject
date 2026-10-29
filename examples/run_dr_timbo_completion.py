@@ -36,6 +36,8 @@ from groundwater.reporting.handover import (
     build_handover_report,
 )
 from groundwater.reporting.quality import QualityReportInputs, build_quality_report
+from groundwater.text import phrase_table
+from groundwater.verification import Issue, evidence_entry
 
 HERE = Path(__file__).parent
 DATA = HERE / "data" / "dr_timbo"
@@ -108,6 +110,15 @@ def main(out_root: Path | None = None) -> None:
         print(f"readiness ({kind}):", gate.summary)
 
     # ---- reports --------------------------------------------------------------------
+    # Each report's manifest lists the workbooks it was issued from by their
+    # SHA-256 (PLAN.md step 8.1). No issue date is given: a worked example is
+    # not issued on a day, and the date is an input, never the clock.
+    kinds = phrase_table("verification.evidence_kinds")
+    issue = Issue(evidence=tuple(
+        evidence_entry(kinds[role], name, (DATA / name).read_bytes())
+        for role, name in (("drilling", "dr_timbo_drilling_log.xlsx"),
+                           ("pumping", "dr_timbo_constant_test.xlsx"),
+                           ("quality", "dr_timbo_water_quality.xlsx"))))
     completion = build_completion_report(
         CompletionReportInputs(
             log=log,
@@ -130,6 +141,7 @@ def main(out_root: Path | None = None) -> None:
         ),
         project.report_path("Dr_Timbo_Borehole_Completion_Report.docx"),
         project.config,
+        issue=issue,
     )
     print("\ncompletion report:", completion.name)
 
@@ -142,6 +154,7 @@ def main(out_root: Path | None = None) -> None:
         ),
         project.report_path("Dr_Timbo_Water_Quality_Report.docx"),
         project.config,
+        issue=issue,
     )
     print("water quality report:", quality_report.name)
 
@@ -166,6 +179,7 @@ def main(out_root: Path | None = None) -> None:
         ),
         project.report_path("Dr_Timbo_Handover_Report.docx"),
         project.config,
+        issue=issue,
     )
     print("handover report:", handover.name)
 

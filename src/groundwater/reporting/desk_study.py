@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
+from ..verification import Issue
 from ..desk_study import desk_study_content
 from ..models import SiteMetadata
 from ..waterpoints import DEFAULT_SEARCH_RADIUS_M
@@ -78,7 +79,8 @@ def _marks(points, latlon) -> list[dict]:
     return [{"lat": p.lat, "lon": p.lon, "kind": "water point"} for p in near[:_MARKED]]
 
 
-def build_desk_study_report(inputs: DeskStudyInputs, out_path, config: Config | None = None) -> Path:
+def build_desk_study_report(inputs: DeskStudyInputs, out_path, config: Config | None = None,
+                            issue: Issue | None = None) -> Path:
     """Write the desk study to ``out_path`` and return its path."""
     config = config or Config()
     site = inputs.site
@@ -87,7 +89,7 @@ def build_desk_study_report(inputs: DeskStudyInputs, out_path, config: Config | 
     content = desk_study_content(site, inputs.where, latlon, water_points=points,
                                  search_radius_m=inputs.search_radius_m, portfolio=inputs.portfolio,
                                  terrain=inputs.terrain, config=config)
-    rb = ReportBuilder(config.style, title=content["title"])
+    rb = ReportBuilder(config.style, title=content["title"], kind="desk_study", issue=issue, config=config)
     rb.cover([content["title"]], [content["subtitle"]], [(label, value) for label, value in content["site_rows"]])
     rb.pre_field_stamp(content["stamp"]["title"], content["stamp"]["lead"])
     rb.table_of_contents()

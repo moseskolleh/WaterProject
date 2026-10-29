@@ -74,6 +74,8 @@ from shared import (
     kept_portfolio,
     kept_upload,
     KeptPath,
+    issue_for,
+    offer_document,
     offer_download,
     _working,
     _offer_raster,
@@ -938,5 +940,6 @@ def render() -> None:
                 ),
                 workdir() / "Desk_Study.docx",
                 app_config(),
+                issue=issue_for("desk_study"),
             )
-        offer_download(_desk_path, "Download the desk study (.docx)")
+        offer_document(_desk_path, "Download the desk study (.docx)")

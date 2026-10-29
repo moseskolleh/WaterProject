@@ -65,6 +65,7 @@
       ['overview', 'Overview'],
       ['guided', 'Guided start'],
       ['site', 'Site & maps'],
+      ['verify', 'Verify a document'],
     ]],
     ['Investigation', [
       ['ves', 'Geophysics (VES)'],
@@ -148,6 +149,10 @@
        * top level, as the Python app's file does, so either app's portfolio
        * can pool it. */
       ledger: { drilled: null, entries: [] },
+      /* the issue record of every document issued from the project (PLAN.md
+       * step 8.1), C.cleanIssueRecords's shape, likewise at the top of the
+       * project file */
+      issued: [],
     };
   }
 
@@ -922,6 +927,9 @@
      * project now holds it: a corrected log corrects it */
     var ledger = currentLedger();
     delete state.ledger;
+    /* the issue records likewise (PLAN.md step 8.1) */
+    var issued = C.cleanIssueRecords(state.issued);
+    delete state.issued;
     /* the calibration set in force belongs to this browser, not the project */
     delete state.calibration;
     return {
@@ -930,6 +938,7 @@
       saved: new Date().toISOString(),
       summary: projectSummary(),
       ledger: ledger,
+      issued: issued,
       state: state,
     };
   }
@@ -997,6 +1006,8 @@
     var newer = schema > C.PROJECT_SCHEMA;
     /* the ledger is at the file's top level; a bare state carries its own */
     state.ledger = C.cleanLedger(payload.state ? C.migratePayload(payload).ledger : state.ledger);
+    /* and so are the issue records (PLAN.md step 8.1) */
+    state.issued = C.cleanIssueRecords(payload.state ? C.migratePayload(payload).issued : state.issued);
     /* A hand-edited or old-build project file can carry a key; it must
      * never be adopted into this session's storage. The key held for this
      * tab is untouched - it belongs to this browser, not to the file. */
@@ -5004,6 +5015,7 @@
     nodes.push(el('div.btn-row', [
       button('Interim payment certificate (.docx)', async function (event) {
         var host = event.target.closest('.card');
+        var issued = null;
         charts.usePrintPalette(true);
         try {
           await S.withBusy(host, 'Building the certificate…', async function () {
@@ -5014,11 +5026,13 @@
                * held back by the costing gate's design requirements */
               readiness: reportReadiness('procurement'),
               areaNote: areaNote(), areaMaps: await areaFigures(false),
+              issue: issueFor('procurement'),
             });
             S.download('IPC_' + certificate.number + '.docx',
               await builder.build());
+            issued = recordIssue(builder.record);
           });
-          S.toast('Certificate ready.', 'ok');
+          S.toast('Certificate ready.' + codeWords(issued), 'ok');
         } catch (err) {
           S.toast('Could not build the certificate: ' + err.message, 'error');
         } finally {
@@ -5834,6 +5848,7 @@
 
   async function buildFieldKit(boreholes, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     try {
       await S.withBusy(host, 'Building the field kit…', async function () {
         await need(REPORT_BUNDLES);
@@ -5847,11 +5862,13 @@
           symbols: content.sheets.map(function (sheet) {
             return qrDataUrl(sheet.payload, { ecc: 'H', scale: 8 });
           }),
+          issue: issueFor('field_kit'),
         });
         var bytes = await builder.build();
         S.download('field_kit_' + S.slug(content.project || siteLabel()) + '.docx', bytes);
+        issued = recordIssue(builder.record);
       });
-      S.toast('Field kit ready.', 'ok');
+      S.toast('Field kit ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the field kit: ' + err.message, 'error');
     }
@@ -6861,6 +6878,18 @@
         ]));
       }
 
+      /* the documents issued about the borehole, which its record keeps
+       * (PLAN.md step 8.1) */
+      if ((asset.documents || []).length) {
+        var readinessWords = C.phraseTable('verification.readiness_words');
+        nodes.push(card('Documents issued', [
+          el('p.muted', C.phrase('verification.registry_documents')),
+          S.table(['Code', 'Document', 'Issued on', 'Readiness'], asset.documents.map(function (r) {
+            return [r.code, r.title, r.issued_on, readinessWords[r.readiness]];
+          })),
+        ]));
+      }
+
       nodes.push(card('For the headworks', [
         el('p.muted', 'The plate carries the identifier, the symbol that ' +
           'encodes it and the facts that do not go out of date. The symbol ' +
@@ -6989,13 +7018,16 @@
 
   async function buildRoundSheet(result, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     try {
       await S.withBusy(host, 'Building the round sheets…', async function () {
         await need(REPORT_BUNDLES);
-        var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result });
+        var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result,
+          issue: issueFor('rounds', { files: derived.registryFiles || [] }) });
         S.download('rounds_' + result.as_of + '.docx', await builder.build());
+        issued = recordIssue(builder.record);
       });
-      S.toast('Document ready.', 'ok');
+      S.toast('Document ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the document: ' + err.message, 'error');
     }
@@ -7086,15 +7118,24 @@
           var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
           if (!list || !list.length) return;
           var loaded = (derived.registry || []).slice();
+          /* the files, by their hashes, which a round sheet drawn from the
+           * register is issued from (PLAN.md step 8.1) */
+          var files = (derived.registryFiles || []).slice();
           var skipped = 0;
           for (var i = 0; i < list.length; i++) {
             try {
               var text = await S.readFile(list[i], 'text');
               var record = assetFromProjectFile(list[i].name, text);
-              if (record) loaded.push(record); else skipped += 1;
+              if (record) {
+                loaded.push(record);
+                files.push(projectFileEvidence(list[i].name, text));
+              } else {
+                skipped += 1;
+              }
             } catch (e) { skipped += 1; }
           }
           derived.registry = loaded;
+          derived.registryFiles = files;
           S.toast(loaded.length + ' ' + S.plural(loaded.length, 'borehole') +
             ' in the register' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
           skipped ? 'warn' : 'ok');
@@ -7102,6 +7143,7 @@
         }),
         assets.length ? button('Clear', function () {
           derived.registry = [];
+          derived.registryFiles = [];
           render();
         }, { variant: 'ghost' }) : null,
       ].filter(Boolean)),
@@ -7157,6 +7199,7 @@
 
   async function buildAssetDoc(kind, asset, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the document…', async function () {
@@ -7178,14 +7221,16 @@
           /* the sample whose E. coli count the sanitary risk reads */
           context.assessment = derived.assessment || null;
         }
+        context.issue = issueFor(kind === 'placard' ? 'placard' : 'asset');
         var builder = kind === 'placard'
           ? await GWT.docx.assetPlacard(context)
           : await GWT.docx.assetRecordReport(context);
         var bytes = await builder.build();
         S.download((kind === 'placard' ? 'placard_' : 'asset_') +
           asset.asset_id + '.docx', bytes);
+        issued = recordIssue(builder.record);
       });
-      S.toast('Document ready.', 'ok');
+      S.toast('Document ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the document: ' + err.message, 'error');
     } finally {
@@ -7212,6 +7257,9 @@
             if (!list || !list.length) return;
             var loaded = derived.portfolio ? derived.portfolio.slice() : [];
             var ledgers = portfolioLedgers().slice();
+            /* the files, by their hashes, which a calibration report over the
+             * pooled ledgers is issued from (PLAN.md step 8.1) */
+            var files = (derived.portfolioFiles || []).slice();
             var skipped = 0;
             for (var i = 0; i < list.length; i++) {
               try {
@@ -7219,10 +7267,12 @@
                 var entry = projectFileEntry(list[i].name, text);
                 loaded.push(entry.summary);
                 ledgers.push(entry.ledger);
+                files.push(projectFileEvidence(list[i].name, text));
               } catch (e) { skipped += 1; }
             }
             derived.portfolio = loaded;
             derived.portfolioLedgers = ledgers;
+            derived.portfolioFiles = files;
             S.toast(loaded.length + ' ' + S.plural(loaded.length, 'project') +
               ' loaded' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
             skipped ? 'warn' : 'ok');
@@ -7234,7 +7284,8 @@
             render();
           }, { variant: 'ghost' }) : null,
           summaries.length ? button('Clear', function () {
-            derived.portfolio = null; derived.portfolioLedgers = null; render();
+            derived.portfolio = null; derived.portfolioLedgers = null; derived.portfolioFiles = null;
+            render();
           }, { variant: 'ghost' }) : null,
         ]),
         !summaries.length ? el('p.muted', 'Nothing loaded yet. You can also ' +
@@ -7525,14 +7576,17 @@
     try {
       await S.withBusy(host, 'Building the calibration report…', async function () {
         var cfg = config();
-        var content = C.calibrationContent(pooled, localDate(), cfg);
+        var issue = issueFor('calibration', { files: derived.portfolioFiles || [] });
+        var content = C.calibrationContent(pooled, issue.issued_on, cfg);
         var figures = {};
         var list = calibrationFigureList(pooled, content, cfg);
         /* one at a time, so that no more than one figure's canvas is held */
         for (var i = 0; i < list.length; i++) figures[list[i].key] = await charts.toPng(list[i].draw());
-        await GWT.docx.calibrationReport({ style: cfg.style, content: content, figures: figures })
-          .save('Calibration_Report.docx');
-        S.toast('Saved Calibration_Report.docx', 'ok');
+        var builder = GWT.docx.calibrationReport({ style: cfg.style, content: content, figures: figures,
+          issue: issue });
+        await builder.save('Calibration_Report.docx');
+        recordIssue(builder.record);
+        S.toast(savedWords('Calibration_Report.docx', builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the calibration report: ' + e.message, 'error');
@@ -7971,7 +8025,103 @@
         responses: store.get('supervision.responses') || {},
         evidence: store.get('supervision.evidence') || {},
       },
+      /* the documents issued from the project, which the draft asset record
+       * carries (PLAN.md step 8.1) */
+      issued: store.get('issued') || [],
     };
+  }
+
+  /* --- documents issued (PLAN.md step 8.1) ---------------------------------
+   * Every document this app writes is sealed (gwt-docx.js). It is issued on
+   * this device's day, as an input: the engine never reads the clock. A
+   * document about the borehole is issued from every file the project holds
+   * and the photographs it embeds, each listed by its SHA-256; the others
+   * from the files they are drawn from (the project files pooled or in the
+   * register), or from none. Its issue record goes into the project, which
+   * saves it at the top of the project file, and, for a document about the
+   * borehole, into its asset record where one is stored; a record stored
+   * later starts from the project's, as the draft carries them. */
+  function issueToday() {
+    return localDate();
+  }
+
+  /* a photograph by the SHA-256 of the file as it arrived, which its
+   * provenance record holds; one attached before records existed, by the
+   * bytes the project keeps */
+  function photoEvidence(photo) {
+    var what = C.phraseTable('verification.evidence_kinds').photo;
+    var name = photo.name || photo.caption || photo.label || '';
+    var held = photo.provenance && photo.provenance.sha256;
+    if (typeof held === 'string' && /^[0-9a-f]{64}$/.test(held)) {
+      return { what: what, name: name, sha256: held };
+    }
+    return C.evidenceEntry(what, name, S.base64ToBytes(photo.dataUrl));
+  }
+
+  /* a project file pooled on the Portfolio page or read into the register */
+  function projectFileEvidence(name, text) {
+    return C.evidenceEntry(C.phraseTable('verification.evidence_kinds').project, name,
+      new TextEncoder().encode(text));
+  }
+
+  /* What a document of this kind is issued on and from: options.photos are
+   * the photographs it embeds, options.files more evidence entries. */
+  function issueFor(kind, options) {
+    var opts = options || {};
+    var kinds = C.phraseTable('verification.evidence_kinds');
+    var evidence = [];
+    if (C.BOREHOLE_KINDS.indexOf(kind) >= 0) {
+      var sources = store.get('sources') || {};
+      SOURCE_ROLES.forEach(function (role) {
+        var source = sources[role];
+        if (source && source.b64) {
+          evidence.push(C.evidenceEntry(kinds[role], source.name || role, S.base64ToBytes(source.b64)));
+        }
+      });
+    }
+    (opts.photos || []).forEach(function (photo) {
+      if (photo && photo.dataUrl) evidence.push(photoEvidence(photo));
+    });
+    return { issued_on: issueToday(), evidence: evidence.concat(opts.files || []),
+      calibration: config().calibration || null };
+  }
+
+  /* the photographs a report of this kind embeds, as buildReport embeds
+   * them: on the supervision record, those attached to the checklist's
+   * items, then the page's photo plate */
+  function reportPhotos(kind) {
+    /** @type {Array<*>} */
+    var photos = [];
+    if (kind === 'supervision') {
+      var evidence = store.get('supervision.evidence') || {};
+      C.loadChecklists().forEach(function (item) {
+        var photo = evidence[item.item_id];
+        if (photo && photo.dataUrl) photos.push(photo);
+      });
+    }
+    return photos.concat(GWT.imageSlot ? GWT.imageSlot.collect(store.get('photos.' + kind), kind) : []);
+  }
+
+  /* what a toast says of a document built: its code */
+  function codeWords(record) {
+    return record ? ' ' + C.phrase('verification.cover_code', { code: record.code }) + '.' : '';
+  }
+
+  function savedWords(filename, record) {
+    return 'Saved ' + filename + '.' + codeWords(record);
+  }
+
+  /* the issue record of a document just built, kept; returns it */
+  function recordIssue(record) {
+    if (!record) return null;
+    store.set('issued', C.cleanIssueRecords((store.get('issued') || []).concat([record])));
+    var stored = store.get('asset');
+    var asset = stored && C.BOREHOLE_KINDS.indexOf(record.kind) >= 0 ? C.assetFromDict(stored) : null;
+    if (asset) {
+      asset.documents = C.cleanIssueRecords((asset.documents || []).concat([record]));
+      store.set('asset', asset);
+    }
+    return record;
   }
 
   function reportReadiness(kind) {
@@ -8324,6 +8474,7 @@
           style: cfg.style, site: store.get('site'),
           signOff: signOffFor(kind),
           readiness: reportReadiness(kind),
+          issue: issueFor(kind, { photos: reportPhotos(kind) }),
         };
         /* every report opens on where it is; the three reports that argue
          * from the ground carry the aquifer and geology setting too */
@@ -8650,9 +8801,10 @@
 
         var filename = S.slug(siteLabel()) + '_' + kind + '_report.docx';
         await builder.save(filename);
+        recordIssue(builder.record);
         /* what the report predicts goes into the ledger as it is issued */
         if (kind === 'geophysical') recordSurveyPredictions();
-        S.toast('Saved ' + filename, 'ok');
+        S.toast(savedWords(filename, builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the report: ' + e.message, 'error');
@@ -8733,9 +8885,12 @@
             config: config(),
           });
         var context = { style: config().style, content: content, areaNote: areaNote(),
-          areaMaps: await areaFigures(true), figures: await deskStudyFigures(session) };
-        await GWT.docx.deskStudyReport(context).save('Desk_Study.docx');
-        S.toast('Saved Desk_Study.docx', 'ok');
+          areaMaps: await areaFigures(true), figures: await deskStudyFigures(session),
+          issue: issueFor('desk_study') };
+        var builder = GWT.docx.deskStudyReport(context);
+        await builder.save('Desk_Study.docx');
+        recordIssue(builder.record);
+        S.toast(savedWords('Desk_Study.docx', builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the desk study: ' + e.message, 'error');
@@ -8744,6 +8899,123 @@
       charts.usePrintPalette(false);
     }
   }
+
+  /* --- verify a document (PLAN.md step 8.1) --------------------------------
+   * Whether the toolkit issued a .docx, whether it has changed since, whether
+   * it was certifiable or provisional, and which evidence it was issued from
+   * (C.verifyDocument), worked out here with no network. It is checked
+   * against the issue records of the project open here and of any project
+   * files added, either app's; with none, it says it cannot confirm the
+   * document was issued. Nothing on the page is saved with the project. */
+  var verifySession = { name: '', bytes: null, files: [], typed: '' };
+
+  function verifyRecords() {
+    var held = C.issueRecordsOf({ issued: store.get('issued') || [], asset: store.get('asset') });
+    verifySession.files.forEach(function (file) { held = held.concat(file.records); });
+    var records = C.cleanIssueRecords(held);
+    /* none held and no file added: nothing was given to check against */
+    return records.length || verifySession.files.length ? records : null;
+  }
+
+  function verifyResultCard(report) {
+    var questions = C.phraseTable('verification.questions');
+    var tone = report.verdict === 'verified' ? 'ok' : (report.verdict === 'unconfirmed' ? 'warn' : 'bad');
+    var nodes = [el('div.callout.callout-' + tone, [
+      el('p', el('strong', report.lines[0])),
+      verifySession.name ? el('p.muted', verifySession.name) : null,
+    ])];
+    ['issued', 'changed', 'readiness', 'evidence'].forEach(function (key) {
+      if (!report.answers[key]) return;
+      nodes.push(el('h3', questions[key]));
+      nodes.push(el('p', report.answers[key]));
+    });
+    if (report.facts) {
+      nodes.push(el('p.muted', report.lines[report.lines.length - 1]));
+      if (report.facts.evidence.length) {
+        nodes.push(S.table(['Evidence file', 'What it is', 'SHA-256'],
+          report.facts.evidence.map(function (f) { return [f.name, f.what, el('code', f.sha256)]; })));
+      }
+    }
+    if (report.code) {
+      nodes.push(S.table(['', ' '], [['Document code', report.code],
+        ['Hash of its manifest (SHA-256)', el('code', report.sha256)]]));
+    }
+    return card('What can be said of it', nodes);
+  }
+
+  PAGES.verify = function () {
+    var records = verifyRecords();
+    var nodes = [pageHead('Verify a document', C.phrase('verification.page_lead'))];
+    nodes.push(card('The document', [
+      el('p.muted', C.phrase('verification.document_lead')),
+      el('div.btn-row', [
+        button('Choose a document (.docx)', async function () {
+          var file = await S.pickFile('.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          if (!file) return;
+          try {
+            verifySession.bytes = new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(file)));
+            verifySession.name = file.name;
+          } catch (e) {
+            S.toast('Could not read the file: ' + e.message, 'error');
+            return;
+          }
+          render();
+        }),
+        verifySession.bytes ? button('Clear', function () {
+          verifySession.bytes = null;
+          verifySession.name = '';
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+    ]));
+    if (verifySession.bytes) nodes.push(verifyResultCard(C.verifyDocument(verifySession.bytes, records)));
+
+    var issued = C.cleanIssueRecords(store.get('issued') || []);
+    var readinessWords = C.phraseTable('verification.readiness_words');
+    nodes.push(card('Issue records', [
+      el('p', records ? C.phrase('verification.page_records', { n: records.length })
+        : C.phrase('verification.page_no_records')),
+      el('div.btn-row', [
+        button('Add project files', async function () {
+          var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
+          if (!list || !list.length) return;
+          var skipped = 0;
+          for (var i = 0; i < list.length; i++) {
+            try {
+              var text = await S.readFile(list[i], 'text');
+              var payload = /\.ya?ml$/i.test(list[i].name) ? S.parseYaml(text) : JSON.parse(text);
+              if (!payload || typeof payload !== 'object') throw new Error('not a project file');
+              verifySession.files.push({ name: list[i].name, records: C.issueRecordsOf(payload) });
+            } catch (e) { skipped += 1; }
+          }
+          if (skipped) S.toast(skipped + ' ' + S.plural(skipped, 'file') + ' could not be read.', 'warn');
+          render();
+        }),
+        verifySession.files.length ? button('Clear the files', function () {
+          verifySession.files = [];
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+      verifySession.files.length ? S.table(['Project file', 'Issue records'],
+        verifySession.files.map(function (f) { return [f.name, String(f.records.length)]; })) : null,
+      el('h3', 'Issued from this project'),
+      S.table(['Code', 'Document', 'Issued on', 'Readiness', 'SHA-256'], issued.map(function (r) {
+        return [r.code, r.title, r.issued_on, readinessWords[r.readiness], el('code', r.sha256.slice(0, 16) + '…')];
+      }), { emptyText: C.phrase('verification.none_issued') }),
+    ]));
+
+    var lookup = verifySession.typed ? C.lookupCode(verifySession.typed, records || []) : null;
+    nodes.push(card('Look up a code', [
+      el('p.muted', C.phrase('verification.lookup_lead')),
+      field('Document code', S.textInput(verifySession.typed, function (v) {
+        verifySession.typed = String(v).trim();
+        render();
+      }, { placeholder: '0A1B-2C3D-5' }), ''),
+      lookup ? el('div.callout.callout-' + (lookup.records.length ? 'ok' : 'warn'),
+        lookup.lines.map(function (line) { return el('p', line); })) : null,
+    ]));
+    return nodes;
+  };
 
   /* ------------------------------------------------------------------ render */
 
@@ -8757,7 +9029,7 @@
    * its status column, so the page and the report cannot word a result
    * differently. */
   var FIRST_SCREEN = { overview: true, guided: true, templates: true,
-    extract: true, settings: true, about: true };
+    extract: true, settings: true, about: true, verify: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
   /* A page that is a module of its own, fetched with what it draws with: the
    * pumping and VES co-pilots each draw one figure and no map, and the
@@ -9060,6 +9332,8 @@
     hashFor: hashFor, routeFrom: routeFrom,
     sampleRanges: sampleRanges, rangeFor: rangeFor, surveyOdds: surveyOdds,
     costSpreads: costSpreads, surveyMeasurements: surveyMeasurements,
+    /* documents issued and verified (PLAN.md step 8.1) */
+    issueFor: issueFor, recordIssue: recordIssue, verifySession: verifySession,
     /* the Topography and terrain card's files, read and analysis */
     terrainSession: function () { return terrainSession; },
   };

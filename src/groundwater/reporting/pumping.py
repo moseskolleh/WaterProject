@@ -17,6 +17,7 @@ from pathlib import Path
 
 
 from ..config import Config
+from ..verification import Issue
 from ..decisions import pump_decision, yield_decision
 from ..hydraulics.analysis import (
     LEVEL_FLAGS,
@@ -152,6 +153,7 @@ def build_pumping_report(
     inputs: PumpingReportInputs,
     out_path: str | Path,
     config: Config | None = None,
+    issue: Issue | None = None,
 ) -> Path:
     config = config or Config()
     analysis = inputs.analysis
@@ -165,7 +167,8 @@ def build_pumping_report(
     slug = safe_slug(test.borehole_ref or test.site.community, "bh")
     figures.mkdir(parents=True, exist_ok=True)
 
-    rb = ReportBuilder(config.style, title=f"Pumping Test Report - {site.community}")
+    rb = ReportBuilder(config.style, title=f"Pumping Test Report - {site.community}",
+                       kind="pumping", issue=issue, config=config)
     rb.cover(
         title_lines=["PUMPING TEST REPORT"],
         subtitle_lines=[

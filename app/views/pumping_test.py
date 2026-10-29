@@ -36,7 +36,8 @@ from shared import (
     CONFIG,
     figure,
     _next_step,
-    offer_download,
+    issue_for,
+    offer_document,
     parse_source,
     report_gate,
     show_flags,
@@ -326,5 +327,6 @@ def _through_the_year(test, analysis) -> None:
                                 readiness=_pump_gate, seasonal=_seasonal),
             workdir() / "Pumping_Test_Report.docx",
             app_config(),
+            issue=issue_for("pumping"),
         )
-      offer_download(report_path, "Download pumping test report (.docx)")
+      offer_document(report_path, "Download pumping test report (.docx)")

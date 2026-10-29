@@ -4647,6 +4647,107 @@ await withPage(async (page, base, consoleErrors) => {
     check('rounds: the cases reach every mechanic, every state and a stop with no position', reached);
   }
 
+  // --- Documents that can be verified (PLAN.md step 8.1) ---
+  // The twins of groundwater/verification.py on make_reference.py's cases:
+  // codes from digests and from what is typed, the facts a manifest records,
+  // the manifest written, read and sealed into a package, packages read rule
+  // by rule (a python-docx report and the field kit Chromium wrote among
+  // them) with the four answers given of each, issue records kept, read out
+  // of either app's project file and looked up, and the documents an asset
+  // record keeps, all held whole.
+  {
+    const VR = R.verification;
+    const vrJs = await page.evaluate(({ VR }) => {
+      const C = GWT.core, S = GWT.support;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.message || e) }; }
+      };
+      const facts = (a) => C.manifestFacts(a.kind, a.title, a.issued_on, a.engine, a.calibration,
+        a.readiness, a.evidence);
+      const bytes = (b64) => S.base64ToBytes(b64);
+      const sealed = attempt(() => {
+        const out = C.sealPackage(VR.seal.entries, VR.seal.facts,
+          (code) => ({ 'word/footer1.xml': 'Document ' + code + ' - page' }));
+        const parts = {};
+        Object.keys(out.entries).forEach((name) => { parts[name] = new TextDecoder().decode(out.entries[name]); });
+        return { code: out.code, sha256: out.sha256, manifest: out.manifest, record: out.record, parts };
+      });
+      return {
+        codes: VR.codes.map((c) => C.documentCode(c[0])),
+        qrPng: VR.qr_png.map((c) => C.sha256Hex(C.qrPng(C.qrEncode(c[0], { ecc: 'H' })))),
+        parse: VR.parse.map((c) => C.parseDocumentCode(c[0])),
+        readiness: VR.readiness.map((c) => C.readinessFacts(c[0])),
+        calibration: C.calibrationFacts(null),
+        manifests: VR.manifests.map((m) => attempt(() => {
+          const f = facts(m.args);
+          const digest = C.codeDigest(f, VR.parts);
+          const code = C.documentCode(digest);
+          return { facts: f, digest, code, xml: C.manifestXml(f, code, VR.parts, VR.carriers) };
+        })),
+        refusals: VR.refusals.map((r) => attempt(() => facts(r.args))),
+        read: VR.read.map((c) => C.readManifest(c[0])),
+        seal: sealed,
+        sealXml: attempt(() => C.sealPackage(Object.assign({}, VR.seal.entries, {
+          '[Content_Types].xml': '<Types xmlns="t"><Default Extension="xml" ContentType="application/xml"/></Types>',
+        }), VR.seal.facts).manifest),
+        packages: VR.packages.map((p) => attempt(() => {
+          const data = bytes(p.b64);
+          const read = C.readPackage(data);
+          let parts = null;
+          if (read) {
+            parts = {};
+            Object.keys(read).forEach((name) => { parts[name] = C.sha256Hex(read[name]); });
+          }
+          const reports = {};
+          Object.keys(p.reports).forEach((key) => {
+            reports[key] = { records: p.reports[key].records,
+              report: C.verifyDocument(data, p.reports[key].records) };
+          });
+          return { parts, record: C.documentRecord(data), reports };
+        })),
+        records: { clean: C.cleanIssueRecords(VR.records.raw), borehole: C.boreholeRecords(VR.records.raw),
+          not_a_list: C.cleanIssueRecords({ a: 1 }) },
+        payloads: VR.payloads.map((c) => C.issueRecordsOf(c[0])),
+        lookups: VR.lookups.map((c) => C.lookupCode(c.text, c.records)),
+        assets: {
+          stored: VR.assets.stored.map((c) => (C.assetFromDict(c[0]) || {}).documents || []),
+          draft: (C.assetFromProject({ site: VR.assets.draft.site, issued: VR.assets.draft.issued }) || {})
+            .documents || [],
+        },
+      };
+    }, { VR });
+    const same = (label, got, want) => {
+      const found = firstDifference(got, want, label);
+      check(`verification: ${label}`, !found, found);
+    };
+    same('codes from digests', vrJs.codes, VR.codes.map((c) => c[1]));
+    same('the cover\'s symbol, the same PNG byte for byte', vrJs.qrPng, VR.qr_png.map((c) => c[1]));
+    same('codes read from what is typed', vrJs.parse, VR.parse.map((c) => c[1]));
+    same('the readiness a manifest records', vrJs.readiness, VR.readiness.map((c) => c[1]));
+    same('the calibration set in force, named', vrJs.calibration, VR.calibration);
+    same('facts, code digest, code and manifest', vrJs.manifests,
+      VR.manifests.map((m) => ({ ok: { facts: m.facts, digest: m.digest, code: m.code, xml: m.xml } })));
+    same('facts refused, with the same sentence', vrJs.refusals, VR.refusals.map((r) => ({ threw: r.error })));
+    same('manifests read back, or refused', vrJs.read, VR.read.map((c) => c[1]));
+    same('a package sealed', vrJs.seal, { ok: { code: VR.seal.code, sha256: VR.seal.sha256,
+      manifest: VR.seal.manifest, record: VR.seal.record, parts: VR.seal.parts } });
+    same('a package that types .xml already, sealed', vrJs.sealXml, { ok: VR.seal_xml });
+    VR.packages.forEach((p, i) => {
+      same(`the package "${p.name}": read, recorded and answered`, vrJs.packages[i],
+        { ok: { parts: p.parts, record: p.record, reports: p.reports } });
+    });
+    const verdicts = new Set(VR.packages.flatMap((p) => Object.values(p.reports).map((r) => r.report.verdict)));
+    check('verification: the packages reach every verdict', [
+      'verified', 'unconfirmed', 'changed', 'not_issued', 'altered_manifest', 'damaged_manifest',
+      'no_manifest', 'unreadable'].every((v) => verdicts.has(v)), JSON.stringify([...verdicts]));
+    same('issue records kept', vrJs.records, { clean: VR.records.clean, borehole: VR.records.borehole,
+      not_a_list: VR.records.not_a_list });
+    same('issue records read from either app\'s project file', vrJs.payloads, VR.payloads.map((c) => c[1]));
+    same('codes looked up', vrJs.lookups, VR.lookups.map((c) => c.result));
+    same('the documents an asset record keeps, stored and drafted', vrJs.assets,
+      { stored: VR.assets.stored.map((c) => c[1]), draft: VR.assets.draft.documents });
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 

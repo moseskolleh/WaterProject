@@ -26,6 +26,7 @@ from typing import Any
 
 from .. import qr
 from ..config import Config
+from ..verification import Issue
 from ..registry import (
     Asset,
     AssetState,
@@ -81,11 +82,14 @@ def _state(inputs: AssetReportInputs) -> AssetState:
 
 
 def build_asset_placard(inputs: AssetReportInputs, out_path: str | Path,
-                        config: Config | None = None) -> Path:
-    """The page that gets fixed to the borehole."""
+                        config: Config | None = None, issue: Issue | None = None) -> Path:
+    """The page that gets fixed to the borehole. It has no cover, so its
+    code is in its footer and no second symbol goes beside the one a
+    technician scans."""
     asset = inputs.asset
     rb = ReportBuilder(config.style if config else None,
-                       title=f"Borehole {asset.asset_id}")
+                       title=f"Borehole {asset.asset_id}", kind="placard", issue=issue, config=config)
+    rb.record_readiness(inputs.readiness)
 
     rb.paragraph("BOREHOLE IDENTIFICATION PLATE", bold=True, align="center")
     rb.paragraph(asset.asset_id, bold=True, size_pt=26, align="center")
@@ -111,13 +115,13 @@ def build_asset_placard(inputs: AssetReportInputs, out_path: str | Path,
 
 
 def build_asset_record(inputs: AssetReportInputs, out_path: str | Path,
-                       config: Config | None = None) -> Path:
+                       config: Config | None = None, issue: Issue | None = None) -> Path:
     """The maintenance history and what it means today."""
     asset = inputs.asset
     state = _state(inputs)
     today = inputs.today or date.today()
     rb = ReportBuilder(config.style if config else None,
-                       title=f"Asset record - {asset.label}")
+                       title=f"Asset record - {asset.label}", kind="asset", issue=issue, config=config)
 
     rb.cover(
         ["Borehole Asset Record"],

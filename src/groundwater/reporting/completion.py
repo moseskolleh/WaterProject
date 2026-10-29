@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
+from ..verification import Issue
 from ..decisions import pump_decision, yield_decision
 from ..design.designer import BoreholeDesign
 from ..design.drawing import draw_borehole_design
@@ -224,6 +225,7 @@ def build_completion_report(
     inputs: CompletionReportInputs,
     out_path: str | Path,
     config: Config | None = None,
+    issue: Issue | None = None,
 ) -> Path:
     config = config or Config()
     log = inputs.log
@@ -236,7 +238,8 @@ def build_completion_report(
     slug = safe_slug(log.borehole_ref or site.community, "bh")
 
     rb = ReportBuilder(
-        config.style, title=f"Borehole Completion Report - {site.community}"
+        config.style, title=f"Borehole Completion Report - {site.community}",
+        kind="completion", issue=issue, config=config,
     )
     rb.cover(
         title_lines=["BOREHOLE DRILLING AND", "PUMP TEST REPORT"],

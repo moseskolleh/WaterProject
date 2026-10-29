@@ -264,6 +264,69 @@ def test_quality_flow_with_sample(app):
     assert not app.exception
 
 
+def test_a_report_built_is_issued_and_checked_on_the_verify_page(app):
+    """PLAN.md step 8.1. The water quality report, built on its page, keeps
+    its issue record in the session (which the project file saves) and is
+    issued from the sample workbook it was read from, by that file's hash.
+    On the Verify a document page it is verified against the session's
+    record; with one digit changed it is not, and the part is named; and its
+    code, typed in lower case, is found."""
+    import hashlib
+    import io
+    import re
+    import zipfile
+
+    import yaml
+
+    from groundwater.project_io import serialize_project
+    from groundwater.verification import document_record, verify_document
+
+    goto(app, "Water quality")
+    app.selectbox(key="sample_wq").select("dr_timbo/dr_timbo_water_quality.xlsx")
+    app.run()
+    app.button(key="build_wq_report").click()
+    app.run()
+    assert not app.exception, app.exception
+    path = Path(app.session_state["artifacts"]["Download water quality report (.docx)"])
+    data = path.read_bytes()
+    record = document_record(data)
+    assert record is not None and record["kind"] == "quality"
+    assert record in app.session_state["issued_documents"]
+    assert any(c.value == f"Document code {record['code']}" for c in app.caption)
+    sample = (REPO / "examples" / "data" / "dr_timbo" / "dr_timbo_water_quality.xlsx").read_bytes()
+    evidence = verify_document(data)["facts"]["evidence"]
+    assert {"what": "water quality sheet", "name": "dr_timbo_water_quality.xlsx",
+            "sha256": hashlib.sha256(sample).hexdigest()} in evidence
+    saved = yaml.safe_load(serialize_project(
+        {"issued_documents": app.session_state["issued_documents"]}, "0.3.0"))
+    assert record in saved["issued"]
+
+    goto(app, "Verify a document")
+    app.file_uploader(key="verify_document").set_value(
+        ("report.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+    app.run()
+    assert not app.exception, app.exception
+    assert any("Verified" in s.value for s in app.success)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        entries = {name: z.read(name) for name in z.namelist()}
+    text = entries["word/document.xml"]
+    found = re.search(rb"<w:t(?: [^>]*)?>[^<]*?([0-9])", text)
+    at = found.start(1)
+    entries["word/document.xml"] = text[:at] + (b"8" if text[at:at + 1] == b"9" else b"9") + text[at + 1:]
+    changed = io.BytesIO()
+    with zipfile.ZipFile(changed, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, body in entries.items():
+            z.writestr(name, body)
+    app.file_uploader(key="verify_document").set_value(
+        ("changed.docx", changed.getvalue(),
+         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+    app.run()
+    assert any("Changed since it was issued" in e.value for e in app.error)
+    assert any("word/document.xml (the text of the document)" in m.value for m in app.markdown)
+    app.text_input(key="verify_code").input(record["code"].lower()).run()
+    assert any(f"Document {record['code']} was issued" in s.value for s in app.success)
+
+
 def test_design_flow_with_sample(app):
     goto(app, "Borehole design")
     app.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
