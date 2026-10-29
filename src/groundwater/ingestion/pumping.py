@@ -57,7 +57,16 @@ from pathlib import Path
 import numpy as np
 
 from ..models import DataFlag, PumpingStep, PumpingTest, step_offsets_min
-from ..units import Quantity, convert, read_quantity, unit_from_label
+from ..units import (
+    Quantity,
+    clock_format,
+    convert,
+    parse_unit,
+    read_quantity,
+    read_time,
+    unit_from_label,
+)
+from ..text import phrase, phrase_table
 from ..utils import clean_text, parse_number
 from . import common
 
@@ -269,19 +278,27 @@ def _find_groups(grid: list[list]) -> tuple[int, list[dict]] | None:
 
 def _read_series(
     grid: list[list], header_row: int, group: dict
-) -> tuple[np.ndarray, np.ndarray, str, list[str]]:
+) -> tuple[np.ndarray, np.ndarray, str, list[str], list[tuple[int, str]]]:
     """Read one Time / Water Level pair, with the times put into minutes.
 
-    Returns ``(times_min, levels, time_unit, skipped)``. ``time_unit`` is the
-    unit the column declared; it is empty when nothing was declared (minutes
-    assumed) and ``"?<text>"`` when the *header* declared one that could not
-    be read - in which case the caller must drop the group rather than treat
-    unknown units as minutes. Unlike discharge, there is no "pending" state
-    for time: every consumer would silently produce wrong transmissivities.
+    Returns ``(times_min, levels, time_unit, skipped, clocks)``. ``time_unit``
+    is the unit the column declared; it is empty when nothing was declared
+    (minutes assumed) and ``"?<text>"`` when the *header* declared one that
+    could not be read - in which case the caller must drop the group rather
+    than treat unknown units as minutes. Unlike discharge, there is no
+    "pending" state for time: every consumer would silently produce wrong
+    transmissivities.
 
     ``skipped`` lists individual cells whose own text could not be read; they
     cost one reading each rather than the column, and the caller reports
-    them.
+    them. A date is one of them: the time since the pump started cannot be
+    told from the day a reading was taken.
+
+    ``clocks`` names the readings written as a clock, ``(index, as
+    written)``: a cell Excel formats as a time, or text such as "1:30". Each
+    is read as the elapsed time it shows (:func:`groundwater.units.read_time`).
+    Read for the first number in it, as before, 01:30 was minute 1 and 00:05
+    minute 0, and a test written that way collapsed onto its first minutes.
     """
     header = group.get("time_header", "")
     # A unit the header declares applies to the whole column, so an
@@ -291,26 +308,29 @@ def _read_series(
     declared, header_unit = unit_from_label(header, dimension="time")
     if declared and header_unit is None:
         return (np.array([], dtype=float), np.array([], dtype=float),
-                f"?{declared}", [])
+                f"?{declared}", [], [])
 
-    times, levels, skipped = [], [], []
+    times, levels, skipped, clocks = [], [], [], []
     unit_text = declared
     for row in grid[header_row + 1 :]:
         cell = row[group["time"]] if group["time"] < len(row) else None
         wl = parse_number(row[group["level"]]) if group["level"] < len(row) else None
-        quantity = read_quantity(cell, header, dimension="time")
+        quantity, clock = read_time(cell, header)
         if quantity.status == "absent" or wl is None:
             continue
         if quantity.status == "unknown":
-            # one unreadable reading, not a broken column - but never silent
-            skipped.append(str(cell))
+            # one unreadable reading, not a broken column - but never silent;
+            # a TRUE as Excel shows it, which both readers write alike
+            skipped.append(quantity.unit_text if isinstance(cell, bool) else str(cell))
             continue
-        if quantity.unit_text:
+        if clock:
+            clocks.append((len(times), clock))
+        elif quantity.unit_text:
             unit_text = quantity.unit_text
         times.append(quantity.value)
         levels.append(wl)
     return (np.array(times, dtype=float), np.array(levels, dtype=float),
-            unit_text, skipped)
+            unit_text, skipped, clocks)
 
 
 _STEP_LABEL_RE = re.compile(r"^\s*step\s*\d*\s*q\b", re.IGNORECASE)
@@ -431,10 +451,20 @@ def _sheet_test_type(grid: list[list]) -> str:
 # Assembling the PumpingTest
 # ---------------------------------------------------------------------------
 
-def _join_constant_blocks(
-    blocks: list[tuple[np.ndarray, np.ndarray, dict]],
+#: What a joined series is called, for the constant discharge readings and
+#: the recovery: ``(readings, what a block's minutes count from, an example
+#: heading)``.
+_BLOCK_SERIES = {
+    "constant": ("constant discharge readings", "test", "Constant discharge 121-180 min"),
+    "recovery": ("recovery readings", "recovery", "Recovery 61-120 min"),
+}
+
+
+def _join_blocks(
+    blocks: list[tuple[np.ndarray, np.ndarray, dict]], series: str = "constant",
 ) -> tuple[np.ndarray, np.ndarray, list[str], list[str]]:
-    """Join the hourly blocks of a constant discharge test into one series.
+    """Join the hourly blocks of a constant discharge test, or of a recovery,
+    into one series.
 
     A constant discharge sheet is written in hourly column groups side by side
     and each group's elapsed time is often counted within its own hour: 1, 2, 3
@@ -442,18 +472,24 @@ def _join_constant_blocks(
     groups and sorting the result interleaved them into a sawtooth - minute 1
     of every hour, then minute 2 of every hour - and every drawdown curve and
     every transmissivity fitted to it was wrong (ROADMAP data-ingestion-10).
+    A long recovery is written the same way ("Recovery 0-60 min", "Recovery
+    61-120 min"), and only its first block used to be read, without a word:
+    the report's residual drawdown at the end of monitoring was the 60-minute
+    one on a recovery read for two hours.
 
-    Each block's place in the test is read off the sheet: the minutes its own
-    heading names ("Constant discharge 61-120 min"), or, when the heading names
-    none, the last reading of the block before it, which is what a block whose
-    times go backwards continues from. A block that is neither - one starting
-    inside the readings already taken and running past them - is left out and
-    named, because a block placed at a minute nobody can check produces a curve
-    nobody can trust.
+    Each block's place in the series is read off the sheet: the minutes its
+    own heading names ("Constant discharge 61-120 min"), or, when the heading
+    names none, the last reading of the block before it, which is what a
+    block whose times go backwards continues from. A block that is neither -
+    one starting inside the readings already taken and running past them - is
+    left out and named, because a block placed at a minute nobody can check
+    produces a curve nobody can trust.
 
-    Returns ``(times_min, levels, joined, dropped)``. ``joined`` and ``dropped``
-    are sentences naming what was done, for the caller to raise as flags.
+    ``series`` is ``"constant"`` or ``"recovery"``, for the sentences. Returns
+    ``(times_min, levels, joined, dropped)``. ``joined`` and ``dropped`` are
+    sentences naming what was done, for the caller to raise as flags.
     """
+    readings, what, _ = _BLOCK_SERIES[series]
     times: list[np.ndarray] = []
     levels: list[np.ndarray] = []
     joined: list[str] = []
@@ -480,39 +516,26 @@ def _join_constant_blocks(
             # at 61 to 116, and a four-hour test ended at 226 minutes.
             offset = max(span[0] - 1.0, 0.0)
             if offset:
-                note = (
-                    f"block {number} counts its time within its own hour and its "
-                    f"heading '{heading}' covers {span[0]:g} to {span[1]:g} min, "
-                    f"so {offset:g} min were added to it and its first reading, "
-                    f"at {first:g} min, is minute {first + offset:g} of the test"
-                )
+                note = phrase(
+                    "pumping.block_by_heading", number=number, heading=heading,
+                    start=span[0], end=span[1], offset=offset, first=first,
+                    placed=first + offset, what=what)
         elif span is not None or end is None or first > end:
             offset = 0.0
         elif float(t.max()) <= end:
             offset = end
-            note = (
-                f"block {number} restarts its time at {first:g} min, inside the "
-                f"{end:g} min already read, and its heading names no minutes, so "
-                f"it was read as continuing from the last reading before it and "
-                f"{offset:g} min were added to it"
-            )
+            note = phrase("pumping.block_continued", number=number, first=first,
+                          end=end, offset=offset)
         else:
-            dropped.append(
-                f"Block {number} of the constant discharge readings starts at "
-                f"{first:g} min, inside the {end:g} min already read, and runs "
-                f"past them to {float(t.max()):g} min, so the sheet does not say "
-                "whether its times count from the start of the test or from the "
-                "start of the block."
-            )
+            dropped.append(phrase(
+                "pumping.block_ambiguous", number=number, readings=readings,
+                first=first, end=end, last=float(t.max()), what=what))
             continue
         shifted = t + offset
         if end is not None and float(shifted[0]) < end:
-            dropped.append(
-                f"Block {number} of the constant discharge readings still starts "
-                f"at {float(shifted[0]):g} min once placed, before the {end:g} "
-                "min already read, so its readings would run backwards into the "
-                "block before it."
-            )
+            dropped.append(phrase(
+                "pumping.block_backwards", number=number, readings=readings,
+                placed=float(shifted[0]), end=end))
             continue
         if note:
             joined.append(note)
@@ -528,8 +551,86 @@ def _join_constant_blocks(
     return all_t[order], all_wl[order], joined, dropped
 
 
+def _join_flags(
+    blocks: list[tuple[np.ndarray, np.ndarray, dict]], series: str,
+) -> tuple[np.ndarray, np.ndarray, list[DataFlag]]:
+    """:func:`_join_blocks`, with what it did raised as flags."""
+    readings, _, example = _BLOCK_SERIES[series]
+    t, wl, joined, dropped = _join_blocks(blocks, series)
+    flags = [
+        DataFlag("warning", f"{series}_block_unreadable",
+                 phrase("pumping.block_left_out", note=note, example=example))
+        for note in dropped
+    ]
+    if joined and len(t):
+        flags.append(DataFlag(
+            "info", f"{series}_blocks_joined",
+            phrase("pumping.blocks_joined", readings=readings, count=len(blocks),
+                   notes="; ".join(joined), first=float(t.min()), last=float(t.max())),
+        ))
+    return t, wl, flags
+
+
+#: Words in a recovery block's time header or heading that say its times
+#: count from the pump stopping: "Time since pump stopped", "after shut-off",
+#: "since pump off". "Since start" does not.
+_SINCE_STOP_RE = re.compile(r"stop|shut|\boff\b")
+
+#: A value cell whose text starts as a number does: "8", "50 mm", "-2".
+_STARTS_AS_NUMBER_RE = re.compile(r"^\s*[-+]?\.?[0-9]")
+
+
+def _diameters(found: dict, flags: list[DataFlag]) -> dict[str, float]:
+    """The casing and riser diameters the sheet records, in inches.
+
+    A pumping test co-pilot writes "Casing diameter (in)" and "Riser
+    diameter (in)" on its sheet. A diameter is read in the unit its label or
+    its own cell names, and one with no unit, or none the toolkit reads, is
+    refused with a flag rather than taken as metres or as inches: the
+    analysis then uses its configured casing, as it did for every sheet.
+    """
+    out: dict[str, float] = {}
+    for key, what in (("casing_diameter_in", "casing"), ("riser_diameter_in", "riser")):
+        if key not in found:
+            continue
+        label, value = found[key]
+        # Text that does not start with a number is the next label or a note
+        # standing where the value would be, not a diameter: with the
+        # co-pilot's riser left blank, the "Planned rate (m3/h)" label under
+        # it was read as a riser of 3 inches.
+        if isinstance(value, str) and not _STARTS_AS_NUMBER_RE.match(value):
+            continue
+        quantity = (read_quantity(value, label, dimension="length")
+                    if isinstance(value, (int, float, str)) and not isinstance(value, bool)
+                    else Quantity(None, None, "", "unknown", "length"))
+        if quantity.status == "absent":
+            continue
+        if (quantity.status in ("unknown", "assumed") or quantity.value is None
+                or not quantity.value > 0):
+            flags.append(DataFlag(
+                "warning", "diameter_unreadable",
+                phrase("pumping.diameter_unreadable", what=what, written=clean_text(value)),
+            ))
+            continue
+        unit = parse_unit(quantity.unit_text, dimension="length")
+        in_inches = unit is not None and unit.canonical == "in"
+        out[key] = float(quantity.raw_value) if in_inches else quantity.value / 0.0254
+    # Water stands between the casing and the riser, so a casing no wider
+    # than its riser leaves no casing storage at all, and every fit would be
+    # read as outside it. Such a pair is a slip on the sheet, not a borehole.
+    casing, riser = out.get("casing_diameter_in"), out.get("riser_diameter_in")
+    if casing is not None and riser is not None and casing <= riser:
+        flags.append(DataFlag(
+            "warning", "diameters_inconsistent",
+            phrase("pumping.diameters_inconsistent", casing=casing, riser=riser),
+        ))
+        out = {}
+    return out
+
+
 def _assemble(grid: list[list], source: str) -> PumpingTest:
-    fields = common.extract_header_fields(grid, max_rows=len(grid))
+    found: dict = {}
+    fields = common.extract_header_fields(grid, max_rows=len(grid), raw=found)
     site = common.site_from_fields(fields, source=source)
     flags: list[DataFlag] = []
 
@@ -560,7 +661,7 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
             )
         )
 
-    def _series(kind: str) -> list[tuple[np.ndarray, np.ndarray, dict]]:
+    def _series(kind: str) -> list[tuple[np.ndarray, np.ndarray, dict, list]]:
         """Read every column group of one kind, dropping unreadable-unit ones.
 
         A time column whose unit cannot be read is dropped rather than taken
@@ -569,13 +670,14 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
 
         Each block is handed back with the group it came from, because a
         constant test's blocks are placed by the heading the sheet prints over
-        them before they are joined into one series.
+        them before they are joined into one series, and with the readings
+        in it written as a clock.
         """
         out = []
         for group in groups:
             if group["kind"] != kind:
                 continue
-            t, wl, unit_text, skipped = _read_series(grid, header_row, group)
+            t, wl, unit_text, skipped, clocks = _read_series(grid, header_row, group)
             if unit_text.startswith("?"):
                 flags.append(
                     DataFlag(
@@ -611,13 +713,45 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                     )
                 )
             if len(t):
-                out.append((t, wl, group))
+                out.append((t, wl, group, clocks))
         return out
 
     pumping_blocks = _series("pumping")
     recovery_blocks = _series("recovery")
-    pumping_series = [(t, wl) for t, wl, _ in pumping_blocks]
-    recovery_series = [(t, wl) for t, wl, _ in recovery_blocks]
+
+    # A test's first reading is taken in its first hour, so an earliest
+    # pumping reading written as a clock past it, 08:05, is a time of day.
+    # Turning times of day into the time since the pump started needs the
+    # minute it started and the day each reading fell on, so the sheet is
+    # refused rather than read as a test that began eight hours in. A block
+    # whose heading names the minutes it covers is held to its heading
+    # instead. The earliest reading, not the first row: rows written out of
+    # order put a later reading at the top.
+    if pumping_blocks:
+        t0, _, group0, clocks0 = pumping_blocks[0]
+        span0 = _block_span_min(str(group0.get("block_heading", "") or ""))
+        earliest = int(np.argmin(t0))
+        written0 = dict(clocks0).get(earliest)
+        if (written0 is not None
+                and clock_format(group0.get("time_header", "")) == "hm"
+                and float(t0[earliest]) > 60.0
+                and (span0 is None or float(t0[earliest]) > span0[1])):
+            flags.append(DataFlag("error", "time_of_day",
+                                  phrase("pumping.time_of_day", example=written0)))
+            pumping_blocks, recovery_blocks = [], []
+
+    for kind, blocks, event in (("pumping", pumping_blocks, "started"),
+                                ("recovery", recovery_blocks, "stopped")):
+        read = [(float(t[i]), written, clock_format(group.get("time_header", "")))
+                for t, _, group, clocks in blocks for i, written in clocks]
+        if read:
+            minutes, written, fmt = read[0]
+            flags.append(DataFlag("info", "time_clock_read", phrase(
+                "pumping.time_clock_read", count=len(read), kind=kind,
+                format=phrase_table("pumping.time_clock_formats")[fmt], event=event,
+                example=written, minutes=minutes)))
+
+    pumping_series = [(t, wl) for t, wl, _, _ in pumping_blocks]
 
     test_type = str(fields.get("test_type", "")).strip().lower()
     stated = bool(test_type)
@@ -642,32 +776,35 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
         # The hourly column groups are one continuous series on a constant
         # test, but each block's times are often counted within its own hour,
         # so every block is put back in its place before they are joined.
-        t, wl, joined, dropped = _join_constant_blocks(pumping_blocks)
-        for note in dropped:
-            flags.append(
-                DataFlag(
-                    "warning",
-                    "constant_block_unreadable",
-                    note + " The block was left out of the series rather than "
-                    "joined at a minute nobody can check. Head each block with "
-                    "the minutes it covers, as in 'Constant discharge 121-180 "
-                    "min'.",
-                )
-            )
-        if joined and len(t):
-            flags.append(
-                DataFlag(
-                    "info",
-                    "constant_blocks_joined",
-                    f"The constant discharge readings are written in "
-                    f"{len(pumping_blocks)} blocks: " + "; ".join(joined)
-                    + f". The blocks have been joined into one series running "
-                    f"{t.min():g} to {t.max():g} min.",
-                )
-            )
+        t, wl, joined = _join_flags([(t, wl, g) for t, wl, g, _ in pumping_blocks],
+                                    "constant")
+        flags.extend(joined)
         pumping_series = [(t, wl)] if len(t) else []
 
-    step_length = fields.get("step_length_min")
+    # A recovery written in blocks is joined by the same rules.
+    recovery_time = recovery_level = None
+    if len(recovery_blocks) > 1:
+        t, wl, joined = _join_flags([(t, wl, g) for t, wl, g, _ in recovery_blocks],
+                                    "recovery")
+        flags.extend(joined)
+        if len(t):
+            recovery_time, recovery_level = t, wl
+    elif recovery_blocks:
+        recovery_time, recovery_level = recovery_blocks[0][0], recovery_blocks[0][1]
+
+    # The length of each step is read in the unit its label or its own cell
+    # names: "1 hr" was a step of 1 minute, which made a test of hourly
+    # steps a short one inside its casing-storage period.
+    step_length = None
+    if "step_length_min" in found:
+        label, value = found["step_length_min"]
+        quantity, _ = read_time(value, label)
+        if quantity.status == "unknown":
+            flags.append(DataFlag("warning", "step_length_unreadable", phrase(
+                "pumping.step_length_unreadable", written=clean_text(value))))
+        elif quantity.value is not None and quantity.value > 0:
+            step_length = quantity.value
+    diameters = _diameters(found, flags)
     discharges = _find_step_discharges(grid)
 
     steps: list[PumpingStep] = []
@@ -752,10 +889,6 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                 )
             )
 
-    recovery_time = recovery_level = None
-    if recovery_series:
-        recovery_time, recovery_level = recovery_series[0]
-
     if recovery_time is not None:
         test_type += "+recovery"
 
@@ -768,6 +901,25 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
             s.time_min.max() + offset
             for s, offset in zip(steps, step_offsets_min(steps), strict=True)
         ))
+
+    # Recovery times written on the test's clock - 241, 242 after a 240-minute
+    # test - were taken as minutes since the pump stopped: t/t' was formed
+    # from 481 and 241, and a recovery of an aquifer of 20 m2/day read 0.62.
+    # A recovery whose first reading comes at or after the minute the pump
+    # stopped is on the test's clock unless its header says it counts from
+    # the stop, and is moved back by the pumping time.
+    if recovery_time is not None and pumping_duration is not None and len(recovery_time):
+        first_recovery = float(np.min(recovery_time))
+        says_since = any(
+            _SINCE_STOP_RE.search((str(g.get("time_header", "")) + " "
+                                   + str(g.get("block_heading", "") or "")).lower())
+            for _, _, g, _ in recovery_blocks
+        )
+        if not says_since and first_recovery >= pumping_duration:
+            recovery_time = recovery_time - pumping_duration
+            flags.append(DataFlag("info", "recovery_on_test_clock", phrase(
+                "pumping.recovery_on_test_clock", first=first_recovery,
+                duration=pumping_duration)))
 
     test = PumpingTest(
         site=site,
@@ -782,6 +934,8 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
         recovery_level_m=recovery_level,
         pumping_duration_min=pumping_duration,
         source=str(source),
+        casing_diameter_in=diameters.get("casing_diameter_in"),
+        riser_diameter_in=diameters.get("riser_diameter_in"),
     )
 
     # ---- data quality flags ------------------------------------------------
@@ -795,14 +949,16 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
         )
     missing_q = [s.step_number for s in steps if s.discharge_m3_per_h is None]
     if missing_q:
+        # Every result is pending only when no step has a rate. With the
+        # first step's rate the drawdown fits run and a yield follows, and
+        # the flag used to say otherwise beside it.
         flags.append(
             DataFlag(
                 "warning",
                 "missing_discharge",
-                "Discharge not recorded for step(s) "
-                + ", ".join(str(n) for n in missing_q)
-                + ". Drawdown and recovery curves are produced, but transmissivity "
-                "and yield results are pending until discharge values are supplied.",
+                phrase("pumping.missing_discharge" if len(missing_q) == len(steps)
+                       else "pumping.missing_discharge_some",
+                       steps=", ".join(str(n) for n in missing_q)),
             )
         )
     if swl is not None:

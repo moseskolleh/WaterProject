@@ -63,6 +63,10 @@ LABEL_PATTERNS: dict[str, list[str]] = {
     "drill_rig": [r"^drill\s*rig"],
     "installed_screens": [r"^screens?\s*installed", r"^installed\s*screens?",
                           r"^screens?\s*(set|as\s*built)"],
+    # the casing and riser a pumping test co-pilot writes on its sheet, which
+    # set how long casing storage lasts (hydraulics.analysis)
+    "casing_diameter_in": [r"^casing\s*diameter"],
+    "riser_diameter_in": [r"^riser(\s*pipe)?\s*diameter"],
 }
 
 _COMPILED = {

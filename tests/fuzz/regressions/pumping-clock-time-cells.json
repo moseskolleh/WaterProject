@@ -1,0 +1,42 @@
+{
+ "note": "Written on 2026-10-28, not found by the generator. A 30-hour constant test whose readings from the first hour on are in cells Excel shows as a clock (01:30), and from the 24th hour in cells formatted [h]:mm (24:00, 30:00), and its recovery the same way. openpyxl hands the Python reader a time and a duration, the browser's reader the text 01:30:00 and a date in January 1900. Both readers took the first number of a clock for the minutes, so 01:30 was minute 1 and the readings from the first hour on fell onto minutes 1 to 20, behind the first hour's: the test pumped for 45 minutes. A duration of a day or more was minute 1 in Python and was dropped in the browser. Both engines now read a clock as the hours and minutes it shows, and tests/test_ingestion.py holds this sheet to the times it records, not only the two engines to each other.",
+ "kind": "pumping",
+ "options": {},
+ "sheets": [
+  {"name": "Pumping Test", "rows": [
+   ["PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)", null, null, null, null, null],
+   ["Community", "Rokel", null, "Date", "2026-03-01", null],
+   ["Client", null, null, "Length of each step (min)", null, null],
+   ["Test conducted by", "WiNGiN", null, "Start time", "08:00", null],
+   ["Borehole Ref. No.", "BH-1", null, "Depth of Borehole (m)", 70, null],
+   ["Static water level (m)", 10.0, null, "Pump setting (m)", 60, null],
+   ["Test type (step or constant)", "constant", null, "District", "Port Loko", null],
+   [null, null, null, null, null, null],
+   ["Discharge per step (m3/h)", "Step 1 Q", 2.0, null, null, null],
+   ["Constant discharge 0-1800 min", null, null, "Recovery", null, null],
+   ["Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Recovery (m)"],
+   [1, 11.54, null, 1, 11.43, null],
+   [2, 11.67, null, 2, 11.3, null],
+   [3, 11.75, null, 3, 11.22, null],
+   [5, 11.84, null, 5, 11.12, null],
+   [8, 11.93, null, 10, 10.99, null],
+   [10, 11.98, null, 20, 10.86, null],
+   [15, 12.05, null, 30, 10.79, null],
+   [20, 12.11, null, 45, 10.71, null],
+   [30, 12.19, null, {"time": "01:00"}, 10.66, null],
+   [45, 12.26, null, {"time": "01:30"}, 10.58, null],
+   [{"time": "01:00"}, 12.32, null, {"time": "02:00"}, 10.53, null],
+   [{"time": "01:30"}, 12.4, null, null, null, null],
+   [{"time": "02:00"}, 12.45, null, null, null, null],
+   [{"time": "03:00"}, 12.53, null, null, null, null],
+   [{"time": "04:00"}, 12.58, null, null, null, null],
+   [{"time": "06:00"}, 12.66, null, null, null, null],
+   [{"time": "08:00"}, 12.72, null, null, null, null],
+   [{"time": "12:00"}, 12.79, null, null, null, null],
+   [{"time": "16:00"}, 12.85, null, null, null, null],
+   [{"time": "20:00"}, 12.89, null, null, null, null],
+   [{"duration": "24:00"}, 12.93, null, null, null, null],
+   [{"duration": "30:00"}, 12.97, null, null, null, null]
+  ]}
+ ]
+}

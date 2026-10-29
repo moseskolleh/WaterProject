@@ -259,8 +259,11 @@ def build_pumping_report(
         # a page above a Cooper-Jacob line read inside the period and adopted
         # as the best available
         source = analysis.transmissivity_source
+        # the casing the analysis took: the sheet's, where it records one
+        casing_in = (getattr(analysis, "casing_diameter_in", None)
+                     or config.pumping.casing_diameter_in)
         rb.paragraph(
-            f"Casing storage: with a {config.pumping.casing_diameter_in:g} inch "
+            f"Casing storage: with a {casing_in:g} inch "
             "casing and the specific capacity at the end of the first step, the "
             "water standing in the casing supplies the pump for about the first "
             f"{analysis.casing_storage_min:.0f} minutes (Schafer's rule). Drawdown "

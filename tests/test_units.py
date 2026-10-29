@@ -345,3 +345,42 @@ def test_one_unreadable_reading_costs_one_reading_not_the_column(tmp_path,
     test = read_pumping_workbook(path)
     assert len(test.steps[0].time_min) >= 8      # the rest of the column survives
     assert any(f.code == "time_reading_unreadable" for f in test.flags)
+
+
+def test_an_elapsed_time_written_as_a_clock_is_read_as_one():
+    """openpyxl hands a time cell over as a time, a duration as a timedelta
+    and a day or more in a cell formatted h:mm as a datetime on Excel's
+    serial calendar; the browser's reader hands over "01:30:00" and a Date.
+    The first number of each was read as the minutes."""
+    import datetime
+
+    from groundwater.units import clock_format, is_date_cell, read_clock, read_time
+
+    assert read_clock(datetime.time(1, 30)) == (90.0, "01:30:00")
+    minutes, written = read_clock(datetime.time(0, 0, 30, 500000))
+    assert minutes == pytest.approx(30.5 / 60) and written == "00:00:30.500000"
+    assert read_clock(datetime.timedelta(days=1, minutes=90)) == (1530.0, "25:30:00")
+    assert read_clock(datetime.datetime(1900, 1, 1, 1, 30)) == (1530.0, "25:30:00")
+    assert read_clock("1:30") == (90.0, "1:30")
+    assert read_clock("5:30", clock_format("Time (mm:ss)")) == (5.5, "5:30")
+    assert read_clock("00:05:30", "ms") == (5.5, "00:05:30")
+    # a date is a date, whatever time of day it carries, and not a clock
+    for cell in (datetime.datetime(2026, 3, 1, 8, 5), datetime.date(2026, 3, 1),
+                 datetime.datetime(1900, 1, 1, 1, 30, tzinfo=datetime.timezone.utc)):
+        assert read_clock(cell) is None and is_date_cell(cell), cell
+    # text that starts as a clock and is not one, or that writes hours and
+    # minutes as words, was read for its first number: 1:30 pm was minute 1
+    for cell in ("1:60", "1:5", "12:30:75", "1:30 pm", "08:05 AM", "10:00 (approx)",
+                 "1: 30", "-1:30", "1000:00", "1h 30m", "1 hr 30 min", "1h30"):
+        quantity, written = read_time(cell, "Time (min)")
+        assert quantity.status == "unknown" and quantity.value is None, cell
+    # an Excel TRUE was minute 1
+    assert read_time(True, "Time (min)")[0].status == "unknown"
+    # a number with a unit or a note beside it is still a number
+    for cell, minutes in (("5 min", 5.0), ("2 h", 120.0), ("12 pump stopped", 12.0),
+                          ("1.30", 1.3)):
+        assert read_time(cell, "Time (min)")[0].value == minutes, cell
+    quantity, written = read_time("1 hr", "Time (min)")
+    assert (quantity.value, quantity.status, written) == (60.0, "converted", "")
+    assert clock_format("Time (min)") == clock_format("Time (hh:mm)") == "hm"
+    assert clock_format("Time (min:sec)") == clock_format("Time (m:s)") == "ms"

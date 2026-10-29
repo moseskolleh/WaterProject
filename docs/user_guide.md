@@ -194,15 +194,40 @@ the pump started, the pump setting depth and the borehole depth. Write
   recomputes drawdown from the static level, so small arithmetic slips
   there do not matter.
 - Reading times do not need to be evenly spaced. Record the actual
-  minute of each reading.
+  minute of each reading. A time written as hours and minutes, `1:30`,
+  or typed into a cell Excel shows as a clock, is read as the elapsed
+  time it shows (90 minutes), as Excel reads it; the page says how many
+  readings were read that way. Head the column `Time (mm:ss)` if `5:30`
+  means five and a half minutes. Do not write the time of day: a sheet
+  whose earliest reading is `08:05` is refused, with nothing on it used,
+  because the time since the pump started cannot be worked out from it.
+  A time that starts as a clock and is not one (`1:30 pm`, `1:60`) or
+  that writes hours and minutes as words (`1h 30m`) is left out, and the
+  page lists it; write `1:30` or `90`.
+- Write the length of each step with its unit if it is not in minutes
+  (`1 h`); a length the toolkit cannot read is not used, and each step is
+  taken to have run as long as its own readings show.
 - The four column groups cover hours one to four. For a step test each
   group is one step; for a constant test they continue one series.
 - The recovery block has its own time column: minutes since the pump
-  stopped.
+  stopped. A recovery written over several blocks is joined into one, as
+  the pumping blocks are; head each with the minutes it covers
+  (`Recovery 61-120 min`) if its times start again at 1. A recovery whose
+  first time is at or after the minute the pump stopped (241 after a
+  240-minute test) is read as the test's own clock and moved back to the
+  stop, and the page says so; head its time column `Time since pump
+  stopped (min)` if the times really count from the stop.
+- If the sheet records the casing and riser, as `Casing diameter (in)`
+  and `Riser diameter (in)` with the value beside each, the analysis uses
+  them for the casing-storage period instead of the project's settings.
+  Write each with its unit; one with no unit is not used, and the page
+  says so.
 - **Record the discharge of every step** in the discharge row (bucket
   and stopwatch: litres divided by seconds, times 3.6 gives m3/h).
-  Without discharge the system still draws the curves but reports
-  transmissivity and yield as pending.
+  Without any discharge the system still draws the curves but reports
+  transmissivity and yield as pending. Without the last step's, the
+  recovery is not analysed: it is read against the rate the pump stopped
+  at.
 
 What the pumping test page and report make of the sheet, besides the
 straight-line fits:
@@ -219,7 +244,18 @@ straight-line fits:
   given as bands too. Read the band as the least the spread can be: on
   test data it held the true value about seven times in ten, not eight.
   A yield is called sustainable only where the bottom of its band still
-  covers the recommended rate at the dry-season level.
+  covers the recommended rate at the dry-season level. The yield tables
+  print a second range beside the yield, labelled "range over the
+  assumptions": the safe yield over the fitted transmissivities, the
+  assumed storativity and well radius, and a dry-season decline of 1 to
+  4 m. It is not the band from the readings' scatter.
+- **A level that holds.** The pumped level is called stabilised, and a
+  recharge boundary or leakage indicated, only where its fitted line
+  moved by less than a dipper reads (1 cm) over the last half log cycle
+  of the test (or of the last step), at under half the slope it rose at
+  over the log cycle before. A drawdown still rising at its full slope is
+  not stabilised however close its last few readings are. A Cooper-Jacob
+  line drawn through such a level is not used.
 - **The early readings are used.** A test that never got past casing
   storage is fitted with the Papadopulos-Cooper solution for a
   large-diameter well, which models the water drawn from the casing.
@@ -316,8 +352,9 @@ start and stop of pumping and the GPS position in the header, and a
 second sheet logging every reading, timing and event. Upload it like
 any other sheet, or press **Use it as this project's pumping test** to
 analyse it at once; that also sets the project's casing and riser
-diameters to the ones entered here, which the readers do not take from
-the sheet. Save the project file as well (section 11).
+diameters to the ones entered here. The sheet carries them too, and both
+apps' readers take them from it, so the sheet analysed in another
+project keeps its own casing. Save the project file as well (section 11).
 
 ## 4. Drilling log
 

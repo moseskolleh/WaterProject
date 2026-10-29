@@ -2049,6 +2049,23 @@ await withPage(async (page, base, consoleErrors) => {
       `js ${JSON.stringify(extraction.pdfs[name])}\n     py ${JSON.stringify(py)}`);
   });
 
+  // --- time cells ---
+  // A cell Excel formats as a clock reaches the readers as a clock, and the
+  // first number in it was read as the minutes: 01:30 was minute 1.
+  const timeCells = await page.evaluate((cases) => cases.map((c) => {
+    const read = GWT.core.readTime(c.cell, [c.header]);
+    return { cell: c.cell, header: c.header, format: GWT.core.clockFormat([c.header]),
+      value: read.quantity.value, status: read.quantity.status,
+      unit: read.quantity.unit_text, written: read.clock };
+  }), R.time_cells);
+  R.time_cells.forEach((py, i) => {
+    const js = timeCells[i];
+    check(`time cell ${JSON.stringify(py.cell)} under ${py.header}`,
+      close(js.value, py.value, 1e-12) && js.status === py.status &&
+        js.unit === py.unit && js.written === py.written && js.format === py.format,
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+  });
+
   // --- pumping sheets at the edges ---
   // The two sample sheets are the ordinary case. These are the same sheets
   // with the cells rewritten that each hydraulics defect turned on: a rejected
@@ -2085,6 +2102,18 @@ await withPage(async (page, base, consoleErrors) => {
           rec_pumping_time: a.recovery ? a.recovery.pumping_time_min : null,
           step_numbers: a.step_test ? a.step_test.steps.map((s) => s.step) : null,
           flags: a.flags.map((f) => [f.level, f.code, f.message]),
+          // what the audit of the reader and the analysis moved: clock
+          // times, the step length, the recovery's blocks and clock, the
+          // stabilised level, the sheet's casing and the yield's root
+          step_length: test.step_length_min,
+          recovery: test.recovery_time_min ? [test.recovery_time_min.length,
+            Math.min(...test.recovery_time_min), Math.max(...test.recovery_time_min)] : null,
+          residual_end: a.recovery ? a.recovery.residual_at_end_m : null,
+          stabilised: a.stabilised_level_m,
+          casing_in: a.casing_diameter_in,
+          riser_in: a.riser_diameter_in,
+          casing_min: a.casing_storage_min,
+          long_term: rec.long_term_yield_m3_per_h,
         };
       } catch (e) { out[name] = { error: String(e && e.message || e) }; }
     });

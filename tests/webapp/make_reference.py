@@ -2778,6 +2778,7 @@ def build() -> dict:
     out["pdf_sheet"] = pdf_sheet_reference()
     out["extraction"] = extraction_reference()
     out["pumping_cases"] = pumping_cases()
+    out["time_cells"] = time_cells_reference()
     out["regional"] = regional_reference()
     out["survey_figures"] = survey_figures_reference(rokel_interps)
     out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
@@ -5822,8 +5823,14 @@ def pumping_spread_reference() -> dict:
 
     from groundwater.ingestion import common
 
-    # the edge sheets travel in pumping_cases already; parity reads them there
-    edge = _pumping_case_grids()
+    # the edge sheets travel in pumping_cases already; parity reads them there.
+    # The audit's sheets are not about the bands, and their readings are clean
+    # Theis curves with no casing storage in them, which leave the
+    # large-diameter fit's storativity running off down its valley to 1e-22
+    # or 1e-78, where the engines stop 1 percent apart: they are held in
+    # pumping_cases alone.
+    audit = _audit_case_grids()
+    edge = {name: grid for name, grid in _pumping_case_grids().items() if name not in audit}
     timbo, _ = common.load_grid(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
     own = {"dr_timbo": json.loads(json.dumps(timbo, default=str)),
            "large_diameter": _large_diameter_grid(),
@@ -6127,7 +6134,222 @@ def _pumping_case_grids() -> dict[str, list[list]]:
             short[11 + i][3 * k] = 50 * k + t
             short[11 + i][3 * k + 1] = round(10.0 + drawdown(50 * k + t), 2)
     cases["short_steps"] = short
+    cases.update(_audit_case_grids())
     return cases
+
+
+def _audit_sheet(blocks, *, recovery=None, headings=None, step_length=None,
+                 rates=(2.0,), test_type="constant", pump=45.0, time_head="Time (min)",
+                 recovery_head="Time (min)", extra=()) -> list[list]:
+    """A pumping sheet as the template lays one out, from ``blocks`` of
+    (time, level) side by side and a recovery block: the static level 10 m,
+    the hole 60 m deep, the step rates in row 4 and the readings from row 7."""
+    rows = [["PUMPING TEST FIELD SHEET"],
+            ["Community", "Test", None, "Static water level (m)", 10.0],
+            ["Depth of Borehole (m)", 60.0, None, "Pump setting (m)", pump],
+            ["Test type (step or constant)", test_type, None,
+             "Length of each step (min)", step_length]]
+    q_row = ["Discharge per step (m3/h)"]
+    for i, q in enumerate(rates):
+        q_row += [f"Step {i + 1} Q", q, None]
+    rows.append(q_row)
+    rows += [list(row) for row in extra]
+    groups = list(blocks) + ([recovery] if recovery is not None else [])
+    heads = list(headings or [None] * len(groups))
+    rows.append(sum(([h, None, None] for h in heads), []))
+    header = []
+    for _ in blocks:
+        header += [time_head, "Water Level (m)", "Drawdown (m)"]
+    if recovery is not None:
+        header += [recovery_head, "Water Level (m)", "Recovery (m)"]
+    rows.append(header)
+    for i in range(max(len(g) for g in groups)):
+        row = []
+        for g in groups:
+            row += [g[i][0], g[i][1], None] if i < len(g) else [None, None, None]
+        rows.append(row)
+    width = max(len(r) for r in rows)
+    return [r + [None] * (width - len(r)) for r in rows]
+
+
+def _audit_case_grids() -> dict[str, list[list]]:
+    """The sheets the audit of the pumping test reader and analysis turned
+    on: times written as clocks (in rows out of order too), a time of day, a
+    recovery in two blocks and
+    one on the test's clock, the step length in hours, blank and unreadable,
+    a last step with no rate, the casing on the sheet (with no unit, no
+    wider than its riser, and with the riser left blank above another
+    label), a Theis drawdown, a flattened one and a step test whose last
+    step flattens, a handpump line
+    Cooper-Jacob used to refuse, and a yield under 0.01 m3/h."""
+    from scipy.special import exp1
+
+    def theis(t, T, q, S=1e-3, r=0.1):
+        u = r * r * S / (4 * T * (t / 1440.0))
+        return q * 24 / (4 * math.pi * T) * float(exp1(u))
+
+    def steps_of(times, rates, T, loss=0.002):
+        """Superposed Theis drawdown of a step test whose steps begin every
+        ``len`` minutes, with C Q^2 of well loss."""
+        length = times[-1]
+        out = []
+        for k in range(len(rates)):
+            block = []
+            for m in times:
+                t = length * k + m
+                s = sum(theis(t - length * i, T, q - (rates[i - 1] if i else 0.0))
+                        for i, q in enumerate(rates[:k + 1]))
+                block.append((t, round(10.0 + s + loss * (rates[k] * 24) ** 2 / 24, 3)))
+            out.append(block)
+        return out
+
+    day = [1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480, 600,
+           720, 840, 960, 1080, 1200, 1320, 1380, 1440]
+    eight = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100, 120,
+             150, 180, 210, 240, 300, 360, 420, 480]
+    since = [1, 2, 3, 5, 10, 20, 30, 45, 60]
+    cases: dict[str, list[list]] = {}
+
+    def recovery_after(stop, T, q, minutes=since, offset=0.0):
+        return [(offset + m, round(10.0 + theis(stop + m, T, q) - theis(m, T, q), 3))
+                for m in minutes]
+
+    def clock(m, seconds=True):
+        return (f"{int(m) // 60:02d}:{int(m) % 60:02d}:00" if seconds
+                else f"{int(m) // 60}:{int(m) % 60:02d}")
+
+    # an eight-hour test with every reading from the first hour on in a clock
+    # cell, as the browser's reader writes one, and minute 90 typed as 1:30
+    levels = [(m, round(10.0 + theis(m, 20.0, 2.0), 3)) for m in eight]
+    cases["clock_cells"] = _audit_sheet(
+        [[(clock(m, seconds=m != 90) if m >= 60 else m, wl) for m, wl in levels]],
+        recovery=recovery_after(480, 20.0, 2.0))
+    # a column that names its clock as minutes and seconds
+    cases["clock_minutes_seconds"] = _audit_sheet(
+        [[(f"{int(m)}:{int(round(m % 1 * 60)):02d}", round(10.0 + theis(m, 20.0, 2.0), 3))
+          for m in (0.5, 1, 1.5, 2, 3, 5, 7.5, 10, 15, 20, 30)]],
+        time_head="Time (mm:ss)")
+    # the clock on the wall
+    cases["time_of_day"] = _audit_sheet(
+        [[(f"08:{m:02d}", round(10.0 + theis(m - 4, 20.0, 2.0), 3))
+          for m in (5, 6, 7, 9, 14, 24, 34, 49, 59)]],
+        recovery=recovery_after(55, 20.0, 2.0))
+    # elapsed clocks in rows out of order, the top one past the first hour
+    cases["clock_rows_out_of_order"] = _audit_sheet(
+        [[(clock(m, seconds=False), round(10.0 + theis(m, 20.0, 2.0), 3))
+          for m in (90, 5, 60, 1, 240, 30, 120, 10, 180, 2)]])
+    # four hours and a two-hour recovery in two hourly blocks, the second
+    # counted within its own hour
+    four = [(m, round(10.0 + theis(m, 20.0, 2.0), 3)) for m in eight if m <= 240]
+    first = recovery_after(240, 20.0, 2.0)
+    second = recovery_after(240, 20.0, 2.0, minutes=[65, 70, 80, 90, 105, 120],
+                            offset=-60.0)
+    grid = _audit_sheet([four, first], headings=["Constant discharge 0-240 min",
+                                                 "Recovery 0-60 min"])
+    grid[5] += ["Recovery 61-120 min", None, None]
+    grid[6] += ["Time (min)", "Water Level (m)", "Recovery (m)"]
+    for i, row in enumerate(grid[7:]):
+        row += [second[i][0], second[i][1], None] if i < len(second) else [None] * 3
+    for row in grid[:5]:
+        row += [None] * 3
+    cases["recovery_blocks"] = grid
+    # the recovery written on with the test's clock
+    cases["recovery_test_clock"] = _audit_sheet(
+        [four], recovery=recovery_after(240, 20.0, 2.0, offset=240.0))
+    # four steps of an hour, the length written in hours
+    hourly = steps_of([1, 2, 3, 5, 10, 15, 20, 30, 45, 60], [1.0, 2.0, 3.0, 4.0], 15.0)
+    cases["step_length_hour"] = _audit_sheet(
+        hourly, step_length="1 hr", rates=(1.0, 2.0, 3.0, 4.0), test_type="step",
+        recovery=recovery_after(240, 15.0, 4.0))
+    # four steps of 100 minutes with the length left blank, and unreadable
+    hundred = steps_of([1, 2, 3, 5, 10, 20, 30, 45, 60, 80, 100], [1.0, 2.0, 3.0, 4.0], 15.0)
+    cases["step_length_blank"] = _audit_sheet(
+        hundred, rates=(1.0, 2.0, 3.0, 4.0), test_type="step")
+    cases["step_length_unreadable"] = _audit_sheet(
+        hundred, step_length="1 fortnight", rates=(1.0, 2.0, 3.0, 4.0), test_type="step")
+    # the last rate blank, with a recovery that needs it
+    cases["last_rate_missing"] = _audit_sheet(
+        hundred, step_length=100, rates=(1.0, 2.0, 3.0, None), test_type="step",
+        recovery=recovery_after(400, 15.0, 4.0))
+    # the casing and riser a co-pilot writes, and a diameter with no unit
+    copilot = [[None] * 16 + ["Casing diameter (in)", 8],
+               [None] * 16 + ["Riser diameter (in)", "50 mm"]]
+    cases["sheet_casing"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 5.0, 2.0), 3)) for m in eight]], extra=copilot)
+    cases["bare_casing"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 5.0, 2.0), 3)) for m in eight]],
+        extra=[["Casing diameter", 6]])
+    cases["swapped_casing"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 5.0, 2.0), 3)) for m in eight]],
+        extra=[[None] * 16 + ["Casing diameter (in)", 2],
+               [None] * 16 + ["Riser diameter (in)", 5]])
+    # the co-pilot's riser left blank, its planned rate standing under it
+    cases["blank_riser"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 5.0, 2.0), 3)) for m in eight]],
+        extra=[[None] * 16 + ["Casing diameter (in)", 8],
+               [None] * 16 + ["Riser diameter (in)", None],
+               [None] * 16 + ["Planned rate (m3/h)", 2.93]])
+    # a day at 2 m3/h in 10 m2/day, its last readings an hour apart within 5 cm
+    cases["theis_day"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 10.0, 2.0), 2)) for m in day]], pump=50.0)
+    # Theis to two hours, then 1.5 cm a log cycle
+    flattened = []
+    for m in day:
+        s = theis(min(m, 120), 20.0, 3.0) + (0.015 * math.log10(m / 120) if m > 120 else 0.0)
+        flattened.append((m, round(10.0 + s, 3)))
+    cases["stabilised_tail"] = _audit_sheet([flattened], rates=(3.0,), pump=50.0)
+    # a step test whose second step flattens after an hour of its own clock
+    own = [1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240]
+    step_one = [round(theis(m, 20.0, 1.5), 3) for m in own]
+    step_two = [round(step_one[-1] + theis(min(m, 60), 20.0, 1.5)
+                      + (0.002 * math.log10(m / 60) if m > 60 else 0.0), 3) for m in own]
+    cases["stabilised_last_step"] = _audit_sheet(
+        [[(m, 10.0 + s) for m, s in zip(own, step_one, strict=True)],
+         [(240 + m, 10.0 + s) for m, s in zip(own, step_two, strict=True)]],
+        rates=(1.5, 3.0), test_type="step", step_length=240, pump=50.0)
+    # a handpump in 250 m2/day, levels to the millimetre
+    cases["handpump_line"] = _audit_sheet(
+        [[(m, round(10.6 + theis(m, 250.0, 1.0), 3)) for m in eight]], rates=(1.0,),
+        pump=50.0)
+    # 0.05 m3/h in 0.2 m2/day with 0.7 m of drawdown to spend
+    cases["low_yield"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 0.2, 0.05), 3)) for m in eight if m <= 240]],
+        rates=(0.05,), pump=16.0)
+    return cases
+
+
+#: Time cells as a sheet holds them, each with the column header it sits
+#: under: clocks, a clock under a header that names minutes and seconds, a
+#: clock past a day, text that starts as a clock and is not one, hours and
+#: minutes as words, numbers with a unit or a note in the cell, and an
+#: Excel TRUE.
+TIME_CELLS = [
+    ("1:30", "Time (min)"), ("01:30:00", "Time (min)"), ("00:05:00", "Time (min)"),
+    ("01:30:00.500000", "Time (min)"), ("100:00", "Time (min)"), (" 2:05 ", "Time (h)"),
+    ("5:30", "Time (mm:ss)"), ("5:30", "Time (min:sec)"), ("00:05:30", "Time (mm:ss)"),
+    ("90:30", "Time (m:s)"), ("5:30", "Time (hh:mm)"), ("1:5", "Time (min)"),
+    ("1:60", "Time (min)"), ("12 min", "Time (min)"), ("1 hr", "Time (min)"),
+    ("5 (approx)", "Time (min)"), ("1 fortnight", "Time (min)"), (45, "Time (h)"),
+    (90, "Time (min)"), ("", "Time (min)"), ("n/a", "Time (min)"),
+    ("1:30 pm", "Time (min)"), ("08:05 AM", "Time (min)"), ("10:00 (approx)", "Time (min)"),
+    ("1: 30", "Time (min)"), ("-1:30", "Time (min)"), ("1000:00", "Time (min)"),
+    ("1h 30m", "Time (min)"), ("1 hr 30 min", "Time (min)"), ("1h30", "Time (min)"),
+    ("2 h", "Time (min)"), ("1.30", "Time (min)"), ("1:30 ", "Time (min)"),
+    (True, "Time (min)"),
+]
+
+
+def time_cells_reference() -> list:
+    """What the readers make of each of TIME_CELLS (units.read_time)."""
+    from groundwater.units import clock_format, read_time
+
+    out = []
+    for cell, header in TIME_CELLS:
+        quantity, written = read_time(cell, header)
+        out.append({"cell": cell, "header": header, "format": clock_format(header),
+                    "value": clean(quantity.value), "status": quantity.status,
+                    "unit": quantity.unit_text, "written": written})
+    return out
 
 
 def pumping_cases() -> dict:
@@ -6169,6 +6391,18 @@ def pumping_cases() -> dict:
             "step_numbers": [s["step"] for s in analysis.step_test.steps]
                             if analysis.step_test else None,
             "flags": flags(analysis.flags),
+            # what the audit of the reader and the analysis moved
+            "step_length": clean(test.step_length_min),
+            "recovery": None if test.recovery_time_min is None else [
+                len(test.recovery_time_min), clean(float(np.min(test.recovery_time_min))),
+                clean(float(np.max(test.recovery_time_min)))],
+            "residual_end": clean(analysis.recovery.residual_at_end_m)
+                            if analysis.recovery else None,
+            "stabilised": clean(analysis.stabilised_level_m),
+            "casing_in": clean(analysis.casing_diameter_in),
+            "riser_in": clean(analysis.riser_diameter_in),
+            "casing_min": clean(analysis.casing_storage_min),
+            "long_term": clean(rec.long_term_yield_m3_per_h),
         }
     return out
 

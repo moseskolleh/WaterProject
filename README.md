@@ -408,6 +408,12 @@ Key behaviours built in from the real field sheets:
 - missing discharge does not block parsing: curves, stabilised level
   and available drawdown are produced and yield results are marked
   pending until the discharge is supplied
+- elapsed times written as clocks (`1:30`, or a cell Excel shows as a
+  time) are read as the hours and minutes they show; a recovery written
+  in blocks is joined, and one written on the test's own clock is moved
+  back to the stop; a time of day is refused rather than guessed at
+- the length of each step is read in its unit (`1 hr`), and the casing
+  and riser diameters a sheet records set its casing-storage period
 - metadata consistency checks flag copy-over errors (district that
   does not contain the GPS coordinates, differing client or community
   between sheets of one project)

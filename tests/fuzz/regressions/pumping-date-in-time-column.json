@@ -1,0 +1,33 @@
+{
+ "note": "Written on 2026-10-28, not found by the generator. A date cell in the time column of a pumping sheet: Python read it as 2026 minutes, the year, and the browser dropped it without a word. An Excel TRUE in the same column was minute 1 in Python and dropped without a word in the browser. Both engines now refuse each as a reading whose time cannot be read, and say so.",
+ "kind": "pumping",
+ "options": {},
+ "sheets": [
+  {"name": "Pumping Test", "rows": [
+   ["PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)", null, null, null, null, null],
+   ["Community", "Rokel", null, "Date", "2026-03-01", null],
+   ["Client", null, null, "Length of each step (min)", null, null],
+   ["Test conducted by", "WiNGiN", null, "Start time", "08:00", null],
+   ["Borehole Ref. No.", "BH-1", null, "Depth of Borehole (m)", 70, null],
+   ["Static water level (m)", 10.0, null, "Pump setting (m)", 60, null],
+   ["Test type (step or constant)", "constant", null, "District", "Port Loko", null],
+   [null, null, null, null, null, null],
+   ["Discharge per step (m3/h)", "Step 1 Q", 2.0, null, null, null],
+   ["Constant discharge 0-1800 min", null, null, "Recovery", null, null],
+   ["Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Recovery (m)"],
+   [1, 11.54, null, null, null, null],
+   [2, 11.67, null, null, null, null],
+   [3, 11.75, null, null, null, null],
+   [5, 11.84, null, null, null, null],
+   [8, 11.93, null, null, null, null],
+   [{"date": "2026-03-01T08:10:00"}, 11.98, null, null, null, null],
+   [true, 12.02, null, null, null, null],
+   [15, 12.05, null, null, null, null],
+   [20, 12.11, null, null, null, null],
+   [30, 12.19, null, null, null, null],
+   [45, 12.26, null, null, null, null],
+   [{"time": "01:00"}, 12.32, null, null, null, null],
+   [{"time": "01:30"}, 12.4, null, null, null, null]
+  ]}
+ ]
+}

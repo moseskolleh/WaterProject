@@ -333,3 +333,21 @@ need real project inputs or decisions to finish calibrating it.
    different times counts its earlier boreholes twice. (f) A set saved
    before step 5.5 declares no licence and is refused for pooling; it can
    still be put in force.
+
+22. **Four choices in the pumping test reader and analysis want a
+   hydrogeologist's confirmation (added with the pumping test audit).**
+   None is a standard; each is stated where it is made
+   (`groundwater/units.py`, `groundwater/ingestion/pumping.py` and
+   `groundwater/hydraulics/analysis.py`). (a) The pumped level is called
+   stabilised, and a recharge boundary or leakage indicated, where its
+   fitted line moves by less than 0.01 m over the last half log cycle and
+   its slope there is under half the slope over the log cycle before
+   (`stabilised_span_log10` and `stabilised_slope_ratio`); a Cooper-Jacob
+   window that takes in such a tail is not adopted. (b) A time written as
+   two numbers with a colon, "5:30", is hours and minutes, as Excel reads
+   it typed into a cell, unless the column header names minutes and
+   seconds. (c) An earliest pumping reading written as a clock past the
+   first hour is taken for a time of day, and the sheet is refused. (d)
+   A recovery whose first time comes at or after the minute the pump
+   stopped is taken to be on the test's clock and moved back to the stop,
+   unless its header or heading says "stop", "shut" or "off".
