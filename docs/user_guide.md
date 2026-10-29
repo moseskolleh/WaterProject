@@ -823,7 +823,9 @@ committee members (add rows as needed), any extra works or
 recommendations, and the three signatories. Results already produced
 on the other pages - the borehole design, the pumping test and the
 water quality verdict - attach to the report automatically; the page
-shows what is attached before you build it.
+shows what is attached before you build it. At the foot of the page,
+*Evidence bundle* puts the borehole's sheets, documents and figures in
+one file for an auditor (section 9d).
 
 The Asset registry page ([`#/registry`](index.html#/registry)) gives
 the borehole its identifier and prints its headworks plate. The
@@ -1043,6 +1045,84 @@ On the command line, `groundwater verify report.docx --project
 project.yaml` prints the same answers and exits 0 for a verified copy,
 2 for one unchanged but not confirmed, and 1 otherwise; `--code` looks a
 code up.
+
+## 9d. One evidence bundle for the borehole
+
+In the browser app: the *Evidence bundle* card at the foot of
+[`#/handover`](index.html#/handover). In the Streamlit app: the
+*Evidence bundle* section at the foot of the Handover page. On the
+command line: `groundwater bundle`.
+
+**What it holds.** One .zip file with what an auditor asks for about one
+borehole:
+
+- `raw/` - every sheet the project holds, as it was uploaded, under the
+  name it was uploaded with (less anything a folder cannot hold, such as
+  `:` or `?`) and listed with what it is (VES field sheet, drilling log,
+  pumping test sheet, water quality sheet);
+- `reports/` - the documents this project issued in the session, the
+  latest of each, and any issued earlier that you add on the card; each
+  carries its own manifest (section 9c). The calibration report and the
+  round sheets are about many boreholes and go in only if you add them;
+- `figures/` - the figures each document embeds, taken out of it as it
+  embeds them, named after the document;
+- `tables/` - processed tables; neither app writes any yet, so the
+  folder carries a note saying so;
+- `signatures/` - signatures over sign-offs; nothing the toolkit writes
+  is signed yet, so the folder carries a note saying so;
+- `manifest.json` - the size and SHA-256 of every other file, the app
+  and version that made the bundle, the day it was made (the device's
+  day), the calibration set in force, each document's code, hash and
+  readiness, how ready the documents are taken together (the least ready
+  of those that had a certification gate) and the issue records the
+  project held; its own SHA-256 is the bundle's hash;
+- `README.txt` - what the bundle is and how to check it, by hand or with
+  the toolkit.
+
+The photographs are not in `raw/`: the apps keep a smaller copy of each,
+not the file as it arrived, and the documents list each by the
+fingerprint of the file as it arrived. A file you add that is not a
+document the toolkit wrote, or one changed since, is refused rather
+than put in, and the card says why. Both apps write a bundle by the same
+rules, entry for entry, so the same files on the same day give the same
+bundle in either, but for the app and version it names as its maker.
+
+**Checking one.** On the Verify a document page, under *Verify a bundle*,
+choose the .zip. It is checked against the same issue records as a
+document: those of the project open in the app and of any project files
+added on the page. The page says:
+
+1. whether every file matches the size and SHA-256 `manifest.json`
+   lists for it, naming each file changed, missing or added;
+2. what each document's own check says (section 9c);
+3. what confirms each file from outside the bundle: a document by its
+   issue record; a field sheet or a figure by a confirmed document that
+   lists its SHA-256; the README and the folders' notes as the toolkit's
+   own text. A processed table rests on `manifest.json` alone;
+4. which evidence files the documents list that the bundle does not
+   carry (the photographs, usually);
+5. how ready its documents are taken together, and who made it, when.
+
+A bundle is *verified* only when every file in it is confirmed from
+outside it. Someone who rewrites a sheet and `manifest.json` to match
+makes a bundle that agrees with itself, but the document that lists the
+sheet still lists the old fingerprint, so the sheet is no longer
+confirmed; a bundle checked with no issue record at all is
+*unconfirmed*, as a document is.
+
+**On the command line.** `groundwater bundle bh1.zip --folder ./bh1`
+packs a project folder laid out as the worked examples are (its `raw/`,
+`processed/` tables, `figures/` and `reports/`); `--raw pumping
+test.xlsx` adds a sheet with what it is, `--report`, `--table`,
+`--figure` and `--signature` add files, `--project` keeps the issue
+records of a saved project file, and `--date` dates it (without it the
+bundle gives no date). Without `--folder` the figures are taken out of
+the documents, as the apps take them. `groundwater verify bh1.zip
+--project project.yaml` prints the same answers and every file with what
+confirms it, and exits 0 for a verified bundle, 2 for one unchanged but
+not confirmed, and 1 otherwise. The worked examples' packs,
+`examples/packs/*.zip`, are evidence bundles; a worked example is not
+issued, so they check as unconfirmed.
 
 ## 10. Site maps
 

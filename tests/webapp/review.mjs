@@ -1585,6 +1585,67 @@ await withPage(async (page, base, consoleErrors) => {
   check('a document issued again from the same inputs has the same code and hash',
     twice[0] && JSON.stringify(twice[0]) === JSON.stringify(twice[1]), JSON.stringify(twice));
 
+  // --- one evidence bundle for the borehole (PLAN.md step 8.3) --------------
+  // The Handover page's button, after the pumping report above was built:
+  // the bundle carries the project's sheets as they were uploaded, that
+  // report and the figures it embeds, and the project's issue records; it
+  // verifies against those records file by file, is unconfirmed with none,
+  // and one byte changed in a sheet fails the check, which names the file.
+  {
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.evaluate(async () => {
+        window.GWT.app.goto('handover');
+        let button = null;
+        for (let t = 0; t < 400 && !button; t++) {
+          button = Array.from(document.querySelectorAll('#page-host button'))
+            .find((b) => b.textContent === 'Download evidence bundle') || null;
+          if (!button) await new Promise((r) => setTimeout(r, 25));
+        }
+        button.click();
+      }),
+    ]);
+    const bytes = await readFile(await download.path());
+    const bundle = await page.evaluate(async ({ b64, name }) => {
+      const C = window.GWT.core, S = window.GWT.support, app = window.GWT.app;
+      const data = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const issued = app.store.get('issued') || [];
+      const withRecords = C.verifyEvidenceBundle(data, issued);
+      const parts = C.readPackage(data);
+      const sources = app.store.get('sources') || {};
+      const sheets = Object.keys(sources).filter((role) => sources[role] && sources[role].b64)
+        .map((role) => sources[role]);
+      const sheet = 'raw/' + C.bundleName(sheets[0].name);
+      const edited = Object.assign({}, parts);
+      edited[sheet] = Uint8Array.from(parts[sheet]);
+      edited[sheet][0] ^= 1;
+      const changed = C.verifyEvidenceBundle(C.storedZip(Object.keys(edited).sort()
+        .map((n) => [n, edited[n]])), issued);
+      return {
+        name, facts: withRecords.facts, verdict: withRecords.verdict, files: withRecords.files,
+        sheets: sheets.map((s) => ({ path: 'raw/' + C.bundleName(s.name), sha256: C.sha256Hex(S.base64ToBytes(s.b64)) })),
+        none: C.verifyEvidenceBundle(data, null).verdict,
+        changed: changed.verdict, changedFiles: changed.files.filter((f) => f.state !== 'ok').map((f) => f.path),
+        sheet,
+      };
+    }, { b64: bytes.toString('base64'), name: download.suggestedFilename() });
+    const docs = bundle.facts ? bundle.facts.documents : [];
+    check('the Handover page downloads one evidence bundle, with the report built and the sheets as uploaded',
+      /^Evidence_Bundle_.*\.zip$/.test(bundle.name) && docs.length === 1 && docs[0].kind === 'pumping' &&
+      bundle.sheets.length > 0 && bundle.sheets.every((s) => bundle.files.some((f) => f.path === s.path &&
+        f.sha256 === s.sha256)) && /^\d{4}-\d{2}-\d{2}$/.test(bundle.facts.made_on) &&
+      bundle.facts.engine.name === 'gwt-core' && bundle.facts.issued.some((r) => r.code === docs[0].code),
+      JSON.stringify({ name: bundle.name, docs, files: bundle.files.map((f) => f.path) }));
+    check('it verifies against the project\'s issue records, every file confirmed from outside it',
+      bundle.verdict === 'verified' && bundle.files.every((f) => f.confirmed !== 'none') &&
+      bundle.files.some((f) => f.path.startsWith('figures/') && f.confirmed === 'document'),
+      JSON.stringify({ verdict: bundle.verdict, files: bundle.files.map((f) => [f.path, f.confirmed]) }));
+    check('with no issue record it is unconfirmed, and one byte changed in a sheet names the sheet',
+      bundle.none === 'unconfirmed' && bundle.changed === 'changed' &&
+      JSON.stringify(bundle.changedFiles) === JSON.stringify([bundle.sheet]),
+      JSON.stringify({ none: bundle.none, changed: bundle.changed, files: bundle.changedFiles }));
+  }
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

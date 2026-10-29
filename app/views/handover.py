@@ -11,12 +11,19 @@ from groundwater.reporting.handover import (
     HandoverReportInputs,
 )
 
+from groundwater.text import phrase
+
 from shared import (
+    _file_stem,
     app_config,
     DEFAULT_COMMITTEE,
+    evidence_bundle,
     issue_for,
+    kept_upload,
     offer_document,
+    offer_download,
     report_gate,
+    session_documents,
     site_from_state,
     workdir,
 )
@@ -136,3 +143,35 @@ def render() -> None:
         # feeds the lifecycle stepper on the Overview page
         st.session_state["handover_built"] = True
         offer_document(report_path, "Download handover report (.docx)")
+
+    _evidence_bundle_section()
+
+
+def _evidence_bundle_section() -> None:
+    """One evidence bundle for the borehole (PLAN.md step 8.3): the sheets as
+    uploaded, the documents issued with their manifests and the figures they
+    embed, the issue records and a manifest.json of every file's SHA-256.
+    The browser app's Handover page has the same card."""
+    st.subheader("Evidence bundle")
+    st.caption(phrase("bundle.page_lead"))
+    held = session_documents()
+    if held:
+        st.caption(phrase("bundle.page_documents"))
+        st.dataframe([{"Document built in this session": name} for name, _ in held],
+                     hide_index=True, width="stretch")
+    else:
+        st.caption(phrase("bundle.page_no_documents"))
+    added = kept_upload("Documents issued earlier (.docx)", "bundle_documents", type=["docx"],
+                        accept_multiple_files=True)
+    if st.button("Build the evidence bundle", key="build_bundle"):
+        try:
+            built = evidence_bundle([(f.name, f.getvalue()) for f in added or []])
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+        site = site_from_state()
+        path = workdir() / f"Evidence_Bundle_{_file_stem(site.community or site.project)}.zip"
+        path.write_bytes(built["bytes"])
+        offer_download(path, "Download evidence bundle (.zip)")
+        st.caption(phrase("bundle.built", files=len(built["facts"]["files"]),
+                          documents=len(built["facts"]["documents"]), sha256=built["sha256"]))

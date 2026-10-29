@@ -60,12 +60,15 @@ from groundwater.registry import asset_from_dict
 from groundwater.seasonal import month_of, seasonal_yield
 from groundwater.supervision import load_checklists, load_separation_distances
 from groundwater.text import phrase, phrase_table
+from groundwater.bundle import PROGRAMME_KINDS, build_evidence_bundle, document_figures
 from groundwater.verification import (
     BOREHOLE_KINDS,
     Issue,
+    calibration_facts,
     clean_issue_records,
     document_record,
     evidence_entry,
+    issue_records_of,
 )
 from groundwater.ves.cache import cache_entry, inversion_key
 from groundwater.ves.interpret import rank_interpretations
@@ -850,6 +853,62 @@ def offer_document(path: Path, label: str, keep: bool = True) -> dict | None:
     if record is not None:
         st.caption(phrase("verification.cover_code", code=record["code"]))
     return record
+
+
+# ---------------------------------------------------------------------------
+# The evidence bundle (PLAN.md step 8.3)
+# ---------------------------------------------------------------------------
+
+def _project_records() -> list[dict]:
+    """The issue records the project holds: its own and its asset record's."""
+    return issue_records_of({"issued": st.session_state.get("issued_documents") or [],
+                             "asset": st.session_state.get("asset_record")})
+
+
+def session_documents() -> list[tuple[str, bytes]]:
+    """The documents built in this session that a borehole's bundle carries:
+    the latest of each on the Deliverables list whose issue record the
+    project holds (so a document built before another project was opened
+    stays out), leaving out the calibration report and the round sheets,
+    which are about many boreholes. The browser app's ``bundleDocuments`` is
+    the twin."""
+    held = {r["sha256"] for r in _project_records()}
+    out: dict[str, bytes] = {}
+    for _, path in _deliverables():
+        if path.suffix.lower() != ".docx" or str(path) in out:
+            continue
+        data = path.read_bytes()
+        record = document_record(data)
+        if record is not None and record["kind"] not in PROGRAMME_KINDS and record["sha256"] in held:
+            out[str(path)] = data
+    return sorted((Path(p).name, d) for p, d in out.items())
+
+
+def evidence_bundle(added=()) -> dict:
+    """This borehole's evidence bundle: every sheet the session holds, as it
+    was uploaded, the documents built in this session and those ``added``
+    (``(name, bytes)`` pairs), the figures each document embeds, and the
+    issue records the project file and the asset record keep; made on the
+    device's day, with the calibration set in force. Raises ValueError, in
+    the catalogue's words, for a document that cannot go in."""
+    import datetime
+
+    kinds = phrase_table("verification.evidence_kinds")
+    files: list[dict] = []
+    for key, role in _EVIDENCE_ROLES.items():
+        held = _source_bytes(st.session_state.get(f"src_{key}"))
+        if held is not None:
+            files.append({"folder": "raw", "name": held[0], "data": held[1], "what": kinds[role]})
+    for name, data in [*session_documents(), *added]:
+        files.append({"folder": "reports", "name": name, "data": data})
+        files += document_figures(name, data)
+    site = site_from_state()
+    stored = st.session_state.get("asset_record")
+    asset = asset_from_dict(stored) if stored else None
+    return build_evidence_bundle(
+        site.community or site.project, files, borehole=asset.asset_id if asset is not None else "",
+        made_on=datetime.date.today().isoformat(), calibration=calibration_facts(app_config().calibration),
+        records=_project_records())
 
 
 #: The supervision page's radio labels, as the checklist's answer codes.

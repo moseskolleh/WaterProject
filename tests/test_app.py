@@ -327,6 +327,68 @@ def test_a_report_built_is_issued_and_checked_on_the_verify_page(app):
     assert any(f"Document {record['code']} was issued" in s.value for s in app.success)
 
 
+def test_the_evidence_bundle_is_built_on_the_handover_page_and_checked(app):
+    """PLAN.md step 8.3. The water quality report, built on its page, is
+    listed on the Handover page's Evidence bundle section; a file that is not
+    a sealed document, added there, is refused in the catalogue's words;
+    without it the bundle carries the report, the sheet it was read from by
+    that file's hash and the session's issue records, and the Verify a
+    document page verifies it against them. One byte changed in the sheet
+    fails the check and names the file."""
+    import hashlib
+
+    from groundwater.bundle import _stored_zip, verify_evidence_bundle
+    from groundwater.text import phrase_table
+    from groundwater.verification import read_package
+
+    goto(app, "Water quality")
+    app.selectbox(key="sample_wq").select("dr_timbo/dr_timbo_water_quality.xlsx")
+    app.run()
+    app.button(key="build_wq_report").click()
+    app.run()
+    assert not app.exception, app.exception
+    report = Path(app.session_state["artifacts"]["Download water quality report (.docx)"])
+
+    goto(app, "Handover")
+    assert any(report.name in str(df.value) for df in app.dataframe)
+    app.file_uploader(key="bundle_documents").set_value(("notes.docx", b"not a document", "application/octet-stream"))
+    app.run()
+    app.button(key="build_bundle").click()
+    app.run()
+    assert not app.exception, app.exception
+    assert any(e.value.startswith("notes.docx cannot go into an evidence bundle") for e in app.error)
+    app.file_uploader(key="bundle_documents").set_value([])
+    app.run()
+    app.button(key="build_bundle").click()
+    app.run()
+    assert not app.exception, app.exception
+    path = Path(app.session_state["artifacts"]["Download evidence bundle (.zip)"])
+    data = path.read_bytes()
+    records = app.session_state["issued_documents"]
+    checked = verify_evidence_bundle(data, records)
+    assert checked["verdict"] == "verified", checked["lines"]
+    facts = checked["facts"]
+    assert f"reports/{report.name}" in [d["path"] for d in facts["documents"]]
+    sample = (REPO / "examples" / "data" / "dr_timbo" / "dr_timbo_water_quality.xlsx").read_bytes()
+    sheet = "raw/dr_timbo_water_quality.xlsx"
+    assert {"path": sheet, "what": "water quality sheet", "bytes": len(sample),
+            "sha256": hashlib.sha256(sample).hexdigest()} in facts["files"]
+    assert all(r in facts["issued"] for r in records)
+
+    goto(app, "Verify a document")
+    app.file_uploader(key="verify_bundle").set_value((path.name, data, "application/zip"))
+    app.run()
+    assert not app.exception, app.exception
+    assert any(phrase_table("bundle.verdicts")["verified"] in s.value for s in app.success)
+    parts = read_package(data)
+    parts[sheet] = bytes([parts[sheet][0] ^ 1]) + parts[sheet][1:]
+    app.file_uploader(key="verify_bundle").set_value(("changed.zip", _stored_zip(sorted(parts.items())),
+                                                      "application/zip"))
+    app.run()
+    assert any(phrase_table("bundle.verdicts")["changed"] in e.value for e in app.error)
+    assert any(f"Changed since the bundle was made: {sheet}." in m.value for m in app.markdown)
+
+
 def test_design_flow_with_sample(app):
     goto(app, "Borehole design")
     app.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")

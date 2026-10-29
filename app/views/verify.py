@@ -1,11 +1,13 @@
-"""Verify a document (PLAN.md step 8.1).
+"""Verify a document (PLAN.md step 8.1), or an evidence bundle (step 8.3).
 
 Whether the toolkit issued a .docx, whether it has changed since, whether it
 was certifiable or provisional, and which evidence it was issued from
 (:func:`groundwater.verification.verify_document`), checked against the issue
 records of the project open in this session and of any project files added
-here. Nothing leaves the machine the app runs on. The browser app has the
-same page, which works with no network at all.
+here; and of an evidence bundle, file by file, whether it is as it was made
+and what confirms it (:func:`groundwater.bundle.verify_evidence_bundle`).
+Nothing leaves the machine the app runs on. The browser app has the same
+page, which works with no network at all.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from __future__ import annotations
 import streamlit as st
 import yaml
 
+from groundwater.bundle import verify_evidence_bundle
 from groundwater.registry import trim_field
 from groundwater.text import phrase, phrase_table
 from groundwater.verification import (
@@ -65,6 +68,23 @@ def _result(report: dict, name: str) -> None:
                    f"SHA-256 of its manifest {report['sha256']}")
 
 
+def _bundle_result(report: dict, name: str) -> None:
+    """What can be said of an evidence bundle (PLAN.md step 8.3), and of
+    each file in it."""
+    show = {"verified": st.success, "unconfirmed": st.warning}.get(report["verdict"], st.error)
+    show(f"**{report['lines'][0]}**  \n{name}")
+    for line in report["lines"][1:]:
+        st.write(line)
+    if report["files"]:
+        states, confirmed = phrase_table("bundle.file_states"), phrase_table("bundle.confirmed_words")
+        st.dataframe([{"File": f["path"], "What it is": f["what"], "State": states[f["state"]],
+                       "What confirms it": confirmed[f["confirmed"]],
+                       "Listed by": "; ".join(f["listed_by"])} for f in report["files"]],
+                     hide_index=True, width="stretch")
+    if report["sha256"]:
+        st.caption(phrase("bundle.hash_line", sha256=report["sha256"]))
+
+
 def render() -> None:
     st.header("Verify a document")
     st.caption(phrase("verification.page_lead"))
@@ -80,6 +100,12 @@ def render() -> None:
              else phrase("verification.page_no_records"))
     if document is not None:
         _result(verify_document(document.getvalue(), records), document.name)
+
+    st.subheader("Verify a bundle")
+    st.caption(phrase("bundle.verify_lead"))
+    bundle = st.file_uploader("The evidence bundle (.zip)", type=["zip"], key="verify_bundle")
+    if bundle is not None:
+        _bundle_result(verify_evidence_bundle(bundle.getvalue(), records), bundle.name)
 
     st.subheader("Issued from this project")
     issued = clean_issue_records(st.session_state.get("issued_documents") or [])

@@ -5028,9 +5028,10 @@
               areaNote: areaNote(), areaMaps: await areaFigures(false),
               issue: issueFor('procurement'),
             });
-            S.download('IPC_' + certificate.number + '.docx',
-              await builder.build());
-            issued = recordIssue(builder.record);
+            var name = 'IPC_' + certificate.number + '.docx';
+            var bytes = await builder.build();
+            S.download(name, bytes);
+            issued = recordIssue(builder.record, name, bytes);
           });
           S.toast('Certificate ready.' + codeWords(issued), 'ok');
         } catch (err) {
@@ -5656,8 +5657,105 @@
     nodes.push(reportCard('Project handover report', 'handover',
       'Project summary, works completed, the borehole data sheet, water quality, ' +
       'operation and maintenance guidance, the committee and the signature block.'));
+    nodes.push(bundleCard());
     return nodes;
   };
+
+  /* --- the evidence bundle (PLAN.md step 8.3) ------------------------------
+   * One archive for the borehole (C.buildEvidenceBundle): the sheets the
+   * project holds, as they were uploaded; the documents built in this
+   * session, the latest of each, and any issued earlier that are added
+   * here; the figures each document embeds; the issue records; and a
+   * manifest.json of every file's SHA-256, with a README saying how to check
+   * it. Made on this device's day, with the calibration set in force. The
+   * Streamlit Handover page has the same section. */
+  var bundleSession = { added: /** @type {Array<{name: string, bytes: Uint8Array}>} */ ([]) };
+
+  function projectRecords() {
+    return C.issueRecordsOf({ issued: store.get('issued') || [], asset: store.get('asset') });
+  }
+
+  /* the documents built in this session that a borehole's bundle carries:
+   * those whose issue record the project holds (so a document built before
+   * another project was opened stays out), not the calibration report or
+   * the round sheets, which are about many boreholes
+   * (shared.session_documents is the twin) */
+  function bundleDocuments() {
+    var held = Object.create(null);
+    projectRecords().forEach(function (r) { held[r.sha256] = true; });
+    return Object.keys(issuedThisSession).sort().map(function (name) { return issuedThisSession[name]; })
+      .filter(function (doc) { return C.PROGRAMME_KINDS.indexOf(doc.kind) < 0 && held[doc.sha256] === true; });
+  }
+
+  function evidenceBundle() {
+    var kinds = C.phraseTable('verification.evidence_kinds');
+    var sources = store.get('sources') || {};
+    /** @type {Array<*>} */
+    var files = [];
+    SOURCE_ROLES.forEach(function (role) {
+      var source = sources[role];
+      if (source && source.b64) {
+        files.push({ folder: 'raw', name: source.name || role, data: S.base64ToBytes(source.b64), what: kinds[role] });
+      }
+    });
+    /** @type {Array<{name: string, bytes: Uint8Array}>} */
+    var documents = [];
+    documents = documents.concat(bundleDocuments(), bundleSession.added);
+    documents.forEach(function (doc) {
+      files.push({ folder: 'reports', name: doc.name, data: doc.bytes });
+      files = files.concat(C.documentFigures(doc.name, doc.bytes));
+    });
+    var site = store.get('site') || {};
+    var stored = store.get('asset');
+    var asset = stored ? C.assetFromDict(stored) : null;
+    return C.buildEvidenceBundle(site.community || site.project || '', files, {
+      borehole: asset ? asset.asset_id : '', madeOn: issueToday(),
+      calibration: C.calibrationFacts(config().calibration || null), records: projectRecords() });
+  }
+
+  function bundleCard() {
+    var held = bundleDocuments();
+    var rows = held.map(function (doc) { return [doc.name, 'built in this session']; })
+      .concat(bundleSession.added.map(function (doc) { return [doc.name, 'added here']; }));
+    return card('Evidence bundle', [
+      el('p.muted', C.phrase('bundle.page_lead')),
+      el('p.muted', held.length ? C.phrase('bundle.page_documents') : C.phrase('bundle.page_no_documents')),
+      rows.length ? S.table(['Document', 'From'], rows) : null,
+      el('div.btn-row', [
+        button('Add documents issued earlier (.docx)', async function () {
+          var list = await S.pickFile('.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            true);
+          if (!list || !list.length) return;
+          for (var i = 0; i < list.length; i++) {
+            try {
+              bundleSession.added.push({ name: list[i].name,
+                bytes: new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(list[i]))) });
+            } catch (e) {
+              S.toast('Could not read ' + list[i].name + ': ' + e.message, 'error');
+            }
+          }
+          render();
+        }, { variant: 'ghost' }),
+        bundleSession.added.length ? button('Clear the added documents', function () {
+          bundleSession.added = [];
+          render();
+        }, { variant: 'ghost' }) : null,
+        button('Download evidence bundle', function () {
+          var built;
+          try {
+            built = evidenceBundle();
+          } catch (e) {
+            S.toast(String(e && e.message || e), 'error');
+            return;
+          }
+          var name = 'Evidence_Bundle_' + S.slug(siteLabel()) + '.zip';
+          S.download(name, new Blob([built.bytes], { type: 'application/zip' }));
+          S.toast('Saved ' + name + '. ' + C.phrase('bundle.built', { files: built.facts.files.length,
+            documents: built.facts.documents.length, sha256: built.sha256 }), 'ok');
+        }),
+      ]),
+    ]);
+  }
 
   /* --- pumping test co-pilot ------------------------------------------------ */
 
@@ -5865,8 +5963,9 @@
           issue: issueFor('field_kit'),
         });
         var bytes = await builder.build();
-        S.download('field_kit_' + S.slug(content.project || siteLabel()) + '.docx', bytes);
-        issued = recordIssue(builder.record);
+        var name = 'field_kit_' + S.slug(content.project || siteLabel()) + '.docx';
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
       S.toast('Field kit ready.' + codeWords(issued), 'ok');
     } catch (err) {
@@ -7024,8 +7123,10 @@
         await need(REPORT_BUNDLES);
         var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result,
           issue: issueFor('rounds', { files: derived.registryFiles || [] }) });
-        S.download('rounds_' + result.as_of + '.docx', await builder.build());
-        issued = recordIssue(builder.record);
+        var name = 'rounds_' + result.as_of + '.docx';
+        var bytes = await builder.build();
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
       S.toast('Document ready.' + codeWords(issued), 'ok');
     } catch (err) {
@@ -7226,9 +7327,9 @@
           ? await GWT.docx.assetPlacard(context)
           : await GWT.docx.assetRecordReport(context);
         var bytes = await builder.build();
-        S.download((kind === 'placard' ? 'placard_' : 'asset_') +
-          asset.asset_id + '.docx', bytes);
-        issued = recordIssue(builder.record);
+        var name = (kind === 'placard' ? 'placard_' : 'asset_') + asset.asset_id + '.docx';
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
       S.toast('Document ready.' + codeWords(issued), 'ok');
     } catch (err) {
@@ -7584,8 +7685,9 @@
         for (var i = 0; i < list.length; i++) figures[list[i].key] = await charts.toPng(list[i].draw());
         var builder = GWT.docx.calibrationReport({ style: cfg.style, content: content, figures: figures,
           issue: issue });
-        await builder.save('Calibration_Report.docx');
-        recordIssue(builder.record);
+        /* saved first: the builder has no record until it has built the document */
+        var calibrationBytes = await builder.save('Calibration_Report.docx');
+        recordIssue(builder.record, 'Calibration_Report.docx', calibrationBytes);
         S.toast(savedWords('Calibration_Report.docx', builder.record), 'ok');
       });
     } catch (e) {
@@ -8111,9 +8213,21 @@
     return 'Saved ' + filename + '.' + codeWords(record);
   }
 
-  /* the issue record of a document just built, kept; returns it */
-  function recordIssue(record) {
+  /* The documents built in this session, the latest under each file name,
+   * for the evidence bundle (PLAN.md step 8.3). Held in memory only: a
+   * project file does not carry them, so after a reload the documents
+   * issued earlier are added on the Handover page. */
+  /** @type {Object<string, {name: string, bytes: Uint8Array, kind: string, sha256: string}>} */
+  var issuedThisSession = Object.create(null);
+
+  /* the issue record of a document just built, kept, with the document
+   * itself for this session's bundle; returns the record */
+  function recordIssue(record, name, bytes) {
     if (!record) return null;
+    if (name && bytes) {
+      issuedThisSession[name] = { name: name, bytes: new Uint8Array(bytes), kind: record.kind,
+        sha256: record.sha256 };
+    }
     store.set('issued', C.cleanIssueRecords((store.get('issued') || []).concat([record])));
     var stored = store.get('asset');
     var asset = stored && C.BOREHOLE_KINDS.indexOf(record.kind) >= 0 ? C.assetFromDict(stored) : null;
@@ -8800,8 +8914,9 @@
         }
 
         var filename = S.slug(siteLabel()) + '_' + kind + '_report.docx';
-        await builder.save(filename);
-        recordIssue(builder.record);
+        /* saved first: the builder has no record until it has built the document */
+        var reportBytes = await builder.save(filename);
+        recordIssue(builder.record, filename, reportBytes);
         /* what the report predicts goes into the ledger as it is issued */
         if (kind === 'geophysical') recordSurveyPredictions();
         S.toast(savedWords(filename, builder.record), 'ok');
@@ -8888,8 +9003,9 @@
           areaMaps: await areaFigures(true), figures: await deskStudyFigures(session),
           issue: issueFor('desk_study') };
         var builder = GWT.docx.deskStudyReport(context);
-        await builder.save('Desk_Study.docx');
-        recordIssue(builder.record);
+        /* saved first: the builder has no record until it has built the document */
+        var deskBytes = await builder.save('Desk_Study.docx');
+        recordIssue(builder.record, 'Desk_Study.docx', deskBytes);
         S.toast(savedWords('Desk_Study.docx', builder.record), 'ok');
       });
     } catch (e) {
@@ -8907,7 +9023,8 @@
    * against the issue records of the project open here and of any project
    * files added, either app's; with none, it says it cannot confirm the
    * document was issued. Nothing on the page is saved with the project. */
-  var verifySession = { name: '', bytes: null, files: [], typed: '' };
+  var verifySession = { name: '', bytes: null, files: [], typed: '', bundleName: '',
+    bundle: /** @type {Uint8Array|null} */ (null) };
 
   function verifyRecords() {
     var held = C.issueRecordsOf({ issued: store.get('issued') || [], asset: store.get('asset') });
@@ -8943,6 +9060,25 @@
     return card('What can be said of it', nodes);
   }
 
+  /* what can be said of an evidence bundle (PLAN.md step 8.3), file by file */
+  function bundleResultCard(report) {
+    var tone = report.verdict === 'verified' ? 'ok' : (report.verdict === 'unconfirmed' ? 'warn' : 'bad');
+    var states = C.phraseTable('bundle.file_states'), confirmed = C.phraseTable('bundle.confirmed_words');
+    var nodes = [el('div.callout.callout-' + tone, [
+      el('p', el('strong', report.lines[0])),
+      verifySession.bundleName ? el('p.muted', verifySession.bundleName) : null,
+    ])];
+    report.lines.slice(1).forEach(function (line) { nodes.push(el('p', line)); });
+    if (report.files.length) {
+      nodes.push(S.table(['File', 'What it is', 'State', 'What confirms it', 'Listed by'],
+        report.files.map(function (f) {
+          return [f.path, f.what, states[f.state], confirmed[f.confirmed], f.listed_by.join('; ')];
+        })));
+    }
+    if (report.sha256) nodes.push(el('p.muted', C.phrase('bundle.hash_line', { sha256: report.sha256 })));
+    return card('What can be said of the bundle', nodes);
+  }
+
   PAGES.verify = function () {
     var records = verifyRecords();
     var nodes = [pageHead('Verify a document', C.phrase('verification.page_lead'))];
@@ -8969,6 +9105,30 @@
       ]),
     ]));
     if (verifySession.bytes) nodes.push(verifyResultCard(C.verifyDocument(verifySession.bytes, records)));
+
+    nodes.push(card('Verify a bundle', [
+      el('p.muted', C.phrase('bundle.verify_lead')),
+      el('div.btn-row', [
+        button('Choose a bundle (.zip)', async function () {
+          var file = await S.pickFile('.zip,application/zip');
+          if (!file) return;
+          try {
+            verifySession.bundle = new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(file)));
+            verifySession.bundleName = file.name;
+          } catch (e) {
+            S.toast('Could not read the file: ' + e.message, 'error');
+            return;
+          }
+          render();
+        }),
+        verifySession.bundle ? button('Clear', function () {
+          verifySession.bundle = null;
+          verifySession.bundleName = '';
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+    ]));
+    if (verifySession.bundle) nodes.push(bundleResultCard(C.verifyEvidenceBundle(verifySession.bundle, records)));
 
     var issued = C.cleanIssueRecords(store.get('issued') || []);
     var readinessWords = C.phraseTable('verification.readiness_words');
@@ -9334,6 +9494,8 @@
     costSpreads: costSpreads, surveyMeasurements: surveyMeasurements,
     /* documents issued and verified (PLAN.md step 8.1) */
     issueFor: issueFor, recordIssue: recordIssue, verifySession: verifySession,
+    /* the evidence bundle (PLAN.md step 8.3) */
+    bundleSession: bundleSession, bundleDocuments: bundleDocuments, evidenceBundle: evidenceBundle,
     /* the Topography and terrain card's files, read and analysis */
     terrainSession: function () { return terrainSession; },
   };

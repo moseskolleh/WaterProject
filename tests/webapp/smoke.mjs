@@ -6211,6 +6211,87 @@ await withPage(async (page, base, consoleErrors) => {
   verifying.noRecords && verifying.unconfirmed && verifying.verified && verifying.changed && verifying.lookup,
   JSON.stringify(verifying));
 
+  // --- One evidence bundle for each borehole (PLAN.md step 8.3) -------------
+  // A handover report issued here is listed on the Handover page's Evidence
+  // bundle card; a file that is not a sealed document, added there, is
+  // refused in the catalogue's words; the bundle downloaded, chosen on the
+  // Verify a document page, is verified against the project's issue record,
+  // and unconfirmed with none held.
+  const bundling = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const d = app.derived;
+    const builder = await window.GWT.docx.handoverReport({
+      style: app.config().style, site: app.store.get('site'), log: d.log, design: d.design,
+      analysis: d.analysis, assessment: d.assessment, interpretations: d.interpretations,
+      committee: [], figures: [], readiness: app.reportReadiness('handover'), issue: app.issueFor('handover'),
+    });
+    const docBytes = await builder.build();
+    const held = app.store.get('issued');
+    const pickFile = support.pickFile, download = support.download, toast = support.toast;
+    const text = () => document.querySelector('#page-host').textContent;
+    const pause = () => new Promise((r) => setTimeout(r, 60));
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button')).find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const until = async (done) => {
+      for (let t = 0; t < 200 && !done(); t++) await new Promise((r) => setTimeout(r, 25));
+      await pause();
+    };
+    const out = {};
+    const toasts = [];
+    let saved = null;
+    try {
+      app.store.set('issued', []);
+      app.recordIssue(builder.record, 'handover_for_bundle.docx', docBytes);
+      support.toast = (message, tone) => { toasts.push([message, tone]); };
+      support.download = (name, blob) => { saved = { name, blob }; };
+      app.goto('handover');
+      await until(() => text().includes(C.phrase('bundle.page_lead')));
+      out.card = text().includes(C.phrase('bundle.page_documents')) && text().includes('handover_for_bundle.docx');
+      support.pickFile = async () => [new File([new TextEncoder().encode('not a document')], 'notes.docx')];
+      press('Add documents issued earlier (.docx)');
+      await until(() => app.bundleSession.added.length);
+      press('Download evidence bundle');
+      await pause();
+      out.refused = !saved && toasts.some((t) => t[1] === 'error' &&
+        t[0].startsWith('notes.docx cannot go into an evidence bundle'));
+      press('Clear the added documents');
+      await pause();
+      press('Download evidence bundle');
+      await until(() => saved);
+      const bytes = new Uint8Array(await saved.blob.arrayBuffer());
+      out.name = saved.name;
+      out.facts = C.verifyEvidenceBundle(bytes, null).facts;
+      app.goto('verify');
+      await pause();
+      support.pickFile = async () => new File([bytes], saved.name);
+      press('Choose a bundle (.zip)');
+      await until(() => app.verifySession.bundle);
+      const verdicts = C.phraseTable('bundle.verdicts');
+      out.verified = text().includes(verdicts.verified) && text().includes('reports/handover_for_bundle.docx');
+      app.store.set('issued', []);
+      app.render();
+      await pause();
+      out.unconfirmed = text().includes(verdicts.unconfirmed) && text().includes(C.phrase('bundle.confirm_no_records'));
+    } finally {
+      support.pickFile = pickFile;
+      support.download = download;
+      support.toast = toast;
+      app.store.set('issued', held || []);
+      app.bundleSession.added = [];
+      app.verifySession.bundle = null;
+      app.verifySession.bundleName = '';
+    }
+    return out;
+  });
+  check('bundle: the Handover page lists the document issued, refuses a file that is not one, and downloads ' +
+    'a bundle that the Verify a document page verifies against the project\'s record, and not with none',
+  bundling.card && bundling.refused && /^Evidence_Bundle_.*\.zip$/.test(bundling.name || '') &&
+    bundling.facts && bundling.facts.documents.length === 1 && bundling.verified && bundling.unconfirmed,
+  JSON.stringify(Object.assign({}, bundling, { facts: bundling.facts && bundling.facts.documents })));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

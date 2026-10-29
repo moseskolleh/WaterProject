@@ -1,0 +1,182 @@
+# One evidence bundle for each borehole (PLAN.md step 8.3): the README.txt
+# a bundle carries, the note an empty folder carries, and what the Verify a
+# bundle check, `groundwater verify` and both apps' pages say of a bundle.
+# Written by groundwater/bundle.py and its twin in gwt-core.js; every entry
+# is read by its quoted id in both engines. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# README.txt, line by line. {when} is on_day or on_no_day; {calibration} the
+# set's name, or verification.calibration_unstated.
+readme_title: >-
+  Evidence bundle: {title}
+readme_title_bare: >-
+  Evidence bundle
+made: >-
+  Made by {engine} {version}, {when}. The calibration set in force was
+  {calibration}.
+on_day: >-
+  on {date}
+on_no_day: >-
+  with no date given
+readme_lead: >-
+  It holds, in one file, what was measured at one borehole, what was worked
+  out from it and the documents issued from it. Nothing in it needs a
+  network to check.
+readme_entry: >-
+  {name} - {what}
+# What each folder, and the manifest, holds.
+folders:
+  raw: the field sheets, as they were uploaded
+  tables: processed tables
+  figures: figures; where the documents embed them, taken out of them as they are embedded
+  reports: the documents issued, each carrying its own manifest
+  signatures: signatures over sign-offs, where there are any
+  manifest: the size and SHA-256 of every other file, the engine, the calibration set, how ready each document was and the issue records the project held; its own SHA-256 is the bundle's hash
+readme_check: >-
+  To check it:
+readme_check_toolkit: >-
+  1. With the toolkit: Verify a bundle, on the Verify a document page of
+  either app, or the command groundwater verify with this file and the
+  project file it was made from (--project). Either says, file by file,
+  whether anything has changed and what confirms it.
+readme_check_hand: >-
+  2. By hand: the SHA-256 of each file has to be the one manifest.json lists
+  for it (sha256sum on Linux, shasum -a 256 on a Mac, certutil -hashfile on
+  Windows). Each document in reports/ can also be checked on its own, on the
+  Verify a document page.
+readme_check_outside: >-
+  3. A bundle rewritten throughout would agree with itself, so what confirms
+  it is outside it: the issue records in the project file and the asset
+  register hold each document's hash, and each document lists by its SHA-256
+  every field sheet it was issued from.
+
+# The note in a folder that holds nothing, printed as it stands.
+empty_notes:
+  raw: No source file was given when this bundle was made.
+  tables: No processed table was given when this bundle was made; the results are in the documents.
+  figures: No figure was given when this bundle was made.
+  reports: No issued document was given when this bundle was made.
+  signatures: This bundle carries no signatures. Nothing the toolkit writes is signed yet, so nothing here proves who signed off; the issue records in the project file and the asset register are what confirm a document was issued.
+
+# What each file is, as manifest.json lists it; a source file's is the kind
+# of sheet it is (verification.evidence_kinds) where the caller knows it.
+what:
+  readme: how to check this bundle
+  note: why this folder is empty
+  raw: source file
+  tables: processed table
+  figures: figure
+  reports: issued document
+  signatures: signature
+
+# Refused rather than written.
+bad_folder: >-
+  An evidence bundle has no folder called "{folder}": a file goes into raw,
+  tables, figures, reports or signatures.
+bad_document: >-
+  {name} cannot go into an evidence bundle: {why}
+file_too_big: >-
+  {name} is too large for an evidence bundle, which holds files of up to 128
+  MB and 512 MB in all, so that it can be read back.
+bundle_too_big: >-
+  The evidence bundle would be larger than the toolkit reads back (512 MB in
+  all, 65,534 files), so it was not made.
+nothing: >-
+  There is nothing to put into an evidence bundle: no source file, table,
+  figure, document or signature was given.
+
+# The verdict, one line above the rest.
+verdicts:
+  verified: Verified - every file is as the bundle was made, and every document in it was issued and is unchanged.
+  unconfirmed: Unchanged since it was made, but not everything in it is confirmed from outside it.
+  changed: Changed since it was made.
+  not_issued: Not confirmed - a document in it matches no issue record given.
+  damaged_manifest: Its manifest.json is not as the toolkit writes one, so nothing it lists can be relied on.
+  no_manifest: Not an evidence bundle the toolkit made - it has no manifest.json.
+  unreadable: Not an evidence bundle the toolkit can read.
+unreadable: >-
+  The file cannot be read as an evidence bundle (.zip): it is not a ZIP
+  archive, or it is damaged.
+no_manifest: >-
+  It has no manifest.json at its top, so there is nothing to check its files
+  against.
+damaged: >-
+  Its manifest.json was edited, or written by something else: a bundle the
+  toolkit made carries one exactly as the toolkit writes it.
+
+# Its files, against manifest.json.
+files_match: >-
+  Every file matches the size and SHA-256 manifest.json lists for it ({n:.0f}
+  {n:plural:file|files}).
+files_changed: >-
+  Changed since the bundle was made: {paths}.
+files_missing: >-
+  Missing since the bundle was made: {paths}.
+files_added: >-
+  Added since the bundle was made, and listed nowhere in manifest.json:
+  {paths}.
+# Each document, as its own manifest and the issue records given say of it
+# (the verdict is verification.verdicts').
+document_line: >-
+  {path}, document {code}: {verdict}
+document_disagrees: >-
+  {path} is not the document manifest.json lists there ({code}).
+# What confirms them from outside the bundle.
+confirm_no_records: >-
+  No issue record was given, so nothing confirms its documents were issued:
+  every check above compares the bundle with itself, and a bundle rewritten
+  throughout would pass them. Check it against the project file it was made
+  from, or the asset register.
+confirm_all: >-
+  All {n:.0f} files are confirmed from outside manifest.json: each document
+  by its issue record, and each other file by a document that lists its
+  SHA-256 or as the toolkit's own text.
+confirm_some: >-
+  {k:.0f} of its {n:.0f} files are confirmed from outside manifest.json.
+  Resting on manifest.json alone: {paths}.
+not_carried: >-
+  Its documents list {n:.0f} evidence {n:plural:file|files} the bundle does
+  not carry: {files}.
+readiness: >-
+  Taken together, as the least ready of them, its documents are {words}.
+readiness_words:
+  ready: certifiable
+  ready_with_overrides: issued on override, not a certification
+  not_ready: provisional, not a certification
+  not_assessed: not assessed, as none of them had a certification gate
+# A file's state and what confirms it, in the table under the answers.
+file_states:
+  ok: as made
+  changed: changed
+  missing: missing
+  added: not listed
+confirmed_words:
+  issue_record: confirmed by its issue record
+  document: confirmed by a document that lists it
+  toolkit: confirmed as the toolkit's own text
+  none: rests on manifest.json alone
+
+# The pages, in both apps.
+page_lead: >-
+  One file holding what an auditor asks for about this borehole: the field
+  sheets as they were uploaded, the documents issued with their manifests,
+  the figures they embed, the issue records and a manifest.json of every
+  file's SHA-256, with a README saying how to check it. It is made on this
+  device.
+page_documents: >-
+  The documents this project issued in this session go in, the latest of
+  each, with any issued earlier that are added here. The calibration report
+  and round sheets are about many boreholes and are left out unless added.
+page_no_documents: >-
+  This project has issued no document in this session: build the reports
+  first, or add the documents issued earlier.
+built: >-
+  Made: {files:.0f} files, {documents:.0f} {documents:plural:document|documents}.
+  SHA-256 of its manifest.json, the bundle's hash: {sha256}.
+hash_line: >-
+  SHA-256 of its manifest.json, the bundle's hash: {sha256}.
+verify_lead: >-
+  An evidence bundle (.zip) either app made, or groundwater bundle. Each file
+  is checked against its manifest.json, each document against its own
+  manifest and the issue records held above, and each field sheet against
+  the documents that list it.
