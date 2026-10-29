@@ -27,8 +27,11 @@ second copy of everything on every run and still have to reach outside
 itself for node. So install first, once:
 
     python -m pip install -e '.[dev,app,extract]'
-    npm install --no-save playwright@1.56.1
+    npm install --no-save playwright@1.56.1 axe-core@4.10.3
     npx playwright install chromium
+
+Both npm packages go in the one command: a second npm install --no-save
+removes what the first one put there.
 
 Arguments after -- go to pytest in the tests session (for example
 nox -s tests -- -m "not slow") and to ruff in the lint session.
@@ -74,7 +77,12 @@ BROWSER_SUITES = [
     "tests/webapp/smoke.mjs",
     "tests/webapp/copilot.mjs",
     "tests/webapp/fieldkit.mjs",
+    "tests/webapp/a11y.mjs",
 ]
+
+# The one install line for the browser suites' npm packages, both at once:
+# a second npm install --no-save removes what the first one put there.
+NPM_TOOLS = "npm install --no-save playwright@1.56.1 axe-core@{axe}"
 
 
 def _python(session: nox.Session, *args: str, **kwargs) -> None:
@@ -89,9 +97,33 @@ def _need_playwright(session: nox.Session) -> None:
     if not (REPO / "node_modules" / "playwright").exists():
         session.error(
             "Playwright is not installed beside the checkout. Run:\n"
-            "  npm install --no-save playwright@1.56.1\n"
+            f"  {NPM_TOOLS.format(axe=_axe_pin(session))}\n"
             "  npx playwright install chromium"
         )
+
+
+def _axe_pin(session: nox.Session) -> str:
+    # CI's env block is where the version is set, for the install there; it
+    # is read from there rather than repeated, as the ruff and pyright pins
+    # are read from pyproject.toml.
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    pin = re.search(r'^\s*AXE_CORE_VERSION:\s*"([^"]+)"', ci, re.M)
+    if not pin:
+        session.error("no AXE_CORE_VERSION in .github/workflows/ci.yml")
+    return pin.group(1)
+
+
+def _need_axe(session: nox.Session) -> None:
+    # tests/webapp/a11y.mjs injects axe-core into every page and fails on what
+    # it finds, and a newer axe knows more rules: held to CI's version, as the
+    # linters are, since another one can pass here and fail there.
+    pin = _axe_pin(session)
+    manifest = REPO / "node_modules" / "axe-core" / "package.json"
+    found = json.loads(manifest.read_text(encoding="utf-8"))["version"] if manifest.exists() else None
+    if found != pin:
+        said = f"this is axe-core {found}, but CI runs {pin}" if found else \
+            "axe-core is not installed beside the checkout"
+        session.error(f"{said}. Run:\n  {NPM_TOOLS.format(axe=pin)}")
 
 
 def _unchanged(session: nox.Session, paths: list[str], rebuild: str) -> None:
@@ -269,8 +301,13 @@ def fuzz(session: nox.Session) -> None:
 
 @nox.session
 def browser(session: nox.Session) -> None:
-    """Drive the standalone app end to end in headless Chromium."""
+    """Drive the standalone app end to end in headless Chromium.
+
+    The last suite runs axe-core over every page, so this needs axe-core
+    beside Playwright, at the version CI installs.
+    """
     _need_playwright(session)
+    _need_axe(session)
     for suite in BROWSER_SUITES:
         session.run("node", suite)
 

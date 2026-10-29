@@ -349,20 +349,33 @@
         'Load a sample or upload a field sheet to begin'),
     ]);
 
+    /* The buttons are drawn again, and the keyboard on one of them (the
+     * theme button, pressed with Enter) would be left on nothing: it is put
+     * back on the button in the same place. */
     var actions = $('#top-actions');
+    var held = Array.prototype.indexOf.call(actions.children, document.activeElement);
     S.clear(actions);
+    var theme = button(themeIcon(), toggleTheme, { variant: 'ghost', title: 'Switch theme' });
+    /* the moon, sun or half circle is not a name a screen reader can say */
+    theme.setAttribute('aria-label', 'Switch theme, now ' + themeName());
     S.append(actions, [
       button('Save project', saveProject, { variant: 'ghost',
         title: 'Download the whole working session as a .gwt file' }),
       button('Open project', openProject, { variant: 'ghost' }),
-      button(themeIcon(), toggleTheme, { variant: 'ghost', title: 'Switch theme' }),
+      theme,
     ]);
+    if (held >= 0 && actions.children[held]) actions.children[held].focus();
     renderNav();
   }
 
   function themeIcon() {
     var theme = store.get('theme', 'dark');
     return theme === 'dark' ? '☾' : (theme === 'light' ? '☀' : '◐');
+  }
+
+  function themeName() {
+    var theme = store.get('theme', 'dark');
+    return theme === 'dark' ? 'dark' : (theme === 'light' ? 'light' : 'as the device is set');
   }
 
   function toggleTheme() {
@@ -396,8 +409,13 @@
     }
   }
 
+  /* Drawn again with every page, so that its dots and its current page
+   * are right; the keyboard on one of its items is put back on the same
+   * item, where it used to be dropped on the page body mid-Tab. */
   function renderNav() {
     var nav = $('#app-nav');
+    var held = nav.contains(document.activeElement)
+      ? document.activeElement.getAttribute('data-page') : null;
     S.clear(nav);
     var current = store.get('nav');
     NAV_GROUPS.forEach(function (group) {
@@ -408,6 +426,7 @@
           type: 'button',
           onclick: function () { goto(key); },
           'aria-current': key === current ? 'page' : null,
+          dataset: { page: key },
         }, [el('span.nav-dot'), el('span', page[1])]);
       });
       S.append(nav, el('div.nav-group', [
@@ -415,6 +434,56 @@
         el('div', items),
       ]));
     });
+    var again = held && nav.querySelector('.nav-item[data-page="' + held + '"]');
+    if (again) again.focus();
+  }
+
+  /* The navigation is a drawer on a narrow screen, behind the toggle in the
+   * top bar. The toggle says whether it is open (aria-expanded); opening it
+   * puts the keyboard on the page it shows, and Escape, or the keyboard
+   * leaving it for the page it covers, closes it. `refocus` sends the
+   * keyboard back to the toggle as it closes. */
+  function setNavOpen(open, refocus) {
+    var nav = $('#app-nav'), toggle = $('#nav-toggle');
+    nav.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      var here = nav.querySelector('.nav-item[aria-current="page"]') ||
+        nav.querySelector('.nav-item');
+      if (here) here.focus();
+    } else if (refocus) {
+      toggle.focus();
+    }
+  }
+
+  function watchNavToggle() {
+    var nav = $('#app-nav'), toggle = $('#nav-toggle');
+    toggle.addEventListener('click', function () {
+      setNavOpen(!nav.classList.contains('open'));
+    });
+    /* an Escape a dialog has already answered is not this one's */
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !e.defaultPrevented && nav.classList.contains('open')) {
+        setNavOpen(false, true);
+      }
+    });
+    nav.addEventListener('focusout', function (e) {
+      var to = /** @type {Node | null} */ (e.relatedTarget);
+      if (nav.classList.contains('open') && to && !nav.contains(to) && to !== toggle) {
+        setNavOpen(false);
+      }
+    });
+    /* The skip link names #main, which the router reads as an address it
+     * does not know and answers with the Overview: from any other page it
+     * went there. It moves the keyboard to the page, and leaves the address
+     * as it is. */
+    var skip = $('.skip-link');
+    if (skip) {
+      skip.addEventListener('click', function (e) {
+        e.preventDefault();
+        $('#main').focus();
+      });
+    }
   }
 
   /* ------------------------------------------------------------------ routes */
@@ -456,7 +525,7 @@
     route.item = item || '';
     route.focused = !route.item;
     var drawn = render();
-    $('#app-nav').classList.remove('open');
+    setNavOpen(false);
     $('#main').focus({ preventScroll: true });
     if (!route.item) {
       /* the main pane is the scroll container on a wide screen and the page
@@ -4577,7 +4646,8 @@
           q: S.numberInput(step.discharge_m3_per_h, function (value) {
             store.set('pumping.manualDischarges.' + step.step_number, value);
             recompute().then(refresh);
-          }, { step: 'any', class: 'input cell', style: { maxWidth: '9rem' } }),
+          }, { step: 'any', class: 'input cell', style: { maxWidth: '9rem' },
+            'aria-label': 'Discharge (m³/h), ' + step.label }),
         };
       })),
     ]));
@@ -5380,7 +5450,8 @@
             function (value) {
               store.set('costing.rateOverrides.' + rate.code, value);
               rebuildCosting(); render();
-            }, { step: 'any', class: 'input cell', style: { maxWidth: '7rem' } }),
+            }, { step: 'any', class: 'input cell', style: { maxWidth: '7rem' },
+              'aria-label': 'Rate (US$), ' + rate.code + ' ' + rate.item }),
         };
       })),
     ]));
@@ -5545,10 +5616,11 @@
               function (value) {
                 update({ status: value });
                 render();
-              }, { class: 'input cell', style: { maxWidth: '6rem' } }),
+              }, { class: 'input cell', style: { maxWidth: '6rem' },
+                'aria-label': 'Answer: ' + item.text }),
             remark: S.textInput(response.remark || '', function (value) {
               update({ remark: value });
-            }, { class: 'input cell' }),
+            }, { class: 'input cell', 'aria-label': 'Remark: ' + item.text }),
           };
         }), {
           /* a failed item is the reason the page exists, so it is marked */
@@ -5698,7 +5770,8 @@
         { key: 'item', label: 'Input' },
         { key: 'state', label: 'State',
           format: function (v) { return S.badge(v ? 'ready' : 'missing', v ? 'ok' : 'warn'); } },
-        { key: 'action', label: '' },
+        /* a heading only a screen reader reads: the column is its buttons */
+        { key: 'action', label: el('span.sr-only', 'Go to its page') },
       ], ready.map(function (r) {
         return {
           item: r[0], state: r[1],
@@ -7583,15 +7656,16 @@
    * the boreholes' records: asked first, since nothing else keeps them. */
   function clearReports() {
     var n = reportQueue().length;
-    S.modal('Clear the reports waiting?', el('p', n + ' ' + S.plural(n, 'report') +
+    var asked = S.modal('Clear the reports waiting?', el('p', n + ' ' + S.plural(n, 'report') +
       ' on this phone will be deleted. Nothing else keeps ' + (n === 1 ? 'it' : 'them') +
       ' until ' + (n === 1 ? 'it reaches its borehole’s' : 'they reach their boreholes’') +
       ' records, so export the file first and see it arrive.'), [
       button('Clear', function () {
         store.set('reports.queue', []);
-        document.querySelectorAll('.modal-overlay').forEach(function (node) {
-          node.parentNode.removeChild(node);
-        });
+        /* closed through its own close(), which hands the keyboard back to
+         * the page, before the toast a dialog still open could keep from
+         * being heard */
+        asked.close();
         S.toast('The reports waiting on this phone were cleared.', 'ok');
         render();
       }, { variant: 'danger' }),
@@ -8457,7 +8531,7 @@
             /* the reports waiting on this phone (PLAN.md step 7.1) are in no
              * project file, so saving the project does not keep them */
             var queued = reportQueue().length, waiting = queued + heldReports().length;
-            S.modal('Reset the workspace?', [el('p',
+            var asked = S.modal('Reset the workspace?', [el('p',
               'This clears the site details, the uploaded sheets, every result ' +
               'and the saved copy in this browser. Save the project first if you ' +
               'want to keep it.'), waiting ? el('p.reset-reports', 'It also deletes the ' +
@@ -8471,10 +8545,11 @@
                 Object.keys(derived).forEach(function (k) { derived[k] = null; });
                 forgetTerrain();
                 applyTheme(); renderChrome(); render();
+                /* closed through its own close(), which hands the keyboard
+                 * back to the page, and before the toast, which a dialog
+                 * still open over the page could keep from being heard */
+                asked.close();
                 S.toast('Workspace reset.', 'ok');
-                document.querySelectorAll('.modal-overlay').forEach(function (n) {
-                  n.parentNode.removeChild(n);
-                });
               }, { variant: 'danger' }),
             ]);
           }, { variant: 'ghost' }),
@@ -10085,9 +10160,7 @@
     registerServiceWorker();
     watchInstallPrompt();
 
-    $('#nav-toggle').addEventListener('click', function () {
-      $('#app-nav').classList.toggle('open');
-    });
+    watchNavToggle();
 
     if (Object.keys(store.get('sources') || {}).length) {
       /* the mirrored session carries its inversion cache, so a reload

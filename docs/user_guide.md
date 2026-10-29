@@ -605,6 +605,26 @@ hold, the page says so across the top rather than showing another one
 in its place; the report page, which needs no project, is the
 exception, and checks the identifier instead. An address the app does not know opens the Overview.
 
+The browser app can be worked from the keyboard alone. The first Tab
+from the top of the page reaches **Skip to content**, which moves
+straight to the page you are on; after it come the buttons in the top
+bar and then the page list, in the order it is shown, and Enter opens a
+page and puts the keyboard on it. A question the app asks in a box over
+the page (*Reset the workspace?*, a figure's numbers as a table, a
+photograph shown full size) takes the keyboard when it opens: Tab and
+Shift+Tab go round inside it, Escape closes it, and the keyboard goes
+back to the button that opened it. On a phone the page list is behind
+the ☰ button in the top bar, which says to a screen reader whether the
+list is open; opening it puts the keyboard on the page you are on, and
+Escape closes it again. The short messages that appear in the bottom
+corner are read out by a screen reader as they arrive, an error at once
+and anything else when it next pauses. Every page is checked with
+axe-core, an automated accessibility checker, in the checks each change
+to the app goes through, in both themes and with each sample loaded.
+That finds what a machine can find (a field with no label, text too
+faint against its background); it is not a test with a screen reader,
+which has not been done. The Streamlit app has had none of this work.
+
 The browser app installs. Open it once with a connection and it keeps
 itself on the device; the Overview page then offers an **Install**
 button, after which it opens full screen like any other application and

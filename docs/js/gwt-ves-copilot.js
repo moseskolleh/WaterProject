@@ -955,7 +955,7 @@
               drawAll(); schedulePreview(s);
             }, { variant: 'ghost' }),
           ]);
-        }, label: '' },
+        }, label: el('span.sr-only', 'Re-measure or delete') },
       ], rows, { emptyText: 'No readings yet.' }),
     ]));
   }

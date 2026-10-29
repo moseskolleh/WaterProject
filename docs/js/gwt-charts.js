@@ -2009,9 +2009,12 @@
     /* pixels back to metres, for the pointer */
     var perMetre = (bottom - top) / domain;
 
+    /* An image's contents are hidden from assistive technology, and the
+     * screen handles below are sliders the keyboard moves: the editable
+     * spine is a group, so that they can be found. */
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
-      'font-family': FONT, role: 'img',
+      'font-family': FONT, role: opts.readOnly ? 'img' : 'group',
       'aria-label': 'The borehole on one depth axis',
       style: 'touch-action:none',
     });

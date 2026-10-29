@@ -548,10 +548,11 @@ away for that parameter — no code change needed.
 python -m pytest             # parsers, numerics, reports
 
 # the standalone web app, in a real browser
-npm install --no-save playwright && npx playwright install chromium
+npm install --no-save playwright@1.56.1 axe-core@4.10.3 && npx playwright install chromium
 node tests/webapp/parity.mjs                    # browser engine vs this package
-node tests/webapp/smoke.mjs                     # every page and every report
+node tests/webapp/smoke.mjs                     # every page and every report, and the keyboard
 node tests/webapp/copilot.mjs                   # the pumping test co-pilot, played back
+node tests/webapp/a11y.mjs                      # axe-core on every page
 python tests/webapp/make_reference.py --check   # the reference values are current
 ```
 

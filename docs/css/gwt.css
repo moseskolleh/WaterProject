@@ -136,7 +136,8 @@
 }
 
 /* Light mode: chosen with the toggle, or the system preference while the
- * toggle is on "auto". The greens darken so text still clears 4.5:1. */
+ * toggle is on "auto". The greens darken so text still clears 4.5:1, the
+ * status green on its own tint included (#157f43 gave 4.27 to 4.42:1 there). */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
@@ -183,7 +184,7 @@
     --status-warning: #fab219;
     --status-serious: #ec835a;
     --status-critical: #d03b3b;
-    --ok: #157f43;
+    --ok: #136f3b;
     --ok-bg: rgba(21, 127, 67, 0.1);
     --warn: #8a6100;
     --warn-bg: rgba(138, 97, 0, 0.1);
@@ -242,7 +243,7 @@
   --status-warning: #fab219;
   --status-serious: #ec835a;
   --status-critical: #d03b3b;
-  --ok: #157f43;
+  --ok: #136f3b;
   --ok-bg: rgba(21, 127, 67, 0.1);
   --warn: #8a6100;
   --warn-bg: rgba(138, 97, 0, 0.1);
@@ -618,6 +619,22 @@ table.data tr.row-total td { font-weight: 600; border-top: 1px solid var(--line-
   background: var(--ok-bg); color: var(--ok); font-size: 0.87rem; font-weight: 600;
 }
 
+/* The faint ink is chosen for the plain surfaces, and on a tinted one (a
+   check, a callout, a marked row, a loaded drop zone) it fell under 4.5:1:
+   4.07 to 4.14 in the dark theme, 4.4 in the light. There it is the soft ink. */
+.check, .checks-clear, .callout, .upload-zone.loaded, .wizard-step.done,
+table.data tr.row-bad, table.data tr.row-warn, table.data tr.row-info,
+table.data tr.row-ok {
+  --ink-faint: var(--ink-soft);
+}
+/* A status badge on a tinted surface sat on two tints, where its text fell
+   as low as 3.9:1; it is drawn on the raised colour there instead. */
+.check .badge, .callout .badge, .wizard-step.done .badge,
+table.data tr.row-bad .badge, table.data tr.row-warn .badge,
+table.data tr.row-info .badge, table.data tr.row-ok .badge {
+  background: var(--bg-raised);
+}
+
 .stat-row {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.8rem; margin-bottom: 1rem;
@@ -705,8 +722,13 @@ table.data tr.row-total td { font-weight: 600; border-top: 1px solid var(--line-
 
 .toast-host {
   position: fixed; right: 1rem; bottom: 1rem; z-index: 200;
-  display: flex; flex-direction: column; gap: 0.5rem; max-width: min(24rem, 90vw);
+  display: flex; flex-direction: column; max-width: min(24rem, 90vw);
 }
+/* the two live regions, polite then alert; neither is ever display: none,
+   which would take it out of the accessibility tree and leave its next
+   message unannounced */
+.toast-region { display: flex; flex-direction: column; gap: 0.5rem; }
+.toast-region + .toast-region:not(:empty) { margin-top: 0.5rem; }
 .toast {
   padding: 0.65rem 0.9rem; border-radius: var(--radius);
   background: var(--bg-raised); color: var(--ink); font-size: 0.86rem;

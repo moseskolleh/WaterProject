@@ -1494,7 +1494,11 @@
   }
 
   /* An editable grid, used for rate overrides, committee members and manual
-   * data entry. columns: [{key, label, type, choices, width}] */
+   * data entry. columns: [{key, label, type, choices, width}]
+   *
+   * A cell's column heading is not its label, so a screen reader landing in
+   * a cell had no name to read. Each control is named by its column and its
+   * row. */
   function editableTable(columns, rows, onChange, options) {
     var opts = options || {};
     var data = rows.map(function (r) { return Object.assign({}, r); });
@@ -1504,30 +1508,33 @@
     function render() {
       var head = el('thead', el('tr', columns.map(function (c) {
         return el('th', { style: c.width ? { width: c.width } : null }, c.label);
-      }).concat(opts.fixedRows ? [] : [el('th.right', '')])));
+      }).concat(opts.fixedRows ? [] : [el('th.right', el('span.sr-only', 'Remove'))])));
       var body = el('tbody', data.map(function (row, i) {
         var cells = columns.map(function (c) {
           var control;
+          var named = { class: 'input cell', 'aria-label': c.label + ', row ' + (i + 1) };
           if (c.type === 'number') {
             control = numberInput(row[c.key], function (v) { row[c.key] = v; fire(); },
-              { step: c.step || 'any', class: 'input cell' });
+              Object.assign({ step: c.step || 'any' }, named));
           } else if (c.type === 'select') {
             control = selectInput(row[c.key], c.choices, function (v) {
               row[c.key] = v; fire();
-            }, { class: 'input cell' });
+            }, named);
           } else if (c.type === 'readonly') {
             control = el('span.cell-static', row[c.key] === null ||
               row[c.key] === undefined ? '–' : String(row[c.key]));
           } else {
             control = textInput(row[c.key], function (v) { row[c.key] = v; fire(); },
-              { class: 'input cell' });
+              named);
           }
           return el('td', control);
         });
         if (!opts.fixedRows) {
-          cells.push(el('td.right', button('×', function () {
+          var remove = button('×', function () {
             data.splice(i, 1); fire(); render();
-          }, { variant: 'ghost', title: 'Remove this row' })));
+          }, { variant: 'ghost', title: 'Remove this row' });
+          remove.setAttribute('aria-label', 'Remove row ' + (i + 1));
+          cells.push(el('td.right', remove));
         }
         return el('tr', cells);
       }));
@@ -1549,14 +1556,36 @@
     return host;
   }
 
+  /* Toasts are read out as they arrive. They go into two live regions that
+   * are in the page before any message is, because a region added together
+   * with its first message is not reliably announced: an error interrupts
+   * (role="alert"), anything else waits for a pause (role="status"). Both
+   * sit in the one corner. aria-atomic is off so that a second toast is
+   * read on its own, not with every toast still showing. */
   var toastHost = null;
-  function toast(message, tone, timeout) {
+  /** @type {{polite: HTMLElement, alert: HTMLElement} | null} */
+  var toastRegions = null;
+  function toastRegion(tone) {
     if (!toastHost) {
-      toastHost = el('div.toast-host');
+      toastRegions = {
+        polite: el('div.toast-region', { role: 'status', 'aria-live': 'polite',
+          'aria-atomic': 'false' }),
+        alert: el('div.toast-region', { role: 'alert', 'aria-live': 'assertive',
+          'aria-atomic': 'false' }),
+      };
+      toastHost = el('div.toast-host', [toastRegions.polite, toastRegions.alert]);
       document.body.appendChild(toastHost);
     }
+    return tone === 'error' ? toastRegions.alert : toastRegions.polite;
+  }
+  if (typeof document !== 'undefined') {
+    if (document.body) toastRegion();
+    else document.addEventListener('DOMContentLoaded', function () { toastRegion(); });
+  }
+
+  function toast(message, tone, timeout) {
     var node = el('div.toast' + (tone ? '.toast-' + tone : ''), message);
-    toastHost.appendChild(node);
+    toastRegion(tone).appendChild(node);
     setTimeout(function () {
       node.classList.add('leaving');
       setTimeout(function () {
@@ -1566,17 +1595,118 @@
     return node;
   }
 
-  function modal(title, body, actions) {
-    var overlay = el('div.modal-overlay');
-    function close() {
-      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      document.removeEventListener('keydown', onKey);
+  /* A dialog is a dialog to assistive technology (role="dialog",
+   * aria-modal, named by its title) and to the keyboard: it takes the focus
+   * when it opens, Tab and Shift+Tab go round inside it, Escape closes it,
+   * and the focus goes back to whatever had it before, or to the page when
+   * that has since been drawn again. Dialogs can open over one another (a
+   * figure's data over the page), so the keyboard belongs to the last one
+   * opened, and Escape closes that one alone. */
+  /** @type {Array<{overlay: HTMLElement, box: HTMLElement, close: function(): void}>} */
+  var openModals = [];
+  var modalCount = 0;
+  var FOCUSABLE = 'a[href], button, input, select, textarea, iframe, summary, ' +
+    '[tabindex], [contenteditable="true"]';
+
+  /* what Tab can reach inside a node: shown, enabled and in the tab order */
+  function focusables(root) {
+    return $$(FOCUSABLE, root).filter(function (node) {
+      return node.tabIndex >= 0 && !node.disabled && node.type !== 'hidden' &&
+        node.getClientRects().length > 0 && !node.closest('[inert]');
+    });
+  }
+
+  /* the dialog that holds the keyboard. One taken out of the page by other
+   * code, rather than by its own close(), no longer does. */
+  function topModal() {
+    while (openModals.length && !openModals[openModals.length - 1].overlay.isConnected) {
+      openModals.pop();
     }
-    function onKey(e) { if (e.key === 'Escape') close(); }
-    var box = el('div.modal', [
+    return openModals.length ? openModals[openModals.length - 1] : null;
+  }
+
+  /* Bound once, in the capture phase, so the dialog has the key before
+   * anything on the page behind it: Escape closes the dialog and goes no
+   * further (the navigation drawer has an Escape of its own). */
+  function onModalKey(e) {
+    var top = topModal();
+    if (!top) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      top.close();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    var stops = focusables(top.box);
+    if (!stops.length) {
+      e.preventDefault();
+      top.box.focus();
+      return;
+    }
+    var first = stops[0], last = stops[stops.length - 1];
+    var active = document.activeElement;
+    var inside = top.box.contains(active);
+    if (e.shiftKey && (!inside || active === first || active === top.box)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (!inside || active === last)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  /* focus that lands behind the dialog anyway (a click, a script) is
+   * brought back into it */
+  function onModalFocus(e) {
+    var top = topModal();
+    if (!top || top.box.contains(/** @type {Node} */ (e.target))) return;
+    (focusables(top.box)[0] || top.box).focus();
+  }
+
+  var modalKeysBound = false;
+  function bindModalKeys() {
+    if (modalKeysBound) return;
+    modalKeysBound = true;
+    document.addEventListener('keydown', onModalKey, true);
+    document.addEventListener('focusin', onModalFocus, true);
+  }
+
+  function modal(title, body, actions) {
+    bindModalKeys();
+    var titleId = 'gwt-modal-title-' + (++modalCount);
+    var opener = /** @type {HTMLElement | null} */ (document.activeElement);
+    var overlay = el('div.modal-overlay');
+    var entry;
+    function close() {
+      var at = openModals.indexOf(entry);
+      var wasTop = at >= 0 && at === openModals.length - 1;
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (at < 0) return;
+      openModals.splice(at, 1);
+      if (!wasTop) return;
+      /* back where the keyboard was. A control the page has drawn again
+       * since is gone, and the dialog under this one, or else the page
+       * itself, takes the focus instead. */
+      var back = opener && opener !== document.body && opener.isConnected ? opener : null;
+      if (back) back.focus();
+      if (back && document.activeElement === back) return;
+      var under = topModal();
+      if (under) {
+        (focusables(under.box)[0] || under.box).focus();
+        return;
+      }
+      var main = /** @type {HTMLElement | null} */ (document.querySelector('main'));
+      if (main) main.focus({ preventScroll: true });
+    }
+    var shut = button('×', close, { variant: 'ghost' });
+    shut.setAttribute('aria-label', 'Close');
+    var box = el('div.modal', {
+      role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1',
+    }, [
       el('div.modal-head', [
-        el('h3', title),
-        button('×', close, { variant: 'ghost' }),
+        el('h3', { id: titleId }, title),
+        shut,
       ]),
       el('div.modal-body', body),
       el('div.modal-foot', (actions || []).concat([
@@ -1587,8 +1717,10 @@
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) close();
     });
-    document.addEventListener('keydown', onKey);
+    entry = { overlay: overlay, box: box, close: close };
+    openModals.push(entry);
     document.body.appendChild(overlay);
+    (focusables(box)[0] || box).focus();
     return { close: close, node: box };
   }
 
