@@ -510,3 +510,39 @@ need real project inputs or decisions to finish calibrating it.
    margin. So a real gap of 2.96 is not a tie on a 3-point margin, where
    before it was. The alternative, printing the gap to more places, would
    keep it a tie and say "2.96".
+
+29. **Where to drill next, within a budget (added with PLAN.md step
+   6.1).** Each of these is a choice made here, stated where it is made
+   (`groundwater/allocation.py`, `groundwater/config.py`) and on the
+   Coverage gap page, and wants the owner's confirmation. (a) Every
+   functional mapped point is counted as serving 500 people, and a new
+   borehole as serving up to 500 (`allocation.people_per_borehole`): the
+   handpump figure of `coverage_service_classes.csv`, which gives the
+   Sphere handbook as its basis with no copy of it committed here. A
+   functional tap, protected well and handpump borehole each count the
+   same, so an area whose points serve fewer people each (the same table
+   puts a tapstand at 250) reads as less short of water than it is, and
+   one whose points serve more reads as more; a figure for each kind of
+   point would need the owner's source. (b) An area's ground
+   is the aquifer class covering the most of a 16 by 16 grid over it
+   (`allocation.ground_grid`), so an area split between two classes is
+   costed at one of them throughout; averaging the chance over the grid's
+   points would be the other way. (c) Where areas tie on people per
+   dollar, as every area on the same ground does, the budget goes to the
+   area first in alphabetical order until its unserved people are all
+   served, as the plan asks for a tie broken by the area's identifier.
+   Breaking a tie by the coverage ranking (the worst served first), or
+   sharing a tied budget between the areas, are the alternatives. (d) The
+   choice is exact for up to 40 candidate boreholes
+   (`allocation.exact_max_items`) and greedy beyond, with the gap to the
+   linear-programming bound stated; a national budget is nearly always
+   beyond 40. (e) The budget buys boreholes at their expected cost, before
+   contingency, so it buys the stated number of working boreholes only on
+   average: a dearer outturn (the Costing page's P80) buys fewer. (f) Each
+   borehole is priced as the Costing page prices one, its journey from
+   the contractor's base included, where a package of boreholes shares one
+   mobilisation (`costing/programme.py`); say whether the programme's
+   boreholes should be priced as a package instead. (g) An access cost is
+   typed per attempt, so a dry attempt pays it as a working one does; say
+   whether the programme's access costs (a road built once, say) are
+   better typed once for the area.

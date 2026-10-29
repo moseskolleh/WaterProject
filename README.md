@@ -102,7 +102,18 @@ water quality guidelines.
     census populations (Statistics Sierra Leone) with WPDx points, as a
     choropleth and a ranked table to steer where to drill next. Chiefdom
     populations aggregate the census onto the boundary polygons with
-    district totals conserved exactly and the reconciliation shown
+    district totals conserved exactly and the reconciliation shown. Given
+    a budget and a borehole priced on the Costing page, the same page
+    chooses where to drill (PLAN.md step 6.1): each area's people beyond
+    the handpump figure for every functional point, the prior chance of a
+    working borehole on the ground covering most of it, the expected cost
+    of a working borehole there with its dry attempts and any access cost
+    typed, and the boreholes that serve the most people the budget buys,
+    chosen exactly for up to 40 candidate boreholes and greedily, with the
+    gap to the linear-programming bound, beyond that. Each area is in or
+    out with its reason, the next borehole's cost per extra person is
+    given, and the page says plainly that chiefdom populations are too
+    coarse for access distances
 13. A certification-readiness gate on every document that has a cover to
     stamp (all but the identification plate, which is a single laminated
     sheet): each is judged
@@ -436,6 +447,8 @@ groundwater/
                   yields, and the pump depth the worst of them needs
     planning.py   coverage as a planning figure: population projection,
                   survey freshness, dry-season service as a band
+    allocation.py where to drill next within a budget: the coverage-gap
+                  areas' ground, odds and cost, and the boreholes chosen
     procurement.py  contract, variation orders, measurement and the interim
                   payment certificate
     registry.py   asset identifiers, maintenance events, derived condition

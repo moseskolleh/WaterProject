@@ -2032,6 +2032,72 @@ left out of the median age and of the points counted as recently
 surveyed, and an area every dated survey of which is later is labelled
 *Surveyed after the plan year*.
 
+**Where to drill next, within a budget** (PLAN.md step 6.1) - at the
+foot of the Coverage gap page, the areas of the ranking above, at the
+population of the year you plan for, are chosen between for a drilling
+budget. It needs a borehole priced first: estimate one on the Costing
+page (section 7), and every borehole here is priced as that one, with
+its rates, its percentages and its mobilisation distance, its depth
+held at the estimate's. Then type the **Budget, US$**, as contract
+prices with any VAT and before contingency. For each area:
+
+- **Unserved people**: its population less 500 for each functional
+  mapped point, never fewer than none. 500 is the handpump figure of the
+  coverage map's service classes (the Sphere handbook's, which the
+  toolkit states rather than holds), and a point that serves more or
+  fewer is not told apart. The boreholes the unserved people justify are
+  that many over 500, rounded up, each serving up to 500 and the last
+  the rest.
+- **Ground**: the BGS aquifer class that covers the most of a 16 by 16
+  grid of points over the area (the points inside it), and the USGS unit
+  that covers the most of that class, with the share of the area's
+  points on the class. Surface water and ground off the map do not count;
+  an area with nothing else has no known odds and is left out, never
+  given the even chance a point off the map gets.
+- **Chance of a working borehole**: the prior for that ground, as the
+  Geophysics pages give it before any survey (section 5a), from the
+  calibration set in force where one is.
+- **US$ per working borehole**: the Costing page's mean completed
+  borehole, and its mean dry attempt for each dry attempt expected before
+  a working one, to the cent. An **Access, US$ per attempt** typed for an
+  area (a column of the table in the browser; a table under *Access, US$
+  per attempt* in the Streamlit app) is added once for each attempt a
+  working borehole there is expected to take. With none typed, the page
+  says access is not modelled.
+
+The choice aims at the set of boreholes that serves the most people
+within the budget at those expected costs. People served per dollar is
+the plan's expected people served per dollar: the chance of success
+times the people a working borehole serves, over the expected cost of
+one attempt, is the same figure. With up to 40 candidate boreholes (each
+area's, up to what its people justify and the whole budget could buy)
+the choice is exact; with more it takes the boreholes in order of people
+per dollar, each one that fits in what is left, and says how far it can
+be from the best (the linear-programming bound). A national budget
+usually has more than 40. Where areas tie, the one first in alphabetical
+order is served first, so areas on the same ground take the budget in
+that order.
+
+The table lists every area, the chosen first: its unserved people, its
+ground, its chance, its cost per working borehole, the boreholes chosen
+of those it justifies, the people they serve, the people per US$ 1,000
+its first borehole serves, and why it is in or out: all its boreholes,
+some of them and the next one costs more than the budget left, out
+because one costs more than what is left, out for lower value per dollar
+than every borehole chosen, no unserved people, or odds unknown. Above
+it the page says what the budget buys, how it was chosen, and the next
+borehole worth buying with its cost per extra person served. It also
+says plainly that chiefdom populations are too coarse for access
+distances: an area's people are one number, so the people a borehole
+serves are the handpump figure, not the people within reach of it,
+until settlement-level population (PLAN.md step 6.2) is added.
+*Download the choice (.csv)* saves the table and then every sentence,
+one to a line. The browser keeps the budget and the access costs in the
+project file with the year and the growth rate; the Streamlit app keeps
+none of them. The 500, the 40 and the 16 are
+`allocation.people_per_borehole`, `allocation.exact_max_items` and
+`allocation.ground_grid` in `defaults.json` or a `config.yaml`.
+
 **Portfolio** - upload several saved project files at once for the
 programme view: a status map, headline figures (success rate, mean cost
 per metre), a comparison table and a one-page brief for any single

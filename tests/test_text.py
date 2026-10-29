@@ -447,7 +447,7 @@ def test_no_engine_types_out_a_configuration_default():
     assert fields
     for name, _kind, default in fields:
         if name in {"style", "ves", "pumping", "design", "ves_range", "odds", "ledger",
-                    "cost_range", "terrain", "service", "survival"}:
+                    "cost_range", "allocation", "terrain", "service", "survival"}:
             continue
         assert re.match(r"(tuple\(|field\(default_factory=lambda: dict\()?_[A-Z]+\[\"" + name + r"\"\]",
                         default), (

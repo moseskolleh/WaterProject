@@ -7,6 +7,14 @@ from datetime import date
 
 import streamlit as st
 
+from groundwater.allocation import (
+    allocate,
+    allocation_basis_text,
+    allocation_csv,
+    allocation_header,
+    allocation_rows,
+    allocation_text,
+)
 from groundwater.coverage import (
     chiefdom_coverage_rows,
     choropleth_values,
@@ -25,6 +33,7 @@ from groundwater.planning import (
     planning_stats,
     project_population,
 )
+from groundwater.text import phrase
 from groundwater.utils import plural
 from groundwater.waterpoints import (
     fetch_water_points,
@@ -33,6 +42,7 @@ from groundwater.waterpoints import (
 )
 
 from shared import (
+    allocation_cost,
     app_config,
     content_token,
     cov_chiefdom_population,
@@ -42,7 +52,9 @@ from shared import (
     figure,
     kept_upload,
     offer_download,
+    plain,
     show_flags,
+    workdir,
     wpdx_points,
 )
 
@@ -343,6 +355,7 @@ def _planning_view(chiefdom, unit, area_population, counts, grouped,
             "polygon (border, offshore, or geometry held back by the "
             "boundary review) and were not counted in any area above."
         )
+    _allocation_view(rows, chiefdom)
     if chiefdom and members:
         aggregated = {gb: names for gb, names in sorted(members.items())
                       if len(names) > 1}
@@ -363,3 +376,57 @@ def _planning_view(chiefdom, unit, area_population, counts, grouped,
                 hide_index=True, width="stretch",
             )
     st.caption(f"{WPDX_CREDIT}. {POPULATION_CREDIT}.")
+
+
+def _allocation_view(rows, chiefdom: bool) -> None:
+    """Where to drill next, within a budget (PLAN.md step 6.1): the areas of
+    the ranking above, at the population of the year planned for, chosen
+    between for the budget typed, each borehole priced as the Costing page
+    prices one. The budget and the access costs are not saved in the project
+    file, as the year and the growth rate are not."""
+    level = "chiefdom" if chiefdom else "district"
+    st.subheader(phrase("allocation.heading"))
+    cost = allocation_cost()
+    if cost is None:
+        st.info(phrase("allocation.no_estimate"))
+        return
+    budget = st.number_input(phrase("allocation.col_budget"), min_value=0.0, value=0.0,
+                             step=10000.0, key="cov_budget")
+    # an access cost per area, per attempt; 0, the default, is "not modelled"
+    with st.expander(phrase("allocation.col_access")):
+        typed = st.data_editor(
+            [{phrase("allocation.col_area"): r.name, phrase("allocation.col_access"): 0.0}
+             for r in sorted(rows, key=lambda r: r.name)],
+            key=f"cov_access_{level}", hide_index=True, width="stretch",
+            disabled=[phrase("allocation.col_area")],
+            column_config={phrase("allocation.col_access"): st.column_config.NumberColumn(
+                min_value=0.0, step=100.0)},
+        )
+    access = {}
+    for entry in typed:
+        value = entry.get(phrase("allocation.col_access"))
+        # a cell emptied reads as no access cost, as a new cell does
+        access[entry[phrase("allocation.col_area")]] = (
+            0.0 if value is None or value != value else float(value))
+    if not budget > 0.0:
+        st.caption(phrase("allocation.no_budget"))
+        return
+    try:
+        chosen = allocate(rows, float(budget), cost, level=level, access=access,
+                          config=app_config())
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    text = allocation_text(chosen)
+    st.caption(plain(text[0]))
+    st.info(plain(text[1]))
+    for line in text[2:]:
+        st.markdown(plain(line))
+    header = allocation_header(chosen)
+    st.dataframe([dict(zip(header, row, strict=True)) for row in allocation_rows(chosen)],
+                  hide_index=True, width="stretch")
+    for line in allocation_basis_text(chosen):
+        st.caption(plain(line))
+    path = workdir() / phrase("allocation.csv_name")
+    path.write_text(allocation_csv(chosen), encoding="utf-8")
+    offer_download(path, phrase("allocation.download"))
