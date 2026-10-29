@@ -11958,7 +11958,8 @@
      * sign would otherwise read as a degree (units.py _normalise) */
     s = s.replace(/(?<![A-Za-z0-9_])[nN][º°](?=\s*(?:\/|[pP][eE][rR]\b))/g, 'no');
     UNIT_CHAR_FIXES.forEach(function (pair) { s = s.replace(pair[0], pair[1]); });
-    s = s.toLowerCase().trim().replace(/[–—]/g, '-');
+    /* an en dash, an em dash and the minus sign (U+2212) are a hyphen */
+    s = s.toLowerCase().trim().replace(/[–—−]/g, '-');
     s = s.replace(/\bper\b/g, '/');
     s = s.replace(/\bmilli\s*lit(re|er)s?\b|\bmillilit(re|er)s?\b/g, 'ml');
     s = s.replace(/\blit(re|er)s?\b/g, 'l');
@@ -11995,6 +11996,21 @@
     var basis = m[1].replace(/\s+/g, '');
     if (NITROGEN_BASIS_RE.test(basis)) basis = 'n';
     return [text.slice(0, m.index).trim(), basis];
+  }
+
+  /** The ion a unit's nitrogen basis names: "mg/L as NO3-N" -> "no3"; '' for
+   * "as N", "as nitrogen", another basis or none. "as NO3-N" and "as NH4-N"
+   * are one scale, nitrogen, so parseUnit reads both as the basis "n"; which
+   * ion's nitrogen they mean is a separate question, and a nitrite row in
+   * "mg/L as NO3-N" contradicts its unit (units.py nitrogen_species).
+   * @param {*} text a written unit
+   * @returns {string}
+   */
+  function nitrogenSpecies(text) {
+    var m = UNIT_BASIS_RE.exec(normaliseUnit(text));
+    if (!m) return '';
+    var species = /^(no3|no2|nh4|nh3)-{0,2}n$/.exec(m[1].replace(/\s+/g, ''));
+    return species ? species[1] : '';
   }
 
   var UNIT_TABLE = {};
@@ -12483,14 +12499,20 @@
    * that is a symbol or a unit, not a basis ("(as NO3)") */
   var TRAILING_QUALIFIER_RE = /\s*\((?!\s*as\s)[^)]*\)\s*$/;
 
-  /* A trailing bracket that names nitrogen as the basis: "Nitrate (NO3-N)",
-   * "Nitrate (N)", "Nitrite (NO2 as N)", "Nitrate (as NO3-N)". It was
-   * stripped like a symbol, so "Nitrate (NO3-N)" was held to the 50 mg/L
-   * guideline for nitrate as the ion, where 20 mg/L as N is 88.5 mg/L as
-   * nitrate (standards.py _NITROGEN_QUALIFIER_RE). */
-  var NITROGEN_QUALIFIER_RE = new RegExp('^(.+?)\\s*\\(\\s*(?:as\\s+)?' +
-    '(?:(no3|no2|nh4|nh3)\\s*(?:[-\u2013\u2014]{0,2}|\\s+as)\\s*)?' +
-    '(?:n|nitrogen)\\s*\\)$');
+  /* a trailing bracket after a name, and what it holds */
+  var TRAILING_BRACKET_RE = /^(.+?)\s*\(([^()]*)\)$/;
+  /* Nitrogen named as the basis anywhere in that bracket: "Nitrate (NO3-N)",
+   * "(N)", "(NO3 as N)", "(as NO3-N)", "(nitrogen)", and a unit with its
+   * basis, "(mg/L as N)", "(mg N/L)" or "(mgN/L)". A bracket that held
+   * anything but an ion and N was stripped like a symbol, so "Nitrate (mg/L
+   * as N)" was held to the 50 mg/L guideline for nitrate as the ion, where 20
+   * mg/L as N is 88.5 mg/L as nitrate (standards.py _NITROGEN_NAMED_RE). */
+  var NITROGEN_NAMED_RE = /\b(?:(?:no3|no2|nh4|nh3)\s*-{0,2}\s*)?(?:n|nitrogen)\b|[muµμ]gn\//;
+  /* an ion's formula in that bracket, which must be the name's own */
+  var NITROGEN_ION_RE = /\b(no3|no2|nh4|nh3)/g;
+  /* an en dash, an em dash and the minus sign, which a name or a unit writes
+   * for a hyphen */
+  var DASHES_RE = /[\u2013\u2014\u2212]/g;
   /* the table key each name takes when it is reported as nitrogen, and the
    * ion a qualifier may name for it; "Nitrite (NO3-N)" contradicts itself
    * and is left to resolve to nothing */
@@ -12509,12 +12531,17 @@
    * @returns {string}
    */
   function normaliseParameter(name) {
-    var key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    var key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+      .replace(DASHES_RE, '-');
     if (own(PARAMETER_ALIASES, key)) return PARAMETER_ALIASES[key];
-    var nitrogen = NITROGEN_QUALIFIER_RE.exec(key);
-    if (nitrogen && own(AS_NITROGEN_KEYS, nitrogen[1])) {
-      var asN = AS_NITROGEN_KEYS[nitrogen[1]];
-      return (nitrogen[2] === undefined || asN[1].indexOf(nitrogen[2]) >= 0) ? asN[0] : key;
+    var bracket = TRAILING_BRACKET_RE.exec(key);
+    if (bracket && own(AS_NITROGEN_KEYS, bracket[1]) && NITROGEN_NAMED_RE.test(bracket[2])) {
+      /* reported as nitrogen: the table's entry for nitrogen, unless the
+       * bracket names another ion's ("Nitrite (NO3-N)"), which contradicts
+       * the name and is left to resolve to nothing */
+      var asN = AS_NITROGEN_KEYS[bracket[1]];
+      var named = bracket[2].match(NITROGEN_ION_RE) || [];
+      return named.every(function (ion) { return asN[1].indexOf(ion) >= 0; }) ? asN[0] : key;
     }
     var stripped = key.replace(TRAILING_QUALIFIER_RE, '');
     if (stripped !== key) {
@@ -12628,13 +12655,13 @@
    * masses, so a conversion rather than an assumption (standards.py
    * _BASIS_FACTORS). Calcium and magnesium as CaCO3 used to be taken at face
    * value, 2.5 and 4.1 times the element, and a balanced analysis was
-   * flagged as an unreliable one. */
+   * flagged as an unreliable one. Nothing is put onto the entries for
+   * nitrogen: every name that reaches one states nitrogen, so a unit as the
+   * ion contradicts it and is refused. */
   /** @type {Record<string, [number, string]>} */
   var BASIS_FACTORS = {
     'nitrate (as no3)|n': [MOLAR_MASS.NO3 / MOLAR_MASS.N, 'NO3'],
-    'nitrate (as n)|no3': [MOLAR_MASS.N / MOLAR_MASS.NO3, 'N'],
     'nitrite (as no2)|n': [MOLAR_MASS.NO2 / MOLAR_MASS.N, 'NO2'],
-    'nitrite (as n)|no2': [MOLAR_MASS.N / MOLAR_MASS.NO2, 'N'],
     'calcium|caco3': [MOLAR_MASS.Ca / MOLAR_MASS.CaCO3, 'Ca'],
     'magnesium|caco3': [MOLAR_MASS.Mg / MOLAR_MASS.CaCO3, 'Mg'],
     'bicarbonate|caco3': [2 * MOLAR_MASS.HCO3 / MOLAR_MASS.CaCO3, 'HCO3'],
@@ -13237,15 +13264,37 @@
     return row.evaluable && GRADED_STATUSES.indexOf(row.status) >= 0;
   }
 
-  var PARAMETER_BASIS_RE = /\(\s*as\s+([^)]+?)\s*\)/;
+  /* "(as NO3)", and a unit with its basis, "(mg/L as NO3)" */
+  var PARAMETER_BASIS_RE = /\((?:[^()]*\s)?as\s+([^()]+?)\s*\)/;
 
   /* "Nitrate (as NO3)" -> "no3"; "as NO3-N" is nitrogen, as a unit's basis is */
   function parameterBasis(parameter) {
-    var m = PARAMETER_BASIS_RE.exec(String(parameter || ''));
+    var m = PARAMETER_BASIS_RE.exec(String(parameter || '').toLowerCase()
+      .replace(DASHES_RE, '-'));
     if (!m) return '';
-    var basis = m[1].toLowerCase().replace(/\s+/g, '');
+    var basis = m[1].replace(/ /g, '');
     return NITROGEN_BASIS_RE.test(basis) ? 'n' : basis;
   }
+
+  /* The basis a laboratory's name for a determinand states: what a bracket
+   * states after "as", or nitrogen for a name that resolves to an entry for
+   * nitrogen ("Nitrate-N", "Nitrate (NO3-N)", "Nitrate (mg N/L)"). Read from
+   * "as" alone, "Nitrate-N" stated no basis, so in "mg/L as NO3" it was
+   * converted onto nitrogen and passed (standards.py _written_basis). */
+  function writtenBasis(parameter) {
+    return parameterBasis(parameter) ||
+      (own(AS_NITROGEN, normaliseParameter(parameter)) ? 'n' : '');
+  }
+
+  /* The ions whose nitrogen each entry may be reported as: "Nitrite" in
+   * "mg/L as NO3-N" names one determinand and another's nitrogen
+   * (standards.py _NITROGEN_IONS). */
+  /** @type {Record<string, string[]>} */
+  var NITROGEN_IONS = {
+    'nitrate (as no3)': ['no3'], 'nitrate (as n)': ['no3'],
+    'nitrite (as no2)': ['no2'], 'nitrite (as n)': ['no2'],
+    'ammonia (as n)': ['nh3', 'nh4'],
+  };
 
   function limitMaximums(entry) {
     var out = [];
@@ -13261,9 +13310,12 @@
   /* Put a reported value on the guideline's scale. Returns
    * {value, reason}; value null means the number must NOT be compared.
    * `parameter` is the name as the laboratory wrote it: a basis it states and
-   * the unit contradicts ("Nitrate (as NO3)" in "mg/L as N") is refused, and
-   * "Nitrate" in "mg/L as N" is converted; without it the entry's own name
-   * speaks for the sheet (standards.py to_standard_unit). */
+   * the unit contradicts is refused, whichever of them is the entry's own
+   * ("Nitrate (as NO3)" in "mg/L as N", "Nitrate-N" in "mg/L as NO3",
+   * "Calcium (mg/L as CaCO3)" in "mg/L as Ca"), as is a unit naming another
+   * ion's nitrogen ("Nitrite" in "mg/L as NO3-N"), and "Nitrate" in "mg/L as
+   * N" is converted; without it the entry's own name speaks for the sheet
+   * (standards.py to_standard_unit). */
   function toGuidelineUnit(value, reportedUnit, entry, parameter) {
     var reported = String(reportedUnit || '').trim();
     var guideline = String(entry.unit || '').trim();
@@ -13306,15 +13358,24 @@
        * reported in "mg/L as N" is a different number by a factor of 4.4,
        * and grading it at face value passed a sample the guideline fails. */
       var key = normaliseParameter(entry.parameter);
+      var species = nitrogenSpecies(reported);
+      if (species && own(NITROGEN_IONS, key) && NITROGEN_IONS[key].indexOf(species) < 0) {
+        /* "Nitrite" in "mg/L as NO3-N": another ion's nitrogen */
+        return { value: null, reason: 'unit_basis_conflict' };
+      }
+      var written = writtenBasis(parameter === undefined || parameter === null
+        ? entry.parameter : parameter);
+      if (written && written !== source.basis) {
+        /* the name and the unit state different bases, whichever of them is
+         * the entry's own: "Nitrate-N" in "mg/L as NO3", and "Calcium (mg/L
+         * as CaCO3)" in "mg/L as Ca" */
+        return { value: null, reason: 'unit_basis_conflict' };
+      }
       var native = parameterBasis(entry.parameter) ||
         (own(NATIVE_BASIS, key) ? NATIVE_BASIS[key] : '');
       if (source.basis === native) return { value: converted, reason: '' };
-      var written = parameterBasis(parameter === undefined || parameter === null
-        ? entry.parameter : parameter);
       var factor = basisConversion(reported, entry);
-      if (factor && !(written && written !== source.basis)) {
-        return { value: converted * factor[0], reason: 'unit_basis_converted' };
-      }
+      if (factor) return { value: converted * factor[0], reason: 'unit_basis_converted' };
       if (native) return { value: null, reason: 'unit_basis_conflict' };
       /* Nothing states the guideline's basis, so the reading is taken but it
        * is worth an analyst's eye: an 'as CaCO3' figure is about 2.5 times
@@ -13462,6 +13523,15 @@
         INDETERMINATE_REASONS[converted.reason] + '.';
       return row;
     }
+    /* The limit as the remark gives it. One put on the guideline's basis
+     * says so, as a measured value does: "0.1 mg/L as N" read "0.442664
+     * mg/L" (assess.py _assess_below_detection). */
+    row.basis_reason = basisReason(converted.reason);
+    var shown = formatG(converted.value) + ' ' + entry.unit;
+    if (converted.reason === 'unit_basis_converted') {
+      shown = formatG(dlText) + ' ' + (result.unit || '') + ' = ' +
+        formatG(converted.value) + ' ' + wqScale(result.unit, entry, converted.reason);
+    }
     if (microbiological && converted.value <= 1.0) {
       /* a membrane-filtration count cannot resolve below one colony per
        * volume filtered, so "<1 CFU/100 mL" is exactly what "not detectable
@@ -13471,22 +13541,23 @@
         formatG(converted.value) + ' ' + entry.unit + ')';
       return row;
     }
+    /* "<0.1" nitrate as N says which basis the sheet used, as "0.1" does */
+    var nitrogen = asNitrogenNote(entry, converted.value, converted.reason);
     if (converted.value > strictest) {
       row.status = 'indeterminate';
       row.evaluable = false;
       row.reason = 'detection_limit_above_guideline';
-      row.remark = 'below a detection limit of ' + formatG(converted.value) +
-        ' ' + entry.unit + ', which is above the limit of ' +
+      row.remark = 'below a detection limit of ' + shown +
+        (nitrogen ? ' (' + nitrogen + ')' : '') + ', which is above the limit of ' +
         formatG(strictest) + ' ' + entry.unit + '. The method cannot see the ' +
         'guideline value, so the result does not show compliance; re-test ' +
         'with a more sensitive method.';
       return row;
     }
     row.status = 'below_detection';
-    row.remark = 'below detection limit (' + formatG(converted.value) + ' ' +
-      entry.unit + '), which is at or under the limit of ' +
-      formatG(strictest) + ' ' + entry.unit;
-    return row;
+    row.remark = 'below detection limit (' + shown + '), which is at or under ' +
+      'the limit of ' + formatG(strictest) + ' ' + entry.unit;
+    return withNitrogenNote(row, entry, converted.value, converted.reason);
   }
 
   /* the reasons a unit keeps a value off the table's scale */
@@ -13517,6 +13588,22 @@
     if (!own(AS_NITROGEN, key) || reason === 'unit_basis_converted') return '';
     return phrase('quality.as_nitrogen', { value: converted, unit: entry.unit,
       ion_value: converted * AS_NITROGEN[key][1], ion: AS_NITROGEN[key][2] });
+  }
+
+  /* the reasons a unit's chemical basis gives (assess.py _BASIS_REASONS) */
+  var BASIS_REASONS = ['unit_basis_converted', 'unit_basis_assumed'];
+
+  /* the reason where it is one a unit's chemical basis gives, else '' */
+  function basisReason(reason) {
+    return BASIS_REASONS.indexOf(reason) >= 0 ? reason : '';
+  }
+
+  /* the row, its remark saying which basis the sheet used (assess.py
+   * _with_nitrogen_note) */
+  function withNitrogenNote(row, entry, converted, reason) {
+    var nitrogen = asNitrogenNote(entry, converted, reason);
+    if (nitrogen) row.remark = row.remark ? row.remark + '; ' + nitrogen : nitrogen;
+    return row;
   }
 
   /* A determinand with no limit whose unit cannot be put on the table's
@@ -13621,8 +13708,16 @@
     } else {
       stated += wqUnitNote(reported, result.unit || '', converted.value,
         converted.reason, wqScale(result.unit, entry, converted.reason));
+      row.basis_reason = basisReason(converted.reason);
     }
-    var bound = /** @type {number} */ (converted.value);
+    /* ">20" nitrate as N says which basis the sheet used, as "20" does */
+    return withNitrogenNote(gradeBound(row, entry,
+      /** @type {number} */ (converted.value), inclusive, stated),
+    entry, converted.value, converted.reason);
+  }
+
+  /* A lower bound on the guideline's scale, graded (assess.py _grade_bound). */
+  function gradeBound(row, entry, bound, inclusive, stated) {
 
     /* The true value is above the bound, or at it for ">=", so a limit is
      * crossed only when the bound already reaches it: ">50" exceeds 50,
@@ -13765,6 +13860,10 @@
       greater_than_inclusive: unquantified && !!result.greater_than_inclusive,
       /* whether the national value was provisional in the table in use */
       sl_provisional: !!(entry && entry.sl_provisional),
+      /* what the unit's chemical basis did to a value, a bound or a
+       * detection limit: 'unit_basis_converted', 'unit_basis_assumed' or ''
+       * (assess.py ParameterAssessment.basis_reason) */
+      basis_reason: '',
     };
 
     if (missing && !result.below_detection && !unquantified && !unreadable) {
@@ -13819,12 +13918,11 @@
 
     row.value_in_guideline_unit = converted.value;
     row.reason = converted.reason;
+    row.basis_reason = basisReason(converted.reason);
     gradeRow(row, entry, converted.value, wqUnitNote(Number(result.value),
       result.unit || '', converted.value, converted.reason,
       wqScale(result.unit, entry, converted.reason)));
-    var nitrogen = asNitrogenNote(entry, converted.value, converted.reason);
-    if (nitrogen) row.remark = row.remark ? row.remark + '; ' + nitrogen : nitrogen;
-    return row;
+    return withNitrogenNote(row, entry, converted.value, converted.reason);
   }
 
   /** How a result the laboratory did not quantify reads in a table: ">50",
@@ -13932,31 +14030,12 @@
             '; it was read as ' + row.guideline_unit +
             '. Confirm against the laboratory certificate.',
         });
-      } else if (row.reason === 'unit_basis_converted') {
-        var basis = basisConversion(result.unit, table[normaliseParameter(result.parameter)]);
-        if (basis) {
-          flags.push({
-            level: 'info', code: 'unit_basis_converted',
-            message: phrase('quality.unit_basis_converted', {
-              parameter: String(result.parameter), unit: String(result.unit || ''),
-              guideline: row.guideline_unit, basis: basis[1], factor: basis[0] }),
-          });
-        }
       } else if (row.status === 'no_guideline' && UNIT_REFUSALS.indexOf(row.reason) >= 0) {
         flags.push({
           level: 'warning', code: 'value_not_used',
           message: phrase('quality.value_not_used', {
             parameter: String(result.parameter), unit: String(result.unit || ''),
             why: INDETERMINATE_REASONS[row.reason] }),
-        });
-      } else if (row.reason === 'unit_basis_assumed') {
-        flags.push({
-          level: 'warning', code: 'unit_basis_assumed',
-          message: "'" + result.parameter + "' is reported in '" +
-            (result.unit || '') + "' but the guideline is written in '" +
-            row.guideline_unit + "'. The values were taken as the same basis; " +
-            "confirm with the laboratory, since an 'as CaCO3' figure is about " +
-            '2.5 times the same concentration expressed as the element.',
         });
       } else if (row.status === 'indeterminate') {
         flags.push({
@@ -13968,6 +14047,27 @@
           level: 'warning', code: STRICTER_LIMIT_UNRESOLVED,
           message: "'" + result.parameter + "' could not be graded in full: " +
             row.remark + '.',
+        });
+      }
+      /* what the unit's basis did to a measured value, a bound or a
+       * detection limit, whatever else the row says */
+      var basis = row.basis_reason === 'unit_basis_converted'
+        ? basisConversion(result.unit, table[normaliseParameter(result.parameter)]) : null;
+      if (row.basis_reason === 'unit_basis_assumed') {
+        flags.push({
+          level: 'warning', code: 'unit_basis_assumed',
+          message: "'" + result.parameter + "' is reported in '" +
+            (result.unit || '') + "' but the guideline is written in '" +
+            row.guideline_unit + "'. The values were taken as the same basis; " +
+            "confirm with the laboratory, since an 'as CaCO3' figure is about " +
+            '2.5 times the same concentration expressed as the element.',
+        });
+      } else if (basis) {
+        flags.push({
+          level: 'info', code: 'unit_basis_converted',
+          message: phrase('quality.unit_basis_converted', {
+            parameter: String(result.parameter), unit: String(result.unit || ''),
+            guideline: row.guideline_unit, basis: basis[1], factor: basis[0] }),
         });
       }
     });
@@ -14005,6 +14105,7 @@
         detection_limit: null, evaluable: !bounded,
         reason: bounded ? 'detection_limit_above_guideline' : '',
         greater_than: null, greater_than_inclusive: false, sl_provisional: false,
+        basis_reason: '',
       });
       flags.push({
         level: 'warning',
@@ -15126,14 +15227,19 @@
       }
     });
     var rule = rules.gravel_pack_above_top_screen_m;
-    var gravelTop = Math.max(topScreen - rule, sealDepth);
+    /* where the fill's top falls against the top screen: the rule's height,
+     * unless the seal holds it lower. Compared to a nanometre, not to the
+     * last bit: a screen at 17.4 m under a 15.4 m seal leaves 17.4 - 2 =
+     * 15.399999999999999 m, and was flagged short of the 2 m it has; one at
+     * 8.3 m under a 7.3 m seal and a 1 m rule left 7.300000000000001 m, and
+     * the summary printed "Backfill 7.3-7.3 m" (designer.py). */
+    var packTop = topScreen - rule;
+    var packHeld = sealDepth - packTop > 1e-9;
+    var gravelTop = packTop - sealDepth > 1e-9 ? packTop : sealDepth;
+    var margin = packHeld ? pyRound(topScreen - sealDepth, 9) : rule;
     var gravel = [gravelTop, totalDepthM];
     var seal = [0.0, sealDepth];
     var backfill = [sealDepth, gravelTop];
-    /* where the fill's top falls against the top screen: the rule's height,
-     * unless the seal holds it lower */
-    var packHeld = sealDepth > topScreen - rule;
-    var margin = packHeld ? topScreen - sealDepth : rule;
 
     /* the drilled diameter is what the log says was drilled, not the rule's
      * default; the rule applies when the log records none */
@@ -18565,8 +18671,100 @@
   /* "Absent/100 mL", "Present in 100 mL": the volume examined, not a limit */
   var VOLUME_RE = /^(?:\/|per|in)\s*100\s*ml$/;
 
+  /* A number as a laboratory writes one: "50", "0,05", "1,250.5", "1.234,5",
+   * "5.0E-02". The exponent is part of it: read as far as the "E", "5.0E-02
+   * mg/L" was 5.0 followed by a unit nobody could read, so the unit was
+   * dropped and arsenic at five times its guideline was read in the row's
+   * ug/L and graded Safe. Groups of three are a thousands separator, as
+   * parseNumber reads them, so "1,250.5 mg/L" is not 1,250 and ".5 mg/L"
+   * (waterquality.py _NUMBER). */
+  var QUALITY_NUMBER = '(?:\\d{1,3}(?:[.,]\\d{3})+(?:[.,]\\d+)?|\\d+(?:[.,]\\d+)?|[.,]\\d+)' +
+    '(?:e[+-]?\\d+)?';
   /* a number and the unit written after it: "50", "50 mg/L", "0,05mg/l" */
-  var NUMBER_AND_UNIT_RE = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*([^\d\s()[\]][\s\S]*)?$/;
+  var NUMBER_AND_UNIT_RE = new RegExp('^(' + QUALITY_NUMBER +
+    ')\\s*([^\\d\\s()[\\]][\\s\\S]*)?$');
+  /* a measured value and whatever is written after it */
+  var MEASURED_RE = new RegExp(QUALITY_NUMBER + '\\s*([\\s\\S]*)$');
+  /* The families a laboratory's result is written in. A unit of another
+   * family after a number is a laboratory's qualifier letter ("0.003 D",
+   * "0.2 H": a day and an hour to the unit reader), and so is any single
+   * letter ("0.1 C", "0.5 F"): read as units, they made the result
+   * unreadable (waterquality.py _QUALITY_DIMENSIONS). */
+  var QUALITY_DIMENSIONS = ['concentration', 'conductivity', 'turbidity', 'microbial',
+    'ph', 'temperature'];
+  /* the most words a unit is written in ("cfu per 100 ml" is four): the runs
+   * of a cell's words tried as a unit (waterquality.py _UNIT_WORDS) */
+  var UNIT_WORDS = 6;
+  /* a reference temperature after a unit: "450 uS/cm at 25 C", "@ 20 oC" */
+  var REFERENCE_TEMPERATURE_RE =
+    /\s*(?:@|\bat)\s*\d+(?:[.,]\d+)?(?:\s*(?:°|º|o|deg\.?)?\s*[cf])?$/;
+  /* a basis named after a number without "as": nitrogen ("10 N", "10
+   * (NO3-N)", "10 mg N/L") or calcium carbonate ("25 (CaCO3)") */
+  var CELL_BASIS_RE = new RegExp('\\bcaco3\\b' +
+    '|\\b(?:(?:no3|no2|nh4|nh3)\\s*[-–—−]{0,2}\\s*)?(?:n|nitrogen)\\b');
+
+  /* Whether the text is a unit a laboratory's result is written in. A unit
+   * of another family is a laboratory's qualifier letter ("0.003 D", "0.2
+   * H"), and so is a lone letter ("0.1 C", "0.5 F"), unless the row's own
+   * unit is in the letter's family: "68 F" in a row of degrees Celsius is 20
+   * deg C (waterquality.py _quality_unit). */
+  function isQualityUnit(text, dimension) {
+    var unit = parseUnit(text);
+    if (!unit) return false;
+    return unit.dimension === dimension || (QUALITY_DIMENSIONS.indexOf(unit.dimension) >= 0 &&
+      text.replace(/\s+/g, '').length > 1);
+  }
+
+  /* whether the text is written as a unit: one a result is written in, one
+   * refused by name ("ppt"), or a ratio this engine does not know ("meq/L")
+   * (waterquality.py _unit_like) */
+  function isUnitLike(text, dimension) {
+    return isQualityUnit(text, dimension) || text.indexOf('/') >= 0 ||
+      own(AMBIGUOUS_UNITS, normaliseUnit(text));
+  }
+
+  /* The unit written after a measured value: '' for none, null to refuse
+   * (waterquality.py _measured_unit). A unit this engine reads is taken; a
+   * note holding no unit leaves the reading as it was ("0.5 ND", "8
+   * (field)", "0.003 D"); anything else refuses the cell: a unit with more
+   * written beside it ("0.05 mg/L As", "25 mg/L CaCO3"), a basis written
+   * without "as" ("10 NO3-N", "10 (N)"), a unit this engine does not read
+   * ("5 meq/L") or a note that holds one ("0.05 (DL 0.01 mg/L)"). Refusing
+   * "0.05 mg/L As" rather than reading its "mg/L" is a choice (QUESTIONS.md
+   * item 24). */
+  function measuredUnit(rest, dimension) {
+    /** @type {string[]} */
+    var notes = [];
+    var text = rest.replace(/^\.+/, '').replace(/[([]([^()[\]]*)[)\]]/g,
+      function (whole, inside) {
+        /* a bracket that is a unit or states a basis is read; one that is
+         * anything else is a note */
+        var held = inside.trim();
+        if (isQualityUnit(held, dimension) || /^as\s/.test(held) || CELL_BASIS_RE.test(held)) {
+          return ' ' + held + ' ';
+        }
+        notes.push(held);
+        return ' ';
+      });
+    /* a stray bracket ("(0.05 mg/L)"), an asterisk and a comma are not part
+     * of a unit */
+    text = text.replace(/[()[\]*,;:]/g, ' ');
+    text = text.trim().replace(REFERENCE_TEMPERATURE_RE, '').replace(/\s+/g, ' ').trim();
+    if (text && isQualityUnit(text, dimension)) return text;
+    var tokens = text ? text.split(' ') : [];
+    if (tokens.indexOf('as') >= 0 || CELL_BASIS_RE.test(text)) return null;
+    for (var i = 0; i < tokens.length; i++) {
+      for (var j = i + 1; j <= Math.min(i + UNIT_WORDS, tokens.length); j++) {
+        if (isUnitLike(tokens.slice(i, j).join(' '), dimension)) return null;
+      }
+    }
+    var noted = notes.some(function (note) {
+      return note.split(/\s+/).some(function (word) {
+        return !!word && isUnitLike(word, dimension);
+      });
+    });
+    return noted ? null : '';
+  }
 
   /* Python's str.strip(chars): the set, from both ends. */
   function stripChars(text, chars) {
@@ -18602,7 +18800,8 @@
     return [parseNumber(m[1]), unit];
   }
 
-  /** What a laboratory's result cell says: waterquality.py _read_cell.
+  /** What a laboratory's result cell says, in a row whose unit is of the
+   * given dimension: waterquality.py _read_cell.
    *
    * kind is number, below (a non-detect, with the limit it states if any),
    * above (a lower bound: ">50", "TNTC"), empty, text (words that are not a
@@ -18611,8 +18810,11 @@
    * through to a plain number parse, which read "ND (DL 0.05)" as a measured
    * 0.05, ">50 mg/L" as exactly 50 and "Absent/100 mL" as a count of 100.
    * @param {*} rawValue a cell
+   * @param {string=} dimension the dimension of the row's own unit, if it
+   *   states one: a lone letter of that family is a unit ("68 F" in a row of
+   *   degrees Celsius), and of another a laboratory's qualifier ("0.1 C")
    */
-  function readQualityCell(rawValue) {
+  function readQualityCell(rawValue, dimension) {
     function reading(kind, number, unit, inclusive) {
       return { kind: kind, number: number === undefined ? null : number,
         unit: unit || '', inclusive: !!inclusive };
@@ -18684,15 +18886,14 @@
     var number = parseNumber(rawValue);
     if (number === null) return reading('text');
     /* A unit written after a measured value is read as it is after a bound:
-     * "0.05 mg/L" in a ug/L row was read as 0.05 ug/L. Only a unit this engine
-     * can read is taken, so a note beside the number ("0.5 ND", "8 (field)",
-     * "8*") leaves the reading as it was. */
+     * "0.05 mg/L" in a ug/L row was read as 0.05 ug/L. A note beside the
+     * number ("0.5 ND", "8 (field)", "8*") leaves the reading as it was, and a
+     * unit that cannot be read as written refuses the cell (measuredUnit). */
     var unit = '';
-    var written = numberAndUnit(plain);
-    if (written && written[1]) {
-      var candidate = String(written[1]).replace(/\s*[([][\s\S]*$/, '')
-        .replace(/\*+$/, '').trim();
-      if (candidate && parseUnit(candidate)) unit = candidate;
+    var written = MEASURED_RE.exec(plain);
+    if (written) {
+      unit = measuredUnit(written[1], dimension);
+      if (unit === null) return unreadable;
     }
     return reading('number', number, unit);
   }
@@ -18751,7 +18952,8 @@
       var unit = cleanText(cell('unit'));
       if (located.unit && !normaliseUnit(unit)) unit = located.unit;
       var dl = parseNumber(cell('dl'));
-      var read = readQualityCell(rawValue);
+      var declared = parseUnit(unit);
+      var read = readQualityCell(rawValue, declared ? declared.dimension : undefined);
       var kind = read.kind, number = read.number;
       if (number !== null) {
         var onScale = inRowUnit(number, unitAsWritten(cleanText(rawValue), read.unit),

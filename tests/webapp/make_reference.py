@@ -259,6 +259,16 @@ DESIGN_CASES = [
     {"total": 60, "grout": 20, "swl": 5, "screens": [[21, 30]],
      "rules": {"borehole_diameter_in": 8.0, "casing_diameter_in": 4.0},
      "intervals": [[0, 60, "Granite"]]},
+    # a screen exactly the pack's height under a seal that is not a round
+    # number: 17.4 - 2 is 15.399999999999999, under the 15.4 m seal, and
+    # 8.3 - 1 is 7.300000000000001, over the 7.3 m one
+    {"total": 60, "grout": 15.4, "swl": 5, "screens": [[17.4, 40]],
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 60, "Granite"]]},
+    {"total": 60, "grout": 7.3, "swl": 5, "screens": [[8.3, 40]],
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0,
+               "gravel_pack_above_top_screen_m": 1.0},
+     "intervals": [[0, 60, "Granite"]]},
 ]
 
 
@@ -7825,6 +7835,37 @@ QUALITY_CASES = {
     "nitrate_in_mg_n": _QPANEL + [["Nitrate", 10.0, "mg/L as N"]],
     "nitrate_n_in_mg_no3": _QPANEL + [["Nitrate-N", 44.0, "mg/L as NO3"]],
     "nitrate_basis_contradicted": _QPANEL + [["Nitrate (as NO3)", 10.0, "mg/L as N"]],
+    # a name and a unit on different nitrogen bases, or on another ion's
+    # nitrogen, are refused; a unit on the name's own nitrogen is read
+    "nitrogen_name_and_unit_apart": _QPANEL + [
+        ["Nitrate (NO3-N)", 44.0, "mg/L as NO3"], ["Nitrite", 0.5, "mg/L as NO3-N"],
+        ["Nitrate (NO3)", 5.0, "mg/L as NH4-N"], ["Nitrate (mg/L as NO3)", 10.0, "mg/L as N"],
+        ["Nitrite-N", 1.0, "mg/L as NO2"], ["Ammonia", 1.0, "mg/L as NO3-N"]],
+    "basis_name_against_own_unit": _QPANEL + [
+        ["Calcium (mg/L as CaCO3)", 20.0, "mg/L as Ca"],
+        ["Nitrate (mg/L as NO2)", 5.0, "mg/L as NO3"]],
+    "nitrogen_name_and_unit_agree": _QPANEL + [
+        ["Nitrate", 2.0, "mg/L as NO3\u2212N"], ["Nitrite", 0.1, "mg/L as NO2-N"],
+        ["Ammonia", 1.0, "mg/L as NH4-N"], ["Nitrate (NO3-N)", 2.0, "mg/L as NO3-N"]],
+    # nitrogen named with its unit in the name's bracket
+    "nitrogen_unit_in_name": _QPANEL + [
+        ["Nitrate (mg/L as N)", 20.0, "mg/L"], ["Nitrite (mg N/L)", 0.5, ""]],
+    "nitrogen_unit_in_name_spellings": _QPANEL + [
+        ["Nitrate (mgN/L)", 2.0, "mg/L"], ["Nitrate (NO3\u2212N)", 2.0, "mg/L"],
+        ["Nitrite (mg/l as N)", 0.1, "mg/L"]],
+    # a bound and a detection limit put on another basis, or taken as the
+    # guideline's, say so as a measured value does
+    "bases_of_bounds": _QPANEL + [
+        ["Nitrate", None, "mg/L as N", {"detection_limit": 0.1, "below_detection": True}],
+        ["Nitrite", None, "mg/L as N", {"detection_limit": 1.0, "below_detection": True}],
+        ["Calcium", None, "mg/L as CaCO3", {"greater_than": 20.0}],
+        ["Sodium", None, "mg/L as CaCO3", {"detection_limit": 1.0, "below_detection": True}],
+        ["Potassium", None, "mg/L as CaCO3", {"greater_than": 2.0}]],
+    "nitrate_bound_as_n": _QPANEL + [["Nitrate", None, "mg/L as N", {"greater_than": 20.0}]],
+    "nitrogen_named_bounds": _QPANEL + [
+        ["Nitrate (NO3-N)", None, "mg/L", {"greater_than": 20.0}],
+        ["Nitrite-N", None, "mg/L", {"detection_limit": 0.1, "below_detection": True}],
+        ["Nitrite (NO2-N)", None, "mg/L", {"detection_limit": 2.0, "below_detection": True}]],
     # the same water, nitrate as the ion and as nitrogen, through the indices
     "ions_as_ion": _QPANEL + _QIONS + [["Nitrate", 10.0 * 62.004 / 14.007, "mg/L"]],
     "ions_as_n_by_name": _QPANEL + _QIONS + [["Nitrate (as N)", 10.0, "mg/L"]],
@@ -7909,6 +7950,41 @@ QUALITY_SHEETS = [
               ["pH", "pH units", 7.1, ""], ["E. coli", "/100 mL", "Absent", ""],
               ["Total coliforms", "MPN/100 mL", 0, ""], ["Arsenic", "mg/L", 0.001, ""],
               ["Fluoride", "mg/L", 0.2, ""], ["Nitrate (NO3-N)", "mg/L", 2.0, ""]],
+    # a number in E-notation keeps its unit, and a unit with more beside it,
+    # a basis without "as" or a unit nobody reads refuses the cell
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+              ["Arsenic", "ug/L", "5.0E-02 mg/L", ""], ["Fluoride", "mg/L", 0.2, ""],
+              ["Nitrate", "mg/L", 3.1, ""], ["Lead", "", "8E+00 ug/L", ""],
+              ["Manganese", "ug/L", "<5.0E-02 mg/L", ""], ["Iron", "ug/L", "0.05 mg/L As", ""],
+              ["Nitrite", "mg/L", "0.1 (N)", ""], ["Sodium", "mg/L", "5 meq/L", ""],
+              ["Chloride", "mg/L", "(20 mg/L)", ""], ["Sulfate", "mg/L", "20 mg/L, est", ""],
+              ["Copper", "ug/L", "0.05 (DL 0.01 mg/L)", ""]],
+    # a laboratory's qualifier letter is a note, and a lone letter is a unit
+    # only in its row's family
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+              ["Arsenic", "mg/L", "0.003 D", ""], ["Fluoride", "mg/L", "0.2 H", ""],
+              ["Nitrate", "mg/L", "3.1 S", ""], ["Iron", "mg/L", "0.1 M", ""],
+              ["Copper", "mg/L", "0.5 F", ""], ["Zinc", "mg/L", "0.1 C", ""],
+              ["Temperature", "deg C", "68 F", ""],
+              ["Electrical conductivity", "uS/cm", "450 uS/cm at 25 C", ""]],
+]
+
+#: Result cells, each with the dimension of its row's unit, read alone.
+QUALITY_CELLS = [
+    ["5.0E-02 mg/L", None], ["8E+00 ug/L", None], ["<5.0E-02 mg/L", None],
+    [">2E+01 CFU/100 mL", None], ["5 E-02 mg/L", None], ["1,250.5 mg/L", None],
+    ["1.234,5 mg/L", None], ["5. mg/L", None], ["(0.05 mg/L)", None],
+    ["0.05 mg/L As", None], ["0.05 mg/L (As)", None], ["0.05 mg/L Fe", None],
+    ["25 mg/L CaCO3", None], ["25 (CaCO3)", None], ["25 mg/L (as CaCO3)", None],
+    ["10 NO3-N", None], ["10 (N)", None], ["10 mg N/L", None], ["10 mg/L (as N)", None],
+    ["0.05 mg/L est", None], ["0.05 mg/L, field", None], ["5 meq/L", None], ["5 ppt", None],
+    ["0.05 (DL 0.01)", None], ["0.05 (DL 0.01 mg/L)", None], ["0.05 mg/L (DL 0.01 mg/L)", None],
+    ["0.003 D", "concentration"], ["0.2 H", None], ["0.1 M", None], ["0.1 C", "concentration"],
+    ["68 F", "temperature"], ["68 F", None], ["20 C", "temperature"], ["7.1 at 25 C", "ph"],
+    ["450 uS/cm @25\u00b0C", "conductivity"], ["0.5 ND", None], ["8 (field)", None],
+    ["8 ug/L*", None], ["45 TCU", None],
 ]
 
 #: Units the audit found unread or read apart, by spelling.
@@ -7918,6 +7994,7 @@ UNIT_SPELLINGS = [
     "N\u00b0 per 100 mL", "\u00b0N/100 mL", "oC", "\u00baC",
     "\u00b0 C", "o C", "mg/L as NO3-N", "mg/L as NO3\u2013N", "mg/l as nitrogen",
     "mg/L as NO2-N", "mg/L as N", "mg/L as Ca", "mg/L as CaCO3", "mg/L CaCO3", "mg/L Ca",
+    "mg/L as NO3\u2212N", "mg/L as NH4-N",
 ]
 
 #: Parameter names that say nitrogen, and some that do not.
@@ -7927,7 +8004,10 @@ PARAMETER_NAMES = [
     "Nitrite (NO2-N)", "Nitrite (no2 - n)", "Ammonia (NH3-N)", "Ammonium (NH4-N)",
     "Ammonium (as NH4-N)", "Nitrite (NO3-N)", "Nitrate (NO2-N)", "Nitrate (NO3)",
     "Nitrate (as NO3)", "Nitrate (as N)", "Nitrate", "NO3-N", "Nitrate-N (mg/L)",
-    "Calcium (as CaCO3)",
+    "Calcium (as CaCO3)", "Nitrate (mg/L as N)", "Nitrate (mg/l as N)", "Nitrate (mg N/L)",
+    "Nitrate (mgN/L)", "Nitrate (ppm NO3-N)", "Nitrate (NO3\u2212N)", "Nitrate\u2212N",
+    "Nitrite (mg/L as N)", "Nitrate (mg/L as NO2-N)", "Nitrate (mg/L as NO3)",
+    "Nitrate (mg/L)",
 ]
 
 #: Cells read in the time dimension by units.read_quantity, which took a
@@ -7975,6 +8055,7 @@ def _quality_summary(a) -> dict:
 
 def quality_units_reference() -> dict:
     """What the quality, units and design audit's cases come to in Python."""
+    from groundwater.ingestion.waterquality import _read_cell
     from groundwater.quality.standards import normalise_parameter
     from groundwater.units import parse_unit, read_quantity
 
@@ -8002,8 +8083,12 @@ def quality_units_reference() -> dict:
         q = read_quantity(cell, header, dimension="time")
         quantities.append({"cell": cell, "header": header, "value": clean(q.value),
                            "status": q.status, "unit": q.unit_text})
+    cells = []
+    for cell, dimension in QUALITY_CELLS:
+        read = _read_cell(cell, dimension)
+        cells.append([cell, dimension, read["kind"], clean(read["number"]), read["unit"]])
     return {
-        "cases": cases, "sheets": sheets, "quantities": quantities,
+        "cases": cases, "sheets": sheets, "quantities": quantities, "cells": cells,
         "units": [[text, unit(text)] for text in UNIT_SPELLINGS],
         "names": [[name, normalise_parameter(name)] for name in PARAMETER_NAMES],
     }

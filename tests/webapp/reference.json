@@ -175616,6 +175616,151 @@
     "Construction designed with 4 inch uPVC casing, 9 m of screen, formation stabiliser and sanitary seal to 20 m; the drilling log records no casing string as installed.",
     "Development of the borehole by air lifting until clear."
    ]
+  },
+  {
+   "spec": {
+    "total": 60,
+    "grout": 15.4,
+    "swl": 5,
+    "screens": [
+     [
+      17.4,
+      40
+     ]
+    ],
+    "rules": {
+     "borehole_diameter_in": 10.0,
+     "casing_diameter_in": 4.0
+    },
+    "intervals": [
+     [
+      0,
+      60,
+      "Granite"
+     ]
+    ]
+   },
+   "rows": [
+    [
+     "Total depth",
+     "60 m"
+    ],
+    [
+     "Drilled diameter",
+     "10\""
+    ],
+    [
+     "Casing",
+     "4\" uPVC, stick-up 0.5 m"
+    ],
+    [
+     "Screens",
+     "17.4-40 m (slot 0.75 mm)"
+    ],
+    [
+     "Annular fill",
+     "15.4-60 m: gravel pack (well sorted siliceous gravel, 2-4 mm)"
+    ],
+    [
+     "Backfill",
+     "none"
+    ],
+    [
+     "Sanitary seal",
+     "0-15.4 m cement grout"
+    ],
+    [
+     "Static water level",
+     "5.00 m"
+    ]
+   ],
+   "basis": [
+    "screen intervals set by the analyst on the borehole section (17.4-40 m)",
+    "4 inch uPVC casing in a 10 inch hole",
+    "gravel pack (well sorted siliceous gravel, 2-4 mm) from 15.4 m to the bottom, 2 m above the top screen",
+    "cement grout from surface to 15.4 m as recorded on the drilling log (the rule's minimum is 6 m), with concrete apron with drainage channel and soakaway",
+    "screens kept at least 5 m below the static water level"
+   ],
+   "flags": [],
+   "pump": null,
+   "works": [
+    "Drilling of the borehole to 60 m by DTH.",
+    "Construction designed with 4 inch uPVC casing, 22.6 m of screen, gravel pack and sanitary seal to 15.4 m; the drilling log records no casing string as installed.",
+    "Development of the borehole by air lifting until clear."
+   ]
+  },
+  {
+   "spec": {
+    "total": 60,
+    "grout": 7.3,
+    "swl": 5,
+    "screens": [
+     [
+      8.3,
+      40
+     ]
+    ],
+    "rules": {
+     "borehole_diameter_in": 10.0,
+     "casing_diameter_in": 4.0,
+     "gravel_pack_above_top_screen_m": 1.0
+    },
+    "intervals": [
+     [
+      0,
+      60,
+      "Granite"
+     ]
+    ]
+   },
+   "rows": [
+    [
+     "Total depth",
+     "60 m"
+    ],
+    [
+     "Drilled diameter",
+     "10\""
+    ],
+    [
+     "Casing",
+     "4\" uPVC, stick-up 0.5 m"
+    ],
+    [
+     "Screens",
+     "8.3-40 m (slot 0.75 mm)"
+    ],
+    [
+     "Annular fill",
+     "7.3-60 m: gravel pack (well sorted siliceous gravel, 2-4 mm)"
+    ],
+    [
+     "Backfill",
+     "none"
+    ],
+    [
+     "Sanitary seal",
+     "0-7.3 m cement grout"
+    ],
+    [
+     "Static water level",
+     "5.00 m"
+    ]
+   ],
+   "basis": [
+    "screen intervals set by the analyst on the borehole section (8.3-40 m)",
+    "4 inch uPVC casing in a 10 inch hole",
+    "gravel pack (well sorted siliceous gravel, 2-4 mm) from 7.3 m to the bottom, 1 m above the top screen",
+    "cement grout from surface to 7.3 m as recorded on the drilling log (the rule's minimum is 6 m), with concrete apron with drainage channel and soakaway",
+    "screens kept at least 5 m below the static water level"
+   ],
+   "flags": [],
+   "pump": null,
+   "works": [
+    "Drilling of the borehole to 60 m by DTH.",
+    "Construction designed with 4 inch uPVC casing, 31.7 m of screen, gravel pack and sanitary seal to 7.3 m; the drilling log records no casing string as installed.",
+    "Development of the borehole by air lifting until clear."
+   ]
   }
  ],
  "drilling_cases": [
@@ -241855,34 +242000,34 @@
       "mg/L as NO3"
      ]
     ],
-    "state": "pass",
+    "state": "indeterminate",
     "statuses": [
      "within_limits",
      "within_limits",
      "within_limits",
      "within_limits",
-     "within_limits"
+     "indeterminate"
     ],
     "reasons": [
      "",
      "",
      "",
      "",
-     "unit_basis_converted"
+     "unit_basis_conflict"
     ],
     "remarks": [
      "",
      "",
      "",
      "",
-     "(44 mg/L as NO3 = 9.93981 mg/L as N)"
+     "reported in 'mg/L as NO3' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
     ],
     "converted": [
      7.0,
      0.0,
      0.001,
      0.2,
-     9.939810334817109
+     null
     ],
     "guidelines": [
      "",
@@ -241891,12 +242036,20 @@
      "1.5",
      "11.3"
     ],
-    "uncertainties": [],
+    "uncertainties": [
+     "Nitrate-N could not be assessed: the unit names a different chemical basis from the parameter",
+     "the health panel is incomplete: no evaluable result for Nitrate (as NO3)"
+    ],
     "flags": [
      [
-      "info",
-      "unit_basis_converted",
-      "'Nitrate-N' is reported in 'mg/L as NO3' and was put on the basis its guideline is written on, mg/L as N, by a factor of 0.2259, the ratio of their molar masses."
+      "error",
+      "indeterminate_unit_basis_conflict",
+      "'Nitrate-N' could not be assessed: reported in 'mg/L as NO3' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+     ],
+     [
+      "warning",
+      "incomplete_health_panel",
+      "No evaluable result for Nitrate (as NO3). The sample cannot show the water is safe to drink until the health panel is complete."
      ],
      [
       "warning",
@@ -241906,9 +242059,8 @@
     ],
     "ionic": null,
     "hazard": {
-     "index": 0.37,
+     "index": 0.19,
      "quotients": {
-      "nitrate (as no3)": 0.18,
       "arsenic": 0.1,
       "fluoride": 0.1
      }
@@ -241923,9 +242075,9 @@
       "Temperature assumed 25 C (not reported)."
      ]
     },
-    "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested.",
+    "verdict": "The water cannot be declared suitable for drinking on these results: Nitrate-N could not be assessed: the unit names a different chemical basis from the parameter; the health panel is incomplete: no evaluable result for Nitrate (as NO3). Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
     "recommendations": [
-     "No treatment is required on the basis of the parameters tested. Maintain the sanitary seal and apron in good condition.",
+     "Do not treat this supply as safe to drink on these results. Nitrate-N could not be assessed: the unit names a different chemical basis from the parameter; the health panel is incomplete: no evaluable result for Nitrate (as NO3). Resolve these and re-issue the assessment before any treatment decision is taken.",
      "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
      "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
     ]
@@ -243104,7 +243256,7 @@
      "",
      "No guideline value",
      "",
-     "below detection limit (0.1 mg/L), which is at or under the limit of 11.3 mg/L"
+     "below detection limit (0.1 mg/L), which is at or under the limit of 11.3 mg/L; reported as nitrogen: 0.1 mg/L as N is 0.443 mg/L as NO3"
     ],
     "converted": [
      7.0,
@@ -244736,6 +244888,1123 @@
      "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
      "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
     ]
+   },
+   "nitrogen_name_and_unit_apart": {
+    "rows": [
+     [
+      "pH",
+      7.0,
+      "pH units"
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL"
+     ],
+     [
+      "Arsenic",
+      0.001,
+      "mg/L"
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L"
+     ],
+     [
+      "Nitrate (NO3-N)",
+      44.0,
+      "mg/L as NO3"
+     ],
+     [
+      "Nitrite",
+      0.5,
+      "mg/L as NO3-N"
+     ],
+     [
+      "Nitrate (NO3)",
+      5.0,
+      "mg/L as NH4-N"
+     ],
+     [
+      "Nitrate (mg/L as NO3)",
+      10.0,
+      "mg/L as N"
+     ],
+     [
+      "Nitrite-N",
+      1.0,
+      "mg/L as NO2"
+     ],
+     [
+      "Ammonia",
+      1.0,
+      "mg/L as NO3-N"
+     ]
+    ],
+    "state": "indeterminate",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "indeterminate",
+     "indeterminate",
+     "indeterminate",
+     "indeterminate",
+     "indeterminate",
+     "indeterminate"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "unit_basis_conflict",
+     "unit_basis_conflict",
+     "unit_basis_conflict",
+     "unit_basis_conflict",
+     "unit_basis_conflict",
+     "unit_basis_conflict"
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "reported in 'mg/L as NO3' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit.",
+     "reported in 'mg/L as NO3-N' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit.",
+     "reported in 'mg/L as NH4-N' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit.",
+     "reported in 'mg/L as N' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit.",
+     "reported in 'mg/L as NO2' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit.",
+     "reported in 'mg/L as NO3-N' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+    ],
+    "converted": [
+     7.0,
+     0.0,
+     0.001,
+     0.2,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "11.3",
+     "3",
+     "50",
+     "50",
+     "0.91",
+     ""
+    ],
+    "uncertainties": [
+     "Nitrate (NO3-N) could not be assessed: the unit names a different chemical basis from the parameter",
+     "Nitrite could not be assessed: the unit names a different chemical basis from the parameter",
+     "Nitrate (NO3) could not be assessed: the unit names a different chemical basis from the parameter",
+     "Nitrate (mg/L as NO3) could not be assessed: the unit names a different chemical basis from the parameter",
+     "Nitrite-N could not be assessed: the unit names a different chemical basis from the parameter",
+     "Ammonia could not be assessed: the unit names a different chemical basis from the parameter",
+     "the health panel is incomplete: no evaluable result for Nitrate (as NO3)"
+    ],
+    "flags": [
+     [
+      "error",
+      "indeterminate_unit_basis_conflict",
+      "'Nitrate (NO3-N)' could not be assessed: reported in 'mg/L as NO3' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+     ],
+     [
+      "error",
+      "indeterminate_unit_basis_conflict",
+      "'Nitrite' could not be assessed: reported in 'mg/L as NO3-N' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+     ],
+     [
+      "error",
+      "indeterminate_unit_basis_conflict",
+      "'Nitrate (NO3)' could not be assessed: reported in 'mg/L as NH4-N' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+     ],
+     [
+      "error",
+      "indeterminate_unit_basis_conflict",
+      "'Nitrate (mg/L as NO3)' could not be assessed: reported in 'mg/L as N' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+     ],
+     [
+      "error",
+      "indeterminate_unit_basis_conflict",
+      "'Nitrite-N' could not be assessed: reported in 'mg/L as NO2' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+     ],
+     [
+      "error",
+      "indeterminate_unit_basis_conflict",
+      "'Ammonia' could not be assessed: reported in 'mg/L as NO3-N' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+     ],
+     [
+      "warning",
+      "incomplete_health_panel",
+      "No evaluable result for Nitrate (as NO3). The sample cannot show the water is safe to drink until the health panel is complete."
+     ],
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.19,
+     "quotients": {
+      "arsenic": 0.1,
+      "fluoride": 0.1
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "The water cannot be declared suitable for drinking on these results: Nitrate (NO3-N) could not be assessed: the unit names a different chemical basis from the parameter; Nitrite could not be assessed: the unit names a different chemical basis from the parameter; Nitrate (NO3) could not be assessed: the unit names a different chemical basis from the parameter; Nitrate (mg/L as NO3) could not be assessed: the unit names a different chemical basis from the parameter; Nitrite-N could not be assessed: the unit names a different chemical basis from the parameter; Ammonia could not be assessed: the unit names a different chemical basis from the parameter; the health panel is incomplete: no evaluable result for Nitrate (as NO3). Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+    "recommendations": [
+     "Do not treat this supply as safe to drink on these results. Nitrate (NO3-N) could not be assessed: the unit names a different chemical basis from the parameter; Nitrite could not be assessed: the unit names a different chemical basis from the parameter; Nitrate (NO3) could not be assessed: the unit names a different chemical basis from the parameter; Nitrate (mg/L as NO3) could not be assessed: the unit names a different chemical basis from the parameter; Nitrite-N could not be assessed: the unit names a different chemical basis from the parameter; Ammonia could not be assessed: the unit names a different chemical basis from the parameter; the health panel is incomplete: no evaluable result for Nitrate (as NO3). Resolve these and re-issue the assessment before any treatment decision is taken.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
+   },
+   "basis_name_against_own_unit": {
+    "rows": [
+     [
+      "pH",
+      7.0,
+      "pH units"
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL"
+     ],
+     [
+      "Arsenic",
+      0.001,
+      "mg/L"
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L"
+     ],
+     [
+      "Calcium (mg/L as CaCO3)",
+      20.0,
+      "mg/L as Ca"
+     ],
+     [
+      "Nitrate (mg/L as NO2)",
+      5.0,
+      "mg/L as NO3"
+     ]
+    ],
+    "state": "indeterminate",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "no_guideline",
+     "indeterminate"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "unit_basis_conflict",
+     "unit_basis_conflict"
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "No guideline value; it is reported in 'mg/L as Ca': the unit names a different chemical basis from the parameter, so the value is left out of the indices computed from the sample",
+     "reported in 'mg/L as NO3' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+    ],
+    "converted": [
+     7.0,
+     0.0,
+     0.001,
+     0.2,
+     null,
+     null
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "",
+     "50"
+    ],
+    "uncertainties": [
+     "Nitrate (mg/L as NO2) could not be assessed: the unit names a different chemical basis from the parameter",
+     "the health panel is incomplete: no evaluable result for Nitrate (as NO3)"
+    ],
+    "flags": [
+     [
+      "warning",
+      "value_not_used",
+      "'Calcium (mg/L as CaCO3)' has no guideline value and does not decide the verdict, but it is reported in 'mg/L as Ca': the unit names a different chemical basis from the parameter, so the value is left out of the indices computed from the sample."
+     ],
+     [
+      "error",
+      "indeterminate_unit_basis_conflict",
+      "'Nitrate (mg/L as NO2)' could not be assessed: reported in 'mg/L as NO3' but the guideline is in 'mg/L': the unit names a different chemical basis from the parameter. The value was not compared against any limit."
+     ],
+     [
+      "warning",
+      "incomplete_health_panel",
+      "No evaluable result for Nitrate (as NO3). The sample cannot show the water is safe to drink until the health panel is complete."
+     ],
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.19,
+     "quotients": {
+      "arsenic": 0.1,
+      "fluoride": 0.1
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "The water cannot be declared suitable for drinking on these results: Nitrate (mg/L as NO2) could not be assessed: the unit names a different chemical basis from the parameter; the health panel is incomplete: no evaluable result for Nitrate (as NO3). Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+    "recommendations": [
+     "Do not treat this supply as safe to drink on these results. Nitrate (mg/L as NO2) could not be assessed: the unit names a different chemical basis from the parameter; the health panel is incomplete: no evaluable result for Nitrate (as NO3). Resolve these and re-issue the assessment before any treatment decision is taken.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
+   },
+   "nitrogen_name_and_unit_agree": {
+    "rows": [
+     [
+      "pH",
+      7.0,
+      "pH units"
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL"
+     ],
+     [
+      "Arsenic",
+      0.001,
+      "mg/L"
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L"
+     ],
+     [
+      "Nitrate",
+      2.0,
+      "mg/L as NO3\u2212N"
+     ],
+     [
+      "Nitrite",
+      0.1,
+      "mg/L as NO2-N"
+     ],
+     [
+      "Ammonia",
+      1.0,
+      "mg/L as NH4-N"
+     ],
+     [
+      "Nitrate (NO3-N)",
+      2.0,
+      "mg/L as NO3-N"
+     ]
+    ],
+    "state": "pass",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "unit_basis_converted",
+     "unit_basis_converted",
+     "",
+     ""
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "(2 mg/L as NO3\u2212N = 8.85329 mg/L as NO3)",
+     "(0.1 mg/L as NO2-N = 0.328443 mg/L as NO2)",
+     "",
+     "reported as nitrogen: 2 mg/L as N is 8.85 mg/L as NO3"
+    ],
+    "converted": [
+     7.0,
+     0.0,
+     0.001,
+     0.2,
+     8.853287641893338,
+     0.32844292139644465,
+     1.0,
+     2.0
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "50",
+     "3",
+     "",
+     "11.3"
+    ],
+    "uncertainties": [],
+    "flags": [
+     [
+      "info",
+      "unit_basis_converted",
+      "'Nitrate' is reported in 'mg/L as NO3\u2212N' and was put on the basis its guideline is written on, mg/L as NO3, by a factor of 4.4266, the ratio of their molar masses."
+     ],
+     [
+      "info",
+      "unit_basis_converted",
+      "'Nitrite' is reported in 'mg/L as NO2-N' and was put on the basis its guideline is written on, mg/L as NO2, by a factor of 3.2844, the ratio of their molar masses."
+     ],
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.25,
+     "quotients": {
+      "arsenic": 0.1,
+      "fluoride": 0.1,
+      "nitrate (as no3)": 0.04,
+      "nitrite (as no2)": 0.03
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested.",
+    "recommendations": [
+     "No treatment is required on the basis of the parameters tested. Maintain the sanitary seal and apron in good condition.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
+   },
+   "nitrogen_unit_in_name": {
+    "rows": [
+     [
+      "pH",
+      7.0,
+      "pH units"
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL"
+     ],
+     [
+      "Arsenic",
+      0.001,
+      "mg/L"
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L"
+     ],
+     [
+      "Nitrate (mg/L as N)",
+      20.0,
+      "mg/L"
+     ],
+     [
+      "Nitrite (mg N/L)",
+      0.5,
+      ""
+     ]
+    ],
+    "state": "health_fail",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "exceeds_health",
+     "within_limits"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "",
+     "unit_assumed"
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "exceeds the WHO health based guideline (11.3); reported as nitrogen: 20 mg/L as N is 88.5 mg/L as NO3",
+     "(read as mg/L; no unit was reported); reported as nitrogen: 0.5 mg/L as N is 1.64 mg/L as NO2"
+    ],
+    "converted": [
+     7.0,
+     0.0,
+     0.001,
+     0.2,
+     20.0,
+     0.5
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "11.3",
+     "0.91"
+    ],
+    "uncertainties": [],
+    "flags": [
+     [
+      "info",
+      "unit_not_reported",
+      "'Nitrite (mg N/L)' carries no usable unit; it was read as mg/L. Confirm against the laboratory certificate."
+     ],
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.69,
+     "quotients": {
+      "nitrate (as no3)": 0.36,
+      "nitrite (as no2)": 0.14,
+      "arsenic": 0.1,
+      "fluoride": 0.1
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "The water does not meet the health based guideline value for: Nitrate (mg/L as N). Treatment or an alternative source is required before the water is used for drinking.",
+    "recommendations": [
+     "Treat or replace the source before it is used for drinking: health based limits are exceeded for Nitrate (mg/L as N).",
+     "Elevated nitrate usually indicates pollution from sanitation or agriculture; investigate the sanitary protection zone. Do not give the water to bottle fed infants until resolved.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
+   },
+   "nitrogen_unit_in_name_spellings": {
+    "rows": [
+     [
+      "pH",
+      7.0,
+      "pH units"
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL"
+     ],
+     [
+      "Arsenic",
+      0.001,
+      "mg/L"
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L"
+     ],
+     [
+      "Nitrate (mgN/L)",
+      2.0,
+      "mg/L"
+     ],
+     [
+      "Nitrate (NO3\u2212N)",
+      2.0,
+      "mg/L"
+     ],
+     [
+      "Nitrite (mg/l as N)",
+      0.1,
+      "mg/L"
+     ]
+    ],
+    "state": "pass",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "reported as nitrogen: 2 mg/L as N is 8.85 mg/L as NO3",
+     "reported as nitrogen: 2 mg/L as N is 8.85 mg/L as NO3",
+     "reported as nitrogen: 0.1 mg/L as N is 0.328 mg/L as NO2"
+    ],
+    "converted": [
+     7.0,
+     0.0,
+     0.001,
+     0.2,
+     2.0,
+     2.0,
+     0.1
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "11.3",
+     "11.3",
+     "0.91"
+    ],
+    "uncertainties": [],
+    "flags": [
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.25,
+     "quotients": {
+      "arsenic": 0.1,
+      "fluoride": 0.1,
+      "nitrate (as no3)": 0.04,
+      "nitrite (as no2)": 0.03
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested.",
+    "recommendations": [
+     "No treatment is required on the basis of the parameters tested. Maintain the sanitary seal and apron in good condition.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
+   },
+   "bases_of_bounds": {
+    "rows": [
+     [
+      "pH",
+      7.0,
+      "pH units"
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL"
+     ],
+     [
+      "Arsenic",
+      0.001,
+      "mg/L"
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L"
+     ],
+     [
+      "Nitrate",
+      null,
+      "mg/L as N",
+      {
+       "detection_limit": 0.1,
+       "below_detection": true
+      }
+     ],
+     [
+      "Nitrite",
+      null,
+      "mg/L as N",
+      {
+       "detection_limit": 1.0,
+       "below_detection": true
+      }
+     ],
+     [
+      "Calcium",
+      null,
+      "mg/L as CaCO3",
+      {
+       "greater_than": 20.0
+      }
+     ],
+     [
+      "Sodium",
+      null,
+      "mg/L as CaCO3",
+      {
+       "detection_limit": 1.0,
+       "below_detection": true
+      }
+     ],
+     [
+      "Potassium",
+      null,
+      "mg/L as CaCO3",
+      {
+       "greater_than": 2.0
+      }
+     ]
+    ],
+    "state": "indeterminate",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "below_detection",
+     "indeterminate",
+     "no_guideline",
+     "below_detection",
+     "no_guideline"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "",
+     "detection_limit_above_guideline",
+     "detected_not_quantified",
+     "",
+     "detected_not_quantified"
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "below detection limit (0.1 mg/L as N = 0.442664 mg/L as NO3), which is at or under the limit of 50 mg/L",
+     "below a detection limit of 1 mg/L as N = 3.28443 mg/L as NO2, which is above the limit of 3 mg/L. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method.",
+     "more than 20 (20 mg/L as CaCO3 = 8.00863 mg/L as Ca). No guideline value",
+     "below detection limit (1 mg/L), which is at or under the limit of 200 mg/L",
+     "more than 2. No guideline value; occurs at low levels in natural water"
+    ],
+    "converted": [
+     7.0,
+     0.0,
+     0.001,
+     0.2,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "50",
+     "3",
+     "",
+     "",
+     ""
+    ],
+    "uncertainties": [
+     "Nitrite could not be assessed: the detection limit is above the limit being checked"
+    ],
+    "flags": [
+     [
+      "info",
+      "unit_basis_converted",
+      "'Nitrate' is reported in 'mg/L as N' and was put on the basis its guideline is written on, mg/L as NO3, by a factor of 4.4266, the ratio of their molar masses."
+     ],
+     [
+      "error",
+      "indeterminate_detection_limit_above_guideline",
+      "'Nitrite' could not be assessed: below a detection limit of 1 mg/L as N = 3.28443 mg/L as NO2, which is above the limit of 3 mg/L. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method."
+     ],
+     [
+      "info",
+      "unit_basis_converted",
+      "'Nitrite' is reported in 'mg/L as N' and was put on the basis its guideline is written on, mg/L as NO2, by a factor of 3.2844, the ratio of their molar masses."
+     ],
+     [
+      "info",
+      "unit_basis_converted",
+      "'Calcium' is reported in 'mg/L as CaCO3' and was put on the basis its guideline is written on, mg/L as Ca, by a factor of 0.4004, the ratio of their molar masses."
+     ],
+     [
+      "warning",
+      "unit_basis_assumed",
+      "'Sodium' is reported in 'mg/L as CaCO3' but the guideline is written in 'mg/L'. The values were taken as the same basis; confirm with the laboratory, since an 'as CaCO3' figure is about 2.5 times the same concentration expressed as the element."
+     ],
+     [
+      "warning",
+      "unit_basis_assumed",
+      "'Potassium' is reported in 'mg/L as CaCO3' but the guideline is written in 'mg/L'. The values were taken as the same basis; confirm with the laboratory, since an 'as CaCO3' figure is about 2.5 times the same concentration expressed as the element."
+     ],
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.19,
+     "quotients": {
+      "arsenic": 0.1,
+      "fluoride": 0.1
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "The water cannot be declared suitable for drinking on these results: Nitrite could not be assessed: the detection limit is above the limit being checked. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+    "recommendations": [
+     "Do not treat this supply as safe to drink on these results. Nitrite could not be assessed: the detection limit is above the limit being checked. Resolve these and re-issue the assessment before any treatment decision is taken.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
+   },
+   "nitrate_bound_as_n": {
+    "rows": [
+     [
+      "pH",
+      7.0,
+      "pH units"
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL"
+     ],
+     [
+      "Arsenic",
+      0.001,
+      "mg/L"
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L"
+     ],
+     [
+      "Nitrate",
+      null,
+      "mg/L as N",
+      {
+       "greater_than": 20.0
+      }
+     ]
+    ],
+    "state": "health_fail",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "exceeds_health"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "detected_not_quantified"
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "more than 20 (20 mg/L as N = 88.5329 mg/L as NO3), which is above the WHO health based guideline (50); the laboratory did not quantify it"
+    ],
+    "converted": [
+     7.0,
+     0.0,
+     0.001,
+     0.2,
+     null
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "50"
+    ],
+    "uncertainties": [],
+    "flags": [
+     [
+      "info",
+      "unit_basis_converted",
+      "'Nitrate' is reported in 'mg/L as N' and was put on the basis its guideline is written on, mg/L as NO3, by a factor of 4.4266, the ratio of their molar masses."
+     ],
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.19,
+     "quotients": {
+      "arsenic": 0.1,
+      "fluoride": 0.1
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "The water does not meet the health based guideline value for: Nitrate. Treatment or an alternative source is required before the water is used for drinking.",
+    "recommendations": [
+     "Treat or replace the source before it is used for drinking: health based limits are exceeded for Nitrate.",
+     "Elevated nitrate usually indicates pollution from sanitation or agriculture; investigate the sanitary protection zone. Do not give the water to bottle fed infants until resolved.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
+   },
+   "nitrogen_named_bounds": {
+    "rows": [
+     [
+      "pH",
+      7.0,
+      "pH units"
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL"
+     ],
+     [
+      "Arsenic",
+      0.001,
+      "mg/L"
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L"
+     ],
+     [
+      "Nitrate (NO3-N)",
+      null,
+      "mg/L",
+      {
+       "greater_than": 20.0
+      }
+     ],
+     [
+      "Nitrite-N",
+      null,
+      "mg/L",
+      {
+       "detection_limit": 0.1,
+       "below_detection": true
+      }
+     ],
+     [
+      "Nitrite (NO2-N)",
+      null,
+      "mg/L",
+      {
+       "detection_limit": 2.0,
+       "below_detection": true
+      }
+     ]
+    ],
+    "state": "health_fail",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "exceeds_health",
+     "below_detection",
+     "indeterminate"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "detected_not_quantified",
+     "",
+     "detection_limit_above_guideline"
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "more than 20, which is above the WHO health based guideline (11.3); the laboratory did not quantify it; reported as nitrogen: 20 mg/L as N is 88.5 mg/L as NO3",
+     "below detection limit (0.1 mg/L), which is at or under the limit of 0.91 mg/L; reported as nitrogen: 0.1 mg/L as N is 0.328 mg/L as NO2",
+     "below a detection limit of 2 mg/L (reported as nitrogen: 2 mg/L as N is 6.57 mg/L as NO2), which is above the limit of 0.91 mg/L. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method."
+    ],
+    "converted": [
+     7.0,
+     0.0,
+     0.001,
+     0.2,
+     null,
+     null,
+     null
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "11.3",
+     "0.91",
+     "0.91"
+    ],
+    "uncertainties": [
+     "Nitrite (NO2-N) could not be assessed: the detection limit is above the limit being checked"
+    ],
+    "flags": [
+     [
+      "error",
+      "indeterminate_detection_limit_above_guideline",
+      "'Nitrite (NO2-N)' could not be assessed: below a detection limit of 2 mg/L (reported as nitrogen: 2 mg/L as N is 6.57 mg/L as NO2), which is above the limit of 0.91 mg/L. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method."
+     ],
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.19,
+     "quotients": {
+      "arsenic": 0.1,
+      "fluoride": 0.1
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "The water does not meet the health based guideline value for: Nitrate (NO3-N). Treatment or an alternative source is required before the water is used for drinking.",
+    "recommendations": [
+     "Treat or replace the source before it is used for drinking: health based limits are exceeded for Nitrate (NO3-N).",
+     "Elevated nitrate usually indicates pollution from sanitation or agriculture; investigate the sanitary protection zone. Do not give the water to bottle fed infants until resolved.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
    }
   },
   "sheets": [
@@ -245807,6 +247076,686 @@
      "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
      "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
     ]
+   },
+   {
+    "grid": [
+     [
+      "Laboratory",
+      "Central Lab"
+     ],
+     [
+      "Sample ID",
+      "S"
+     ],
+     [],
+     [
+      "Parameter",
+      "Unit",
+      "Result",
+      "Detection limit"
+     ],
+     [
+      "pH",
+      "pH units",
+      7.1,
+      ""
+     ],
+     [
+      "E. coli",
+      "CFU/100 mL",
+      0,
+      ""
+     ],
+     [
+      "Arsenic",
+      "ug/L",
+      "5.0E-02 mg/L",
+      ""
+     ],
+     [
+      "Fluoride",
+      "mg/L",
+      0.2,
+      ""
+     ],
+     [
+      "Nitrate",
+      "mg/L",
+      3.1,
+      ""
+     ],
+     [
+      "Lead",
+      "",
+      "8E+00 ug/L",
+      ""
+     ],
+     [
+      "Manganese",
+      "ug/L",
+      "<5.0E-02 mg/L",
+      ""
+     ],
+     [
+      "Iron",
+      "ug/L",
+      "0.05 mg/L As",
+      ""
+     ],
+     [
+      "Nitrite",
+      "mg/L",
+      "0.1 (N)",
+      ""
+     ],
+     [
+      "Sodium",
+      "mg/L",
+      "5 meq/L",
+      ""
+     ],
+     [
+      "Chloride",
+      "mg/L",
+      "(20 mg/L)",
+      ""
+     ],
+     [
+      "Sulfate",
+      "mg/L",
+      "20 mg/L, est",
+      ""
+     ],
+     [
+      "Copper",
+      "ug/L",
+      "0.05 (DL 0.01 mg/L)",
+      ""
+     ]
+    ],
+    "results": [
+     [
+      "pH",
+      7.1,
+      "pH units",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Arsenic",
+      50.0,
+      "ug/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Nitrate",
+      3.1,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Lead",
+      8.0,
+      "ug/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Manganese",
+      null,
+      "ug/L",
+      50.0,
+      true,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Iron",
+      null,
+      "ug/L",
+      null,
+      false,
+      null,
+      false,
+      "0.05 mg/L As"
+     ],
+     [
+      "Nitrite",
+      null,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      "0.1 (N)"
+     ],
+     [
+      "Sodium",
+      null,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      "5 meq/L"
+     ],
+     [
+      "Chloride",
+      20.0,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Sulfate",
+      null,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      "20 mg/L, est"
+     ],
+     [
+      "Copper",
+      null,
+      "ug/L",
+      null,
+      false,
+      null,
+      false,
+      "0.05 (DL 0.01 mg/L)"
+     ]
+    ],
+    "state": "health_fail",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "exceeds_health",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "below_detection",
+     "indeterminate",
+     "indeterminate",
+     "indeterminate",
+     "within_limits",
+     "indeterminate",
+     "indeterminate"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     "value_unreadable",
+     "value_unreadable",
+     "value_unreadable",
+     "",
+     "value_unreadable",
+     "value_unreadable"
+    ],
+    "remarks": [
+     "",
+     "",
+     "exceeds the WHO health based guideline (0.01) (50 ug/L = 0.05 mg/L)",
+     "",
+     "",
+     "(8 ug/L = 0.008 mg/L)",
+     "below detection limit (0.05 mg/L), which is at or under the limit of 0.08 mg/L",
+     "reported as '0.05 mg/L As', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory.",
+     "reported as '0.1 (N)', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory.",
+     "reported as '5 meq/L', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory.",
+     "",
+     "reported as '20 mg/L, est', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory.",
+     "reported as '0.05 (DL 0.01 mg/L)', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory."
+    ],
+    "converted": [
+     7.1,
+     0.0,
+     0.05,
+     0.2,
+     3.1,
+     0.008,
+     null,
+     null,
+     null,
+     null,
+     20.0,
+     null,
+     null
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "50",
+     "0.01",
+     "0.08",
+     "",
+     "3",
+     "",
+     "",
+     "",
+     "2"
+    ],
+    "uncertainties": [
+     "Iron could not be assessed: the reported result could not be read",
+     "Nitrite could not be assessed: the reported result could not be read",
+     "Sodium could not be assessed: the reported result could not be read",
+     "Sulfate could not be assessed: the reported result could not be read",
+     "Copper could not be assessed: the reported result could not be read"
+    ],
+    "flags": [
+     [
+      "error",
+      "indeterminate_value_unreadable",
+      "'Iron' could not be assessed: reported as '0.05 mg/L As', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory."
+     ],
+     [
+      "error",
+      "indeterminate_value_unreadable",
+      "'Nitrite' could not be assessed: reported as '0.1 (N)', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory."
+     ],
+     [
+      "error",
+      "indeterminate_value_unreadable",
+      "'Sodium' could not be assessed: reported as '5 meq/L', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory."
+     ],
+     [
+      "error",
+      "indeterminate_value_unreadable",
+      "'Sulfate' could not be assessed: reported as '20 mg/L, est', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory."
+     ],
+     [
+      "error",
+      "indeterminate_value_unreadable",
+      "'Copper' could not be assessed: reported as '0.05 (DL 0.01 mg/L)', which could not be read as a measurement, a detection limit or a lower bound, so it was not compared against any limit. Confirm the result with the laboratory."
+     ],
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ],
+     [
+      "warning",
+      "hazard_index",
+      "Non-carcinogenic Hazard Index 4.9 is at or above 1 (dominated by arsenic); chronic ingestion poses a potential health concern."
+     ],
+     [
+      "warning",
+      "cancer_risk",
+      "Estimated lifetime arsenic cancer risk 2.1e-03 exceeds the 1e-4 screening level."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 4.93,
+     "quotients": {
+      "arsenic": 4.76,
+      "fluoride": 0.1,
+      "lead": 0.07,
+      "nitrate (as no3)": 0.01
+     }
+    },
+    "wqi": null,
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS assumed 250 mg/L (neither TDS nor EC reported).",
+      "Temperature assumed 25 C (not reported)."
+     ]
+    },
+    "verdict": "The water does not meet the health based guideline value for: Arsenic. Treatment or an alternative source is required before the water is used for drinking.",
+    "recommendations": [
+     "Treat or replace the source before it is used for drinking: health based limits are exceeded for Arsenic.",
+     "Arsenic above 0.01 mg/L requires an alternative source or specialised removal; re-test to confirm before any use for drinking.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
+   },
+   {
+    "grid": [
+     [
+      "Laboratory",
+      "Central Lab"
+     ],
+     [
+      "Sample ID",
+      "S"
+     ],
+     [],
+     [
+      "Parameter",
+      "Unit",
+      "Result",
+      "Detection limit"
+     ],
+     [
+      "pH",
+      "pH units",
+      7.1,
+      ""
+     ],
+     [
+      "E. coli",
+      "CFU/100 mL",
+      0,
+      ""
+     ],
+     [
+      "Arsenic",
+      "mg/L",
+      "0.003 D",
+      ""
+     ],
+     [
+      "Fluoride",
+      "mg/L",
+      "0.2 H",
+      ""
+     ],
+     [
+      "Nitrate",
+      "mg/L",
+      "3.1 S",
+      ""
+     ],
+     [
+      "Iron",
+      "mg/L",
+      "0.1 M",
+      ""
+     ],
+     [
+      "Copper",
+      "mg/L",
+      "0.5 F",
+      ""
+     ],
+     [
+      "Zinc",
+      "mg/L",
+      "0.1 C",
+      ""
+     ],
+     [
+      "Temperature",
+      "deg C",
+      "68 F",
+      ""
+     ],
+     [
+      "Electrical conductivity",
+      "uS/cm",
+      "450 uS/cm at 25 C",
+      ""
+     ]
+    ],
+    "results": [
+     [
+      "pH",
+      7.1,
+      "pH units",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "E. coli",
+      0.0,
+      "CFU/100 mL",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Arsenic",
+      0.003,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Fluoride",
+      0.2,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Nitrate",
+      3.1,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Iron",
+      0.1,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Copper",
+      0.5,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Zinc",
+      0.1,
+      "mg/L",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Temperature",
+      20.0,
+      "deg C",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ],
+     [
+      "Electrical conductivity",
+      450.0,
+      "uS/cm",
+      null,
+      false,
+      null,
+      false,
+      ""
+     ]
+    ],
+    "state": "pass",
+    "statuses": [
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "within_limits",
+     "no_guideline",
+     "within_limits"
+    ],
+    "reasons": [
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    "remarks": [
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     "",
+     "No guideline value",
+     ""
+    ],
+    "converted": [
+     7.1,
+     0.0,
+     0.003,
+     0.2,
+     3.1,
+     0.1,
+     0.5,
+     0.1,
+     20.0,
+     450.0
+    ],
+    "guidelines": [
+     "",
+     "0",
+     "0.01",
+     "1.5",
+     "50",
+     "",
+     "2",
+     "",
+     "",
+     ""
+    ],
+    "uncertainties": [],
+    "flags": [
+     [
+      "warning",
+      "ionic_balance_not_checked",
+      "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+     ],
+     [
+      "warning",
+      "cancer_risk",
+      "Estimated lifetime arsenic cancer risk 1.3e-04 exceeds the 1e-4 screening level."
+     ]
+    ],
+    "ionic": null,
+    "hazard": {
+     "index": 0.76,
+     "quotients": {
+      "copper": 0.36,
+      "arsenic": 0.29,
+      "fluoride": 0.1,
+      "nitrate (as no3)": 0.01,
+      "zinc": 0.01
+     }
+    },
+    "wqi": {
+     "value": 32.4,
+     "rating": "Excellent",
+     "n": 3,
+     "top": [
+      [
+       "Iron",
+       32.2
+      ],
+      [
+       "pH",
+       0.2
+      ],
+      [
+       "Electrical conductivity",
+       0.0
+      ]
+     ]
+    },
+    "corrosivity": {
+     "lsi": null,
+     "rsi": null,
+     "classification": "Insufficient data",
+     "assumptions": [
+      "TDS estimated as 0.64 x EC = 288 mg/L (TDS not reported)."
+     ]
+    },
+    "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested.",
+    "recommendations": [
+     "No treatment is required on the basis of the parameters tested. Maintain the sanitary seal and apron in good condition.",
+     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+    ]
    }
   ],
   "quantities": [
@@ -246124,6 +248073,26 @@
    [
     "mg/L Ca",
     null
+   ],
+   [
+    "mg/L as NO3\u2212N",
+    [
+     "mg/L",
+     "concentration",
+     1.0,
+     0.0,
+     "n"
+    ]
+   ],
+   [
+    "mg/L as NH4-N",
+    [
+     "mg/L",
+     "concentration",
+     1.0,
+     0.0,
+     "n"
+    ]
    ]
   ],
   "names": [
@@ -246214,6 +248183,325 @@
    [
     "Calcium (as CaCO3)",
     "calcium (as caco3)"
+   ],
+   [
+    "Nitrate (mg/L as N)",
+    "nitrate (as n)"
+   ],
+   [
+    "Nitrate (mg/l as N)",
+    "nitrate (as n)"
+   ],
+   [
+    "Nitrate (mg N/L)",
+    "nitrate (as n)"
+   ],
+   [
+    "Nitrate (mgN/L)",
+    "nitrate (as n)"
+   ],
+   [
+    "Nitrate (ppm NO3-N)",
+    "nitrate (as n)"
+   ],
+   [
+    "Nitrate (NO3\u2212N)",
+    "nitrate (as n)"
+   ],
+   [
+    "Nitrate\u2212N",
+    "nitrate (as n)"
+   ],
+   [
+    "Nitrite (mg/L as N)",
+    "nitrite (as n)"
+   ],
+   [
+    "Nitrate (mg/L as NO2-N)",
+    "nitrate (mg/l as no2-n)"
+   ],
+   [
+    "Nitrate (mg/L as NO3)",
+    "nitrate (as no3)"
+   ],
+   [
+    "Nitrate (mg/L)",
+    "nitrate (as no3)"
+   ]
+  ],
+  "cells": [
+   [
+    "5.0E-02 mg/L",
+    null,
+    "number",
+    0.05,
+    "mg/l"
+   ],
+   [
+    "8E+00 ug/L",
+    null,
+    "number",
+    8.0,
+    "ug/l"
+   ],
+   [
+    "<5.0E-02 mg/L",
+    null,
+    "below",
+    0.05,
+    "mg/l"
+   ],
+   [
+    ">2E+01 CFU/100 mL",
+    null,
+    "above",
+    20.0,
+    "cfu/100 ml"
+   ],
+   [
+    "5 E-02 mg/L",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "1,250.5 mg/L",
+    null,
+    "number",
+    1250.5,
+    "mg/l"
+   ],
+   [
+    "1.234,5 mg/L",
+    null,
+    "number",
+    1234.5,
+    "mg/l"
+   ],
+   [
+    "5. mg/L",
+    null,
+    "number",
+    5.0,
+    "mg/l"
+   ],
+   [
+    "(0.05 mg/L)",
+    null,
+    "number",
+    0.05,
+    "mg/l"
+   ],
+   [
+    "0.05 mg/L As",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "0.05 mg/L (As)",
+    null,
+    "number",
+    0.05,
+    "mg/l"
+   ],
+   [
+    "0.05 mg/L Fe",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "25 mg/L CaCO3",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "25 (CaCO3)",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "25 mg/L (as CaCO3)",
+    null,
+    "number",
+    25.0,
+    "mg/l as caco3"
+   ],
+   [
+    "10 NO3-N",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "10 (N)",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "10 mg N/L",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "10 mg/L (as N)",
+    null,
+    "number",
+    10.0,
+    "mg/l as n"
+   ],
+   [
+    "0.05 mg/L est",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "0.05 mg/L, field",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "5 meq/L",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "5 ppt",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "0.05 (DL 0.01)",
+    null,
+    "number",
+    0.05,
+    ""
+   ],
+   [
+    "0.05 (DL 0.01 mg/L)",
+    null,
+    "unreadable",
+    null,
+    ""
+   ],
+   [
+    "0.05 mg/L (DL 0.01 mg/L)",
+    null,
+    "number",
+    0.05,
+    "mg/l"
+   ],
+   [
+    "0.003 D",
+    "concentration",
+    "number",
+    0.003,
+    ""
+   ],
+   [
+    "0.2 H",
+    null,
+    "number",
+    0.2,
+    ""
+   ],
+   [
+    "0.1 M",
+    null,
+    "number",
+    0.1,
+    ""
+   ],
+   [
+    "0.1 C",
+    "concentration",
+    "number",
+    0.1,
+    ""
+   ],
+   [
+    "68 F",
+    "temperature",
+    "number",
+    68.0,
+    "f"
+   ],
+   [
+    "68 F",
+    null,
+    "number",
+    68.0,
+    ""
+   ],
+   [
+    "20 C",
+    "temperature",
+    "number",
+    20.0,
+    "c"
+   ],
+   [
+    "7.1 at 25 C",
+    "ph",
+    "number",
+    7.1,
+    ""
+   ],
+   [
+    "450 uS/cm @25\u00b0C",
+    "conductivity",
+    "number",
+    450.0,
+    "us/cm"
+   ],
+   [
+    "0.5 ND",
+    null,
+    "number",
+    0.5,
+    ""
+   ],
+   [
+    "8 (field)",
+    null,
+    "number",
+    8.0,
+    ""
+   ],
+   [
+    "8 ug/L*",
+    null,
+    "number",
+    8.0,
+    "ug/l"
+   ],
+   [
+    "45 TCU",
+    null,
+    "number",
+    45.0,
+    ""
    ]
   ]
  },

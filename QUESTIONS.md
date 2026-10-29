@@ -377,7 +377,7 @@ need real project inputs or decisions to finish calibrating it.
    browser rather than to a project file, so that saving a project does
    not keep them and *Reset everything* deletes them.
 
-24. **Three choices in the water quality reader and the borehole design
+24. **Four choices in the water quality reader and the borehole design
    want confirmation (added with the water quality, units and design
    audit).** None is a standard; each is stated where it is made
    (`groundwater/ingestion/waterquality.py`, `groundwater/quality/assess.py`
@@ -395,7 +395,17 @@ need real project inputs or decisions to finish calibrating it.
    pack is never shortened to fit a screen; the alternative, a screen at
    the seal's foot with a shorter pack, is what the design did before and
    what a screen set by hand still gets, with a warning. A hydrogeologist
-   should confirm which a Sierra Leone contract wants.
+   should confirm which a Sierra Leone contract wants. (d) Beside a
+   measured value in a result cell, a unit the toolkit reads is taken, a
+   note or a laboratory's qualifier letter holding no unit is set aside,
+   and anything else refuses the cell: a unit with a word after it
+   ("0.05 mg/L As", "0.05 mg/L Fe"), a basis without "as" ("10 N"), or a
+   unit the toolkit does not read ("5 meq/L"). "As" after "mg/L" is
+   arsenic's symbol on an arsenic row and the start of a basis on another,
+   and a symbol after a unit can be a basis that changes the number ("mg/L
+   N", "mg/L CaCO3"), so none is read as the determinand's own; a
+   laboratory chemist may prefer an element's own symbol to be read so,
+   which would let "0.05 mg/L Fe" on an iron row through.
 
 25. **Contractor scorecards (added with PLAN.md step 6.3).** Each of these
    is a choice made here, stated where it is made

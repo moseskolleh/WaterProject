@@ -238,6 +238,14 @@ class ParameterAssessment:
     #: Whether the national value this row was judged against is still
     #: provisional in the standards table the assessment used.
     sl_provisional: bool = False
+    #: What the unit's chemical basis did to a value, a bound or a detection
+    #: limit on its way to the guideline's scale: ``"unit_basis_converted"``
+    #: (put on the guideline's basis by a ratio of molar masses, "mg/L as N"
+    #: onto nitrate), ``"unit_basis_assumed"`` (taken as the same basis), or
+    #: ``""``. A bound or a detection limit carries another reason, and the
+    #: flags were raised only on the reason, so a converted "<0.1" or ">20"
+    #: said nothing of it.
+    basis_reason: str = ""
 
 
 def unquantified_text(row: ParameterAssessment) -> str:
@@ -638,9 +646,25 @@ def _assess_result(result, entry: StandardEntry | None) -> ParameterAssessment:
 
     row.value_in_guideline_unit = converted
     row.reason = reason
+    row.basis_reason = _basis_reason(reason)
     unit_note = _unit_note(float(result.value), result.unit, converted, reason,
                            _scale(result.unit, entry, reason))
     _grade(row, entry, converted, unit_note)
+    return _with_nitrogen_note(row, entry, converted, reason)
+
+
+#: The reasons a unit's chemical basis gives (ParameterAssessment.basis_reason).
+_BASIS_REASONS = ("unit_basis_converted", "unit_basis_assumed")
+
+
+def _basis_reason(reason: str) -> str:
+    """``reason`` where it is one a unit's chemical basis gives, else ``""``."""
+    return reason if reason in _BASIS_REASONS else ""
+
+
+def _with_nitrogen_note(row: ParameterAssessment, entry: StandardEntry,
+                        converted: float, reason: str) -> ParameterAssessment:
+    """The row, its remark saying which basis the sheet used (_as_nitrogen_note)."""
     nitrogen = _as_nitrogen_note(entry, converted, reason)
     if nitrogen:
         row.remark = f"{row.remark}; {nitrogen}" if row.remark else nitrogen
@@ -763,6 +787,15 @@ def _assess_unquantified(
     else:
         stated += _unit_note(reported, result.unit, converted, reason,
                              _scale(result.unit, entry, reason))
+        row.basis_reason = _basis_reason(reason)
+    # ">20" nitrate as N says which basis the sheet used, as "20" does
+    return _with_nitrogen_note(_grade_bound(row, entry, converted, inclusive, stated),
+                               entry, converted, reason)
+
+
+def _grade_bound(row: ParameterAssessment, entry: StandardEntry, converted: float,
+                 inclusive: bool, stated: str) -> ParameterAssessment:
+    """A lower bound on the guideline's scale, graded (_assess_unquantified)."""
 
     def certainly_over(limit) -> bool:
         # The true value is above the bound, or at it for ">=", so a limit is
@@ -892,6 +925,13 @@ def _assess_below_detection(
         return row
 
     row.value_in_guideline_unit = None
+    # The limit as the remark gives it. One put on the guideline's basis says
+    # so, as a measured value does: "0.1 mg/L as N" read "0.442664 mg/L".
+    row.basis_reason = _basis_reason(reason)
+    shown = f"{dl:g} {entry.unit}"
+    if reason == "unit_basis_converted":
+        shown = (f"{float(result.detection_limit):g} {result.unit} = {dl:g} "
+                 f"{_scale(result.unit, entry, reason)}")
     if microbiological and dl <= 1.0:
         # A membrane-filtration count cannot resolve below one colony per
         # volume filtered, so "<1 CFU/100 mL" is exactly what "not
@@ -903,24 +943,27 @@ def _assess_below_detection(
             f"not detected in a 100 mL sample (reported as <{dl:g} {entry.unit})"
         )
         return row
+    # "<0.1" nitrate as N says which basis the sheet used, as "0.1" does
+    nitrogen = _as_nitrogen_note(entry, dl, reason)
     if dl > strictest:
         row.status = "indeterminate"
         row.evaluable = False
         row.reason = "detection_limit_above_guideline"
         row.remark = (
-            f"below a detection limit of {dl:g} {entry.unit}, which is above "
-            f"the limit of {strictest:g} {entry.unit}. The method cannot see "
-            "the guideline value, so the result does not show compliance; "
-            "re-test with a more sensitive method."
+            f"below a detection limit of {shown}"
+            + (f" ({nitrogen})" if nitrogen else "")
+            + f", which is above the limit of {strictest:g} {entry.unit}. The "
+            "method cannot see the guideline value, so the result does not "
+            "show compliance; re-test with a more sensitive method."
         )
         return row
 
     row.status = "below_detection"
     row.remark = (
-        f"below detection limit ({dl:g} {entry.unit}), which is at or under "
+        f"below detection limit ({shown}), which is at or under "
         f"the limit of {strictest:g} {entry.unit}"
     )
-    return row
+    return _with_nitrogen_note(row, entry, dl, reason)
 
 
 def _classify(entry: StandardEntry, exceeds) -> tuple[str, str]:
@@ -1092,19 +1135,6 @@ def assess_sample(
                     "the laboratory certificate.",
                 )
             )
-        elif row.reason == "unit_basis_converted":
-            basis = basis_conversion(result.unit, table[normalise_parameter(result.parameter)])
-            if basis is not None:
-                flags.append(
-                    DataFlag(
-                        "info",
-                        "unit_basis_converted",
-                        phrase("quality.unit_basis_converted",
-                               parameter=result.parameter, unit=str(result.unit or ""),
-                               guideline=row.guideline_unit, basis=basis[1],
-                               factor=basis[0]),
-                    )
-                )
         elif row.status == "no_guideline" and row.reason in _UNIT_REFUSALS:
             flags.append(
                 DataFlag(
@@ -1113,18 +1143,6 @@ def assess_sample(
                     phrase("quality.value_not_used", parameter=result.parameter,
                            unit=str(result.unit or ""),
                            why=INDETERMINATE_REASONS[row.reason]),
-                )
-            )
-        elif row.reason == "unit_basis_assumed":
-            flags.append(
-                DataFlag(
-                    "warning",
-                    "unit_basis_assumed",
-                    f"'{result.parameter}' is reported in '{result.unit}' but "
-                    f"the guideline is written in '{row.guideline_unit}'. The "
-                    "values were taken as the same basis; confirm with the "
-                    "laboratory, since an 'as CaCO3' figure is about 2.5 times "
-                    "the same concentration expressed as the element.",
                 )
             )
         elif row.status == "indeterminate":
@@ -1142,6 +1160,33 @@ def assess_sample(
                     STRICTER_LIMIT_UNRESOLVED,
                     f"'{result.parameter}' could not be graded in full: "
                     f"{row.remark}.",
+                )
+            )
+        # what the unit's basis did to a measured value, a bound or a
+        # detection limit, whatever else the row says
+        basis = (basis_conversion(result.unit, table[normalise_parameter(result.parameter)])
+                 if row.basis_reason == "unit_basis_converted" else None)
+        if row.basis_reason == "unit_basis_assumed":
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "unit_basis_assumed",
+                    f"'{result.parameter}' is reported in '{result.unit}' but "
+                    f"the guideline is written in '{row.guideline_unit}'. The "
+                    "values were taken as the same basis; confirm with the "
+                    "laboratory, since an 'as CaCO3' figure is about 2.5 times "
+                    "the same concentration expressed as the element.",
+                )
+            )
+        elif basis is not None:
+            flags.append(
+                DataFlag(
+                    "info",
+                    "unit_basis_converted",
+                    phrase("quality.unit_basis_converted",
+                           parameter=result.parameter, unit=str(result.unit or ""),
+                           guideline=row.guideline_unit, basis=basis[1],
+                           factor=basis[0]),
                 )
             )
 

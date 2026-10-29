@@ -2133,6 +2133,10 @@ await withPage(async (page, base, consoleErrors) => {
           : null;
       }),
       names: ref.names.map((n) => C.normaliseParameter(n[0])),
+      cells: ref.cells.map((c) => {
+        const read = C.readQualityCell(c[0], c[1] === null ? undefined : c[1]);
+        return [read.kind, read.number, read.unit];
+      }),
     };
   }, QU);
   /* numbers to 1e-12 relative, everything else exactly */
@@ -2177,6 +2181,11 @@ await withPage(async (page, base, consoleErrors) => {
   QU.names.forEach((py, i) => {
     check(`parameter name ${JSON.stringify(py[0])}`, qualityUnits.names[i] === py[1],
       `js ${qualityUnits.names[i]} vs py ${py[1]}`);
+  });
+  QU.cells.forEach((py, i) => {
+    check(`result cell ${JSON.stringify(py[0])} in a row of ${py[1]}`,
+      sameDeep(qualityUnits.cells[i], py.slice(2)),
+      `js ${JSON.stringify(qualityUnits.cells[i])}\n     py ${JSON.stringify(py.slice(2))}`);
   });
 
   // --- pumping sheets at the edges ---

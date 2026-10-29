@@ -477,9 +477,17 @@ certificate spellings (`Iron (Fe)`, `Total alkalinity`, `Nitrate-N`,
 
 **Units.** A unit written in the result cell is read before the unit
 column's: `0.05 mg/L` in a row whose unit is ug/L is 50 ug/L, and
-`8 ug/L` with the unit cell blank is 8 ug/L. A note beside the number
-(`0.5 ND`, `8 (field)`, `8*`) is not a unit, and the number is read in
-the row's unit. A unit in brackets in the result column's header,
+`8 ug/L` with the unit cell blank is 8 ug/L, as are `5.0E-02 mg/L` and
+`(0.05 mg/L)`. A note beside the number that holds no unit (`0.5 ND`,
+`8 (field)`, `8*`) is not a unit, and the number is read in the row's
+unit; so is a laboratory's qualifier letter (`0.003 D`, `0.2 H`,
+`0.1 M`), and a lone `C` or `F` unless the row's own unit is a
+temperature (`68 F` in a row of deg C is 20 deg C). A cell that holds a
+unit with more written beside it (`0.05 mg/L As`, `25 mg/L CaCO3`,
+`0.05 mg/L, est`), a basis without "as" (`10 NO3-N`, `10 (N)`), or a
+unit the toolkit does not read (`5 meq/L`, `5 ppt`) is refused rather
+than read in the row's unit: write the unit in the unit column, and a
+basis as `mg/L as N`. A unit in brackets in the result column's header,
 `Result (ug/L)`, is the unit of every row whose unit cell is blank; a
 row it cannot measure, such as E. coli under `Result (mg/L)`, is then
 refused rather than read in another unit, so give such rows their own
@@ -490,14 +498,19 @@ count above zero whatever its unit, so it is not refused over a unit
 the toolkit cannot read; a number in such a unit still is.
 
 **Bases.** Nitrate and nitrite reported as nitrogen (`Nitrate (NO3-N)`,
-`Nitrate (N)`, `Nitrite (NO2-N)`, `Nitrate-N`) are held to the
-guideline for nitrogen, 11.3 and 0.91 mg/L (the 50 and 3 mg/L
-guidelines for the ions, expressed as nitrogen), and the remark gives
-the ion's figure. `Nitrate` with the unit `mg/L as N` is put on the
-ion's scale (x 62.004/14.007), and calcium, magnesium, bicarbonate and
-carbonate in `mg/L as CaCO3` on their own, by the ratio of the molar
-masses (calcium x 40.078/100.087); an info flag gives the factor. A name and a unit that state
-different bases (`Nitrate (as NO3)` in `mg/L as N`) are refused. The
+`Nitrate (N)`, `Nitrite (NO2-N)`, `Nitrate-N`, `Nitrate (mg/L as N)`,
+`Nitrate (mg N/L)`) are held to the guideline for nitrogen, 11.3 and
+0.91 mg/L (the 50 and 3 mg/L guidelines for the ions, expressed as
+nitrogen), and the remark gives the ion's figure. `Nitrate` with the
+unit `mg/L as N` or `mg/L as NO3-N` is put on the ion's scale (x
+62.004/14.007), and calcium, magnesium, bicarbonate and carbonate in
+`mg/L as CaCO3` on their own, by the ratio of the molar masses
+(calcium x 40.078/100.087); an info flag gives the factor, for a
+measured value, a `<` or a `>` alike. A name and a unit that state
+different bases are refused, whichever of them is the table's own:
+`Nitrate (as NO3)` in `mg/L as N`, `Nitrate-N` in `mg/L as NO3`,
+`Calcium (mg/L as CaCO3)` in `mg/L as Ca`. So is a unit that names
+another ion's nitrogen, `Nitrite` in `mg/L as NO3-N`. The
 charge balance, the hazard index and the water quality index read
 nitrate and nitrite as the ions whichever basis the sheet used.
 

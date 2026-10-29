@@ -105,7 +105,9 @@ def _normalise(text: str) -> str:
     for bad, good in _CHAR_FIXES.items():
         s = s.replace(bad, good)
     s = s.lower().strip()
-    s = s.replace("–", "-").replace("—", "-")
+    # an en dash, an em dash and the minus sign (U+2212) are a hyphen, so
+    # "mg/L as NO3-N" written with a minus sign is "mg/L as NO3-N"
+    s = s.replace("–", "-").replace("—", "-").replace("\u2212", "-")
     # "per" written out, and the odd "l per s"
     s = re.sub(r"\bper\b", "/", s)
     # spelled-out units, longest first so "minutes" does not become "min utes"
@@ -139,6 +141,25 @@ def _normalise(text: str) -> str:
 #: The spellings of nitrogen as a basis: "as N", "as NO3-N", "as nitrogen".
 #: They are one basis, so "mg/L as NO3-N" is the same scale as "mg/L as N".
 _NITROGEN_BASIS_RE = re.compile(r"(?:no3|no2|nh4|nh3)-{0,2}n|nitrogen")
+
+
+#: The ion a nitrogen basis names: "as NO3-N" is nitrate's nitrogen.
+_NITROGEN_SPECIES_RE = re.compile(r"(no3|no2|nh4|nh3)-{0,2}n")
+
+
+def nitrogen_species(text: str) -> str:
+    """The ion a unit's nitrogen basis names: "mg/L as NO3-N" -> "no3".
+
+    ``""`` for "as N", "as nitrogen", another basis or none. "as NO3-N" and
+    "as NH4-N" are one scale, nitrogen, so :func:`parse_unit` reads both as
+    the basis "n"; which ion's nitrogen they mean is a separate question,
+    and a nitrite row in "mg/L as NO3-N" contradicts its unit.
+    """
+    match = _BASIS_RE.search(_normalise(text))
+    if not match:
+        return ""
+    species = _NITROGEN_SPECIES_RE.fullmatch(match.group(1).replace(" ", ""))
+    return species.group(1) if species else ""
 
 
 def _split_basis(text: str) -> tuple[str, str]:
