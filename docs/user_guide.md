@@ -1150,7 +1150,7 @@ reached". The method's works are listed under *References*.
 says it is too few to judge and gives its counts, never a curve. The
 times the table states are the setting `survival.at_risk_years`. Both
 are choices made in this toolkit, not a standard (`QUESTIONS.md` item
-14).
+20).
 
 **The groups.** The pump type and the contractor are those named on each
 borehole's record: name this borehole's under *This borehole* (*Pump
