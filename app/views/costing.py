@@ -35,6 +35,7 @@ from shared import (
     _manual_costing_rules,
     _next_step,
     offer_download,
+    plain,
     report_gate,
     show_flags,
     show_measurements,
@@ -53,9 +54,9 @@ def _show_spread(text: list[str], rows: list[list[str]], chart, caption: str) ->
     """The planning figure: which figure is which, then the sentences, the
     table and the curve (PLAN.md step 3.4)."""
     st.subheader(phrase("cost_range.heading"))
-    st.info(text[0])
+    st.info(plain(text[0]))
     for line in text[1:]:
-        st.markdown(line)
+        st.markdown(plain(line))
     header = cost_range_header()
     st.table([dict(zip(header, row, strict=True)) for row in rows])
     st.image(str(chart), caption=caption)

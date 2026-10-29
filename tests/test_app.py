@@ -143,7 +143,11 @@ def test_the_cost_distribution_draws_from_the_survey(app):
     assert spread.depth_p10_m <= spread.depth_p90_m <= ranges[i].investigation_depth_m
     assert spread.expected_per_working == (
         spread.mean + spread.dry_mean * ((1.0 - odds.probability) / odds.probability))
-    shown = " ".join(str(m.value) for m in app.markdown)
+    # each dollar sign escaped, as Streamlit needs (shared.plain): two of
+    # them unescaped and the words between are read as LaTeX
+    escaped = " ".join(str(m.value) for m in app.markdown)
+    assert all(t.replace("$", "\\$") in escaped for t in cost_range_text(spread)[1:])
+    shown = escaped.replace("\\$", "$")
     assert all(t in shown for t in cost_range_text(spread)[1:])
     # what one more measurement is worth, beside it (PLAN.md step 3.5):
     # priced from this distribution, at the first-ranked point, against the
@@ -160,7 +164,7 @@ def test_the_cost_distribution_draws_from_the_survey(app):
     # and the Geophysics page prices it too, now there is a cost
     goto(app, "Geophysics (VES)")
     assert not app.exception
-    shown = " ".join(str(m.value) for m in app.markdown)
+    shown = " ".join(str(m.value) for m in app.markdown).replace("\\$", "$")
     assert all(f"**{measurement_summary(v)}**" in shown for v in values)
 
 
@@ -2067,6 +2071,74 @@ def test_coverage_tab_csv_flow(sample_data):
                          if "Chiefdom" in t.value.columns and "Rank" in t.value.columns)
     assert len(chief_ranking) == 166  # all chiefdom polygons ranked
     assert any(m.label == "Chiefdoms" for m in at.metric)
+
+
+def test_coverage_chooses_where_to_drill_within_a_budget(sample_data):
+    """PLAN.md step 6.1 on the Coverage gap page: nothing is chosen until a
+    borehole is priced on the Costing page and a budget is typed; then the
+    sentences, the table of every area and the download, which is what the
+    engine makes of the page's own ranking and the Costing page's borehole.
+    (An access cost is typed in a data editor, which AppTest cannot fill;
+    the browser's smoke test types one.)"""
+    from groundwater.allocation import allocate, allocation_csv
+    from groundwater.coverage import (
+        count_points_by_district, coverage_rows, load_chiefdom_district, load_chiefdom_polys,
+        load_district_population,
+    )
+    from groundwater.planning import project_population
+    from groundwater.text import phrase
+    from groundwater.waterpoints import parse_wpdx_csv
+
+    csv_text = (
+        "lat_deg,lon_deg,status_clean,water_source_clean\n"
+        "7.8767,-11.1875,Functional,Borehole\n"      # Kenema
+        "8.8817,-12.0442,Functional,Borehole\n"      # Bombali
+        "7.5260,-12.5050,Functional,Borehole\n"      # Bonthe
+    )
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Coverage gap"
+    at.run()
+    at.file_uploader(key="cov_csv").set_value([("wpdx.csv", csv_text.encode(), "text/csv")])
+    at.run()
+    assert not at.exception
+    # no estimate on the Costing page: nothing to price a borehole with
+    assert phrase("allocation.no_estimate") in [i.value for i in at.info]
+    assert not [n for n in at.number_input if n.key == "cov_budget"]
+
+    goto(at, "Costing & BoQ")
+    at.button(key="run_cost").click()
+    at.run()
+    assert not at.exception
+    goto(at, "Coverage gap")
+    assert not at.exception
+    assert phrase("allocation.no_budget") in [c.value for c in at.caption]
+    at.number_input(key="cov_budget").set_value(200000.0)
+    at.run()
+    assert not at.exception
+    why = phrase("allocation.col_why")
+    table = next(t.value for t in at.dataframe if why in t.value.columns)
+    assert len(table) == 16
+    assert (table[phrase("allocation.col_people")] != "0").any()
+    # every dollar sign escaped, or Streamlit sets the words between two of
+    # them as LaTeX
+    page = [i.value for i in at.info] + [m.value for m in at.markdown]
+    assert any(t.startswith("Within US\\$ 200,000, ") for t in page), page
+    assert not [t for t in page + [c.value for c in at.caption] if "$" in t.replace("\\$", "")]
+    assert any("too coarse for access distances" in t for t in page)
+    assert any(t.startswith("Access is not modelled") for t in page)
+    assert any(b.label == phrase("allocation.download") for b in at.download_button)
+
+    # the page's own ranking, at its year and rate, and the Costing page's
+    # borehole, through the engine: the file offered is what it makes
+    counts, _ = count_points_by_district(parse_wpdx_csv(csv_text), load_chiefdom_polys(),
+                                         load_chiefdom_district())
+    population, _ = project_population(load_district_population(), int(at.session_state["cov_year"]),
+                                       rate=float(at.session_state["cov_rate"]) / 100.0)
+    cost = at.session_state["allocation_cost"][2]
+    assert cost.depth_source is None and cost.odds_source is None
+    want = allocation_csv(allocate(coverage_rows(population, counts), 200000.0, cost, level="district"))
+    path = Path(at.session_state["artifacts"][phrase("allocation.download")])
+    assert path.read_text(encoding="utf-8") == want
 
 
 def test_coverage_says_why_when_every_row_was_discarded(sample_data):

@@ -113,6 +113,11 @@
     "seed": 1,
     "samples": 20000
   },
+  "allocation": {
+    "people_per_borehole": 500,
+    "exact_max_items": 40,
+    "ground_grid": 16
+  },
   "terrain": {
     "analysis_radius_km": 10.0,
     "analysis_buffer_km": 5.0,

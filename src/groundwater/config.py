@@ -27,6 +27,7 @@ _RANGE = _DEFAULTS["ves_range"]
 _ODDS = _DEFAULTS["odds"]
 _LEDGER = _DEFAULTS["ledger"]
 _COSTS = _DEFAULTS["cost_range"]
+_ALLOCATION = _DEFAULTS["allocation"]
 _TERRAIN = _DEFAULTS["terrain"]
 
 
@@ -371,6 +372,36 @@ class CostRangeConfig:
 
 
 # ---------------------------------------------------------------------------
+# Where to drill next, within a budget (PLAN.md step 6.1, allocation.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AllocationConfig:
+    # The people one functional water point is counted as serving, and the
+    # most one new borehole is counted as serving: the handpump figure of
+    # data/coverage_service_classes.csv, which gives the Sphere handbook as
+    # its basis and says no copy of it is committed here. A stated basis,
+    # not a standard this toolkit holds; a whole number, because the exact
+    # choice counts people one by one.
+    people_per_borehole: int = _ALLOCATION["people_per_borehole"]
+    # The choice is exact (every set of the candidate boreholes the budget
+    # covers is in effect weighed) when there are at most this many
+    # candidate boreholes, and greedy, by people served per dollar with the
+    # gap to the linear-programming bound reported, when there are more.
+    # The exact search keeps a mark for each candidate borehole at each
+    # number of people they could serve, so its table grows with the square
+    # of this number times people_per_borehole (allocation.EXACT_MAX_CELLS
+    # caps it). At 40 it takes a millisecond or two in either engine. A
+    # choice of the toolkit's.
+    exact_max_items: int = _ALLOCATION["exact_max_items"]
+    # An area's ground is read at the points of a grid this many points on
+    # a side over the area's bounding box, counting those inside the area:
+    # 256 points, a few hundred metres apart in a chiefdom and a few
+    # kilometres in a district. A choice of the toolkit's.
+    ground_grid: int = _ALLOCATION["ground_grid"]
+
+
+# ---------------------------------------------------------------------------
 # Terrain analysis on an elevation model the operator supplies (PLAN.md step
 # 4.1, mapping/elevation.py and the analysis built on it)
 #
@@ -558,6 +589,7 @@ class Config:
     odds: OddsConfig = field(default_factory=OddsConfig)
     ledger: LedgerConfig = field(default_factory=LedgerConfig)
     cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
+    allocation: AllocationConfig = field(default_factory=AllocationConfig)
     terrain: TerrainConfig = field(default_factory=TerrainConfig)
     # The calibration set in force (PLAN.md step 5.3, calibration_sets.py),
     # as clean_set reads it, or None for the toolkit's provisional default.
@@ -589,6 +621,7 @@ class Config:
             ("odds", cfg.odds),
             ("ledger", cfg.ledger),
             ("cost_range", cfg.cost_range),
+            ("allocation", cfg.allocation),
             ("terrain", cfg.terrain),
         ):
             overrides = data.get(section_name, {}) or {}
@@ -605,11 +638,11 @@ class Config:
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
             if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
-                           "ledger", "cost_range", "terrain", "calibration"):
+                           "ledger", "cost_range", "allocation", "terrain", "calibration"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
                     "(expected style, ves, pumping, design, ves_range, odds, "
-                    "ledger, cost_range, terrain or calibration)",
+                    "ledger, cost_range, allocation, terrain or calibration)",
                     stacklevel=2,
                 )
         named = data.get("calibration")

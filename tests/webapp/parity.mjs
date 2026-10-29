@@ -4418,6 +4418,66 @@ await withPage(async (page, base, consoleErrors) => {
     check('scorecards: read out of a Streamlit project file as Python reads it', !file, file);
   }
 
+  // --- Where to drill next, within a budget (PLAN.md step 6.1) ---
+  // The twins of groundwater/allocation.py on make_reference.py's cases: the
+  // ground of every district and chiefdom as the grid reads it on the bundled
+  // layers; small choices on given ground (the exact choice), areas alike in
+  // all but their names both ways, the ranking's own areas at budgets that
+  // buy nothing, a few boreholes and many (the greedy choice), access costs,
+  // a calibration set in force and other settings, held whole: the figures,
+  // the table and the sentences through the CSV, which carries both. Every
+  // cost is to the cent, so only the expected attempts, which divide by the
+  // odds, are held to 1e-9. And the refusals.
+  {
+    const AR = R.allocation;
+    const alJs = await page.evaluate(({ AR }) => {
+      const C = GWT.core;
+      const grounds = {};
+      for (const level of C.ALLOCATION_LEVELS) grounds[level] = C.areaGrounds(level);
+      const cases = AR.cases.map((c) => {
+        try {
+          const cfg = C.withConfig(Object.assign({ allocation: c.allocation },
+            c.set ? { calibration: c.set } : {}));
+          const a = C.allocate(c.rows, c.budget, c.cost, { level: c.level, access: c.access, config: cfg,
+            grounds: c.grounds || undefined });
+          return { ok: {
+            summary: {
+              method: a.method, items: a.items, boreholes: a.boreholes, areas: a.areas, cost: a.cost_usd,
+              left: a.left_usd, people: a.people, attempts: a.attempts, bound: a.bound, least: a.least_ratio,
+              marginal: a.marginal,
+              candidates: a.candidates.map((x) => [x.id, x.district, x.unserved, x.boreholes, x.chosen,
+                x.people, x.reason, x.cost_usd, x.access_usd]),
+            },
+            header: C.allocationHeader(a), csv: C.allocationCsv(a),
+          } };
+        } catch (e) {
+          return { threw: String(e && e.message || e) };
+        }
+      });
+      return { grounds, cases };
+    }, { AR });
+    const grounds = firstDifference(alJs.grounds, AR.grounds, 'grounds');
+    check(`allocation: the ground of every district and chiefdom (${Object.keys(AR.grounds.district).length}` +
+      ` and ${Object.keys(AR.grounds.chiefdom).length})`, !grounds, grounds);
+    const failed = AR.cases.map((c, i) => {
+      const got = alJs.cases[i];
+      if (!got) return `[${c.name}] no answer`;
+      if (c.expect.refused !== undefined) {
+        return got.threw ? null : `[${c.name}] chose where Python refused: ${c.expect.refused}`;
+      }
+      if (got.threw) return `[${c.name}] threw ${got.threw}`;
+      const { attempts, ...summary } = got.ok.summary;
+      const { attempts: want, ...expected } = c.expect.summary;
+      if (!close(attempts, want, 1e-9)) return `[${c.name}] attempts: js ${attempts} vs py ${want}`;
+      return firstDifference({ summary, header: got.ok.header, csv: got.ok.csv },
+        { summary: expected, header: c.expect.header, csv: c.expect.csv }, `[${c.name}]`);
+    }).filter(Boolean);
+    const methods = new Set(AR.cases.filter((c) => c.expect.summary).map((c) => c.expect.summary.method));
+    check(`allocation: the boreholes chosen, the table and the words (${AR.cases.length}, ` +
+      `${[...methods].sort().join(' and ')})`, failed.length === 0 && methods.size === 2,
+    failed.slice(0, 3).join('\n     '));
+  }
+
   // --- Sanitary inspection (PLAN.md step 7.5) ---
   // The twins of groundwater/sanitary.py on make_reference.py's cases: the
   // form, its bands, the grades and the matrix as the bundle carries them;

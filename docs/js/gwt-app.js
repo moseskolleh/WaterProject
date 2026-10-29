@@ -6477,8 +6477,103 @@
         'review) and ' + (unplaced.length === 1 ? 'was' : 'were') +
         ' not counted in any area above.') : null,
     ].filter(Boolean)));
+    nodes.push(allocationCard(rows, level));
     return nodes;
   };
+
+  /* Where to drill next, within a budget (PLAN.md step 6.1). The boreholes
+   * are priced as the Costing page prices its borehole, sampled once more
+   * with the depth held at the estimate's and no dry hole drawn: the range
+   * of models and the odds at the survey's first-ranked point belong to one
+   * site, and the allocation gives every area its own odds. Kept with the
+   * estimate it belongs to, so a page drawn again does not sample it again. */
+  var allocationCostHeld = new WeakMap();
+
+  function allocationCost() {
+    var estimate = derived.estimate;
+    if (!estimate || !derived.costInputs) return null;
+    var cfg = config();
+    var settings = cfg.cost_range.seed + '|' + cfg.cost_range.samples;
+    var held = allocationCostHeld.get(estimate);
+    if (held && held.settings === settings) return held.cost;
+    var cost = C.sampleCost(derived.costInputs, derived.costRates,
+      Object.assign({}, costingOptions(), { config: cfg }));
+    allocationCostHeld.set(estimate, { settings: settings, cost: cost });
+    return cost;
+  }
+
+  /* The areas of the ranking above, at the population of the year planned
+   * for, chosen between for the budget typed. The budget and the access
+   * costs are kept with the year and the growth rate. */
+  function allocationCard(rows, level) {
+    var heading = C.phrase('allocation.heading');
+    var cost = allocationCost();
+    if (!cost) {
+      return card(heading, [
+        el('p', C.phrase('allocation.no_estimate')),
+        el('div.btn-row', button('Costing & BoQ', function () { goto('costing'); },
+          { variant: 'ghost' })),
+      ]);
+    }
+    var budget = store.get('coverage.budget', null);
+    var accessKey = 'coverage.access_' + level;
+    var access = store.get(accessKey, {}) || {};
+    var nodes = [
+      el('div.field-row', [
+        field(C.phrase('allocation.col_budget'), S.numberInput(budget, function (v) {
+          store.set('coverage.budget', v === null || v === undefined ? null : Number(v));
+          render();
+        }, { min: 0, step: 10000 })),
+      ]),
+    ];
+    if (!(typeof budget === 'number' && budget > 0)) {
+      nodes.push(el('p.muted', C.phrase('allocation.no_budget')));
+      return card(heading, nodes);
+    }
+    var chosen;
+    try {
+      chosen = C.allocate(rows, budget, cost, { level: level, access: access, config: config() });
+    } catch (e) {
+      nodes.push(el('div.callout.callout-bad', el('p', String(e && e.message || e))));
+      return card(heading, nodes);
+    }
+    var text = C.allocationText(chosen);
+    nodes.push(el('p.muted', text[0]));
+    nodes.push(el('div.callout', el('p', text[1])));
+    text.slice(2).forEach(function (line) { nodes.push(el('p', line)); });
+    var header = C.allocationHeader(chosen);
+    var table = C.allocationRows(chosen).map(function (cells, i) {
+      return { cells: cells, id: chosen.candidates[i].id, chosen: chosen.candidates[i].chosen };
+    });
+    var columns = header.map(function (label, k) {
+      return { key: function (row) { return row.cells[k]; }, label: label };
+    });
+    /* an access cost per area, per attempt; blank, the default, is none */
+    columns.push({ label: C.phrase('allocation.col_access'), key: function (row) {
+      return S.numberInput(Object.prototype.hasOwnProperty.call(access, row.id) ? access[row.id] : null,
+        function (v) {
+          var next = Object.assign({}, store.get(accessKey, {}) || {});
+          if (v === null || v === undefined || !(Number(v) > 0)) delete next[row.id];
+          else next[row.id] = Number(v);
+          store.set(accessKey, next);
+          render();
+        }, { min: 0, step: 100 });
+    } });
+    nodes.push(S.table(columns, table.slice(0, TABLE_ROWS_SHOWN), {
+      rowClass: function (row) { return row.chosen ? 'row-ok' : ''; },
+    }));
+    C.allocationBasisText(chosen).forEach(function (line) { nodes.push(el('p.muted', line)); });
+    var hidden = table.length - Math.min(table.length, TABLE_ROWS_SHOWN);
+    nodes.push(el('div.btn-row', [
+      el('p.muted', hidden ? 'Showing ' + TABLE_ROWS_SHOWN + ' of ' + S.thousands(table.length) +
+        '. The ' + S.thousands(hidden) + ' not shown come after these; download the table for all of them.'
+        : 'Showing all ' + S.thousands(table.length) + '.'),
+      button(C.phrase('allocation.download'), function () {
+        S.download(C.phrase('allocation.csv_name'), C.allocationCsv(chosen), 'text/csv');
+      }, { variant: 'ghost' }),
+    ]));
+    return card(heading, nodes);
+  }
 
   /* A long table is cut short on screen so the page stays readable, which is
    * fine until nobody says so. This is the ranking that decides where to drill

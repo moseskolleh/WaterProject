@@ -1,0 +1,182 @@
+# Where to drill next, within a budget (PLAN.md step 6.1): the areas of the
+# coverage-gap ranking chosen between for a drilling budget, in the words
+# both engines write. The Streamlit Coverage gap page reads them through
+# groundwater.allocation; the browser's page through C.allocationText,
+# C.allocationRows and C.allocationCsv.
+
+heading: Where to drill next, within a budget
+
+lead: >-
+  Each area of the ranking is a candidate. Its unserved people are its
+  population less {per:g} for each functional mapped point; a working
+  borehole drilled there serves up to {per:g} of them, and costs the expected
+  price of a working borehole at the chance of one on the area's ground, its
+  dry attempts included. The choice aims at the most people the budget buys
+  at those expected costs; how it was made, and how near the best it is, is
+  said below.
+
+# What the budget buys.
+headline: >-
+  Within US$ {budget}, {n:g} working {n:plural:borehole|boreholes} in {areas:g}
+  {areas:plural:area|areas} serve {people} people, at an expected US$ {cost}
+  for {attempts:.1f} drilling attempts, the dry ones included; US$ {left} of
+  the budget is left.
+
+headline_none: >-
+  Within US$ {budget}, no working borehole can be bought: the cheapest, in
+  {area}, costs an expected US$ {cheapest}.
+
+headline_no_candidates: >-
+  No area has both unserved people and a known chance of a working borehole,
+  so there is nothing to choose between.
+
+# How the choice was made.
+method_exact: >-
+  The choice is exact: of every set of the {items} candidate
+  {n:plural:borehole|boreholes} the budget covers, none serves more
+  people, and of those that serve as many it costs the least; up to {limit:g}
+  candidate boreholes are chosen between exactly. A tie goes to the area
+  first in alphabetical order.
+
+method_greedy: >-
+  With {items} candidate boreholes, more than the {limit:g} chosen between
+  exactly, the choice is greedy: the boreholes are taken in order of people
+  served per dollar, best first, each one that fits in what is left of the
+  budget, and a tie goes to the area first in alphabetical order.
+
+greedy_gap: >-
+  No set of boreholes within the budget can serve more than {bound} people
+  (the linear-programming bound, which lets the last borehole be bought in
+  part), so this choice is at most {gap} people, {share} percent, short of the
+  best.
+
+greedy_best: >-
+  No set of boreholes within the budget can serve more than {bound} people
+  (the linear-programming bound, which lets the last borehole be bought in
+  part), so no other choice serves more.
+
+# The next borehole a larger budget would buy.
+marginal: >-
+  The next borehole worth buying is in {area}: US$ {cost} for {people} more
+  people, US$ {per_person} per extra person served, which is US$ {more} more
+  than the budget left.
+
+marginal_none: >-
+  Every borehole the unserved people justify is chosen, so a larger budget
+  serves nobody more.
+
+# What the people served do not account for (PLAN.md step 6.2).
+coarse: >-
+  Chiefdom populations are too coarse for access distances: an area's people
+  are one number, with nothing to say how far each lives from a borehole
+  drilled there, so the people a borehole serves are the handpump figure, not
+  the people within reach of it. Settlement-level population (PLAN.md step
+  6.2) is needed before distance can count.
+
+access_none: >-
+  Access is not modelled: no area has an access cost, so a working borehole
+  costs the same wherever it is drilled but for the chance of a dry hole
+  there. Type an area's access cost in the table to add one.
+
+access_some: >-
+  Access costs are added for {n:g} {n:plural:area|areas} as typed, each per
+  attempt: a working borehole there carries one for each attempt it is
+  expected to take, the dry ones included.
+
+# The basis.
+basis_people: >-
+  Each functional mapped point is counted as serving {per:g} people, and each
+  new borehole as serving up to {per:g}: the handpump figure of the coverage
+  map's service classes ({basis}). It is a stated basis, not a standard this
+  toolkit holds, and a point that serves more or fewer is not told apart.
+
+basis_people_set: >-
+  Each functional mapped point is counted as serving {per:g} people, and each
+  new borehole as serving up to {per:g}, as allocation.people_per_borehole is
+  set; no service class of the coverage map has that figure. A point that
+  serves more or fewer is not told apart.
+
+basis_ground: >-
+  An area's ground is the BGS aquifer class with a prior of its own that
+  covers the most of the points of a {grid:g} by {grid:g} grid over the
+  area's bounding box that fall inside the area, and within that class the
+  USGS unit that covers the most of them; a tie goes to the code first in
+  alphabetical order. Its chance of a working borehole is the prior for that
+  ground, before any survey; calibration: {calibration}. An area none of
+  whose points falls on such a class has no known odds and is left out.
+
+basis_cost: >-
+  A working borehole costs the mean completed borehole as the Costing page
+  prices one, US$ {mean}, and the mean dry attempt, US$ {dry}, for each dry
+  attempt expected before a working one, over {n} sampled boreholes (seed
+  {seed:g}), before contingency. The depth is held at the Costing page's
+  {depth:g} m, since a range of models belongs to one survey's point. People
+  served over this cost is expected people served per dollar: the chance of
+  success times the people a working borehole serves, over the expected cost
+  of one attempt, is the same figure.
+
+no_estimate: >-
+  The boreholes are priced as the Costing page prices one, and it has no
+  estimate yet: estimate a borehole there first.
+
+no_budget: Type the budget, in US$, to choose where to drill.
+
+col_budget: Budget, US$
+
+# The table, one row for each area.
+col_area: Area
+
+col_district: District
+
+col_unserved: Unserved people
+
+col_ground: Ground
+
+col_odds: Chance of a working borehole
+
+col_cost: US$ per working borehole
+
+col_access: Access, US$ per attempt
+
+col_chosen: Boreholes chosen
+
+col_people: People served
+
+col_ratio: People per US$ 1,000
+
+col_why: In or out, and why
+
+ground_cell: "{code} on {glg} ({share} percent)"
+
+ground_cell_class: "{code} ({share} percent)"
+
+ground_none: No aquifer class with a prior
+
+chosen_cell: "{k:g} of {n:g}"
+
+why_all: >-
+  In: all {k:g} {k:plural:borehole|boreholes} its unserved people justify.
+
+why_part: >-
+  In: {k:g} of the {n:g} boreholes its unserved people justify; the next
+  costs more than the US$ {left} left.
+
+why_budget: >-
+  Out: a working borehole here costs US$ {cost}, more than the US$ {left}
+  left.
+
+why_value: >-
+  Out: lower value per dollar, {ratio:.1f} people per US$ 1,000, against at
+  least {least:.1f} for every borehole chosen.
+
+why_unserved: >-
+  Out: no unserved people; at {per:g} people a point, its {f:g} functional
+  mapped {f:plural:point covers|points cover} its population.
+
+why_odds: >-
+  Out: the odds are unknown, since no point of the area falls on a BGS
+  aquifer class with a prior.
+
+csv_name: where_to_drill_next.csv
+
+download: Download the choice (.csv)

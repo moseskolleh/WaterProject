@@ -6112,6 +6112,96 @@ await withPage(async (page, base, consoleErrors) => {
     scorecards.card.every(Boolean) && JSON.stringify(scorecards.report) === '["Contractor_Scorecards.docx",true]',
     JSON.stringify(scorecards));
 
+  // Where to drill next, within a budget (PLAN.md step 6.1): on the Coverage
+  // gap page, with Dr Timbo's borehole priced on the Costing page and three
+  // water points loaded. Nothing is chosen before an estimate or a budget;
+  // then the sentences and the table, an access cost typed for the first
+  // area chosen raising its cost, and the CSV the page saves is the engine's
+  // for the page's own ranking.
+  const allocation = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const heading = C.phrase('allocation.heading');
+    const named = () => [...document.querySelectorAll('#page-host .card')]
+      .find((c) => (c.querySelector('.card-title') || {}).textContent === heading);
+    const out = {};
+    app.derived.waterPoints = C.parseWpdxRecords([
+      { lat_deg: '7.8767', lon_deg: '-11.1875', status_clean: 'Functional', water_source_clean: 'Borehole' },
+      { lat_deg: '8.8817', lon_deg: '-12.0442', status_clean: 'Functional', water_source_clean: 'Borehole' },
+      { lat_deg: '7.5260', lon_deg: '-12.5050', status_clean: 'Functional', water_source_clean: 'Borehole' }]);
+    app.store.set('coverage.level', 'district');
+    app.store.set('coverage.budget', null);
+    app.store.set('coverage.access_district', {});
+    const estimate = app.derived.estimate;
+    app.derived.estimate = null;
+    await app.goto('coverage');
+    out.noEstimate = !!named() && named().textContent.includes(C.phrase('allocation.no_estimate'));
+    app.derived.estimate = estimate;
+    app.render();
+    out.noBudget = named().textContent.includes(C.phrase('allocation.no_budget'));
+    const budget = named().querySelector('input[type="number"]');
+    budget.value = '200000';
+    budget.dispatchEvent(new Event('change'));
+    const card = named();
+    const callout = card.querySelector('.callout');
+    out.headline = callout ? callout.textContent : '';
+    out.words = [C.phrase('allocation.coarse'), C.phrase('allocation.access_none')]
+      .map((t) => card.textContent.includes(t));
+    const rows = [...card.querySelectorAll('table.data tbody tr')];
+    out.rows = rows.length;
+    const chosen = rows.find((r) => r.classList.contains('row-ok'));
+    const cells = (r) => [...r.querySelectorAll('td')].map((td) => td.textContent);
+    const first = chosen ? cells(chosen) : [];
+    out.first = first.slice(0, 1);
+    // the page's own ranking, as the page builds it, and its borehole
+    const costing = app.store.get('costing');
+    const cfg = app.config();
+    const cost = C.sampleCost(app.derived.costInputs, app.derived.costRates, {
+      overheadsPercent: costing.overheads, marginPercent: costing.margin,
+      contingencyPercent: costing.contingency, vatPercent: costing.vat, config: cfg });
+    const year = Math.max(app.store.get('coverage.year', new Date().getFullYear()), C.CENSUS_YEAR);
+    const rate = app.store.get('coverage.rate', Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100) / 100;
+    const ranked = () => C.coverageRows(C.projectPopulation(C.loadDistrictPopulation(), year, { rate }).projected,
+      C.countPointsByDistrict(app.derived.waterPoints, C.loadPolygons(), C.loadChiefdomDistrict()).counts);
+    const got = [];
+    const download = support.download;
+    support.download = (name, data) => { got.push({ name, data }); };
+    try {
+      [...card.querySelectorAll('button')].find((b) => b.textContent === C.phrase('allocation.download')).click();
+    } finally {
+      support.download = download;
+    }
+    const want = C.allocationCsv(C.allocate(ranked(), 200000, cost, { level: 'district', config: cfg }));
+    out.csv = got.length === 1 && got[0].name === C.phrase('allocation.csv_name') && got[0].data === want;
+    // an access cost for the first area chosen
+    if (chosen) {
+      const input = chosen.querySelector('td:last-child input');
+      input.value = '5000';
+      input.dispatchEvent(new Event('change'));
+      const again = named();
+      const row = [...again.querySelectorAll('table.data tbody tr')]
+        .find((r) => cells(r)[0] === first[0]);
+      const costCol = C.allocationHeader({ level: 'district' }).indexOf(C.phrase('allocation.col_cost'));
+      out.dearer = Number(cells(row)[costCol].replace(/,/g, '')) > Number(first[costCol].replace(/,/g, ''));
+      out.access = again.textContent.includes(C.phrase('allocation.access_some', { n: 1 }));
+      out.kept = JSON.stringify(app.store.get('coverage.access_district'));
+    }
+    app.store.set('coverage.budget', null);
+    app.store.set('coverage.access_district', {});
+    app.derived.waterPoints = null;
+    return out;
+  });
+  check('allocation: the Coverage gap page asks for an estimate and a budget before it chooses',
+    allocation.noEstimate && allocation.noBudget, JSON.stringify(allocation));
+  check('allocation: the page says what the budget buys, that chiefdom populations are too coarse for ' +
+    'access distances and that access is not modelled, and lists every district',
+    allocation.headline.startsWith('Within US$ 200,000, ') && allocation.words.every(Boolean) &&
+    allocation.rows === 16, JSON.stringify(allocation));
+  check('allocation: the CSV the page saves is the engine\'s choice for the page\'s own ranking',
+    allocation.csv, JSON.stringify(allocation));
+  check('allocation: an access cost typed for an area raises its cost and is kept',
+    allocation.dearer && allocation.access &&
+    allocation.kept === JSON.stringify({ [allocation.first[0]]: 5000 }), JSON.stringify(allocation));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

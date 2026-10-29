@@ -168,6 +168,14 @@ def cov_chiefdom_population():
     return chiefdom_population()
 
 
+def plain(text: str) -> str:
+    """A sentence for st.markdown, st.info, st.caption or st.write, its
+    dollar signs kept as written. Streamlit reads text between two dollar
+    signs as LaTeX, so "US$ 9,463 ... US$ 4,289" was shown with both signs
+    gone."""
+    return text.replace("$", "\\$")
+
+
 def content_token(data: bytes) -> str:
     """A name for what a file holds, whatever it is called or wherever it came from."""
     return hashlib.sha256(bytes(data)).hexdigest()
@@ -1078,7 +1086,7 @@ def _load_project() -> None:
         st.session_state.pop(stale, None)
     for result_key in (
         "ves_results", "ves_ranges", "pump_analysis", "wq_assessment", "borehole_design",
-        "drilling_log", "cost_estimate", "cost_artifacts", "cost_spread",
+        "drilling_log", "cost_estimate", "cost_artifacts", "cost_spread", "allocation_cost",
         "wp_result", "handover_built", "_design_follows_page",
         # cleared too, so a project with no sources at all cannot inherit the
         # previous project's rebuild banner
@@ -1649,8 +1657,8 @@ def show_measurements(values, nested: bool = False) -> None:
     for v in values:
         text = measurement_text(v)
         with st.container(border=True):
-            st.markdown(f"**{text[0]}**")
-            st.write(" ".join(text[1:]))
+            st.markdown(f"**{plain(text[0])}**")
+            st.write(plain(" ".join(text[1:])))
             st.table([dict(zip(measurement_decision_header(v), row, strict=True))
                       for row in measurement_decision_rows(v)])
             st.caption(measurement_decision_caption())
@@ -1659,8 +1667,8 @@ def show_measurements(values, nested: bool = False) -> None:
         st.table([dict(zip(measurement_reading_header(), row, strict=True))
                   for row in measurement_reading_rows(values[0])])
         if nested:
-            st.caption(measurement_readings_caption(values[0]))
-    st.caption(measurement_basis(values[0]))
+            st.caption(plain(measurement_readings_caption(values[0])))
+    st.caption(plain(measurement_basis(values[0])))
 
 
 def cost_spread_inputs() -> dict:
@@ -1697,6 +1705,30 @@ def _sample_cost_spread(estimate, inputs, rates, pct: dict, survey: dict) -> Non
         spread.curve, [(marks["boq"], spread.boq_usd), (marks["budget"], spread.budget_usd)],
         spread_path, app_config().style, title=marks["title"])
     st.session_state.cost_spread = (estimate, spread, spread_path, inputs, rates, pct, survey)
+
+
+def allocation_cost():
+    """The cost distribution the Coverage gap page prices a programme's
+    boreholes from (PLAN.md step 6.1): the Costing page's borehole, its
+    inputs, rates and percentages as estimated, sampled with the depth held
+    at the estimate's and no dry hole drawn, since the range of models and
+    the odds at the survey's first-ranked point belong to one site and the
+    allocation gives every area its own odds. None before an estimate is
+    made (or where one was made without its distribution). Kept with the
+    estimate it belongs to and the sampling settings, so the page does not
+    sample it again on every rerun."""
+    kept = st.session_state.get("cost_spread")
+    estimate = st.session_state.get("cost_estimate")
+    if kept is None or estimate is None or kept[0] is not estimate:
+        return None
+    _estimate, _spread, _path, inputs, rates, pct, _survey = kept
+    settings = (app_config().cost_range.seed, app_config().cost_range.samples)
+    held = st.session_state.get("allocation_cost")
+    if held is not None and held[0] is estimate and held[1] == settings:
+        return held[2]
+    spread = sample_cost(inputs, rates, config=app_config(), **pct)
+    st.session_state.allocation_cost = (estimate, settings, spread)
+    return spread
 
 
 def cost_spread_for(estimate):
