@@ -2680,6 +2680,41 @@ await withPage(async (page, base, consoleErrors) => {
     check(`photo provenance: hand-edited records, a position printed only when it reads (${PE.hand_edited.length})`,
       failed.length === 0, failed.slice(0, 3).join('\n     '));
   }
+  // --- whole numbers too large for a float, in a hand-edited project file:
+  // Python's YAML reads 400 digits as a whole number float() cannot hold,
+  // the browser's as Infinity, and both leave each field blank - a
+  // photograph's position and accuracy, a summary's numbers, a ledger's and
+  // a works record's - where Python raised OverflowError
+  {
+    const TL = R.too_large;
+    const got = await page.evaluate((TL) => {
+      const C = GWT.core, S = GWT.support;
+      const file = S.parseYaml(TL.yaml);
+      return { photos: file.photos.map((r) => C.describePhotoProvenance(r)),
+        rows: C.portfolioRows(file.summaries),
+        points: C.portfolioPoints(file.summaries).map((p) => [p.label, p.lat, p.lon, p.status]),
+        stats: C.portfolioStats(file.summaries),
+        details: file.summaries.map((s) => C.portfolioSiteDetail(s)),
+        one_pagers: file.summaries.map((s) => C.portfolioOnePager(s)),
+        ledger: C.cleanLedger(file.ledger), works: C.cleanWorks(file.works),
+        sets: TL.sets.map((c) => {
+          try { C.cleanSet(S.parseYaml(c.yaml)); return 'read'; } catch (e) { return String(e && e.message || e); }
+        }) };
+    }, TL);
+    check(`whole numbers too large for a float: a calibration set file refused in the same words (${TL.sets.length})`,
+      TL.sets.every((c, i) => got.sets[i] === c.refused),
+      TL.sets.map((c, i) => `[${i}] js ${got.sets[i]} vs py ${c.refused}`).join('\n     '));
+    for (const key of ['photos', 'rows', 'stats', 'details', 'one_pagers', 'ledger', 'works']) {
+      check(`whole numbers too large for a float, blank rather than raised: ${key}`,
+        canonical(got[key]) === canonical(TL[key]),
+        `js ${canonical(got[key]).slice(0, 600)}\n     py ${canonical(TL[key]).slice(0, 600)}`);
+    }
+    check('whole numbers too large for a float, blank rather than raised: points',
+      got.points.length === TL.points.length &&
+      got.points.every((p, i) => p[0] === TL.points[i][0] && close(p[1], TL.points[i][1], 1e-9) &&
+        close(p[2], TL.points[i][2], 1e-9) && p[3] === TL.points[i][3]),
+      `js ${JSON.stringify(got.points)}\n     py ${JSON.stringify(TL.points)}`);
+  }
   check('photo provenance: a photograph without a record is said to have none',
     canonical(photos.no_record) === canonical(PE.no_record),
     `js ${canonical(photos.no_record)}\n     py ${canonical(PE.no_record)}`);
@@ -4746,7 +4781,8 @@ await withPage(async (page, base, consoleErrors) => {
     held('ledger: pooled over files, counted and tabled', ledgerJs.pool, { pooled: LG.pool.pooled,
       counts: LG.pool.counts, header: LG.pool.header, rows: LG.pool.rows, none: LG.pool.none,
       entry_header: LG.pool.entry_header, summary: LG.pool.summary, summary_none: LG.pool.summary_none });
-    each('ledger: copies of one project, two projects alike and ledgers with no identity, pooled in both orders',
+    each('ledger: copies of one project, two projects alike, two recorded on one day and ledgers with no ' +
+      'identity, pooled in both orders',
       ledgerJs.pools,
       LG.pools.map((c) => ({ pooled: c.pooled, counts: c.counts, summary: c.summary })));
     each('ledger: point identifiers', ledgerJs.ids, LG.ids.map((c) => c.expect));
@@ -4984,8 +5020,9 @@ await withPage(async (page, base, consoleErrors) => {
   // each project and read back clean, the boreholes pooled with the ledgers
   // of files saved before the record, the scorecards and the report's
   // content, all held whole; hand-edited records; dates as logs write them;
-  // Dr Timbo's own log as the browser reads the workbook; and a Streamlit
-  // project file's record, through the browser's YAML reader.
+  // Dr Timbo's own log as the browser reads the workbook, and its borehole
+  // saved before and after its ledger had an identity, paired with no point;
+  // and a Streamlit project file's record, through the browser's YAML reader.
   {
     const SR = R.scorecards;
     const scJs = await page.evaluate(async ({ SR }) => {
@@ -5013,6 +5050,12 @@ await withPage(async (page, base, consoleErrors) => {
           const record = C.worksRecord(t.site, timboLog, null, null, t.answers, t.metres, t.procurement);
           return { record: record, content: C.scorecardContent([['Dr Timbo', record, null]], '2026-10-29') };
         }),
+        unpaired: attempt(() => {
+          const t = SR.timbo.inputs;
+          const records = SR.unpaired.ledgers.map((ledger) => C.worksRecord(t.site, timboLog, null, ledger));
+          return { records: records, boreholes: C.scorecardBoreholes(records.map((record, k) =>
+            ['save ' + (k + 1), record, SR.unpaired.ledgers[k]])) };
+        }),
         file: attempt(() => C.cleanWorks(S.parseYaml(SR.file.yaml).works)),
       };
     }, { SR });
@@ -5039,6 +5082,10 @@ await withPage(async (page, base, consoleErrors) => {
     const timbo = scJs.timbo.ok ? firstDifference(scJs.timbo.ok, { record: SR.timbo.record,
       content: SR.timbo.content }) : `threw ${scJs.timbo.threw}`;
     check('scorecards: Dr Timbo\'s log, as the browser reads the workbook', !timbo, timbo);
+    const unpaired = scJs.unpaired.ok ? firstDifference(scJs.unpaired.ok, { records: SR.unpaired.records,
+      boreholes: SR.unpaired.boreholes }) : `threw ${scJs.unpaired.threw}`;
+    check('scorecards: a borehole paired with no point, saved before and after its ledger had an identity, ' +
+      'counted once', !unpaired, unpaired);
     const file = scJs.file.ok !== undefined ? firstDifference(scJs.file.ok, SR.file.expect)
       : `threw ${scJs.file.threw}`;
     check('scorecards: read out of a Streamlit project file as Python reads it', !file, file);

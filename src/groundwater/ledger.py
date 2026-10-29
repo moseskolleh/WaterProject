@@ -87,7 +87,12 @@ def _num(value, digits: int | None) -> float | None:
     differently."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return None
-    x = float(value)
+    try:
+        x = float(value)
+    except OverflowError:
+        # a whole number too large for a float, which the browser reads as
+        # Infinity
+        return None
     if not math.isfinite(x):
         return None
     return x if digits is None else round(x, digits)
@@ -111,11 +116,12 @@ def _name(value) -> str:
 
 
 def _zone(value) -> int | None:
-    """A UTM zone number, or None."""
+    """A UTM zone number, or None: a whole number, and not one too large
+    for a float, which the browser reads as Infinity."""
     if isinstance(value, bool):
         return None
     if isinstance(value, numbers.Integral):
-        return int(value)
+        return int(value) if _num(value, None) is not None else None
     if isinstance(value, float) and value.is_integer():
         return int(value)
     return None
@@ -869,6 +875,15 @@ def _order(a, b) -> int:
     return (a > b) - (a < b)
 
 
+def _one_borehole(outcomes: list[dict]) -> bool:
+    """Whether outcomes name one borehole: one reference and one completion
+    date in all of them, and not both blank. A log corrected between two
+    saves, a hole and its replacement, and two projects whose points the
+    files cannot tell apart all give outcomes that do not."""
+    names = {(outcome["borehole_ref"], outcome["completion_date"]) for outcome in outcomes}
+    return len(names) == 1 and names != {("", "")}
+
+
 def pool_ledgers(items: Iterable[tuple[str, dict]]) -> list[dict]:
     """The entries of many projects' ledgers, each once.
 
@@ -886,9 +901,16 @@ def pool_ledgers(items: Iterable[tuple[str, dict]]) -> list[dict]:
     Each kept entry carries the label of the project it came from as
     ``project``, the identity of its ledger as ``project_id`` (None for a
     ledger written before ledgers had one), how many files it was found in
-    as ``copies``, and as ``copies_differ`` whether those copies hold
-    different outcomes, so a file with an older record shows. The order is
-    the order the entries were first met.
+    as ``copies``, as ``copies_differ`` whether those copies hold different
+    outcomes, so a file with an older record shows, and as
+    ``copies_borehole_differs`` whether those different outcomes also fail
+    to name one borehole by one reference and completion date
+    (:func:`_one_borehole`), so they may be two boreholes taken for one.
+    Such copies are still counted once, and the summary says so: that is
+    a choice (QUESTIONS.md item 30), since keeping both would count twice
+    the borehole of a log corrected between two saves, which the copies
+    cannot tell from two boreholes. The order is the order the entries were
+    first met.
     """
     kept: dict[str, list] = {}
     copies: dict[str, int] = {}
@@ -910,9 +932,13 @@ def pool_ledgers(items: Iterable[tuple[str, dict]]) -> list[dict]:
             ra, rb = _rank(entry), _rank(have[0])
             if ra > rb or (ra == rb and _order(mine, have) < 0):
                 kept[pid] = mine
-    return [dict(entry, project=label, project_id=identity, copies=copies[pid],
-                 copies_differ=len(outcomes.get(pid, ())) > 1)
-            for pid, (entry, label, identity) in kept.items()]
+    out = []
+    for pid, (entry, label, identity) in kept.items():
+        held = outcomes.get(pid, [])
+        differ = len(held) > 1
+        out.append(dict(entry, project=label, project_id=identity, copies=copies[pid], copies_differ=differ,
+                        copies_borehole_differs=differ and not _one_borehole(held)))
+    return out
 
 
 def ledger_counts(pooled: list[dict]) -> dict:
@@ -921,12 +947,15 @@ def ledger_counts(pooled: list[dict]) -> dict:
     labels), those drilled, those drilled whose prediction was recorded
     before drilling, and how those drilled turned out; and the points found
     in more than one file (``copies``), those whose copies hold different
-    outcomes (``copies_differ``), and of those the ones from ledgers with no
-    identity (``copies_unsure``), whose copies may be two projects."""
+    outcomes (``copies_differ``), of those the ones from ledgers with no
+    identity (``copies_unsure``), whose copies may be two projects, and of
+    the rest the ones whose outcomes do not name one borehole
+    (``copies_borehole_differs``), which may be two boreholes."""
     drilled = [entry for entry in pooled if entry["outcome"] is not None]
     projects = {("id", entry["project_id"]) if entry.get("project_id") else ("label", entry["project"])
                 for entry in pooled}
     differ = [entry for entry in pooled if entry.get("copies_differ") is True]
+    named = [entry for entry in differ if entry.get("project_id")]
     return {
         "points": len(pooled),
         "projects": len(projects),
@@ -937,14 +966,17 @@ def ledger_counts(pooled: list[dict]) -> dict:
         "unknown": sum(1 for entry in drilled if entry["outcome"]["success"] is None),
         "copies": sum(1 for entry in pooled if entry.get("copies", 1) > 1),
         "copies_differ": len(differ),
-        "copies_unsure": sum(1 for entry in differ if not entry.get("project_id")),
+        "copies_unsure": len(differ) - len(named),
+        "copies_borehole_differs": sum(1 for entry in named if entry.get("copies_borehole_differs") is True),
     }
 
 
 def ledger_summary(pooled: list[dict]) -> str:
     """What a pooled ledger holds, in a sentence; then, where a point was
     found in more than one file, the rule that chose the copy counted, and a
-    sentence for the points whose copies disagree."""
+    sentence for the points whose copies disagree: an older record where
+    their ledgers have an identity and their outcomes name one borehole,
+    else the two things it may be."""
     if not pooled:
         return phrase("ledger.pool_none")
     counts = ledger_counts(pooled)
@@ -952,9 +984,11 @@ def ledger_summary(pooled: list[dict]) -> str:
                   drilled=counts["drilled"], forecast=counts["forecast"])
     if counts["copies"]:
         text += " " + phrase("ledger.pool_copies", copies=counts["copies"])
-    differ = counts["copies_differ"] - counts["copies_unsure"]
+    differ = counts["copies_differ"] - counts["copies_unsure"] - counts["copies_borehole_differs"]
     if differ:
         text += " " + phrase("ledger.pool_copies_differ", differ=differ)
+    if counts["copies_borehole_differs"]:
+        text += " " + phrase("ledger.pool_copies_borehole", points=counts["copies_borehole_differs"])
     if counts["copies_unsure"]:
         text += " " + phrase("ledger.pool_copies_unsure", unsure=counts["copies_unsure"])
     return text

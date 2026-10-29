@@ -989,12 +989,22 @@ def _unreadable(why: str) -> ValueError:
     return ValueError(phrase("calibration_sets.unreadable", why=why))
 
 
+def _finite(value) -> bool:
+    """Whether a number is finite as a float: not a whole number too large
+    for one, which YAML reads from a few hundred digits and the browser
+    reads as Infinity, where float() raised OverflowError."""
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
+
+
 def _is_int(value) -> bool:
-    return isinstance(value, numbers.Integral) and not isinstance(value, bool)
+    return isinstance(value, numbers.Integral) and not isinstance(value, bool) and _finite(value)
 
 
 def _is_num(value) -> bool:
-    return isinstance(value, numbers.Real) and not isinstance(value, bool) and math.isfinite(float(value))
+    return isinstance(value, numbers.Real) and not isinstance(value, bool) and _finite(value)
 
 
 def _field(raw: dict, key: str, check, where: str = ""):

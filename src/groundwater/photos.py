@@ -271,10 +271,14 @@ def _reading(value, limit: float) -> float | None:
     """A recorded number as a report prints it: a finite number no further
     from zero than ``limit``, else None. A number written as text in a
     hand-edited file is not one, as in the ledger, since the browser's twin
-    would read it differently."""
+    would read it differently. A whole number too large for a float, which
+    the browser reads as Infinity, is not one either."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return None
-    x = float(value)
+    try:
+        x = float(value)
+    except OverflowError:
+        return None
     return x if math.isfinite(x) and abs(x) <= limit else None
 
 

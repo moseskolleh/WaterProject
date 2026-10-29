@@ -551,7 +551,8 @@ need real project inputs or decisions to finish calibrating it.
    of success the calibration scores at (added with the ledger,
    calibration and photograph fixes).** Each of these is a choice made
    here, stated where it is made (`groundwater/ledger.py`,
-   `groundwater/calibration.py`, `groundwater/photos.py`), and wants the
+   `groundwater/calibration.py`, `groundwater/photos.py`,
+   `groundwater/scorecards.py`), and wants the
    owner's confirmation. (a) A ledger's identity is worked out from the
    day and the points of its first recording, not drawn at random, so the
    same recording gives the same file. Two surveys recorded on the same
@@ -580,4 +581,19 @@ need real project inputs or decisions to finish calibrating it.
    A photograph's position written as text ("8.5") is not read, as the
    ledger reads no number written as text, while a portfolio summary's
    numbers written as text are read as Python's `float` reads them
-   (ASCII digits only, so both apps read the same texts).
+   (ASCII digits only, so both apps read the same texts). (g) Copies of
+   one point whose outcomes disagree and do not give the borehole one
+   reference and completion date (two projects recorded on the same day,
+   as in (a), a hole and its replacement saved in copies of one file, or a
+   log corrected between two saves) are counted as one borehole, the best
+   established, and the summary says the copies may be either and that
+   the borehole of one of them is not counted. Keeping both as two
+   boreholes would count a corrected log's borehole twice, and would count
+   one survey point twice under one identifier, which the scorecards and
+   the calibration sets read boreholes by. (h) The contractor scorecards
+   identify a borehole paired with no point by its reference, position
+   and place alone, as before the ledger had an identity: carrying the
+   identity counted twice a borehole saved once before any prediction was
+   recorded and once after, while two projects in one village whose logs
+   share a reference and carry no position share the identifier and
+   count once.

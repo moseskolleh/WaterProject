@@ -2155,14 +2155,22 @@ over an outcome not known yet or none; between copies alike in that, the
 one recorded before drilling, then the one with more of its outcome
 recorded, then the later recording. So the result does not depend on the
 order the files were added in. Where the copies disagree on what the
-borehole found, the summary says so: one of the files holds an older
-record. Two projects whose survey points share a name and a place (a dry
-hole and its replacement surveyed in one village a year apart, the VES
-sheets numbered again and carrying no coordinates) are told apart by
-their ledgers' identities (section 11) and are counted as two. Files
-saved before ledgers had an identity cannot tell such projects from
-copies of one: if their copies disagree, the summary says the borehole
-of one of them may not be counted.
+borehole found but give it one reference and completion date, the
+summary says so: one of the files holds an older record. Two projects
+whose survey points share a name and a place (a dry hole and its
+replacement surveyed in one village a year apart, the VES sheets
+numbered again and carrying no coordinates) are told apart by their
+ledgers' identities (section 11) and are counted as two. Two such
+projects whose predictions were first recorded on the same day share an
+identity, and a hole and its replacement saved in copies of one file
+share a point, so the pool takes them for copies and counts one
+borehole. Where copies disagree and give the borehole different
+references or completion dates, or neither, the summary does not call
+one of them an older record: it says they may be a log corrected between
+two saves or two boreholes, and that the borehole of one of them is not
+counted. Files saved before ledgers had an identity cannot tell two
+projects from copies of one at all: if their copies disagree, the
+summary says the borehole of one of them may not be counted.
 
 Under it, **Calibration** scores the pooled forecasts against what was
 drilled (PLAN.md step 5.2), and *Build the calibration report (.docx)*
@@ -2377,9 +2385,13 @@ found. It is how the toolkit will learn from the holes drilled with it.
   first predictions are recorded, worked out from the day and the points
   recorded, and each point's entry carries it. Copies of the project's
   file share it, so a portfolio counts them once; two projects whose
-  points share a name and a place do not, so a portfolio counts both. A
+  points share a name and a place do not, so a portfolio counts both,
+  unless their predictions were first recorded on the same day. A
   ledger saved before ledgers had an identity keeps none, and its
-  entries keep the identifiers they were saved with.
+  entries keep the identifiers they were saved with. The contractor
+  scorecards identify a borehole paired with no point by its reference,
+  position and place, not by the ledger's identity, so a save made
+  before any prediction was recorded and a later one count it once.
 - **The point drilled.** The borehole's outcome goes to the point it
   was drilled at: the one chosen under *Point drilled*, else the nearest
   point within 50 m of the drilling log's GPS position, else the
@@ -2429,7 +2441,10 @@ supervision checklist record, only where the file holds a latitude and a
 longitude as numbers, within 90 and 180 degrees; anything else a
 hand-edited file holds there is shown as
 "Could not be read", and an accuracy that is not a number of metres as
-"accuracy could not be read".
+"accuracy could not be read". A number too large to hold (hundreds of
+digits typed into a hand-edited file) is read as no number there, as it
+is in the ledger, the works record and the Portfolio page's summaries,
+in both apps; the Streamlit app used to raise an error on one.
 
 ## 12. Scanned sheets
 

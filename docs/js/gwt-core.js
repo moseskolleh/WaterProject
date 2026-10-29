@@ -24287,7 +24287,8 @@
   function summaryVerdictState(summary) {
     var raw = String((summary && summary.water_verdict) || '').trim().toLowerCase();
     if (!raw) return [null, false];
-    var schema = Number((summary && summary.verdict_schema) || 0) || 0;
+    /* read as every summary number is (summaryNum), as Python reads it */
+    var schema = summaryNum(summary ? summary.verdict_schema : null) || 0;
     if (schema >= VERDICT_SCHEMA) {
       return [own(VERDICT_SHORT, raw) ? raw : null, false];
     }
@@ -25266,6 +25267,16 @@
     return a > b ? 1 : a < b ? -1 : 0;
   }
 
+  /* ledger._one_borehole: whether outcomes name one borehole, one reference
+   * and one completion date in all of them and not both blank */
+  function ledgerOneBorehole(outcomes) {
+    /** @type {Object<string, boolean>} */
+    var names = {};
+    outcomes.forEach(function (o) { names[JSON.stringify([o.borehole_ref, o.completion_date])] = true; });
+    var keys = Object.keys(names);
+    return keys.length === 1 && keys[0] !== JSON.stringify(['', '']);
+  }
+
   /** ledger.pool_ledgers: the entries of many projects' ledgers, each once.
    * An entry found in more than one file is kept once, the copy whose
    * borehole outcome is best established (an outcome over none, a known
@@ -25275,8 +25286,10 @@
    * taken in a fixed order of what they hold, so the pool is the same
    * whatever the order of the files. Each kept entry carries the label of
    * the project it came from as project, its ledger's identity as
-   * project_id, how many files it was found in as copies, and whether those
-   * copies hold different outcomes as copies_differ.
+   * project_id, how many files it was found in as copies, whether those
+   * copies hold different outcomes as copies_differ, and whether those
+   * different outcomes also fail to name one borehole by one reference and
+   * completion date as copies_borehole_differs.
    * @param {Array<Array<*>>} items [project label, ledger] pairs
    * @returns {Rec[]} */
   function poolLedgers(items) {
@@ -25313,8 +25326,9 @@
     });
     return order.map(function (pid) {
       var held = kept[pid];
+      var differ = own(outcomes, pid) && outcomes[pid].length > 1;
       return Object.assign({}, held[0], { project: held[1], project_id: held[2], copies: copies[pid],
-        copies_differ: own(outcomes, pid) && outcomes[pid].length > 1 });
+        copies_differ: differ, copies_borehole_differs: differ && !ledgerOneBorehole(outcomes[pid]) });
     });
   }
 
@@ -25322,9 +25336,10 @@
    * (told apart by their ledgers' identities, else by their labels), those
    * drilled, those drilled whose prediction was recorded before, how those
    * drilled turned out, and the points found in more than one file (copies),
-   * those whose copies hold different outcomes (copies_differ), and of those
-   * the ones from ledgers with no identity (copies_unsure), whose copies may
-   * be two projects.
+   * those whose copies hold different outcomes (copies_differ), of those the
+   * ones from ledgers with no identity (copies_unsure), whose copies may be
+   * two projects, and of the rest the ones whose outcomes do not name one
+   * borehole (copies_borehole_differs), which may be two boreholes.
    * @param {Rec[]} pooled
    * @returns {Rec} */
   function ledgerCounts(pooled) {
@@ -25335,6 +25350,7 @@
       projects[e.project_id ? 'id:' + e.project_id : 'label:' + e.project] = true;
     });
     var differ = pooled.filter(function (e) { return e.copies_differ === true; });
+    var named = differ.filter(function (e) { return !!e.project_id; });
     return {
       points: pooled.length,
       projects: Object.keys(projects).length,
@@ -25345,13 +25361,16 @@
       unknown: drilled.filter(function (e) { return e.outcome.success === null; }).length,
       copies: pooled.filter(function (e) { return (e.copies === undefined ? 1 : e.copies) > 1; }).length,
       copies_differ: differ.length,
-      copies_unsure: differ.filter(function (e) { return !e.project_id; }).length,
+      copies_unsure: differ.length - named.length,
+      copies_borehole_differs: named.filter(function (e) { return e.copies_borehole_differs === true; }).length,
     };
   }
 
   /** ledger.ledger_summary: what a pooled ledger holds, in a sentence; then,
    * where a point was found in more than one file, the rule that chose the
-   * copy counted, and a sentence for the points whose copies disagree.
+   * copy counted, and a sentence for the points whose copies disagree: an
+   * older record where their ledgers have an identity and their outcomes
+   * name one borehole, else the two things it may be.
    * @param {Rec[]} pooled
    * @returns {string} */
   function ledgerSummary(pooled) {
@@ -25360,8 +25379,11 @@
     var text = phrase('ledger.pool_counts', { points: counts.points, projects: counts.projects,
       drilled: counts.drilled, forecast: counts.forecast });
     if (counts.copies) text += ' ' + phrase('ledger.pool_copies', { copies: counts.copies });
-    var differ = counts.copies_differ - counts.copies_unsure;
+    var differ = counts.copies_differ - counts.copies_unsure - counts.copies_borehole_differs;
     if (differ) text += ' ' + phrase('ledger.pool_copies_differ', { differ: differ });
+    if (counts.copies_borehole_differs) {
+      text += ' ' + phrase('ledger.pool_copies_borehole', { points: counts.copies_borehole_differs });
+    }
     if (counts.copies_unsure) {
       text += ' ' + phrase('ledger.pool_copies_unsure', { unsure: counts.copies_unsure });
     }
@@ -26120,8 +26142,9 @@
    * is the project's completion, or where the project holds no log the
    * outcome its ledger kept; its forecast the chance recorded before
    * drilling at the point it was drilled at; its identifier that point's,
-   * else one hashed from its reference, position and place, and from the
-   * identity of the project's ledger where it has one.
+   * else one hashed from its reference, position and place: not from the
+   * ledger's identity, which a save made before any prediction was recorded
+   * does not have.
    * @param {Rec} site the project's site details
    * @param {DrillingLog|null} log
    * @param {PumpingAnalysis|null} analysis
@@ -26175,7 +26198,7 @@
     var rid = drilled !== null ? drilled.id
       : pointId('borehole ' + ref, at.easting === undefined ? null : at.easting,
         at.northing === undefined ? null : at.northing, at.utm_zone === undefined ? null : at.utm_zone,
-        community, district, held.project_id || '');
+        community, district);
     return {
       borehole_ref: ref,
       checklist: checklist,

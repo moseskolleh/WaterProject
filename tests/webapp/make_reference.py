@@ -3047,6 +3047,7 @@ def build() -> dict:
     out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
     out["gate_logs"] = {"feet": GATE_FEET_LOG, "set_aside": GATE_SET_ASIDE_LOG}
     out["photo_evidence"] = photo_evidence_reference()
+    out["too_large"] = too_large_reference()
     out["field_kit"] = field_kit_reference()
     out["airlift"] = airlift_reference()
     out["pumping_spread"] = pumping_spread_reference()
@@ -4821,6 +4822,11 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
     bare = [{"point": dict(survey[0]["point"], easting=None, northing=None), "prediction": survey[0]["prediction"]}]
     village = [L.attach_outcome(L.record_predictions(L.empty_ledger(), bare, on, False, "0.3.0")[0], outcome)
                for on, outcome in (("2025-02-01", dry), ("2026-02-01", timbo))]
+    # the same two holes in two projects whose predictions were first
+    # recorded on the same day: one identity, so one id, and their outcomes
+    # name two boreholes, so the summary does not call one an older record
+    same_day = [L.attach_outcome(L.record_predictions(L.empty_ledger(), bare, "2026-02-01", False, "0.3.0")[0],
+                                 outcome) for outcome in (dry, timbo)]
     # the same two holes in ledgers written before a ledger had an
     # identity: one id, so one is counted, and the summary says it may be
     # either an older record or two projects
@@ -4832,6 +4838,7 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
                    ["Rokel, tested", L.attach_outcome(one, timbo)]],
         "alike": [["Rokel", L.attach_outcome(one, tested)], ["Rokel again", L.attach_outcome(one, timbo)]],
         "village": [["Rokel (Port Loko)", village[0]], ["Rokel (Port Loko)", village[1]]],
+        "same_day": [["Rokel (Port Loko)", same_day[0]], ["Rokel (Port Loko)", same_day[1]]],
         "legacy": [["Rokel (Port Loko)", legacy[0]], ["Rokel (Port Loko)", legacy[1]]],
     }
     pools = []
@@ -6067,6 +6074,23 @@ def scorecards_reference() -> dict:
     timbo = SC.works_record(_ns(timbo_inputs["site"]), timbo_log, None, None, timbo_inputs["answers"],
                             timbo_inputs["metres"], timbo_inputs["procurement"])
     timbo_files = [("Dr Timbo", timbo, None)]
+    # Dr Timbo's borehole saved before any prediction was recorded, and again
+    # once predictions at two points with no position leave it paired with
+    # no point: one identifier, with no ledger identity in it, so one borehole
+    from groundwater import ledger as L
+
+    unpaired_survey = L.survey_predictions(
+        [_ns({"sounding_id": name, "depth_to_basement_m": 20.0, "basement_not_resolved": False,
+              "investigation_depth_m": 60.0, "water_zones": [[8.0, 20.0]], "aquifer_thickness_m": 12.0,
+              "max_drilling_depth_m": 35.0, "drilling_depth_capped": False, "fit_error_percent": 3.0,
+              "site_easting": None, "site_northing": None, "layers": []}) for name in ("VES 1", "VES 2")],
+        None, None, _ns({"community": "Dr Timbo", "district": "Port Loko", "utm_zone": 28}))
+    unpaired_ledgers = [L.empty_ledger(),
+                        L.record_predictions(L.empty_ledger(), unpaired_survey, "2018-06-01", True, "0.3.0")[0]]
+    unpaired_records = [SC.works_record(_ns(timbo_inputs["site"]), timbo_log, None, ledger)
+                        for ledger in unpaired_ledgers]
+    unpaired_files = [(f"save {k + 1}", record, ledger)
+                      for k, (record, ledger) in enumerate(zip(unpaired_records, unpaired_ledgers, strict=True))]
 
     saved = serialize_project({"meta_community": "Dr Timbo", "works_record": timbo,
                                "proc_contract_lines": timbo_inputs["procurement"]["lines"]}, "0.3.0")
@@ -6076,6 +6100,8 @@ def scorecards_reference() -> dict:
         "days": [{"text": text, "expect": SC.written_day(text)} for text in SCORECARD_DAYS],
         "timbo": {"inputs": timbo_inputs, "record": timbo,
                   "content": SC.scorecard_content(timbo_files, "2026-10-29")},
+        "unpaired": {"ledgers": unpaired_ledgers, "records": unpaired_records,
+                     "boreholes": SC.scorecard_boreholes(unpaired_files)},
         "file": {"yaml": saved.decode("utf-8"), "expect": deserialize_project(saved)["works"]},
     }
 
@@ -7496,6 +7522,83 @@ def photo_evidence_reference() -> dict:
             for name, state in gate.items()
         },
         "gate_states": gate,
+    }
+
+
+def too_large_reference() -> dict:
+    """Whole numbers too large for a float, as a hand-edited project file
+    can hold them: YAML reads 400 digits as a whole number Python's float()
+    cannot hold, and the browser's reader as Infinity. Python raised
+    OverflowError on each of these where the browser left a blank; each is
+    blank in both now. The file is carried as text, which both engines
+    read, since the reference's own JSON cannot hold such a number in a
+    way --check could compare. A summary's verdict schema is read as its
+    other numbers are, so ".inf" (which Python's int() raised on) and such a
+    number both read as no schema, and "2.0" as schema 2 in both. A
+    calibration set file holding such a number is refused in the same words
+    by both."""
+    import re
+
+    import yaml
+
+    from groundwater import calibration_sets as CS
+    from groundwater import ledger as L
+    from groundwater import scorecards as SC
+    from groundwater.photos import describe_provenance
+
+    big = int("9" * 400)
+    base = {"sha256": "ab" * 32, "taken_at": "2026-10-03T09:00:00Z", "time_source": "exif",
+            "position_source": "exif", "position_note": "refused"}
+    held = {
+        "photos": [dict(base, position={"lat": big, "lon": -12.1}),
+                   dict(base, position={"lat": 8.5, "lon": -big}),
+                   dict(base, position={"lat": 8.5, "lon": -12.1, "accuracy_m": big})],
+        "summaries": [{"community": "Rokel", "district": "Port Loko", "status": "Successful", "total_depth_m": big,
+                       "safe_yield_m3_per_h": -big, "cost_per_meter_usd": big, "easting": big,
+                       "northing": 936225.0, "utm_zone": big},
+                      {"community": "Kenema", "total_depth_m": 45.0, "easting": 694667.0, "northing": 936225.0,
+                       "utm_zone": big, "status": "Dry hole"},
+                      {"community": "Bo", "water_verdict": "aesthetic", "verdict_schema": float("inf")},
+                      {"community": "Kono", "water_verdict": "aesthetic", "verdict_schema": big},
+                      {"community": "Kambia", "water_verdict": "aesthetic", "verdict_schema": "2.0"},
+                      {"community": "Bonthe", "water_verdict": "aesthetic", "verdict_schema": -float("inf")}],
+        "ledger": {"drilled": None, "project_id": "0a1b2c3d4e5f", "entries": [
+            {"id": "a1", "point": {"sounding_id": "VES 1", "easting": big, "northing": 926355.5, "utm_zone": big},
+             "prediction": {"depth_to_basement_m": big, "layers": [[0, big, 100], [5, 9, 40]],
+                            "odds": {"probability": 0.5, "effective_n": big}},
+             "before_outcome": True, "recorded_on": "2026-10-01",
+             "outcome": {"total_depth_m": big, "water_strikes_m": [big, 12], "success": True,
+                         "success_basis": "recorded_success", "utm_zone": big},
+             "pairing": {"how": "only", "distance_m": big}}]},
+        "works": {"id": "w1", "drilled": True, "contract": True, "variations_signed": big, "variations_unsigned": 0,
+                  "variation_usd": 1.0, "logged_m": big, "claimed_m": 70.0, "forecast": big,
+                  "checklist": {"drilling": {"answered": big, "failed": []}}},
+    }
+    text = yaml.safe_dump(held, sort_keys=False)
+    file = yaml.safe_load(text)
+    summaries = file["summaries"]
+    plain = CS.set_yaml(CS.default_set())
+    sets = []
+    for key in ("boreholes", "success_yield_m3_per_h", "unknown"):
+        bad = re.sub(rf"(\n *{key}: )\S+", lambda m: m.group(1) + "9" * 400, plain, count=1)
+        assert bad != plain
+        try:
+            CS.read_set(bad)
+        except ValueError as exc:
+            sets.append({"yaml": bad, "refused": str(exc)})
+        else:
+            raise AssertionError(f"a set with {key} of 400 digits was read")
+    return {
+        "yaml": text,
+        "sets": sets,
+        "photos": [describe_provenance(r) for r in file["photos"]],
+        "rows": clean(portfolio_rows(summaries)),
+        "points": [[p["label"], clean(p["lat"]), clean(p["lon"]), p["status"]] for p in portfolio_points(summaries)],
+        "stats": clean(portfolio_stats(summaries)),
+        "details": [[list(row) for row in site_detail(s)] for s in summaries],
+        "one_pagers": [site_one_pager(s) for s in summaries],
+        "ledger": L.clean_ledger(file["ledger"]),
+        "works": SC.clean_works(file["works"]),
     }
 
 

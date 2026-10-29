@@ -95265,7 +95265,8 @@
      "project": "Rokel again",
      "project_id": "142b0e310aac",
      "copies": 3,
-     "copies_differ": false
+     "copies_differ": false,
+     "copies_borehole_differs": false
     },
     {
      "before_outcome": true,
@@ -95327,7 +95328,8 @@
      "project": "Rokel",
      "project_id": "142b0e310aac",
      "copies": 3,
-     "copies_differ": false
+     "copies_differ": false,
+     "copies_borehole_differs": false
     },
     {
      "before_outcome": true,
@@ -95366,7 +95368,8 @@
      "project": "Rokel",
      "project_id": "142b0e310aac",
      "copies": 3,
-     "copies_differ": false
+     "copies_differ": false,
+     "copies_borehole_differs": false
     },
     {
      "before_outcome": false,
@@ -95430,7 +95433,8 @@
      "project": "Rokel",
      "project_id": "142b0e310aac",
      "copies": 1,
-     "copies_differ": false
+     "copies_differ": false,
+     "copies_borehole_differs": false
     },
     {
      "before_outcome": true,
@@ -95572,7 +95576,8 @@
      "project": "Kuntolo",
      "project_id": "baf46863cf25",
      "copies": 1,
-     "copies_differ": false
+     "copies_differ": false,
+     "copies_borehole_differs": false
     },
     {
      "before_outcome": true,
@@ -95639,7 +95644,8 @@
      "project": "Kuntolo",
      "project_id": "baf46863cf25",
      "copies": 1,
-     "copies_differ": false
+     "copies_differ": false,
+     "copies_borehole_differs": false
     }
    ],
    "counts": {
@@ -95652,7 +95658,8 @@
     "unknown": 0,
     "copies": 3,
     "copies_differ": 0,
-    "copies_unsure": 0
+    "copies_unsure": 0,
+    "copies_borehole_differs": 0
    },
    "header": [
     "Project",
@@ -96325,7 +96332,8 @@
       "project": "Rokel, tested",
       "project_id": "5eaf2207a70a",
       "copies": 2,
-      "copies_differ": true
+      "copies_differ": true,
+      "copies_borehole_differs": false
      }
     ],
     "counts": {
@@ -96338,7 +96346,8 @@
      "unknown": 0,
      "copies": 1,
      "copies_differ": 1,
-     "copies_unsure": 0
+     "copies_unsure": 0,
+     "copies_borehole_differs": 0
     },
     "summary": "1 survey point predicted in 1 project, 1 of them drilled; 1 of the drilled points had their prediction recorded before drilling. 1 of the points was found in more than one file and is counted once. The copy kept is the one whose borehole outcome is best established: a pumping test over the driller's word, and the driller's word over an outcome not known yet or none. Between copies alike in that, it is the one recorded before drilling, then the one with more of its outcome recorded, then the later recording. The copies of 1 point disagree on what the borehole found, so one of the files holds an older record."
    },
@@ -96958,7 +96967,8 @@
       "project": "Rokel, tested",
       "project_id": "5eaf2207a70a",
       "copies": 2,
-      "copies_differ": true
+      "copies_differ": true,
+      "copies_borehole_differs": false
      }
     ],
     "counts": {
@@ -96971,7 +96981,8 @@
      "unknown": 0,
      "copies": 1,
      "copies_differ": 1,
-     "copies_unsure": 0
+     "copies_unsure": 0,
+     "copies_borehole_differs": 0
     },
     "summary": "1 survey point predicted in 1 project, 1 of them drilled; 1 of the drilled points had their prediction recorded before drilling. 1 of the points was found in more than one file and is counted once. The copy kept is the one whose borehole outcome is best established: a pumping test over the driller's word, and the driller's word over an outcome not known yet or none. Between copies alike in that, it is the one recorded before drilling, then the one with more of its outcome recorded, then the later recording. The copies of 1 point disagree on what the borehole found, so one of the files holds an older record."
    },
@@ -97594,7 +97605,8 @@
       "project": "Rokel again",
       "project_id": "5eaf2207a70a",
       "copies": 2,
-      "copies_differ": true
+      "copies_differ": true,
+      "copies_borehole_differs": false
      }
     ],
     "counts": {
@@ -97607,7 +97619,8 @@
      "unknown": 0,
      "copies": 1,
      "copies_differ": 1,
-     "copies_unsure": 0
+     "copies_unsure": 0,
+     "copies_borehole_differs": 0
     },
     "summary": "1 survey point predicted in 1 project, 1 of them drilled; 1 of the drilled points had their prediction recorded before drilling. 1 of the points was found in more than one file and is counted once. The copy kept is the one whose borehole outcome is best established: a pumping test over the driller's word, and the driller's word over an outcome not known yet or none. Between copies alike in that, it is the one recorded before drilling, then the one with more of its outcome recorded, then the later recording. The copies of 1 point disagree on what the borehole found, so one of the files holds an older record."
    },
@@ -98230,7 +98243,8 @@
       "project": "Rokel again",
       "project_id": "5eaf2207a70a",
       "copies": 2,
-      "copies_differ": true
+      "copies_differ": true,
+      "copies_borehole_differs": false
      }
     ],
     "counts": {
@@ -98243,7 +98257,8 @@
      "unknown": 0,
      "copies": 1,
      "copies_differ": 1,
-     "copies_unsure": 0
+     "copies_unsure": 0,
+     "copies_borehole_differs": 0
     },
     "summary": "1 survey point predicted in 1 project, 1 of them drilled; 1 of the drilled points had their prediction recorded before drilling. 1 of the points was found in more than one file and is counted once. The copy kept is the one whose borehole outcome is best established: a pumping test over the driller's word, and the driller's word over an outcome not known yet or none. Between copies alike in that, it is the one recorded before drilling, then the one with more of its outcome recorded, then the later recording. The copies of 1 point disagree on what the borehole found, so one of the files holds an older record."
    },
@@ -98714,7 +98729,8 @@
       "project": "Rokel (Port Loko)",
       "project_id": "a584301415b6",
       "copies": 1,
-      "copies_differ": false
+      "copies_differ": false,
+      "copies_borehole_differs": false
      },
      {
       "before_outcome": true,
@@ -98916,7 +98932,8 @@
       "project": "Rokel (Port Loko)",
       "project_id": "8beb98240136",
       "copies": 1,
-      "copies_differ": false
+      "copies_differ": false,
+      "copies_borehole_differs": false
      }
     ],
     "counts": {
@@ -98929,7 +98946,8 @@
      "unknown": 0,
      "copies": 0,
      "copies_differ": 0,
-     "copies_unsure": 0
+     "copies_unsure": 0,
+     "copies_borehole_differs": 0
     },
     "summary": "2 survey points predicted in 2 projects, 2 of them drilled; 2 of the drilled points had their prediction recorded before drilling."
    },
@@ -99476,7 +99494,8 @@
       "project": "Rokel (Port Loko)",
       "project_id": "8beb98240136",
       "copies": 1,
-      "copies_differ": false
+      "copies_differ": false,
+      "copies_borehole_differs": false
      },
      {
       "before_outcome": true,
@@ -99602,7 +99621,8 @@
       "project": "Rokel (Port Loko)",
       "project_id": "a584301415b6",
       "copies": 1,
-      "copies_differ": false
+      "copies_differ": false,
+      "copies_borehole_differs": false
      }
     ],
     "counts": {
@@ -99615,9 +99635,1134 @@
      "unknown": 0,
      "copies": 0,
      "copies_differ": 0,
-     "copies_unsure": 0
+     "copies_unsure": 0,
+     "copies_borehole_differs": 0
     },
     "summary": "2 survey points predicted in 2 projects, 2 of them drilled; 2 of the drilled points had their prediction recorded before drilling."
+   },
+   {
+    "name": "same_day",
+    "items": [
+     [
+      "Rokel (Port Loko)",
+      {
+       "drilled": null,
+       "entries": [
+        {
+         "before_outcome": true,
+         "id": "15a64075853f",
+         "outcome": {
+          "borehole_ref": "BH-7",
+          "contractor": "",
+          "easting": 708962.0,
+          "northing": 926351.0,
+          "utm_zone": 28,
+          "completion_date": "2026-11-02",
+          "total_depth_m": 45.0,
+          "status": "Dry hole",
+          "status_class": "dry",
+          "basement_m": null,
+          "intervals": [
+           [
+            0.0,
+            6.0,
+            "laterite"
+           ],
+           [
+            6.0,
+            30.0,
+            "saprolite"
+           ],
+           [
+            30.0,
+            45.0,
+            "weathered"
+           ]
+          ],
+          "water_strikes_m": [],
+          "safe_yield_m3_per_h": null,
+          "safe_yield_band_m3_per_h": null,
+          "yield_confidence": null,
+          "holds_at_dry_season": null,
+          "success_yield_m3_per_h": 1.0,
+          "success": false,
+          "success_basis": "recorded_failure"
+         },
+         "pairing": {
+          "how": "only",
+          "distance_m": null
+         },
+         "point": {
+          "community": "Rokel",
+          "district": "Port Loko",
+          "easting": null,
+          "northing": null,
+          "sounding_id": "VES 1",
+          "utm_zone": 28
+         },
+         "prediction": {
+          "basement_band_m": [
+           22.1,
+           28.2,
+           34.0
+          ],
+          "basement_resolved": true,
+          "basement_unresolved_share": 0.0,
+          "depth_to_basement_m": 28.4,
+          "drilling_depth_band_m": [
+           35.0,
+           50.0
+          ],
+          "drilling_depth_m": 35.0,
+          "drilling_depth_minimum": false,
+          "fit_error_percent": 3.46,
+          "investigation_depth_m": 60.0,
+          "layers": [
+           [
+            0.0,
+            2.4,
+            812.4
+           ],
+           [
+            2.4,
+            28.4,
+            96.0
+           ],
+           [
+            28.4,
+            null,
+            4210.0
+           ]
+          ],
+          "odds": {
+           "probability": 0.612,
+           "low": 0.388,
+           "high": 0.78,
+           "prior": 0.55,
+           "effective_n": 10.0,
+           "success_yield_m3_per_h": 1.0,
+           "status": "provisional",
+           "matched": "class",
+           "calibration": "the toolkit's provisional default, adopted by no named person",
+           "bgs_code": "B-L",
+           "glg": "pCm"
+          },
+          "range_sampled": true,
+          "suitability": null,
+          "survey_team": "A. Kamara",
+          "water_bearing_m": 16.0,
+          "water_zones_m": [
+           [
+            8.0,
+            20.0
+           ],
+           [
+            24.0,
+            28.0
+           ]
+          ],
+          "weathered_band_m": [
+           14.0,
+           16.1,
+           19.2
+          ]
+         },
+         "recorded_on": "2026-02-01",
+         "toolkit": "0.3.0"
+        }
+       ],
+       "project_id": "8beb98240136"
+      }
+     ],
+     [
+      "Rokel (Port Loko)",
+      {
+       "drilled": null,
+       "entries": [
+        {
+         "before_outcome": true,
+         "id": "15a64075853f",
+         "outcome": {
+          "borehole_ref": "BH-1",
+          "contractor": "WiNGiN Heavy Duty Machines Co. Ltd",
+          "easting": null,
+          "northing": null,
+          "utm_zone": 28,
+          "completion_date": "13th May, 2018",
+          "total_depth_m": 70.0,
+          "status": "Successful",
+          "status_class": "successful",
+          "basement_m": 40.0,
+          "intervals": [
+           [
+            0.0,
+            5.0,
+            "topsoil"
+           ],
+           [
+            5.0,
+            10.0,
+            "laterite"
+           ],
+           [
+            10.0,
+            15.0,
+            "laterite"
+           ],
+           [
+            15.0,
+            20.0,
+            "saprolite"
+           ],
+           [
+            20.0,
+            25.0,
+            "saprolite"
+           ],
+           [
+            25.0,
+            30.0,
+            "fracture"
+           ],
+           [
+            30.0,
+            35.0,
+            "fracture"
+           ],
+           [
+            35.0,
+            40.0,
+            "weathered"
+           ],
+           [
+            40.0,
+            45.0,
+            "basement"
+           ],
+           [
+            45.0,
+            49.0,
+            "basement"
+           ],
+           [
+            49.0,
+            50.0,
+            "fracture"
+           ],
+           [
+            50.0,
+            52.0,
+            "fracture"
+           ],
+           [
+            52.0,
+            55.0,
+            "basement"
+           ],
+           [
+            55.0,
+            60.0,
+            "basement"
+           ],
+           [
+            60.0,
+            62.0,
+            "fracture"
+           ],
+           [
+            62.0,
+            65.0,
+            "basement"
+           ],
+           [
+            65.0,
+            70.0,
+            "basement"
+           ]
+          ],
+          "water_strikes_m": [
+           12.0,
+           30.0
+          ],
+          "safe_yield_m3_per_h": 0.39,
+          "safe_yield_band_m3_per_h": [
+           0.35,
+           0.44
+          ],
+          "yield_confidence": "indicative",
+          "holds_at_dry_season": true,
+          "success_yield_m3_per_h": 1.0,
+          "success": false,
+          "success_basis": "tested"
+         },
+         "pairing": {
+          "how": "only",
+          "distance_m": null
+         },
+         "point": {
+          "community": "Rokel",
+          "district": "Port Loko",
+          "easting": null,
+          "northing": null,
+          "sounding_id": "VES 1",
+          "utm_zone": 28
+         },
+         "prediction": {
+          "basement_band_m": [
+           22.1,
+           28.2,
+           34.0
+          ],
+          "basement_resolved": true,
+          "basement_unresolved_share": 0.0,
+          "depth_to_basement_m": 28.4,
+          "drilling_depth_band_m": [
+           35.0,
+           50.0
+          ],
+          "drilling_depth_m": 35.0,
+          "drilling_depth_minimum": false,
+          "fit_error_percent": 3.46,
+          "investigation_depth_m": 60.0,
+          "layers": [
+           [
+            0.0,
+            2.4,
+            812.4
+           ],
+           [
+            2.4,
+            28.4,
+            96.0
+           ],
+           [
+            28.4,
+            null,
+            4210.0
+           ]
+          ],
+          "odds": {
+           "probability": 0.612,
+           "low": 0.388,
+           "high": 0.78,
+           "prior": 0.55,
+           "effective_n": 10.0,
+           "success_yield_m3_per_h": 1.0,
+           "status": "provisional",
+           "matched": "class",
+           "calibration": "the toolkit's provisional default, adopted by no named person",
+           "bgs_code": "B-L",
+           "glg": "pCm"
+          },
+          "range_sampled": true,
+          "suitability": null,
+          "survey_team": "A. Kamara",
+          "water_bearing_m": 16.0,
+          "water_zones_m": [
+           [
+            8.0,
+            20.0
+           ],
+           [
+            24.0,
+            28.0
+           ]
+          ],
+          "weathered_band_m": [
+           14.0,
+           16.1,
+           19.2
+          ]
+         },
+         "recorded_on": "2026-02-01",
+         "toolkit": "0.3.0"
+        }
+       ],
+       "project_id": "8beb98240136"
+      }
+     ]
+    ],
+    "pooled": [
+     {
+      "before_outcome": true,
+      "id": "15a64075853f",
+      "outcome": {
+       "basement_m": 40.0,
+       "borehole_ref": "BH-1",
+       "completion_date": "13th May, 2018",
+       "contractor": "WiNGiN Heavy Duty Machines Co. Ltd",
+       "easting": null,
+       "holds_at_dry_season": true,
+       "intervals": [
+        [
+         0.0,
+         5.0,
+         "topsoil"
+        ],
+        [
+         5.0,
+         10.0,
+         "laterite"
+        ],
+        [
+         10.0,
+         15.0,
+         "laterite"
+        ],
+        [
+         15.0,
+         20.0,
+         "saprolite"
+        ],
+        [
+         20.0,
+         25.0,
+         "saprolite"
+        ],
+        [
+         25.0,
+         30.0,
+         "fracture"
+        ],
+        [
+         30.0,
+         35.0,
+         "fracture"
+        ],
+        [
+         35.0,
+         40.0,
+         "weathered"
+        ],
+        [
+         40.0,
+         45.0,
+         "basement"
+        ],
+        [
+         45.0,
+         49.0,
+         "basement"
+        ],
+        [
+         49.0,
+         50.0,
+         "fracture"
+        ],
+        [
+         50.0,
+         52.0,
+         "fracture"
+        ],
+        [
+         52.0,
+         55.0,
+         "basement"
+        ],
+        [
+         55.0,
+         60.0,
+         "basement"
+        ],
+        [
+         60.0,
+         62.0,
+         "fracture"
+        ],
+        [
+         62.0,
+         65.0,
+         "basement"
+        ],
+        [
+         65.0,
+         70.0,
+         "basement"
+        ]
+       ],
+       "northing": null,
+       "safe_yield_band_m3_per_h": [
+        0.35,
+        0.44
+       ],
+       "safe_yield_m3_per_h": 0.39,
+       "status": "Successful",
+       "status_class": "successful",
+       "success": false,
+       "success_basis": "tested",
+       "success_yield_m3_per_h": 1.0,
+       "total_depth_m": 70.0,
+       "utm_zone": 28,
+       "water_strikes_m": [
+        12.0,
+        30.0
+       ],
+       "yield_confidence": "indicative"
+      },
+      "pairing": {
+       "distance_m": null,
+       "how": "only"
+      },
+      "point": {
+       "community": "Rokel",
+       "district": "Port Loko",
+       "easting": null,
+       "northing": null,
+       "sounding_id": "VES 1",
+       "utm_zone": 28
+      },
+      "prediction": {
+       "basement_band_m": [
+        22.1,
+        28.2,
+        34.0
+       ],
+       "basement_resolved": true,
+       "basement_unresolved_share": 0.0,
+       "depth_to_basement_m": 28.4,
+       "drilling_depth_band_m": [
+        35.0,
+        50.0
+       ],
+       "drilling_depth_m": 35.0,
+       "drilling_depth_minimum": false,
+       "fit_error_percent": 3.46,
+       "investigation_depth_m": 60.0,
+       "layers": [
+        [
+         0.0,
+         2.4,
+         812.4
+        ],
+        [
+         2.4,
+         28.4,
+         96.0
+        ],
+        [
+         28.4,
+         null,
+         4210.0
+        ]
+       ],
+       "odds": {
+        "probability": 0.612,
+        "low": 0.388,
+        "high": 0.78,
+        "prior": 0.55,
+        "effective_n": 10.0,
+        "success_yield_m3_per_h": 1.0,
+        "status": "provisional",
+        "matched": "class",
+        "calibration": "the toolkit's provisional default, adopted by no named person",
+        "bgs_code": "B-L",
+        "glg": "pCm"
+       },
+       "range_sampled": true,
+       "suitability": null,
+       "survey_team": "A. Kamara",
+       "water_bearing_m": 16.0,
+       "water_zones_m": [
+        [
+         8.0,
+         20.0
+        ],
+        [
+         24.0,
+         28.0
+        ]
+       ],
+       "weathered_band_m": [
+        14.0,
+        16.1,
+        19.2
+       ]
+      },
+      "recorded_on": "2026-02-01",
+      "toolkit": "0.3.0",
+      "project": "Rokel (Port Loko)",
+      "project_id": "8beb98240136",
+      "copies": 2,
+      "copies_differ": true,
+      "copies_borehole_differs": true
+     }
+    ],
+    "counts": {
+     "points": 1,
+     "projects": 1,
+     "drilled": 1,
+     "forecast": 1,
+     "success": 0,
+     "failure": 1,
+     "unknown": 0,
+     "copies": 1,
+     "copies_differ": 1,
+     "copies_unsure": 0,
+     "copies_borehole_differs": 1
+    },
+    "summary": "1 survey point predicted in 1 project, 1 of them drilled; 1 of the drilled points had their prediction recorded before drilling. 1 of the points was found in more than one file and is counted once. The copy kept is the one whose borehole outcome is best established: a pumping test over the driller's word, and the driller's word over an outcome not known yet or none. Between copies alike in that, it is the one recorded before drilling, then the one with more of its outcome recorded, then the later recording. The copies of 1 point disagree on what the borehole found and do not give it one reference and completion date. Either a drilling log was corrected between one save and the next, so one of the files holds an older record, or two boreholes were taken for one (a hole and its replacement in copies of one project's file, or two projects whose points share a name and a place and whose predictions were first recorded on the same day), and the borehole of one of them is not counted."
+   },
+   {
+    "name": "same_day",
+    "items": [
+     [
+      "Rokel (Port Loko)",
+      {
+       "drilled": null,
+       "entries": [
+        {
+         "before_outcome": true,
+         "id": "15a64075853f",
+         "outcome": {
+          "borehole_ref": "BH-1",
+          "contractor": "WiNGiN Heavy Duty Machines Co. Ltd",
+          "easting": null,
+          "northing": null,
+          "utm_zone": 28,
+          "completion_date": "13th May, 2018",
+          "total_depth_m": 70.0,
+          "status": "Successful",
+          "status_class": "successful",
+          "basement_m": 40.0,
+          "intervals": [
+           [
+            0.0,
+            5.0,
+            "topsoil"
+           ],
+           [
+            5.0,
+            10.0,
+            "laterite"
+           ],
+           [
+            10.0,
+            15.0,
+            "laterite"
+           ],
+           [
+            15.0,
+            20.0,
+            "saprolite"
+           ],
+           [
+            20.0,
+            25.0,
+            "saprolite"
+           ],
+           [
+            25.0,
+            30.0,
+            "fracture"
+           ],
+           [
+            30.0,
+            35.0,
+            "fracture"
+           ],
+           [
+            35.0,
+            40.0,
+            "weathered"
+           ],
+           [
+            40.0,
+            45.0,
+            "basement"
+           ],
+           [
+            45.0,
+            49.0,
+            "basement"
+           ],
+           [
+            49.0,
+            50.0,
+            "fracture"
+           ],
+           [
+            50.0,
+            52.0,
+            "fracture"
+           ],
+           [
+            52.0,
+            55.0,
+            "basement"
+           ],
+           [
+            55.0,
+            60.0,
+            "basement"
+           ],
+           [
+            60.0,
+            62.0,
+            "fracture"
+           ],
+           [
+            62.0,
+            65.0,
+            "basement"
+           ],
+           [
+            65.0,
+            70.0,
+            "basement"
+           ]
+          ],
+          "water_strikes_m": [
+           12.0,
+           30.0
+          ],
+          "safe_yield_m3_per_h": 0.39,
+          "safe_yield_band_m3_per_h": [
+           0.35,
+           0.44
+          ],
+          "yield_confidence": "indicative",
+          "holds_at_dry_season": true,
+          "success_yield_m3_per_h": 1.0,
+          "success": false,
+          "success_basis": "tested"
+         },
+         "pairing": {
+          "how": "only",
+          "distance_m": null
+         },
+         "point": {
+          "community": "Rokel",
+          "district": "Port Loko",
+          "easting": null,
+          "northing": null,
+          "sounding_id": "VES 1",
+          "utm_zone": 28
+         },
+         "prediction": {
+          "basement_band_m": [
+           22.1,
+           28.2,
+           34.0
+          ],
+          "basement_resolved": true,
+          "basement_unresolved_share": 0.0,
+          "depth_to_basement_m": 28.4,
+          "drilling_depth_band_m": [
+           35.0,
+           50.0
+          ],
+          "drilling_depth_m": 35.0,
+          "drilling_depth_minimum": false,
+          "fit_error_percent": 3.46,
+          "investigation_depth_m": 60.0,
+          "layers": [
+           [
+            0.0,
+            2.4,
+            812.4
+           ],
+           [
+            2.4,
+            28.4,
+            96.0
+           ],
+           [
+            28.4,
+            null,
+            4210.0
+           ]
+          ],
+          "odds": {
+           "probability": 0.612,
+           "low": 0.388,
+           "high": 0.78,
+           "prior": 0.55,
+           "effective_n": 10.0,
+           "success_yield_m3_per_h": 1.0,
+           "status": "provisional",
+           "matched": "class",
+           "calibration": "the toolkit's provisional default, adopted by no named person",
+           "bgs_code": "B-L",
+           "glg": "pCm"
+          },
+          "range_sampled": true,
+          "suitability": null,
+          "survey_team": "A. Kamara",
+          "water_bearing_m": 16.0,
+          "water_zones_m": [
+           [
+            8.0,
+            20.0
+           ],
+           [
+            24.0,
+            28.0
+           ]
+          ],
+          "weathered_band_m": [
+           14.0,
+           16.1,
+           19.2
+          ]
+         },
+         "recorded_on": "2026-02-01",
+         "toolkit": "0.3.0"
+        }
+       ],
+       "project_id": "8beb98240136"
+      }
+     ],
+     [
+      "Rokel (Port Loko)",
+      {
+       "drilled": null,
+       "entries": [
+        {
+         "before_outcome": true,
+         "id": "15a64075853f",
+         "outcome": {
+          "borehole_ref": "BH-7",
+          "contractor": "",
+          "easting": 708962.0,
+          "northing": 926351.0,
+          "utm_zone": 28,
+          "completion_date": "2026-11-02",
+          "total_depth_m": 45.0,
+          "status": "Dry hole",
+          "status_class": "dry",
+          "basement_m": null,
+          "intervals": [
+           [
+            0.0,
+            6.0,
+            "laterite"
+           ],
+           [
+            6.0,
+            30.0,
+            "saprolite"
+           ],
+           [
+            30.0,
+            45.0,
+            "weathered"
+           ]
+          ],
+          "water_strikes_m": [],
+          "safe_yield_m3_per_h": null,
+          "safe_yield_band_m3_per_h": null,
+          "yield_confidence": null,
+          "holds_at_dry_season": null,
+          "success_yield_m3_per_h": 1.0,
+          "success": false,
+          "success_basis": "recorded_failure"
+         },
+         "pairing": {
+          "how": "only",
+          "distance_m": null
+         },
+         "point": {
+          "community": "Rokel",
+          "district": "Port Loko",
+          "easting": null,
+          "northing": null,
+          "sounding_id": "VES 1",
+          "utm_zone": 28
+         },
+         "prediction": {
+          "basement_band_m": [
+           22.1,
+           28.2,
+           34.0
+          ],
+          "basement_resolved": true,
+          "basement_unresolved_share": 0.0,
+          "depth_to_basement_m": 28.4,
+          "drilling_depth_band_m": [
+           35.0,
+           50.0
+          ],
+          "drilling_depth_m": 35.0,
+          "drilling_depth_minimum": false,
+          "fit_error_percent": 3.46,
+          "investigation_depth_m": 60.0,
+          "layers": [
+           [
+            0.0,
+            2.4,
+            812.4
+           ],
+           [
+            2.4,
+            28.4,
+            96.0
+           ],
+           [
+            28.4,
+            null,
+            4210.0
+           ]
+          ],
+          "odds": {
+           "probability": 0.612,
+           "low": 0.388,
+           "high": 0.78,
+           "prior": 0.55,
+           "effective_n": 10.0,
+           "success_yield_m3_per_h": 1.0,
+           "status": "provisional",
+           "matched": "class",
+           "calibration": "the toolkit's provisional default, adopted by no named person",
+           "bgs_code": "B-L",
+           "glg": "pCm"
+          },
+          "range_sampled": true,
+          "suitability": null,
+          "survey_team": "A. Kamara",
+          "water_bearing_m": 16.0,
+          "water_zones_m": [
+           [
+            8.0,
+            20.0
+           ],
+           [
+            24.0,
+            28.0
+           ]
+          ],
+          "weathered_band_m": [
+           14.0,
+           16.1,
+           19.2
+          ]
+         },
+         "recorded_on": "2026-02-01",
+         "toolkit": "0.3.0"
+        }
+       ],
+       "project_id": "8beb98240136"
+      }
+     ]
+    ],
+    "pooled": [
+     {
+      "before_outcome": true,
+      "id": "15a64075853f",
+      "outcome": {
+       "basement_m": 40.0,
+       "borehole_ref": "BH-1",
+       "completion_date": "13th May, 2018",
+       "contractor": "WiNGiN Heavy Duty Machines Co. Ltd",
+       "easting": null,
+       "holds_at_dry_season": true,
+       "intervals": [
+        [
+         0.0,
+         5.0,
+         "topsoil"
+        ],
+        [
+         5.0,
+         10.0,
+         "laterite"
+        ],
+        [
+         10.0,
+         15.0,
+         "laterite"
+        ],
+        [
+         15.0,
+         20.0,
+         "saprolite"
+        ],
+        [
+         20.0,
+         25.0,
+         "saprolite"
+        ],
+        [
+         25.0,
+         30.0,
+         "fracture"
+        ],
+        [
+         30.0,
+         35.0,
+         "fracture"
+        ],
+        [
+         35.0,
+         40.0,
+         "weathered"
+        ],
+        [
+         40.0,
+         45.0,
+         "basement"
+        ],
+        [
+         45.0,
+         49.0,
+         "basement"
+        ],
+        [
+         49.0,
+         50.0,
+         "fracture"
+        ],
+        [
+         50.0,
+         52.0,
+         "fracture"
+        ],
+        [
+         52.0,
+         55.0,
+         "basement"
+        ],
+        [
+         55.0,
+         60.0,
+         "basement"
+        ],
+        [
+         60.0,
+         62.0,
+         "fracture"
+        ],
+        [
+         62.0,
+         65.0,
+         "basement"
+        ],
+        [
+         65.0,
+         70.0,
+         "basement"
+        ]
+       ],
+       "northing": null,
+       "safe_yield_band_m3_per_h": [
+        0.35,
+        0.44
+       ],
+       "safe_yield_m3_per_h": 0.39,
+       "status": "Successful",
+       "status_class": "successful",
+       "success": false,
+       "success_basis": "tested",
+       "success_yield_m3_per_h": 1.0,
+       "total_depth_m": 70.0,
+       "utm_zone": 28,
+       "water_strikes_m": [
+        12.0,
+        30.0
+       ],
+       "yield_confidence": "indicative"
+      },
+      "pairing": {
+       "distance_m": null,
+       "how": "only"
+      },
+      "point": {
+       "community": "Rokel",
+       "district": "Port Loko",
+       "easting": null,
+       "northing": null,
+       "sounding_id": "VES 1",
+       "utm_zone": 28
+      },
+      "prediction": {
+       "basement_band_m": [
+        22.1,
+        28.2,
+        34.0
+       ],
+       "basement_resolved": true,
+       "basement_unresolved_share": 0.0,
+       "depth_to_basement_m": 28.4,
+       "drilling_depth_band_m": [
+        35.0,
+        50.0
+       ],
+       "drilling_depth_m": 35.0,
+       "drilling_depth_minimum": false,
+       "fit_error_percent": 3.46,
+       "investigation_depth_m": 60.0,
+       "layers": [
+        [
+         0.0,
+         2.4,
+         812.4
+        ],
+        [
+         2.4,
+         28.4,
+         96.0
+        ],
+        [
+         28.4,
+         null,
+         4210.0
+        ]
+       ],
+       "odds": {
+        "probability": 0.612,
+        "low": 0.388,
+        "high": 0.78,
+        "prior": 0.55,
+        "effective_n": 10.0,
+        "success_yield_m3_per_h": 1.0,
+        "status": "provisional",
+        "matched": "class",
+        "calibration": "the toolkit's provisional default, adopted by no named person",
+        "bgs_code": "B-L",
+        "glg": "pCm"
+       },
+       "range_sampled": true,
+       "suitability": null,
+       "survey_team": "A. Kamara",
+       "water_bearing_m": 16.0,
+       "water_zones_m": [
+        [
+         8.0,
+         20.0
+        ],
+        [
+         24.0,
+         28.0
+        ]
+       ],
+       "weathered_band_m": [
+        14.0,
+        16.1,
+        19.2
+       ]
+      },
+      "recorded_on": "2026-02-01",
+      "toolkit": "0.3.0",
+      "project": "Rokel (Port Loko)",
+      "project_id": "8beb98240136",
+      "copies": 2,
+      "copies_differ": true,
+      "copies_borehole_differs": true
+     }
+    ],
+    "counts": {
+     "points": 1,
+     "projects": 1,
+     "drilled": 1,
+     "forecast": 1,
+     "success": 0,
+     "failure": 1,
+     "unknown": 0,
+     "copies": 1,
+     "copies_differ": 1,
+     "copies_unsure": 0,
+     "copies_borehole_differs": 1
+    },
+    "summary": "1 survey point predicted in 1 project, 1 of them drilled; 1 of the drilled points had their prediction recorded before drilling. 1 of the points was found in more than one file and is counted once. The copy kept is the one whose borehole outcome is best established: a pumping test over the driller's word, and the driller's word over an outcome not known yet or none. Between copies alike in that, it is the one recorded before drilling, then the one with more of its outcome recorded, then the later recording. The copies of 1 point disagree on what the borehole found and do not give it one reference and completion date. Either a drilling log was corrected between one save and the next, so one of the files holds an older record, or two boreholes were taken for one (a hole and its replacement in copies of one project's file, or two projects whose points share a name and a place and whose predictions were first recorded on the same day), and the borehole of one of them is not counted."
    },
    {
     "name": "legacy",
@@ -100160,7 +101305,8 @@
       "project": "Rokel (Port Loko)",
       "project_id": null,
       "copies": 2,
-      "copies_differ": true
+      "copies_differ": true,
+      "copies_borehole_differs": true
      }
     ],
     "counts": {
@@ -100173,7 +101319,8 @@
      "unknown": 0,
      "copies": 1,
      "copies_differ": 1,
-     "copies_unsure": 1
+     "copies_unsure": 1,
+     "copies_borehole_differs": 0
     },
     "summary": "1 survey point predicted in 1 project, 1 of them drilled; 1 of the drilled points had their prediction recorded before drilling. 1 of the points was found in more than one file and is counted once. The copy kept is the one whose borehole outcome is best established: a pumping test over the driller's word, and the driller's word over an outcome not known yet or none. Between copies alike in that, it is the one recorded before drilling, then the one with more of its outcome recorded, then the later recording. The copies of 1 point disagree on what the borehole found and come from files whose ledgers were written before a ledger had an identity of its own: either one of the files holds an older record, or two projects whose points share a name and a place were taken for one, and the borehole of one of them is not counted."
    },
@@ -100718,7 +101865,8 @@
       "project": "Rokel (Port Loko)",
       "project_id": null,
       "copies": 2,
-      "copies_differ": true
+      "copies_differ": true,
+      "copies_borehole_differs": true
      }
     ],
     "counts": {
@@ -100731,7 +101879,8 @@
      "unknown": 0,
      "copies": 1,
      "copies_differ": 1,
-     "copies_unsure": 1
+     "copies_unsure": 1,
+     "copies_borehole_differs": 0
     },
     "summary": "1 survey point predicted in 1 project, 1 of them drilled; 1 of the drilled points had their prediction recorded before drilling. 1 of the points was found in more than one file and is counted once. The copy kept is the one whose borehole outcome is best established: a pumping test over the driller's word, and the driller's word over an outcome not known yet or none. Between copies alike in that, it is the one recorded before drilling, then the one with more of its outcome recorded, then the later recording. The copies of 1 point disagree on what the borehole found and come from files whose ledgers were written before a ledger had an identity of its own: either one of the files holds an older record, or two projects whose points share a name and a place were taken for one, and the borehole of one of them is not counted."
    }
@@ -172844,6 +173993,167 @@
      "Adekile, D. (2014). Supervising Water Well Drilling: a Guide for Supervisors. RWSN/Skat, St Gallen."
     ]
    }
+  },
+  "unpaired": {
+   "ledgers": [
+    {
+     "drilled": null,
+     "entries": [],
+     "project_id": null
+    },
+    {
+     "drilled": null,
+     "entries": [
+      {
+       "id": "72fb8ad11cff",
+       "point": {
+        "sounding_id": "VES 1",
+        "easting": null,
+        "northing": null,
+        "utm_zone": 28,
+        "community": "Dr Timbo",
+        "district": "Port Loko"
+       },
+       "prediction": {
+        "depth_to_basement_m": 20.0,
+        "basement_resolved": true,
+        "investigation_depth_m": 60.0,
+        "water_zones_m": [
+         [
+          8.0,
+          20.0
+         ]
+        ],
+        "water_bearing_m": 12.0,
+        "drilling_depth_m": 35.0,
+        "drilling_depth_minimum": false,
+        "fit_error_percent": 3.0,
+        "range_sampled": false,
+        "basement_band_m": null,
+        "basement_unresolved_share": null,
+        "weathered_band_m": null,
+        "drilling_depth_band_m": null,
+        "odds": null,
+        "survey_team": "",
+        "layers": [],
+        "suitability": null
+       },
+       "recorded_on": "2018-06-01",
+       "before_outcome": false,
+       "toolkit": "0.3.0",
+       "outcome": null,
+       "pairing": null
+      },
+      {
+       "id": "0382c25c9aca",
+       "point": {
+        "sounding_id": "VES 2",
+        "easting": null,
+        "northing": null,
+        "utm_zone": 28,
+        "community": "Dr Timbo",
+        "district": "Port Loko"
+       },
+       "prediction": {
+        "depth_to_basement_m": 20.0,
+        "basement_resolved": true,
+        "investigation_depth_m": 60.0,
+        "water_zones_m": [
+         [
+          8.0,
+          20.0
+         ]
+        ],
+        "water_bearing_m": 12.0,
+        "drilling_depth_m": 35.0,
+        "drilling_depth_minimum": false,
+        "fit_error_percent": 3.0,
+        "range_sampled": false,
+        "basement_band_m": null,
+        "basement_unresolved_share": null,
+        "weathered_band_m": null,
+        "drilling_depth_band_m": null,
+        "odds": null,
+        "survey_team": "",
+        "layers": [],
+        "suitability": null
+       },
+       "recorded_on": "2018-06-01",
+       "before_outcome": false,
+       "toolkit": "0.3.0",
+       "outcome": null,
+       "pairing": null
+      }
+     ],
+     "project_id": "ae786bb3a58a"
+    }
+   ],
+   "records": [
+    {
+     "borehole_ref": "BH-1",
+     "checklist": {},
+     "claimed_m": null,
+     "community": "Dr Timbo",
+     "completion_date": "13th May, 2018",
+     "completion_due": "",
+     "contract": false,
+     "contractor": "WiNGiN Heavy Duty Machines Co. Ltd",
+     "district": "Port Loko",
+     "drilled": true,
+     "forecast": null,
+     "id": "e26e0458d8fb",
+     "logged_m": null,
+     "success": true,
+     "success_basis": "recorded_success",
+     "variation_usd": null,
+     "variations_signed": null,
+     "variations_unsigned": null
+    },
+    {
+     "borehole_ref": "BH-1",
+     "checklist": {},
+     "claimed_m": null,
+     "community": "Dr Timbo",
+     "completion_date": "13th May, 2018",
+     "completion_due": "",
+     "contract": false,
+     "contractor": "WiNGiN Heavy Duty Machines Co. Ltd",
+     "district": "Port Loko",
+     "drilled": true,
+     "forecast": null,
+     "id": "e26e0458d8fb",
+     "logged_m": null,
+     "success": true,
+     "success_basis": "recorded_success",
+     "variation_usd": null,
+     "variations_signed": null,
+     "variations_unsigned": null
+    }
+   ],
+   "boreholes": [
+    {
+     "borehole_ref": "BH-1",
+     "checklist": {},
+     "claimed_m": null,
+     "community": "Dr Timbo",
+     "completion_date": "13th May, 2018",
+     "completion_due": "",
+     "contract": false,
+     "contractor": "WiNGiN Heavy Duty Machines Co. Ltd",
+     "district": "Port Loko",
+     "drilled": true,
+     "forecast": null,
+     "id": "e26e0458d8fb",
+     "logged_m": null,
+     "success": true,
+     "success_basis": "recorded_success",
+     "variation_usd": null,
+     "variations_signed": null,
+     "variations_unsigned": null,
+     "project": "save 1",
+     "source": "works"
+    }
+   ]
   },
   "file": {
    "yaml": "asset: {}\ncommittee: []\nformat: groundwater-toolkit-project\ngroundwater_toolkit_project: 0.3.0\nissued: []\nledger:\n  drilled: null\n  entries: []\n  project_id: null\nprocurement:\n  lines:\n  - code: DRL\n    item: Drilling\n    quantity: 60.0\n    rate_usd: 40.0\n    unit: m\n  measured: []\n  variations: []\nrates_overrides: {}\nschema: 4\nsources: {}\nstate:\n  meta_community: Dr Timbo\nsummary: {}\nworks:\n  borehole_ref: BH-1\n  checklist:\n    demobilisation:\n      answered: 1\n      failed:\n      - dem-cleared-waste-removed\n    development:\n      answered: 1\n      failed: []\n    drilling:\n      answered: 1\n      failed:\n      - drl-daily-drilling-log\n  claimed_m: 74.5\n  community: Dr Timbo\n  completion_date: 13th May, 2018\n  completion_due: '2018-05-10'\n  contract: true\n  contractor: WiNGiN Heavy Duty Machines Co. Ltd\n  district: Port Loko\n  drilled: true\n  forecast: null\n  id: e26e0458d8fb\n  logged_m: 70.0\n  success: true\n  success_basis: recorded_success\n  variation_usd: 400.0\n  variations_signed: 1\n  variations_unsigned: 0\n",
@@ -306714,6 +308024,328 @@
      }
     }
    }
+  }
+ },
+ "too_large": {
+  "yaml": "photos:\n- sha256: abababababababababababababababababababababababababababababababab\n  taken_at: '2026-10-03T09:00:00Z'\n  time_source: exif\n  position_source: exif\n  position_note: refused\n  position:\n    lat: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n    lon: -12.1\n- sha256: abababababababababababababababababababababababababababababababab\n  taken_at: '2026-10-03T09:00:00Z'\n  time_source: exif\n  position_source: exif\n  position_note: refused\n  position:\n    lat: 8.5\n    lon: -9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n- sha256: abababababababababababababababababababababababababababababababab\n  taken_at: '2026-10-03T09:00:00Z'\n  time_source: exif\n  position_source: exif\n  position_note: refused\n  position:\n    lat: 8.5\n    lon: -12.1\n    accuracy_m: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\nsummaries:\n- community: Rokel\n  district: Port Loko\n  status: Successful\n  total_depth_m: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  safe_yield_m3_per_h: -9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  cost_per_meter_usd: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  easting: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  northing: 936225.0\n  utm_zone: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n- community: Kenema\n  total_depth_m: 45.0\n  easting: 694667.0\n  northing: 936225.0\n  utm_zone: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  status: Dry hole\n- community: Bo\n  water_verdict: aesthetic\n  verdict_schema: .inf\n- community: Kono\n  water_verdict: aesthetic\n  verdict_schema: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n- community: Kambia\n  water_verdict: aesthetic\n  verdict_schema: '2.0'\n- community: Bonthe\n  water_verdict: aesthetic\n  verdict_schema: -.inf\nledger:\n  drilled: null\n  project_id: 0a1b2c3d4e5f\n  entries:\n  - id: a1\n    point:\n      sounding_id: VES 1\n      easting: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n      northing: 926355.5\n      utm_zone: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n    prediction:\n      depth_to_basement_m: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n      layers:\n      - - 0\n        - 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n        - 100\n      - - 5\n        - 9\n        - 40\n      odds:\n        probability: 0.5\n        effective_n: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n    before_outcome: true\n    recorded_on: '2026-10-01'\n    outcome:\n      total_depth_m: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n      water_strikes_m:\n      - 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n      - 12\n      success: true\n      success_basis: recorded_success\n      utm_zone: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n    pairing:\n      how: only\n      distance_m: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\nworks:\n  id: w1\n  drilled: true\n  contract: true\n  variations_signed: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  variations_unsigned: 0\n  variation_usd: 1.0\n  logged_m: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  claimed_m: 70.0\n  forecast: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  checklist:\n    drilling:\n      answered: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n      failed: []\n",
+  "sets": [
+   {
+    "yaml": "# A calibration set of the groundwater toolkit (PLAN.md steps 5.3 and 5.5).\nformat: \"groundwater calibration set\"\nformat_version: 2\nlicence: \"\"\norganisation: \"\"\ncontact: \"\"\nversion: 0\nfitted_on: \"\"\nadopted_by: \"\"\nadopted_on: \"\"\nreplaces: null\nsuccess_yield_m3_per_h: null\nboreholes: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\nleft_out:\n  unknown: 0\n  definition: 0\nprior: []\nedges: []\nweights: null\nsources: []\n",
+    "refused": "This is not a calibration set the toolkit can read: the field \"boreholes\" is missing or holds the wrong kind of value."
+   },
+   {
+    "yaml": "# A calibration set of the groundwater toolkit (PLAN.md steps 5.3 and 5.5).\nformat: \"groundwater calibration set\"\nformat_version: 2\nlicence: \"\"\norganisation: \"\"\ncontact: \"\"\nversion: 0\nfitted_on: \"\"\nadopted_by: \"\"\nadopted_on: \"\"\nreplaces: null\nsuccess_yield_m3_per_h: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\nboreholes: 0\nleft_out:\n  unknown: 0\n  definition: 0\nprior: []\nedges: []\nweights: null\nsources: []\n",
+    "refused": "This is not a calibration set the toolkit can read: the field \"success_yield_m3_per_h\" is missing or holds the wrong kind of value."
+   },
+   {
+    "yaml": "# A calibration set of the groundwater toolkit (PLAN.md steps 5.3 and 5.5).\nformat: \"groundwater calibration set\"\nformat_version: 2\nlicence: \"\"\norganisation: \"\"\ncontact: \"\"\nversion: 0\nfitted_on: \"\"\nadopted_by: \"\"\nadopted_on: \"\"\nreplaces: null\nsuccess_yield_m3_per_h: null\nboreholes: 0\nleft_out:\n  unknown: 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\n  definition: 0\nprior: []\nedges: []\nweights: null\nsources: []\n",
+    "refused": "This is not a calibration set the toolkit can read: the field \"left_out.unknown\" is missing or holds the wrong kind of value."
+   }
+  ],
+  "photos": [
+   {
+    "time": "2026-10-03 09:00:00 (camera clock, from the photograph's EXIF)",
+    "position": "Could not be read; the position recorded is not a latitude and a longitude in range",
+    "hash": "SHA-256 abababababababab"
+   },
+   {
+    "time": "2026-10-03 09:00:00 (camera clock, from the photograph's EXIF)",
+    "position": "Could not be read; the position recorded is not a latitude and a longitude in range",
+    "hash": "SHA-256 abababababababab"
+   },
+   {
+    "time": "2026-10-03 09:00:00 (camera clock, from the photograph's EXIF)",
+    "position": "8.500000, -12.100000, accuracy could not be read (from the photograph's EXIF)",
+    "hash": "SHA-256 abababababababab"
+   }
+  ],
+  "rows": [
+   {
+    "Community": "Rokel",
+    "District": "Port Loko",
+    "Status": "Successful",
+    "Depth (m)": null,
+    "Safe yield (m3/h)": null,
+    "Water": "",
+    "Cost/m (USD)": null
+   },
+   {
+    "Community": "Kenema",
+    "District": "",
+    "Status": "Dry / failed",
+    "Depth (m)": 45.0,
+    "Safe yield (m3/h)": null,
+    "Water": "",
+    "Cost/m (USD)": null
+   },
+   {
+    "Community": "Bo",
+    "District": "",
+    "Status": "Status not recognised",
+    "Depth (m)": null,
+    "Safe yield (m3/h)": null,
+    "Water": "Not proven safe*",
+    "Cost/m (USD)": null
+   },
+   {
+    "Community": "Kono",
+    "District": "",
+    "Status": "Status not recognised",
+    "Depth (m)": null,
+    "Safe yield (m3/h)": null,
+    "Water": "Not proven safe*",
+    "Cost/m (USD)": null
+   },
+   {
+    "Community": "Kambia",
+    "District": "",
+    "Status": "Status not recognised",
+    "Depth (m)": null,
+    "Safe yield (m3/h)": null,
+    "Water": "Aesthetic only",
+    "Cost/m (USD)": null
+   },
+   {
+    "Community": "Bonthe",
+    "District": "",
+    "Status": "Status not recognised",
+    "Depth (m)": null,
+    "Safe yield (m3/h)": null,
+    "Water": "Not proven safe*",
+    "Cost/m (USD)": null
+   }
+  ],
+  "points": [
+   [
+    "Kenema",
+    8.465703275189155,
+    -13.23170414103042,
+    "dry"
+   ]
+  ],
+  "stats": {
+   "n_projects": 6,
+   "n_drilled": 2,
+   "n_values_unreadable": 3,
+   "n_successful": 1,
+   "n_status_unrecognised": 0,
+   "success_rate": 50.0,
+   "mean_safe_yield_m3_per_h": null,
+   "mean_cost_per_meter_usd": null,
+   "n_wq_assessed": 4,
+   "wq_counts": {
+    "health_fail": 0,
+    "national_fail": 0,
+    "indeterminate": 3,
+    "aesthetic": 1,
+    "pass": 0,
+    "unknown": 0
+   },
+   "wq_compliant_rate": 25.0,
+   "wq_fail_rate": 0.0,
+   "wq_unproven_rate": 75.0
+  },
+  "details": [
+   [
+    [
+     "Community",
+     "Rokel"
+    ],
+    [
+     "District",
+     "Port Loko"
+    ],
+    [
+     "Status",
+     "Successful"
+    ]
+   ],
+   [
+    [
+     "Community",
+     "Kenema"
+    ],
+    [
+     "Status",
+     "Dry / failed"
+    ],
+    [
+     "Location",
+     "8.46570 N, 13.23170 W"
+    ],
+    [
+     "Total depth",
+     "45.0 m"
+    ]
+   ],
+   [
+    [
+     "Community",
+     "Bo"
+    ],
+    [
+     "Status",
+     "Status not recognised"
+    ],
+    [
+     "Water quality",
+     "Not proven safe - incomplete or unevaluable results (read from an older project file)"
+    ]
+   ],
+   [
+    [
+     "Community",
+     "Kono"
+    ],
+    [
+     "Status",
+     "Status not recognised"
+    ],
+    [
+     "Water quality",
+     "Not proven safe - incomplete or unevaluable results (read from an older project file)"
+    ]
+   ],
+   [
+    [
+     "Community",
+     "Kambia"
+    ],
+    [
+     "Status",
+     "Status not recognised"
+    ],
+    [
+     "Water quality",
+     "Aesthetic issues only"
+    ]
+   ],
+   [
+    [
+     "Community",
+     "Bonthe"
+    ],
+    [
+     "Status",
+     "Status not recognised"
+    ],
+    [
+     "Water quality",
+     "Not proven safe - incomplete or unevaluable results (read from an older project file)"
+    ]
+   ]
+  ],
+  "one_pagers": [
+   "SITE BRIEF - Rokel (Port Loko)\n==============================\n\nCommunity:      Rokel\nDistrict:       Port Loko\nStatus:         Successful\n\nGenerated by the Groundwater Investigation Toolkit.",
+   "SITE BRIEF - Kenema\n===================\n\nCommunity:      Kenema\nStatus:         Dry / failed\nLocation:       8.46570 N, 13.23170 W\nTotal depth:    45.0 m\n\nGenerated by the Groundwater Investigation Toolkit.",
+   "SITE BRIEF - Bo\n===============\n\nCommunity:      Bo\nStatus:         Status not recognised\nWater quality:  Not proven safe - incomplete or unevaluable results (read from an older project file)\n\nGenerated by the Groundwater Investigation Toolkit.",
+   "SITE BRIEF - Kono\n=================\n\nCommunity:      Kono\nStatus:         Status not recognised\nWater quality:  Not proven safe - incomplete or unevaluable results (read from an older project file)\n\nGenerated by the Groundwater Investigation Toolkit.",
+   "SITE BRIEF - Kambia\n===================\n\nCommunity:      Kambia\nStatus:         Status not recognised\nWater quality:  Aesthetic issues only\n\nGenerated by the Groundwater Investigation Toolkit.",
+   "SITE BRIEF - Bonthe\n===================\n\nCommunity:      Bonthe\nStatus:         Status not recognised\nWater quality:  Not proven safe - incomplete or unevaluable results (read from an older project file)\n\nGenerated by the Groundwater Investigation Toolkit."
+  ],
+  "ledger": {
+   "drilled": null,
+   "entries": [
+    {
+     "before_outcome": true,
+     "id": "a1",
+     "outcome": {
+      "basement_m": null,
+      "borehole_ref": "",
+      "completion_date": "",
+      "contractor": "",
+      "easting": null,
+      "holds_at_dry_season": null,
+      "intervals": [],
+      "northing": null,
+      "safe_yield_band_m3_per_h": null,
+      "safe_yield_m3_per_h": null,
+      "status": "",
+      "status_class": null,
+      "success": true,
+      "success_basis": "recorded_success",
+      "success_yield_m3_per_h": null,
+      "total_depth_m": null,
+      "utm_zone": null,
+      "water_strikes_m": [
+       12.0
+      ],
+      "yield_confidence": null
+     },
+     "pairing": {
+      "distance_m": null,
+      "how": "only"
+     },
+     "point": {
+      "community": "",
+      "district": "",
+      "easting": null,
+      "northing": 926355.5,
+      "sounding_id": "VES 1",
+      "utm_zone": null
+     },
+     "prediction": {
+      "basement_band_m": null,
+      "basement_resolved": false,
+      "basement_unresolved_share": null,
+      "depth_to_basement_m": null,
+      "drilling_depth_band_m": null,
+      "drilling_depth_m": null,
+      "drilling_depth_minimum": false,
+      "fit_error_percent": null,
+      "investigation_depth_m": null,
+      "layers": [
+       [
+        5.0,
+        9.0,
+        40.0
+       ]
+      ],
+      "odds": {
+       "probability": 0.5,
+       "low": null,
+       "high": null,
+       "prior": null,
+       "effective_n": null,
+       "success_yield_m3_per_h": null,
+       "status": "",
+       "matched": "",
+       "calibration": "",
+       "bgs_code": null,
+       "glg": null
+      },
+      "range_sampled": false,
+      "suitability": null,
+      "survey_team": "",
+      "water_bearing_m": null,
+      "water_zones_m": [],
+      "weathered_band_m": null
+     },
+     "recorded_on": "2026-10-01",
+     "toolkit": ""
+    }
+   ],
+   "project_id": "0a1b2c3d4e5f"
+  },
+  "works": {
+   "borehole_ref": "",
+   "checklist": {},
+   "claimed_m": 70.0,
+   "community": "",
+   "completion_date": "",
+   "completion_due": "",
+   "contract": false,
+   "contractor": "",
+   "district": "",
+   "drilled": true,
+   "forecast": null,
+   "id": "w1",
+   "logged_m": null,
+   "success": null,
+   "success_basis": null,
+   "variation_usd": null,
+   "variations_signed": null,
+   "variations_unsigned": null
   }
  },
  "field_kit": {

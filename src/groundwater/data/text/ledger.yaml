@@ -85,9 +85,11 @@ pool_counts: >-
 
 # Said after pool_counts when a point was found in more than one file, and
 # when the copies of a point disagree on what its borehole found: in files
-# whose ledgers have an identity (pool_copies_differ), or in files written
-# before a ledger had one, which cannot tell two projects whose points share
-# a name and a place from copies of one (pool_copies_unsure).
+# whose ledgers have an identity, where the copies name one borehole by one
+# reference and completion date (pool_copies_differ) or do not
+# (pool_copies_borehole), or in files written before a ledger had one,
+# which cannot tell two projects whose points share a name and a place
+# from copies of one (pool_copies_unsure).
 pool_copies: >-
   {copies:g} of the points {copies:plural:was|were} found in more than one
   file and {copies:plural:is|are} counted once. The copy kept is the one
@@ -98,6 +100,14 @@ pool_copies: >-
 pool_copies_differ: >-
   The copies of {differ:g} {differ:plural:point|points} disagree on what the
   borehole found, so one of the files holds an older record.
+pool_copies_borehole: >-
+  The copies of {points:g} {points:plural:point|points} disagree on what the
+  borehole found and do not give it one reference and completion date.
+  Either a drilling log was corrected between one save and the next, so one
+  of the files holds an older record, or two boreholes were taken for one (a
+  hole and its replacement in copies of one project's file, or two projects
+  whose points share a name and a place and whose predictions were first
+  recorded on the same day), and the borehole of one of them is not counted.
 pool_copies_unsure: >-
   The copies of {unsure:g} {unsure:plural:point|points} disagree on what the
   borehole found and come from files whose ledgers were written before a

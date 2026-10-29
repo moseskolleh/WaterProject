@@ -176,6 +176,11 @@ _UNREADABLE = phrase_table("evidence.position_notes")["unreadable"]
     ({"lat": 8.5, "lon": -12.1, "accuracy_m": "5 m"}, "8.500000, -12.100000, accuracy could not be read ("),
     ({"lat": 8.5, "lon": -12.1, "accuracy_m": -3}, "8.500000, -12.100000, accuracy could not be read ("),
     ({"lat": 8.5, "lon": -12.1, "accuracy_m": float("inf")}, "8.500000, -12.100000, accuracy could not be read ("),
+    # a whole number too large for a float, as YAML reads 400 digits: Python
+    # raised OverflowError where the browser reads Infinity
+    ({"lat": int("9" * 400), "lon": -12.1}, _UNREADABLE),
+    ({"lat": 8.5, "lon": -int("9" * 400)}, _UNREADABLE),
+    ({"lat": 8.5, "lon": -12.1, "accuracy_m": int("9" * 400)}, "8.500000, -12.100000, accuracy could not be read ("),
     ({"lat": 8.5, "lon": -12.1}, "8.500000, -12.100000, accuracy not recorded ("),
     ({"lat": -90, "lon": 180, "accuracy_m": 4}, "-90.000000, 180.000000, within 4 m ("),
     ({"lat": None, "lon": None}, phrase_table("evidence.position_notes")["refused"]),

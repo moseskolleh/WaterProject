@@ -406,6 +406,28 @@ def test_a_hand_edited_ledger_is_cleaned_not_raised():
     assert L.clean_ledger(clean) == clean
 
 
+def test_a_whole_number_too_large_for_a_float_is_blank_not_raised():
+    """YAML reads 400 digits as a whole number, which float() cannot hold:
+    Python raised OverflowError where the browser reads Infinity and leaves
+    the field blank. Both leave it blank now, a zone included, and a pairing
+    by distance does not raise."""
+    big = yaml.safe_load("n: " + "9" * 400)["n"]
+    raw = {"entries": [{"id": "a", "point": {"easting": big, "northing": 926355.5, "utm_zone": big},
+                        "prediction": {"depth_to_basement_m": big, "layers": [[0, big, 100]]},
+                        "outcome": {"total_depth_m": big, "water_strikes_m": [big, 12], "success": True,
+                                    "utm_zone": big}}]}
+    entry = L.clean_ledger(raw)["entries"][0]
+    assert (entry["point"]["easting"], entry["point"]["utm_zone"], entry["prediction"]["depth_to_basement_m"],
+            entry["prediction"]["layers"]) == (None, None, None, [])
+    assert (entry["outcome"]["total_depth_m"], entry["outcome"]["water_strikes_m"],
+            entry["outcome"]["utm_zone"]) == (None, [12.0], None)
+    two = {"drilled": None, "entries": [
+        {"id": k, "point": {"easting": 708958.4, "northing": 926355.5, "utm_zone": big},
+         "prediction": {}} for k in ("a", "b")]}
+    outcome = {"easting": 708962.0, "northing": 926351.0, "utm_zone": 28}
+    assert L.pair_drilled(two, outcome)[0] == "a"
+
+
 # ------------------------------------------------------------- comparison
 
 def _entry(prediction, outcome):
@@ -474,7 +496,8 @@ def test_a_portfolio_pools_each_entry_once_keeping_the_fullest_copy():
     # "Rokel" and "Rokel, drilled" are copies of one project: one ledger
     # identity, so one project under two labels
     assert counts == {"points": 3, "projects": 2, "drilled": 1, "forecast": 1, "success": 0, "failure": 1,
-                      "unknown": 0, "copies": 2, "copies_differ": 0, "copies_unsure": 0}
+                      "unknown": 0, "copies": 2, "copies_differ": 0, "copies_unsure": 0,
+                      "copies_borehole_differs": 0}
     assert [e["copies"] for e in pooled] == [2, 2, 1] and pooled[0]["project_id"] == ledger["project_id"]
     header, rows = L.ledger_rows(pooled)
     assert len(header) == 8 and len(rows) == 1
@@ -508,9 +531,11 @@ def test_the_pool_keeps_the_best_established_outcome_whatever_the_order():
         outcome = pooled[0]["outcome"]
         assert (outcome["success"], outcome["success_basis"], outcome["safe_yield_m3_per_h"]) == (False, "tested", 0.3)
         assert pooled[0]["copies"] == 2 and pooled[0]["copies_differ"] is True
+        # one reference and completion date in both: one borehole, an older record
+        assert pooled[0]["copies_borehole_differs"] is False
         counts = L.ledger_counts(pooled)
         assert (counts["success"], counts["failure"], counts["copies"], counts["copies_differ"],
-                counts["copies_unsure"]) == (0, 1, 1, 1, 0)
+                counts["copies_unsure"], counts["copies_borehole_differs"]) == (0, 1, 1, 1, 0, 0)
         assert L.ledger_summary(pooled).endswith(
             "The copies of 1 point disagree on what the borehole found, so one of the files holds an older record.")
         assert "identity" not in L.ledger_summary(pooled)
@@ -561,6 +586,54 @@ def test_two_projects_in_one_village_keep_both_boreholes():
                 counts["copies"]) == (2, 2, 2, 1, 1, 0)
 
 
+def _village(recorded_on: str, safe: float, ref: str, date: str = "2026-11-02") -> dict:
+    """A project in Rokel surveyed at "VES 1" with no position, its
+    predictions recorded on ``recorded_on`` and its borehole ``ref``
+    completed on ``date`` and tested at ``safe`` m3/h."""
+    site = ns({"community": "Rokel", "district": "Port Loko", "utm_zone": 29})
+    survey = L.survey_predictions([_interp(site_easting=None, site_northing=None)], None, None, site)
+    ledger = L.record_predictions(L.empty_ledger(), survey, recorded_on, False, "0.3.0")[0]
+    return L.attach_outcome(ledger, L.completion_outcome(
+        _log(borehole_ref=ref, completion_date=date, site={"easting": None, "northing": None, "utm_zone": None}),
+        _analysis(safe)))
+
+
+def test_copies_that_name_two_boreholes_are_not_called_an_older_record():
+    """Two projects in one village whose predictions were first recorded on
+    the same day, at a point with no position, share a ledger identity and
+    so an entry id: the pool cannot tell them from copies of one project.
+    Their outcomes name two boreholes, a dry hole and a working one, so the
+    summary does not say one file holds an older record: it says the
+    copies may be a corrected log or two boreholes, and that the borehole
+    of one of them is not counted."""
+    dry, working = _village("2026-02-01", 0.1, "BH-A (dry)"), _village("2026-02-01", 1.4, "BH-B")
+    assert dry["project_id"] == working["project_id"]
+    assert dry["entries"][0]["id"] == working["entries"][0]["id"]
+    for order in ([dry, working], [working, dry]):
+        pooled = L.pool_ledgers([("Rokel (Port Loko)", ledger) for ledger in order])
+        assert len(pooled) == 1 and pooled[0]["copies_borehole_differs"] is True
+        counts = L.ledger_counts(pooled)
+        assert (counts["copies"], counts["copies_differ"], counts["copies_unsure"],
+                counts["copies_borehole_differs"]) == (1, 1, 0, 1)
+        summary = L.ledger_summary(pooled)
+        assert summary.endswith(phrase("ledger.pool_copies_borehole", points=1))
+        assert "older record." not in summary and "not counted" in summary
+    # the same borehole under another completion date (a log corrected
+    # between two saves), or with neither a reference nor a date, is not
+    # called an older record either
+    for ref, dates in (("BH-A (dry)", ("2026-11-02", "2026-11-03")), ("", ("", ""))):
+        pooled = L.pool_ledgers([("Rokel", _village("2026-02-01", safe, ref, date))
+                                 for safe, date in zip((0.1, 1.4), dates, strict=True)])
+        assert L.ledger_counts(pooled)["copies_borehole_differs"] == 1
+    # one reference and one date in both, only the date given, or only the
+    # reference: one borehole, and one of the files holds an older record
+    for ref, date in (("BH-A (dry)", "2026-11-02"), ("", "2026-11-02"), ("BH-A (dry)", "")):
+        older, newer = _village("2026-02-01", 0.1, ref, date), _village("2026-02-01", 0.6, ref, date)
+        pooled = L.pool_ledgers([("Rokel", older), ("Rokel", newer)])
+        assert pooled[0]["copies_borehole_differs"] is False
+        assert L.ledger_summary(pooled).endswith(phrase("ledger.pool_copies_differ", differ=1))
+
+
 def test_copies_from_ledgers_with_no_identity_that_disagree_are_said_to_be_unsure():
     """Two files written before ledgers had an identity whose points share
     a name and a place: copies of one project, or two projects, nothing in
@@ -586,10 +659,12 @@ def test_copies_from_ledgers_with_no_identity_that_disagree_are_said_to_be_unsur
         # both tested and alike in what they record: the later recording
         assert [e["outcome"]["borehole_ref"] for e in pooled] == ["BH-2026"]
         counts = L.ledger_counts(pooled)
-        assert (counts["copies"], counts["copies_differ"], counts["copies_unsure"]) == (1, 1, 1)
+        assert (counts["copies"], counts["copies_differ"], counts["copies_unsure"],
+                counts["copies_borehole_differs"]) == (1, 1, 1, 0)
         summary = L.ledger_summary(pooled)
         assert summary.endswith(phrase("ledger.pool_copies_unsure", unsure=1))
         assert phrase("ledger.pool_copies_differ", differ=1) not in summary
+        assert phrase("ledger.pool_copies_borehole", points=1) not in summary
 
 
 # ------------------------------------------------------------ project file
@@ -836,7 +911,11 @@ def _case(seed: int) -> dict:
                                                                               ns(site)),
                                        "2026-09-01", after, "0.2.0")[0]
         if after:
-            earlier["entries"][0].update(outcome=held_outcome, pairing={"how": "only", "distance_m": None})
+            # of the borehole the log records, by its reference and date, or
+            # of another one
+            same = {"borehole_ref": "BH-1", "completion_date": "2026-11-02"} if seed % 16 == 15 else {}
+            earlier["entries"][0].update(outcome=dict(held_outcome, **same),
+                                         pairing={"how": "only", "distance_m": None})
     return {"interps": interps, "ranges": ranges, "odds": odds, "site": site, "log": log, "analysis": analysis,
             "teams": teams, "contractor": contractor,
             "held": earlier, "known": log is not None and seed % 3 == 0,
@@ -895,7 +974,9 @@ def test_the_seeded_cases_reach_every_rule():
     assert any(not e["before_outcome"] for t in told for e in t["held"]["entries"])
     assert any(t["held"]["project_id"] for t in told) and any(not t["held"]["project_id"] for t in told)
     assert any(t["counts"]["copies"] for t in told) and any(t["counts"]["copies_unsure"] for t in told)
-    assert any(t["counts"]["copies_differ"] > t["counts"]["copies_unsure"] for t in told)
+    assert any(t["counts"]["copies_borehole_differs"] for t in told), "copies that name two boreholes"
+    assert any(t["counts"]["copies_differ"] > t["counts"]["copies_unsure"] + t["counts"]["copies_borehole_differs"]
+               for t in told), "copies that name one borehole, one of them an older record"
     for t in told:
         # the pool is the same whatever the order of its files
         assert sorted(t["pooled"], key=lambda e: e["id"]) == sorted(t["reversed"], key=lambda e: e["id"])

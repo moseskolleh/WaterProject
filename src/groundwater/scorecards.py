@@ -45,8 +45,6 @@ gwt-core.js, and parity holds them to one another.
 
 from __future__ import annotations
 
-import math
-import numbers
 import re
 from datetime import date
 
@@ -216,8 +214,9 @@ def works_record(site, log, analysis, ledger, answers=None, metres=None, procure
     at, where that was recorded before drilling. Its identifier is that
     point's, so a file saved before this record and a later copy of it count
     the borehole once; a borehole paired with no point is identified by its
-    reference, position and place, and by the identity of the project's
-    ledger where it has one, as a ledger's points are.
+    reference, position and place. Not by the identity of the project's
+    ledger, as a ledger's points are: a save made before any prediction was
+    recorded has none, and a later save would count the borehole again.
     """
     config = config or Config()
     contractor = _name(getattr(site, "contractor", ""))
@@ -256,7 +255,7 @@ def works_record(site, log, analysis, ledger, answers=None, metres=None, procure
     else:
         at = outcome or {}
         rid = point_id("borehole " + ref, at.get("easting"), at.get("northing"), at.get("utm_zone"),
-                       community, district, held["project_id"] or "")
+                       community, district)
     return {
         "borehole_ref": ref,
         "checklist": dict(sorted(checklist.items())),
@@ -281,11 +280,10 @@ def works_record(site, log, analysis, ledger, answers=None, metres=None, procure
 
 
 def _count(value) -> int | None:
-    """A whole count not below nought, or None."""
-    if isinstance(value, bool) or not isinstance(value, numbers.Real):
-        return None
-    x = float(value)
-    return int(x) if math.isfinite(x) and x.is_integer() and x >= 0 else None
+    """A whole count not below nought, or None: None too for a whole number
+    too large for a float, which the browser reads as Infinity."""
+    x = _num(value, None)
+    return int(x) if x is not None and x.is_integer() and x >= 0 else None
 
 
 def clean_works(raw) -> dict | None:
