@@ -86,6 +86,9 @@ _CHAR_FIXES = {
     "³": "3",  # SUPERSCRIPT THREE
     "²": "2",
     "°": "deg ",
+    # MASCULINE ORDINAL INDICATOR, the key a keyboard without a degree sign
+    # offers: "27 ºC" was a unit nobody could read
+    "º": "deg ",
     "⁄": "/",  # FRACTION SLASH
     "’": "",
 }
@@ -96,6 +99,9 @@ _BASIS_RE = re.compile(r"\bas\s+([a-z0-9()\.\-]+)\s*$")
 def _normalise(text: str) -> str:
     """Lowercase and regularise a written unit before matching it."""
     s = str(text or "")
+    # "Nº/100 mL" and "N°/100 mL" are "No./100 mL" with the numero sign; the
+    # sign would otherwise read as a degree
+    s = re.sub(r"(?<![A-Za-z0-9_])[nN][º°](?=\s*(?:/|[pP][eE][rR]\b))", "no", s)
     for bad, good in _CHAR_FIXES.items():
         s = s.replace(bad, good)
     s = s.lower().strip()
@@ -115,6 +121,11 @@ def _normalise(text: str) -> str:
     s = re.sub(r"\bdegrees?\b|\bdeg\b", "deg ", s)
     s = re.sub(r"\bcelsius\b|\bcentigrade\b", "c", s)
     s = s.replace(".", "")
+    # "/100 mL", "No./100 mL" and "per 100 mL" are "/100ml" written with a
+    # space, and only the CFU and MPN spellings had a spaced twin: an E. coli
+    # count of 12 per 100 mL was a unit nobody could read, while "Absent" in
+    # the same unit passed
+    s = re.sub(r"(\d)\s+(m?l)\b", r"\1\2", s)
     # "-", "n/a" and friends are how a sheet writes "no unit here", not a
     # unit. Reading "-" as pH units made every non-pH row carrying the
     # ordinary blank marker unevaluable.
@@ -125,12 +136,20 @@ def _normalise(text: str) -> str:
     return re.sub(r"\s*/\s*", "/", s)
 
 
+#: The spellings of nitrogen as a basis: "as N", "as NO3-N", "as nitrogen".
+#: They are one basis, so "mg/L as NO3-N" is the same scale as "mg/L as N".
+_NITROGEN_BASIS_RE = re.compile(r"(?:no3|no2|nh4|nh3)-{0,2}n|nitrogen")
+
+
 def _split_basis(text: str) -> tuple[str, str]:
     """Separate a trailing chemical basis: "mg/l as caco3" -> ("mg/l", "caco3")."""
     match = _BASIS_RE.search(text)
     if not match:
         return text, ""
-    return text[: match.start()].strip(), match.group(1).replace(" ", "")
+    basis = match.group(1).replace(" ", "")
+    if _NITROGEN_BASIS_RE.fullmatch(basis):
+        basis = "n"
+    return text[: match.start()].strip(), basis
 
 
 # (dimension, factor to base, offset), keyed by normalised spelling.
@@ -169,7 +188,7 @@ _register("NTU", "turbidity", 1.0, ["ntu", "fnu", "ftu", "nephelometric"])
 
 # --- microbiological, base CFU/100 mL ---------------------------------------
 _register("CFU/100 mL", "microbial", 1.0,
-          ["cfu/100ml", "cfu/100 ml", "mpn/100ml", "mpn/100 ml", "/100ml",
+          ["cfu/100ml", "mpn/100ml", "/100ml", "#/100ml",
            "count/100ml", "counts/100ml", "no/100ml", "cfu/100cm3"])
 _register("CFU/mL", "microbial", 100.0, ["cfu/ml", "mpn/ml", "count/ml"])
 _register("CFU/L", "microbial", 0.1, ["cfu/l", "mpn/l", "count/l"])
@@ -179,8 +198,9 @@ _register("pH units", "ph", 1.0, ["ph units", "ph unit", "ph", "su",
                                   "standard units"])
 
 # --- temperature, base deg C ------------------------------------------------
+# "oC" is the degree sign typed as a letter o
 _register("deg C", "temperature", 1.0, ["deg c", "c", "°c", "degc",
-                                        "celsius"])
+                                        "celsius", "oc"])
 _register("deg F", "temperature", 5.0 / 9.0, ["deg f", "f", "°f", "degf"],
           offset=-32.0 * 5.0 / 9.0)
 
@@ -353,7 +373,7 @@ def _is_unit_shaped(text: str) -> bool:
             or len(normalised) <= 5)
 
 
-def unit_from_label(text: str, *, dimension: str) -> tuple[str, Unit | None]:
+def unit_from_label(text: str, *, dimension: str | None) -> tuple[str, Unit | None]:
     """The unit a column header or row label declares, if any.
 
     Returns ``(written, parsed)``. ``("", None)`` means nothing was declared;
@@ -416,7 +436,18 @@ def read_quantity(cell, *hints: str, dimension: str) -> Quantity:
     The unit is taken from the cell's own text first, then from each hint in
     turn - typically the column header, then the row label. ``hints`` are
     scanned with :func:`unit_from_label`, so only bracketed text counts.
+
+    A time is read by :func:`read_time`, so a clock is a clock wherever it
+    is read: this function took the first number of "2:00" under "Time
+    (hh:mm)" as 2 minutes, and of "0:30" under "Time (mm:ss)" as none.
     """
+    if dimension == "time":
+        return read_time(cell, *hints)[0]
+    return _read_number(cell, *hints, dimension=dimension)
+
+
+def _read_number(cell, *hints: str, dimension: str) -> Quantity:
+    """:func:`read_quantity` for a cell that is a number, with any unit."""
     canonical = CANONICAL_UNITS[dimension]
     raw = parse_number(cell)
     if raw is None:
@@ -562,8 +593,8 @@ def read_time(cell, *hints: str) -> tuple[Quantity, str]:
     a reading's time since the pump started cannot be told from the day it
     was taken; so is text that starts as a clock and is not one, such as
     "1:60" or "1:30 pm", and hours and minutes written as words, "1h 30m".
-    Anything else is :func:`read_quantity` in the time dimension, with
-    ``""`` beside it.
+    Anything else is read as a number in the time dimension, its unit taken
+    as :func:`read_quantity` takes one, with ``""`` beside it.
     """
     clock = read_clock(cell, clock_format(*hints))
     if clock is not None:
@@ -575,4 +606,4 @@ def read_time(cell, *hints: str) -> tuple[Quantity, str]:
         return Quantity(None, None, "TRUE" if cell else "FALSE", "unknown", "time"), ""
     if is_date_cell(cell) or (isinstance(cell, str) and _NOT_A_CLOCK_RE.match(cell)):
         return Quantity(None, None, clean_text(cell), "unknown", "time"), ""
-    return read_quantity(cell, *hints, dimension="time"), ""
+    return _read_number(cell, *hints, dimension="time"), ""

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from ..models import DataFlag, WaterQualitySample
 from ..utils import sum_in_order
-from .standards import canonical_values, normalise_parameter
+from .standards import canonical_values, index_key, normalise_parameter
 
 # meq per mg: charge / molar mass
 _CATIONS = {
@@ -62,7 +62,7 @@ def _value(sample: WaterQualitySample, key: str) -> float | None:
     if key in canonical:
         return canonical[key]
     for result in sample.results:
-        if normalise_parameter(result.parameter) == key:
+        if index_key(normalise_parameter(result.parameter)) == key:
             if result.value is not None:
                 # present but not convertible: refuse it rather than use the
                 # raw number on an unknown scale

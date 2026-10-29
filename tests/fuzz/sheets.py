@@ -557,6 +557,28 @@ NON_DETECTS = ["<{dl}", "< {dl}", "ND", "nd", "Not detected", "BDL", "ND (<{dl} 
                "<{comma}"]
 COUNTS = ["TNTC", "TNTC (>300)", ">300", ">=50", "Present", "Absent", "Present in 100 mL",
           "Absent/100 mL", "P", "A", "0", "too numerous to count"]
+# the same water written another way: nitrate and nitrite as nitrogen, by
+# name or by unit, calcium and magnesium as CaCO3, a count per 100 mL with
+# a space or a numero sign, a degree typed as a letter (the quality, units
+# and design audit), each with the factor that keeps the water the same
+RESPELT = {
+    "Nitrate (as NO3)": [("Nitrate (NO3-N)", "mg/L", 14.007 / 62.004),
+                         ("Nitrate-N", "mg/L", 14.007 / 62.004),
+                         ("Nitrate (N)", "mg/L", 14.007 / 62.004),
+                         ("Nitrate", "mg/L as N", 14.007 / 62.004),
+                         ("Nitrate", "mg/L", 1.0)],
+    "Nitrite (as NO2)": [("Nitrite (NO2-N)", "mg/L", 14.007 / 46.005),
+                         ("Nitrite", "mg/L as N", 14.007 / 46.005)],
+    "Calcium": [("Calcium", "mg/L as CaCO3", 100.087 / 40.078),
+                ("Calcium", "mg/L as Ca", 1.0), ("Calcium", "mg/L Ca", 1.0)],
+    "Magnesium": [("Magnesium", "mg/L as CaCO3", 100.087 / 24.305)],
+    "Bicarbonate": [("Bicarbonate", "mg/L as CaCO3", 100.087 / (2 * 61.017))],
+    "E. coli": [("E. coli", u, 1.0) for u in ("No./100 mL", "/100 mL", "per 100 mL",
+                                              "MPN/100 mL", "N\u00ba/100 mL", "colonies")],
+    "Total coliforms": [("Total coliforms", u, 1.0) for u in ("No./100 mL", "#/100 mL",
+                                                              "per 100 mL")],
+    "Temperature": [("Temperature", u, 1.0) for u in ("oC", "\u00baC", "\u00b0C", "degrees")],
+}
 
 
 @st.composite
@@ -573,7 +595,11 @@ def quality_case(draw) -> dict:
     rows = header_rows(draw, "WATER QUALITY LABORATORY RESULTS", pairs, [0, 3])
     rows.append([])
     with_dl = draw(st.booleans())
-    rows.append(["Parameter", "Unit", "Value"] + (["Detection limit"] if with_dl else [])
+    # a unit in the result column's header is the unit of a row with none
+    value_header = "Value"
+    if chance(draw, 0.1):
+        value_header = draw(st.sampled_from(["Result (mg/L)", "Value (ug/L)", "Result (lab)"]))
+    rows.append(["Parameter", "Unit", value_header] + (["Detection limit"] if with_dl else [])
                 + ["Method"])
 
     chosen = draw(st.lists(st.sampled_from(range(len(PARAMETERS))), min_size=1,
@@ -584,10 +610,13 @@ def quality_case(draw) -> dict:
         name, unit, (low, high) = PARAMETERS[i]
         value = low + (high - low) * draw(st.floats(0, 1)) ** 2
         digits = 3 if high < 1 else 2 if high < 10 else 1
+        if name in RESPELT and chance(draw, 0.3):
+            name, unit, factor = draw(st.sampled_from(RESPELT[name]))
+            value *= factor
         dl = None
         cell = typed(draw, value, digits, 0.1)
         style = rare_first(draw)
-        bacterial = "CFU" in unit
+        bacterial = name in ("E. coli", "Total coliforms")
         if bacterial and style < 0.4:
             cell = draw(st.sampled_from(COUNTS))
         elif style < 0.2:
@@ -607,6 +636,14 @@ def quality_case(draw) -> dict:
             if u in ("ug/L", "µg/L", "ppb") and isinstance(cell, (int, float)):
                 cell = round(cell * 1000, 3)
             unit = u
+        # a unit written after a measured value, in the cell, with the unit
+        # column left blank or naming another scale
+        if isinstance(cell, (int, float)) and not isinstance(cell, bool) and chance(draw, 0.1):
+            written = draw(st.sampled_from(["mg/L", "mg/l", "ug/L", "ppm", "NTU", "(field)",
+                                            "*", unit or "mg/L"]))
+            cell = f"{cell:g} {written}" if written != "*" else f"{cell:g}*"
+            if draw(st.booleans()):
+                unit = ""
         row = [name, unit, cell] + ([dl] if with_dl else [])
         row.append(draw(st.sampled_from([None, None, "APHA 4500", "Photometric"])))
         rows.append(row)

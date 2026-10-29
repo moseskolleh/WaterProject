@@ -1827,6 +1827,107 @@ await withPage(async (page, base, consoleErrors) => {
       `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
   });
 
+  // --- water quality units and bases, and clocks read as quantities ---
+  // A unit after a measured value or in the result header, nitrate and
+  // nitrite as nitrogen, calcium and magnesium as CaCO3, a count per 100 mL
+  // written with a space, a determinand with no limit in a unit that cannot
+  // be read: the rows are Python's, read and assessed by both engines.
+  const QU = R.quality_units;
+  const qualityUnits = await page.evaluate((ref) => {
+    const C = GWT.core;
+    const result = (row) => Object.assign({ parameter: row[0], value: row[1], unit: row[2],
+      detection_limit: null, below_detection: false, method: '', greater_than: null,
+      greater_than_inclusive: false, unreadable: '' }, row[3] || {});
+    const summary = (a) => ({
+      state: a.verdict_state,
+      statuses: a.rows.map((r) => r.status),
+      reasons: a.rows.map((r) => r.reason),
+      remarks: a.rows.map((r) => r.remark),
+      converted: a.rows.map((r) => r.value_in_guideline_unit),
+      guidelines: a.rows.map((r) => r.who_health),
+      uncertainties: a.uncertainties,
+      flags: a.flags.map((f) => [f.level, f.code, f.message]),
+      ionic: a.ionic ? { error: a.ionic.error_percent, cations: a.ionic.cations_meq,
+        anions: a.ionic.anions_meq } : null,
+      hazard: a.health_risk ? { index: a.health_risk.hazard_index,
+        quotients: a.health_risk.hazard_quotients } : null,
+      wqi: a.wqi ? { value: a.wqi.value, rating: a.wqi.rating, n: a.wqi.n_parameters,
+        top: a.wqi.top_contributors } : null,
+      corrosivity: { lsi: a.corrosivity.lsi, rsi: a.corrosivity.rsi,
+        classification: a.corrosivity.classification,
+        assumptions: a.corrosivity.assumptions },
+      verdict: a.verdict,
+      recommendations: GWT.docx.qualityRecommendations(a),
+    });
+    const cases = {};
+    Object.keys(ref.cases).forEach((name) => {
+      cases[name] = summary(C.assessSample({ results: ref.cases[name].rows.map(result),
+        flags: [] }));
+    });
+    return {
+      cases,
+      sheets: ref.sheets.map((sheet) => {
+        const s = C.qualityFromGrid(sheet.grid, 'sheet.xlsx');
+        return Object.assign({ results: s.results.map((r) => [r.parameter, r.value, r.unit,
+          r.detection_limit, r.below_detection, r.greater_than, r.greater_than_inclusive,
+          r.unreadable]) }, summary(C.assessSample(s)));
+      }),
+      quantities: ref.quantities.map((q) => {
+        const read = C.readQuantity(q.cell, [q.header], 'time');
+        return { value: read.value, status: read.status, unit: read.unit_text };
+      }),
+      units: ref.units.map((u) => {
+        const unit = C.parseUnit(u[0]);
+        return unit ? [unit.canonical, unit.dimension, unit.factor, unit.offset, unit.basis]
+          : null;
+      }),
+      names: ref.names.map((n) => C.normaliseParameter(n[0])),
+    };
+  }, QU);
+  /* numbers to 1e-12 relative, everything else exactly */
+  function sameDeep(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return close(a, b, 1e-12);
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return a.length === b.length && a.every((v, i) => sameDeep(v, b[i]));
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const ka = Object.keys(a), kb = Object.keys(b);
+      return ka.length === kb.length && ka.every((k, i) => k === kb[i] && sameDeep(a[k], b[k]));
+    }
+    return a === b;
+  }
+  const QUALITY_KEYS = ['state', 'statuses', 'reasons', 'remarks', 'converted', 'guidelines',
+    'uncertainties', 'flags', 'ionic', 'hazard', 'wqi', 'corrosivity', 'verdict',
+    'recommendations'];
+  Object.keys(QU.cases).forEach((name) => {
+    QUALITY_KEYS.forEach((key) => {
+      const js = qualityUnits.cases[name][key], py = QU.cases[name][key];
+      check(`quality units ${name}: ${key}`, sameDeep(js, py),
+        `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+    });
+  });
+  QU.sheets.forEach((sheet, i) => {
+    ['results'].concat(QUALITY_KEYS).forEach((key) => {
+      const js = qualityUnits.sheets[i][key], py = sheet[key];
+      check(`quality units sheet ${i + 1}: ${key}`, sameDeep(js, py),
+        `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+    });
+  });
+  QU.quantities.forEach((py, i) => {
+    const js = qualityUnits.quantities[i];
+    check(`quantity ${JSON.stringify(py.cell)} under ${py.header}`,
+      sameDeep(js, { value: py.value, status: py.status, unit: py.unit }),
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+  });
+  QU.units.forEach((py, i) => {
+    check(`unit spelling ${JSON.stringify(py[0])}`, sameDeep(qualityUnits.units[i], py[1]),
+      `js ${JSON.stringify(qualityUnits.units[i])}\n     py ${JSON.stringify(py[1])}`);
+  });
+  QU.names.forEach((py, i) => {
+    check(`parameter name ${JSON.stringify(py[0])}`, qualityUnits.names[i] === py[1],
+      `js ${qualityUnits.names[i]} vs py ${py[1]}`);
+  });
+
   // --- pumping sheets at the edges ---
   // The two sample sheets are the ordinary case. These are the same sheets
   // with the cells rewritten that each hydraulics defect turned on: a rejected
