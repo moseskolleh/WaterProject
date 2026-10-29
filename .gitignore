@@ -25,7 +25,7 @@ htmlcov/
 .idea/
 
 # Node test tooling (Playwright is installed globally in CI)
-node_modules/
+node_modules
 
 # Knife edges a fuzz run found; one is kept by moving it up a folder
 tests/fuzz/knife-edges/found/
