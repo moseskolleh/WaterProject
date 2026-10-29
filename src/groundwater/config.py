@@ -539,6 +539,12 @@ class ServiceConfig:
     # How long past its due date before a visit stops being "due" and is
     # "overdue": a visit is a journey, not a diary entry.
     grace_days: int = _SERVICE["grace_days"]
+    # The browser app's address, as the programme serves it, which a plate's
+    # QR code links to the report page of its borehole from (PLAN.md step
+    # 7.1): https, with no # part. Blank unless the programme sets one,
+    # because no address can be known here; a plate printed with none
+    # carries its details as plain text, as plates always have.
+    report_url: str = _SERVICE["report_url"]
 
 
 # ---------------------------------------------------------------------------

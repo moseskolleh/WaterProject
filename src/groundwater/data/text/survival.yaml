@@ -80,10 +80,11 @@ method: >-
   The share still working is the Kaplan-Meier estimate (Kaplan and Meier
   1958) of the time from commissioning to the first failure. A borehole
   that has not failed is censored: counted as working up to the last report
-  of it working (its commissioning, or a visit that would have recorded a
-  failure had it found one: a sanitary or routine inspection, or a water
-  sample) and not after, because not reported since is not taken as
-  working; one decommissioned without a failure is censored on that day. A
+  of it working (its commissioning; a visit that would have recorded a
+  failure had it found one, a sanitary or routine inspection or a water
+  sample; or a report from its plate or by SMS that it is working) and not
+  after, because not reported since is not taken as working; one
+  decommissioned without a failure is censored on that day. A
   repair or a return to service with no failure recorded before it counts
   as the first failure, on its own date. Of several records on one day, a
   failure is read first, then a repair or return to service, then a

@@ -156,6 +156,9 @@ CARRIED_KEYS = frozenset({
     # the service rounds' area mechanics by chiefdom (PLAN.md step 7.3),
     # saved with the project by its org_ prefix
     "org_area_mechanics",
+    # the report address plates link to (PLAN.md step 7.1), saved likewise,
+    # and the day for SMS messages that carry none, which is not
+    "org_report_url", "reports_received_on",
     "proc_ref", "proc_retention", "proc_advance", "proc_number", "proc_date",
     "proc_previous",
 })

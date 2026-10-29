@@ -50,12 +50,15 @@ __all__ = [
     "DISTRICT_CODES",
     "EVENT_KINDS",
     "FUNCTION_LABELS",
+    "REPORT_ROUTE",
     "Schedule",
     "asset_from_project",
     "asset_state",
     "asset_with_rising_main",
     "check_character",
+    "check_report_url",
     "clean_answers",
+    "clean_photo_provenance",
     "clean_rising_main",
     "event_id",
     "format_asset_id",
@@ -69,6 +72,8 @@ __all__ = [
     "qr_payload",
     "registry_rows",
     "registry_stats",
+    "report_link",
+    "scan_start",
     "trim_field",
     "validate_asset_id",
 ]
@@ -319,6 +324,13 @@ def validate_asset_id(text: str) -> tuple[bool, str]:
 #: rising main; an ``inspection`` is the sanitary inspection, as it always
 #: was. A repair is not counted as a routine inspection: it records what was
 #: mended, not that the rest was looked at.
+#:
+#: The last three are what somebody at the pump reports from its plate or by
+#: SMS (PLAN.md step 7.1; a report that it is broken is a ``failure``). A
+#: report that it is working says so, as a failure report says the
+#: opposite; one that it is slow, or that the water tastes or looks wrong,
+#: says something is the matter without saying whether water comes, so it
+#: establishes nothing about function and is kept for whoever goes to look.
 EVENT_KINDS = {
     "commissioned": ("Commissioned", "functional", False),
     "inspection": ("Sanitary inspection", None, True),
@@ -329,6 +341,9 @@ EVENT_KINDS = {
     "restored": ("Returned to service", "functional", True),
     "decommissioned": ("Decommissioned", "decommissioned", False),
     "note": ("Note", None, False),
+    "reported_working": ("Reported working", "functional", False),
+    "reported_slow": ("Reported slow", None, False),
+    "quality_complaint": ("Water quality complaint", None, False),
 }
 
 #: The order events recorded on one day are read in. Sorting them by kind
@@ -455,6 +470,12 @@ class AssetEvent:
     #: every other event (PLAN.md step 7.5).
     form: str = ""
     answers: str = ""
+    #: The provenance record of the photograph (``photos.photo_provenance``:
+    #: its SHA-256, capture time and position), where the event carries one
+    #: taken through a photo slot (PLAN.md step 7.1); None otherwise. Like
+    #: the photograph, it is not part of the event's identifier, and it
+    #: travels with the photograph when two copies of the event merge.
+    photo_provenance: dict | None = None
 
     def identified_for(self, asset_id: str) -> AssetEvent:
         """A copy carrying its content-derived id."""
@@ -465,6 +486,7 @@ class AssetEvent:
                                                self.note, self.by, self.form,
                                                self.answers),
             form=self.form, answers=self.answers,
+            photo_provenance=self.photo_provenance,
         )
 
     @property
@@ -489,6 +511,9 @@ class AssetEvent:
         if self.form or self.answers:
             out["form"] = self.form
             out["answers"] = self.answers
+        # likewise the photograph's provenance (PLAN.md step 7.1)
+        if self.photo_provenance is not None:
+            out["photo_provenance"] = dict(self.photo_provenance)
         out["event_id"] = self.event_id
         return out
 
@@ -502,6 +527,26 @@ def clean_answers(raw) -> str:
     """
     return "".join("Y" if c in "Yy" else "N" if c in "Nn" else "-"
                    for c in trim_field(raw or ""))
+
+
+#: A SHA-256 as ``photos.photo_provenance`` and the browser's photo slot
+#: write one.
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def clean_photo_provenance(raw) -> dict | None:
+    """A photograph's provenance record as an event keeps it, or None.
+
+    Kept as it stands when it is a mapping whose ``sha256`` is a SHA-256
+    as both engines write one, 64 hexadecimal digits in lower case, which is
+    what makes it a record of a file at all; anything else - a record from a
+    hand-edited file with no hash or a shortened one, a list, a string - is
+    dropped rather than kept as evidence of nothing.
+    """
+    if not isinstance(raw, dict) or not isinstance(raw.get("sha256"), str) \
+            or not _SHA256.fullmatch(raw["sha256"]):
+        return None
+    return dict(raw)
 
 
 def _coerce_event(raw) -> AssetEvent | None:
@@ -519,6 +564,7 @@ def _coerce_event(raw) -> AssetEvent | None:
         event_id=str(raw.get("event_id") or ""),
         form=trim_field(raw.get("form") or ""),
         answers=clean_answers(raw.get("answers")),
+        photo_provenance=clean_photo_provenance(raw.get("photo_provenance")),
     )
 
 
@@ -1033,16 +1079,77 @@ def _due_item(key: str, title: str, last: date | None, commissioned: date | None
 # What goes on the borehole itself
 # ---------------------------------------------------------------------------
 
-def qr_payload(asset: Asset) -> str:
+#: The browser app's address for the report page of one borehole, after the
+#: app's own address: its routes are #/<page>/<item> (PLAN.md steps 1.4 and
+#: 7.1). ``REPORT_ROUTE`` in gwt-core.js is the twin.
+REPORT_ROUTE = "#/report/"
+
+#: A report address as :func:`check_report_url` takes one: https:// in
+#: either case, a first character that is not /, ? or #, then printable
+#: ASCII with no blank and no #. Written out rather than read with
+#: re.IGNORECASE, which in Python also takes a long s (U+017F) for an s,
+#: where the browser's engine does not. ``REPORT_URL_RE`` in gwt-core.js is
+#: the twin.
+_REPORT_URL = re.compile(r"[Hh][Tt][Tt][Pp][Ss]://[\x21\x22\x24-\x2e\x30-\x3e\x40-\x7e]"
+                         r"[\x21\x22\x24-\x7e]*")
+
+
+def check_report_url(url) -> str:
+    """Why ``url`` cannot be the address a plate's symbol links to, or ""
+    when it can or when none is set.
+
+    The address is the browser app's, as the programme serves it
+    (``service.report_url``). It has to be https: a browser keeps an app for
+    use with no network only from a secure address, and the report page is
+    meant for a phone at a borehole. It may carry a path and a query but no
+    blank and no ``#`` part, because the page and the borehole are added
+    after it as one. It is written in printable ASCII, an international
+    domain in its ``xn--`` form, because that is what every phone's camera
+    reads off a symbol the same way; the scheme is read in either case, A to
+    Z only, as the browser's engine reads it.
+    """
+    text = trim_field(url)
+    if not text:
+        return ""
+    if not _REPORT_URL.fullmatch(text):
+        return phrase("fault_reports.url_refused", url=text)
+    return ""
+
+
+def report_link(asset_id: str, report_url="") -> str:
+    """The link a plate's symbol carries to the report page of ``asset_id``,
+    or "" when no address is set. An address :func:`check_report_url`
+    refuses is refused here too, with its reason, rather than printed."""
+    reason = check_report_url(report_url)
+    if reason:
+        raise ValueError(reason)
+    text = trim_field(report_url)
+    return f"{text}{REPORT_ROUTE}{asset_id}" if text else ""
+
+
+def scan_start(asset_id: str, report_url="") -> str:
+    """What a scan of the plate of ``asset_id`` begins with: the link to its
+    report page where an address is set, else the first line of the plain
+    text, ``BOREHOLE`` and the identifier."""
+    return report_link(asset_id, report_url) or f"BOREHOLE {asset_id}"
+
+
+def qr_payload(asset: Asset, report_url="") -> str:
     """The text the QR code carries.
 
-    Plain text rather than a link. A link is only useful where there is a
-    network, and the whole reason this symbol is on the headworks is that
-    there is not one - a technician who scans it should see the identifier,
-    the place and the position on the screen immediately, with nothing to
-    load and nothing to install.
+    With no report address set (``service.report_url``, blank unless the
+    programme sets one), plain text rather than a link: a technician who
+    scans it sees the identifier, the place and the position on the screen
+    immediately, with nothing to load and nothing to install, where there
+    is no network. With one set, the link to the browser app's report page
+    for this borehole (PLAN.md step 7.1), which a phone's camera opens; the
+    page works with no network on a phone that has opened the app before,
+    and the identifier is still in the link for anyone who reads it.
     """
-    lines = [f"BOREHOLE {asset.asset_id}", asset.label]
+    link = report_link(asset.asset_id, report_url)
+    if link:
+        return link
+    lines = [scan_start(asset.asset_id), asset.label]
     latlon = asset.latlon
     if latlon is not None:
         lat, lon = latlon

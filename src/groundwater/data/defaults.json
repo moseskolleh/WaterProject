@@ -151,7 +151,8 @@
   "service": {
     "sanitary_inspection_months": 6,
     "water_sample_months": 12,
-    "grace_days": 30
+    "grace_days": 30,
+    "report_url": ""
   },
   "survival": {
     "min_at_risk": 5,

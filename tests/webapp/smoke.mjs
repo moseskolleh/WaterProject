@@ -17,7 +17,7 @@ function check(name, ok, detail) {
 const PAGES = ['overview', 'guided', 'site', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
   'pumping', 'pumpcopilot', 'quality', 'costing', 'procurement', 'supervision', 'handover',
   'templates', 'extract',
-  'waterpoints', 'coverage', 'portfolio', 'registry', 'settings', 'about'];
+  'waterpoints', 'coverage', 'portfolio', 'registry', 'report', 'settings', 'about'];
 
 await withPage(async (page, base, consoleErrors) => {
   const downloads = [];
@@ -2517,6 +2517,283 @@ await withPage(async (page, base, consoleErrors) => {
   check('registry: the record names the days the community went without',
     registry.doc.includes('Not working') && registry.doc.includes('426 days') &&
     registry.doc.includes('rising main parted'));
+
+  // --- reports from the plate and by SMS (PLAN.md step 7.1) ----------------
+  // The route a plate's QR code opens refuses a mistyped identifier, offers
+  // the four choices and queues a report on this phone; the Asset registry
+  // page merges the queue into the borehole it names as it opens and keeps
+  // the rest; SMS messages are imported with each refusal shown; the queue
+  // is exported as a file the engine reads back, belongs to this browser
+  // rather than to a project file, and a report address the registry
+  // refuses keeps the plate from being printed.
+  const plateReports = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const support = window.GWT.support;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone];
+    const toast = support.toast, download = support.download, pickFile = support.pickFile;
+    const validate = C.validateAssetId;
+    const toasts = [], got = [];
+    support.toast = (message, tone) => { toasts.push([message, tone]); };
+    support.download = (name, data) => { got.push({ name, data }); };
+    const host = () => document.querySelector('#page-host');
+    const press = (label) => {
+      const btn = Array.from(host().querySelectorAll('button')).find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const fill = (attr, value) => {
+      const input = host().querySelector('input[data-report="' + attr + '"]');
+      if (!input) return false;
+      input.value = value;
+      input.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const out = {};
+    try {
+      app.store.set('asset', null);
+      app.store.set('reports', { queue: [], held: [] });
+      d.registry = [];
+      site.easting = 694912; site.northing = 938150; site.utm_zone = 28;
+      const id = C.mintAssetId(site);
+      out.id = id;
+      const other = C.mintAssetId({ district: 'Bo', easting: 790500, northing: 875300, utm_zone: 28 });
+      /* neither its check character nor, where the registry still reads
+       * one, the character it was minted with before ISO 7064 was followed */
+      const body = id.slice(0, id.lastIndexOf('-'));
+      const taken = [id.slice(-1), C.legacyCheckCharacter ? C.legacyCheckCharacter(body) : ''];
+      const mistyped = body + '-' + 'ZYXW'.split('').find((c) => taken.indexOf(c) < 0);
+
+      // the address a plate's QR code carries, opened
+      await app.goto('report', mistyped);
+      out.refused = {
+        hash: location.hash,
+        text: (host().querySelector('.callout-bad') || {}).textContent || '',
+        choices: host().querySelectorAll('[data-choice]').length,
+        missing: !!host().querySelector('.item-missing'),
+      };
+      await app.goto('report', id);
+      out.page = {
+        hash: location.hash,
+        choices: Array.from(host().querySelectorAll('[data-choice]')).map((b) => b.textContent),
+        photoSlot: !!host().querySelector('.img-slot'),
+        browserOnly: host().textContent.includes(C.phrase('fault_reports.browser_only')),
+        missing: !!host().querySelector('.item-missing'),
+        placeholder: (host().querySelector('input[data-report="identifier"]') || {}).placeholder,
+      };
+      // with no choice made the report is refused, and nothing is queued
+      press('Save the report');
+      out.noChoice = [toasts[toasts.length - 1], app.store.get('reports.queue').length];
+      host().querySelector('[data-choice="broken"]').click();
+      fill('when', '2026-05-01');
+      fill('by', 'Aminata');
+      fill('note', 'handle snapped');
+      press('Save the report');
+      out.queued = app.store.get('reports.queue').map((r) => [r.asset_id, r.kind, r.when, r.note, r.by]);
+      // a report on another borehole, made on its own page
+      await app.goto('report', other);
+      host().querySelector('[data-choice="working"]').click();
+      fill('when', '2026-05-02');
+      press('Save the report');
+      out.waiting = host().textContent.includes('Reports waiting on this phone') &&
+        host().querySelectorAll('table tbody tr').length;
+
+      // the queue belongs to this browser: no project file carries it, and
+      // opening one keeps it
+      out.notSaved = !('reports' in app.projectPayload().state);
+      const payload = app.projectPayload();
+      payload.state.reports = { queue: [], held: [] };
+      await app.loadProject(JSON.stringify(payload));
+      out.keptOverLoad = app.store.get('reports.queue').length;
+      // the load replaced the site; put the position back
+      const site2 = app.store.get('site');
+      site2.easting = 694912; site2.northing = 938150; site2.utm_zone = 28;
+
+      // the registry page merges the reports for its borehole as it opens
+      await app.goto('registry');
+      const asset = app.store.get('asset') || { events: [] };
+      out.merged = {
+        events: asset.events.map((e) => [e.kind, e.when, e.note, e.by]),
+        state: C.assetState(C.assetFromDict(asset), '2026-06-01').function,
+        queue: app.store.get('reports.queue').map((r) => r.asset_id),
+        said: (host().querySelector('.reports-merged') || {}).textContent || '',
+        waiting: (host().querySelector('.reports-waiting') || {}).textContent || '',
+      };
+      // opened again, nothing more is added
+      app.render();
+      out.again = (app.store.get('asset') || { events: [] }).events.length;
+
+      // SMS messages, one a line, imported with each refusal shown; the
+      // registry's check stands in for one that reads the other borehole's
+      // identifier with a note (as it reads one minted with the older check
+      // character), so its report is held for a person
+      app.store.set('reports.receivedOn', '');
+      const realValidate = C.validateAssetId;
+      C.validateAssetId = (t) => {
+        const v = realValidate(t);
+        return v.ok && v.assetId === other ? Object.assign({}, v, { reason: 'Compare it with the plate.' }) : v;
+      };
+      const sms = [
+        '2026-05-03 07:30 +23276123456 BH ' + id + ' BROKEN still broken',
+        'BH ' + id + ' SLOW',
+        '2026-05-03 BH ' + mistyped + ' WORKING',
+        'hello',
+        '2026-05-03 +232 BH ' + other + ' TASTE salty',
+      ].join('\n');
+      support.pickFile = async () => [new File([sms], 'sms.txt', { type: 'text/plain' })];
+      press('Import SMS messages or a file of reports');
+      for (let t = 0; t < 200 && !d.reportImport; t++) await new Promise((r) => setTimeout(r, 25));
+      C.validateAssetId = realValidate;
+      const rows = Array.from(host().querySelectorAll('table')).find((tb) =>
+        (tb.querySelector('thead') || {}).textContent === C.reportHeader().join(''));
+      out.sms = {
+        summary: (host().querySelector('.reports-summary') || {}).textContent || '',
+        rows: rows ? Array.from(rows.querySelectorAll('tbody tr')).map((tr) =>
+          Array.from(tr.querySelectorAll('td')).map((td) => td.textContent)) : [],
+        events: (app.store.get('asset') || { events: [] }).events.map((e) => [e.kind, e.when, e.by]),
+        queue: app.store.get('reports.queue').map((r) => r.asset_id),
+        held: Array.from(host().querySelectorAll('.report-held')).map((n) => n.textContent),
+      };
+      // a person confirms the held report: it joins the reports waiting
+      press(C.phrase('fault_reports.confirm'));
+      out.confirmed = { held: app.store.get('reports.held').length,
+        queue: app.store.get('reports.queue').map((r) => [r.asset_id, r.kind]) };
+
+      // the queue as a file, which the engine reads back
+      press('Export the reports waiting (.json)');
+      const file = got.find((g) => g.name === 'borehole-reports.json');
+      out.exported = file ? C.readReportsFile(JSON.parse(file.data)).map((r) => [r.status, r.asset_id, r.kind]) : null;
+
+      // a reset says it deletes the reports waiting, which no project file
+      // carries; closed, it deletes nothing
+      await app.goto('settings');
+      press('Reset everything');
+      const modal = document.querySelector('.modal-overlay');
+      out.reset = (modal && modal.querySelector('.reset-reports') || {}).textContent || '';
+      if (modal) Array.from(modal.querySelectorAll('button')).find((b) => b.textContent === 'Close').click();
+      await app.goto('registry');
+      out.reset_kept = app.store.get('reports.queue').length;
+
+      // a report address the registry refuses stops the plate and the round
+      // sheets, which say what a scan of each plate begins with; the asset
+      // record, which carries no symbol, is still built
+      app.store.set('config.service.report_url', 'http://water.example.org/');
+      app.render();
+      const named = (label) => Array.from(host().querySelectorAll('button'))
+        .find((b) => b.textContent === label);
+      const plate = named('Identification plate (.docx)');
+      const sheets = named('Round sheets (.docx)');
+      out.badAddress = { said: !!host().querySelector('.report-address'), disabled: !!(plate && plate.disabled),
+        rounds: !!host().querySelector('.rounds-address'), sheets: !!(sheets && sheets.disabled) };
+      press('Asset record (.docx)');
+      let record = null;
+      for (let t = 0; t < 400 && !record; t++) {
+        record = got.find((g) => /^asset_.*\.docx$/.test(g.name));
+        if (!record) await new Promise((r) => setTimeout(r, 25));
+      }
+      out.badAddress.record = !!record &&
+        !toasts.some((m) => m[1] === 'error' && /document/.test(m[0]));
+      app.store.set('config.service.report_url', 'https://water.example.org/toolkit/');
+      app.render();
+      const plate2 = Array.from(host().querySelectorAll('button'))
+        .find((b) => b.textContent === 'Identification plate (.docx)');
+      out.goodAddress = { said: !!host().querySelector('.report-address'),
+        disabled: !!(plate2 && plate2.disabled), rounds: !!host().querySelector('.rounds-address'),
+        link: C.qrPayload(C.assetFromDict(app.store.get('asset')), app.store.get('config.service.report_url')) };
+      // the plate built from the page carries the link and says so
+      press('Identification plate (.docx)');
+      let built = null;
+      for (let t = 0; t < 400 && !built; t++) {
+        built = got.find((g) => /^placard_.*\.docx$/.test(g.name));
+        if (!built) await new Promise((r) => setTimeout(r, 25));
+      }
+      const placard = built ? await window.__docText(built.data) : '';
+      out.placard = placard.includes(C.phrase('fault_reports.placard_caption_link')) &&
+        !placard.includes(C.phrase('fault_reports.placard_caption_text'));
+
+      // the reports waiting cleared by a person, asked first
+      press('Clear the reports waiting');
+      const ask = document.querySelector('.modal-overlay');
+      out.cleared = { asked: !!ask, before: app.store.get('reports.queue').length };
+      if (ask) Array.from(ask.querySelectorAll('button')).find((b) => b.textContent === 'Clear').click();
+      out.cleared.after = app.store.get('reports.queue').length;
+      out.cleared.button = !!named('Clear the reports waiting');
+    } finally {
+      C.validateAssetId = validate;
+      support.toast = toast;
+      support.download = download;
+      support.pickFile = pickFile;
+      app.store.set('config.service.report_url', '');
+      app.store.set('reports', { queue: [], held: [] });
+      app.store.set('reports.receivedOn', '');
+      app.store.set('asset', null);
+      d.reportImport = null;
+      d.reportsMerged = null;
+      const site3 = app.store.get('site');
+      site3.easting = saved[0]; site3.northing = saved[1]; site3.utm_zone = saved[2];
+      await app.goto('registry');
+    }
+    return out;
+  });
+  check('fault reports: the address a plate links to refuses a mistyped identifier and offers no form',
+    plateReports.refused.hash.startsWith('#/report/') && plateReports.refused.choices === 0 &&
+    plateReports.refused.text.includes('check character') && !plateReports.refused.missing,
+    JSON.stringify(plateReports.refused));
+  check('fault reports: the report page offers the four choices and a photograph, and says it is ' +
+    'the browser app\'s alone',
+    JSON.stringify(plateReports.page.choices) ===
+      '["Working","Broken","Slow","Bad taste or colour"]' &&
+    plateReports.page.photoSlot && plateReports.page.browserOnly && !plateReports.page.missing &&
+    /^SL-WAR-8FEEVKQ-[0-9A-Z]$/.test(plateReports.page.placeholder) &&
+    plateReports.page.hash === '#/report/' + plateReports.id, JSON.stringify(plateReports.page));
+  check('fault reports: a report with no choice is refused; one made is queued on this phone',
+    plateReports.noChoice[1] === 0 && plateReports.noChoice[0][1] === 'warn' &&
+    JSON.stringify(plateReports.queued) ===
+      JSON.stringify([[plateReports.id, 'failure', '2026-05-01', 'handle snapped', 'Aminata']]) &&
+    plateReports.waiting === 2, JSON.stringify([plateReports.noChoice, plateReports.queued, plateReports.waiting]));
+  check('fault reports: the queue belongs to this browser: no project file carries it, and opening one keeps it',
+    plateReports.notSaved && plateReports.keptOverLoad === 2, JSON.stringify(plateReports));
+  check('fault reports: the Asset registry page merges the reports for its borehole as it opens, once, ' +
+    'and keeps the rest waiting',
+    JSON.stringify(plateReports.merged.events) ===
+      JSON.stringify([['failure', '2026-05-01', 'handle snapped', 'Aminata']]) &&
+    plateReports.merged.state === 'non_functional' && plateReports.merged.said.includes('1 report') &&
+    plateReports.merged.queue.length === 1 && plateReports.merged.queue[0] !== plateReports.id &&
+    plateReports.merged.waiting.includes('1 report') && plateReports.again === 1,
+    JSON.stringify(plateReports.merged));
+  check('fault reports: SMS messages are imported with each refusal shown, and a message with no day ' +
+    'is refused rather than dated today',
+    plateReports.sms.summary === '5 read: 1 accepted, 1 held for a person to confirm, 3 refused.' &&
+    plateReports.sms.rows.length === 5 &&
+    plateReports.sms.rows[1][5] === 'Refused' && plateReports.sms.rows[2][6].includes('check character') &&
+    plateReports.sms.rows[3][6].startsWith('Not a report') &&
+    JSON.stringify(plateReports.sms.events.map((e) => e[2])) ===
+      JSON.stringify(['Aminata', 'SMS from +23276123456']) &&
+    plateReports.sms.queue.length === 1, JSON.stringify(plateReports.sms));
+  check('fault reports: an SMS the registry reads only with a note is held, merged nowhere, until a ' +
+    'person confirms it',
+    plateReports.sms.rows[4][5] === 'Held for a person to confirm' &&
+    plateReports.sms.held.length === 1 && plateReports.sms.held[0].includes('Compare it with the plate.') &&
+    plateReports.confirmed.held === 0 &&
+    JSON.stringify(plateReports.confirmed.queue.map((r) => r[1])) ===
+      '["reported_working","quality_complaint"]', JSON.stringify([plateReports.sms, plateReports.confirmed]));
+  check('fault reports: the reports waiting are exported as a file the engine reads back',
+    JSON.stringify(plateReports.exported && plateReports.exported.map((r) => r[0])) ===
+      '["accepted","accepted"]', JSON.stringify(plateReports.exported));
+  check('fault reports: a reset says it deletes the reports waiting, which no project file carries',
+    plateReports.reset.includes('2 reports') && plateReports.reset_kept === 2,
+    JSON.stringify([plateReports.reset, plateReports.reset_kept]));
+  check('fault reports: a report address the registry refuses keeps the plate and the round sheets ' +
+    'from being printed, not the asset record; with one it takes, the plate\'s symbol is the link and ' +
+    'its caption says so',
+    plateReports.badAddress.said && plateReports.badAddress.disabled &&
+    plateReports.badAddress.rounds && plateReports.badAddress.sheets && plateReports.badAddress.record &&
+    !plateReports.goodAddress.said && !plateReports.goodAddress.disabled && !plateReports.goodAddress.rounds &&
+    plateReports.goodAddress.link === 'https://water.example.org/toolkit/#/report/' + plateReports.id &&
+    plateReports.placard, JSON.stringify([plateReports.badAddress, plateReports.goodAddress, plateReports.placard]));
+  check('fault reports: the reports waiting are cleared only when a person says so',
+    plateReports.cleared.asked && plateReports.cleared.before === 2 && plateReports.cleared.after === 0 &&
+    !plateReports.cleared.button, JSON.stringify(plateReports.cleared));
 
   // --- the sanitary inspection (PLAN.md step 7.5) -------------------------
   // The form records an inspection in the borehole's history, a question

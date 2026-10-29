@@ -45,8 +45,10 @@ from .registry import (
     Schedule,
     asset_from_dict,
     asset_state,
+    check_report_url,
     iso_date,
     merge_events,
+    scan_start,
     trim_field,
 )
 from .sanitary import form_questions
@@ -245,7 +247,7 @@ def _walk(stops: list[dict]) -> list[dict]:
 
 
 def service_rounds(assets, as_of, schedule: Schedule | None = None,
-                   mechanics=None) -> dict:
+                   mechanics=None, report_url="") -> dict:
     """The service rounds of a register of boreholes on the day ``as_of``.
 
     ``assets`` are registry assets (or their saved records); ``as_of`` is a
@@ -260,7 +262,15 @@ def service_rounds(assets, as_of, schedule: Schedule | None = None,
     (``plate``), where it is, its condition on record and the visits due
     (the registry's due items, with the interval and its basis), and the
     distance from the stop before.
+
+    ``report_url`` is the report address plates are printed with
+    (``service.report_url``): with one, a scan of a plate begins with the
+    link to its report page (PLAN.md step 7.1), and an address the registry
+    refuses is refused here too.
     """
+    check = check_report_url(report_url)
+    if check:
+        raise ValueError(check)
     day = _day(as_of)
     schedule = schedule or Schedule()
     records, repeated, unreadable = _records(assets)
@@ -282,7 +292,7 @@ def service_rounds(assets, as_of, schedule: Schedule | None = None,
         groups.setdefault(mechanic, []).append({
             "order": 0,
             "asset_id": asset.asset_id,
-            "plate": f"BOREHOLE {asset.asset_id}",
+            "plate": scan_start(asset.asset_id, report_url),
             # as the registry labels a borehole, from the fields as read here
             "label": f"{place} ({district})" if district else place,
             "community": community,

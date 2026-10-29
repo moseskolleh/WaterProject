@@ -351,3 +351,28 @@ need real project inputs or decisions to finish calibrating it.
    A recovery whose first time comes at or after the minute the pump
    stopped is taken to be on the test's clock and moved back to the stop,
    unless its header or heading says "stop", "shut" or "off".
+
+23. **Reports from the plate and by SMS (added with PLAN.md step 7.1).**
+   A plate printed with a report address links to the browser app's
+   report page, and both apps import reports sent by SMS. Six things need
+   the programme: (a) give the address the browser app is served from
+   (`service.report_url` in `groundwater/data/defaults.json`, blank until
+   it is set; it must be https, as a browser keeps an app for use with no
+   network only from a secure address), and say whether the plate should
+   also print an SMS number and the message's form, which it does not now
+   because no number is known here; (b) confirm the SMS words (WORKING,
+   BROKEN, SLOW, and TASTE, COLOUR, COLOR or BAD for bad taste or colour,
+   in `groundwater/data/text/fault_reports.yaml`) and give the words in
+   Krio and the other languages people will text in, which are not
+   guessed here (step 9.2); (c) say whether a report from somebody at the
+   pump that it is working should make the borehole "Working", as it does
+   now, in the way a report that it is broken makes it "Not working", or
+   whether only a mechanic's visit should; (d) say whether a report that
+   it is slow, or that the water tastes or looks wrong, should make a
+   visit or a water sample due at once, as neither does now; (e) confirm
+   that a report by SMS whose identifier the registry reads only with a
+   note is held until a person confirms it, and say whether a report from
+   a known sender (the area mechanic's number) should be taken without
+   one; (f) confirm that the reports waiting on a phone belong to that
+   browser rather than to a project file, so that saving a project does
+   not keep them and *Reset everything* deletes them.

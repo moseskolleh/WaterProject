@@ -2448,3 +2448,111 @@ def test_how_long_boreholes_keep_working_on_the_registry_page():
                 if g["by"] == "pump_type")
     written = " ".join(str(m.value) for m in at.markdown)
     assert pump["lines"][0].startswith("India Mark II: 7 followed") and pump["lines"][0] in written
+
+
+def test_reports_by_sms_and_from_a_phone_on_the_registry_page(monkeypatch):
+    """PLAN.md step 7.1: the Streamlit app has no report page and says so on
+    its Asset registry page. It imports SMS messages and a phone's file of
+    reports, shows what became of each line and why, holds a report the
+    registry reads only with a note until a person ticks it, adds this
+    borehole's reports to its history once, offers the rest as a file, and
+    holds the plate and the round sheets to the report address."""
+    import docx
+
+    from groundwater import fault_reports as F
+    from groundwater import registry
+    from groundwater.models import SiteMetadata
+    from groundwater.registry import Asset, AssetEvent, asset_from_dict, mint_asset_id
+    from groundwater.text import phrase
+
+    def minted(district, easting, northing, zone):
+        return mint_asset_id(SiteMetadata(district=district, easting=easting,
+                                          northing=northing, utm_zone=zone))
+
+    this = minted("Western Area Rural", 694912.0, 938150.0, 28)
+    other = minted("Bo", 790500.0, 875300.0, 28)
+    noted = minted("Kailahun", 280400.0, 925600.0, 29)
+    # the registry's check stands in for one that reads the third identifier
+    # with a note, as it reads one minted with the older check character
+    real = registry.validate_asset_id
+
+    def check(text):
+        ok, reason = real(text)
+        if ok and registry.parse_asset_id(text) == noted:
+            return True, "Compare it with the plate."
+        return ok, reason
+
+    monkeypatch.setattr(registry, "validate_asset_id", check)
+    sms = "\n".join([
+        f"2026-05-01 08:14 +23276123456 BH {this} BROKEN handle snapped",
+        f"BH {this} SLOW",
+        "hello",
+        f"2026-05-02 +232 BH {other} WORKING",
+        f"2026-05-02 +232 BH {noted} TASTE salty",
+    ]).encode("utf-8")
+    phone = json.dumps(F.reports_file([F.report_record(
+        this, "slow", "2026-05-04", "slow since Monday", "Aminata")])).encode("utf-8")
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["asset_record"] = Asset(
+        asset_id=this, community="Dr. Timbo's", district="Western Area Rural",
+        easting=694912.0, northing=938150.0, utm_zone=28,
+        events=[AssetEvent("2020-01-10", "commissioned")]).as_dict()
+    at.session_state["reports_upload_kept"] = {
+        "ids": ["sms.txt", "phone.json"], "files": [("sms.txt", sms), ("phone.json", phone)]}
+    goto(at, "Asset registry")
+    assert not at.exception, at.exception
+    assert phrase("fault_reports.browser_only") in " ".join(str(c.value) for c in at.caption)
+
+    # each line read, a message with no day refused rather than dated today
+    written = " ".join(str(m.value) for m in at.markdown)
+    assert "6 read: 3 accepted, 1 held for a person to confirm, 2 refused." in written
+    table = next(f.value for f in at.dataframe if list(f.value.columns) == F.report_header())
+    assert list(table["Outcome"]) == ["Accepted", "Refused", "Refused", "Accepted",
+                                      "Held for a person to confirm", "Accepted"]
+    assert table["Why"][1] == phrase("fault_reports.no_date")
+    assert table["Sender"][0] == "+23276123456"
+    held = phrase("fault_reports.held", note="Compare it with the plate.")
+    assert held in " ".join(str(w.value) for w in at.warning)
+
+    # this borehole's two reports, added to its history at the press, once
+    add = next(b for b in at.button if b.key == "reports_add")
+    assert add.label == "Add 2 report(s) to this borehole's history"
+    add.click()
+    at.run()
+    assert not at.exception, at.exception
+    events = asset_from_dict(at.session_state["asset_record"]).events
+    assert [(e.when, e.kind, e.by) for e in events] == [
+        ("2020-01-10", "commissioned", ""),
+        ("2026-05-01", "failure", "SMS from +23276123456"),
+        ("2026-05-04", "reported_slow", "Aminata")]
+    assert "2 report(s) added" in " ".join(str(s.value) for s in at.success)
+    assert not [b for b in at.button if b.key == "reports_add"]
+    assert "history holds the reports that name it" in " ".join(str(c.value) for c in at.caption)
+
+    # the rest are offered as a file, the held one only once a person ticks it
+    infos = " ".join(str(i.value) for i in at.info)
+    assert "1 imported report(s) name boreholes" in infos
+    next(c for c in at.checkbox if c.label.startswith(phrase("fault_reports.confirm"))).check()
+    at.run()
+    assert not at.exception, at.exception
+    assert "2 imported report(s) name boreholes" in " ".join(str(i.value) for i in at.info)
+
+    # a report address the registry refuses holds back the plate and the
+    # round sheets; one it takes makes the plate's symbol a link
+    at.text_input(key="org_report_url").input("http://water.example.org/")
+    at.run()
+    assert not at.exception, at.exception
+    refused = phrase("fault_reports.url_refused", url="http://water.example.org/")
+    assert sum(str(e.value) == refused for e in at.error) == 2
+    assert at.button(key="asset_placard").disabled and at.button(key="rounds_sheet").disabled
+    at.text_input(key="org_report_url").input("https://water.example.org/toolkit/")
+    at.run()
+    assert not at.exception, at.exception
+    assert not at.button(key="asset_placard").disabled
+    at.button(key="asset_placard").click()
+    at.run()
+    assert not at.exception, at.exception
+    plate = docx.Document(at.session_state["artifacts"]["Borehole identification plate"])
+    text = "\n".join(p.text for p in plate.paragraphs)
+    assert phrase("fault_reports.placard_caption_link") in text
+    assert phrase("fault_reports.placard_caption_text") not in text

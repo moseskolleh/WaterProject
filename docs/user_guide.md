@@ -550,6 +550,7 @@ further and name one thing on them:
 | [`#/supervision`](index.html#/supervision) | Supervision |
 | [`#/handover`](index.html#/handover) | Handover |
 | [`#/registry`](index.html#/registry), `#/registry/<asset id>` | Asset registry, for that borehole |
+| [`#/report`](index.html#/report), `#/report/<asset id>` | Report on a borehole, that one: what a linked plate's symbol opens (9d) |
 | [`#/templates`](index.html#/templates) | Templates |
 
 The other pages follow the same pattern (`#/guided`, `#/spine`,
@@ -558,7 +559,8 @@ The other pages follow the same pattern (`#/guided`, `#/spine`,
 whatever project the browser has open; it does not carry the project
 with it. If it names a sounding or a borehole the open project does not
 hold, the page says so across the top rather than showing another one
-in its place. An address the app does not know opens the Overview.
+in its place; the report page, which needs no project, is the
+exception, and checks the identifier instead. An address the app does not know opens the Overview.
 
 The browser app installs. Open it once with a connection and it keeps
 itself on the device; the Overview page then offers an **Install**
@@ -1102,6 +1104,118 @@ left out of the test, which says so.
 
 The browser app keeps the day with the project; the Streamlit app starts
 it at today each time the page is opened.
+
+## 9d. Reports from the plate and by SMS
+
+In the browser app: the report page,
+[`#/report/<identifier>`](index.html#/report), and the *Reports from
+plates and by SMS* card on [`#/registry`](index.html#/registry). In the
+Streamlit app: the Asset registry page, after *Look up an identifier*.
+The report page is in the browser app only; both apps take reports by
+SMS and the file of reports a phone exports.
+
+**The plate's symbol.** Under *For the headworks* (browser) or the
+history (Streamlit), *Report address* takes the browser app's address as
+the programme serves it, beginning `https://`
+(`service.report_url` in `groundwater/data/defaults.json`, blank by
+default, since no address can be known here; it is saved with the
+project). With one set, the plate's symbol is a link to the report page
+for that borehole, `<address>#/report/<identifier>`, and the caption under
+it says so. Left blank, the symbol carries what it always has: the
+identifier, the place and the position as plain text, which read with no
+network and no app. An address that is not `https://`, has a blank or a
+`#` in it, or has any character outside plain ASCII (write an
+international domain in its `xn--` form) is refused with the reason, and
+neither the plate nor the round sheets are printed until it is put right:
+the round sheets say what a scan of each plate begins with, and that
+follows the address. A plate printed before the address was set still
+carries the plain text, and nothing records which a plate carries, so
+check the identifier, which both carry. A browser keeps the app for use with no network
+only from an https address, and only on a phone that has opened the app
+there once.
+
+**The report page.** Scanning a linked plate opens the page on that
+borehole; the identifier can also be typed. The check character is
+checked as *Look up an identifier* checks it, so a mistyped identifier
+is refused with what it should have ended in, and no form is offered.
+Then choose one of four: *Working*, *Broken*, *Slow* or *Bad taste or
+colour*. The day (today unless changed, written 2026-05-01), a name, a
+note and a photograph are optional; the photograph keeps its capture
+time, its position where it or the phone gives one, and the SHA-256 of
+the file, as every photograph in the app does. *Save the
+report* keeps it on this phone, in the browser's own storage, with no
+network needed. It waits there, under *Reports waiting on this phone*,
+until the Asset registry page is opened here on that borehole's project,
+when it joins the history and leaves the queue. A report for a borehole
+whose project is somewhere else stays waiting: *Export the reports
+(.json)* writes the queue to a small file for the area mechanic or the
+district office, whose Asset registry page imports it in either app.
+The queue belongs to this browser, as the calibration in force does: no
+project file carries it, opening a project keeps it, and *Reset
+everything* deletes it, saying how many reports it would delete. *Clear
+the reports waiting* empties it, after asking; export the file first.
+
+**What each report records.** *Broken* is a failure, so the borehole is
+"Not working" from that day. *Working* is a new kind of record,
+*Reported working*, which makes it "Working", as a failure report makes
+it the opposite, and counts as a report of it working to *How long
+boreholes keep working* (9c). *Slow* (*Reported slow*) and *Bad taste or
+colour* (*Water quality complaint*) say something is the matter without
+saying whether water comes, so they change nothing about whether it
+works; they are kept in the history for whoever goes to look. A report
+is merged by its content, as every record is: the same report saved
+twice, imported twice, or sent twice in a day by one sender in the same
+words is one record.
+
+**By SMS.** A phone with no browser sends
+
+    BH SL-WAR-XXXXXXX-C BROKEN handle snapped
+
+that is, `BH`, the identifier from the plate (here `SL-WAR-XXXXXXX-C`
+stands for it), one word and any note. The
+words are WORKING, BROKEN, SLOW, and TASTE, COLOUR, COLOR or BAD for bad
+taste or colour, in capitals or not; a word in another language is added
+to `fault_reports.yaml` by somebody who speaks it, never guessed. A
+mistyped identifier is refused, with what it should have ended in. No
+gateway is built or needed. Copy the messages into a plain-text file,
+one a line, with the day and time received and the sender before `BH`
+where the copy has them:
+
+    2026-05-01 08:14 +23276123456 BH SL-WAR-XXXXXXX-C BROKEN handle snapped
+    2026-05-02T09:00:00Z,Fatmata Kamara,BH SL-WAR-XXXXXXX-C taste brown water
+
+and press *Import SMS messages or a file of reports* (browser) or upload
+it (Streamlit). The day is read only written year, month and day: a line
+dated 01/05/2026, which could be the first of May or the fifth of
+January, or carrying two days, is refused. *Day received* gives the day
+for lines that carry none; left blank, such a line is refused rather
+than dated on the day of the import. Every line is shown in a table with
+what became of it and why, and the summary counts what was accepted,
+held and refused. A programme that runs an SMS gateway can pass what it
+receives to `groundwater.fault_reports.receive_messages` (a list of
+messages, each with its `text` and, where the gateway gives them, the
+time `received`, day first, and the `sender`), which reads them as the
+import does and merges nothing; it is optional, and nothing here needs
+it.
+
+**Held for a person.** A report by SMS that the registry's check reads
+only with a note (an identifier that checks only by the character
+identifiers were minted with before the check character followed ISO
+7064 MOD 37,36, once that correction is in the toolkit) has nobody to
+read the note as it is typed, so it is held, not merged, until a person
+who has compared the identifier with the plate, or asked the sender,
+confirms it: *Confirmed against the plate* (browser) or the tick box of
+that line (Streamlit). The report page shows the note to the person at
+the plate, so a report made there is taken.
+
+**Into the registry.** In the browser, accepted reports join the queue,
+and those for the borehole of the project open here join its history as
+the page draws. In the Streamlit app, *Add N report(s) to this
+borehole's history* adds those for this project's borehole; importing
+the same file again adds nothing. In both, the reports for boreholes in
+*Many boreholes* are shown in their histories there, without changing
+their files, and the Streamlit app offers the rest as a file of reports
+(*Reports for other boreholes (.json)*), which either app imports.
 
 ## 10. Site maps
 

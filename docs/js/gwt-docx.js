@@ -2878,16 +2878,14 @@
     b.paragraph(asset.asset_id, { bold: true, size: 26, align: 'center' });
     b.paragraph(C.assetLabel(asset), { size: 13, align: 'center' });
     if (context.symbol) {
-      b.figure(context.symbol, 'Scan for this borehole’s identifier and ' +
-        'position. The symbol carries the details themselves, so it reads with ' +
-        'no network and no application installed.', 7.0);
+      /* with a report address set (PLAN.md step 7.1) the symbol is a link to
+       * the borehole's report page; the app drew it from the same address */
+      b.figure(context.symbol, C.phrase(C.reportLink(asset.asset_id, context.reportUrl)
+        ? 'fault_reports.placard_caption_link' : 'fault_reports.placard_caption_text'), 7.0);
     }
     b.table(C.placardLines(asset, state), {
       header: ['', ''], caption: 'Borehole details.', colWidthsCm: [5.0, 10.0] });
-    b.paragraph('Report a breakdown or a change to this borehole against the ' +
-      'identifier above. Quote it in full, including the last character — ' +
-      'it is a check character, and it is what stops a repair being recorded ' +
-      "against a different village's borehole.", { italic: true });
+    b.paragraph(C.phrase('fault_reports.placard_quote'), { italic: true });
     return b;
   }
 

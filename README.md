@@ -173,7 +173,18 @@ water quality guidelines.
     working only up to the last report of it working; a group of fewer
     than five boreholes followed says it is too few to judge and shows no
     curve; and groups are compared by the log-rank test, with its p-value
-    said to be what it is
+    said to be what it is. A plate printed with the programme's report
+    address carries a link to the browser app's report page for its
+    borehole, which works with no network on a phone that has opened the
+    app: working, broken, slow, or bad taste or colour, with an optional
+    photograph, kept on the phone until the borehole's record is opened
+    there or carried to it as a small file. A feature phone reports by
+    SMS (`BH <identifier> BROKEN`), and both apps import a file of
+    messages, refusing a mistyped identifier by its check character and a
+    message whose day cannot be told, and holding for a person one that
+    the registry reads only with a note. No SMS gateway is needed; a
+    programme that runs one hands its messages to
+    `fault_reports.receive_messages`
 18. The survey as an interactive map, not only as a picture: both apps
     write a [GeoLibre](https://geolibre.app) project file - an open,
     plain-JSON map format - carrying the site, the scored drill targets,
@@ -373,6 +384,9 @@ groundwater/
                   in the order of a nearest-neighbour walk
     sanitary.py   the sanitary inspection form, scored and read with the
                   E. coli count into one risk statement
+    fault_reports.py  reports from the plate's report page and by SMS,
+                  each accepted, held for a person or refused, and merged
+                  into the registry by content
     qr.py         a dependency-free QR encoder for the headworks plate
 ```
 

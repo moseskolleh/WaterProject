@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date
 
 import streamlit as st
 
+from groundwater.fault_reports import (
+    confirm_report,
+    import_summary,
+    merge_reports,
+    read_reports_file,
+    read_sms_lines,
+    report_header,
+    report_rows,
+    reports_file,
+    sms_format,
+)
 from groundwater.geo import degrees_in_utm_boxes
 from groundwater.project_io import deserialize_project
 from groundwater.registry import (
@@ -15,6 +27,7 @@ from groundwater.registry import (
     asset_state,
     asset_with_rising_main,
     AssetEvent,
+    check_report_url,
     EVENT_KINDS,
     is_legacy_asset_id,
     merge_events,
@@ -170,8 +183,17 @@ def render() -> None:
                 hide_index=True, width="stretch",
             )
 
+        # the report address a plate's symbol links to (PLAN.md step 7.1),
+        # saved with the project by its org_ prefix
+        _address = st.text_input(
+            "Report address", key="org_report_url", placeholder="https://",
+            help=phrase("fault_reports.address_help"))
+        _refused = check_report_url(_address)
+        if _refused:
+            st.error(_refused)
         _r1, _r2 = st.columns(2)
-        if _r1.button("Build identification plate (.docx)", key="asset_placard"):
+        if _r1.button("Build identification plate (.docx)", key="asset_placard",
+                      disabled=bool(_refused)):
             _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
                                         readiness=report_gate("placard"))
             offer_download(
@@ -194,6 +216,9 @@ def render() -> None:
     _look_up_an_identifier()
 
     st.divider()
+    _reports = _reports_import(_live)
+
+    st.divider()
     st.subheader("Many boreholes")
     st.caption(
         "Drop in saved project files to see the whole register: what is "
@@ -214,6 +239,10 @@ def render() -> None:
             _dropped += 1
             continue
         _assets.append(_record)
+    # the reports imported above, shown in the histories of the boreholes
+    # they name; the project files themselves are not changed
+    _shown = merge_reports(_assets, _reports)
+    _assets = _shown["assets"]
     if _dropped:
         st.warning(
             f"{_dropped} file(s) carried no readable asset record and were "
@@ -251,6 +280,22 @@ def render() -> None:
             )
         st.dataframe(registry_rows(_assets, schedule=Schedule.from_config(app_config())),
                      hide_index=True, width="stretch")
+        if _shown["added"]:
+            st.caption(
+                f"{_shown['added']} imported report(s) are shown in these histories. "
+                "The project files are not changed: a report reaches a borehole's "
+                "own record when its project is open here and it is added above.")
+    _elsewhere = [r for r in _shown["unmatched"]
+                  if _live is None or r["asset_id"] != _live.asset_id]
+    if _elsewhere:
+        st.info(
+            f"{len(_elsewhere)} imported report(s) name boreholes that are neither "
+            "this project's nor in the register. Take them to whoever holds those "
+            "boreholes' projects as a file of reports, which either app imports.")
+        st.download_button(
+            "Reports for other boreholes (.json)",
+            json.dumps(reports_file(_elsewhere), indent=1).encode("utf-8"),
+            file_name="borehole-reports.json", key="reports_elsewhere")
 
     st.divider()
     _service_rounds(_live, _assets)
@@ -385,8 +430,15 @@ def _service_rounds(asset, register) -> None:
     # this borehole first, so its record, kept in step with the design, is
     # the one read where the register holds the same borehole
     _assets = ([asset] if asset is not None else []) + list(register)
+    # the round sheet says what a scan of each plate begins with, which
+    # follows the report address: one the registry refuses is said here and
+    # no sheet is printed until it is put right (PLAN.md step 7.1)
+    _address = app_config().service.report_url
+    _refused = check_report_url(_address)
+    if _refused:
+        st.error(_refused)
     _result = service_rounds(_assets, _when, Schedule.from_config(app_config()),
-                             _parsed["entries"])
+                             _parsed["entries"], "" if _refused else _address)
     _words = rounds_text(_result)
     for _line in _words["summary"]:
         st.write(_line)
@@ -402,7 +454,7 @@ def _service_rounds(asset, register) -> None:
         st.caption(_words["method"])
         st.caption(_words["intervals"])
     if st.button("Build round sheets (.docx)", key="rounds_sheet",
-                 disabled=not _result["n_boreholes"]):
+                 disabled=not _result["n_boreholes"] or bool(_refused)):
         offer_download(
             build_round_sheet(_result, workdir() / f"rounds_{_result['as_of']}.docx",
                               app_config()),
@@ -465,6 +517,64 @@ def _sanitary_inspection(asset) -> None:
              for row in form_rows(inspection["answers"], inspection["form"])],
             hide_index=True, width="stretch")
     st.caption(phrase("sanitary.basis"))
+
+
+def _reports_import(asset) -> list[dict]:
+    """Reports by SMS and from a phone's file of reports (PLAN.md step 7.1):
+    each read, the lot shown with the reason for each refused, the held ones
+    released only by a person ticking them, and those for this borehole
+    added to its history at the press of a button. Returns every report
+    read, a held one ticked as confirmed, for the register below, which
+    shows the accepted ones in the histories of the boreholes they name."""
+    st.subheader(phrase("fault_reports.heading"))
+    st.caption(phrase("fault_reports.browser_only"))
+    st.caption(sms_format() + " Its reader is groundwater.fault_reports.receive_messages.")
+    _files = kept_upload(
+        "SMS messages (.txt) or a file of reports (.json)", "reports_upload",
+        type=["txt", "csv", "json"], accept_multiple_files=True)
+    _received_on = st.text_input(
+        "Day received", key="reports_received_on", placeholder="YYYY-MM-DD",
+        help=phrase("fault_reports.received_on_help"))
+    records: list[dict] = []
+    for _uploaded in _files or []:
+        _text = _uploaded.getvalue().decode("utf-8", errors="replace")
+        if _uploaded.name.lower().endswith(".json"):
+            try:
+                records += read_reports_file(json.loads(_text))
+            except ValueError:
+                st.error(f"{_plain(_uploaded.name)}: " + phrase("fault_reports.file_refused"))
+        else:
+            records += read_sms_lines(_text, _received_on)
+    if not records:
+        return []
+    st.write(import_summary(records))
+    st.dataframe([dict(zip(report_header(), row, strict=True)) for row in report_rows(records)],
+                 hide_index=True, width="stretch")
+    held = [(i, r) for i, r in enumerate(records) if r["status"] == "held"]
+    if held:
+        st.markdown("**" + phrase_table("fault_reports.outcome")["held"] + "**")
+    for _i, _r in held:
+        st.warning(_r["reason"])
+        if st.checkbox(phrase("fault_reports.confirm") + f": line {_r['line']}, {_r['asset_id']}",
+                       key=f"report_confirm_{_i}_{_r['line']}_{_r['asset_id']}"):
+            records[_i] = confirm_report(_r)
+    # what the last press added, said after the rerun that redraws the
+    # history above with them in it
+    _added = st.session_state.pop("reports_added", None)
+    if asset is not None:
+        _merged = merge_reports([asset], records)
+        if _merged["added"]:
+            if st.button(f"Add {_merged['added']} report(s) to this borehole's history",
+                         key="reports_add"):
+                st.session_state["asset_record"] = _merged["assets"][0].as_dict()
+                st.session_state["reports_added"] = _merged["added"]
+                st.rerun()
+        elif _merged["already"]:
+            st.caption("This borehole's history holds the reports that name it.")
+    if _added:
+        st.success(f"{_added} report(s) added to this borehole's history. The same "
+                   "report imported again adds nothing.")
+    return records
 
 
 @st.fragment
