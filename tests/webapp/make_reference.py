@@ -259,6 +259,16 @@ DESIGN_CASES = [
     {"total": 60, "grout": 20, "swl": 5, "screens": [[21, 30]],
      "rules": {"borehole_diameter_in": 8.0, "casing_diameter_in": 4.0},
      "intervals": [[0, 60, "Granite"]]},
+    # a screen exactly the pack's height under a seal that is not a round
+    # number: 17.4 - 2 is 15.399999999999999, under the 15.4 m seal, and
+    # 8.3 - 1 is 7.300000000000001, over the 7.3 m one
+    {"total": 60, "grout": 15.4, "swl": 5, "screens": [[17.4, 40]],
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 60, "Granite"]]},
+    {"total": 60, "grout": 7.3, "swl": 5, "screens": [[8.3, 40]],
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0,
+               "gravel_pack_above_top_screen_m": 1.0},
+     "intervals": [[0, 60, "Granite"]]},
 ]
 
 
@@ -3012,6 +3022,29 @@ def build() -> dict:
         "detail": [list(row) for row in site_detail(summaries[1])],
         "one_pager": site_one_pager(summaries[1]),
     }
+    # summaries as hand-edited files hold them: numbers written as text the
+    # two engines read alike, and texts neither reads ("52 m", "0x10", a
+    # blank, an exponent past the largest number), which leave a cell blank
+    # where the browser printed NaN
+    edited = [
+        {"community": "Rokel", "district": "Port Loko", "status": "Completed", "total_depth_m": "52 m",
+         "safe_yield_m3_per_h": "1.2 m3/h", "cost_per_meter_usd": " 85 ", "easting": "235000",
+         "northing": " 963000 ", "utm_zone": "28.0"},
+        {"community": "Kuntoloh", "total_depth_m": "0x10", "safe_yield_m3_per_h": "  ",
+         "cost_per_meter_usd": "1_000", "easting": 778000.0, "northing": "abc", "status": "Dry hole"},
+        {"community": "Bo", "total_depth_m": "4.5e1", "safe_yield_m3_per_h": True, "cost_per_meter_usd": [],
+         "status": "", "easting": 778000.0, "northing": 946000.0, "utm_zone": "Zone 28"},
+        {"community": "Kenema", "total_depth_m": "1e999", "safe_yield_m3_per_h": "+.5", "cost_per_meter_usd": "5.",
+         "status": "Successful"},
+    ]
+    out["portfolio_edited"] = {
+        "summaries": edited,
+        "rows": clean(portfolio_rows(edited)),
+        "points": [[p["label"], clean(p["lat"]), clean(p["lon"]), p["status"]] for p in portfolio_points(edited)],
+        "stats": clean(portfolio_stats(edited)),
+        "details": [[list(row) for row in site_detail(s)] for s in edited],
+        "one_pagers": [site_one_pager(s) for s in edited],
+    }
 
     out["pdf_sheet"] = pdf_sheet_reference()
     out["extraction"] = extraction_reference()
@@ -3024,6 +3057,7 @@ def build() -> dict:
     out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
     out["gate_logs"] = {"feet": GATE_FEET_LOG, "set_aside": GATE_SET_ASIDE_LOG}
     out["photo_evidence"] = photo_evidence_reference()
+    out["too_large"] = too_large_reference()
     out["field_kit"] = field_kit_reference()
     out["airlift"] = airlift_reference()
     out["pumping_spread"] = pumping_spread_reference()
@@ -4597,20 +4631,29 @@ LEDGER_DIRTY = [
     ]},
     {"drilled": "a5", "entries": [{"id": "a5", "point": {}, "prediction": {},
                                    "outcome": {"safe_yield_band_m3_per_h": [0.5, None]}}]},
+    # the ledger's identity: text is kept, anything else is none
+    {"project_id": "0a1b2c3d4e5f", "entries": []}, {"project_id": 7, "entries": []},
+    {"project_id": "", "entries": []}, {"project_id": ["a"], "drilled": None},
 ]
 
 #: Project files' top levels, as the schema is read from them and migrated.
 LEDGER_SCHEMAS = [{}, {"schema": 1}, {"schema": 2, "ledger": {"drilled": None, "entries": []}},
-                  {"schema": 3}, {"schema": 4}, {"schema": "2"}, {"schema": True}, {"version": 1}, {"schema": 0.5},
-                  {"schema": 2.7}, {"schema": None}]
+                  {"schema": 3}, {"schema": 4}, {"schema": 5}, {"schema": "2"}, {"schema": True}, {"version": 1},
+                  {"schema": 0.5}, {"schema": 2.7}, {"schema": None},
+                  # a schema 3 ledger keeps its ids and has no identity
+                  {"schema": 3, "issued": [], "ledger": {"drilled": None, "entries": [
+                      {"id": "a1", "point": {}, "prediction": {}, "before_outcome": True}]}}]
 
 #: Point identifiers: a name, a position and a place, a half metre that
-#: rounds to even, no position, and a name in another script.
+#: rounds to even, no position, and a name in another script; and in a
+#: ledger with an identity, or an empty one, which is none.
 LEDGER_IDS = [["VES 1", 708958.4, 926355.5, 28, "Rokel", "Port Loko"],
               ["VES 1", 708958.5, 926356.5, 28, "Rokel", "Port Loko"],
               ["VES 1", None, None, None, "", ""],
               ["VES 1", 708958.0, 926356.0, 28.0, "Rokel", ""],
-              ["Kpètèma 3", 166030.0, 930010.0, 29, "Kpètèma", "Bo"]]
+              ["Kpètèma 3", 166030.0, 930010.0, 29, "Kpètèma", "Bo"],
+              ["VES 1", None, None, None, "Rokel", "Port Loko", "0a1b2c3d4e5f"],
+              ["VES 1", 708958.4, 926355.5, 28, "Rokel", "Port Loko", ""]]
 
 
 def _ledger_run(ops: list) -> list:
@@ -4723,6 +4766,31 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
             {"op": "attach", "outcome": timbo},
             {"op": "record", "predictions": resurvey[:1], "on": "2026-12-02", "known": True},
         ],
+        "no_log": [
+            # a forecast with its outcome, recorded again while no log is
+            # loaded (removed, or only a pumping test in): kept as it was
+            # made, and a point added now is recorded after drilling
+            {"op": "record", "predictions": survey, "on": "2026-10-01", "known": False},
+            {"op": "attach", "outcome": dry},
+            {"op": "record", "predictions": resurvey + extra, "on": "2026-10-27", "known": False},
+            {"op": "attach", "outcome": None},
+        ],
+        "chosen": [
+            # the point drilled chosen before any log or outcome: the hole is
+            # drilled, so the forecasts are kept and a point added now is
+            # recorded after drilling
+            {"op": "record", "predictions": survey, "on": "2026-10-01", "known": False},
+            {"op": "choose", "id": 1},
+            {"op": "record", "predictions": resurvey + extra, "on": "2026-10-27", "known": False},
+        ],
+        "after_again": [
+            # recorded after drilling, then again with no log loaded, before
+            # and after its outcome is attached: after drilling throughout
+            {"op": "record", "predictions": survey[:1], "on": "2026-12-01", "known": True},
+            {"op": "record", "predictions": resurvey[:1], "on": "2026-12-05", "known": False},
+            {"op": "attach", "outcome": timbo},
+            {"op": "record", "predictions": survey[:1], "on": "2026-12-06", "known": False},
+        ],
         "across": [
             # a point in zone 28 near its eastern edge and a log written in
             # zone 29, the same place a few metres apart
@@ -4753,6 +4821,43 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
     pooled = L.pool_ledgers([tuple(item) for item in pool_items])
     header, rows = L.ledger_rows(pooled)
 
+    # copies of one project and two projects alike, each pooled in both
+    # orders: a save before the pumping test (the driller's word) and one
+    # after it (tested short); two tested saves that rank alike; and a dry
+    # hole and its replacement in one village, recorded a year apart at a
+    # point with no position
+    driller = next(o["expect"] for o in outcomes if o["log"] == "timbo" and o["analysis"] == "none")
+    tested = next(o["expect"] for o in outcomes if o["log"] == "timbo" and o["analysis"] == "tested")
+    one = L.record_predictions(L.empty_ledger(), survey[:1], "2026-01-10", False, "0.3.0")[0]
+    bare = [{"point": dict(survey[0]["point"], easting=None, northing=None), "prediction": survey[0]["prediction"]}]
+    village = [L.attach_outcome(L.record_predictions(L.empty_ledger(), bare, on, False, "0.3.0")[0], outcome)
+               for on, outcome in (("2025-02-01", dry), ("2026-02-01", timbo))]
+    # the same two holes in two projects whose predictions were first
+    # recorded on the same day: one identity, so one id, and their outcomes
+    # name two boreholes, so the summary does not call one an older record
+    same_day = [L.attach_outcome(L.record_predictions(L.empty_ledger(), bare, "2026-02-01", False, "0.3.0")[0],
+                                 outcome) for outcome in (dry, timbo)]
+    # the same two holes in ledgers written before a ledger had an
+    # identity: one id, so one is counted, and the summary says it may be
+    # either an older record or two projects
+    legacy = [{"drilled": None, "entries": [dict(e, id=L.point_id(
+        e["point"]["sounding_id"], e["point"]["easting"], e["point"]["northing"], e["point"]["utm_zone"],
+        e["point"]["community"], e["point"]["district"])) for e in ledger["entries"]]} for ledger in village]
+    pool_pairs = {
+        "copies": [["Rokel, before the test", L.attach_outcome(one, driller)],
+                   ["Rokel, tested", L.attach_outcome(one, timbo)]],
+        "alike": [["Rokel", L.attach_outcome(one, tested)], ["Rokel again", L.attach_outcome(one, timbo)]],
+        "village": [["Rokel (Port Loko)", village[0]], ["Rokel (Port Loko)", village[1]]],
+        "same_day": [["Rokel (Port Loko)", same_day[0]], ["Rokel (Port Loko)", same_day[1]]],
+        "legacy": [["Rokel (Port Loko)", legacy[0]], ["Rokel (Port Loko)", legacy[1]]],
+    }
+    pools = []
+    for name, pair in pool_pairs.items():
+        for order in (pair, pair[::-1]):
+            got = L.pool_ledgers([tuple(item) for item in order])
+            pools.append({"name": name, "items": order, "pooled": got, "counts": L.ledger_counts(got),
+                          "summary": L.ledger_summary(got)})
+
     on_file = copy.deepcopy(drilled[3]["ledger"])
     for entry in on_file["entries"]:
         if entry["outcome"] is not None:
@@ -4777,6 +4882,7 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
                  "header": header, "rows": rows, "none": list(L.ledger_rows([])),
                  "entry_header": L.entry_header(), "summary": L.ledger_summary(pooled),
                  "summary_none": L.ledger_summary([])},
+        "pools": pools,
         # a Streamlit project file holding a ledger with an outcome, a name
         # YAML writes escaped, positions left out and a quoted calibration,
         # as the browser's YAML reader has to read it
@@ -4902,12 +5008,19 @@ def calibration_reference() -> dict:
                                          _calibration_portfolio(6, 18, 0.8, "better")[0][1]["entries"]]}]],
         "undrilled": [["Rokel", {"entries": [dict(e, outcome=None) for e in
                                              _calibration_portfolio(7, 18, 0.8, "better")[0][1]["entries"]]}]],
+        # one borehole in three judged at another definition of success,
+        # which the odds and the hit rates count and leave out
+        "definition": [
+            [name, dict(ledger, entries=[
+                dict(e, outcome=dict(e["outcome"], success_yield_m3_per_h=3.0)) if e["outcome"] and k % 3 == 0 else e
+                for k, e in enumerate(ledger["entries"])])]
+            for name, ledger in _calibration_portfolio(8, 36, 0.8, "better")],
         "empty": [],
     }
     settings = [{}, {"min_boreholes": 3, "min_group": 2, "reliability_bins": 3},
                 {"min_boreholes": 40, "min_group": 12, "reliability_bins": 10}]
     # every portfolio under the defaults, and some under each of the others
-    others = {1: ("calibrated", "narrow", "few"), 2: ("wide", "priorless")}
+    others = {1: ("calibrated", "narrow", "few", "definition"), 2: ("wide", "priorless")}
     cases = []
     for name, items in portfolios.items():
         for k, overrides in enumerate(settings):
@@ -5971,6 +6084,23 @@ def scorecards_reference() -> dict:
     timbo = SC.works_record(_ns(timbo_inputs["site"]), timbo_log, None, None, timbo_inputs["answers"],
                             timbo_inputs["metres"], timbo_inputs["procurement"])
     timbo_files = [("Dr Timbo", timbo, None)]
+    # Dr Timbo's borehole saved before any prediction was recorded, and again
+    # once predictions at two points with no position leave it paired with
+    # no point: one identifier, with no ledger identity in it, so one borehole
+    from groundwater import ledger as L
+
+    unpaired_survey = L.survey_predictions(
+        [_ns({"sounding_id": name, "depth_to_basement_m": 20.0, "basement_not_resolved": False,
+              "investigation_depth_m": 60.0, "water_zones": [[8.0, 20.0]], "aquifer_thickness_m": 12.0,
+              "max_drilling_depth_m": 35.0, "drilling_depth_capped": False, "fit_error_percent": 3.0,
+              "site_easting": None, "site_northing": None, "layers": []}) for name in ("VES 1", "VES 2")],
+        None, None, _ns({"community": "Dr Timbo", "district": "Port Loko", "utm_zone": 28}))
+    unpaired_ledgers = [L.empty_ledger(),
+                        L.record_predictions(L.empty_ledger(), unpaired_survey, "2018-06-01", True, "0.3.0")[0]]
+    unpaired_records = [SC.works_record(_ns(timbo_inputs["site"]), timbo_log, None, ledger)
+                        for ledger in unpaired_ledgers]
+    unpaired_files = [(f"save {k + 1}", record, ledger)
+                      for k, (record, ledger) in enumerate(zip(unpaired_records, unpaired_ledgers, strict=True))]
 
     saved = serialize_project({"meta_community": "Dr Timbo", "works_record": timbo,
                                "proc_contract_lines": timbo_inputs["procurement"]["lines"]}, "0.3.0")
@@ -5980,6 +6110,8 @@ def scorecards_reference() -> dict:
         "days": [{"text": text, "expect": SC.written_day(text)} for text in SCORECARD_DAYS],
         "timbo": {"inputs": timbo_inputs, "record": timbo,
                   "content": SC.scorecard_content(timbo_files, "2026-10-29")},
+        "unpaired": {"ledgers": unpaired_ledgers, "records": unpaired_records,
+                     "boreholes": SC.scorecard_boreholes(unpaired_files)},
         "file": {"yaml": saved.decode("utf-8"), "expect": deserialize_project(saved)["works"]},
     }
 
@@ -7371,9 +7503,28 @@ def photo_evidence_reference() -> dict:
         key: ("maybe" if n < 3 else "na") for n, key in enumerate(_critical)}}}
     gate["three_of_38"] = {"supervision": {"evidence": _photographed, "responses": {
         key: {"status": "yes"} for key in _photographed}}}
+    # records as a hand-edited project file can hold them: a position that
+    # is text, half a position, one out of range, not a number, an accuracy
+    # that is text or below zero, and codes that are not text
+    base = {"sha256": "ab" * 32, "taken_at": "2026-10-03T09:00:00Z", "time_source": "exif",
+            "position_source": "exif", "position_note": "refused"}
+    positions = [{"lat": "8.5N", "lon": -12.1, "accuracy_m": None}, {"lat": "8.5", "lon": "-12.1"},
+                 {"lat": 8.5, "lon": None}, {"lat": None, "lon": -12.1}, {"lat": 95.0, "lon": -12.1},
+                 {"lat": 8.5, "lon": -181.0}, {"lat": True, "lon": -12.1}, "8.5N, 12.1W", [8.5, -12.1], 0,
+                 {"lat": 8.5, "lon": -12.1, "accuracy_m": "5 m"}, {"lat": 8.5, "lon": -12.1, "accuracy_m": -3},
+                 {"lat": -90, "lon": 180, "accuracy_m": 4}, {"lat": None, "lon": None}, None, {}]
+    edited = [dict(base, position=position) for position in positions]
+    edited += [dict(base, position=None, position_note=["refused"], time_source=["exif"]),
+               dict(base, position={"lat": 8.5, "lon": -12.1}, position_source=["exif"]),
+               dict(base, position={"lat": 8.5, "lon": -12.1, "accuracy_m": True}),
+               dict(base, position={"lat": 8.5, "lon": -12.1, "accuracy_m": 0}),
+               dict(base, taken_at=20261003.5, position=None),
+               dict(base, taken_at=["2026-10-03"], position=None),
+               dict(base, sha256=12345), dict(base, sha256=["ab" * 32]), dict(base, sha256="")]
     return {
         "attached_at": attached,
         "cases": cases,
+        "hand_edited": [{"record": r, "shown": describe_provenance(r)} for r in edited],
         "no_record": describe_provenance(None),
         "gate": {
             name: [[r.key, r.state, r.detail]
@@ -7381,6 +7532,83 @@ def photo_evidence_reference() -> dict:
             for name, state in gate.items()
         },
         "gate_states": gate,
+    }
+
+
+def too_large_reference() -> dict:
+    """Whole numbers too large for a float, as a hand-edited project file
+    can hold them: YAML reads 400 digits as a whole number Python's float()
+    cannot hold, and the browser's reader as Infinity. Python raised
+    OverflowError on each of these where the browser left a blank; each is
+    blank in both now. The file is carried as text, which both engines
+    read, since the reference's own JSON cannot hold such a number in a
+    way --check could compare. A summary's verdict schema is read as its
+    other numbers are, so ".inf" (which Python's int() raised on) and such a
+    number both read as no schema, and "2.0" as schema 2 in both. A
+    calibration set file holding such a number is refused in the same words
+    by both."""
+    import re
+
+    import yaml
+
+    from groundwater import calibration_sets as CS
+    from groundwater import ledger as L
+    from groundwater import scorecards as SC
+    from groundwater.photos import describe_provenance
+
+    big = int("9" * 400)
+    base = {"sha256": "ab" * 32, "taken_at": "2026-10-03T09:00:00Z", "time_source": "exif",
+            "position_source": "exif", "position_note": "refused"}
+    held = {
+        "photos": [dict(base, position={"lat": big, "lon": -12.1}),
+                   dict(base, position={"lat": 8.5, "lon": -big}),
+                   dict(base, position={"lat": 8.5, "lon": -12.1, "accuracy_m": big})],
+        "summaries": [{"community": "Rokel", "district": "Port Loko", "status": "Successful", "total_depth_m": big,
+                       "safe_yield_m3_per_h": -big, "cost_per_meter_usd": big, "easting": big,
+                       "northing": 936225.0, "utm_zone": big},
+                      {"community": "Kenema", "total_depth_m": 45.0, "easting": 694667.0, "northing": 936225.0,
+                       "utm_zone": big, "status": "Dry hole"},
+                      {"community": "Bo", "water_verdict": "aesthetic", "verdict_schema": float("inf")},
+                      {"community": "Kono", "water_verdict": "aesthetic", "verdict_schema": big},
+                      {"community": "Kambia", "water_verdict": "aesthetic", "verdict_schema": "2.0"},
+                      {"community": "Bonthe", "water_verdict": "aesthetic", "verdict_schema": -float("inf")}],
+        "ledger": {"drilled": None, "project_id": "0a1b2c3d4e5f", "entries": [
+            {"id": "a1", "point": {"sounding_id": "VES 1", "easting": big, "northing": 926355.5, "utm_zone": big},
+             "prediction": {"depth_to_basement_m": big, "layers": [[0, big, 100], [5, 9, 40]],
+                            "odds": {"probability": 0.5, "effective_n": big}},
+             "before_outcome": True, "recorded_on": "2026-10-01",
+             "outcome": {"total_depth_m": big, "water_strikes_m": [big, 12], "success": True,
+                         "success_basis": "recorded_success", "utm_zone": big},
+             "pairing": {"how": "only", "distance_m": big}}]},
+        "works": {"id": "w1", "drilled": True, "contract": True, "variations_signed": big, "variations_unsigned": 0,
+                  "variation_usd": 1.0, "logged_m": big, "claimed_m": 70.0, "forecast": big,
+                  "checklist": {"drilling": {"answered": big, "failed": []}}},
+    }
+    text = yaml.safe_dump(held, sort_keys=False)
+    file = yaml.safe_load(text)
+    summaries = file["summaries"]
+    plain = CS.set_yaml(CS.default_set())
+    sets = []
+    for key in ("boreholes", "success_yield_m3_per_h", "unknown"):
+        bad = re.sub(rf"(\n *{key}: )\S+", lambda m: m.group(1) + "9" * 400, plain, count=1)
+        assert bad != plain
+        try:
+            CS.read_set(bad)
+        except ValueError as exc:
+            sets.append({"yaml": bad, "refused": str(exc)})
+        else:
+            raise AssertionError(f"a set with {key} of 400 digits was read")
+    return {
+        "yaml": text,
+        "sets": sets,
+        "photos": [describe_provenance(r) for r in file["photos"]],
+        "rows": clean(portfolio_rows(summaries)),
+        "points": [[p["label"], clean(p["lat"]), clean(p["lon"]), p["status"]] for p in portfolio_points(summaries)],
+        "stats": clean(portfolio_stats(summaries)),
+        "details": [[list(row) for row in site_detail(s)] for s in summaries],
+        "one_pagers": [site_one_pager(s) for s in summaries],
+        "ledger": L.clean_ledger(file["ledger"]),
+        "works": SC.clean_works(file["works"]),
     }
 
 
@@ -7825,6 +8053,37 @@ QUALITY_CASES = {
     "nitrate_in_mg_n": _QPANEL + [["Nitrate", 10.0, "mg/L as N"]],
     "nitrate_n_in_mg_no3": _QPANEL + [["Nitrate-N", 44.0, "mg/L as NO3"]],
     "nitrate_basis_contradicted": _QPANEL + [["Nitrate (as NO3)", 10.0, "mg/L as N"]],
+    # a name and a unit on different nitrogen bases, or on another ion's
+    # nitrogen, are refused; a unit on the name's own nitrogen is read
+    "nitrogen_name_and_unit_apart": _QPANEL + [
+        ["Nitrate (NO3-N)", 44.0, "mg/L as NO3"], ["Nitrite", 0.5, "mg/L as NO3-N"],
+        ["Nitrate (NO3)", 5.0, "mg/L as NH4-N"], ["Nitrate (mg/L as NO3)", 10.0, "mg/L as N"],
+        ["Nitrite-N", 1.0, "mg/L as NO2"], ["Ammonia", 1.0, "mg/L as NO3-N"]],
+    "basis_name_against_own_unit": _QPANEL + [
+        ["Calcium (mg/L as CaCO3)", 20.0, "mg/L as Ca"],
+        ["Nitrate (mg/L as NO2)", 5.0, "mg/L as NO3"]],
+    "nitrogen_name_and_unit_agree": _QPANEL + [
+        ["Nitrate", 2.0, "mg/L as NO3\u2212N"], ["Nitrite", 0.1, "mg/L as NO2-N"],
+        ["Ammonia", 1.0, "mg/L as NH4-N"], ["Nitrate (NO3-N)", 2.0, "mg/L as NO3-N"]],
+    # nitrogen named with its unit in the name's bracket
+    "nitrogen_unit_in_name": _QPANEL + [
+        ["Nitrate (mg/L as N)", 20.0, "mg/L"], ["Nitrite (mg N/L)", 0.5, ""]],
+    "nitrogen_unit_in_name_spellings": _QPANEL + [
+        ["Nitrate (mgN/L)", 2.0, "mg/L"], ["Nitrate (NO3\u2212N)", 2.0, "mg/L"],
+        ["Nitrite (mg/l as N)", 0.1, "mg/L"]],
+    # a bound and a detection limit put on another basis, or taken as the
+    # guideline's, say so as a measured value does
+    "bases_of_bounds": _QPANEL + [
+        ["Nitrate", None, "mg/L as N", {"detection_limit": 0.1, "below_detection": True}],
+        ["Nitrite", None, "mg/L as N", {"detection_limit": 1.0, "below_detection": True}],
+        ["Calcium", None, "mg/L as CaCO3", {"greater_than": 20.0}],
+        ["Sodium", None, "mg/L as CaCO3", {"detection_limit": 1.0, "below_detection": True}],
+        ["Potassium", None, "mg/L as CaCO3", {"greater_than": 2.0}]],
+    "nitrate_bound_as_n": _QPANEL + [["Nitrate", None, "mg/L as N", {"greater_than": 20.0}]],
+    "nitrogen_named_bounds": _QPANEL + [
+        ["Nitrate (NO3-N)", None, "mg/L", {"greater_than": 20.0}],
+        ["Nitrite-N", None, "mg/L", {"detection_limit": 0.1, "below_detection": True}],
+        ["Nitrite (NO2-N)", None, "mg/L", {"detection_limit": 2.0, "below_detection": True}]],
     # the same water, nitrate as the ion and as nitrogen, through the indices
     "ions_as_ion": _QPANEL + _QIONS + [["Nitrate", 10.0 * 62.004 / 14.007, "mg/L"]],
     "ions_as_n_by_name": _QPANEL + _QIONS + [["Nitrate (as N)", 10.0, "mg/L"]],
@@ -7909,6 +8168,41 @@ QUALITY_SHEETS = [
               ["pH", "pH units", 7.1, ""], ["E. coli", "/100 mL", "Absent", ""],
               ["Total coliforms", "MPN/100 mL", 0, ""], ["Arsenic", "mg/L", 0.001, ""],
               ["Fluoride", "mg/L", 0.2, ""], ["Nitrate (NO3-N)", "mg/L", 2.0, ""]],
+    # a number in E-notation keeps its unit, and a unit with more beside it,
+    # a basis without "as" or a unit nobody reads refuses the cell
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+              ["Arsenic", "ug/L", "5.0E-02 mg/L", ""], ["Fluoride", "mg/L", 0.2, ""],
+              ["Nitrate", "mg/L", 3.1, ""], ["Lead", "", "8E+00 ug/L", ""],
+              ["Manganese", "ug/L", "<5.0E-02 mg/L", ""], ["Iron", "ug/L", "0.05 mg/L As", ""],
+              ["Nitrite", "mg/L", "0.1 (N)", ""], ["Sodium", "mg/L", "5 meq/L", ""],
+              ["Chloride", "mg/L", "(20 mg/L)", ""], ["Sulfate", "mg/L", "20 mg/L, est", ""],
+              ["Copper", "ug/L", "0.05 (DL 0.01 mg/L)", ""]],
+    # a laboratory's qualifier letter is a note, and a lone letter is a unit
+    # only in its row's family
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+              ["Arsenic", "mg/L", "0.003 D", ""], ["Fluoride", "mg/L", "0.2 H", ""],
+              ["Nitrate", "mg/L", "3.1 S", ""], ["Iron", "mg/L", "0.1 M", ""],
+              ["Copper", "mg/L", "0.5 F", ""], ["Zinc", "mg/L", "0.1 C", ""],
+              ["Temperature", "deg C", "68 F", ""],
+              ["Electrical conductivity", "uS/cm", "450 uS/cm at 25 C", ""]],
+]
+
+#: Result cells, each with the dimension of its row's unit, read alone.
+QUALITY_CELLS = [
+    ["5.0E-02 mg/L", None], ["8E+00 ug/L", None], ["<5.0E-02 mg/L", None],
+    [">2E+01 CFU/100 mL", None], ["5 E-02 mg/L", None], ["1,250.5 mg/L", None],
+    ["1.234,5 mg/L", None], ["5. mg/L", None], ["(0.05 mg/L)", None],
+    ["0.05 mg/L As", None], ["0.05 mg/L (As)", None], ["0.05 mg/L Fe", None],
+    ["25 mg/L CaCO3", None], ["25 (CaCO3)", None], ["25 mg/L (as CaCO3)", None],
+    ["10 NO3-N", None], ["10 (N)", None], ["10 mg N/L", None], ["10 mg/L (as N)", None],
+    ["0.05 mg/L est", None], ["0.05 mg/L, field", None], ["5 meq/L", None], ["5 ppt", None],
+    ["0.05 (DL 0.01)", None], ["0.05 (DL 0.01 mg/L)", None], ["0.05 mg/L (DL 0.01 mg/L)", None],
+    ["0.003 D", "concentration"], ["0.2 H", None], ["0.1 M", None], ["0.1 C", "concentration"],
+    ["68 F", "temperature"], ["68 F", None], ["20 C", "temperature"], ["7.1 at 25 C", "ph"],
+    ["450 uS/cm @25\u00b0C", "conductivity"], ["0.5 ND", None], ["8 (field)", None],
+    ["8 ug/L*", None], ["45 TCU", None],
 ]
 
 #: Units the audit found unread or read apart, by spelling.
@@ -7918,6 +8212,7 @@ UNIT_SPELLINGS = [
     "N\u00b0 per 100 mL", "\u00b0N/100 mL", "oC", "\u00baC",
     "\u00b0 C", "o C", "mg/L as NO3-N", "mg/L as NO3\u2013N", "mg/l as nitrogen",
     "mg/L as NO2-N", "mg/L as N", "mg/L as Ca", "mg/L as CaCO3", "mg/L CaCO3", "mg/L Ca",
+    "mg/L as NO3\u2212N", "mg/L as NH4-N",
 ]
 
 #: Parameter names that say nitrogen, and some that do not.
@@ -7927,7 +8222,10 @@ PARAMETER_NAMES = [
     "Nitrite (NO2-N)", "Nitrite (no2 - n)", "Ammonia (NH3-N)", "Ammonium (NH4-N)",
     "Ammonium (as NH4-N)", "Nitrite (NO3-N)", "Nitrate (NO2-N)", "Nitrate (NO3)",
     "Nitrate (as NO3)", "Nitrate (as N)", "Nitrate", "NO3-N", "Nitrate-N (mg/L)",
-    "Calcium (as CaCO3)",
+    "Calcium (as CaCO3)", "Nitrate (mg/L as N)", "Nitrate (mg/l as N)", "Nitrate (mg N/L)",
+    "Nitrate (mgN/L)", "Nitrate (ppm NO3-N)", "Nitrate (NO3\u2212N)", "Nitrate\u2212N",
+    "Nitrite (mg/L as N)", "Nitrate (mg/L as NO2-N)", "Nitrate (mg/L as NO3)",
+    "Nitrate (mg/L)",
 ]
 
 #: Cells read in the time dimension by units.read_quantity, which took a
@@ -7975,6 +8273,7 @@ def _quality_summary(a) -> dict:
 
 def quality_units_reference() -> dict:
     """What the quality, units and design audit's cases come to in Python."""
+    from groundwater.ingestion.waterquality import _read_cell
     from groundwater.quality.standards import normalise_parameter
     from groundwater.units import parse_unit, read_quantity
 
@@ -8002,8 +8301,12 @@ def quality_units_reference() -> dict:
         q = read_quantity(cell, header, dimension="time")
         quantities.append({"cell": cell, "header": header, "value": clean(q.value),
                            "status": q.status, "unit": q.unit_text})
+    cells = []
+    for cell, dimension in QUALITY_CELLS:
+        read = _read_cell(cell, dimension)
+        cells.append([cell, dimension, read["kind"], clean(read["number"]), read["unit"]])
     return {
-        "cases": cases, "sheets": sheets, "quantities": quantities,
+        "cases": cases, "sheets": sheets, "quantities": quantities, "cells": cells,
         "units": [[text, unit(text)] for text in UNIT_SPELLINGS],
         "names": [[name, normalise_parameter(name)] for name in PARAMETER_NAMES],
     }

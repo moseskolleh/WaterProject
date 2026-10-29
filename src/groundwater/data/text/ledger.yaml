@@ -83,4 +83,49 @@ pool_counts: >-
   {projects:plural:project|projects}, {drilled:g} of them drilled; {forecast:g} of the
   drilled points had their prediction recorded before drilling.
 
+# Said after pool_counts when a point was found in more than one file, and
+# when the copies of a point disagree on what its borehole found: in files
+# whose ledgers have an identity, where the copies name one borehole by one
+# reference and completion date (pool_copies_differ) or do not
+# (pool_copies_borehole), or in files written before a ledger had one,
+# which cannot tell two projects whose points share a name and a place
+# from copies of one (pool_copies_unsure).
+pool_copies: >-
+  {copies:g} of the points {copies:plural:was|were} found in more than one
+  file and {copies:plural:is|are} counted once. The copy kept is the one
+  whose borehole outcome is best established: a pumping test over the
+  driller's word, and the driller's word over an outcome not known yet or
+  none. Between copies alike in that, it is the one recorded before drilling,
+  then the one with more of its outcome recorded, then the later recording.
+pool_copies_differ: >-
+  The copies of {differ:g} {differ:plural:point|points} disagree on what the
+  borehole found, so one of the files holds an older record.
+pool_copies_borehole: >-
+  The copies of {points:g} {points:plural:point|points} disagree on what the
+  borehole found and do not give it one reference and completion date.
+  Either a drilling log was corrected between one save and the next, so one
+  of the files holds an older record, or two boreholes were taken for one (a
+  hole and its replacement in copies of one project's file, or two projects
+  whose points share a name and a place and whose predictions were first
+  recorded on the same day), and the borehole of one of them is not counted.
+pool_copies_unsure: >-
+  The copies of {unsure:g} {unsure:plural:point|points} disagree on what the
+  borehole found and come from files whose ledgers were written before a
+  ledger had an identity of its own: either one of the files holds an older
+  record, or two projects whose points share a name and a place were taken
+  for one, and the borehole of one of them is not counted.
+
 pool_none: No project file loaded holds a ledger entry yet.
+
+# What the page that records the predictions says of the ledger, in both
+# apps.
+page_intro: >-
+  What the survey predicts at each point, written down now, so it can be set
+  beside what the borehole finds and the method can learn from the holes
+  drilled with it. A prediction recorded before drilling is kept as it was
+  made once the borehole is drilled. One recorded once a drilling log or a
+  pumping test is loaded, once the point drilled is chosen, or once the
+  ledger holds the borehole's outcome, is marked as recorded after drilling,
+  and stays so when it is recorded again.
+  Building the geophysical report records its predictions too. The ledger is
+  saved in the project file, and the Portfolio page pools it across projects.

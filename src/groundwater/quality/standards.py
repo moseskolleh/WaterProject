@@ -23,7 +23,7 @@ from pathlib import Path
 
 from .._resources import bundled_text
 from ..units import _normalise as normalise_unit_text
-from ..units import comparable, convert, parse_unit
+from ..units import comparable, convert, nitrogen_species, parse_unit
 
 _RANGE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$")
 
@@ -176,16 +176,25 @@ _ALIASES = {
 # and not the table's own qualifier ("(total)")
 _TRAILING_QUALIFIER_RE = re.compile(r"\s*\((?!\s*as\s)[^)]*\)\s*$")
 
-#: A trailing bracket that names nitrogen as the basis: "Nitrate (NO3-N)",
-#: "Nitrate (N)", "Nitrite (NO2 as N)", "Nitrate (as NO3-N)". It was
-#: stripped like a symbol, so "Nitrate (NO3-N)" became "nitrate" and was
-#: held to the 50 mg/L guideline for nitrate as the ion, where 20 mg/L as N
-#: is 88.5 mg/L as nitrate.
-_NITROGEN_QUALIFIER_RE = re.compile(
-    r"^(?P<base>.+?)\s*\(\s*(?:as\s+)?"
-    r"(?:(?P<ion>no3|no2|nh4|nh3)\s*(?:[-–—]{0,2}|\s+as)\s*)?"
-    r"(?:n|nitrogen)\s*\)$"
-)
+#: A trailing bracket after a name, and what it holds.
+_TRAILING_BRACKET_RE = re.compile(r"^(?P<base>.+?)\s*\((?P<inside>[^()]*)\)$")
+
+#: Nitrogen named as the basis anywhere in that bracket: "Nitrate (NO3-N)",
+#: "(N)", "(NO3 as N)", "(as NO3-N)", "(nitrogen)", and a unit with its
+#: basis, "(mg/L as N)", "(mg N/L)" or "(mgN/L)". A bracket that held
+#: anything but an ion and N was stripped like a symbol, so "Nitrate (mg/L
+#: as N)" was held to the 50 mg/L guideline for nitrate as the ion, where 20
+#: mg/L as N is 88.5 mg/L as nitrate. Its word boundaries, and the next
+#: one's, are ASCII ones, as the browser's are.
+_NITROGEN_NAMED_RE = re.compile(
+    r"\b(?:(?:no3|no2|nh4|nh3)\s*-{0,2}\s*)?(?:n|nitrogen)\b|[muµμ]gn/", re.ASCII)
+
+#: An ion's formula in that bracket, which must be the name's own.
+_NITROGEN_ION_RE = re.compile(r"\b(no3|no2|nh4|nh3)", re.ASCII)
+
+#: An en dash, an em dash and the minus sign, which a name or a unit writes
+#: for a hyphen: "Nitrate (NO3-N)" typed with a minus sign.
+_DASHES_RE = re.compile("[–—−]")
 
 #: The table key each name takes when it is reported as nitrogen, and the
 #: ion a qualifier may name for it. A qualifier naming another ion ("Nitrite
@@ -207,13 +216,18 @@ def normalise_parameter(name: str) -> str:
     so name resolution is load-bearing, and it used to know only the
     template's own spellings.
     """
-    key = re.sub(r"\s+", " ", str(name or "").strip().lower())
+    key = _DASHES_RE.sub("-", re.sub(r"\s+", " ", str(name or "").strip().lower()))
     if key in _ALIASES:
         return _ALIASES[key]
-    nitrogen = _NITROGEN_QUALIFIER_RE.match(key)
-    if nitrogen and nitrogen.group("base") in _AS_NITROGEN_KEYS:
-        as_n, ions = _AS_NITROGEN_KEYS[nitrogen.group("base")]
-        return as_n if nitrogen.group("ion") in (None, *ions) else key
+    bracket = _TRAILING_BRACKET_RE.match(key)
+    if (bracket and bracket.group("base") in _AS_NITROGEN_KEYS
+            and _NITROGEN_NAMED_RE.search(bracket.group("inside"))):
+        # reported as nitrogen: the table's entry for nitrogen, unless the
+        # bracket names another ion's ("Nitrite (NO3-N)"), which contradicts
+        # the name and is left to resolve to nothing
+        as_n, ions = _AS_NITROGEN_KEYS[bracket.group("base")]
+        named = _NITROGEN_ION_RE.findall(bracket.group("inside"))
+        return as_n if all(ion in ions for ion in named) else key
     stripped = _TRAILING_QUALIFIER_RE.sub("", key)
     if stripped != key:
         # "chromium (total)" strips to "chromium", which the aliases map
@@ -248,17 +262,41 @@ def faecal_pathogen(name: str) -> str:
     return match.group(1) if match else ""
 
 
-_PARAMETER_BASIS_RE = re.compile(r"\(\s*as\s+([^)]+?)\s*\)")
+#: "(as NO3)", and a unit with its basis, "(mg/L as NO3)"
+_PARAMETER_BASIS_RE = re.compile(r"\((?:[^()]*\s)?as\s+([^()]+?)\s*\)")
 
 
 def _parameter_basis(parameter: str) -> str:
     """The chemical basis a parameter name states: "Nitrate (as NO3)" -> "no3"."""
-    match = _PARAMETER_BASIS_RE.search(str(parameter or ""))
+    text = _DASHES_RE.sub("-", str(parameter or "").lower())
+    match = _PARAMETER_BASIS_RE.search(text)
     if not match:
         return ""
-    basis = match.group(1).lower().replace(" ", "")
+    basis = match.group(1).replace(" ", "")
     # "as NO3-N" is nitrogen, as units.py reads a unit's basis
     return "n" if re.fullmatch(r"(?:no3|no2|nh4|nh3)-{0,2}n|nitrogen", basis) else basis
+
+
+def _written_basis(parameter: str) -> str:
+    """The basis a laboratory's name for a determinand states.
+
+    What a bracket states after "as", or nitrogen for a name that resolves to
+    an entry for nitrogen ("Nitrate-N", "Nitrate (NO3-N)", "Nitrate (mg N/L)").
+    Read from "as" alone, "Nitrate-N" stated no basis, so in "mg/L as NO3" it
+    was converted onto nitrogen and passed at 44 mg/L, about four times the
+    guideline if the name is right.
+    """
+    return _parameter_basis(parameter) or (
+        "n" if normalise_parameter(parameter) in AS_NITROGEN else "")
+
+
+#: The ions whose nitrogen each entry may be reported as: "Nitrite" in
+#: "mg/L as NO3-N" names one determinand and another's nitrogen.
+_NITROGEN_IONS = {
+    "nitrate (as no3)": ("no3",), "nitrate (as n)": ("no3",),
+    "nitrite (as no2)": ("no2",), "nitrite (as n)": ("no2",),
+    "ammonia (as n)": ("nh3", "nh4"),
+}
 
 
 #: Molar masses, g/mol, to three decimals: the figures the ionic balance and
@@ -281,12 +319,12 @@ _NATIVE_BASIS = {"calcium": "ca", "magnesium": "mg", "bicarbonate": "hco3",
 #: CaCO3 is 50 x 40.078 / 100.087 = 20.02 mg/L of calcium. A bicarbonate as
 #: CaCO3 carries two equivalents per mole of CaCO3. Calcium and magnesium
 #: as CaCO3 used to be taken at face value, 2.5 and 4.1 times the element,
-#: and a balanced analysis was flagged as an unreliable one.
+#: and a balanced analysis was flagged as an unreliable one. Nothing is put
+#: onto the entries for nitrogen: every name that reaches one states
+#: nitrogen, so a unit as the ion contradicts it and is refused.
 _BASIS_FACTORS: dict[tuple[str, str], tuple[float, str]] = {
     ("nitrate (as no3)", "n"): (MOLAR_MASS["NO3"] / MOLAR_MASS["N"], "NO3"),
-    ("nitrate (as n)", "no3"): (MOLAR_MASS["N"] / MOLAR_MASS["NO3"], "N"),
     ("nitrite (as no2)", "n"): (MOLAR_MASS["NO2"] / MOLAR_MASS["N"], "NO2"),
-    ("nitrite (as n)", "no2"): (MOLAR_MASS["N"] / MOLAR_MASS["NO2"], "N"),
     ("calcium", "caco3"): (MOLAR_MASS["Ca"] / MOLAR_MASS["CaCO3"], "Ca"),
     ("magnesium", "caco3"): (MOLAR_MASS["Mg"] / MOLAR_MASS["CaCO3"], "Mg"),
     ("bicarbonate", "caco3"): (2 * MOLAR_MASS["HCO3"] / MOLAR_MASS["CaCO3"], "HCO3"),
@@ -341,9 +379,13 @@ def to_standard_unit(
     ``INDETERMINATE_REASONS`` code on refusal.
 
     ``parameter`` is the name as the laboratory wrote it. A basis that name
-    states and the unit contradicts ("Nitrate (as NO3)" in "mg/L as N") is
-    refused; "Nitrate" in "mg/L as N" is converted. Without it the entry's
-    own name speaks for the sheet, which refuses both.
+    states and the unit contradicts is refused, whichever of them is the
+    entry's own: "Nitrate (as NO3)" in "mg/L as N", a name that resolves to
+    nitrogen ("Nitrate-N", "Nitrate (NO3-N)") in "mg/L as NO3", and "Calcium
+    (mg/L as CaCO3)" in "mg/L as Ca". So is a unit naming another ion's
+    nitrogen, "Nitrite" in "mg/L as NO3-N". "Nitrate" in "mg/L as N" is
+    converted. Without ``parameter`` the entry's own name speaks for the
+    sheet, which refuses both.
     """
     reported = str(reported_unit or "").strip()
     guideline = str(entry.unit or "").strip()
@@ -393,13 +435,22 @@ def to_standard_unit(
         # deciding: "Nitrate (as NO3)" reported in "mg/L as N" is a different
         # number by a factor of 4.4, and grading it at face value passed a
         # sample at 44 mg/L as NO3 that the guideline puts over its limit.
-        native = (_parameter_basis(entry.parameter)
-                  or _NATIVE_BASIS.get(normalise_parameter(entry.parameter), ""))
+        key = normalise_parameter(entry.parameter)
+        species = nitrogen_species(reported)
+        if species and species not in _NITROGEN_IONS.get(key, (species,)):
+            # "Nitrite" in "mg/L as NO3-N": another ion's nitrogen
+            return None, "unit_basis_conflict"
+        written = _written_basis(entry.parameter if parameter is None else parameter)
+        if written and written != source.basis:
+            # the name and the unit state different bases, whichever of them
+            # is the entry's own: "Nitrate-N" in "mg/L as NO3", and "Calcium
+            # (mg/L as CaCO3)" in "mg/L as Ca"
+            return None, "unit_basis_conflict"
+        native = _parameter_basis(entry.parameter) or _NATIVE_BASIS.get(key, "")
         if source.basis == native:
             return converted, ""
-        written = _parameter_basis(entry.parameter if parameter is None else parameter)
         factor = basis_conversion(reported, entry)
-        if factor is not None and not (written and written != source.basis):
+        if factor is not None:
             return converted * factor[0], "unit_basis_converted"
         if native:
             return None, "unit_basis_conflict"

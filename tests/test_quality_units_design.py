@@ -95,12 +95,86 @@ def test_a_unit_written_after_a_measured_value_is_read():
     ("0.05 mg/L", 0.05, "mg/l"), ("8ug/l", 8.0, "ug/l"), ("8 ug/L*", 8.0, "ug/l"),
     ("0.05mg/L (field)", 0.05, "mg/l"), ("27 oC", 27.0, "oc"),
     ("12 No./100 mL", 12.0, "no./100 ml"),
+    # a number in E-notation, and a unit in a bracket or with its basis in one
+    ("5.0E-02 mg/L", 0.05, "mg/l"), ("8E+00 ug/L", 8.0, "ug/l"), ("5e-3mg/l", 0.005, "mg/l"),
+    ("0.05 (mg/L)", 0.05, "mg/l"), ("10 mg/L (as N)", 10.0, "mg/l as n"),
+    ("0.01 mg/L (As)", 0.01, "mg/l"), ("1,250.5 mg/L", 1250.5, "mg/l"),
+    ("1.234,5 mg/L", 1234.5, "mg/l"), ("(0.05 mg/L)", 0.05, "mg/l"), ("5. mg/L", 5.0, "mg/l"),
+    ("450 uS/cm at 25 C", 450.0, "us/cm"), ("approx 0.05 mg/L", 0.05, "mg/l"),
+    ("0.05 mg/L (DL 0.01 mg/L)", 0.05, "mg/l"),
     # a note beside the number is not a unit, and leaves it as it was read
     ("0.5 ND", 0.5, ""), ("8 (field)", 8.0, ""), ("8*", 8.0, ""), ("45 TCU", 45.0, ""),
+    ("0.05 (DL 0.01)", 0.05, ""), ("7.1 at 25 C", 7.1, ""),
+    # and so is a laboratory's qualifier letter, though the unit reader
+    # knows D, H and S as times, M as metres and C and F as temperatures
+    ("0.003 D", 0.003, ""), ("0.2 H", 0.2, ""), ("3.1 S", 3.1, ""), ("0.1 M", 0.1, ""),
+    ("0.1 C", 0.1, ""), ("0.5 F", 0.5, ""), ("1 min", 1.0, ""),
 ])
 def test_only_a_unit_the_toolkit_reads_is_taken_from_a_measured_cell(cell, number, unit):
     read = _read_cell(cell)
     assert (read["kind"], read["number"], read["unit"]) == ("number", number, unit)
+
+
+@pytest.mark.parametrize("cell", [
+    "0.05 mg/L As", "0.05 mg / L As", "0.05 mg/L Fe", "25 mg/L CaCO3", "25 mg/L (CaCO3)",
+    "25 (CaCO3)", "10 NO3-N", "10 mg/L (NO3-N)", "10 (N)", "10 (as N)", "10 mg N/L",
+    "5 E-02 mg/L", "0.05 mg/L est", "0.05 mg/L, field", "0.05 mg/L; est", "0.5 U mg/L",
+    # a unit the toolkit does not read, or refuses by name, and a note that holds one
+    "5 meq/L", "5eq/l", "5 ppt", "0.05 (DL 0.01 mg/L)",
+])
+def test_a_unit_or_basis_that_cannot_be_read_as_written_refuses_a_measured_cell(cell):
+    """"0.05 mg/L As" and "5.0E-02 mg/L" dropped their unit, and arsenic at
+    five times its guideline was read in its row's ug/L and graded Safe; a
+    nitrogen basis without "as" was dropped as a note, and nitrate as N read
+    as the ion; "5 meq/L" and "5 ppt" were read in the row's unit."""
+    assert _read_cell(cell)["kind"] == "unreadable"
+
+
+def test_a_lone_unit_letter_is_a_unit_only_in_its_rows_family():
+    """"68 F" in a row of degrees Celsius is 20 deg C, as it was before the
+    qualifier letters were read as notes; "0.1 C" in a row of mg/L is a note."""
+    sample = quality_from_grid(_sheet(
+        ["Temperature", "deg C", "68 F", ""], ["Temperature (field)", "deg F", "20 C", ""],
+        ["Iron", "mg/L", "0.1 C", ""], ["Copper", "mg/L", "0.5 F", ""],
+    ), "s.xlsx")
+    assert [(r.value, r.unit) for r in sample.results] == [
+        (pytest.approx(20.0), "deg C"), (pytest.approx(68.0), "deg F"),
+        (0.1, "mg/L"), (0.5, "mg/L")]
+    assert _read_cell("68 F", "temperature")["unit"] == "f"
+    assert _read_cell("68 F")["unit"] == ""
+
+
+def test_a_measured_value_in_e_notation_keeps_its_unit():
+    sample = quality_from_grid(_sheet(
+        ["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+        ["Arsenic", "ug/L", "5.0E-02 mg/L", ""], ["Fluoride", "mg/L", 0.2, ""],
+        ["Nitrate", "mg/L", 3.1, ""], ["Lead", "", "8E+00 ug/L", ""],
+        ["Manganese", "ug/L", "<5.0E-02 mg/L", ""], ["Iron", "ug/L", "0.05 mg/L As", ""],
+    ), "s.xlsx")
+    a = assess_sample(sample)
+    assert a.verdict_state == "health_fail"
+    assert _row(a, "Arsenic").status == "exceeds_health"
+    assert _row(a, "Arsenic").value_in_guideline_unit == pytest.approx(0.05)
+    assert _row(a, "Lead").value_in_guideline_unit == pytest.approx(0.008)
+    manganese = next(r for r in sample.results if r.parameter == "Manganese")
+    assert (manganese.below_detection, manganese.detection_limit) == (True, pytest.approx(50.0))
+    iron = _row(a, "Iron")
+    assert (iron.status, iron.reason) == ("indeterminate", "value_unreadable")
+
+
+def test_a_qualifier_letter_after_a_measured_value_is_a_note():
+    """"0.003 D" (diluted), "0.2 H" (held past its time), "3.1 S" (spike)
+    and "0.1 M" (matrix) graded Safe before units after a measured value
+    were read, and were then refused as a day, an hour, a second and a
+    metre: the sample was "Not proven safe"."""
+    a = assess_sample(quality_from_grid(_sheet(
+        ["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+        ["Arsenic", "mg/L", "0.003 D", ""], ["Fluoride", "mg/L", "0.2 H", ""],
+        ["Nitrate", "mg/L", "3.1 S", ""], ["Iron", "mg/L", "0.1 M", ""],
+        ["Temperature", "deg C", "20 C", ""], ["Copper", "mg/L", "0.5 F", ""],
+    ), "s.xlsx"))
+    assert a.verdict_state == "pass"
+    assert {r.status for r in a.rows} == {"within_limits", "no_guideline"}
 
 
 def test_a_cell_unit_and_its_column_are_reconciled_or_refused():
@@ -142,9 +216,31 @@ def test_a_unit_in_the_result_header_is_the_unit_of_a_row_with_none():
     ("Nitrate (NO3)", "nitrate (as no3)"), ("Nitrate", "nitrate (as no3)"),
     # a qualifier naming another ion contradicts the name: resolved to nothing
     ("Nitrite (NO3-N)", "nitrite (no3-n)"),
+    # the unit in the name's bracket, and a minus sign for the hyphen
+    ("Nitrate (mg/L as N)", "nitrate (as n)"), ("Nitrate (mg N/L)", "nitrate (as n)"),
+    ("Nitrate (mgN/L)", "nitrate (as n)"),
+    ("Nitrate (ppm NO3-N)", "nitrate (as n)"), ("Nitrate (NO3−N)", "nitrate (as n)"),
+    ("Nitrate−N", "nitrate (as n)"), ("Nitrite (mg/L as N)", "nitrite (as n)"),
+    ("Nitrate (mg/L as NO2-N)", "nitrate (mg/l as no2-n)"),
+    ("Nitrate (mg/L as NO3)", "nitrate (as no3)"), ("Nitrate (mg/L)", "nitrate (as no3)"),
 ])
 def test_a_name_that_says_nitrogen_resolves_to_the_nitrogen_entry(written, key):
     assert normalise_parameter(written) == key
+
+
+@pytest.mark.parametrize("name", [
+    "Nitrate (mg/L as N)", "Nitrate (mg/l as N)", "Nitrate (mg N/L)", "Nitrate (NO3−N)"])
+def test_nitrate_as_nitrogen_with_its_unit_in_the_name_is_held_to_nitrogen(name):
+    """"Nitrate (mg/L as N)" at 20 mg/L, 88.5 mg/L as nitrate, was held to
+    the 50 mg/L guideline for the ion and graded Safe."""
+    for unit in ("mg/L", ""):
+        a = assess_sample(_with_panel((name, 20.0, unit)))
+        row = _row(a, name)
+        assert (row.status, row.who_health) == ("exceeds_health", "11.3"), unit
+        assert a.verdict_state == "health_fail"
+    nitrite = _row(assess_sample(_with_panel(("Nitrite (mg/L as N)", 1.0, "mg/L"))),
+                   "Nitrite (mg/L as N)")
+    assert (nitrite.status, nitrite.who_health) == ("exceeds_health", "0.91")
 
 
 def test_nitrate_as_nitrogen_is_held_to_the_guideline_for_nitrogen():
@@ -170,12 +266,51 @@ def test_nitrate_in_a_unit_as_nitrogen_is_converted_unless_the_name_says_otherwi
     assert a.verdict_state == "pass"
     flag = next(f for f in a.flags if f.code == "unit_basis_converted")
     assert flag.level == "info" and "by a factor of 4.4266" in flag.message
-    # the ion's figure the other way, onto the nitrogen entry
-    back = assess_sample(_with_panel(("Nitrate-N", 44.2664, "mg/L as NO3")))
-    assert _row(back, "Nitrate-N").value_in_guideline_unit == pytest.approx(10.0, abs=1e-5)
     # a basis the name states and the unit contradicts is still refused
     conflict = assess_sample(_with_panel(("Nitrate (as NO3)", 10.0, "mg/L as N")))
     assert _row(conflict, "Nitrate (as NO3)").reason == "unit_basis_conflict"
+
+
+@pytest.mark.parametrize("parameter,value,unit", [
+    # the name says nitrogen without "as", the unit says the ion
+    ("Nitrate-N", 44.0, "mg/L as NO3"), ("Nitrate (NO3-N)", 44.0, "mg/L as NO3"),
+    ("Nitrate (mg/L as N)", 44.0, "mg/L as NO3"), ("Nitrite-N", 1.0, "mg/L as NO2"),
+    # the name says the ion inside a bracket with its unit, the unit says nitrogen
+    ("Nitrate (mg/L as NO3)", 10.0, "mg/L as N"),
+    # the unit names another ion's nitrogen
+    ("Nitrite", 0.5, "mg/L as NO3-N"), ("Nitrate (NO3)", 5.0, "mg/L as NH4-N"),
+    ("Nitrate-N", 5.0, "mg/L as NO2-N"), ("Ammonia", 1.0, "mg/L as NO3-N"),
+    # the name states a basis and the unit the entry's own, another one
+    ("Nitrate (mg/L as NO2)", 5.0, "mg/L as NO3"),
+])
+def test_a_name_and_a_unit_on_different_nitrogen_bases_are_refused(parameter, value, unit):
+    """"Nitrate-N" 44 in "mg/L as NO3" was converted onto nitrogen and
+    passed at 9.94 against 11.3, where the name puts it at four times the
+    guideline; "Nitrite" in "mg/L as NO3-N" was converted as nitrite. The
+    old code refused both, as the user guide says it does."""
+    row = _row(assess_sample(_with_panel((parameter, value, unit))), parameter)
+    assert (row.status, row.reason) == ("indeterminate", "unit_basis_conflict")
+
+
+def test_a_name_and_a_unit_on_different_bases_are_refused_whichever_is_the_entrys():
+    """"Calcium (mg/L as CaCO3)" in "mg/L as Ca" was read as calcium: the
+    unit's basis is calcium's own, and the name was not read."""
+    a = assess_sample(_with_panel(("Calcium (mg/L as CaCO3)", 20.0, "mg/L as Ca")))
+    row = _row(a, "Calcium (mg/L as CaCO3)")
+    assert (row.status, row.reason) == ("no_guideline", "unit_basis_conflict")
+    assert "value_not_used" in [f.code for f in a.flags]
+
+
+@pytest.mark.parametrize("parameter,unit,expected", [
+    ("Nitrate", "mg/L as NO3-N", 10.0 * 62.004 / 14.007),
+    ("Nitrate", "mg/L as NO3−N", 10.0 * 62.004 / 14.007),
+    ("Nitrate (NO3)", "mg/L as N", 10.0 * 62.004 / 14.007),
+    ("Nitrite", "mg/L as NO2-N", 10.0 * 46.005 / 14.007),
+    ("Ammonia", "mg/L as NH4-N", 10.0), ("Ammonia", "mg/L as NH3-N", 10.0),
+])
+def test_a_unit_on_the_names_own_nitrogen_is_read(parameter, unit, expected):
+    row = _row(assess_sample(_with_panel((parameter, 10.0, unit))), parameter)
+    assert row.value_in_guideline_unit == pytest.approx(expected)
 
 
 def test_nitrate_as_nitrogen_enters_the_indices_on_the_ions_scale():
@@ -244,6 +379,62 @@ def test_calcium_and_magnesium_as_caco3_are_put_on_the_elements_scale():
                                     ("Bicarbonate", 100.087, "mg/L as CaCO3")))
     assert _row(own, "Calcium").reason == ""
     assert _row(own, "Bicarbonate").value_in_guideline_unit == pytest.approx(2 * 61.017)
+
+
+def test_a_bound_or_detection_limit_put_on_another_basis_says_so():
+    """A "<0.1" nitrate in "mg/L as N" read "below detection limit (0.442664
+    mg/L)", with no basis and no flag; ">20" in the same unit and calcium
+    ">20" as CaCO3 carried no flag either, and bounds on "Nitrate (NO3-N)"
+    never said the sheet reported nitrogen."""
+    def assessed(*results):
+        return assess_sample(_sample(*[WaterQualityResult(p, v, u) for p, v, u in PANEL],
+                                     *results))
+
+    def converted_flags(a):
+        return [f.message for f in a.flags if f.code == "unit_basis_converted"]
+
+    factor = ("'Nitrate' is reported in 'mg/L as N' and was put on the basis its guideline "
+              "is written on, mg/L as NO3, by a factor of 4.4266, the ratio of their molar "
+              "masses.")
+    below = assessed(WaterQualityResult("Nitrate", None, "mg/L as N", detection_limit=0.1,
+                                        below_detection=True))
+    row = _row(below, "Nitrate")
+    assert (row.status, row.basis_reason) == ("below_detection", "unit_basis_converted")
+    assert row.remark == ("below detection limit (0.1 mg/L as N = 0.442664 mg/L as NO3), "
+                          "which is at or under the limit of 50 mg/L")
+    assert converted_flags(below) == [factor]
+    coarse = assessed(WaterQualityResult("Nitrate", None, "mg/L as N", detection_limit=15.0,
+                                         below_detection=True))
+    assert _row(coarse, "Nitrate").remark.startswith(
+        "below a detection limit of 15 mg/L as N = 66.3997 mg/L as NO3, which is above")
+    assert converted_flags(coarse) == [factor]
+    bound = assessed(WaterQualityResult("Nitrate", None, "mg/L as N", greater_than=20.0))
+    assert _row(bound, "Nitrate").status == "exceeds_health"
+    assert converted_flags(bound) == [factor]
+    calcium = assessed(WaterQualityResult("Calcium", None, "mg/L as CaCO3", greater_than=20.0))
+    assert len(converted_flags(calcium)) == 1
+    # a name that says nitrogen says which basis its bounds are on
+    note = "; reported as nitrogen: 20 mg/L as N is 88.5 mg/L as NO3"
+    over = assessed(WaterQualityResult("Nitrate (NO3-N)", None, "mg/L", greater_than=20.0))
+    assert _row(over, "Nitrate (NO3-N)").remark.endswith(note)
+    under = assessed(WaterQualityResult("Nitrate (NO3-N)", None, "mg/L", detection_limit=0.1,
+                                        below_detection=True))
+    assert _row(under, "Nitrate (NO3-N)").remark == (
+        "below detection limit (0.1 mg/L), which is at or under the limit of 11.3 mg/L; "
+        "reported as nitrogen: 0.1 mg/L as N is 0.443 mg/L as NO3")
+    # a measured value converted the same way still says it once
+    measured = assessed(WaterQualityResult("Nitrate", 10.0, "mg/L as N"))
+    assert converted_flags(measured) == [factor]
+    # and a basis taken as the guideline's is said to be, on a bound and a
+    # detection limit as on a value: sodium "<1" in "mg/L as CaCO3" passed
+    # with no word of it
+    for result in (WaterQualityResult("Sodium", 30.0, "mg/L as CaCO3"),
+                   WaterQualityResult("Sodium", None, "mg/L as CaCO3", greater_than=20.0),
+                   WaterQualityResult("Sodium", None, "mg/L as CaCO3", detection_limit=1.0,
+                                      below_detection=True)):
+        a = assessed(result)
+        assert [f.level for f in a.flags if f.code == "unit_basis_assumed"] == ["warning"]
+        assert _row(a, "Sodium").basis_reason == "unit_basis_assumed"
 
 
 # ---------------------------------------------- a count per 100 mL, with a space
@@ -393,6 +584,32 @@ def test_a_pack_the_seal_holds_down_is_said_to_be_and_flagged():
                 screen=float(top), rule=2.0, need=22.0)
 
 
+@pytest.mark.parametrize("grout,top", [(15.4, 17.4), (6.2, 8.2), (14.4, 16.4), (30.3, 32.3)])
+def test_a_screen_exactly_the_packs_height_below_the_seal_is_not_short(grout, top):
+    """17.4 - 2 is 15.399999999999999, under a 15.4 m seal, so a screen that
+    leaves the full 2 m was flagged gravel_pack_short beside a basis saying
+    the pack ran 2 m above it."""
+    log = _log([[0, 60, "Granite"]], grout=grout)
+    d = design_borehole(log=log, static_water_level_m=5, rules=WIDE, screens_m=[(top, 40)])
+    assert "gravel_pack_short" not in [f.code for f in d.flags]
+    assert (f"gravel pack (well sorted siliceous gravel, 2-4 mm) from {grout:g} m to the "
+            "bottom, 2 m above the top screen") in d.design_basis
+
+
+@pytest.mark.parametrize("grout,top", [(7.3, 8.3), (7.8, 8.8), (15.1, 16.1), (31.2, 32.2)])
+def test_a_screen_a_hair_over_the_packs_height_below_the_seal_leaves_no_backfill(grout, top):
+    """8.3 - 1 is 7.300000000000001, over a 7.3 m seal, so the pack started
+    a few femtometres under the seal and the summary read "Backfill 7.3-7.3
+    m"."""
+    rules = DesignRules(borehole_diameter_in=10.0, casing_diameter_in=4.0,
+                        gravel_pack_above_top_screen_m=1.0)
+    d = design_borehole(log=_log([[0, 60, "Granite"]], grout=grout), static_water_level_m=5,
+                        rules=rules, screens_m=[(top, 40)])
+    assert d.gravel_pack[0] == d.backfill[0] == d.backfill[1] == grout
+    assert ("Backfill", "none") in d.summary_rows()
+    assert "gravel_pack_short" not in [f.code for f in d.flags]
+
+
 # ------------------------------------------------- the browser's engine agrees
 
 _DRIVER = r"""
@@ -419,7 +636,9 @@ const summary = (a) => ({
 });
 process.stdout.write(JSON.stringify({
   samples: cases.samples.map((rows) => summary(C.assessSample({ results: rows.map((r) =>
-    result({ parameter: r[0], value: r[1], unit: r[2] })), flags: [] }))),
+    result(Object.assign({ parameter: r[0], value: r[1], unit: r[2] }, r[3] || {}))),
+    flags: [] }))),
+  cells: cases.cells.map((c) => { const r = C.readQualityCell(c); return [r.kind, r.number, r.unit]; }),
   sheets: cases.sheets.map((g) => {
     const s = C.qualityFromGrid(g, 's.xlsx');
     return { results: s.results.map((r) => [r.parameter, r.value, r.unit, r.unreadable]),
@@ -462,6 +681,21 @@ _CASES = {
                  ["Alkalinity", 30.0, "mg/L CaCO3"], ["Temperature", 29.0, "wibbles"]],
         PANEL + [["Nitrate", 3.1, "mg/L"], ["Temperature", 29.0, "oC"],
                  ["Calcium", 8.0, "mg/L"], ["Alkalinity", 30.0, "mg/L as CaCO3"]],
+        # a name and a unit on different nitrogen bases, or another ion's
+        PANEL + [["Nitrate-N", 44.0, "mg/L as NO3"], ["Nitrate (mg/L as N)", 44.0, "mg/L as NO3"],
+                 ["Nitrite", 0.5, "mg/L as NO3-N"], ["Nitrate (mg/L as NO3)", 10.0, "mg/L as N"],
+                 ["Ammonia", 1.0, "mg/L as NH4-N"], ["Nitrate", 10.0, "mg/L as NO3−N"]],
+        PANEL + [["Nitrate (mg/L as N)", 20.0, "mg/L"], ["Nitrite (mg N/L)", 0.5, ""]],
+        # bounds and detection limits put on another basis
+        PANEL + [["Nitrate", None, "mg/L as N", {"below_detection": True,
+                                                 "detection_limit": 0.1}],
+                 ["Nitrite", None, "mg/L as N", {"below_detection": True,
+                                                 "detection_limit": 1.0}],
+                 ["Calcium", None, "mg/L as CaCO3", {"greater_than": 20.0}]],
+        PANEL + [["Nitrate", None, "mg/L as N", {"greater_than": 20.0}]],
+        PANEL + [["Nitrate (NO3-N)", None, "mg/L", {"greater_than": 20.0}],
+                 ["Nitrite-N", None, "mg/L", {"below_detection": True,
+                                              "detection_limit": 0.1}]],
     ],
     "sheets": [
         _sheet(["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
@@ -476,10 +710,22 @@ _CASES = {
                ["Arsenic", "mg/L", 0.001, ""], ["Fluoride", "mg/L", 0.2, ""],
                ["Nitrate", "mg/L", 3.1, ""]),
         _sheet(["E. coli", "colonies", "TNTC", ""], ["Arsenic", "mg/L", 0.001, ""]),
+        # E-notation, a symbol after the unit, and qualifier letters
+        _sheet(["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+               ["Arsenic", "ug/L", "5.0E-02 mg/L", ""], ["Fluoride", "mg/L", "0.2 H", ""],
+               ["Nitrate", "mg/L", "3.1 S", ""], ["Lead", "", "8E+00 ug/L", ""],
+               ["Iron", "ug/L", "0.05 mg/L As", ""], ["Copper", "mg/L", "0.1 C", ""],
+               ["Zinc", "mg/L", "0.003 D", ""], ["Nitrite", "mg/L", "0.1 (N)", ""],
+               ["Electrical conductivity", "uS/cm", "450 uS/cm at 25 C", ""]),
     ],
+    "cells": ["5.0E-02 mg/L", "<5.0E-02 mg/L", ">2E+01 CFU/100 mL", "0.05 mg/L As",
+              "25 mg/L (CaCO3)", "10 mg/L (as N)", "10 NO3-N", "0.003 D", "20 C", "27 oC",
+              "450 uS/cm @25°C", "1,250.5 mg/L", "approx 0.05 mg/L", "0.05 (DL 0.01)"],
     "names": ["Nitrate (NO3-N)", "Nitrate (N)", "Nitrate (NO3 as N)", "Nitrate (as NO3-N)",
               "Nitrite (NO2-N)", "Ammonium (NH4-N)", "Nitrite (NO3-N)", "Nitrate (NO3)",
-              "Nitrate (nitrogen)", "Nitrate (NO3 – N)"],
+              "Nitrate (nitrogen)", "Nitrate (NO3 – N)", "Nitrate (mg/L as N)",
+              "Nitrate (mg N/L)", "Nitrate (NO3−N)", "Nitrate (mg/L as NO2-N)",
+              "Nitrate (mg/L as NO3)"],
     "units": ["/100 mL", "No./100 mL", "per 100 mL", "#/100 mL", "oC", "ºC", "mg/L CaCO3"],
     "quantities": [["0:30", "Time (mm:ss)"], ["2:00", "Time (hh:mm)"], ["1:60", "Time (min)"],
                    ["1:30 pm", "Time"], ["12 min", "Time (min)"]],
@@ -496,6 +742,13 @@ _CASES = {
          "intervals": [[0, 60, "Granite"]], "screens": [[15, 25]]},
         {"total": 60, "grout": 20, "rules": {"borehole_diameter_in": 10, "casing_diameter_in": 4},
          "intervals": [[0, 60, "Granite"]], "screens": [[21, 30]]},
+        # a screen exactly the pack's height under a seal that is not a round number
+        {"total": 60, "grout": 15.4, "rules": {"borehole_diameter_in": 10,
+                                               "casing_diameter_in": 4},
+         "intervals": [[0, 60, "Granite"]], "screens": [[17.4, 40]]},
+        {"total": 60, "grout": 30.3, "rules": {"borehole_diameter_in": 10,
+                                               "casing_diameter_in": 4},
+         "intervals": [[0, 60, "Granite"]], "screens": [[32.3, 50]]},
     ],
 }
 
@@ -518,7 +771,10 @@ def _python_answers() -> dict:
     out: dict = {"samples": [], "sheets": [], "designs": []}
     for rows in _CASES["samples"]:
         out["samples"].append(_summary(assess_sample(_sample(
-            *[WaterQualityResult(p, v, u) for p, v, u in rows]))))
+            *[WaterQualityResult(r[0], r[1], r[2], **(r[3] if len(r) > 3 else {}))
+              for r in rows]))))
+    out["cells"] = [[c["kind"], c["number"], c["unit"]]
+                    for c in (_read_cell(cell) for cell in _CASES["cells"])]
     for grid in _CASES["sheets"]:
         s = quality_from_grid(grid, "s.xlsx")
         out["sheets"].append({

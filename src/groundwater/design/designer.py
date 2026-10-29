@@ -785,14 +785,19 @@ def _assemble(
                 )
             )
     rule = rules.gravel_pack_above_top_screen_m
-    gravel_top = max(top_screen - rule, seal_depth)
+    # where the fill's top falls against the top screen: the rule's height,
+    # unless the seal holds it lower. Compared to a nanometre, not to the
+    # last bit: a screen at 17.4 m under a 15.4 m seal leaves 17.4 - 2 =
+    # 15.399999999999999 m, and was flagged short of the 2 m it has; one at
+    # 8.3 m under a 7.3 m seal and a 1 m rule left 7.300000000000001 m, and
+    # the summary printed "Backfill 7.3-7.3 m".
+    pack_top = top_screen - rule
+    pack_held = seal_depth - pack_top > 1e-9
+    gravel_top = pack_top if pack_top - seal_depth > 1e-9 else seal_depth
+    margin = round(top_screen - seal_depth, 9) if pack_held else rule
     gravel = (gravel_top, total_depth_m)
     seal = (0.0, seal_depth)
     backfill = (seal_depth, gravel_top)
-    # where the fill's top falls against the top screen: the rule's height,
-    # unless the seal holds it lower
-    pack_held = seal_depth > top_screen - rule
-    margin = top_screen - seal_depth if pack_held else rule
 
     # the drilled diameter is what the log says was drilled, not the rule's
     # default; the rule applies when the log records none

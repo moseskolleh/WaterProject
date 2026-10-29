@@ -178,7 +178,13 @@ PROJECT_FORMAT = "groundwater-toolkit-project"
 #: documents issued from it (``issued``), raised for the same reason - a
 #: record an older toolkit dropped on its next save is a document nobody
 #: can confirm was issued.
-PROJECT_SCHEMA = 3
+#: 4 when the ledger came to carry an identity of its own (``project_id``),
+#: which each entry's id carries, so two projects whose points share a name
+#: and a place are not pooled as one. Raised for the same reason again: an
+#: older toolkit that dropped the identity on its next save would then look
+#: the ledger's points up by the ids it knows, miss them, and record each
+#: point a second time.
+PROJECT_SCHEMA = 4
 
 
 def _schema_1_to_2(payload: dict) -> dict:
@@ -193,8 +199,17 @@ def _schema_2_to_3(payload: dict) -> dict:
     return dict(payload, schema=3, issued=[])
 
 
+def _schema_3_to_4(payload: dict) -> dict:
+    """Schema 3's ledger had no identity. A file of it keeps its ledger as
+    it is, with none: its entries keep the ids they were saved with, since
+    nothing in the file tells copies of one project from two projects, and
+    a ledger with entries never takes an identity later
+    (:func:`groundwater.ledger.record_predictions`)."""
+    return dict(payload, schema=4)
+
+
 #: The step from each schema to the next, applied in turn on load.
-_MIGRATIONS = {1: _schema_1_to_2, 2: _schema_2_to_3}
+_MIGRATIONS = {1: _schema_1_to_2, 2: _schema_2_to_3, 3: _schema_3_to_4}
 
 
 def payload_schema(payload: dict) -> int:

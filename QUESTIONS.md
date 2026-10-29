@@ -377,7 +377,7 @@ need real project inputs or decisions to finish calibrating it.
    browser rather than to a project file, so that saving a project does
    not keep them and *Reset everything* deletes them.
 
-24. **Three choices in the water quality reader and the borehole design
+24. **Four choices in the water quality reader and the borehole design
    want confirmation (added with the water quality, units and design
    audit).** None is a standard; each is stated where it is made
    (`groundwater/ingestion/waterquality.py`, `groundwater/quality/assess.py`
@@ -395,7 +395,17 @@ need real project inputs or decisions to finish calibrating it.
    pack is never shortened to fit a screen; the alternative, a screen at
    the seal's foot with a shorter pack, is what the design did before and
    what a screen set by hand still gets, with a warning. A hydrogeologist
-   should confirm which a Sierra Leone contract wants.
+   should confirm which a Sierra Leone contract wants. (d) Beside a
+   measured value in a result cell, a unit the toolkit reads is taken, a
+   note or a laboratory's qualifier letter holding no unit is set aside,
+   and anything else refuses the cell: a unit with a word after it
+   ("0.05 mg/L As", "0.05 mg/L Fe"), a basis without "as" ("10 N"), or a
+   unit the toolkit does not read ("5 meq/L"). "As" after "mg/L" is
+   arsenic's symbol on an arsenic row and the start of a basis on another,
+   and a symbol after a unit can be a basis that changes the number ("mg/L
+   N", "mg/L CaCO3"), so none is read as the determinand's own; a
+   laboratory chemist may prefer an element's own symbol to be read so,
+   which would let "0.05 mg/L Fe" on an iron row through.
 
 25. **Contractor scorecards (added with PLAN.md step 6.3).** Each of these
    is a choice made here, stated where it is made
@@ -546,3 +556,54 @@ need real project inputs or decisions to finish calibrating it.
    typed per attempt, so a dry attempt pays it as a working one does; say
    whether the programme's access costs (a road built once, say) are
    better typed once for the area.
+
+30. **The ledger's identity, which copy a pool keeps, and the definition
+   of success the calibration scores at (added with the ledger,
+   calibration and photograph fixes).** Each of these is a choice made
+   here, stated where it is made (`groundwater/ledger.py`,
+   `groundwater/calibration.py`, `groundwater/photos.py`,
+   `groundwater/scorecards.py`), and wants the
+   owner's confirmation. (a) A ledger's identity is worked out from the
+   day and the points of its first recording, not drawn at random, so the
+   same recording gives the same file. Two surveys recorded on the same
+   day at points with the same names and places therefore share one
+   identity and pool as one project; and two project files made
+   separately from one survey on different days (one in each app, say)
+   are two projects, so a borehole recorded in both counts twice. A
+   random identity, made once with the project and kept in its file,
+   would part the first and not the second, and give a file that differs
+   each time it is made. (b) A file saved before ledgers had an identity
+   keeps none, and nothing in it tells copies of one project from two
+   projects whose points share a name and a place, so such a pool counts
+   one borehole and says that it may be either. (c) Between copies of one
+   point, a pool keeps the one whose outcome is best established before
+   the one recorded before drilling: a tested save recorded after
+   drilling wins over a forecast whose save holds only the driller's
+   word, and that forecast is lost to the calibration. Joining the
+   forecast of one copy to the outcome of the other would keep both, from
+   two files. (d) An outcome judged at another definition of success than
+   the one in force, or recording none, is left out of the chance of
+   success and the hit rates, as a calibration set leaves it out, rather
+   than judged again from its tested yield at the definition in force;
+   and the definition a forecast's chance was worked out at is not
+   checked. (e) Choosing the point drilled counts as saying the borehole
+   is drilled, so predictions recorded after that are not forecasts. (f)
+   A photograph's position written as text ("8.5") is not read, as the
+   ledger reads no number written as text, while a portfolio summary's
+   numbers written as text are read as Python's `float` reads them
+   (ASCII digits only, so both apps read the same texts). (g) Copies of
+   one point whose outcomes disagree and do not give the borehole one
+   reference and completion date (two projects recorded on the same day,
+   as in (a), a hole and its replacement saved in copies of one file, or a
+   log corrected between two saves) are counted as one borehole, the best
+   established, and the summary says the copies may be either and that
+   the borehole of one of them is not counted. Keeping both as two
+   boreholes would count a corrected log's borehole twice, and would count
+   one survey point twice under one identifier, which the scorecards and
+   the calibration sets read boreholes by. (h) The contractor scorecards
+   identify a borehole paired with no point by its reference, position
+   and place alone, as before the ledger had an identity: carrying the
+   identity counted twice a borehole saved once before any prediction was
+   recorded and once after, while two projects in one village whose logs
+   share a reference and carry no position share the identifier and
+   count once.

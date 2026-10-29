@@ -477,9 +477,17 @@ certificate spellings (`Iron (Fe)`, `Total alkalinity`, `Nitrate-N`,
 
 **Units.** A unit written in the result cell is read before the unit
 column's: `0.05 mg/L` in a row whose unit is ug/L is 50 ug/L, and
-`8 ug/L` with the unit cell blank is 8 ug/L. A note beside the number
-(`0.5 ND`, `8 (field)`, `8*`) is not a unit, and the number is read in
-the row's unit. A unit in brackets in the result column's header,
+`8 ug/L` with the unit cell blank is 8 ug/L, as are `5.0E-02 mg/L` and
+`(0.05 mg/L)`. A note beside the number that holds no unit (`0.5 ND`,
+`8 (field)`, `8*`) is not a unit, and the number is read in the row's
+unit; so is a laboratory's qualifier letter (`0.003 D`, `0.2 H`,
+`0.1 M`), and a lone `C` or `F` unless the row's own unit is a
+temperature (`68 F` in a row of deg C is 20 deg C). A cell that holds a
+unit with more written beside it (`0.05 mg/L As`, `25 mg/L CaCO3`,
+`0.05 mg/L, est`), a basis without "as" (`10 NO3-N`, `10 (N)`), or a
+unit the toolkit does not read (`5 meq/L`, `5 ppt`) is refused rather
+than read in the row's unit: write the unit in the unit column, and a
+basis as `mg/L as N`. A unit in brackets in the result column's header,
 `Result (ug/L)`, is the unit of every row whose unit cell is blank; a
 row it cannot measure, such as E. coli under `Result (mg/L)`, is then
 refused rather than read in another unit, so give such rows their own
@@ -490,14 +498,19 @@ count above zero whatever its unit, so it is not refused over a unit
 the toolkit cannot read; a number in such a unit still is.
 
 **Bases.** Nitrate and nitrite reported as nitrogen (`Nitrate (NO3-N)`,
-`Nitrate (N)`, `Nitrite (NO2-N)`, `Nitrate-N`) are held to the
-guideline for nitrogen, 11.3 and 0.91 mg/L (the 50 and 3 mg/L
-guidelines for the ions, expressed as nitrogen), and the remark gives
-the ion's figure. `Nitrate` with the unit `mg/L as N` is put on the
-ion's scale (x 62.004/14.007), and calcium, magnesium, bicarbonate and
-carbonate in `mg/L as CaCO3` on their own, by the ratio of the molar
-masses (calcium x 40.078/100.087); an info flag gives the factor. A name and a unit that state
-different bases (`Nitrate (as NO3)` in `mg/L as N`) are refused. The
+`Nitrate (N)`, `Nitrite (NO2-N)`, `Nitrate-N`, `Nitrate (mg/L as N)`,
+`Nitrate (mg N/L)`) are held to the guideline for nitrogen, 11.3 and
+0.91 mg/L (the 50 and 3 mg/L guidelines for the ions, expressed as
+nitrogen), and the remark gives the ion's figure. `Nitrate` with the
+unit `mg/L as N` or `mg/L as NO3-N` is put on the ion's scale (x
+62.004/14.007), and calcium, magnesium, bicarbonate and carbonate in
+`mg/L as CaCO3` on their own, by the ratio of the molar masses
+(calcium x 40.078/100.087); an info flag gives the factor, for a
+measured value, a `<` or a `>` alike. A name and a unit that state
+different bases are refused, whichever of them is the table's own:
+`Nitrate (as NO3)` in `mg/L as N`, `Nitrate-N` in `mg/L as NO3`,
+`Calcium (mg/L as CaCO3)` in `mg/L as Ca`. So is a unit that names
+another ion's nitrogen, `Nitrite` in `mg/L as NO3-N`. The
 charge balance, the hazard index and the water quality index read
 nitrate and nitrite as the ions whichever basis the sheet used.
 
@@ -2148,12 +2161,39 @@ ledgers (section 11): how many survey points were predicted and how
 many drilled, a table of the drilled ones with the depth to basement
 predicted and found and the chance predicted beside the outcome, and
 the whole pooled ledger as a `.json` file. A point found in two files
-(two copies of one project) counts once.
+(two copies of one project) counts once, and the summary says how many
+were. The copy counted is the one whose borehole outcome is best
+established: a pumping test over the driller's recorded status, and that
+over an outcome not known yet or none; between copies alike in that, the
+one recorded before drilling, then the one with more of its outcome
+recorded, then the later recording. So the result does not depend on the
+order the files were added in. Where the copies disagree on what the
+borehole found but give it one reference and completion date, the
+summary says so: one of the files holds an older record. Two projects
+whose survey points share a name and a place (a dry hole and its
+replacement surveyed in one village a year apart, the VES sheets
+numbered again and carrying no coordinates) are told apart by their
+ledgers' identities (section 11) and are counted as two. Two such
+projects whose predictions were first recorded on the same day share an
+identity, and a hole and its replacement saved in copies of one file
+share a point, so the pool takes them for copies and counts one
+borehole. Where copies disagree and give the borehole different
+references or completion dates, or neither, the summary does not call
+one of them an older record: it says they may be a log corrected between
+two saves or two boreholes, and that the borehole of one of them is not
+counted. Files saved before ledgers had an identity cannot tell two
+projects from copies of one at all: if their copies disagree, the
+summary says the borehole of one of them may not be counted.
 
 Under it, **Calibration** scores the pooled forecasts against what was
 drilled (PLAN.md step 5.2), and *Build the calibration report (.docx)*
 writes them up as a Word document. Only predictions recorded before
-their borehole was drilled are scored.
+their borehole was drilled are scored. Each outcome records the
+definition of success it was judged at (`odds.success_yield_m3_per_h`
+in the project it came from); one judged at another definition than the
+one in force here, or recording none, is counted and left out of the
+chance of success and the hit rates, as a calibration set leaves it
+out, and the report says how many there were.
 
 - **The depth to basement.** A calibrated P10 to P90 band holds the
   depth found about four times in five. The report counts how many
@@ -2345,11 +2385,26 @@ found. It is how the toolkit will learn from the holes drilled with it.
   score, which a calibration set (PLAN.md step 5.3) is fitted from: the
   layers against the bands of rock in the drilling log, the parts
   against whether the borehole succeeded.
-- **Before and after drilling.** A prediction recorded before a
-  drilling log is loaded is a forecast, and once a log is loaded it is
-  kept as it was made, whatever is recorded later. One recorded after a
-  log is loaded is marked "after drilling", so it is never counted as a
-  forecast.
+- **Before and after drilling.** A prediction recorded before the
+  borehole is drilled is a forecast, and once it is drilled the forecast
+  is kept as it was made, whatever is recorded later. The borehole counts
+  as drilled once a drilling log or a pumping test is loaded, once the
+  point drilled is chosen under *Point drilled*, or once the ledger holds
+  the borehole's outcome, which it keeps when the log is removed or not
+  loaded again. A prediction recorded then is marked "after drilling",
+  so it is never counted as a forecast, and stays so when it is recorded
+  again: a new recording never makes a prediction earlier than it was.
+- **Its identity.** A ledger takes an identity of its own when its
+  first predictions are recorded, worked out from the day and the points
+  recorded, and each point's entry carries it. Copies of the project's
+  file share it, so a portfolio counts them once; two projects whose
+  points share a name and a place do not, so a portfolio counts both,
+  unless their predictions were first recorded on the same day. A
+  ledger saved before ledgers had an identity keeps none, and its
+  entries keep the identifiers they were saved with. The contractor
+  scorecards identify a borehole paired with no point by its reference,
+  position and place, not by the ledger's identity, so a save made
+  before any prediction was recorded and a later one count it once.
 - **The point drilled.** The borehole's outcome goes to the point it
   was drilled at: the one chosen under *Point drilled*, else the nearest
   point within 50 m of the drilling log's GPS position, else the
@@ -2389,6 +2444,20 @@ from it** (section 9c), and went to schema 3 to carry them, for the same
 reason: an older version of either app warns that it does not restore
 everything in the file rather than dropping the records on its next
 save. A file saved before that opens with none.
+
+The file went to schema 4 when the ledger came to carry its identity,
+again so that an older version warns rather than dropping it. A file
+saved before that opens with its ledger as it was, with no identity.
+
+A photograph's position is shown, beside the photograph and in the
+supervision checklist record, only where the file holds a latitude and a
+longitude as numbers, within 90 and 180 degrees; anything else a
+hand-edited file holds there is shown as
+"Could not be read", and an accuracy that is not a number of metres as
+"accuracy could not be read". A number too large to hold (hundreds of
+digits typed into a hand-edited file) is read as no number there, as it
+is in the ledger, the works record and the Portfolio page's summaries,
+in both apps; the Streamlit app used to raise an error on one.
 
 ## 12. Scanned sheets
 

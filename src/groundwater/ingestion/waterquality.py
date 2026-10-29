@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..models import DataFlag, WaterQualityResult, WaterQualitySample
 from ..units import _normalise as normalise_unit_text
-from ..units import convert, parse_unit, unit_from_label
+from ..units import AMBIGUOUS_UNITS, convert, parse_unit, unit_from_label
 from ..utils import clean_text, parse_number
 from . import common
 
@@ -91,10 +91,45 @@ _LIMIT_ONLY = re.compile(r"^(?:dl|d\.l\.?|lod|loq|mdl|detection limit|detection)
 #: "Absent/100 mL", "Present in 100 mL": the volume examined, not a limit.
 _VOLUME = re.compile(r"^(?:/|per|in)\s*100\s*ml$")
 
+#: A number as a laboratory writes one: "50", "0,05", "1,250.5", "1.234,5",
+#: "5.0E-02". The exponent is part of it: read as far as the "E", "5.0E-02
+#: mg/L" was 5.0 followed by a unit nobody could read, so the unit was
+#: dropped and arsenic at five times its guideline was read in the row's
+#: ug/L and graded Safe. Groups of three are a thousands separator, as
+#: parse_number reads them, so "1,250.5 mg/L" is not 1,250 and ".5 mg/L".
+_NUMBER = (r"(?:\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?|[.,]\d+)"
+           r"(?:e[+-]?\d+)?")
+
 #: A number and the unit written after it: "50", "50 mg/L", "0,05mg/l".
 _NUMBER_AND_UNIT = re.compile(
-    r"^(?P<number>\d+(?:[.,]\d+)?|[.,]\d+)\s*(?P<unit>[^\d\s()\[\]].*)?$"
+    rf"^(?P<number>{_NUMBER})\s*(?P<unit>[^\d\s()\[\]].*)?$"
 )
+
+#: A measured value and whatever is written after it.
+_MEASURED = re.compile(rf"{_NUMBER}\s*(?P<rest>.*)$")
+
+#: The families a laboratory's result is written in. A unit of another
+#: family after a number is a laboratory's qualifier letter ("0.003 D", "0.2
+#: H": a day and an hour to the unit reader), and so is any single letter
+#: ("0.1 C", "0.5 F"): read as units, they made the result unreadable.
+_QUALITY_DIMENSIONS = ("concentration", "conductivity", "turbidity", "microbial",
+                       "ph", "temperature")
+
+#: The most words a unit is written in ("cfu per 100 ml" is four): the
+#: runs of a cell's words tried as a unit, so a long note is not tried in
+#: every combination of its words.
+_UNIT_WORDS = 6
+
+#: A reference temperature after a unit: "450 uS/cm at 25 C", "@ 20 oC".
+#: The word boundaries here and below are ASCII ones, as the browser's are.
+_REFERENCE_TEMPERATURE = re.compile(
+    r"\s*(?:@|\bat)\s*\d+(?:[.,]\d+)?(?:\s*(?:°|º|o|deg\.?)?\s*[cf])?$", re.ASCII)
+
+#: A basis named after a number without "as": nitrogen ("10 N", "10
+#: (NO3-N)", "10 mg N/L") or calcium carbonate ("25 (CaCO3)").
+_BASIS_NAMED = re.compile(
+    r"\bcaco3\b"
+    r"|\b(?:(?:no3|no2|nh4|nh3)\s*[-–—−]{0,2}\s*)?(?:n|nitrogen)\b", re.ASCII)
 
 
 def _leading_word(text: str, words) -> str | None:
@@ -117,8 +152,76 @@ def _number_and_unit(text: str) -> tuple[float, str] | None:
     return parse_number(match.group("number")), unit
 
 
-def _read_cell(raw_value) -> dict:
-    """What a laboratory's result cell says.
+def _quality_unit(text: str, dimension: str | None = None) -> bool:
+    """Whether ``text`` is a unit a laboratory's result is written in.
+
+    A unit of another family is a laboratory's qualifier letter ("0.003 D",
+    "0.2 H": a day and an hour to the unit reader), and so is a lone letter
+    ("0.1 C", "0.5 F"), unless the row's own unit (``dimension``) is in the
+    letter's family: "68 F" in a row of degrees Celsius is 20 deg C.
+    """
+    unit = parse_unit(text)
+    if unit is None:
+        return False
+    return unit.dimension == dimension or (
+        unit.dimension in _QUALITY_DIMENSIONS and len(re.sub(r"\s+", "", text)) > 1)
+
+
+def _unit_like(text: str, dimension: str | None = None) -> bool:
+    """Whether ``text`` is written as a unit: one a result is written in, one
+    refused by name ("ppt"), or a ratio the toolkit does not know ("meq/L")."""
+    return (_quality_unit(text, dimension) or "/" in text
+            or normalise_unit_text(text) in AMBIGUOUS_UNITS)
+
+
+def _measured_unit(rest: str, dimension: str | None = None) -> str | None:
+    """The unit written after a measured value: ``""`` for none, ``None`` to refuse.
+
+    A unit the toolkit reads is taken ("0.05 mg/L", "8 ug/L*", "0.05 (mg/L)",
+    "10 mg/L (as N)", "450 uS/cm at 25 C"); a note holding no unit leaves the
+    reading as it was ("0.5 ND", "8 (field)", "0.003 D", a laboratory's
+    qualifier letter). Anything else refuses the cell: a unit with more
+    written beside it ("0.05 mg/L As", "25 mg/L CaCO3", "0.05 mg/L, est"), a
+    basis written without "as" ("10 NO3-N", "10 (N)"), a unit the toolkit
+    does not read ("5 meq/L", "5 ppt"), or a note that holds one ("0.05 (DL
+    0.01 mg/L)"). Dropped as notes, they read arsenic in mg/L as ug/L and
+    nitrate as N as the ion. "As" after a unit is arsenic's symbol on one
+    row and the start of a basis on another, and a symbol can be a basis
+    that changes the number ("mg/L N"), so refusing rather than reading the
+    unit and dropping the symbol is a choice (QUESTIONS.md item 24).
+    """
+    notes: list[str] = []
+
+    def unwrap(match: re.Match) -> str:
+        # a bracket that is a unit or states a basis is read; one that is
+        # anything else is a note
+        inside = match.group(1).strip()
+        if (_quality_unit(inside, dimension) or re.match(r"as\s", inside)
+                or _BASIS_NAMED.search(inside)):
+            return f" {inside} "
+        notes.append(inside)
+        return " "
+
+    text = re.sub(r"[(\[]([^()\[\]]*)[)\]]", unwrap, rest.lstrip("."))
+    # a stray bracket ("(0.05 mg/L)"), an asterisk and a comma are not part
+    # of a unit
+    text = re.sub(r"[()\[\]*,;:]", " ", text)
+    text = re.sub(r"\s+", " ", _REFERENCE_TEMPERATURE.sub("", text.strip())).strip()
+    if text and _quality_unit(text, dimension):
+        return text
+    tokens = text.split(" ") if text else []
+    spans = (" ".join(tokens[i:j]) for i in range(len(tokens))
+             for j in range(i + 1, min(i + _UNIT_WORDS, len(tokens)) + 1))
+    if ("as" in tokens or _BASIS_NAMED.search(text)
+            or any(_unit_like(span, dimension) for span in spans)
+            or any(_unit_like(word, dimension) for note in notes for word in note.split())):
+        return None
+    return ""
+
+
+def _read_cell(raw_value, dimension: str | None = None) -> dict:
+    """What a laboratory's result cell says, in a row whose unit is of
+    ``dimension`` (``None`` where the row states none).
 
     ``kind`` is one of ``number``, ``below`` (a non-detect, with the limit
     it states if any), ``above`` (a lower bound: ">50", "TNTC"), ``empty``,
@@ -196,15 +299,15 @@ def _read_cell(raw_value) -> dict:
         return {"kind": "text", "number": None, "unit": "", "inclusive": False}
     # A unit written after a measured value is read as it is after a bound:
     # "0.05 mg/L" in a ug/L row was read as 0.05 ug/L, a two-hundredth of
-    # the arsenic guideline, for water at five times it. Only a unit the toolkit can read
-    # is taken, so a note beside the number ("0.5 ND", "8 (field)", "8*")
-    # leaves the reading as it was.
+    # the arsenic guideline, for water at five times it. A note beside the
+    # number ("0.5 ND", "8 (field)", "8*") leaves the reading as it was, and
+    # a unit that cannot be read as written refuses the cell (_measured_unit).
     unit = ""
-    read = _number_and_unit(plain)
-    if read is not None and read[1]:
-        candidate = re.sub(r"\s*[(\[].*$", "", read[1]).rstrip("*").strip()
-        if candidate and parse_unit(candidate) is not None:
-            unit = candidate
+    written = _MEASURED.search(plain)
+    if written is not None:
+        unit = _measured_unit(written.group("rest"), dimension)
+        if unit is None:
+            return unreadable
     return {"kind": "number", "number": number, "unit": unit, "inclusive": False}
 
 
@@ -272,7 +375,8 @@ def quality_from_grid(grid: list[list], source: str = "") -> WaterQualitySample:
         if header_unit and not normalise_unit_text(unit):
             unit = header_unit
         dl = parse_number(cell("dl"))
-        read = _read_cell(raw_value)
+        declared = parse_unit(unit)
+        read = _read_cell(raw_value, declared.dimension if declared is not None else None)
         kind = read["kind"]
         number = read["number"]
         if number is not None:

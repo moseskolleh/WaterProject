@@ -451,6 +451,12 @@ def test_the_file_writes_whole_numbers_without_a_point():
     (lambda s: s["weights"]["value"].update(overburden=0.9), "do not add up to 1"),
     (lambda s: s["weights"].update(value=None), '"weights.value"'),
     (lambda s: s.update(left_out=[]), '"left_out"'),
+    # whole numbers too large for a float, which YAML reads from 400 digits
+    # and the browser as Infinity: refused, where Python raised OverflowError
+    # on a number and read a count
+    (lambda s: s["prior"][0].update(expected=int("9" * 400)), '"prior.expected"'),
+    (lambda s: s["weights"].update(right_base=-int("9" * 400)), '"weights.right_base"'),
+    (lambda s: s.update(boreholes=int("9" * 400)), '"boreholes"'),
 ])
 def test_a_set_file_is_read_whole_or_refused(change, why):
     s = json.loads(json.dumps(CS.adopt_set(_fitted(), "A. Kamara", "2026-10-21")))

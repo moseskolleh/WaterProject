@@ -44,16 +44,25 @@ accuracy_m: >-
 accuracy_unknown: >-
   accuracy not recorded
 
+# Said of an accuracy a hand-edited project file holds that is not a number
+# of metres (text, a number below zero, or one that is not finite).
+accuracy_unreadable: >-
+  accuracy could not be read
+
 position_sources:
   exif: from the photograph's EXIF
   device: this device's position when the photograph was attached
 
-# Why a photograph has no position, keyed by the code each app records.
+# Why a photograph has no position, keyed by the code each app records; and
+# "unreadable", said of a record whose position is not a latitude and a
+# longitude in range (text, half a position, a number past 90 or 180
+# degrees), as a hand-edited project file can hold.
 position_notes:
   not_requested: Not recorded; the file carries none and this device was not asked
   refused: Not recorded; the file carries none and the device's position was refused
   unavailable: Not recorded; the file carries none and the device gave no position
   unsupported: Not recorded; the file carries none and this app cannot ask the device
+  unreadable: Could not be read; the position recorded is not a latitude and a longitude in range
 
 hash: >-
   SHA-256 {short}

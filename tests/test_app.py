@@ -1719,6 +1719,32 @@ def test_the_survey_s_predictions_meet_the_borehole_in_the_ledger(app):
     assert [e["recorded_on"] for e in after["entries"]] == [e["recorded_on"] for e in ledger["entries"]]
     assert all(e["before_outcome"] for e in after["entries"])
 
+    # with the log gone the ledger still holds the outcome, so recording
+    # again keeps the forecasts as they were made rather than marking new
+    # predictions, made after the result was known, as forecasts
+    app.session_state["drilling_log"] = None
+    app.run()
+    app.button(key="record_predictions").click()
+    app.run()
+    assert not app.exception, app.exception
+    assert any("2 point(s) kept the forecast" in str(i.value) for i in app.info)
+    held = app.session_state["prediction_ledger"]
+    assert all(e["before_outcome"] for e in held["entries"]) and held["entries"][1]["outcome"] is not None
+
+    # a pumping test alone says the hole is drilled: a new ledger records
+    # its predictions as made after drilling
+    from groundwater.hydraulics import analyse_pumping_test
+    from groundwater.ingestion import read_pumping_workbook
+
+    app.session_state["prediction_ledger"] = None
+    app.session_state["pump_analysis"] = analyse_pumping_test(read_pumping_workbook(
+        REPO / "examples" / "data" / "dr_timbo" / "dr_timbo_constant_test.xlsx"))
+    app.run()
+    app.button(key="record_predictions").click()
+    app.run()
+    assert not app.exception, app.exception
+    assert [e["before_outcome"] for e in app.session_state["prediction_ledger"]["entries"]] == [False, False]
+
 
 def test_the_portfolio_pools_the_projects_ledgers(sample_data):
     """PLAN.md step 5.1: the Portfolio page pools the ledgers of the files
@@ -1757,6 +1783,7 @@ def test_the_portfolio_pools_the_projects_ledgers(sample_data):
     at.run()
     assert not at.exception, at.exception
     assert any("2 survey points predicted in 2 projects, 2 of them drilled" in str(c.value)
+               and "1 of the points was found in more than one file and is counted once" in str(c.value)
                for c in at.caption)
     table = next(d.value for d in at.dataframe if "Basement predicted" in d.value.columns)
     assert list(table["Project"]) == ["Rokel (Port Loko)", "Kuntolo (Port Loko)"]

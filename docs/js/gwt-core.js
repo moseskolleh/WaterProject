@@ -11958,7 +11958,8 @@
      * sign would otherwise read as a degree (units.py _normalise) */
     s = s.replace(/(?<![A-Za-z0-9_])[nN][º°](?=\s*(?:\/|[pP][eE][rR]\b))/g, 'no');
     UNIT_CHAR_FIXES.forEach(function (pair) { s = s.replace(pair[0], pair[1]); });
-    s = s.toLowerCase().trim().replace(/[–—]/g, '-');
+    /* an en dash, an em dash and the minus sign (U+2212) are a hyphen */
+    s = s.toLowerCase().trim().replace(/[–—−]/g, '-');
     s = s.replace(/\bper\b/g, '/');
     s = s.replace(/\bmilli\s*lit(re|er)s?\b|\bmillilit(re|er)s?\b/g, 'ml');
     s = s.replace(/\blit(re|er)s?\b/g, 'l');
@@ -11995,6 +11996,21 @@
     var basis = m[1].replace(/\s+/g, '');
     if (NITROGEN_BASIS_RE.test(basis)) basis = 'n';
     return [text.slice(0, m.index).trim(), basis];
+  }
+
+  /** The ion a unit's nitrogen basis names: "mg/L as NO3-N" -> "no3"; '' for
+   * "as N", "as nitrogen", another basis or none. "as NO3-N" and "as NH4-N"
+   * are one scale, nitrogen, so parseUnit reads both as the basis "n"; which
+   * ion's nitrogen they mean is a separate question, and a nitrite row in
+   * "mg/L as NO3-N" contradicts its unit (units.py nitrogen_species).
+   * @param {*} text a written unit
+   * @returns {string}
+   */
+  function nitrogenSpecies(text) {
+    var m = UNIT_BASIS_RE.exec(normaliseUnit(text));
+    if (!m) return '';
+    var species = /^(no3|no2|nh4|nh3)-{0,2}n$/.exec(m[1].replace(/\s+/g, ''));
+    return species ? species[1] : '';
   }
 
   var UNIT_TABLE = {};
@@ -12483,14 +12499,20 @@
    * that is a symbol or a unit, not a basis ("(as NO3)") */
   var TRAILING_QUALIFIER_RE = /\s*\((?!\s*as\s)[^)]*\)\s*$/;
 
-  /* A trailing bracket that names nitrogen as the basis: "Nitrate (NO3-N)",
-   * "Nitrate (N)", "Nitrite (NO2 as N)", "Nitrate (as NO3-N)". It was
-   * stripped like a symbol, so "Nitrate (NO3-N)" was held to the 50 mg/L
-   * guideline for nitrate as the ion, where 20 mg/L as N is 88.5 mg/L as
-   * nitrate (standards.py _NITROGEN_QUALIFIER_RE). */
-  var NITROGEN_QUALIFIER_RE = new RegExp('^(.+?)\\s*\\(\\s*(?:as\\s+)?' +
-    '(?:(no3|no2|nh4|nh3)\\s*(?:[-\u2013\u2014]{0,2}|\\s+as)\\s*)?' +
-    '(?:n|nitrogen)\\s*\\)$');
+  /* a trailing bracket after a name, and what it holds */
+  var TRAILING_BRACKET_RE = /^(.+?)\s*\(([^()]*)\)$/;
+  /* Nitrogen named as the basis anywhere in that bracket: "Nitrate (NO3-N)",
+   * "(N)", "(NO3 as N)", "(as NO3-N)", "(nitrogen)", and a unit with its
+   * basis, "(mg/L as N)", "(mg N/L)" or "(mgN/L)". A bracket that held
+   * anything but an ion and N was stripped like a symbol, so "Nitrate (mg/L
+   * as N)" was held to the 50 mg/L guideline for nitrate as the ion, where 20
+   * mg/L as N is 88.5 mg/L as nitrate (standards.py _NITROGEN_NAMED_RE). */
+  var NITROGEN_NAMED_RE = /\b(?:(?:no3|no2|nh4|nh3)\s*-{0,2}\s*)?(?:n|nitrogen)\b|[muµμ]gn\//;
+  /* an ion's formula in that bracket, which must be the name's own */
+  var NITROGEN_ION_RE = /\b(no3|no2|nh4|nh3)/g;
+  /* an en dash, an em dash and the minus sign, which a name or a unit writes
+   * for a hyphen */
+  var DASHES_RE = /[\u2013\u2014\u2212]/g;
   /* the table key each name takes when it is reported as nitrogen, and the
    * ion a qualifier may name for it; "Nitrite (NO3-N)" contradicts itself
    * and is left to resolve to nothing */
@@ -12509,12 +12531,17 @@
    * @returns {string}
    */
   function normaliseParameter(name) {
-    var key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    var key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+      .replace(DASHES_RE, '-');
     if (own(PARAMETER_ALIASES, key)) return PARAMETER_ALIASES[key];
-    var nitrogen = NITROGEN_QUALIFIER_RE.exec(key);
-    if (nitrogen && own(AS_NITROGEN_KEYS, nitrogen[1])) {
-      var asN = AS_NITROGEN_KEYS[nitrogen[1]];
-      return (nitrogen[2] === undefined || asN[1].indexOf(nitrogen[2]) >= 0) ? asN[0] : key;
+    var bracket = TRAILING_BRACKET_RE.exec(key);
+    if (bracket && own(AS_NITROGEN_KEYS, bracket[1]) && NITROGEN_NAMED_RE.test(bracket[2])) {
+      /* reported as nitrogen: the table's entry for nitrogen, unless the
+       * bracket names another ion's ("Nitrite (NO3-N)"), which contradicts
+       * the name and is left to resolve to nothing */
+      var asN = AS_NITROGEN_KEYS[bracket[1]];
+      var named = bracket[2].match(NITROGEN_ION_RE) || [];
+      return named.every(function (ion) { return asN[1].indexOf(ion) >= 0; }) ? asN[0] : key;
     }
     var stripped = key.replace(TRAILING_QUALIFIER_RE, '');
     if (stripped !== key) {
@@ -12628,13 +12655,13 @@
    * masses, so a conversion rather than an assumption (standards.py
    * _BASIS_FACTORS). Calcium and magnesium as CaCO3 used to be taken at face
    * value, 2.5 and 4.1 times the element, and a balanced analysis was
-   * flagged as an unreliable one. */
+   * flagged as an unreliable one. Nothing is put onto the entries for
+   * nitrogen: every name that reaches one states nitrogen, so a unit as the
+   * ion contradicts it and is refused. */
   /** @type {Record<string, [number, string]>} */
   var BASIS_FACTORS = {
     'nitrate (as no3)|n': [MOLAR_MASS.NO3 / MOLAR_MASS.N, 'NO3'],
-    'nitrate (as n)|no3': [MOLAR_MASS.N / MOLAR_MASS.NO3, 'N'],
     'nitrite (as no2)|n': [MOLAR_MASS.NO2 / MOLAR_MASS.N, 'NO2'],
-    'nitrite (as n)|no2': [MOLAR_MASS.N / MOLAR_MASS.NO2, 'N'],
     'calcium|caco3': [MOLAR_MASS.Ca / MOLAR_MASS.CaCO3, 'Ca'],
     'magnesium|caco3': [MOLAR_MASS.Mg / MOLAR_MASS.CaCO3, 'Mg'],
     'bicarbonate|caco3': [2 * MOLAR_MASS.HCO3 / MOLAR_MASS.CaCO3, 'HCO3'],
@@ -13237,15 +13264,37 @@
     return row.evaluable && GRADED_STATUSES.indexOf(row.status) >= 0;
   }
 
-  var PARAMETER_BASIS_RE = /\(\s*as\s+([^)]+?)\s*\)/;
+  /* "(as NO3)", and a unit with its basis, "(mg/L as NO3)" */
+  var PARAMETER_BASIS_RE = /\((?:[^()]*\s)?as\s+([^()]+?)\s*\)/;
 
   /* "Nitrate (as NO3)" -> "no3"; "as NO3-N" is nitrogen, as a unit's basis is */
   function parameterBasis(parameter) {
-    var m = PARAMETER_BASIS_RE.exec(String(parameter || ''));
+    var m = PARAMETER_BASIS_RE.exec(String(parameter || '').toLowerCase()
+      .replace(DASHES_RE, '-'));
     if (!m) return '';
-    var basis = m[1].toLowerCase().replace(/\s+/g, '');
+    var basis = m[1].replace(/ /g, '');
     return NITROGEN_BASIS_RE.test(basis) ? 'n' : basis;
   }
+
+  /* The basis a laboratory's name for a determinand states: what a bracket
+   * states after "as", or nitrogen for a name that resolves to an entry for
+   * nitrogen ("Nitrate-N", "Nitrate (NO3-N)", "Nitrate (mg N/L)"). Read from
+   * "as" alone, "Nitrate-N" stated no basis, so in "mg/L as NO3" it was
+   * converted onto nitrogen and passed (standards.py _written_basis). */
+  function writtenBasis(parameter) {
+    return parameterBasis(parameter) ||
+      (own(AS_NITROGEN, normaliseParameter(parameter)) ? 'n' : '');
+  }
+
+  /* The ions whose nitrogen each entry may be reported as: "Nitrite" in
+   * "mg/L as NO3-N" names one determinand and another's nitrogen
+   * (standards.py _NITROGEN_IONS). */
+  /** @type {Record<string, string[]>} */
+  var NITROGEN_IONS = {
+    'nitrate (as no3)': ['no3'], 'nitrate (as n)': ['no3'],
+    'nitrite (as no2)': ['no2'], 'nitrite (as n)': ['no2'],
+    'ammonia (as n)': ['nh3', 'nh4'],
+  };
 
   function limitMaximums(entry) {
     var out = [];
@@ -13261,9 +13310,12 @@
   /* Put a reported value on the guideline's scale. Returns
    * {value, reason}; value null means the number must NOT be compared.
    * `parameter` is the name as the laboratory wrote it: a basis it states and
-   * the unit contradicts ("Nitrate (as NO3)" in "mg/L as N") is refused, and
-   * "Nitrate" in "mg/L as N" is converted; without it the entry's own name
-   * speaks for the sheet (standards.py to_standard_unit). */
+   * the unit contradicts is refused, whichever of them is the entry's own
+   * ("Nitrate (as NO3)" in "mg/L as N", "Nitrate-N" in "mg/L as NO3",
+   * "Calcium (mg/L as CaCO3)" in "mg/L as Ca"), as is a unit naming another
+   * ion's nitrogen ("Nitrite" in "mg/L as NO3-N"), and "Nitrate" in "mg/L as
+   * N" is converted; without it the entry's own name speaks for the sheet
+   * (standards.py to_standard_unit). */
   function toGuidelineUnit(value, reportedUnit, entry, parameter) {
     var reported = String(reportedUnit || '').trim();
     var guideline = String(entry.unit || '').trim();
@@ -13306,15 +13358,24 @@
        * reported in "mg/L as N" is a different number by a factor of 4.4,
        * and grading it at face value passed a sample the guideline fails. */
       var key = normaliseParameter(entry.parameter);
+      var species = nitrogenSpecies(reported);
+      if (species && own(NITROGEN_IONS, key) && NITROGEN_IONS[key].indexOf(species) < 0) {
+        /* "Nitrite" in "mg/L as NO3-N": another ion's nitrogen */
+        return { value: null, reason: 'unit_basis_conflict' };
+      }
+      var written = writtenBasis(parameter === undefined || parameter === null
+        ? entry.parameter : parameter);
+      if (written && written !== source.basis) {
+        /* the name and the unit state different bases, whichever of them is
+         * the entry's own: "Nitrate-N" in "mg/L as NO3", and "Calcium (mg/L
+         * as CaCO3)" in "mg/L as Ca" */
+        return { value: null, reason: 'unit_basis_conflict' };
+      }
       var native = parameterBasis(entry.parameter) ||
         (own(NATIVE_BASIS, key) ? NATIVE_BASIS[key] : '');
       if (source.basis === native) return { value: converted, reason: '' };
-      var written = parameterBasis(parameter === undefined || parameter === null
-        ? entry.parameter : parameter);
       var factor = basisConversion(reported, entry);
-      if (factor && !(written && written !== source.basis)) {
-        return { value: converted * factor[0], reason: 'unit_basis_converted' };
-      }
+      if (factor) return { value: converted * factor[0], reason: 'unit_basis_converted' };
       if (native) return { value: null, reason: 'unit_basis_conflict' };
       /* Nothing states the guideline's basis, so the reading is taken but it
        * is worth an analyst's eye: an 'as CaCO3' figure is about 2.5 times
@@ -13462,6 +13523,15 @@
         INDETERMINATE_REASONS[converted.reason] + '.';
       return row;
     }
+    /* The limit as the remark gives it. One put on the guideline's basis
+     * says so, as a measured value does: "0.1 mg/L as N" read "0.442664
+     * mg/L" (assess.py _assess_below_detection). */
+    row.basis_reason = basisReason(converted.reason);
+    var shown = formatG(converted.value) + ' ' + entry.unit;
+    if (converted.reason === 'unit_basis_converted') {
+      shown = formatG(dlText) + ' ' + (result.unit || '') + ' = ' +
+        formatG(converted.value) + ' ' + wqScale(result.unit, entry, converted.reason);
+    }
     if (microbiological && converted.value <= 1.0) {
       /* a membrane-filtration count cannot resolve below one colony per
        * volume filtered, so "<1 CFU/100 mL" is exactly what "not detectable
@@ -13471,22 +13541,23 @@
         formatG(converted.value) + ' ' + entry.unit + ')';
       return row;
     }
+    /* "<0.1" nitrate as N says which basis the sheet used, as "0.1" does */
+    var nitrogen = asNitrogenNote(entry, converted.value, converted.reason);
     if (converted.value > strictest) {
       row.status = 'indeterminate';
       row.evaluable = false;
       row.reason = 'detection_limit_above_guideline';
-      row.remark = 'below a detection limit of ' + formatG(converted.value) +
-        ' ' + entry.unit + ', which is above the limit of ' +
+      row.remark = 'below a detection limit of ' + shown +
+        (nitrogen ? ' (' + nitrogen + ')' : '') + ', which is above the limit of ' +
         formatG(strictest) + ' ' + entry.unit + '. The method cannot see the ' +
         'guideline value, so the result does not show compliance; re-test ' +
         'with a more sensitive method.';
       return row;
     }
     row.status = 'below_detection';
-    row.remark = 'below detection limit (' + formatG(converted.value) + ' ' +
-      entry.unit + '), which is at or under the limit of ' +
-      formatG(strictest) + ' ' + entry.unit;
-    return row;
+    row.remark = 'below detection limit (' + shown + '), which is at or under ' +
+      'the limit of ' + formatG(strictest) + ' ' + entry.unit;
+    return withNitrogenNote(row, entry, converted.value, converted.reason);
   }
 
   /* the reasons a unit keeps a value off the table's scale */
@@ -13517,6 +13588,22 @@
     if (!own(AS_NITROGEN, key) || reason === 'unit_basis_converted') return '';
     return phrase('quality.as_nitrogen', { value: converted, unit: entry.unit,
       ion_value: converted * AS_NITROGEN[key][1], ion: AS_NITROGEN[key][2] });
+  }
+
+  /* the reasons a unit's chemical basis gives (assess.py _BASIS_REASONS) */
+  var BASIS_REASONS = ['unit_basis_converted', 'unit_basis_assumed'];
+
+  /* the reason where it is one a unit's chemical basis gives, else '' */
+  function basisReason(reason) {
+    return BASIS_REASONS.indexOf(reason) >= 0 ? reason : '';
+  }
+
+  /* the row, its remark saying which basis the sheet used (assess.py
+   * _with_nitrogen_note) */
+  function withNitrogenNote(row, entry, converted, reason) {
+    var nitrogen = asNitrogenNote(entry, converted, reason);
+    if (nitrogen) row.remark = row.remark ? row.remark + '; ' + nitrogen : nitrogen;
+    return row;
   }
 
   /* A determinand with no limit whose unit cannot be put on the table's
@@ -13621,8 +13708,16 @@
     } else {
       stated += wqUnitNote(reported, result.unit || '', converted.value,
         converted.reason, wqScale(result.unit, entry, converted.reason));
+      row.basis_reason = basisReason(converted.reason);
     }
-    var bound = /** @type {number} */ (converted.value);
+    /* ">20" nitrate as N says which basis the sheet used, as "20" does */
+    return withNitrogenNote(gradeBound(row, entry,
+      /** @type {number} */ (converted.value), inclusive, stated),
+    entry, converted.value, converted.reason);
+  }
+
+  /* A lower bound on the guideline's scale, graded (assess.py _grade_bound). */
+  function gradeBound(row, entry, bound, inclusive, stated) {
 
     /* The true value is above the bound, or at it for ">=", so a limit is
      * crossed only when the bound already reaches it: ">50" exceeds 50,
@@ -13765,6 +13860,10 @@
       greater_than_inclusive: unquantified && !!result.greater_than_inclusive,
       /* whether the national value was provisional in the table in use */
       sl_provisional: !!(entry && entry.sl_provisional),
+      /* what the unit's chemical basis did to a value, a bound or a
+       * detection limit: 'unit_basis_converted', 'unit_basis_assumed' or ''
+       * (assess.py ParameterAssessment.basis_reason) */
+      basis_reason: '',
     };
 
     if (missing && !result.below_detection && !unquantified && !unreadable) {
@@ -13819,12 +13918,11 @@
 
     row.value_in_guideline_unit = converted.value;
     row.reason = converted.reason;
+    row.basis_reason = basisReason(converted.reason);
     gradeRow(row, entry, converted.value, wqUnitNote(Number(result.value),
       result.unit || '', converted.value, converted.reason,
       wqScale(result.unit, entry, converted.reason)));
-    var nitrogen = asNitrogenNote(entry, converted.value, converted.reason);
-    if (nitrogen) row.remark = row.remark ? row.remark + '; ' + nitrogen : nitrogen;
-    return row;
+    return withNitrogenNote(row, entry, converted.value, converted.reason);
   }
 
   /** How a result the laboratory did not quantify reads in a table: ">50",
@@ -13932,31 +14030,12 @@
             '; it was read as ' + row.guideline_unit +
             '. Confirm against the laboratory certificate.',
         });
-      } else if (row.reason === 'unit_basis_converted') {
-        var basis = basisConversion(result.unit, table[normaliseParameter(result.parameter)]);
-        if (basis) {
-          flags.push({
-            level: 'info', code: 'unit_basis_converted',
-            message: phrase('quality.unit_basis_converted', {
-              parameter: String(result.parameter), unit: String(result.unit || ''),
-              guideline: row.guideline_unit, basis: basis[1], factor: basis[0] }),
-          });
-        }
       } else if (row.status === 'no_guideline' && UNIT_REFUSALS.indexOf(row.reason) >= 0) {
         flags.push({
           level: 'warning', code: 'value_not_used',
           message: phrase('quality.value_not_used', {
             parameter: String(result.parameter), unit: String(result.unit || ''),
             why: INDETERMINATE_REASONS[row.reason] }),
-        });
-      } else if (row.reason === 'unit_basis_assumed') {
-        flags.push({
-          level: 'warning', code: 'unit_basis_assumed',
-          message: "'" + result.parameter + "' is reported in '" +
-            (result.unit || '') + "' but the guideline is written in '" +
-            row.guideline_unit + "'. The values were taken as the same basis; " +
-            "confirm with the laboratory, since an 'as CaCO3' figure is about " +
-            '2.5 times the same concentration expressed as the element.',
         });
       } else if (row.status === 'indeterminate') {
         flags.push({
@@ -13968,6 +14047,27 @@
           level: 'warning', code: STRICTER_LIMIT_UNRESOLVED,
           message: "'" + result.parameter + "' could not be graded in full: " +
             row.remark + '.',
+        });
+      }
+      /* what the unit's basis did to a measured value, a bound or a
+       * detection limit, whatever else the row says */
+      var basis = row.basis_reason === 'unit_basis_converted'
+        ? basisConversion(result.unit, table[normaliseParameter(result.parameter)]) : null;
+      if (row.basis_reason === 'unit_basis_assumed') {
+        flags.push({
+          level: 'warning', code: 'unit_basis_assumed',
+          message: "'" + result.parameter + "' is reported in '" +
+            (result.unit || '') + "' but the guideline is written in '" +
+            row.guideline_unit + "'. The values were taken as the same basis; " +
+            "confirm with the laboratory, since an 'as CaCO3' figure is about " +
+            '2.5 times the same concentration expressed as the element.',
+        });
+      } else if (basis) {
+        flags.push({
+          level: 'info', code: 'unit_basis_converted',
+          message: phrase('quality.unit_basis_converted', {
+            parameter: String(result.parameter), unit: String(result.unit || ''),
+            guideline: row.guideline_unit, basis: basis[1], factor: basis[0] }),
         });
       }
     });
@@ -14005,6 +14105,7 @@
         detection_limit: null, evaluable: !bounded,
         reason: bounded ? 'detection_limit_above_guideline' : '',
         greater_than: null, greater_than_inclusive: false, sl_provisional: false,
+        basis_reason: '',
       });
       flags.push({
         level: 'warning',
@@ -15126,14 +15227,19 @@
       }
     });
     var rule = rules.gravel_pack_above_top_screen_m;
-    var gravelTop = Math.max(topScreen - rule, sealDepth);
+    /* where the fill's top falls against the top screen: the rule's height,
+     * unless the seal holds it lower. Compared to a nanometre, not to the
+     * last bit: a screen at 17.4 m under a 15.4 m seal leaves 17.4 - 2 =
+     * 15.399999999999999 m, and was flagged short of the 2 m it has; one at
+     * 8.3 m under a 7.3 m seal and a 1 m rule left 7.300000000000001 m, and
+     * the summary printed "Backfill 7.3-7.3 m" (designer.py). */
+    var packTop = topScreen - rule;
+    var packHeld = sealDepth - packTop > 1e-9;
+    var gravelTop = packTop - sealDepth > 1e-9 ? packTop : sealDepth;
+    var margin = packHeld ? pyRound(topScreen - sealDepth, 9) : rule;
     var gravel = [gravelTop, totalDepthM];
     var seal = [0.0, sealDepth];
     var backfill = [sealDepth, gravelTop];
-    /* where the fill's top falls against the top screen: the rule's height,
-     * unless the seal holds it lower */
-    var packHeld = sealDepth > topScreen - rule;
-    var margin = packHeld ? topScreen - sealDepth : rule;
 
     /* the drilled diameter is what the log says was drilled, not the rule's
      * default; the rule applies when the log records none */
@@ -18565,8 +18671,100 @@
   /* "Absent/100 mL", "Present in 100 mL": the volume examined, not a limit */
   var VOLUME_RE = /^(?:\/|per|in)\s*100\s*ml$/;
 
+  /* A number as a laboratory writes one: "50", "0,05", "1,250.5", "1.234,5",
+   * "5.0E-02". The exponent is part of it: read as far as the "E", "5.0E-02
+   * mg/L" was 5.0 followed by a unit nobody could read, so the unit was
+   * dropped and arsenic at five times its guideline was read in the row's
+   * ug/L and graded Safe. Groups of three are a thousands separator, as
+   * parseNumber reads them, so "1,250.5 mg/L" is not 1,250 and ".5 mg/L"
+   * (waterquality.py _NUMBER). */
+  var QUALITY_NUMBER = '(?:\\d{1,3}(?:[.,]\\d{3})+(?:[.,]\\d+)?|\\d+(?:[.,]\\d+)?|[.,]\\d+)' +
+    '(?:e[+-]?\\d+)?';
   /* a number and the unit written after it: "50", "50 mg/L", "0,05mg/l" */
-  var NUMBER_AND_UNIT_RE = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*([^\d\s()[\]][\s\S]*)?$/;
+  var NUMBER_AND_UNIT_RE = new RegExp('^(' + QUALITY_NUMBER +
+    ')\\s*([^\\d\\s()[\\]][\\s\\S]*)?$');
+  /* a measured value and whatever is written after it */
+  var MEASURED_RE = new RegExp(QUALITY_NUMBER + '\\s*([\\s\\S]*)$');
+  /* The families a laboratory's result is written in. A unit of another
+   * family after a number is a laboratory's qualifier letter ("0.003 D",
+   * "0.2 H": a day and an hour to the unit reader), and so is any single
+   * letter ("0.1 C", "0.5 F"): read as units, they made the result
+   * unreadable (waterquality.py _QUALITY_DIMENSIONS). */
+  var QUALITY_DIMENSIONS = ['concentration', 'conductivity', 'turbidity', 'microbial',
+    'ph', 'temperature'];
+  /* the most words a unit is written in ("cfu per 100 ml" is four): the runs
+   * of a cell's words tried as a unit (waterquality.py _UNIT_WORDS) */
+  var UNIT_WORDS = 6;
+  /* a reference temperature after a unit: "450 uS/cm at 25 C", "@ 20 oC" */
+  var REFERENCE_TEMPERATURE_RE =
+    /\s*(?:@|\bat)\s*\d+(?:[.,]\d+)?(?:\s*(?:°|º|o|deg\.?)?\s*[cf])?$/;
+  /* a basis named after a number without "as": nitrogen ("10 N", "10
+   * (NO3-N)", "10 mg N/L") or calcium carbonate ("25 (CaCO3)") */
+  var CELL_BASIS_RE = new RegExp('\\bcaco3\\b' +
+    '|\\b(?:(?:no3|no2|nh4|nh3)\\s*[-–—−]{0,2}\\s*)?(?:n|nitrogen)\\b');
+
+  /* Whether the text is a unit a laboratory's result is written in. A unit
+   * of another family is a laboratory's qualifier letter ("0.003 D", "0.2
+   * H"), and so is a lone letter ("0.1 C", "0.5 F"), unless the row's own
+   * unit is in the letter's family: "68 F" in a row of degrees Celsius is 20
+   * deg C (waterquality.py _quality_unit). */
+  function isQualityUnit(text, dimension) {
+    var unit = parseUnit(text);
+    if (!unit) return false;
+    return unit.dimension === dimension || (QUALITY_DIMENSIONS.indexOf(unit.dimension) >= 0 &&
+      text.replace(/\s+/g, '').length > 1);
+  }
+
+  /* whether the text is written as a unit: one a result is written in, one
+   * refused by name ("ppt"), or a ratio this engine does not know ("meq/L")
+   * (waterquality.py _unit_like) */
+  function isUnitLike(text, dimension) {
+    return isQualityUnit(text, dimension) || text.indexOf('/') >= 0 ||
+      own(AMBIGUOUS_UNITS, normaliseUnit(text));
+  }
+
+  /* The unit written after a measured value: '' for none, null to refuse
+   * (waterquality.py _measured_unit). A unit this engine reads is taken; a
+   * note holding no unit leaves the reading as it was ("0.5 ND", "8
+   * (field)", "0.003 D"); anything else refuses the cell: a unit with more
+   * written beside it ("0.05 mg/L As", "25 mg/L CaCO3"), a basis written
+   * without "as" ("10 NO3-N", "10 (N)"), a unit this engine does not read
+   * ("5 meq/L") or a note that holds one ("0.05 (DL 0.01 mg/L)"). Refusing
+   * "0.05 mg/L As" rather than reading its "mg/L" is a choice (QUESTIONS.md
+   * item 24). */
+  function measuredUnit(rest, dimension) {
+    /** @type {string[]} */
+    var notes = [];
+    var text = rest.replace(/^\.+/, '').replace(/[([]([^()[\]]*)[)\]]/g,
+      function (whole, inside) {
+        /* a bracket that is a unit or states a basis is read; one that is
+         * anything else is a note */
+        var held = inside.trim();
+        if (isQualityUnit(held, dimension) || /^as\s/.test(held) || CELL_BASIS_RE.test(held)) {
+          return ' ' + held + ' ';
+        }
+        notes.push(held);
+        return ' ';
+      });
+    /* a stray bracket ("(0.05 mg/L)"), an asterisk and a comma are not part
+     * of a unit */
+    text = text.replace(/[()[\]*,;:]/g, ' ');
+    text = text.trim().replace(REFERENCE_TEMPERATURE_RE, '').replace(/\s+/g, ' ').trim();
+    if (text && isQualityUnit(text, dimension)) return text;
+    var tokens = text ? text.split(' ') : [];
+    if (tokens.indexOf('as') >= 0 || CELL_BASIS_RE.test(text)) return null;
+    for (var i = 0; i < tokens.length; i++) {
+      for (var j = i + 1; j <= Math.min(i + UNIT_WORDS, tokens.length); j++) {
+        if (isUnitLike(tokens.slice(i, j).join(' '), dimension)) return null;
+      }
+    }
+    var noted = notes.some(function (note) {
+      return note.split(/\s+/).some(function (word) {
+        return !!word && isUnitLike(word, dimension);
+      });
+    });
+    return noted ? null : '';
+  }
 
   /* Python's str.strip(chars): the set, from both ends. */
   function stripChars(text, chars) {
@@ -18602,7 +18800,8 @@
     return [parseNumber(m[1]), unit];
   }
 
-  /** What a laboratory's result cell says: waterquality.py _read_cell.
+  /** What a laboratory's result cell says, in a row whose unit is of the
+   * given dimension: waterquality.py _read_cell.
    *
    * kind is number, below (a non-detect, with the limit it states if any),
    * above (a lower bound: ">50", "TNTC"), empty, text (words that are not a
@@ -18611,8 +18810,11 @@
    * through to a plain number parse, which read "ND (DL 0.05)" as a measured
    * 0.05, ">50 mg/L" as exactly 50 and "Absent/100 mL" as a count of 100.
    * @param {*} rawValue a cell
+   * @param {string=} dimension the dimension of the row's own unit, if it
+   *   states one: a lone letter of that family is a unit ("68 F" in a row of
+   *   degrees Celsius), and of another a laboratory's qualifier ("0.1 C")
    */
-  function readQualityCell(rawValue) {
+  function readQualityCell(rawValue, dimension) {
     function reading(kind, number, unit, inclusive) {
       return { kind: kind, number: number === undefined ? null : number,
         unit: unit || '', inclusive: !!inclusive };
@@ -18684,15 +18886,14 @@
     var number = parseNumber(rawValue);
     if (number === null) return reading('text');
     /* A unit written after a measured value is read as it is after a bound:
-     * "0.05 mg/L" in a ug/L row was read as 0.05 ug/L. Only a unit this engine
-     * can read is taken, so a note beside the number ("0.5 ND", "8 (field)",
-     * "8*") leaves the reading as it was. */
+     * "0.05 mg/L" in a ug/L row was read as 0.05 ug/L. A note beside the
+     * number ("0.5 ND", "8 (field)", "8*") leaves the reading as it was, and a
+     * unit that cannot be read as written refuses the cell (measuredUnit). */
     var unit = '';
-    var written = numberAndUnit(plain);
-    if (written && written[1]) {
-      var candidate = String(written[1]).replace(/\s*[([][\s\S]*$/, '')
-        .replace(/\*+$/, '').trim();
-      if (candidate && parseUnit(candidate)) unit = candidate;
+    var written = MEASURED_RE.exec(plain);
+    if (written) {
+      unit = measuredUnit(written[1], dimension);
+      if (unit === null) return unreadable;
     }
     return reading('number', number, unit);
   }
@@ -18751,7 +18952,8 @@
       var unit = cleanText(cell('unit'));
       if (located.unit && !normaliseUnit(unit)) unit = located.unit;
       var dl = parseNumber(cell('dl'));
-      var read = readQualityCell(rawValue);
+      var declared = parseUnit(unit);
+      var read = readQualityCell(rawValue, declared ? declared.dimension : undefined);
       var kind = read.kind, number = read.number;
       if (number !== null) {
         var onScale = inRowUnit(number, unitAsWritten(cleanText(rawValue), read.unit),
@@ -24208,6 +24410,29 @@
     return classifyStatusText(raw) || 'other';
   }
 
+  /* portfolio._NUMBER_TEXT: a number written as text as Python's float()
+   * reads one - a sign, digits with an underscore allowed between two of
+   * them, a point and an exponent - spelt out so the two engines read the
+   * same texts (Number() also reads '0x10' and a blank) */
+  var SUMMARY_NUMBER_TEXT = /^[+-]?(\d(_?\d)*(\.(\d(_?\d)*)?)?|\.\d(_?\d)*)([eE][+-]?\d(_?\d)*)?$/;
+
+  /* portfolio._num: a summary's number as a finite number, or null for
+   * anything that is not one. A number written as text, with its ASCII white
+   * space trimmed, is read; a hand-edited "52 m" is blank, never NaN. */
+  function summaryNum(value) {
+    var n;
+    if (typeof value === 'number') {
+      n = value;
+    } else if (typeof value === 'string') {
+      var text = value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, '');
+      if (!SUMMARY_NUMBER_TEXT.test(text)) return null;
+      n = Number(text.replace(/_/g, ''));
+    } else {
+      return null;
+    }
+    return isFinite(n) ? n : null;
+  }
+
   /** Whether a summary's easting and northing are a longitude and a
    * latitude typed into the UTM boxes, by the rule the site page reads them
    * by (utmBoxesHoldDegrees): portfolio.summary_holds_degrees.
@@ -24215,7 +24440,7 @@
    * @returns {boolean}
    */
   function summaryHoldsDegrees(summary) {
-    var easting = deskNumber(summary && summary.easting), northing = deskNumber(summary && summary.northing);
+    var easting = summaryNum(summary && summary.easting), northing = summaryNum(summary && summary.northing);
     return !!(easting && northing) && utmBoxesHoldDegrees(easting, northing);
   }
 
@@ -24228,7 +24453,7 @@
     if (!summary) return null;
     /* a value a project file carries that is no number ("52 m") is no
      * position, as portfolio._num reads it */
-    var easting = deskNumber(summary.easting), northing = deskNumber(summary.northing);
+    var easting = summaryNum(summary.easting), northing = summaryNum(summary.northing);
     if (!easting || !northing) return null;
     /* Degrees are no position in metres, as sitePosition reads them: read
      * as metres they put the project on the equator, 940 km off, so the
@@ -24237,7 +24462,7 @@
     if (utmBoxesHoldDegrees(easting, northing)) return null;
     /* the same fallback SiteMetadata.utm uses: a hard-coded zone dropped every
      * zone-less project six degrees off, into the Atlantic and off the map */
-    var zone = Math.trunc(deskNumber(summary.utm_zone) || 0) || inferZoneForSierraLeone(easting);
+    var zone = Math.trunc(summaryNum(summary.utm_zone) || 0) || inferZoneForSierraLeone(easting);
     try {
       var at = utmToGeographic(easting, northing, zone);
       return at && isFinite(at.lat) && isFinite(at.lon) ? at : null;
@@ -24264,7 +24489,8 @@
   function summaryVerdictState(summary) {
     var raw = String((summary && summary.water_verdict) || '').trim().toLowerCase();
     if (!raw) return [null, false];
-    var schema = Number((summary && summary.verdict_schema) || 0) || 0;
+    /* read as every summary number is (summaryNum), as Python reads it */
+    var schema = summaryNum(summary ? summary.verdict_schema : null) || 0;
     if (schema >= VERDICT_SCHEMA) {
       return [own(VERDICT_SHORT, raw) ? raw : null, false];
     }
@@ -24279,16 +24505,16 @@
       /* An asterisk rather than a silent reinterpretation: the value was
        * translated from an older file and the reader should know. */
       if (water && read[1]) water += '*';
+      var depth = summaryNum(s.total_depth_m), safe = summaryNum(s.safe_yield_m3_per_h);
+      var cost = summaryNum(s.cost_per_meter_usd);
       return {
         Community: s.community || '(unnamed)',
         District: s.district || '',
         Status: statusLabel(classifyStatus(s)),
-        'Depth (m)': s.total_depth_m ? pyRound(Number(s.total_depth_m), 1) : null,
-        'Safe yield (m3/h)': s.safe_yield_m3_per_h
-          ? pyRound(Number(s.safe_yield_m3_per_h), 2) : null,
+        'Depth (m)': depth ? pyRound(depth, 1) : null,
+        'Safe yield (m3/h)': safe ? pyRound(safe, 2) : null,
         Water: water,
-        'Cost/m (USD)': s.cost_per_meter_usd
-          ? pyRound(Number(s.cost_per_meter_usd), 0) : null,
+        'Cost/m (USD)': cost ? pyRound(cost, 0) : null,
       };
     });
   }
@@ -24339,17 +24565,16 @@
       add('Location', pyFixed(latlon.lat, 5) + ' N, ' +
         pyFixed(Math.abs(latlon.lon), 5) + ' W');
     }
-    add('Total depth', summary.total_depth_m
-      ? pyFixed(summary.total_depth_m, 1) + ' m' : null);
-    add('Safe yield', summary.safe_yield_m3_per_h
-      ? pyFixed(summary.safe_yield_m3_per_h, 2) + ' m3/h' : null);
+    var depth = summaryNum(summary.total_depth_m), safe = summaryNum(summary.safe_yield_m3_per_h);
+    var cost = summaryNum(summary.cost_per_meter_usd);
+    add('Total depth', depth ? pyFixed(depth, 1) + ' m' : null);
+    add('Safe yield', safe ? pyFixed(safe, 2) + ' m3/h' : null);
     var verdictRead = summaryVerdictState(summary);
     add('Water quality', verdictRead[0]
       ? VERDICT_LONG[verdictRead[0]] +
         (verdictRead[1] ? ' (read from an older project file)' : '')
       : null);
-    add('Cost per metre', summary.cost_per_meter_usd
-      ? '$' + pyFixed(summary.cost_per_meter_usd, 0) : null);
+    add('Cost per metre', cost ? '$' + pyFixed(cost, 0) : null);
     return rows;
   }
 
@@ -24381,11 +24606,7 @@
       return classifyStatus(s) === 'successful';
     }).length;
     /* a hand-edited "52 m" is a blank cell and a count, not NaN in a mean */
-    var num = function (v) {
-      if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
-      var n = Number(v);
-      return isFinite(n) ? n : null;
-    };
+    var num = summaryNum;
     var yields = list.map(function (s) { return num(s.safe_yield_m3_per_h); })
       .filter(function (v) { return v; });
     var costs = list.map(function (s) { return num(s.cost_per_meter_usd); })
@@ -24464,8 +24685,12 @@
    * who certified each value of one borehole.
    *
    * One entry for each survey point. Its prediction is kept as it was
-   * recorded, and replaced only while the project holds no completion;
-   * before_outcome says whether it was recorded before drilling. The outcome
+   * recorded, and replaced only while the borehole is not drilled;
+   * before_outcome says whether it was recorded before drilling, and a new
+   * recording never makes it earlier. A ledger takes an identity of its own
+   * (project_id) when its first predictions are written into it, and each
+   * entry's id carries it, so two projects whose soundings share a name and
+   * a place keep their points apart in a portfolio. The outcome
    * is worked out again from the project's completion whenever the project
    * is saved, and attached to the point the borehole was drilled at: the one
    * a person chose, else the nearest within ledger.pair_within_m of the
@@ -24474,10 +24699,10 @@
    * that made it and each outcome the contractor who drilled, for the
    * calibration's hit rates. */
 
-  /** ledger.empty_ledger.
-   * @returns {{drilled: string|null, entries: Rec[]}} */
+  /** ledger.empty_ledger: no entry and no identity yet.
+   * @returns {{drilled: string|null, entries: Rec[], project_id: string|null}} */
   function emptyLedger() {
-    return { drilled: null, entries: [] };
+    return { drilled: null, entries: [], project_id: null };
   }
 
   function ledgerGiven(v) { return v !== null && v !== undefined; }
@@ -24508,22 +24733,45 @@
     return typeof value === 'number' && Number.isInteger(value) ? value : null;
   }
 
-  /** ledger.point_id: a hash of the point's name, place and position, so two
-   * copies of one project's file give their points one identifier.
+  /** ledger.point_id: a hash of the point's name, place and position, and of
+   * the identity of the ledger it is recorded in, so two copies of one
+   * project's file give their points one identifier and two projects whose
+   * soundings share a name and a place do not. A ledger with no identity
+   * ('') gives the identifier it always did.
    * @param {string} soundingId
    * @param {number|null} easting
    * @param {number|null} northing
    * @param {number|null} utmZone
    * @param {string} [community]
    * @param {string} [district]
+   * @param {string} [projectId] the ledger's identity, '' or absent for none
    * @returns {string} */
-  function pointId(soundingId, easting, northing, utmZone, community, district) {
+  function pointId(soundingId, easting, northing, utmZone, community, district, projectId) {
     var e = ledgerNum(easting, 1) === null ? '' : pyFixed(Number(easting), 0);
     var n = ledgerNum(northing, 1) === null ? '' : pyFixed(Number(northing), 0);
     var zone = ledgerZone(utmZone);
-    var text = [String(soundingId || ''), e, n, zone === null ? '' : String(zone),
-      String(community || ''), String(district || '')].join('\n');
-    return sha256Hex(text).slice(0, 12);
+    var parts = [String(soundingId || ''), e, n, zone === null ? '' : String(zone),
+      String(community || ''), String(district || '')];
+    if (projectId) parts.push(String(projectId));
+    return sha256Hex(parts.join('\n')).slice(0, 12);
+  }
+
+  /* ledger._point_key: a point's identifier with no ledger's identity in
+   * it, what tells one point of a survey from another */
+  function ledgerPointKey(point) {
+    return pointId(point.sounding_id, point.easting, point.northing, point.utm_zone,
+      point.community, point.district);
+  }
+
+  /* ledger._ledger_identity: the identity a ledger takes when its first
+   * predictions are written into it, a hash of the day they were recorded
+   * and the points they were recorded at */
+  function ledgerIdentity(recordedOn, predictions) {
+    /** @type {Object<string, boolean>} */
+    var seen = {};
+    predictions.forEach(function (item) { seen[ledgerPointKey(item.point)] = true; });
+    var keys = Object.keys(seen).sort();
+    return sha256Hex(['ledger', String(recordedOn)].concat(keys).join('\n')).slice(0, 12);
   }
 
   function ledgerOdds(odds) {
@@ -24723,10 +24971,29 @@
     };
   }
 
+  /** ledger.uses_definition: whether a borehole's success was judged at
+   * the definition of success in force (odds.success_yield_m3_per_h), as its
+   * outcome records the yield it was judged at. The calibration scores, and
+   * a calibration set fits, only the outcomes that were.
+   * @param {Rec} outcome
+   * @param {Config} [config]
+   * @returns {boolean} */
+  function usesDefinition(outcome, config) {
+    var cfg = config || defaultConfig();
+    var judged = outcome.success_yield_m3_per_h;
+    return judged !== null && judged !== undefined &&
+      Math.abs(judged - pyRound(Number(cfg.odds.success_yield_m3_per_h), 3)) < 1e-9;
+  }
+
   /** ledger.record_predictions: the ledger with the survey's predictions
    * written in, and the ids of the entries that kept the prediction they had
-   * (a forecast, recorded before drilling, once the project holds a
-   * completion).
+   * (a forecast, recorded before drilling, once the borehole is drilled).
+   * The borehole is drilled when outcomeKnown says so, the ledger already
+   * holds an outcome, or a person has chosen the point drilled (drilled); a
+   * prediction recorded then is marked as recorded after drilling, and one
+   * recorded after drilling stays so. A ledger with no entry and no identity
+   * takes one from this first recording; a point's entry is found by its id,
+   * else by the point itself.
    * @param {Rec|null} ledger
    * @param {Rec[]} predictions what surveyPredictions returned
    * @param {string} recordedOn the date, as YYYY-MM-DD
@@ -24736,36 +25003,51 @@
   function recordPredictions(ledger, predictions, recordedOn, outcomeKnown, toolkit) {
     var clean = cleanLedger(ledger);
     var entries = clean.entries.slice();
+    var identity = clean.project_id;
+    if (identity === null && !entries.length && predictions.length) {
+      identity = ledgerIdentity(recordedOn, predictions);
+    }
+    var known = !!outcomeKnown || clean.drilled !== null ||
+      entries.some(function (entry) { return entry.outcome !== null; });
     /** @type {Object<string, number>} */
-    var where = {};
-    entries.forEach(function (entry, k) { where[entry.id] = k; });
+    var byId = {};
+    /** @type {Object<string, number>} */
+    var byPoint = {};
+    entries.forEach(function (entry, k) {
+      if (!own(byId, entry.id)) byId[entry.id] = k;
+      var key = ledgerPointKey(entry.point);
+      if (!own(byPoint, key)) byPoint[key] = k;
+    });
     /** @type {string[]} */
     var kept = [];
     predictions.forEach(function (item) {
       var point = item.point;
+      var key = ledgerPointKey(point);
       var pid = pointId(point.sounding_id, point.easting, point.northing, point.utm_zone,
-        point.community, point.district);
-      var k = own(where, pid) ? where[pid] : null;
+        point.community, point.district, identity || '');
+      var k = own(byId, pid) ? byId[pid] : own(byPoint, key) ? byPoint[key] : null;
       var old = k !== null ? entries[k] : null;
-      if (old && old.before_outcome && outcomeKnown) { kept.push(pid); return; }
+      if (old && old.before_outcome && known) { kept.push(old.id); return; }
       var entry = {
-        id: pid,
+        id: old ? old.id : pid,
         point: Object.assign({}, point),
         prediction: item.prediction,
         recorded_on: String(recordedOn),
-        before_outcome: !outcomeKnown,
+        before_outcome: !known && (!old || old.before_outcome),
         toolkit: String(toolkit),
         outcome: old ? old.outcome : null,
         pairing: old ? old.pairing : null,
       };
       if (k === null) {
-        where[pid] = entries.length;
+        k = entries.length;
         entries.push(entry);
       } else {
         entries[k] = entry;
       }
+      if (!own(byId, entry.id)) byId[entry.id] = k;
+      if (!own(byPoint, key)) byPoint[key] = k;
     });
-    return { ledger: { drilled: clean.drilled, entries: entries }, kept: kept };
+    return { ledger: { drilled: clean.drilled, entries: entries, project_id: identity }, kept: kept };
   }
 
   function ledgerDistance(point, outcome) {
@@ -24833,6 +25115,7 @@
         return Object.assign({}, entry, { outcome: drilled ? outcome : null,
           pairing: drilled ? paired.pairing : null });
       }),
+      project_id: clean.project_id,
     };
   }
 
@@ -24953,9 +25236,10 @@
   /** ledger.clean_ledger: a ledger as read from a file, in the shape the
    * functions here write. A bad entry is left out, a field of the wrong kind
    * is blank, a prediction whose timing is not recorded is taken as recorded
-   * after drilling, and an id met twice is kept the first time.
+   * after drilling, an id met twice is kept the first time, and the ledger's
+   * identity is kept where it is text.
    * @param {*} raw
-   * @returns {{drilled: string|null, entries: Rec[]}} */
+   * @returns {{drilled: string|null, entries: Rec[], project_id: string|null}} */
   function cleanLedger(raw) {
     if (!isRecord(raw)) return emptyLedger();
     /** @type {Rec[]} */
@@ -24985,9 +25269,10 @@
         toolkit: ledgerText(item.toolkit),
       });
     });
-    var drilled = raw.drilled;
+    var drilled = raw.drilled, identity = raw.project_id;
     return { drilled: typeof drilled === 'string' && own(seen, drilled) ? drilled : null,
-      entries: entries };
+      entries: entries,
+      project_id: typeof identity === 'string' && identity ? identity : null };
   }
 
   /** ledger.basement_check: how the depth to basement found compares with
@@ -25130,48 +25415,144 @@
     return [0, 1, 2, 3].map(function (k) { return [labels[k], predicted[k], found[k], checks[k]]; });
   }
 
-  /* ledger._rank: which of two copies of one entry a pool keeps - the one
-   * with an outcome, then one recorded before drilling, then the later
-   * recording. Whether a ranks above b. */
-  function ledgerRanksAbove(a, b) {
-    var ao = a.outcome !== null, bo = b.outcome !== null;
-    if (ao !== bo) return ao;
-    if (a.before_outcome !== b.before_outcome) return a.before_outcome;
-    return a.recorded_on > b.recorded_on;
+  /* ledger._facts: how many of an outcome's fields hold something */
+  function ledgerFacts(outcome) {
+    return Object.keys(outcome).filter(function (key) {
+      var v = outcome[key];
+      return v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length);
+    }).length;
   }
 
-  /** ledger.pool_ledgers: the entries of many projects' ledgers, each once,
-   * each carrying the label of the project it came from as project. An
-   * entry found in two files is kept once, the copy with the most in it.
+  /* ledger._rank: which of two copies of one entry a pool keeps, the higher
+   * first - the one with an outcome, a known success over one not known
+   * yet, a tested yield over the driller's recorded status, then one
+   * recorded before drilling, then the one with more of its outcome
+   * recorded, then the later recording - as a list compared item by item */
+  function ledgerRank(entry) {
+    var outcome = entry.outcome;
+    if (outcome === null) return [false, false, false, entry.before_outcome, 0, entry.recorded_on];
+    return [true, outcome.success !== null, outcome.success_basis === 'tested', entry.before_outcome,
+      ledgerFacts(outcome), entry.recorded_on];
+  }
+
+  function ledgerKind(value) {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'boolean') return 1;
+    if (typeof value === 'number') return 2;
+    if (typeof value === 'string') return 3;
+    if (Array.isArray(value)) return 4;
+    return 5;
+  }
+
+  /* ledger._order: a fixed order over the plain values a ledger holds, -1,
+   * 0 or 1, to choose between two copies nothing else tells apart: nothing
+   * first, then false before true, numbers, texts by code point, lists and
+   * then mappings item by item, a mapping's items in the order of its keys */
+  function ledgerOrder(a, b) {
+    var ka = ledgerKind(a), kb = ledgerKind(b);
+    if (ka !== kb) return ka < kb ? -1 : 1;
+    if (ka === 0) return 0;
+    if (ka === 3) return codePointCompare(a, b);
+    if (ka === 4) {
+      for (var i = 0; i < Math.min(a.length, b.length); i++) {
+        var c = ledgerOrder(a[i], b[i]);
+        if (c) return c;
+      }
+      return a.length > b.length ? 1 : a.length < b.length ? -1 : 0;
+    }
+    if (ka === 5) {
+      var pairs = function (m) {
+        return Object.keys(m).sort(codePointCompare).map(function (k) { return [k, m[k]]; });
+      };
+      return ledgerOrder(pairs(a), pairs(b));
+    }
+    return a > b ? 1 : a < b ? -1 : 0;
+  }
+
+  /* ledger._one_borehole: whether outcomes name one borehole, one reference
+   * and one completion date in all of them and not both blank */
+  function ledgerOneBorehole(outcomes) {
+    /** @type {Object<string, boolean>} */
+    var names = {};
+    outcomes.forEach(function (o) { names[JSON.stringify([o.borehole_ref, o.completion_date])] = true; });
+    var keys = Object.keys(names);
+    return keys.length === 1 && keys[0] !== JSON.stringify(['', '']);
+  }
+
+  /** ledger.pool_ledgers: the entries of many projects' ledgers, each once.
+   * An entry found in more than one file is kept once, the copy whose
+   * borehole outcome is best established (an outcome over none, a known
+   * success over one not known yet, a test over the driller's word), then
+   * one recorded before drilling, then the one with more of its outcome
+   * recorded, then the later recording; copies alike in all of that are
+   * taken in a fixed order of what they hold, so the pool is the same
+   * whatever the order of the files. Each kept entry carries the label of
+   * the project it came from as project, its ledger's identity as
+   * project_id, how many files it was found in as copies, whether those
+   * copies hold different outcomes as copies_differ, and whether those
+   * different outcomes also fail to name one borehole by one reference and
+   * completion date as copies_borehole_differs.
    * @param {Array<Array<*>>} items [project label, ledger] pairs
    * @returns {Rec[]} */
   function poolLedgers(items) {
-    /** @type {Object<string, Rec>} */
+    /** @type {Object<string, Array<*>>} */
     var kept = {};
+    /** @type {Object<string, number>} */
+    var copies = {};
+    /** @type {Object<string, Rec[]>} */
+    var outcomes = {};
     /** @type {string[]} */
     var order = [];
     items.forEach(function (item) {
-      var label = item[0], ledger = item[1];
-      cleanLedger(ledger).entries.forEach(function (entry) {
-        var have = own(kept, entry.id) ? kept[entry.id] : null;
-        if (!have) order.push(entry.id);
-        if (!have || ledgerRanksAbove(entry, have)) {
-          kept[entry.id] = Object.assign({}, entry, { project: String(label || '') });
+      var label = item[0], clean = cleanLedger(item[1]);
+      clean.entries.forEach(function (entry) {
+        var pid = entry.id;
+        copies[pid] = (own(copies, pid) ? copies[pid] : 0) + 1;
+        if (entry.outcome !== null) {
+          if (!own(outcomes, pid)) outcomes[pid] = [];
+          var held = outcomes[pid];
+          if (!held.some(function (other) { return ledgerOrder(entry.outcome, other) === 0; })) {
+            held.push(entry.outcome);
+          }
         }
+        var mine = [entry, String(label || ''), clean.project_id];
+        if (!own(kept, pid)) {
+          order.push(pid);
+          kept[pid] = mine;
+          return;
+        }
+        var have = kept[pid];
+        var c = ledgerOrder(ledgerRank(entry), ledgerRank(have[0]));
+        if (c > 0 || (c === 0 && ledgerOrder(mine, have) < 0)) kept[pid] = mine;
       });
     });
-    return order.map(function (id) { return kept[id]; });
+    return order.map(function (pid) {
+      var held = kept[pid];
+      var differ = own(outcomes, pid) && outcomes[pid].length > 1;
+      return Object.assign({}, held[0], { project: held[1], project_id: held[2], copies: copies[pid],
+        copies_differ: differ, copies_borehole_differs: differ && !ledgerOneBorehole(outcomes[pid]) });
+    });
   }
 
-  /** ledger.ledger_counts: the points predicted, the projects they are in,
-   * those drilled, and those drilled whose prediction was recorded before.
+  /** ledger.ledger_counts: the points predicted, the projects they are in
+   * (told apart by their ledgers' identities, else by their labels), those
+   * drilled, those drilled whose prediction was recorded before, how those
+   * drilled turned out, and the points found in more than one file (copies),
+   * those whose copies hold different outcomes (copies_differ), of those the
+   * ones from ledgers with no identity (copies_unsure), whose copies may be
+   * two projects, and of the rest the ones whose outcomes do not name one
+   * borehole (copies_borehole_differs), which may be two boreholes.
    * @param {Rec[]} pooled
    * @returns {Rec} */
   function ledgerCounts(pooled) {
     var drilled = pooled.filter(function (e) { return e.outcome !== null; });
     /** @type {Object<string, boolean>} */
     var projects = {};
-    pooled.forEach(function (e) { projects[e.project] = true; });
+    pooled.forEach(function (e) {
+      projects[e.project_id ? 'id:' + e.project_id : 'label:' + e.project] = true;
+    });
+    var differ = pooled.filter(function (e) { return e.copies_differ === true; });
+    var named = differ.filter(function (e) { return !!e.project_id; });
     return {
       points: pooled.length,
       projects: Object.keys(projects).length,
@@ -25180,17 +25561,35 @@
       success: drilled.filter(function (e) { return e.outcome.success === true; }).length,
       failure: drilled.filter(function (e) { return e.outcome.success === false; }).length,
       unknown: drilled.filter(function (e) { return e.outcome.success === null; }).length,
+      copies: pooled.filter(function (e) { return (e.copies === undefined ? 1 : e.copies) > 1; }).length,
+      copies_differ: differ.length,
+      copies_unsure: differ.length - named.length,
+      copies_borehole_differs: named.filter(function (e) { return e.copies_borehole_differs === true; }).length,
     };
   }
 
-  /** ledger.ledger_summary: what a pooled ledger holds, in a sentence.
+  /** ledger.ledger_summary: what a pooled ledger holds, in a sentence; then,
+   * where a point was found in more than one file, the rule that chose the
+   * copy counted, and a sentence for the points whose copies disagree: an
+   * older record where their ledgers have an identity and their outcomes
+   * name one borehole, else the two things it may be.
    * @param {Rec[]} pooled
    * @returns {string} */
   function ledgerSummary(pooled) {
     if (!pooled.length) return phrase('ledger.pool_none');
     var counts = ledgerCounts(pooled);
-    return phrase('ledger.pool_counts', { points: counts.points, projects: counts.projects,
+    var text = phrase('ledger.pool_counts', { points: counts.points, projects: counts.projects,
       drilled: counts.drilled, forecast: counts.forecast });
+    if (counts.copies) text += ' ' + phrase('ledger.pool_copies', { copies: counts.copies });
+    var differ = counts.copies_differ - counts.copies_unsure - counts.copies_borehole_differs;
+    if (differ) text += ' ' + phrase('ledger.pool_copies_differ', { differ: differ });
+    if (counts.copies_borehole_differs) {
+      text += ' ' + phrase('ledger.pool_copies_borehole', { points: counts.copies_borehole_differs });
+    }
+    if (counts.copies_unsure) {
+      text += ' ' + phrase('ledger.pool_copies_unsure', { unsure: counts.copies_unsure });
+    }
+    return text;
   }
 
   /** ledger.ledger_rows: the drilled points of a pooled ledger as a table.
@@ -25221,14 +25620,16 @@
   }
 
   /* project_io.PROJECT_SCHEMA: 2 from PLAN.md step 5.1, when the file came
-   * to carry the ledger, and 3 from step 8.1, when it came to carry the
-   * issue records of the documents issued from it. Both apps' project files
+   * to carry the ledger, 3 from step 8.1, when it came to carry the issue
+   * records of the documents issued from it, and 4 when the ledger came to
+   * carry an identity of its own (project_id). Both apps' project files
    * write it. */
-  var PROJECT_SCHEMA = 3;
+  var PROJECT_SCHEMA = 4;
 
   /* The step from each schema to the next, applied in turn on load: schema
-   * 1 had no ledger, so a file of it opens with an empty one, and schema 2
-   * no issue records, so a file of it opens with none. */
+   * 1 had no ledger, so a file of it opens with an empty one, schema 2 no
+   * issue records, so a file of it opens with none, and schema 3's ledger
+   * no identity, so a file of it keeps its ledger as it is, with none. */
   /** @type {Object<number, function(Rec): Rec>} */
   var PROJECT_MIGRATIONS = {
     1: function (payload) {
@@ -25236,6 +25637,9 @@
     },
     2: function (payload) {
       return Object.assign({}, payload, { schema: 3, issued: [] });
+    },
+    3: function (payload) {
+      return Object.assign({}, payload, { schema: 4 });
     },
   };
 
@@ -25269,6 +25673,7 @@
     emptyLedger: emptyLedger, pointId: pointId, pointPrediction: pointPrediction,
     surveyPredictions: surveyPredictions, completionOutcome: completionOutcome,
     recordPredictions: recordPredictions, pairDrilled: pairDrilled, attachOutcome: attachOutcome,
+    usesDefinition: usesDefinition,
     cleanLedger: cleanLedger, basementCheck: basementCheck, outcomeText: outcomeText,
     entryHeader: entryHeader, entryRows: entryRows, poolLedgers: poolLedgers, ledgerCounts: ledgerCounts,
     ledgerRows: ledgerRows, ledgerSummary: ledgerSummary,
@@ -25410,7 +25815,9 @@
 
   /** calibration.odds_scores: the forecast chances of success against the
    * outcomes: the Brier score, the prior's, the skill, the reliability bins
-   * and the bases the outcomes rest on.
+   * and the bases the outcomes rest on. A forecast with no chance, no known
+   * outcome, or an outcome judged at another definition of success than the
+   * one in force is counted (no_odds, unknown, definition) and not scored.
    * @param {Rec[]} pooled
    * @param {Config} [config]
    * @returns {Rec} */
@@ -25418,12 +25825,13 @@
     var cfg = config || defaultConfig();
     /** @type {Rec[]} */
     var scored = [];
-    var noOdds = 0, unknown = 0;
+    var noOdds = 0, unknown = 0, definition = 0;
     forecastEntries(pooled).forEach(function (entry) {
       var p = calibrationChance(entry.prediction);
       var success = entry.outcome.success;
       if (p === null) { noOdds += 1; return; }
       if (success === null) { unknown += 1; return; }
+      if (!usesDefinition(entry.outcome, cfg)) { definition += 1; return; }
       var prior = entry.prediction.odds.prior;
       scored.push({
         project: entry.project,
@@ -25486,6 +25894,7 @@
       failures: n - successes,
       no_odds: noOdds,
       unknown: unknown,
+      definition: definition,
       bases: bases,
       minimum: minimum,
       verdict: n < minimum ? 'too_few' : 'scored',
@@ -25528,9 +25937,11 @@
   }
 
   /** calibration.hit_rates: the drilled points by geology unit, survey team
-   * or contractor, each group with its counts, its hit rate (null below
-   * ledger.min_group known) and the mean chance forecast over its forecasts
-   * with a known outcome. Named groups first, the most drilled first, then
+   * or contractor, each group with its counts (one judged at another
+   * definition of success than the one in force counted as definition, and
+   * neither successful nor not), its hit rate (null below ledger.min_group
+   * known) and the mean chance forecast over its forecasts with a known
+   * outcome at that definition. Named groups first, the most drilled first, then
    * by name; the groups that name none last.
    * @param {Rec[]} pooled
    * @param {string} by geology, team or contractor
@@ -25550,15 +25961,17 @@
       var group = groups.get(label);
       if (!group) {
         group = { label: label, recorded: named[1], drilled: 0, success: 0, failure: 0, unknown: 0,
-          chances: [] };
+          definition: 0, chances: [] };
         groups.set(label, group);
       }
       group.drilled += 1;
-      if (outcome.success === true) group.success += 1;
-      else if (outcome.success === false) group.failure += 1;
-      else group.unknown += 1;
+      var judged = outcome.success !== null && usesDefinition(outcome, cfg);
+      if (outcome.success === null) group.unknown += 1;
+      else if (!judged) group.definition += 1;
+      else if (outcome.success) group.success += 1;
+      else group.failure += 1;
       var p = calibrationChance(entry.prediction);
-      if (entry.before_outcome && outcome.success !== null && p !== null) group.chances.push(p);
+      if (entry.before_outcome && judged && p !== null) group.chances.push(p);
     });
     /** @type {Rec[]} */
     var out = [];
@@ -25567,7 +25980,7 @@
       var ps = group.chances;
       out.push({
         label: group.label, recorded: group.recorded, drilled: group.drilled, success: group.success,
-        failure: group.failure, unknown: group.unknown, known: known,
+        failure: group.failure, unknown: group.unknown, definition: group.definition, known: known,
         rate: known >= minimum && known ? pyRound(group.success / known, 3) : null,
         forecast_n: ps.length,
         forecast_mean: ps.length ? pyRound(calibrationSum(ps) / ps.length, 3) : null,
@@ -25643,10 +26056,14 @@
   function calibrationOddsSection(odds, cfg) {
     var section = calibrationSection('odds', phrase('calibration.odds_heading'));
     var paragraphs = section.paragraphs;
-    paragraphs.push(phrase('calibration.odds_intro', { rate: Number(cfg.odds.success_yield_m3_per_h) }));
-    if (!(odds.n || odds.no_odds || odds.unknown)) return section;
+    var rate = Number(cfg.odds.success_yield_m3_per_h);
+    paragraphs.push(phrase('calibration.odds_intro', { rate: rate }));
+    if (!(odds.n || odds.no_odds || odds.unknown || odds.definition)) return section;
     if (odds.no_odds || odds.unknown) {
       paragraphs.push(phrase('calibration.odds_left_out', { no_odds: odds.no_odds, unknown: odds.unknown }));
+    }
+    if (odds.definition) {
+      paragraphs.push(phrase('calibration.odds_definition', { n: odds.definition, rate: rate }));
     }
     if (odds.verdict === 'too_few') {
       paragraphs.push(phrase('calibration.odds_too_few', { n: odds.n, success: odds.successes,
@@ -25701,6 +26118,13 @@
     }
     section.paragraphs.push(phrase('calibration.hits_intro',
       { minimum: Math.trunc(Number(cfg.ledger.min_group)) }));
+    var other = pooled.filter(function (e) {
+      return e.outcome !== null && e.outcome.success !== null && !usesDefinition(e.outcome, cfg);
+    }).length;
+    if (other) {
+      section.paragraphs.push(phrase('calibration.hits_definition',
+        { n: other, rate: Number(cfg.odds.success_yield_m3_per_h) }));
+    }
     var tooFew = phrase('calibration.hits_too_few'), notForecast = phrase('calibration.hits_not_forecast');
     CALIBRATION_GROUPINGS.forEach(function (by) {
       var ids = CALIBRATION_HIT_TABLES[by];
@@ -25709,7 +26133,8 @@
           phrase('calibration.hits_col_failure'), phrase('calibration.hits_col_unknown'),
           phrase('calibration.hits_col_rate'), phrase('calibration.hits_col_forecast')],
         rows: hitRates(pooled, by, cfg).map(function (g) {
-          return [g.label, String(g.drilled), String(g.success), String(g.failure), String(g.unknown),
+          return [g.label, String(g.drilled), String(g.success), String(g.failure),
+            String(g.unknown + g.definition),
             g.rate !== null ? calibrationPercent(g.rate) : tooFew,
             g.forecast_mean !== null
               ? phrase('calibration.hits_forecast', { p: rangeShare(g.forecast_mean), n: g.forecast_n })
@@ -25919,7 +26344,9 @@
    * is the project's completion, or where the project holds no log the
    * outcome its ledger kept; its forecast the chance recorded before
    * drilling at the point it was drilled at; its identifier that point's,
-   * else one hashed from its reference, position and place.
+   * else one hashed from its reference, position and place: not from the
+   * ledger's identity, which a save made before any prediction was recorded
+   * does not have.
    * @param {Rec} site the project's site details
    * @param {DrillingLog|null} log
    * @param {PumpingAnalysis|null} analysis
@@ -27111,14 +27538,12 @@
    * and how many drilled entries were left out and why */
   function setJudged(pooled, cfg) {
     var kept = [], unknown = 0, definition = 0;
-    var rate = pyRound(cfg.odds.success_yield_m3_per_h, 3);
     pooled.forEach(function (entry) {
       var outcome = entry.outcome;
       if (!outcome) return;
       if (outcome.success === null || outcome.success === undefined) {
         unknown += 1;
-      } else if (outcome.success_yield_m3_per_h === null ||
-          !(Math.abs(outcome.success_yield_m3_per_h - rate) < 1e-9)) {
+      } else if (!usesDefinition(outcome, cfg)) {
         definition += 1;
       } else {
         kept.push(entry);
@@ -28548,41 +28973,70 @@
     return record;
   }
 
+  /* photos._reading: a recorded number as a report prints it, a finite
+   * number no further from zero than limit, else null; a number written as
+   * text is not one */
+  function photoReading(value, limit) {
+    return typeof value === 'number' && isFinite(value) && Math.abs(value) <= limit ? value : null;
+  }
+
+  /* photos._text: text the record keeps, or '' for anything but text */
+  function photoText(value) {
+    return typeof value === 'string' ? value : '';
+  }
+
+  /* photos._accuracy: a position's accuracy as a report prints it */
+  function photoAccuracy(value) {
+    if (value === null || value === undefined) return phrase('evidence.accuracy_unknown');
+    var metres = photoReading(value, Infinity);
+    if (metres === null || metres < 0.0) return phrase('evidence.accuracy_unreadable');
+    return phrase('evidence.accuracy_m', { m: metres });
+  }
+
   /**
    * A provenance record as a report prints it: {time, position, hash}. A
-   * photograph with no record gets the catalogue's "no provenance recorded"
-   * and nothing else, so nothing is printed that was never recorded.
+   * photograph with no record (or one whose hash is not text) gets the
+   * catalogue's "no provenance recorded" and nothing else, so nothing is
+   * printed that was never recorded. A position is printed only where its
+   * latitude and longitude are numbers, finite and within 90 and 180
+   * degrees, and its accuracy only where it is a finite number not below
+   * zero; a position or an accuracy that cannot be read so, as a
+   * hand-edited project file can hold, is said to be unreadable.
    * @param {Rec|null|undefined} record
    * @returns {{time: string, position: string, hash: string}}
    */
   function describePhotoProvenance(record) {
-    if (!record || typeof record !== 'object' || !record.sha256) {
+    if (!isRecord(record) || !photoText(/** @type {Rec} */ (record).sha256)) {
       return { time: phrase('evidence.no_provenance'), position: '', hash: '' };
     }
+    var rec = /** @type {Rec} */ (record);
     var timeSources = phraseTable('evidence.time_sources');
-    var shownTime = String(record.taken_at || '').replace(/T/g, ' ').replace(/Z$/, '');
+    var shownTime = photoText(rec.taken_at).replace(/T/g, ' ').replace(/Z$/, '');
+    var timeSource = photoText(rec.time_source);
     var time = phrase('evidence.time', { time: shownTime,
-      source: own(timeSources, record.time_source) ? timeSources[record.time_source] : '' });
+      source: own(timeSources, timeSource) ? timeSources[timeSource] : '' });
     var where;
-    var position = record.position;
-    if (position && typeof position === 'object' && position.lat !== null &&
-        position.lat !== undefined) {
-      var sources = phraseTable('evidence.position_sources');
-      var accuracy = position.accuracy_m;
-      where = phrase('evidence.position', {
-        lat: Number(position.lat), lon: Number(position.lon),
-        accuracy: accuracy === null || accuracy === undefined
-          ? phrase('evidence.accuracy_unknown')
-          : phrase('evidence.accuracy_m', { m: Number(accuracy) }),
-        source: own(sources, record.position_source) ? sources[record.position_source] : '',
-      });
+    var position = rec.position;
+    var notes = phraseTable('evidence.position_notes');
+    var blank = function (/** @type {*} */ v) { return v === null || v === undefined; };
+    if (blank(position) || (isRecord(position) && blank(position.lat) && blank(position.lon))) {
+      var note = photoText(rec.position_note);
+      where = own(notes, note) ? notes[note] : notes.not_requested;
     } else {
-      var notes = phraseTable('evidence.position_notes');
-      where = own(notes, record.position_note || '') ? notes[record.position_note]
-        : notes.not_requested;
+      /** @type {Rec} */
+      var held = isRecord(position) ? position : {};
+      var lat = photoReading(held.lat, 90), lon = photoReading(held.lon, 180);
+      if (lat === null || lon === null) {
+        where = notes.unreadable;
+      } else {
+        var sources = phraseTable('evidence.position_sources');
+        var source = photoText(rec.position_source);
+        where = phrase('evidence.position', { lat: lat, lon: lon, accuracy: photoAccuracy(held.accuracy_m),
+          source: own(sources, source) ? sources[source] : '' });
+      }
     }
     return { time: time, position: where,
-      hash: phrase('evidence.hash', { short: String(record.sha256).slice(0, 16) }) };
+      hash: phrase('evidence.hash', { short: String(rec.sha256).slice(0, 16) }) };
   }
 
   Object.assign(C, {
@@ -38331,13 +38785,6 @@
     return { section: section, found: { total: near.length, working: working, serving: serving, rehab: rehab } };
   }
 
-  /* a finite number, or null for anything that is not one: portfolio._num */
-  function deskNumber(value) {
-    if (value === null || value === undefined || typeof value === 'boolean') return null;
-    var number = typeof value === 'number' ? value : Number(String(value).trim() === '' ? NaN : value);
-    return isFinite(number) ? number : null;
-  }
-
   function deskWaterQuality(summary) {
     var read = summaryVerdictState(summary);
     var water = read[0] && own(VERDICT_SHORT, read[0]) ? String(VERDICT_SHORT[read[0]]) : '';
@@ -38386,7 +38833,7 @@
           phrase('desk_study.projects_col_status'), phrase('desk_study.projects_col_depth'),
           phrase('desk_study.projects_col_yield'), phrase('desk_study.projects_col_water')],
         rows: near.map(function (item, i) {
-          var depth = deskNumber(item[1].total_depth_m), yieldM3h = deskNumber(item[1].safe_yield_m3_per_h);
+          var depth = summaryNum(item[1].total_depth_m), yieldM3h = summaryNum(item[1].safe_yield_m3_per_h);
           return [portfolioSiteLabel(item[1]), pyFixed(item[0] / 1000.0, 1), statusLabel(statuses[i]),
             depth ? pyFixed(depth, 1) : '', yieldM3h ? pyFixed(yieldM3h, 2) : '', deskWaterQuality(item[1])];
         }),

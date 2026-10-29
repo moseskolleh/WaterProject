@@ -11,10 +11,16 @@ said there, written down as plain numbers when the predictions are recorded:
 the depth to basement and its band over the models that fit, the
 water-bearing zones and their thickness, the drilling depth and its band,
 and the chance of a working borehole with what that chance rests on. A
-prediction is kept as it was recorded. It is replaced only while the project
-holds no completion, and ``before_outcome`` says whether it was recorded
+prediction is kept as it was recorded. It is replaced only while the
+borehole is not drilled, and ``before_outcome`` says whether it was recorded
 before the borehole was drilled, so a prediction written down afterwards is
-never read as a forecast.
+never read as a forecast. A new recording never makes a prediction earlier
+than it was: one recorded after drilling stays so.
+
+A ledger takes an identity of its own (``project_id``) when its first
+predictions are written into it, and each entry's id carries it, so two
+projects whose soundings share a name and a place keep their points apart
+in a portfolio, while the copies of one project's file share them.
 
 Each prediction names the survey team that made it, and each outcome the
 contractor who drilled, so the calibration of step 5.2 can give hit rates for
@@ -62,12 +68,14 @@ __all__ = [
     "pool_ledgers",
     "record_predictions",
     "survey_predictions",
+    "uses_definition",
 ]
 
 
 def empty_ledger() -> dict:
-    """A ledger with no entry: the one every project starts with."""
-    return {"drilled": None, "entries": []}
+    """A ledger with no entry and no identity yet: the one every project
+    starts with."""
+    return {"drilled": None, "entries": [], "project_id": None}
 
 
 # ------------------------------------------------------------ plain numbers
@@ -79,7 +87,12 @@ def _num(value, digits: int | None) -> float | None:
     differently."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return None
-    x = float(value)
+    try:
+        x = float(value)
+    except OverflowError:
+        # a whole number too large for a float, which the browser reads as
+        # Infinity
+        return None
     if not math.isfinite(x):
         return None
     return x if digits is None else round(x, digits)
@@ -103,31 +116,56 @@ def _name(value) -> str:
 
 
 def _zone(value) -> int | None:
-    """A UTM zone number, or None."""
+    """A UTM zone number, or None: a whole number, and not one too large
+    for a float, which the browser reads as Infinity."""
     if isinstance(value, bool):
         return None
     if isinstance(value, numbers.Integral):
-        return int(value)
+        return int(value) if _num(value, None) is not None else None
     if isinstance(value, float) and value.is_integer():
         return int(value)
     return None
 
 
 def point_id(sounding_id: str, easting, northing, utm_zone, community: str = "",
-             district: str = "") -> str:
-    """The entry's identifier: a hash of the point's name, place and position.
+             district: str = "", project_id: str = "") -> str:
+    """The entry's identifier: a hash of the point's name, place and
+    position, and of the identity of the ledger it is recorded in.
 
     Two copies of one project's file give their points the same identifier,
-    so a portfolio pools them once; two projects whose soundings share a name
-    ("VES 1") differ by their place or their position. The position is taken
-    to the metre, so a re-read of the same coordinates does not move it.
+    so a portfolio pools them once. Two projects whose soundings share a name
+    ("VES 1") differ by their place or their position, and where they share
+    those too (a dry hole and its replacement surveyed in one village a year
+    apart, the sheets carrying no coordinates) by ``project_id``, the
+    ledger's identity (:func:`record_predictions`). A ledger written before
+    ledgers had one gives "" and the identifier it always did. The position
+    is taken to the metre, so a re-read of the same coordinates does not
+    move it.
     """
     e = "" if _num(easting, 1) is None else f"{float(easting):.0f}"
     n = "" if _num(northing, 1) is None else f"{float(northing):.0f}"
     zone = _zone(utm_zone)
-    text = "\n".join([str(sounding_id or ""), e, n, "" if zone is None else str(zone),
-                      str(community or ""), str(district or "")])
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+    parts = [str(sounding_id or ""), e, n, "" if zone is None else str(zone),
+             str(community or ""), str(district or "")]
+    if project_id:
+        parts.append(str(project_id))
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def _point_key(point: dict) -> str:
+    """A point's identifier with no ledger's identity in it: what tells one
+    point of a survey from another."""
+    return point_id(point["sounding_id"], point["easting"], point["northing"], point["utm_zone"],
+                    point["community"], point["district"])
+
+
+def _ledger_identity(recorded_on: str, predictions: list[dict]) -> str:
+    """The identity a ledger takes when its first predictions are written
+    into it: a hash of the day they were recorded and the points they were
+    recorded at. It is derived rather than drawn at random so that the same
+    recording gives the same file."""
+    keys = sorted({_point_key(item["point"]) for item in predictions})
+    return hashlib.sha256("\n".join(["ledger", str(recorded_on), *keys]).encode("utf-8")).hexdigest()[:12]
 
 
 # --------------------------------------------------------------- prediction
@@ -333,6 +371,17 @@ def completion_outcome(log, analysis=None, config: Config | None = None, contrac
     }
 
 
+def uses_definition(outcome: dict, config: Config | None = None) -> bool:
+    """Whether a borehole's success was judged at the definition of success
+    in force, ``odds.success_yield_m3_per_h``, as its outcome records the
+    yield it was judged at. The calibration scores and a calibration set
+    fits only the outcomes that were: one judged at another yield says
+    nothing of success as the report states it."""
+    config = config or Config()
+    judged = outcome.get("success_yield_m3_per_h")
+    return judged is not None and abs(judged - round(float(config.odds.success_yield_m3_per_h), 3)) < 1e-9
+
+
 # --------------------------------------------------------------- recording
 
 def record_predictions(ledger: dict, predictions: list[dict], recorded_on: str,
@@ -341,42 +390,68 @@ def record_predictions(ledger: dict, predictions: list[dict], recorded_on: str,
     the entries that kept the prediction they had.
 
     A point's entry is replaced unless its prediction was recorded before
-    drilling and the project now holds a completion: that prediction is a
-    forecast, and a forecast is kept as it was made. ``outcome_known`` says
-    whether the project holds a completion now; an entry recorded while it
-    does is marked as recorded after drilling. An entry keeps its outcome
-    through a new recording, and a point no longer in the survey keeps its
-    entry: the ledger is a record, not the survey's current state.
+    drilling and the borehole has been drilled: that prediction is a
+    forecast, and a forecast is kept as it was made. The borehole has been
+    drilled when ``outcome_known`` says the project holds a completion now,
+    when the ledger already holds an outcome, which it keeps while no
+    drilling log is loaded (:func:`attach_outcome`), or when a person has
+    chosen the point it was drilled at (``drilled``). A prediction recorded
+    once the borehole has been drilled is marked as recorded after drilling,
+    and one recorded after drilling stays so when it is recorded again: a new
+    recording never makes a prediction earlier than it was. An entry keeps
+    its outcome through a new recording, and a point no longer in the survey
+    keeps its entry: the ledger is a record, not the survey's current state.
+
+    A ledger with no entry and no identity takes one here, from the day and
+    the points of this first recording, and every entry it gains carries it
+    in its id (:func:`point_id`). A ledger written before ledgers had an
+    identity keeps none, so its entries and the ones it gains keep the ids
+    they always had. A point's entry is found by its id, else by the point
+    itself, so a ledger whose identity was lost on the way still finds it.
     """
     ledger = clean_ledger(ledger)
     entries = list(ledger["entries"])
-    where = {entry["id"]: k for k, entry in enumerate(entries)}
+    identity = ledger["project_id"]
+    if identity is None and not entries and predictions:
+        identity = _ledger_identity(recorded_on, predictions)
+    known = (bool(outcome_known) or ledger["drilled"] is not None
+             or any(entry["outcome"] is not None for entry in entries))
+    by_id: dict[str, int] = {}
+    by_point: dict[str, int] = {}
+    for k, entry in enumerate(entries):
+        by_id.setdefault(entry["id"], k)
+        by_point.setdefault(_point_key(entry["point"]), k)
     kept: list[str] = []
     for item in predictions:
         point = item["point"]
+        key = _point_key(point)
         pid = point_id(point["sounding_id"], point["easting"], point["northing"], point["utm_zone"],
-                       point["community"], point["district"])
-        k = where.get(pid)
+                       point["community"], point["district"], identity or "")
+        k = by_id.get(pid)
+        if k is None:
+            k = by_point.get(key)
         old = entries[k] if k is not None else None
-        if old is not None and old["before_outcome"] and outcome_known:
-            kept.append(pid)
+        if old is not None and old["before_outcome"] and known:
+            kept.append(old["id"])
             continue
         entry = {
-            "id": pid,
+            "id": old["id"] if old is not None else pid,
             "point": dict(point),
             "prediction": item["prediction"],
             "recorded_on": str(recorded_on),
-            "before_outcome": not outcome_known,
+            "before_outcome": not known and (old is None or old["before_outcome"]),
             "toolkit": str(toolkit),
             "outcome": old["outcome"] if old is not None else None,
             "pairing": old["pairing"] if old is not None else None,
         }
         if k is None:
-            where[pid] = len(entries)
+            k = len(entries)
             entries.append(entry)
         else:
             entries[k] = entry
-    return {"drilled": ledger["drilled"], "entries": entries}, kept
+        by_id.setdefault(entry["id"], k)
+        by_point.setdefault(key, k)
+    return {"drilled": ledger["drilled"], "entries": entries, "project_id": identity}, kept
 
 
 def _distance(point: dict, outcome: dict) -> float | None:
@@ -440,7 +515,7 @@ def attach_outcome(ledger: dict, outcome: dict | None, config: Config | None = N
         drilled = entry["id"] == pid
         entries.append(dict(entry, outcome=outcome if drilled else None,
                             pairing=pairing if drilled else None))
-    return {"drilled": ledger["drilled"], "entries": entries}
+    return {"drilled": ledger["drilled"], "entries": entries, "project_id": ledger["project_id"]}
 
 
 # ---------------------------------------------------------------- cleaning
@@ -560,6 +635,7 @@ def clean_ledger(raw) -> dict:
     the wrong kind is blank rather than an error. A prediction whose timing
     is not recorded is taken as recorded after drilling, the cautious
     reading. An entry whose id appears twice is kept once, the first time.
+    The ledger's identity is kept where it is text, and is None otherwise.
     """
     if not isinstance(raw, dict):
         return empty_ledger()
@@ -589,8 +665,10 @@ def clean_ledger(raw) -> dict:
             "toolkit": _text(item.get("toolkit")),
         })
     drilled = raw.get("drilled")
+    identity = raw.get("project_id")
     return {"drilled": drilled if isinstance(drilled, str) and drilled in seen else None,
-            "entries": entries}
+            "entries": entries,
+            "project_id": identity if isinstance(identity, str) and identity else None}
 
 
 # ------------------------------------------------------------- comparison
@@ -743,53 +821,177 @@ def entry_rows(entry: dict) -> list[list[str]]:
 
 # ----------------------------------------------------------------- pooling
 
+def _facts(outcome: dict) -> int:
+    """How many of an outcome's fields hold something."""
+    return sum(1 for value in outcome.values() if value is not None and value != "" and value != [])
+
+
 def _rank(entry: dict) -> tuple:
-    """Which of two copies of one entry a pool keeps: the one with an
-    outcome, then one recorded before drilling, then the later recording."""
-    return (entry["outcome"] is not None, entry["before_outcome"], entry["recorded_on"])
+    """Which of two copies of one entry a pool keeps, the higher first: the
+    one with an outcome, a known success over one not known yet, a tested
+    yield over the driller's recorded status, then one recorded before
+    drilling, then the one with more of its outcome recorded, then the later
+    recording."""
+    outcome = entry["outcome"]
+    if outcome is None:
+        return (False, False, False, entry["before_outcome"], 0, entry["recorded_on"])
+    return (True, outcome["success"] is not None, outcome["success_basis"] == "tested",
+            entry["before_outcome"], _facts(outcome), entry["recorded_on"])
+
+
+def _kind(value) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return 1
+    if isinstance(value, numbers.Real):
+        return 2
+    if isinstance(value, str):
+        return 3
+    if isinstance(value, list):
+        return 4
+    return 5
+
+
+def _order(a, b) -> int:
+    """A fixed order over the plain values a ledger holds, -1, 0 or 1: to
+    choose between two copies nothing else tells apart, so a pool does not
+    depend on the order of its files. Nothing first, then false before true,
+    numbers, texts letter by letter (by code point), lists and then mappings
+    item by item, a mapping's items in the order of its keys."""
+    ka, kb = _kind(a), _kind(b)
+    if ka != kb:
+        return -1 if ka < kb else 1
+    if ka == 0:
+        return 0
+    if ka == 4:
+        for x, y in zip(a, b, strict=False):
+            c = _order(x, y)
+            if c:
+                return c
+        return (len(a) > len(b)) - (len(a) < len(b))
+    if ka == 5:
+        return _order([[k, a[k]] for k in sorted(a)], [[k, b[k]] for k in sorted(b)])
+    return (a > b) - (a < b)
+
+
+def _one_borehole(outcomes: list[dict]) -> bool:
+    """Whether outcomes name one borehole: one reference and one completion
+    date in all of them, and not both blank. A log corrected between two
+    saves, a hole and its replacement, and two projects whose points the
+    files cannot tell apart all give outcomes that do not."""
+    names = {(outcome["borehole_ref"], outcome["completion_date"]) for outcome in outcomes}
+    return len(names) == 1 and names != {("", "")}
 
 
 def pool_ledgers(items: Iterable[tuple[str, dict]]) -> list[dict]:
     """The entries of many projects' ledgers, each once.
 
     ``items`` are (project label, ledger) pairs, as the portfolio reads them
-    from its files. An entry found in two files (two copies of one project)
-    is kept once, the copy with the most in it; each kept entry carries the
-    label of the project it came from as ``project``. The order is the order
-    the entries were first met.
+    from its files. An entry found in more than one file (copies of one
+    project) is kept once, and the copy kept is the one whose borehole
+    outcome is best established: one with an outcome over one without, a
+    known success over one not known yet, and a tested yield over the
+    driller's recorded status; then one recorded before drilling; then the
+    one with more of its outcome recorded; then the later recording (see
+    :func:`_rank`). Copies alike in all of that are taken in a fixed order
+    of what they hold (:func:`_order`), so the pool is the same whatever the
+    order of the files.
+
+    Each kept entry carries the label of the project it came from as
+    ``project``, the identity of its ledger as ``project_id`` (None for a
+    ledger written before ledgers had one), how many files it was found in
+    as ``copies``, as ``copies_differ`` whether those copies hold different
+    outcomes, so a file with an older record shows, and as
+    ``copies_borehole_differs`` whether those different outcomes also fail
+    to name one borehole by one reference and completion date
+    (:func:`_one_borehole`), so they may be two boreholes taken for one.
+    Such copies are still counted once, and the summary says so: that is
+    a choice (QUESTIONS.md item 30), since keeping both would count twice
+    the borehole of a log corrected between two saves, which the copies
+    cannot tell from two boreholes. The order is the order the entries were
+    first met.
     """
-    kept: dict[str, dict] = {}
+    kept: dict[str, list] = {}
+    copies: dict[str, int] = {}
+    outcomes: dict[str, list[dict]] = {}
     for label, ledger in items:
-        for entry in clean_ledger(ledger)["entries"]:
-            have = kept.get(entry["id"])
-            if have is None or _rank(entry) > _rank(have):
-                kept[entry["id"]] = dict(entry, project=str(label or ""))
-    return list(kept.values())
+        clean = clean_ledger(ledger)
+        for entry in clean["entries"]:
+            pid = entry["id"]
+            copies[pid] = copies.get(pid, 0) + 1
+            if entry["outcome"] is not None:
+                held = outcomes.setdefault(pid, [])
+                if not any(_order(entry["outcome"], other) == 0 for other in held):
+                    held.append(entry["outcome"])
+            mine = [entry, str(label or ""), clean["project_id"]]
+            have = kept.get(pid)
+            if have is None:
+                kept[pid] = mine
+                continue
+            ra, rb = _rank(entry), _rank(have[0])
+            if ra > rb or (ra == rb and _order(mine, have) < 0):
+                kept[pid] = mine
+    out = []
+    for pid, (entry, label, identity) in kept.items():
+        held = outcomes.get(pid, [])
+        differ = len(held) > 1
+        out.append(dict(entry, project=label, project_id=identity, copies=copies[pid], copies_differ=differ,
+                        copies_borehole_differs=differ and not _one_borehole(held)))
+    return out
 
 
 def ledger_counts(pooled: list[dict]) -> dict:
     """How much a pooled ledger holds: the points predicted, the projects
-    they are in, those drilled, and those drilled whose prediction was
-    recorded before drilling."""
+    they are in (told apart by their ledgers' identities, else by their
+    labels), those drilled, those drilled whose prediction was recorded
+    before drilling, and how those drilled turned out; and the points found
+    in more than one file (``copies``), those whose copies hold different
+    outcomes (``copies_differ``), of those the ones from ledgers with no
+    identity (``copies_unsure``), whose copies may be two projects, and of
+    the rest the ones whose outcomes do not name one borehole
+    (``copies_borehole_differs``), which may be two boreholes."""
     drilled = [entry for entry in pooled if entry["outcome"] is not None]
+    projects = {("id", entry["project_id"]) if entry.get("project_id") else ("label", entry["project"])
+                for entry in pooled}
+    differ = [entry for entry in pooled if entry.get("copies_differ") is True]
+    named = [entry for entry in differ if entry.get("project_id")]
     return {
         "points": len(pooled),
-        "projects": len({entry["project"] for entry in pooled}),
+        "projects": len(projects),
         "drilled": len(drilled),
         "forecast": sum(1 for entry in drilled if entry["before_outcome"]),
         "success": sum(1 for entry in drilled if entry["outcome"]["success"] is True),
         "failure": sum(1 for entry in drilled if entry["outcome"]["success"] is False),
         "unknown": sum(1 for entry in drilled if entry["outcome"]["success"] is None),
+        "copies": sum(1 for entry in pooled if entry.get("copies", 1) > 1),
+        "copies_differ": len(differ),
+        "copies_unsure": len(differ) - len(named),
+        "copies_borehole_differs": sum(1 for entry in named if entry.get("copies_borehole_differs") is True),
     }
 
 
 def ledger_summary(pooled: list[dict]) -> str:
-    """What a pooled ledger holds, in a sentence."""
+    """What a pooled ledger holds, in a sentence; then, where a point was
+    found in more than one file, the rule that chose the copy counted, and a
+    sentence for the points whose copies disagree: an older record where
+    their ledgers have an identity and their outcomes name one borehole,
+    else the two things it may be."""
     if not pooled:
         return phrase("ledger.pool_none")
     counts = ledger_counts(pooled)
-    return phrase("ledger.pool_counts", points=counts["points"], projects=counts["projects"],
+    text = phrase("ledger.pool_counts", points=counts["points"], projects=counts["projects"],
                   drilled=counts["drilled"], forecast=counts["forecast"])
+    if counts["copies"]:
+        text += " " + phrase("ledger.pool_copies", copies=counts["copies"])
+    differ = counts["copies_differ"] - counts["copies_unsure"] - counts["copies_borehole_differs"]
+    if differ:
+        text += " " + phrase("ledger.pool_copies_differ", differ=differ)
+    if counts["copies_borehole_differs"]:
+        text += " " + phrase("ledger.pool_copies_borehole", points=counts["copies_borehole_differs"])
+    if counts["copies_unsure"]:
+        text += " " + phrase("ledger.pool_copies_unsure", unsure=counts["copies_unsure"])
+    return text
 
 
 def ledger_rows(pooled: list[dict]) -> tuple[list[str], list[list[str]]]:

@@ -19,9 +19,12 @@ Only forecasts are scored: predictions recorded before their borehole was
 drilled. One recorded afterwards may have been made knowing what the
 borehole found, so it is counted and left out. The hit rates count every
 drilled point, since a rate does not rest on when the prediction was
-written. Below ``ledger.min_boreholes`` (``ledger.min_group`` for a hit
-rate) the report says there are too few boreholes to judge and gives the
-counts. It changes nothing the toolkit predicts.
+written. A borehole whose success was judged at another definition of
+success than the one in force is counted and not scored, as a calibration
+set leaves it out (:func:`groundwater.ledger.uses_definition`). Below
+``ledger.min_boreholes`` (``ledger.min_group`` for a hit rate) the report
+says there are too few boreholes to judge and gives the counts. It changes
+nothing the toolkit predicts.
 
 Every function here takes the entries of :func:`groundwater.ledger.pool_ledgers`
 and has a twin of the same name in camel case in gwt-core.js, held to it by
@@ -41,6 +44,7 @@ from .ledger import (
     basement_check,
     ledger_counts,
     ledger_summary,
+    uses_definition,
 )
 from .reporting.citations import references_for
 from .text import phrase, phrase_table
@@ -206,11 +210,14 @@ def odds_scores(pooled: list[dict], config: Config | None = None) -> dict:
     ``bins``, the reliability diagram's ``ledger.reliability_bins`` equal
     bands of chance, each with its forecasts, their mean chance and the
     share that succeeded. ``bases`` counts the outcomes by what decided them.
-    ``verdict`` is ``too_few`` below ``ledger.min_boreholes`` scored, else
-    ``scored``.
+    A forecast with no chance (``no_odds``), with no known outcome
+    (``unknown``) or whose borehole was judged at another definition of
+    success than the one in force (``definition``) is counted and not
+    scored. ``verdict`` is ``too_few`` below ``ledger.min_boreholes``
+    scored, else ``scored``.
     """
     config = config or Config()
-    scored, no_odds, unknown = [], 0, 0
+    scored, no_odds, unknown, definition = [], 0, 0, 0
     for entry in forecast_entries(pooled):
         p = _chance(entry["prediction"])
         success = entry["outcome"]["success"]
@@ -219,6 +226,9 @@ def odds_scores(pooled: list[dict], config: Config | None = None) -> dict:
             continue
         if success is None:
             unknown += 1
+            continue
+        if not uses_definition(entry["outcome"], config):
+            definition += 1
             continue
         prior = entry["prediction"]["odds"]["prior"]
         scored.append({
@@ -265,6 +275,7 @@ def odds_scores(pooled: list[dict], config: Config | None = None) -> dict:
         "failures": n - successes,
         "no_odds": no_odds,
         "unknown": unknown,
+        "definition": definition,
         "bases": {basis: sum(1 for s in scored if s["basis"] == basis) for basis in _BASES},
         "minimum": minimum,
         "verdict": "too_few" if n < minimum else "scored",
@@ -302,9 +313,11 @@ def _code_points(text: str) -> list[int]:
 def hit_rates(pooled: list[dict], by: str, config: Config | None = None) -> list[dict]:
     """The drilled points by geology unit, survey team or contractor
     (``by``), each group with its boreholes drilled, successful, not
-    successful and not known yet, its hit rate (the share successful of
-    those known, None below ``ledger.min_group`` known), and the mean chance
-    forecast over its forecasts with a known outcome (None where it has
+    successful, not known yet and judged at another definition of success
+    than the one in force (``definition``, neither successful nor not here),
+    its hit rate (the share successful of those known, None below
+    ``ledger.min_group`` known), and the mean chance forecast over its
+    forecasts with a known outcome at that definition (None where it has
     none) with their number. The groups that name one come first, the most
     drilled first and then by name, letter by letter; those whose point
     records none come last.
@@ -321,17 +334,20 @@ def hit_rates(pooled: list[dict], by: str, config: Config | None = None) -> list
             continue
         label, recorded = _group(entry, by)
         group = groups.setdefault(label, {"label": label, "recorded": recorded, "drilled": 0, "success": 0,
-                                          "failure": 0, "unknown": 0})
+                                          "failure": 0, "unknown": 0, "definition": 0})
         chances.setdefault(label, [])
         group["drilled"] += 1
-        if outcome["success"] is True:
-            group["success"] += 1
-        elif outcome["success"] is False:
-            group["failure"] += 1
-        else:
+        judged = outcome["success"] is not None and uses_definition(outcome, config)
+        if outcome["success"] is None:
             group["unknown"] += 1
+        elif not judged:
+            group["definition"] += 1
+        elif outcome["success"]:
+            group["success"] += 1
+        else:
+            group["failure"] += 1
         p = _chance(entry["prediction"])
-        if entry["before_outcome"] and outcome["success"] is not None and p is not None:
+        if entry["before_outcome"] and judged and p is not None:
             chances[label].append(p)
     out = []
     for label, group in groups.items():
@@ -404,11 +420,14 @@ def _percent(fraction: float) -> str:
 def _odds_section(odds: dict, config: Config) -> dict:
     section = _section("odds", phrase("calibration.odds_heading"))
     paragraphs = section["paragraphs"]
-    paragraphs.append(phrase("calibration.odds_intro", rate=float(config.odds.success_yield_m3_per_h)))
-    if not (odds["n"] or odds["no_odds"] or odds["unknown"]):
+    rate = float(config.odds.success_yield_m3_per_h)
+    paragraphs.append(phrase("calibration.odds_intro", rate=rate))
+    if not (odds["n"] or odds["no_odds"] or odds["unknown"] or odds["definition"]):
         return section
     if odds["no_odds"] or odds["unknown"]:
         paragraphs.append(phrase("calibration.odds_left_out", no_odds=odds["no_odds"], unknown=odds["unknown"]))
+    if odds["definition"]:
+        paragraphs.append(phrase("calibration.odds_definition", n=odds["definition"], rate=rate))
     if odds["verdict"] == "too_few":
         paragraphs.append(phrase("calibration.odds_too_few", n=odds["n"], success=odds["successes"],
                                  failure=odds["failures"], minimum=odds["minimum"]))
@@ -457,6 +476,11 @@ def _hits_section(pooled: list[dict], config: Config) -> dict:
         section["paragraphs"].append(phrase("calibration.hits_none"))
         return section
     section["paragraphs"].append(phrase("calibration.hits_intro", minimum=int(config.ledger.min_group)))
+    other = sum(1 for entry in pooled if entry["outcome"] is not None and entry["outcome"]["success"] is not None
+                and not uses_definition(entry["outcome"], config))
+    if other:
+        section["paragraphs"].append(phrase("calibration.hits_definition", n=other,
+                                            rate=float(config.odds.success_yield_m3_per_h)))
     too_few, not_forecast = phrase("calibration.hits_too_few"), phrase("calibration.hits_not_forecast")
     for by in GROUPINGS:
         column, caption = _HIT_TABLES[by]
@@ -464,7 +488,8 @@ def _hits_section(pooled: list[dict], config: Config) -> dict:
             "header": [phrase(column), phrase("calibration.hits_col_drilled"), phrase("calibration.hits_col_success"),
                        phrase("calibration.hits_col_failure"), phrase("calibration.hits_col_unknown"),
                        phrase("calibration.hits_col_rate"), phrase("calibration.hits_col_forecast")],
-            "rows": [[g["label"], str(g["drilled"]), str(g["success"]), str(g["failure"]), str(g["unknown"]),
+            "rows": [[g["label"], str(g["drilled"]), str(g["success"]), str(g["failure"]),
+                      str(g["unknown"] + g["definition"]),
                       _percent(g["rate"]) if g["rate"] is not None else too_few,
                       phrase("calibration.hits_forecast", p=_share(g["forecast_mean"]), n=g["forecast_n"])
                       if g["forecast_mean"] is not None else not_forecast]
