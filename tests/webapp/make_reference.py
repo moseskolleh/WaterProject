@@ -1700,6 +1700,7 @@ def build() -> dict:
     out["rising_main"] = rising_main_reference()
     out["rounds"] = rounds_reference()
     out["survival"] = survival_reference()
+    out["fault_reports"] = fault_reports_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -2182,6 +2183,15 @@ def build() -> dict:
         "decommissioned": _streams[0][:1] + [{"when": "2022-08-01",
                                               "kind": "decommissioned"}],
         "merged": _streams[0] + _streams[1],
+        # reports from the plate and by SMS (PLAN.md step 7.1): working says
+        # so; slow and a water quality complaint leave the failure standing
+        "reported": _streams[0] + [{"when": "2023-05-01", "kind": "reported_working",
+                                    "by": "SMS from +232"},
+                                   {"when": "2023-06-01", "kind": "failure"},
+                                   {"when": "2023-07-01", "kind": "reported_slow"},
+                                   {"when": "2023-08-01", "kind": "quality_complaint",
+                                    "photo": "data:image/jpeg;base64,AAAA",
+                                    "photo_provenance": {"format": 1, "sha256": "ab" * 32}}],
     }
     _today = _date(2024, 6, 1)
     _assets = {}
@@ -2201,6 +2211,9 @@ def build() -> dict:
         _assets["commissioned"],
         _registry.asset_state(_assets["commissioned"], _today)))
     out["asset_qr_payload"] = _registry.qr_payload(_assets["commissioned"])
+    # with a report address set, the symbol is a link to the report page
+    out["asset_qr_link"] = _registry.qr_payload(_assets["commissioned"],
+                                                "https://water.example.org/toolkit/")
     out["registry_rows"] = _registry.registry_rows(list(_assets.values()), _today)
     out["registry_stats"] = clean(
         _registry.registry_stats(list(_assets.values()), _today))
@@ -4651,10 +4664,11 @@ def rounds_reference() -> dict:
     table = "Koya: M. Kolleh\nkori: A. Bangura\nno colon\nKOYA: Someone Else\n: blank\n"
     cases = []
 
-    def case(name, assets, as_of="2024-06-01", mechanics=table, schedule=None, sheets=True):
+    def case(name, assets, as_of="2024-06-01", mechanics=table, schedule=None, sheets=True,
+             report_url=None):
         plan = Schedule(**{**_asdict(Schedule()), **(schedule or {})})
         parsed = RD.parse_area_mechanics(mechanics)
-        result = RD.service_rounds(assets, as_of, plan, parsed["entries"])
+        result = RD.service_rounds(assets, as_of, plan, parsed["entries"], report_url or "")
         states = []
         for raw in assets:
             asset = asset_from_dict(raw)
@@ -4669,6 +4683,7 @@ def rounds_reference() -> dict:
         cases.append({
             "name": name, "assets": assets, "as_of": as_of, "mechanics": mechanics,
             "schedule": schedule or {}, "sheets": sheets,
+            **({"report_url": report_url} if report_url is not None else {}),
             "expect": {"parsed": parsed, "result": result, "words": RD.rounds_text(result),
                        "rounds": rounds, "states": states},
         })
@@ -4717,6 +4732,9 @@ def rounds_reference() -> dict:
                                                  {"inspection_months": 6.5}])
             assets.append(raw)
         case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2024-02-29"]), sheets=False)
+    # plates printed with a report address (PLAN.md step 7.1): a scan of
+    # each begins with the link to its report page
+    case("linked", named["walk"], report_url=" https://water.example.org/toolkit/ ")
     return clean({"cases": cases})
 
 
@@ -4847,7 +4865,156 @@ def survival_reference() -> dict:
                 raw["rising_main"] = rising
             assets.append(raw)
         case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2022-02-28"]))
+    # reports from the plate and by SMS (PLAN.md step 7.1): one that it is
+    # working is a report of working; slow and a complaint are not
+    case("reported", [record(i, ("2018-01-10", "commissioned"),
+                             (f"2020-0{1 + i % 3}-15", "reported_working"),
+                             (f"2021-0{1 + i % 3}-15", "reported_slow"),
+                             (f"2022-0{1 + i % 3}-15", "quality_complaint"),
+                             *([(f"2023-0{1 + i % 3}-15", "failure")] if i % 2 else []),
+                             pump_type="AB"[i % 2])
+                      for i in range(10)])
     return clean({"cases": cases})
+
+
+def fault_reports_reference() -> dict:
+    """Reports from the plate and by SMS (PLAN.md step 7.1): files of SMS
+    lines and a gateway's messages read, page reports made, and the lot
+    merged into a register, written to a file of reports and read back, with
+    the import's table and summary; and report addresses checked. Named
+    cases for each rule, then cases drawn from seeds. The cases carry their
+    own inputs, so parity.mjs gives the browser exactly these. (The held
+    outcome needs an identifier the registry reads with a note, which this
+    registry has none of; tests/test_fault_reports.py holds both engines to
+    it with a check that stands in for one.)"""
+    import random as _random
+
+    from groundwater import fault_reports as FR
+    from groundwater import registry as RG
+
+    ids = [RG.mint_asset_id(SiteMetadata(district=d, easting=e, northing=n, utm_zone=z))
+           for d, e, n, z in (("Western Area Rural", 694912.0, 938150.0, 28),
+                              ("Bo", 790500.0, 875300.0, 28),
+                              ("Kailahun", 280400.0, 925600.0, 29))]
+    # neither the identifier's check character nor, where the registry still
+    # reads one, the character it was minted with before ISO 7064 was followed
+    _body, _given = ids[0].rsplit("-", 1)
+    _older = getattr(RG, "legacy_check_character", None)
+    _taken = {_given, _older(_body) if _older else _given}
+    mistyped = f"{_body}-" + next(c for c in "ZYXW" if c not in _taken)
+
+    def register(*which):
+        return [{"asset_id": ids[i], "community": "Case", "district": "Western Area Rural",
+                 "easting": 694912.0, "northing": 938150.0, "utm_zone": 28,
+                 "events": [{"when": "2020-01-10", "kind": "commissioned"},
+                            {"when": "2026-05-01", "kind": "failure", "note": "handle snapped",
+                             "by": "SMS from +23276123456"}]} for i in which]
+
+    photo = "data:image/jpeg;base64,AAAA"
+    provenance = {"format": 1, "sha256": "ab" * 32, "stored": "original"}
+    named = {
+        "lines": {
+            "text": "\r\n".join([
+                f"2026-05-01 08:14 +23276123456 BH {ids[0]} BROKEN handle snapped",
+                "",
+                f"2026-05-02T09:00:00Z,Fatmata Kamara,BH {ids[0]} taste brown water",
+                f"2026-05-02;+232;bh {ids[1].lower()} working",
+                f"08:30 BH {ids[0]} SLOW",
+                f"BH {ids[2]} colour",
+                f"01/05/2026 BH {ids[0]} SLOW",
+                f"2026-05-01 2026-05-02 BH {ids[0]} SLOW",
+                f"2026-13-01 BH {ids[0]} SLOW",
+                "hello there",
+                f"BH {mistyped} BROKEN",
+                f"BH {ids[0]} FIXED",
+                "BH",
+                f"BH {ids[0]}",
+                f"2026-05-01 +23276123456 BH {ids[0]} broken handle snapped",
+            ]),
+            "received_on": "2026-05-03",
+            "messages": [
+                {"text": f"BH {ids[0]} BROKEN", "received": "2026-05-01T07:00:00+00:00",
+                 "sender": "+232"},
+                f"BH {ids[1]} WORKING",
+                {"text": f"BH {ids[0]} SLOW", "received": "yesterday"},
+                {"text": f"BH {ids[0]} SLOW", "received": "2026-02-30"}, 7, None],
+            "page": [[ids[0], "slow", " 2026-05-01 ", " slow since Monday ", " Aminata "],
+                     [ids[0], "broken", "2026-05-01", "", "", photo, provenance],
+                     [ids[0], "broken", "2026-05-01", "", "", "", provenance],
+                     [mistyped, "slow", "2026-05-01"], [ids[0], "fixed", "2026-05-01"],
+                     [ids[0], "slow", "2026-02-30"], [ids[0], "slow", " "],
+                     ["", "slow", "2026-05-01"]],
+            "assets": register(0, 1),
+        },
+        "no_day": {"text": f"BH {ids[0]} BROKEN\n08:00 BH {ids[1]} WORKING", "received_on": "",
+                   "messages": [f"BH {ids[0]} BROKEN"], "page": [], "assets": register(0)},
+        "nothing": {"text": "", "received_on": "", "messages": [], "page": [], "assets": []},
+    }
+    urls = ["", "https://example.org/", " https://water.example.org/toolkit/ ",
+            "HTTPS://example.org/a?b=c", "http://example.org/", "water.example.org", "https://",
+            "https:///x", "https://example.org/#/report", "https://example .org/",
+            "https://example.org/a\u00a0b", "ftp://example.org", 7, None,
+            # printable ASCII only, the scheme read A to Z: a long s is not an s
+            "http\u017f://example.org/", "https://w\u00e1ter.example.org/",
+            "https://example.org/\x01", "https://xn--wter-6qa.example.org/a?b=c&d=%20"]
+
+    def answer(c):
+        lines = FR.read_sms_lines(c["text"], c["received_on"])
+        messages = FR.receive_messages(c["messages"], c["received_on"])
+        page = [FR.report_record(*a) for a in c["page"]]
+        every = lines + messages + page
+        merged = FR.merge_reports(c["assets"], every)
+        payload = FR.reports_file(every)
+        return {
+            "lines": lines, "messages": messages, "page": page,
+            "merged": {"assets": [a.as_dict() for a in merged["assets"]],
+                       "added": merged["added"], "already": merged["already"],
+                       "unmatched": merged["unmatched"]},
+            "file": payload, "back": FR.read_reports_file(json.loads(json.dumps(payload))),
+            "rows": FR.report_rows(every), "summary": FR.import_summary(every),
+        }
+
+    cases = [{"name": name, **c, "expect": answer(c)} for name, c in named.items()]
+    # cases drawn from seeds: the words in any case, prefixes of every kind,
+    # identifiers mistyped, lower-cased and shortened, and a stored report
+    # sent again
+    words = ["WORKING", "broken", "Slow", "taste", "COLOUR", "color", "BAD", "FIXED", "", "bh"]
+    prefixes = ["", "2026-05-01 ", "2026-05-01 08:14 ", "2026-05-01T08:14:00Z,",
+                "+23276123456 ", "2026-05-01;Fatmata Kamara;", "01/05/2026 ", "2026-13-01 ",
+                "08:14 ", "2026-05-01 2026-05-02 ", "\u00a0", "2026-05-01\t+232 ",
+                "2026-05-01 +23276123456 "]
+    notes = ["", " handle snapped", "  brown  water ", " \u3000noted", " \U0001f600"]
+    for seed in range(4):
+        rng = _random.Random(f"fault reports reference {seed}")
+
+        def ident():
+            chosen, pick = rng.choice(ids), rng.random()
+            if pick < 0.15:
+                return chosen[:-1] + rng.choice("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            if pick < 0.25:
+                return chosen.lower()
+            if pick < 0.3:
+                return chosen[3:]
+            return chosen
+
+        lines = [rng.choice(prefixes) + rng.choice(["BH", "bh", "BH:"]) + " " + ident()
+                 + (" " + w if (w := rng.choice(words)) else "") + rng.choice(notes)
+                 for _ in range(rng.randint(8, 30))]
+        lines.insert(rng.randint(0, len(lines)),
+                     f"2026-05-01 +23276123456 BH {ids[0]} BROKEN handle snapped")
+        c = {"text": "\n".join(lines), "received_on": rng.choice(["", "2026-05-03"]),
+             "messages": [{"text": rng.choice(lines),
+                           "received": rng.choice(["", "2026-05-02T10:00:00Z", "08:00"]),
+                           "sender": rng.choice(["", "+23276"])} for _ in range(4)],
+             "page": [[rng.choice(ids), rng.choice(["working", "broken", "slow", "taste", "x"]),
+                       rng.choice(["2026-05-01", ""]), "", "",
+                       rng.choice(["", photo]), rng.choice([None, provenance])]
+                      for _ in range(4)],
+             "assets": register(*range(rng.randint(0, 3)))}
+        cases.append({"name": f"seed {seed}", **c, "expect": answer(c)})
+    return clean({"cases": cases, "header": FR.report_header(), "sms_format": FR.sms_format(),
+                  "urls": [{"url": u, "reason": RG.check_report_url(u)} for u in urls],
+                  "links": [RG.report_link(ids[0], u) for u in urls[:4]]})
 
 
 def sanitary_reference() -> dict:

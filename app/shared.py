@@ -1247,6 +1247,9 @@ def app_config() -> Config:
     cfg = Config()
     cfg.style.organisation = st.session_state.get("org_name", "") or ""
     cfg.style.organisation_details = st.session_state.get("org_details", "") or ""
+    # the report address a plate's symbol links to (PLAN.md step 7.1), as
+    # typed on the Asset registry page; checked where a plate is printed
+    cfg.service.report_url = str(st.session_state.get("org_report_url", "") or "")
     held = st.session_state.get(CALIBRATION_SET)
     return apply_set(cfg, held) if held is not None else cfg
 

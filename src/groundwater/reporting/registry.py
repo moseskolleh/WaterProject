@@ -33,6 +33,7 @@ from ..registry import (
     asset_state,
     placard_lines,
     qr_payload,
+    report_link,
 )
 from ..models import SiteMetadata
 from ..sanitary import form_rows, sanitary_risk
@@ -91,22 +92,21 @@ def build_asset_placard(inputs: AssetReportInputs, out_path: str | Path,
     rb.paragraph(asset.asset_id, bold=True, size_pt=26, align="center")
     rb.paragraph(asset.label, size_pt=13, align="center")
 
-    image = write_qr_png(qr_payload(asset),
+    # the report address the programme set (PLAN.md step 7.1): with one,
+    # the symbol is a link to the borehole's report page; one the registry
+    # refuses stops the plate rather than being printed on it
+    report_url = (config or Config()).service.report_url
+    image = write_qr_png(qr_payload(asset, report_url),
                          Path(inputs.figures_dir) / f"qr_{asset.asset_id}.png")
-    rb.figure(image, "Scan for this borehole's identifier and position. The "
-                     "symbol carries the details themselves, so it reads with "
-                     "no network and no application installed.", width_cm=7.0)
+    rb.figure(image, phrase("fault_reports.placard_caption_link"
+                            if report_link(asset.asset_id, report_url)
+                            else "fault_reports.placard_caption_text"), width_cm=7.0)
 
     rb.table([[label, value] for label, value in placard_lines(asset,
                                                                _state(inputs))],
              header=["", ""], caption="Borehole details",
              col_widths_cm=[5.0, 10.0])
-    rb.paragraph(
-        "Report a breakdown or a change to this borehole against the "
-        "identifier above. Quote it in full, including the last character - "
-        "it is a check character, and it is what stops a repair being "
-        "recorded against a different village's borehole.",
-        italic=True)
+    rb.paragraph(phrase("fault_reports.placard_quote"), italic=True)
     return rb.save(out_path)
 
 

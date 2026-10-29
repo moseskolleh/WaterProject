@@ -812,6 +812,13 @@ await withPage(async (page, base, consoleErrors) => {
       decommissioned: streams[0].slice(0, 1).concat([
         { when: '2022-08-01', kind: 'decommissioned' }]),
       merged: streams[0].concat(streams[1]),
+      /* reports from the plate and by SMS (PLAN.md step 7.1) */
+      reported: streams[0].concat([
+        { when: '2023-05-01', kind: 'reported_working', by: 'SMS from +232' },
+        { when: '2023-06-01', kind: 'failure' },
+        { when: '2023-07-01', kind: 'reported_slow' },
+        { when: '2023-08-01', kind: 'quality_complaint', photo: 'data:image/jpeg;base64,AAAA',
+          photo_provenance: { format: 1, sha256: 'ab'.repeat(32) } }]),
     };
     const today = '2024-06-01';
     const assets = {};
@@ -841,6 +848,7 @@ await withPage(async (page, base, consoleErrors) => {
     out.asset_placard = C.placardLines(assets.commissioned,
       C.assetState(assets.commissioned, today));
     out.asset_qr_payload = C.qrPayload(assets.commissioned);
+    out.asset_qr_link = C.qrPayload(assets.commissioned, 'https://water.example.org/toolkit/');
     out.registry_rows = C.registryRows(Object.keys(assets).map((k) => assets[k]), today);
     out.registry_stats = C.registryStats(Object.keys(assets).map((k) => assets[k]), today);
     out.asset_months = [['2023-08-31', 6], ['2023-12-31', 2], ['2020-02-29', 12],
@@ -1635,6 +1643,10 @@ await withPage(async (page, base, consoleErrors) => {
     parsed.asset_qr_payload === R.asset_qr_payload,
     JSON.stringify(parsed.asset_qr_payload) + '\n     vs ' +
     JSON.stringify(R.asset_qr_payload));
+  check('registry: with a report address, the symbol is the same link',
+    parsed.asset_qr_link === R.asset_qr_link && R.asset_qr_link.endsWith('#/report/' +
+      R.asset_ids[0].id),
+    JSON.stringify(parsed.asset_qr_link) + '\n     vs ' + JSON.stringify(R.asset_qr_link));
   check('registry: the table rows match',
     JSON.stringify(parsed.registry_rows) === JSON.stringify(R.registry_rows),
     JSON.stringify(parsed.registry_rows) + '\n     vs ' + JSON.stringify(R.registry_rows));
@@ -4337,7 +4349,7 @@ await withPage(async (page, base, consoleErrors) => {
         try {
           const plan = Object.assign(C.serviceSchedule(), c.schedule || {});
           const parsed = C.parseAreaMechanics(c.mechanics);
-          const result = C.serviceRounds(c.assets, c.as_of, plan, parsed.entries);
+          const result = C.serviceRounds(c.assets, c.as_of, plan, parsed.entries, c.report_url);
           const states = c.assets.map((raw) => {
             const asset = C.assetFromDict(raw);
             if (!asset) return null;
@@ -4422,6 +4434,69 @@ await withPage(async (page, base, consoleErrors) => {
       groups.some((g) => g.steps.some((s) => s.survival === 0));
     check('survival: the cases reach every ending, every comparison, a group left out of the ' +
       'test and a curve closing on nought', reached);
+  }
+
+  // --- Reports from the plate and by SMS (PLAN.md step 7.1) ---
+  // The twins of groundwater/fault_reports.py on make_reference.py's cases:
+  // files of SMS lines and a gateway's messages read, reports from the page
+  // made, the lot merged into a register, written to a file of reports and
+  // read back, and the import's table and summary, all held whole; and the
+  // report addresses a plate may carry, checked.
+  {
+    const FRR = R.fault_reports;
+    const frJs = await page.evaluate(({ FRR }) => {
+      const C = GWT.core;
+      const cases = FRR.cases.map((c) => {
+        try {
+          const lines = C.readSmsLines(c.text, c.received_on);
+          const messages = C.receiveMessages(c.messages, c.received_on);
+          const made = c.page.map((a) => C.reportRecord(...a));
+          const every = lines.concat(messages, made);
+          const file = C.reportsFile(every);
+          return { ok: {
+            lines, messages, page: made, merged: C.mergeReports(c.assets, every), file,
+            back: C.readReportsFile(JSON.parse(JSON.stringify(file))),
+            rows: C.reportRows(every), summary: C.importSummary(every),
+          } };
+        } catch (e) {
+          return { threw: String(e && e.stack || e) };
+        }
+      });
+      return { cases, header: C.reportHeader(), smsFormat: C.smsFormat(),
+        urls: FRR.urls.map((u) => ({ url: u.url, reason: C.checkReportUrl(u.url) })),
+        links: FRR.urls.slice(0, 4).map((u) => C.reportLink(FRR.cases[0].assets[0].asset_id,
+          u.url)) };
+    }, { FRR });
+    const failed = FRR.cases.map((c, i) => {
+      const g = frJs.cases[i];
+      if (!g || g.threw) return `[${c.name}] threw ${g ? g.threw : 'no answer'}`;
+      return firstDifference(g.ok, c.expect, `[${c.name}]`);
+    }).filter(Boolean);
+    check(`fault reports: SMS, the page and a file of reports, merged and tabled (${FRR.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    check('fault reports: the table\'s header and the words of the import',
+      JSON.stringify(frJs.header) === JSON.stringify(FRR.header) &&
+      frJs.smsFormat === FRR.sms_format,
+      JSON.stringify([frJs.header, frJs.smsFormat]));
+    check(`fault reports: report addresses checked alike (${FRR.urls.length})`,
+      firstDifference(frJs.urls, FRR.urls) === null &&
+      firstDifference(frJs.links, FRR.links) === null,
+      String(firstDifference(frJs.urls, FRR.urls) || firstDifference(frJs.links, FRR.links)));
+    const all = FRR.cases.flatMap((c) => c.expect.lines.concat(c.expect.messages, c.expect.page));
+    const reasons = all.filter((r) => r.status === 'refused').map((r) => r.reason);
+    /* each refusal by the words it begins with */
+    const refusals = ['Not a report', 'There is no identifier', 'There is no word', 'FIXED is not',
+      'Choose what', 'The message carries no day', 'The day received', 'The line carries two days',
+      'The day of the report', 'The report has no day', 'No identifier was entered',
+      'The check character does not match'];
+    const missing = refusals.filter((w) => !reasons.some((r) => r.startsWith(w)));
+    const reached = missing.length === 0 &&
+      all.some((r) => r.status === 'accepted' && r.photo_provenance) &&
+      FRR.cases.some((c) => c.expect.merged.added) && FRR.cases.some((c) => c.expect.merged.already) &&
+      FRR.cases.some((c) => c.expect.merged.unmatched.length) &&
+      FRR.urls.some((u) => u.reason) && FRR.urls.some((u) => u.url && !u.reason);
+    check('fault reports: the cases reach every refusal, a photograph, a merge, a repeat and a ' +
+      'report for no borehole held', reached, 'not reached: ' + missing.join('; '));
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
