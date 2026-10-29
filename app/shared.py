@@ -463,13 +463,13 @@ def project_summaries(files) -> tuple[list[dict], int]:
     could not be read as a project: the Portfolio page's table and the
     desk study's earlier projects alike."""
     read, skipped = project_files(files)
-    return [summary for summary, _ in read], skipped
+    return [summary for summary, _, _ in read], skipped
 
 
-def project_files(files) -> tuple[list[tuple[dict, dict]], int]:
-    """Each saved project file's summary and its ledger of predictions and
-    outcomes (PLAN.md step 5.1), and how many could not be read as a
-    project."""
+def project_files(files) -> tuple[list[tuple[dict, dict, dict | None]], int]:
+    """Each saved project file's summary, its ledger of predictions and
+    outcomes (PLAN.md step 5.1) and its works record (step 6.3, None where
+    it carries none), and how many could not be read as a project."""
     from groundwater.geo import parse_utm_zone
     from groundwater.project_io import deserialize_project
 
@@ -494,7 +494,7 @@ def project_files(files) -> tuple[list[tuple[dict, dict]], int]:
                 # than taking the page down or standing in a default 29N
                 "utm_zone": parse_utm_zone(updates.get("meta_zone")),
             }
-        read.append((summary, updates["prediction_ledger"]))
+        read.append((summary, updates["prediction_ledger"], updates.get("works")))
     return read, skipped
 
 
@@ -928,6 +928,7 @@ def _inversion_cache_now() -> dict:
 #: out on load as well as on save.
 UNSAVED_BUTTONS = frozenset({
     "wiz_back", "wiz_next", "wiz_restart", "wiz_cost_run", "wiz_run_ves",
+    "proc_award", "proc_build",
 })
 
 
@@ -939,7 +940,65 @@ def project_file_bytes() -> bytes:
     # the ledger goes out with the borehole's outcome as the project now
     # holds it: a corrected log corrects it
     session["prediction_ledger"] = current_ledger()
+    # and the works record for the contractor scorecards, from the project
+    # as it now stands
+    session["works_record"] = current_works()
     return serialize_project(session, groundwater.__version__)
+
+
+def procurement_variations(rows) -> list[dict]:
+    """The Procurement page's variation orders, from its table's rows, as
+    plain records (ref, date, code, quantity_delta, rate_usd, reason,
+    authorised_by): what the page's certificate values and the works record
+    counts. A row naming no line is left out, an empty or unreadable number
+    is none (a quantity of nought, the contract's rate), and a signature of
+    white space alone is no signature, as the browser's form has it."""
+    import math
+
+    def number(value):
+        try:
+            x = float(value)
+        except (TypeError, ValueError):
+            return None
+        return x if math.isfinite(x) else None
+
+    def text(value) -> str:
+        # an empty cell of the data editor comes back as None or NaN
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            return ""
+        return str(value)
+
+    out = []
+    for row in rows or []:
+        if not hasattr(row, "get") or not text(row.get("Code")).strip():
+            continue
+        out.append({
+            "ref": text(row.get("Ref")), "date": text(row.get("Date")), "code": text(row.get("Code")),
+            "quantity_delta": number(row.get("Quantity change")) or 0.0,
+            "rate_usd": number(row.get("New rate (USD)")),
+            "reason": text(row.get("Reason")),
+            "authorised_by": text(row.get("Authorised by")).strip(),
+        })
+    return out
+
+
+def current_works() -> dict | None:
+    """The project's works record (PLAN.md step 6.3): what it records of its
+    contractor's work, for the Portfolio page's contractor scorecards, or
+    None where it records nothing they read."""
+    from groundwater.scorecards import works_record
+
+    config = app_config()
+    lines = st.session_state.get("proc_contract_lines")
+    procurement = None
+    if lines:
+        procurement = {"lines": lines,
+                       "variations": procurement_variations(st.session_state.get("proc_variations")),
+                       "due": st.session_state.get("proc_due") or ""}
+    metres = {"logged_m": st.session_state.get("fx_logs_m"), "claimed_m": st.session_state.get("fx_invoiced_m")}
+    return works_record(site_from_state(), st.session_state.get("drilling_log"),
+                        st.session_state.get("pump_analysis"), current_ledger(), supervision_answers(),
+                        metres, procurement, config, cached_checklists())
 
 
 def current_ledger() -> dict:
@@ -1042,6 +1101,14 @@ def _load_project() -> None:
     # serialize_project reads back, so the round trip has to be closed here
     asset = updates.pop("asset", None)
     evidence = updates.pop("evidence", None)
+    # the contract on the Procurement page, as its tables hold it; the works
+    # record is worked out again from the project when it is next saved
+    procurement = updates.pop("procurement", None)
+    updates.pop("works", None)
+    if isinstance(procurement, dict) and procurement.get("lines"):
+        st.session_state["proc_contract_lines"] = procurement["lines"]
+        st.session_state["proc_measured"] = procurement.get("measured") or None
+        st.session_state["proc_variations"] = procurement.get("variations") or None
     if isinstance(evidence, dict) and evidence:
         st.session_state["sup_evidence"] = evidence
     for key, value in updates.items():

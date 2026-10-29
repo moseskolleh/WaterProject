@@ -18,6 +18,14 @@ what they were computed from (:mod:`groundwater.ves.cache`), so reopening a
 survey does not invert it again. It is a cache and nothing more. A file
 without one loads exactly as before, a toolkit that predates it ignores
 it, and an entry that no longer matches its sounding is not used.
+
+The file may also carry ``procurement``: the contract awarded on the
+Procurement page, its lines, what was measured against them and the
+variation orders, as the Streamlit app's tables hold them; and ``works``:
+what the project records of its contractor's work, for the Portfolio
+page's contractor scorecards (:func:`groundwater.scorecards.works_record`),
+which both apps write alike. Like the cache, each is a key a toolkit that
+predates it ignores.
 """
 
 from __future__ import annotations
@@ -33,7 +41,7 @@ from .ledger import clean_ledger
 # pumping-test step discharges and "design_" the borehole-design static water
 # level, both needed to recompute the analyses from the saved data files.
 PERSIST_PREFIXES = (
-    "org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_", "wiz_", "q_", "design_",
+    "org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_", "wiz_", "q_", "design_", "proc_",
 )
 
 # Loading a project replaces the working state, so everything belonging to the
@@ -52,6 +60,7 @@ RESET_ON_LOAD_PREFIXES = (
     "sample_",   # bundled-sample pickers, likewise
     "dem_",      # the elevation model's uploader and the files it keeps
     "terrain_",  # its declared source, the terrain settings and figures
+    "proc_",     # the outgoing project's contract, measurements and variations
 )
 # asset_record belongs to the outgoing borehole. Left behind, the incoming
 # project would inherit somebody else's identifier and maintenance history.
@@ -264,7 +273,52 @@ def serialize_project(session: dict, version: str) -> bytes:
         # likewise only when there is some, and as a key an older toolkit
         # ignores rather than a new schema
         payload["evidence"] = evidence
+    procurement = _procurement(session.get("proc_contract_lines"), session.get("proc_measured"),
+                               session.get("proc_variations"))
+    if procurement:
+        payload["procurement"] = procurement
+    from .scorecards import clean_works
+
+    works = clean_works(session.get("works_record"))
+    if works is not None:
+        payload["works"] = works
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
+
+
+def _rows(value) -> list[dict]:
+    """A table's rows as plain mappings of text, numbers, yes or no, and
+    blanks. A data editor's rows hand back numpy numbers and NaN for an empty
+    cell, which a project file cannot carry; a cell of any other kind, and a
+    row that is not a mapping, are left out."""
+    if hasattr(value, "to_dict"):  # a pandas DataFrame from st.data_editor
+        value = value.to_dict("records")
+    out = []
+    for row in value if isinstance(value, list) else []:
+        if not isinstance(row, dict):
+            continue
+        clean: dict = {}
+        for key, cell in row.items():
+            cell = _plain_scalar(cell)
+            if not isinstance(key, str):
+                continue
+            if cell is None or isinstance(cell, (str, bool)):
+                clean[key] = cell
+            elif isinstance(cell, (int, float)):
+                clean[key] = cell if math.isfinite(cell) else None
+        out.append(clean)
+    return out
+
+
+def _procurement(lines, measured, variations) -> dict:
+    """The contract awarded on the Procurement page as the Streamlit app
+    keeps it (``proc_contract_lines``, ``proc_measured`` and
+    ``proc_variations``): its lines, what was measured and the variation
+    orders, or {} where none was awarded. A file's block is cleaned the same
+    way on the way in as a session's on the way out."""
+    clean = _rows(lines)
+    if not clean:
+        return {}
+    return {"lines": clean, "measured": _rows(measured), "variations": _rows(variations)}
 
 
 def _evidence(value) -> dict:
@@ -395,6 +449,18 @@ def _updates_from_payload(payload: dict) -> dict:
     evidence = _evidence(payload.get("evidence"))
     if evidence:
         updates["evidence"] = evidence
+
+    held = payload.get("procurement")
+    procurement = _procurement(held.get("lines"), held.get("measured"), held.get("variations")) \
+        if isinstance(held, dict) else {}
+    if procurement:
+        updates["procurement"] = procurement
+
+    from .scorecards import clean_works
+
+    works = clean_works(payload.get("works"))
+    if works is not None:
+        updates["works"] = works
 
     # always, so a loaded project never keeps the outgoing one's ledger; a
     # hand-edited entry is dropped or blanked, not raised

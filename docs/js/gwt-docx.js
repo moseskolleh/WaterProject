@@ -3219,11 +3219,46 @@
     return b;
   }
 
+  /* --- the contractor scorecards -------------------------------------------
+   * reporting/scorecards.py (PLAN.md step 6.3): C.scorecardContent laid out
+   * over the project files on the Portfolio page as the calibration report
+   * is laid out: the cover with what the files hold, the summary, then each
+   * section with its paragraphs, tables and bullets, and the references.
+   * ---------------------------------------------------------------------- */
+
+  /* each section's tables, by its key, with their columns' printed widths
+   * (reporting/scorecards.py _WIDTHS) */
+  var SCORECARD_WIDTHS = {
+    cards: [[2.4, 1.3, 2.4, 2.0, 2.1, 2.0, 2.6, 1.2]],
+    checks: [[3.0, 2.6, 8.4, 2.0]],
+    dry: [[3.2, 1.6, 1.2, 1.6, 2.0, 1.8, 1.8, 2.8]],
+  };
+
+  function scorecardReport(context) {
+    var content = context.content;
+    var b = new ReportBuilder({ style: context.style, title: content.title });
+    b.cover([content.title], [content.subtitle], content.rows);
+    b.tableOfContents();
+    b.executiveSummary(content.summary);
+    content.sections.forEach(function (section) {
+      b.heading(section.heading, 1);
+      section.paragraphs.forEach(function (text) { b.paragraph(text, { align: 'justify' }); });
+      var widths = SCORECARD_WIDTHS[section.key] || [];
+      section.tables.forEach(function (t, k) {
+        b.table(t.rows, { header: t.header, caption: t.caption, colWidthsCm: widths[k], fontSize: 8 });
+      });
+      if (section.bullets.length) b.bullets(section.bullets);
+    });
+    b.references(content.references);
+    return b;
+  }
+
   GWT.docx = {
     ReportBuilder: ReportBuilder,
     fieldKit: fieldKit,
     deskStudyReport: deskStudyReport,
     calibrationReport: calibrationReport,
+    scorecardReport: scorecardReport,
     geophysicalReport: geophysicalReport,
     completionReport: completionReport,
     pumpingReport: pumpingReport,

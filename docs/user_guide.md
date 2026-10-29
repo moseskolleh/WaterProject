@@ -733,6 +733,16 @@ content, verticality, specific capacity) and the minimum separation
 distances from pollution sources. When a stage is complete, download
 the signed checklist record from "Checklist record and sign off".
 
+The drilled metres reconciliation is blank until both the metres in the
+signed daily logs and the metres invoiced are typed, and only then
+checked and printed in the record. Those two figures and the
+checklist's answers go into the project file for the Portfolio page's
+contractor scorecards (section 10a), and so does the contract on the
+Procurement page with its variation orders and its *Completion due
+(YYYY-MM-DD)*: the date the contract says the works are to be complete,
+as any extension of time granted leaves it, which the scorecards set the
+drilling log's completion date against.
+
 ## 8a. Depth Spine
 
 In the browser app: [`#/spine`](index.html#/spine).
@@ -1358,12 +1368,53 @@ means higher priority.
 programme view: a status map, headline figures (success rate, mean cost
 per metre), a comparison table and a one-page brief for any single
 site. Files saved by either app are accepted, so a programme run across
-both still pools into one view. At its foot, **Predictions and
-outcomes** pools the files' ledgers (section 11): how many survey
-points were predicted and how many drilled, a table of the drilled ones
-with the depth to basement predicted and found and the chance predicted
-beside the outcome, and the whole pooled ledger as a `.json` file. A
-point found in two files (two copies of one project) counts once.
+both still pools into one view.
+
+**Contractor scorecards** (PLAN.md step 6.3) set each drilling
+contractor's boreholes out across the files, from what each project
+recorded of the contractor's work, and *Build the contractor scorecards
+(.docx)* writes them up with how each figure is worked out. For each
+contractor:
+
+- **Metres**: the metres invoiced against the metres in the signed daily
+  logs, from the drilled metres reconciliation on the Supervision page
+  (section 8), over the boreholes where both were typed, and how many
+  claimed more than 3 m over the logs.
+- **Failed acceptance checks**: the supervision checklist's items
+  answered No in the stages the contractor works in, mobilisation to
+  demobilisation, out of the boreholes with any of them answered; a
+  second table names the items that failed.
+- **Variation orders**: those recorded on the Procurement page, the
+  signed ones with the value they add to the contract sum and the
+  unsigned ones counted apart.
+- **Time**: the drilling log's completion date against the *Completion
+  due (YYYY-MM-DD)* typed on the Procurement page. Write the log's date
+  as YYYY-MM-DD or with its month by name (13th May, 2018): one written
+  in figures alone (05/06/2018) can be read two ways round and is not
+  read.
+- **Dry holes**: the boreholes that did not succeed as the odds define
+  success and, on those forecast before drilling (section 11), how many
+  the forecasts expected, with the range the count would fall in at
+  least nine times in ten if the forecasts were right.
+
+Every figure says how many boreholes it rests on, and one that no file
+records reads "Not recorded", never nought. A contractor is ranked, by
+its dry holes against the forecast, only on at least five forecast
+boreholes whose outcome is known (`ledger.scorecard_min_boreholes`);
+the rest are listed unranked with the reason, and the boreholes whose
+files name no contractor are listed together. The contractor is the one
+in the site details, else the one on the drilling log, grouped by its
+name as written: two spellings of one name make two scorecards. A file
+saved before this version gives only the outcome and the forecast its
+ledger kept. As with the calibration report, the Streamlit app offers
+the download for the files on the page when it was built.
+
+At the foot of the page, **Predictions and outcomes** pools the files'
+ledgers (section 11): how many survey points were predicted and how
+many drilled, a table of the drilled ones with the depth to basement
+predicted and found and the chance predicted beside the outcome, and
+the whole pooled ledger as a `.json` file. A point found in two files
+(two copies of one project) counts once.
 
 Under it, **Calibration** scores the pooled forecasts against what was
 drilled (PLAN.md step 5.2), and *Build the calibration report (.docx)*
@@ -1584,6 +1635,14 @@ found. It is how the toolkit will learn from the holes drilled with it.
   report on the Portfolio page (section 10a) gives hit rates by survey
   team and by contractor, and counts a borehole without them as "Not
   recorded".
+
+A project file also carries a **works record** (PLAN.md step 6.3): what
+the project records of its contractor's work, for the contractor
+scorecards on the Portfolio page (section 10a). Like the ledger's
+outcome it is worked out again whenever the project is saved. The
+Streamlit app's file now also carries the contract awarded on the
+Procurement page, what was measured and the variation orders, which it
+did not save before, and loading another project clears them.
 
 The file format went to schema 2 to carry the ledger. Either app opens
 a file saved before that with an empty ledger, and a file of a later

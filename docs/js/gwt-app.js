@@ -135,8 +135,9 @@
       overrides: {},
       asset: null,
       seasonal: {},
+      /* due: the contract's completion date, for the contractor scorecards */
       procurement: { contract: null, measured: {}, variations: [],
-        number: 1, date: '', previous: 0 },
+        number: 1, date: '', previous: 0, due: '' },
       theme: 'dark',
       /* the soundings' inversions, keyed by what they were computed from
        * (C.inversionCacheKey), so reopening a survey does not invert it
@@ -302,6 +303,8 @@
     portfolio: null, extraction: null,
     /* the ledgers of the portfolio's files, by the index of their summaries */
     portfolioLedgers: null,
+    /* and their works records (PLAN.md step 6.3), null for a file with none */
+    portfolioWorks: null,
     /* a calibration set fitted on the Portfolio page and under review: the
      * set and what it was fitted from (calibrationSetsCard) */
     calibrationCandidate: null,
@@ -913,14 +916,22 @@
     delete state.ledger;
     /* the calibration set in force belongs to this browser, not the project */
     delete state.calibration;
-    return {
+    /** @type {Record<string, *>} */
+    var payload = {
       format: 'groundwater-toolkit-project',
       schema: C.PROJECT_SCHEMA,
       saved: new Date().toISOString(),
       summary: projectSummary(),
       ledger: ledger,
-      state: state,
     };
+    /* what the project records of its contractor's work, for the Portfolio
+     * page's contractor scorecards (PLAN.md step 6.3), at the top of the
+     * file where the Python app writes and reads it too; only where there
+     * is something in it, as a key an older toolkit ignores */
+    var works = currentWorks();
+    if (works) payload.works = works;
+    payload.state = state;
+    return payload;
   }
 
   function saveProject() {
@@ -1407,6 +1418,27 @@
     return C.attachOutcome(store.get('ledger'),
       C.completionOutcome(derived.log || null, derived.analysis || null, cfg,
         String((store.get('site') || {}).contractor || '')), cfg);
+  }
+
+  /* The project's works record (PLAN.md step 6.3): what it records of its
+   * contractor's work, for the Portfolio page's contractor scorecards, or
+   * null where it records nothing they read. Worked out again from the
+   * project whenever it is saved, as the ledger's outcome is. */
+  function currentWorks() {
+    var cfg = config();
+    var responses = store.get('supervision.responses') || {};
+    /** @type {Record<string, string>} */
+    var answers = {};
+    Object.keys(responses).forEach(function (id) {
+      var response = responses[id];
+      if (response && typeof response.status === 'string') answers[id] = response.status;
+    });
+    var checks = store.get('supervision.checks') || {};
+    var procurement = procurementState();
+    return C.worksRecord(store.get('site') || {}, derived.log || null, derived.analysis || null,
+      currentLedger(), answers, { logged_m: checks.loggedM, claimed_m: checks.claimedM },
+      procurement.contract ? { lines: procurement.contract.lines, variations: procurement.variations,
+        due: procurement.due || '' } : null, cfg);
   }
 
   /* The place a survey's points are recorded under: the project's community
@@ -4752,7 +4784,7 @@
 
   function procurementState() {
     return Object.assign({ contract: null, measured: {}, variations: [],
-      number: 1, date: '', previous: 0 }, store.get('procurement') || {});
+      number: 1, date: '', previous: 0, due: '' }, store.get('procurement') || {});
   }
 
   function saveProcurement(patch) {
@@ -4831,6 +4863,7 @@
       previouslyCertifiedUsd: state.previous,
     });
 
+    var due = String(state.due || '');
     nodes.push(card('Contract', [
       S.statRow([
         S.stat('Reference', contract.ref),
@@ -4841,12 +4874,20 @@
           : C.pyFixed(certificate.percent_complete, 0) + '%',
         'of the revised sum'),
       ]),
+      /* the contract's completion date as any extension of time leaves it,
+       * which the Portfolio page's contractor scorecards set the drilling
+       * log's completion date against (PLAN.md step 6.3) */
+      field(C.phrase('scorecards.page_due'), S.textInput(due, function (v) {
+        saveProcurement({ due: String(v).trim() });
+      }, { placeholder: '2024-06-30', 'data-procurement': 'due' }), C.phrase('scorecards.page_due_help')),
+      due && C.isoDay(due) === null
+        ? el('div.callout.callout-warn', el('p', C.phrase('scorecards.page_due_unread'))) : null,
       el('div.btn-row', [
         button('Start again from the estimate', function () {
           saveProcurement({ contract: null, measured: {}, variations: [] });
         }, { variant: 'ghost' }),
       ]),
-    ]));
+    ].filter(Boolean)));
 
     nodes.push(card('Measured to date', [
       el('p.muted', 'Cumulative quantities, not increments: this is ' +
@@ -6590,8 +6631,9 @@
     return projectFileEntry(name, text).summary;
   }
 
-  /* A saved project file's summary and its ledger of predictions and
-   * outcomes (PLAN.md step 5.1), from either app's file. */
+  /* A saved project file's summary, its ledger of predictions and
+   * outcomes (PLAN.md step 5.1) and its works record (step 6.3, null where
+   * it carries none), from either app's file. */
   function projectFileEntry(name, text) {
     var payload;
     if (/\.ya?ml$/i.test(name)) {
@@ -6601,7 +6643,7 @@
     }
     if (!payload || typeof payload !== 'object') throw new Error('not a project file');
     return { summary: summaryFromPayload(payload),
-      ledger: C.cleanLedger(C.migratePayload(payload).ledger) };
+      ledger: C.cleanLedger(C.migratePayload(payload).ledger), works: C.cleanWorks(payload.works) };
   }
 
   function summaryFromPayload(payload) {
@@ -7018,6 +7060,7 @@
             if (!list || !list.length) return;
             var loaded = derived.portfolio ? derived.portfolio.slice() : [];
             var ledgers = portfolioLedgers().slice();
+            var works = portfolioWorks().slice();
             var skipped = 0;
             for (var i = 0; i < list.length; i++) {
               try {
@@ -7025,10 +7068,12 @@
                 var entry = projectFileEntry(list[i].name, text);
                 loaded.push(entry.summary);
                 ledgers.push(entry.ledger);
+                works.push(entry.works);
               } catch (e) { skipped += 1; }
             }
             derived.portfolio = loaded;
             derived.portfolioLedgers = ledgers;
+            derived.portfolioWorks = works;
             S.toast(loaded.length + ' ' + S.plural(loaded.length, 'project') +
               ' loaded' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
             skipped ? 'warn' : 'ok');
@@ -7036,11 +7081,13 @@
           }),
           summaries.length ? button('Add this project', function () {
             derived.portfolioLedgers = portfolioLedgers().concat([currentLedger()]);
+            derived.portfolioWorks = portfolioWorks().concat([currentWorks()]);
             derived.portfolio = (derived.portfolio || []).concat([projectSummary()]);
             render();
           }, { variant: 'ghost' }) : null,
           summaries.length ? button('Clear', function () {
-            derived.portfolio = null; derived.portfolioLedgers = null; render();
+            derived.portfolio = null; derived.portfolioLedgers = null; derived.portfolioWorks = null;
+            render();
           }, { variant: 'ghost' }) : null,
         ]),
         !summaries.length ? el('p.muted', 'Nothing loaded yet. You can also ' +
@@ -7048,6 +7095,7 @@
         !summaries.length ? button('Start from the open project', function () {
           derived.portfolio = [projectSummary()];
           derived.portfolioLedgers = [currentLedger()];
+          derived.portfolioWorks = [currentWorks()];
           render();
         }, { variant: 'ghost' }) : null,
       ]),
@@ -7154,6 +7202,8 @@
         }),
       ]),
     ]));
+
+    nodes.push(scorecardsCard(summaries));
 
     /* the files' ledgers of predictions and outcomes, pooled (PLAN.md step
      * 5.1): each point once, the drilled ones beside what was found */
@@ -7406,6 +7456,66 @@
     var summaries = derived.portfolio || [];
     var ledgers = derived.portfolioLedgers || [];
     return summaries.map(function (_, i) { return ledgers[i] || null; });
+  }
+
+  /* likewise their works records (PLAN.md step 6.3), null for a file with none */
+  function portfolioWorks() {
+    var summaries = derived.portfolio || [];
+    var works = derived.portfolioWorks || [];
+    return summaries.map(function (_, i) { return works[i] || null; });
+  }
+
+  /* each project file on the Portfolio page as the contractor scorecards
+   * read it: [label, works record, ledger] */
+  function scorecardFiles(summaries) {
+    var ledgers = portfolioLedgers(), works = portfolioWorks();
+    return summaries.map(function (s, i) { return [C.portfolioSiteLabel(s), works[i], ledgers[i]]; });
+  }
+
+  /* The contractor scorecards over the files (PLAN.md step 6.3): the
+   * summary, the scorecards and the checks that failed on the page, and the
+   * whole report as a Word document. The Streamlit app shows the same. */
+  function scorecardsCard(summaries) {
+    var cfg = config();
+    var files = scorecardFiles(summaries);
+    var content = C.scorecardContent(files, localDate(), cfg);
+    /** @type {Array<Node|null>} */
+    var body = [el('p.muted', C.phrase('scorecards.page_lead'))];
+    content.summary.forEach(function (text) { body.push(el('p', text)); });
+    content.sections.forEach(function (section) {
+      if (section.key !== 'cards' && section.key !== 'checks') return;
+      section.tables.forEach(function (table) {
+        body.push(el('p.muted', table.caption));
+        body.push(S.table(table.header, table.rows));
+      });
+    });
+    body.push(el('div.btn-row', [
+      button(C.phrase('scorecards.page_build'), function (event) {
+        buildScorecards(files, event.target);
+      }, { title: C.phrase('scorecards.page_build_help') }),
+    ]));
+    return card(C.phrase('scorecards.page_heading'), body.filter(Boolean));
+  }
+
+  async function buildScorecards(files, node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    try {
+      await need(REPORT_BUNDLES);
+    } catch (e) {
+      S.toast('Could not build the contractor scorecards: ' + e.message, 'error');
+      return;
+    }
+    try {
+      await S.withBusy(host, 'Building the contractor scorecards…', async function () {
+        var cfg = config();
+        await GWT.docx.scorecardReport({ style: cfg.style,
+          content: C.scorecardContent(files, localDate(), cfg) }).save('Contractor_Scorecards.docx');
+        S.toast('Saved Contractor_Scorecards.docx', 'ok');
+      });
+    } catch (e) {
+      S.toast('Could not build the contractor scorecards: ' + e.message, 'error');
+      console.error(e);
+    }
   }
 
   /* --- settings ------------------------------------------------------------- */
@@ -8901,7 +9011,7 @@
     inversionsSettled: inversionsSettled, loadProject: loadProject,
     reanalyseTest: reanalyseTest, cancelWork: cancelWork, working: working,
     blankState: blankState, PAGES: PAGES, buildReport: buildReport, buildDeskStudy: buildDeskStudy,
-    buildCalibration: buildCalibration,
+    buildCalibration: buildCalibration, buildScorecards: buildScorecards, currentWorks: currentWorks,
     siteLatLon: siteLatLon, utmToLatLon: utmToLatLon,
     templates: TEMPLATE_SPECS, recomputeState: recomputeState,
     loadSample: loadSample, uploadZone: uploadZone,

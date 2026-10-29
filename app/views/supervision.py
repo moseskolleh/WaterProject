@@ -228,20 +228,30 @@ def render() -> None:
                 (st.success if spc.passed else st.warning)(f"{spc.measured}: {spc.message}")
 
             st.markdown("**Drilled metres reconciliation**")
+            # Blank until typed, as the browser's are. Both used to start at
+            # 60 m, so every project that opened this page saved 60 m logged
+            # and 60 m invoiced whether anybody had counted them or not, and
+            # the contractor scorecards read these two figures as the
+            # record. The keys are new for the same reason: a file saved
+            # before carries the 60 m under the old ones, which are not read.
             r1, r2 = st.columns(2)
             logged = r1.number_input("Metres in signed daily logs", 0.0,
-                                     2000.0, 60.0, 1.0, key="fx_logged")
-            claimed = r2.number_input("Metres invoiced", 0.0, 2000.0, 60.0,
-                                      1.0, key="fx_claimed")
-            recon = metres_reconciliation_check(logged, claimed)
-            (st.success if recon.passed else st.error)(recon.message)
+                                     2000.0, None, 1.0, key="fx_logs_m")
+            claimed = r2.number_input("Metres invoiced", 0.0, 2000.0, None,
+                                      1.0, key="fx_invoiced_m")
+            recon = None
+            if logged is not None and claimed is not None:
+                recon = metres_reconciliation_check(logged, claimed)
+                (st.success if recon.passed else st.error)(recon.message)
+            else:
+                st.caption("Type both to reconcile them.")
             st.caption(
                 "The daily report template for the driller is in the "
                 "Templates page."
             )
 
         # measured, so they belong in the record the works are accepted against
-        st.session_state.field_checks = [v, sc, spc, recon]
+        st.session_state.field_checks = [v, sc, spc] + ([recon] if recon is not None else [])
 
     with st.expander("📏 Minimum separation distances"):
         st.table(

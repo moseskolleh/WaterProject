@@ -13,14 +13,17 @@ from groundwater.procurement import (
     Measurement,
     Variation,
 )
+from groundwater.registry import iso_date
 from groundwater.reporting.procurement import (
     build_payment_certificate,
     PaymentCertificateInputs,
 )
+from groundwater.text import phrase
 
 from shared import (
     app_config,
     offer_download,
+    procurement_variations,
     report_gate,
     workdir,
     _working,
@@ -53,6 +56,13 @@ def render() -> None:
                                  value=10.0, step=0.5, key="proc_retention")
     _advance = a3.number_input("Advance (%)", min_value=0.0, max_value=50.0,
                                value=0.0, step=5.0, key="proc_advance")
+    # the contract's completion date as any extension of time leaves it,
+    # which the Portfolio page's contractor scorecards set the drilling
+    # log's completion date against (PLAN.md step 6.3)
+    _due = st.text_input(phrase("scorecards.page_due"), key="proc_due", placeholder="2024-06-30",
+                         help=phrase("scorecards.page_due_help"))
+    if _due.strip() and iso_date(_due) is None:
+        st.warning(phrase("scorecards.page_due_unread"))
     if _estimate is not None and st.button("Award this estimate as the contract",
                                            key="proc_award"):
         _frozen = contract_from_estimate(
@@ -140,18 +150,9 @@ def render() -> None:
             for row in st.session_state["proc_measured"]
             if str(row.get("Code") or "").strip()
         ]
-        _variations = [
-            Variation(
-                ref=str(row.get("Ref") or ""), date=str(row.get("Date") or ""),
-                code=str(row.get("Code") or ""),
-                quantity_delta=float(row.get("Quantity change") or 0.0),
-                rate_usd=(float(row["New rate (USD)"])
-                          if row.get("New rate (USD)") not in (None, "") else None),
-                reason=str(row.get("Reason") or ""),
-                authorised_by=str(row.get("Authorised by") or ""))
-            for row in st.session_state["proc_variations"]
-            if str(row.get("Code") or "").strip()
-        ]
+        # read from the table as the works record reads it for the
+        # contractor scorecards, so the two value the same orders
+        _variations = [Variation(**v) for v in procurement_variations(st.session_state["proc_variations"])]
         _certificate = certify(
             _contract, _measurements, number=int(_number),
             date=_cert_date or "(undated)", variations=_variations,

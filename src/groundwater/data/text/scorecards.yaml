@@ -1,0 +1,220 @@
+# Contractor scorecards (PLAN.md step 6.3): each drilling contractor's
+# boreholes across the project files pooled on the Portfolio page, from the
+# supervision, procurement and drilling records the files carry. Written by
+# scorecards.py and by the scorecard functions of gwt-core.js, and read by
+# both apps' Portfolio and Procurement pages. Every entry is read by its
+# quoted id in both engines, never by an id built from pieces. Metres are
+# drilled metres; {value} is a sum of money and {over} a difference in
+# metres, each already written out with its sign. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+title: Contractor scorecards
+subtitle: Each drilling contractor's boreholes, from the supervision, procurement and drilling records
+
+# The cover's details.
+row_projects: Project files pooled
+row_boreholes: Boreholes drilled
+row_contractors: Contractors named
+row_issued: Issued
+
+# The summary.
+summary_none: >-
+  None of the project files given holds a drilled borehole, so there is no
+  scorecard yet.
+summary_counts: >-
+  {boreholes:g} {boreholes:plural:borehole|boreholes} drilled by
+  {contractors:g} {contractors:plural:contractor|contractors}, from
+  {projects:g} project {projects:plural:file|files}.
+summary_counts_unnamed: >-
+  {boreholes:g} {boreholes:plural:borehole|boreholes} drilled, from
+  {projects:g} project {projects:plural:file|files}.
+summary_unnamed: >-
+  {n:g} {n:plural:borehole names|boreholes name} no contractor in the site
+  details or on the drilling log, so {n:plural:it is|they are} set out apart
+  and not ranked.
+summary_ledger_only: >-
+  {n:g} {n:plural:borehole comes|boreholes come} from {n:plural:a project
+  file|project files} saved before the scorecards, which {n:plural:carries|carry}
+  only {n:plural:its|their} ledger of predictions and outcomes: for
+  {n:plural:it|them} the scorecards hold only the outcome and the forecast.
+summary_ranked: >-
+  {ranked:g} {ranked:plural:contractor is|contractors are} ranked by dry
+  holes against the forecast: the dry holes found on the boreholes forecast
+  before drilling, less the number the forecasts expected, for each such
+  borehole. Fewer than expected ranks first. A contractor is ranked only on
+  at least {minimum:g} forecast boreholes whose outcome is known.
+summary_unranked: >-
+  No contractor has {minimum:g} boreholes forecast before drilling whose
+  outcome is known, so none is ranked: a contractor is ranked by its dry
+  holes against the forecast, and only on at least that many.
+summary_n: >-
+  Every figure says how many boreholes it rests on, and a measure that none
+  of a contractor's project files records reads "not recorded", never nought.
+
+# The scorecards, one row for each contractor.
+cards_heading: The scorecards
+cards_intro: >-
+  One row for each contractor, as the project's site details name it, else
+  the drilling log. Each figure counts only the boreholes whose files record
+  it, and says how many those are. How each is worked out is set out at the
+  end of the report.
+cards_table: The scorecards, ranked contractors first.
+col_contractor: Contractor
+col_boreholes: Boreholes
+col_metres: Metres claimed against the signed logs
+col_checks: Failed acceptance checks
+col_variations: Variation orders
+col_time: Time against the contract
+col_dry: Dry holes against the forecast
+col_rank: Rank
+no_contractor: No contractor named
+not_recorded: Not recorded
+metres_cell: >-
+  {over} m on {n:g} {n:plural:borehole|boreholes} ({claimed:g} m claimed,
+  {logged:g} m logged)
+metres_beyond: "{k:g} claimed more than {tolerance:g} m over the logs"
+checks_cell: >-
+  {failed:g} failed on {k:g} of {n:g} {n:plural:borehole|boreholes} checked
+checks_cell_none: >-
+  None failed on {n:g} {n:plural:borehole|boreholes} checked
+variations_cell: >-
+  {signed:g} signed, {value} in all, on {n:g} {n:plural:contract|contracts}
+variations_cell_none: >-
+  None signed on {n:g} {n:plural:contract|contracts}
+variations_unsigned: "{k:g} unsigned, not valued"
+time_cell: >-
+  {late:g} of {n:g} finished late, {days:g} {days:plural:day|days} in all,
+  at most {most:g}
+time_cell_none: "None of {n:g} finished late"
+time_unread: "{k:g} {k:plural:date|dates} not read"
+dry_cell: "{dry:g} of {known:g} dry"
+dry_cell_unknown: No outcome known
+dry_forecast: >-
+  {fdry:g} dry of {f:g} forecast before drilling, against {expected:g}
+  expected ({low:g} to {high:g})
+rank_too_few: "Not ranked: {f:g} forecast, {minimum:g} needed"
+rank_no_contractor: "Not ranked: no contractor named"
+
+# The failed acceptance checks.
+checks_heading: Failed acceptance checks
+checks_intro: >-
+  An acceptance check is an item of the supervision checklist answered Yes or
+  No in a stage the contractor works in: {stages}. An item answered No
+  failed. An item answered N/A, or not answered, is not counted. Nor are the
+  field acceptance checks, the measurements the supervisor answers the
+  checklist's sand content and plumb test items from, so a failure is not
+  counted twice.
+checks_no_stages: >-
+  The settings name no stage of the supervision checklist as the
+  contractor's (ledger.scorecard_stages), so no acceptance check is counted.
+checks_none: No acceptance check failed on the boreholes checked.
+checks_unchecked: >-
+  None of the boreholes has an item of the supervision checklist answered in
+  these stages.
+checks_table: Each check that failed, with the number of boreholes it failed on.
+col_stage: Stage
+col_check: Check
+col_failed_on: Boreholes it failed on
+
+# Dry holes against the forecast.
+dry_heading: Dry holes against the forecast
+dry_intro: >-
+  A dry hole here is a borehole that did not succeed as the odds define
+  success: one whose tested yield fell short of {rate:num} m3/h, or, without
+  a test, one the driller recorded as unsuccessful. The forecast is the
+  chance of success recorded at the point before it was drilled. A borehole
+  forecast at a 70 percent chance counts 0.3 of a dry hole expected, so the
+  dry holes a contractor's forecasts expect are the sum, over its forecast
+  boreholes, of one less each chance.
+dry_range: >-
+  The range is the numbers of dry holes a binomial at the forecasts' mean
+  chance gives at least nine times in ten, as the calibration report judges
+  its band. Where the chances differ it is not the exact range: its variance
+  is never smaller than the exact count's, so it leans toward calling a
+  contractor's dry holes within the forecast. A judgement is made only on at
+  least {minimum:g} forecast boreholes.
+dry_rank: >-
+  A contractor is ranked by the dry holes found on its forecast boreholes,
+  less the number expected, for each of them: fewer than expected ranks
+  first. The ranking is a choice of measure. It sets each contractor against
+  the ground its boreholes were forecast on, which a plain dry-hole rate does
+  not, and it is made only on at least {minimum:g} forecast boreholes.
+dry_table: Each contractor's dry holes against the forecast.
+col_known: Outcome known
+col_dry_found: Dry
+col_forecast: Forecast
+col_dry_forecast: Dry of those forecast
+col_expected: Expected
+col_range: Range
+col_verdict: Against the forecast
+dry_range_cell: "{low:g} to {high:g}"
+dry_verdict:
+  within: Within the range
+  more: More than the range
+  fewer: Fewer than the range
+  too_few: Too few to judge
+
+# How the scorecards are worked out.
+method_heading: How the scorecards are worked out
+method_boreholes: >-
+  A borehole is one a project file records as drilled: its drilling log, or
+  the outcome its ledger of predictions and outcomes kept. Two copies of one
+  project's file count it once, the copy that records the most.
+method_metres: >-
+  Metres: the metres invoiced against the metres in the signed daily
+  drilling logs, as typed in the Supervision page's drilled metres
+  reconciliation. A borehole is counted only where both are typed. Claiming
+  more than {tolerance:g} m over the logs fails the reconciliation check.
+method_checks: >-
+  Failed acceptance checks: the supervision checklist's items answered No in
+  the stages the contractor works in, {stages}. A borehole is checked where
+  at least one item in those stages is answered Yes or No.
+method_variations: >-
+  Variation orders: those recorded against the contract on the Procurement
+  page and signed by the person who authorised them, valued as the payment
+  certificate values them, by the change they make to the contract sum. An
+  unsigned variation is a request rather than an instruction, so it is
+  counted apart and not valued. A borehole is counted only where a contract
+  is recorded.
+method_time: >-
+  Time: the completion date on the drilling log against the completion date
+  on the Procurement page, which is the contract's as any extension of time
+  granted leaves it. A date on the log is read when written YYYY-MM-DD or
+  with its month by name (13th May, 2018); one written in figures alone can
+  be read two ways round, and is not read.
+method_dry: >-
+  Dry holes: as set out above. Every borehole whose outcome is known counts
+  in the plain number of dry holes; only those forecast before drilling
+  count against the forecast.
+method_names: >-
+  Contractors are grouped by their names as written, so two spellings of one
+  contractor make two scorecards.
+method_minimum: >-
+  The minimum of {minimum:g} forecast boreholes for a judgement and a rank
+  is provisional, as are the stages counted for the acceptance checks.
+method_report: >-
+  A scorecard reports what the records say and not why: the ground each
+  contractor was sent to, the instructions it was given and the supervision
+  it had are not in it.
+
+# The Portfolio page, in both apps.
+page_heading: Contractor scorecards
+page_lead: >-
+  Each drilling contractor's boreholes across the project files above: the
+  metres claimed against the signed logs, the failed acceptance checks, the
+  variation orders, the time against the contract and the dry holes against
+  the forecast. Every figure says how many boreholes it rests on.
+page_build: Build the contractor scorecards (.docx)
+page_build_help: >-
+  Every scorecard, the checks that failed, the dry holes against the
+  forecast and how each figure is worked out
+
+# The Procurement page, in both apps.
+page_due: Completion due (YYYY-MM-DD)
+page_due_help: >-
+  The date the contract says the works are to be complete, as any extension
+  of time granted leaves it. The contractor scorecards set the drilling log's
+  completion date against it.
+page_due_unread: >-
+  The completion date due should be written YYYY-MM-DD; as it is, the
+  scorecards cannot read it.
