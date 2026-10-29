@@ -115,6 +115,16 @@ odds_left_out: >-
   {no_odds:g} drilled forecast {no_odds:plural:point had|points had} no
   chance worked out, and {unknown:g} {unknown:plural:has|have} no known
   outcome yet; neither is scored.
+# Said where a drilled point's outcome records a definition of success other
+# than the one in force (the setting of the project it came from), or none,
+# as a hand-edited file can hold: the odds and the hit rates leave it out,
+# as a calibration set does, rather than judge it again here.
+odds_definition: >-
+  {n:g} drilled {n:plural:forecast was|forecasts were} judged at a
+  definition of success other than {rate:num} m3/h, the setting of the
+  project {n:plural:it|they} came from, or {n:plural:does|do} not record the
+  one {n:plural:it was|they were} judged at, and {n:plural:is|are} not
+  scored, as a calibration set leaves {n:plural:it|them} out.
 odds_too_few: >-
   Too few boreholes to judge: {n:g} {n:plural:forecast|forecasts} can be
   scored ({success:g} successful, {failure:g} not), and at least {minimum:g}
@@ -167,6 +177,12 @@ hits_intro: >-
   there are too few to judge. Every drilled point counts here, whenever its
   prediction was recorded. The last column is the mean chance forecast before
   drilling, over the boreholes with a known outcome, to set beside the rate.
+hits_definition: >-
+  {n:g} drilled {n:plural:point was|points were} judged at a definition of
+  success other than {rate:num} m3/h, the setting of the project
+  {n:plural:it|they} came from, or {n:plural:does|do} not record the one
+  {n:plural:it was|they were} judged at, and the tables count
+  {n:plural:it|them} as not known.
 hits_none: No point in the ledgers given has been drilled, so there is no hit rate yet.
 hits_geology: "By geology unit: the BGS aquifer class and the USGS unit under the point, as its odds read them."
 hits_team: "By survey team: the field supervisor the point's VES sheet names, else the project's."

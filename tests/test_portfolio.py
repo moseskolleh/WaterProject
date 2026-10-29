@@ -250,3 +250,45 @@ def test_a_hand_edited_number_blanks_one_cell_not_the_whole_page():
     assert stats["mean_safe_yield_m3_per_h"] == 1.5
     assert stats["n_values_unreadable"] == 3
     assert portfolio_stats(_SUMMARIES)["n_values_unreadable"] == 0
+
+
+def test_a_number_written_as_text_is_read_as_float_reads_it_and_nothing_else():
+    """The browser's twin (summaryNum) reads the same texts: float() reads
+    digits of other scripts and JavaScript's Number() reads '0x10' and a
+    blank, so the rule is spelt out in both."""
+    texts = {" 52 ": 52.0, "1_000": 1000.0, "+.5": 0.5, "5.": 5.0, "1e2": 100.0, "-0": 0.0,
+             "0x10": None, "  ": None, "٥": None, "1__0": None, "inf": None, "nan": None, "1e999": None,
+             "52 m": None, " 52": None}
+    for text, want in texts.items():
+        row = portfolio_rows([{"community": "A", "total_depth_m": text}])[0]
+        assert row["Depth (m)"] == (round(want, 1) if want else None), text
+        assert portfolio_stats([{"total_depth_m": text}])["n_values_unreadable"] == (want is None and bool(text)), text
+
+
+def test_a_whole_number_too_large_for_a_float_is_blank_not_raised():
+    """YAML reads 400 digits as a whole number that float() cannot hold:
+    Python raised OverflowError where the browser reads Infinity and leaves
+    the cell blank. Both leave it blank, and count it as unreadable."""
+    big = int("9" * 400)
+    summary = {"community": "A", "total_depth_m": big, "safe_yield_m3_per_h": -big, "easting": big,
+               "northing": 936225.0, "utm_zone": big, "status": "Successful"}
+    row = portfolio_rows([summary])[0]
+    assert (row["Depth (m)"], row["Safe yield (m3/h)"]) == (None, None)
+    assert portfolio_stats([summary])["n_values_unreadable"] == 2
+    assert portfolio_points([summary]) == []
+    assert "Total depth" not in dict(site_detail(summary))
+    assert "nan" not in site_one_pager(summary)
+
+
+def test_the_verdict_schema_is_read_as_every_summary_number_is():
+    """int() raised OverflowError on a schema of ".inf" and read "2.0" as no
+    schema, where the browser's Number() read both; both engines now read
+    it as they read a summary's other numbers, so an infinite or too large
+    schema is none, and "2.0" is schema 2."""
+    def state(schema):
+        return verdict_state({"water_verdict": "aesthetic", "verdict_schema": schema})
+
+    for schema in (float("inf"), -float("inf"), float("nan"), int("9" * 400), "abc", True, None):
+        assert state(schema) == ("indeterminate", True), schema
+    for schema in ("2.0", " 2 ", 2, 2.0, 3):
+        assert state(schema) == ("aesthetic", False), schema

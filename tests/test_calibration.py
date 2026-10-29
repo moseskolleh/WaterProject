@@ -22,8 +22,9 @@ JS = REPO / "docs" / "js"
 
 def _entry(k, *, band=(20.0, 25.0, 30.0), best=25.0, found=None, total=40.0, before=True, drilled=True,
            p=0.6, prior=0.55, success=True, basis="tested", team="", contractor="", code="B-L", glg="pCm",
-           odds=True, project="Rokel"):
-    """A pooled entry, as pool_ledgers returns it."""
+           odds=True, project="Rokel", rate=1.0):
+    """A pooled entry, as pool_ledgers returns it, its success judged at
+    ``rate`` m3/h (the default definition)."""
     raw = {
         "id": f"e{k}", "before_outcome": before, "recorded_on": "2026-03-01", "toolkit": "0.3.0",
         "point": {"sounding_id": f"VES {k}"},
@@ -31,7 +32,8 @@ def _entry(k, *, band=(20.0, 25.0, 30.0), best=25.0, found=None, total=40.0, bef
                        "survey_team": team,
                        "odds": {"probability": p, "prior": prior, "bgs_code": code, "glg": glg} if odds else None},
         "outcome": {"basement_m": found, "total_depth_m": total, "success": success,
-                    "success_basis": basis if success is not None else None, "contractor": contractor}
+                    "success_basis": basis if success is not None else None, "contractor": contractor,
+                    "success_yield_m3_per_h": rate}
         if drilled else None,
     }
     return L.pool_ledgers([(project, {"entries": [raw]})])[0]
@@ -183,6 +185,40 @@ def test_a_grouping_the_report_does_not_give_is_refused():
         K.hit_rates([], "district")
 
 
+def test_a_borehole_judged_at_another_definition_is_counted_not_scored():
+    """Twelve holes each tested at 1.5 m3/h: six judged in projects whose
+    odds set success at 3 m3/h (failures there), six at the 1 m3/h in force.
+    Only the six judged at 1 m3/h are scored, as a calibration set fits only
+    them, and the report says why the others are not."""
+    from groundwater.calibration_sets import fit_set
+
+    pooled = [_entry(k, success=k >= 6, rate=3.0 if k < 6 else 1.0, contractor="Kaba") for k in range(12)]
+    odds = K.odds_scores(pooled)
+    assert (odds["n"], odds["successes"], odds["failures"], odds["definition"]) == (6, 6, 0, 6)
+    assert fit_set(pooled, "2026-10-27")["left_out"] == {"unknown": 0, "definition": 6}
+    group = K.hit_rates(pooled, "contractor")[0]
+    assert (group["drilled"], group["success"], group["failure"], group["unknown"], group["definition"],
+            group["known"], group["rate"], group["forecast_n"]) == (12, 6, 0, 0, 6, 6, 1.0, 6)
+    content = K.calibration_content(pooled)
+    assert phrase("calibration.odds_definition", n=6, rate=1.0) in content["sections"][1]["paragraphs"]
+    assert not any(p.startswith("0 drilled") for p in content["sections"][1]["paragraphs"])
+    hits = content["sections"][2]
+    assert phrase("calibration.hits_definition", n=6, rate=1.0) in hits["paragraphs"]
+    assert hits["tables"][2]["rows"][0][:5] == ["Kaba", "12", "6", "0", "6"], "counted as not known here"
+    # at the other definition, the other six are scored, and the first six are not
+    other = Config()
+    other.odds.success_yield_m3_per_h = 3.0
+    scored = K.odds_scores(pooled, other)
+    assert (scored["n"], scored["failures"], scored["definition"]) == (6, 6, 6)
+    # an outcome that records no definition, as a hand-edited file can
+    # hold, is left out too
+    unrecorded = K.odds_scores([_entry(k, rate=None) for k in range(3)])
+    assert (unrecorded["n"], unrecorded["definition"]) == (0, 3)
+    # nothing left out says nothing of it
+    plain = K.calibration_content([_entry(k) for k in range(3)])
+    assert not any("definition of success other than" in p for s in plain["sections"] for p in s["paragraphs"])
+
+
 # ------------------------------------------------------------- the report
 
 def test_the_report_says_what_it_scored_and_what_it_left_out():
@@ -218,9 +254,12 @@ def test_a_points_team_is_its_sheets_field_supervisor_else_the_projects():
     site = SimpleNamespace(community="Rokel", district="Port Loko", utm_zone=28, supervisor=" R.  Conteh ")
     survey = L.survey_predictions([interp, interp], None, None, site, teams=["  A.  Kamara", ""])
     assert [s["prediction"]["survey_team"] for s in survey] == ["A. Kamara", "R. Conteh"]
-    # the team is not part of the point's identity
-    assert L.point_id("VES 1", None, None, 28, "Rokel", "Port Loko") == L.record_predictions(
-        L.empty_ledger(), survey[:1], "2026-03-01", False, "0.3.0")[0]["entries"][0]["id"]
+    # the team is not part of the point's identity, nor of the ledger's
+    ledgers = [L.record_predictions(L.empty_ledger(), survey[k:k + 1], "2026-03-01", False, "0.3.0")[0]
+               for k in (0, 1)]
+    assert ledgers[0]["project_id"] == ledgers[1]["project_id"]
+    assert L.point_id("VES 1", None, None, 28, "Rokel", "Port Loko", ledgers[0]["project_id"]) \
+        == ledgers[0]["entries"][0]["id"] == ledgers[1]["entries"][0]["id"]
 
 
 def test_the_projects_contractor_wins_over_the_logs():
@@ -288,6 +327,8 @@ def _raw(rng: random.Random, k: int, inside: float) -> dict:
             "total_depth_m": rng.choice([None, round(rng.uniform(20.0, 60.0), 1)]),
             "success": success, "success_basis": None if success is None else rng.choice(
                 ["tested", "recorded_failure", "recorded_success"]),
+            # judged at the default definition, mostly; at another, or none recorded
+            "success_yield_m3_per_h": rng.choice([1.0, 1.0, 1.0, 1.0, 1.0004, 3.0, None]),
             "contractor": rng.choice(_NAMES)},
     }
 
@@ -349,6 +390,8 @@ def test_the_seeded_cases_reach_every_rule():
     assert any(t["odds"]["brier"] is not None and t["odds"]["brier_prior"] is None for t in told)
     rates = [g["rate"] for t in told for groups in t["hits"] for g in groups]
     assert None in rates and any(r is not None for r in rates)
+    assert any(t["odds"]["definition"] for t in told) and any(t["odds"]["n"] for t in told)
+    assert any(g["definition"] for t in told for groups in t["hits"] for g in groups)
 
 
 # ------------------------------------------------- the document and its figures

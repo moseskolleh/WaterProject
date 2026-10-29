@@ -91,14 +91,7 @@ def _ledger_section(soundings, interps, ranges, odds) -> None:
     from groundwater.utils import fmt_num
 
     with st.expander("📒 Predictions and outcomes", expanded=False):
-        st.caption(
-            "What the survey predicts at each point, written down now, so it can be set beside "
-            "what the borehole finds and the method can learn from the holes drilled with it. A "
-            "prediction recorded before drilling is kept as it was made; one recorded once a "
-            "drilling log is loaded is marked as recorded after drilling. Building the "
-            "geophysical report records its predictions too. The ledger is saved in the project "
-            "file, and the Portfolio page pools it across projects."
-        )
+        st.caption(phrase("ledger.page_intro"))
         if st.button("Record the survey's predictions", key="record_predictions"):
             kept = record_survey_predictions(soundings, interps, ranges, odds)
             st.success(f"Recorded the predictions at {len(interps)} point(s).")

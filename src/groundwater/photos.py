@@ -39,6 +39,8 @@ before a web page sees it, which is what the device fix is for.
 from __future__ import annotations
 
 import hashlib
+import math
+import numbers
 import re
 import struct
 from datetime import datetime, timezone
@@ -265,33 +267,76 @@ def _shown_time(text: str) -> str:
     return str(text).replace("T", " ").removesuffix("Z")
 
 
+def _reading(value, limit: float) -> float | None:
+    """A recorded number as a report prints it: a finite number no further
+    from zero than ``limit``, else None. A number written as text in a
+    hand-edited file is not one, as in the ledger, since the browser's twin
+    would read it differently. A whole number too large for a float, which
+    the browser reads as Infinity, is not one either."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        return None
+    try:
+        x = float(value)
+    except OverflowError:
+        return None
+    return x if math.isfinite(x) and abs(x) <= limit else None
+
+
+def _text(value) -> str:
+    """Text the record keeps (its hash, a time, a source, a note), or "" for
+    anything but text, which the two engines would write out differently and
+    no table entry answers."""
+    return value if isinstance(value, str) else ""
+
+
+def _accuracy(value) -> str:
+    """A position's accuracy as a report prints it: within so many metres
+    where it is a finite number not below zero, not recorded where the
+    record holds none, and could not be read where it holds anything else."""
+    if value is None:
+        return phrase("evidence.accuracy_unknown")
+    metres = _reading(value, math.inf)
+    if metres is None or metres < 0.0:
+        return phrase("evidence.accuracy_unreadable")
+    return phrase("evidence.accuracy_m", m=metres)
+
+
 def describe_provenance(record) -> dict:
     """The record as a report prints it: ``{"time", "position", "hash"}``.
 
-    A photograph with no record (one attached before records existed) gets
-    the catalogue's "no provenance recorded" sentence as its time and empty
-    position and hash, so nothing is printed that was never recorded.
+    A photograph with no record (one attached before records existed, or
+    one whose hash is not text) gets the catalogue's "no provenance
+    recorded" sentence as its time and empty position and hash, so nothing
+    is printed that was never recorded.
+
+    A position is printed only where its latitude and longitude are both
+    numbers, finite and within 90 and 180 degrees of zero, and its accuracy
+    only where it is a finite number not below zero. A record with no
+    position gives the reason its note records; one whose position cannot be
+    read so, as a hand-edited project file can hold, says it could not be
+    read rather than printing what it holds, and so does an accuracy.
     """
-    if not isinstance(record, dict) or not record.get("sha256"):
+    if not isinstance(record, dict) or not _text(record.get("sha256")):
         return {"time": phrase("evidence.no_provenance"), "position": "", "hash": ""}
     time_sources = phrase_table("evidence.time_sources")
-    shown = phrase("evidence.time", time=_shown_time(record.get("taken_at") or ""),
-                   source=time_sources.get(str(record.get("time_source") or ""), ""))
+    shown = phrase("evidence.time", time=_shown_time(_text(record.get("taken_at"))),
+                   source=time_sources.get(_text(record.get("time_source")), ""))
     position = record.get("position")
-    if isinstance(position, dict) and position.get("lat") is not None:
-        accuracy = position.get("accuracy_m")
-        where = phrase(
-            "evidence.position", lat=float(position["lat"]), lon=float(position["lon"]),
-            accuracy=(phrase("evidence.accuracy_m", m=float(accuracy))
-                      if accuracy is not None else phrase("evidence.accuracy_unknown")),
-            source=phrase_table("evidence.position_sources").get(
-                str(record.get("position_source") or ""), ""),
-        )
+    notes = phrase_table("evidence.position_notes")
+    if position is None or (isinstance(position, dict) and position.get("lat") is None
+                            and position.get("lon") is None):
+        where = notes.get(_text(record.get("position_note")), notes["not_requested"])
     else:
-        notes = phrase_table("evidence.position_notes")
-        where = notes.get(record.get("position_note") or "", notes["not_requested"])
+        held = position if isinstance(position, dict) else {}
+        lat, lon = _reading(held.get("lat"), 90.0), _reading(held.get("lon"), 180.0)
+        if lat is None or lon is None:
+            where = notes["unreadable"]
+        else:
+            where = phrase("evidence.position", lat=lat, lon=lon, accuracy=_accuracy(held.get("accuracy_m")),
+                           source=phrase_table("evidence.position_sources").get(
+                               _text(record.get("position_source")), ""))
     return {
         "time": shown,
         "position": where,
-        "hash": phrase("evidence.hash", short=str(record["sha256"])[:16]),
+        "hash": phrase("evidence.hash", short=record["sha256"][:16]),
     }

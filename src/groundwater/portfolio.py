@@ -10,6 +10,9 @@ statistics. Pure and map-library-free, so it is unit-testable.
 from __future__ import annotations
 
 import math
+import numbers
+import re
+
 from .geo import infer_zone_for_sierra_leone, utm_boxes_hold_degrees, utm_to_geographic
 from .quality.assess import VERDICT_LONG, VERDICT_ORDER, VERDICT_SHORT
 from .site_status import (
@@ -90,14 +93,20 @@ def verdict_state(summary: dict) -> tuple[str | None, bool]:
     raw = str(summary.get("water_verdict") or "").strip().lower()
     if not raw:
         return None, False
-    schema = summary.get("verdict_schema")
-    try:
-        schema = int(schema or 0)
-    except (TypeError, ValueError):
-        schema = 0
+    # read as every summary number is (_num), as the browser's twin reads it:
+    # int() raised OverflowError on ".inf" and read "2.0" as no schema
+    schema = _num(summary.get("verdict_schema")) or 0
     if schema >= VERDICT_SCHEMA:
         return (raw if raw in VERDICT_SHORT else None), False
     return _LEGACY_VERDICTS.get(raw), True
+
+
+#: A number written as text, as float() reads one: a sign, digits with an
+#: underscore allowed between two of them, a point and an exponent. Spelt
+#: out, with the white space trimmed, so the browser's twin (summaryNum)
+#: reads the same texts: float() alone also reads digits of other scripts,
+#: and JavaScript's Number() reads "0x10" and a blank as numbers.
+_NUMBER_TEXT = re.compile(r"[+-]?(\d(_?\d)*(\.(\d(_?\d)*)?)?|\.\d(_?\d)*)([eE][+-]?\d(_?\d)*)?", re.ASCII)
 
 
 def _num(value):
@@ -105,14 +114,21 @@ def _num(value):
 
     Summaries come out of project files people edit by hand; one
     ``total_depth_m: 52 m`` in one of forty files used to take the whole
-    portfolio page down with a traceback that named no file. The browser
-    app already reads such a value as blank, so the two now agree.
+    portfolio page down with a traceback that named no file. A number
+    written as text (``"52"``) is read; anything else is blank, in the
+    browser's twin too, a whole number too large for a float (which the
+    browser reads as Infinity) included.
     """
-    if value is None or isinstance(value, bool):
+    if isinstance(value, bool):
         return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
+    if isinstance(value, numbers.Real):
+        try:
+            number = float(value)
+        except OverflowError:
+            return None
+    elif isinstance(value, str) and _NUMBER_TEXT.fullmatch(value.strip(" \t\n\r\f\v")):
+        number = float(value.strip(" \t\n\r\f\v"))
+    else:
         return None
     return number if math.isfinite(number) else None
 

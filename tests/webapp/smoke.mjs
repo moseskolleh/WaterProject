@@ -1844,7 +1844,8 @@ await withPage(async (page, base, consoleErrors) => {
     old.shows && old.held && old.report && !old.invented, JSON.stringify(old));
 
   // the ledger of predictions and outcomes (PLAN.md step 5.1): saved at the
-  // top of the project file, where the Python app writes it, under schema 2;
+  // top of the project file, where the Python app writes it, with its
+  // identity, under schema 4;
   // opened again into the session; empty from a file of schema 1; and a
   // file of a later schema says so as it opens
   const ledgerTrip = await page.evaluate(async () => {
@@ -1871,18 +1872,21 @@ await withPage(async (page, base, consoleErrors) => {
       await app.loadProject(JSON.stringify(Object.assign({}, payload, { schema: C.PROJECT_SCHEMA + 1 })));
       const same = (a) => JSON.stringify(C.cleanLedger(a)) === JSON.stringify(C.cleanLedger(recorded));
       return { schema: payload.schema, version: payload.version, top: same(payload.ledger),
+        identity: !!recorded.project_id && payload.ledger.project_id === recorded.project_id &&
+          back.project_id === recorded.project_id,
         inState: 'ledger' in payload.state, back: same(back), entries: recorded.entries.length,
         old: old, later: toasts[toasts.length - 1] };
     } finally {
       S.toast = toast;
     }
   });
-  check('ledger: the project file carries it at its top level, at schema 3, and opens with it',
-    ledgerTrip.schema === 3 && ledgerTrip.version === undefined && !ledgerTrip.inState &&
-    ledgerTrip.top && ledgerTrip.back && ledgerTrip.entries === 1, JSON.stringify(ledgerTrip).slice(0, 600));
+  check('ledger: the project file carries it and its identity at its top level, at schema 4, and opens with it',
+    ledgerTrip.schema === 4 && ledgerTrip.version === undefined && !ledgerTrip.inState &&
+    ledgerTrip.top && ledgerTrip.back && ledgerTrip.identity && ledgerTrip.entries === 1,
+    JSON.stringify(ledgerTrip).slice(0, 600));
   check('ledger: a file of schema 1 opens with an empty one, and a later schema says so',
     ledgerTrip.old.entries.length === 0 && ledgerTrip.later[1] === 'warn' &&
-    /format 4; this app reads format 3/.test(ledgerTrip.later[0]), JSON.stringify(ledgerTrip.later));
+    /format 5; this app reads format 4/.test(ledgerTrip.later[0]), JSON.stringify(ledgerTrip.later));
   await page.evaluate(async (saved) => {
     window.GWT.app.store.replace(JSON.parse(saved));
     await window.GWT.app.recompute();
@@ -6524,7 +6528,7 @@ await withPage(async (page, base, consoleErrors) => {
       app.derived.interpretations.length > 1;
   }, null, { timeout: 120000 });
   const ledgerFlow = await page.evaluate(async () => {
-    const app = window.GWT.app;
+    const app = window.GWT.app, C0 = window.GWT.core;
     const named = (title) => [...document.querySelectorAll('#page-host .card')]
       .find((c) => (c.querySelector('.card-title') || {}).textContent === title);
     const press = (title, label) => [...named(title).querySelectorAll('button')]
@@ -6556,13 +6560,40 @@ await withPage(async (page, base, consoleErrors) => {
     press('Predictions and outcomes', 'Record the survey\'s predictions');
     out.kept = app.store.get('ledger').entries.map((e) => [e.recorded_on === recorded.entries[0].recorded_on,
       e.before_outcome]);
+    /* the log removed: the ledger still holds the borehole's outcome, so a
+     * recording keeps both forecasts as they were made, and says so */
+    const support = window.GWT.support, toast = support.toast, said = [];
+    support.toast = (message) => { said.push(message); };
+    try {
+      app.store.remove('sources.drilling');
+      await app.recompute();
+      app.render();
+      press('Predictions and outcomes', 'Record the survey\'s predictions');
+      out.withoutLog = [said.pop(), app.store.get('ledger').entries.map((e) => [e.before_outcome, !!e.outcome])];
+      /* a pumping test alone says the hole is drilled: a new ledger records
+       * after drilling */
+      const ledgerHeld = app.store.get('ledger');
+      app.store.set('ledger', C0.emptyLedger());
+      const test = window.GWT.data.samples.dr_timbo.files.pumping;
+      app.store.set('sources.pumping', { name: test.name, b64: test.b64, sample: test.path || test.name });
+      await app.recompute();
+      app.render();
+      press('Predictions and outcomes', 'Record the survey\'s predictions');
+      out.testOnly = app.store.get('ledger').entries.map((e) => e.before_outcome);
+      app.store.remove('sources.pumping');
+      app.store.set('ledger', ledgerHeld);
+      await app.recompute();
+      app.render();
+    } finally {
+      support.toast = toast;
+    }
     await app.goto('portfolio');
     press('Saved projects', 'Start from the open project');
     press('Saved projects', 'Add this project');
     out.pooled = named('Predictions and outcomes').textContent;
     /* the calibration report (PLAN.md step 5.2) over the pooled ledgers: its
      * card on the page, and the document with the figures its content names */
-    const C = window.GWT.core, support = window.GWT.support;
+    const C = window.GWT.core;
     const calibrate = async () => {
       const cal = named('Calibration');
       const pooled = C.poolLedgers(app.derived.portfolio.map((s, i) => [C.portfolioSiteLabel(s),
@@ -6603,7 +6634,8 @@ await withPage(async (page, base, consoleErrors) => {
         prediction: { depth_to_basement_m: k === 7 ? null : 20 + k, basement_band_m: [16 + k, 20 + k, 26 + k],
           survey_team: 'A. Kamara', odds: { probability: (k + 0.5) / 12, prior: 0.55, bgs_code: 'B-L', glg: 'pCm' } },
         outcome: { basement_m: k === 3 ? null : 19 + k + (k % 4 === 0 ? 9 : 0), total_depth_m: 30 + k,
-          success: k % 3 !== 0, success_basis: 'tested', contractor: 'Kaba Drilling' } });
+          success: k % 3 !== 0, success_basis: 'tested', success_yield_m3_per_h: 1.0,
+          contractor: 'Kaba Drilling' } });
     }
     app.derived.portfolio = [{ community: 'Calibration', district: 'Port Loko' }];
     app.derived.portfolioLedgers = [{ drilled: null, entries: entries }];
@@ -6623,8 +6655,15 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(ledgerFlow));
   check('ledger: once drilled, the forecasts are kept, and the Portfolio pools the project once',
     JSON.stringify(ledgerFlow.kept) === '[[true,true],[true,true]]' &&
-    ledgerFlow.pooled.includes('2 survey points predicted in 1 project, 1 of them drilled'),
+    ledgerFlow.pooled.includes('2 survey points predicted in 1 project, 1 of them drilled') &&
+    ledgerFlow.pooled.includes('2 of the points were found in more than one file and are counted once'),
     JSON.stringify(ledgerFlow));
+  check('ledger: with the log removed the ledger still holds the outcome, so recording again keeps both ' +
+    'forecasts; a pumping test alone records after drilling',
+    ledgerFlow.withoutLog[0] === 'Recorded the predictions at 2 point(s). 2 point(s) kept the forecast ' +
+      'recorded before drilling.' &&
+    JSON.stringify(ledgerFlow.withoutLog[1]) === '[[true,false],[true,true]]' &&
+    JSON.stringify(ledgerFlow.testOnly) === '[false,false]', JSON.stringify(ledgerFlow));
   check('calibration: the Portfolio page sums up the pooled ledgers and saves Calibration_Report.docx with ' +
     'its four sections; the Rokel project, its one drilled point predicted without a band, has no figure to ' +
     'draw, and twelve forecasts with bands and chances have both, on the card and in the document',

@@ -137,6 +137,29 @@ def _survey_point(before: bool, p: float = 0.62):
     return held
 
 
+def test_a_borehole_paired_with_no_point_is_counted_once_across_saves(timbo):
+    """A save made before any prediction was recorded (its ledger empty, so
+    with no identity) and a later save of the same project whose
+    predictions, at two points with no position, leave the borehole paired
+    with no point: both identify the borehole by its reference, position
+    and place alone, and the scorecards count it once. Carrying the
+    ledger's identity in that identifier, as a ledger's points do, gave the
+    two saves two identifiers and counted the borehole twice."""
+    interps = [SimpleNamespace(sounding_id=name, depth_to_basement_m=20.0, basement_not_resolved=False,
+                               investigation_depth_m=60.0, water_zones=[(8.0, 20.0)], aquifer_thickness_m=12.0,
+                               max_drilling_depth_m=35.0, drilling_depth_capped=False, fit_error_percent=3.0,
+                               site_easting=None, site_northing=None, layers=[]) for name in ("VES 1", "VES 2")]
+    survey = L.survey_predictions(interps, None, None, SimpleNamespace(community="Dr Timbo",
+                                                                        district="Port Loko", utm_zone=28))
+    later = L.record_predictions(L.empty_ledger(), survey, "2018-06-01", True, "0.3.0")[0]
+    assert later["project_id"] is not None
+    first, second = (SC.works_record(_site(), timbo, None, ledger) for ledger in (L.empty_ledger(), later))
+    assert second["forecast"] is None, "paired with no point"
+    assert first["id"] == second["id"] == L.point_id("borehole BH-1", timbo.site.easting, timbo.site.northing,
+                                                     timbo.site.utm_zone, "Dr Timbo", "Port Loko")
+    assert len(SC.scorecard_boreholes([("save 1", first, L.empty_ledger()), ("save 2", second, later)])) == 1
+
+
 def test_the_forecast_is_the_chance_recorded_before_drilling_at_the_point_drilled(timbo):
     held = _survey_point(before=True)
     record = SC.works_record(_site(), timbo, None, held)
@@ -178,6 +201,12 @@ def test_a_hand_edited_record_is_cleaned_not_raised(timbo):
         cleaned = SC.clean_works(dict(good, **broken))
         assert (cleaned["contract"], cleaned["variations_signed"], cleaned["variation_usd"],
                 cleaned["completion_due"]) == (False, None, None, "")
+    # a whole number too large for a float, which YAML reads from 400 digits
+    # and the browser reads as Infinity, is blank rather than an OverflowError
+    big = yaml.safe_load("n: " + "9" * 400)["n"]
+    cleaned = SC.clean_works(dict(good, variations_signed=big, logged_m=big, forecast=big))
+    assert (cleaned["contract"], cleaned["variations_signed"], cleaned["logged_m"], cleaned["forecast"]) == (
+        False, None, None, None)
 
 
 # ----------------------------------------------------------------- pooling
