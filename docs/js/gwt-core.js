@@ -24208,6 +24208,29 @@
     return classifyStatusText(raw) || 'other';
   }
 
+  /* portfolio._NUMBER_TEXT: a number written as text as Python's float()
+   * reads one - a sign, digits with an underscore allowed between two of
+   * them, a point and an exponent - spelt out so the two engines read the
+   * same texts (Number() also reads '0x10' and a blank) */
+  var SUMMARY_NUMBER_TEXT = /^[+-]?(\d(_?\d)*(\.(\d(_?\d)*)?)?|\.\d(_?\d)*)([eE][+-]?\d(_?\d)*)?$/;
+
+  /* portfolio._num: a summary's number as a finite number, or null for
+   * anything that is not one. A number written as text, with its ASCII white
+   * space trimmed, is read; a hand-edited "52 m" is blank, never NaN. */
+  function summaryNum(value) {
+    var n;
+    if (typeof value === 'number') {
+      n = value;
+    } else if (typeof value === 'string') {
+      var text = value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, '');
+      if (!SUMMARY_NUMBER_TEXT.test(text)) return null;
+      n = Number(text.replace(/_/g, ''));
+    } else {
+      return null;
+    }
+    return isFinite(n) ? n : null;
+  }
+
   /** Whether a summary's easting and northing are a longitude and a
    * latitude typed into the UTM boxes, by the rule the site page reads them
    * by (utmBoxesHoldDegrees): portfolio.summary_holds_degrees.
@@ -24215,7 +24238,7 @@
    * @returns {boolean}
    */
   function summaryHoldsDegrees(summary) {
-    var easting = deskNumber(summary && summary.easting), northing = deskNumber(summary && summary.northing);
+    var easting = summaryNum(summary && summary.easting), northing = summaryNum(summary && summary.northing);
     return !!(easting && northing) && utmBoxesHoldDegrees(easting, northing);
   }
 
@@ -24228,7 +24251,7 @@
     if (!summary) return null;
     /* a value a project file carries that is no number ("52 m") is no
      * position, as portfolio._num reads it */
-    var easting = deskNumber(summary.easting), northing = deskNumber(summary.northing);
+    var easting = summaryNum(summary.easting), northing = summaryNum(summary.northing);
     if (!easting || !northing) return null;
     /* Degrees are no position in metres, as sitePosition reads them: read
      * as metres they put the project on the equator, 940 km off, so the
@@ -24237,7 +24260,7 @@
     if (utmBoxesHoldDegrees(easting, northing)) return null;
     /* the same fallback SiteMetadata.utm uses: a hard-coded zone dropped every
      * zone-less project six degrees off, into the Atlantic and off the map */
-    var zone = Math.trunc(deskNumber(summary.utm_zone) || 0) || inferZoneForSierraLeone(easting);
+    var zone = Math.trunc(summaryNum(summary.utm_zone) || 0) || inferZoneForSierraLeone(easting);
     try {
       var at = utmToGeographic(easting, northing, zone);
       return at && isFinite(at.lat) && isFinite(at.lon) ? at : null;
@@ -24279,16 +24302,16 @@
       /* An asterisk rather than a silent reinterpretation: the value was
        * translated from an older file and the reader should know. */
       if (water && read[1]) water += '*';
+      var depth = summaryNum(s.total_depth_m), safe = summaryNum(s.safe_yield_m3_per_h);
+      var cost = summaryNum(s.cost_per_meter_usd);
       return {
         Community: s.community || '(unnamed)',
         District: s.district || '',
         Status: statusLabel(classifyStatus(s)),
-        'Depth (m)': s.total_depth_m ? pyRound(Number(s.total_depth_m), 1) : null,
-        'Safe yield (m3/h)': s.safe_yield_m3_per_h
-          ? pyRound(Number(s.safe_yield_m3_per_h), 2) : null,
+        'Depth (m)': depth ? pyRound(depth, 1) : null,
+        'Safe yield (m3/h)': safe ? pyRound(safe, 2) : null,
         Water: water,
-        'Cost/m (USD)': s.cost_per_meter_usd
-          ? pyRound(Number(s.cost_per_meter_usd), 0) : null,
+        'Cost/m (USD)': cost ? pyRound(cost, 0) : null,
       };
     });
   }
@@ -24339,17 +24362,16 @@
       add('Location', pyFixed(latlon.lat, 5) + ' N, ' +
         pyFixed(Math.abs(latlon.lon), 5) + ' W');
     }
-    add('Total depth', summary.total_depth_m
-      ? pyFixed(summary.total_depth_m, 1) + ' m' : null);
-    add('Safe yield', summary.safe_yield_m3_per_h
-      ? pyFixed(summary.safe_yield_m3_per_h, 2) + ' m3/h' : null);
+    var depth = summaryNum(summary.total_depth_m), safe = summaryNum(summary.safe_yield_m3_per_h);
+    var cost = summaryNum(summary.cost_per_meter_usd);
+    add('Total depth', depth ? pyFixed(depth, 1) + ' m' : null);
+    add('Safe yield', safe ? pyFixed(safe, 2) + ' m3/h' : null);
     var verdictRead = summaryVerdictState(summary);
     add('Water quality', verdictRead[0]
       ? VERDICT_LONG[verdictRead[0]] +
         (verdictRead[1] ? ' (read from an older project file)' : '')
       : null);
-    add('Cost per metre', summary.cost_per_meter_usd
-      ? '$' + pyFixed(summary.cost_per_meter_usd, 0) : null);
+    add('Cost per metre', cost ? '$' + pyFixed(cost, 0) : null);
     return rows;
   }
 
@@ -24381,11 +24403,7 @@
       return classifyStatus(s) === 'successful';
     }).length;
     /* a hand-edited "52 m" is a blank cell and a count, not NaN in a mean */
-    var num = function (v) {
-      if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
-      var n = Number(v);
-      return isFinite(n) ? n : null;
-    };
+    var num = summaryNum;
     var yields = list.map(function (s) { return num(s.safe_yield_m3_per_h); })
       .filter(function (v) { return v; });
     var costs = list.map(function (s) { return num(s.cost_per_meter_usd); })
@@ -24464,8 +24482,12 @@
    * who certified each value of one borehole.
    *
    * One entry for each survey point. Its prediction is kept as it was
-   * recorded, and replaced only while the project holds no completion;
-   * before_outcome says whether it was recorded before drilling. The outcome
+   * recorded, and replaced only while the borehole is not drilled;
+   * before_outcome says whether it was recorded before drilling, and a new
+   * recording never makes it earlier. A ledger takes an identity of its own
+   * (project_id) when its first predictions are written into it, and each
+   * entry's id carries it, so two projects whose soundings share a name and
+   * a place keep their points apart in a portfolio. The outcome
    * is worked out again from the project's completion whenever the project
    * is saved, and attached to the point the borehole was drilled at: the one
    * a person chose, else the nearest within ledger.pair_within_m of the
@@ -24474,10 +24496,10 @@
    * that made it and each outcome the contractor who drilled, for the
    * calibration's hit rates. */
 
-  /** ledger.empty_ledger.
-   * @returns {{drilled: string|null, entries: Rec[]}} */
+  /** ledger.empty_ledger: no entry and no identity yet.
+   * @returns {{drilled: string|null, entries: Rec[], project_id: string|null}} */
   function emptyLedger() {
-    return { drilled: null, entries: [] };
+    return { drilled: null, entries: [], project_id: null };
   }
 
   function ledgerGiven(v) { return v !== null && v !== undefined; }
@@ -24508,22 +24530,45 @@
     return typeof value === 'number' && Number.isInteger(value) ? value : null;
   }
 
-  /** ledger.point_id: a hash of the point's name, place and position, so two
-   * copies of one project's file give their points one identifier.
+  /** ledger.point_id: a hash of the point's name, place and position, and of
+   * the identity of the ledger it is recorded in, so two copies of one
+   * project's file give their points one identifier and two projects whose
+   * soundings share a name and a place do not. A ledger with no identity
+   * ('') gives the identifier it always did.
    * @param {string} soundingId
    * @param {number|null} easting
    * @param {number|null} northing
    * @param {number|null} utmZone
    * @param {string} [community]
    * @param {string} [district]
+   * @param {string} [projectId] the ledger's identity, '' or absent for none
    * @returns {string} */
-  function pointId(soundingId, easting, northing, utmZone, community, district) {
+  function pointId(soundingId, easting, northing, utmZone, community, district, projectId) {
     var e = ledgerNum(easting, 1) === null ? '' : pyFixed(Number(easting), 0);
     var n = ledgerNum(northing, 1) === null ? '' : pyFixed(Number(northing), 0);
     var zone = ledgerZone(utmZone);
-    var text = [String(soundingId || ''), e, n, zone === null ? '' : String(zone),
-      String(community || ''), String(district || '')].join('\n');
-    return sha256Hex(text).slice(0, 12);
+    var parts = [String(soundingId || ''), e, n, zone === null ? '' : String(zone),
+      String(community || ''), String(district || '')];
+    if (projectId) parts.push(String(projectId));
+    return sha256Hex(parts.join('\n')).slice(0, 12);
+  }
+
+  /* ledger._point_key: a point's identifier with no ledger's identity in
+   * it, what tells one point of a survey from another */
+  function ledgerPointKey(point) {
+    return pointId(point.sounding_id, point.easting, point.northing, point.utm_zone,
+      point.community, point.district);
+  }
+
+  /* ledger._ledger_identity: the identity a ledger takes when its first
+   * predictions are written into it, a hash of the day they were recorded
+   * and the points they were recorded at */
+  function ledgerIdentity(recordedOn, predictions) {
+    /** @type {Object<string, boolean>} */
+    var seen = {};
+    predictions.forEach(function (item) { seen[ledgerPointKey(item.point)] = true; });
+    var keys = Object.keys(seen).sort();
+    return sha256Hex(['ledger', String(recordedOn)].concat(keys).join('\n')).slice(0, 12);
   }
 
   function ledgerOdds(odds) {
@@ -24723,10 +24768,29 @@
     };
   }
 
+  /** ledger.uses_definition: whether a borehole's success was judged at
+   * the definition of success in force (odds.success_yield_m3_per_h), as its
+   * outcome records the yield it was judged at. The calibration scores, and
+   * a calibration set fits, only the outcomes that were.
+   * @param {Rec} outcome
+   * @param {Config} [config]
+   * @returns {boolean} */
+  function usesDefinition(outcome, config) {
+    var cfg = config || defaultConfig();
+    var judged = outcome.success_yield_m3_per_h;
+    return judged !== null && judged !== undefined &&
+      Math.abs(judged - pyRound(Number(cfg.odds.success_yield_m3_per_h), 3)) < 1e-9;
+  }
+
   /** ledger.record_predictions: the ledger with the survey's predictions
    * written in, and the ids of the entries that kept the prediction they had
-   * (a forecast, recorded before drilling, once the project holds a
-   * completion).
+   * (a forecast, recorded before drilling, once the borehole is drilled).
+   * The borehole is drilled when outcomeKnown says so, the ledger already
+   * holds an outcome, or a person has chosen the point drilled (drilled); a
+   * prediction recorded then is marked as recorded after drilling, and one
+   * recorded after drilling stays so. A ledger with no entry and no identity
+   * takes one from this first recording; a point's entry is found by its id,
+   * else by the point itself.
    * @param {Rec|null} ledger
    * @param {Rec[]} predictions what surveyPredictions returned
    * @param {string} recordedOn the date, as YYYY-MM-DD
@@ -24736,36 +24800,51 @@
   function recordPredictions(ledger, predictions, recordedOn, outcomeKnown, toolkit) {
     var clean = cleanLedger(ledger);
     var entries = clean.entries.slice();
+    var identity = clean.project_id;
+    if (identity === null && !entries.length && predictions.length) {
+      identity = ledgerIdentity(recordedOn, predictions);
+    }
+    var known = !!outcomeKnown || clean.drilled !== null ||
+      entries.some(function (entry) { return entry.outcome !== null; });
     /** @type {Object<string, number>} */
-    var where = {};
-    entries.forEach(function (entry, k) { where[entry.id] = k; });
+    var byId = {};
+    /** @type {Object<string, number>} */
+    var byPoint = {};
+    entries.forEach(function (entry, k) {
+      if (!own(byId, entry.id)) byId[entry.id] = k;
+      var key = ledgerPointKey(entry.point);
+      if (!own(byPoint, key)) byPoint[key] = k;
+    });
     /** @type {string[]} */
     var kept = [];
     predictions.forEach(function (item) {
       var point = item.point;
+      var key = ledgerPointKey(point);
       var pid = pointId(point.sounding_id, point.easting, point.northing, point.utm_zone,
-        point.community, point.district);
-      var k = own(where, pid) ? where[pid] : null;
+        point.community, point.district, identity || '');
+      var k = own(byId, pid) ? byId[pid] : own(byPoint, key) ? byPoint[key] : null;
       var old = k !== null ? entries[k] : null;
-      if (old && old.before_outcome && outcomeKnown) { kept.push(pid); return; }
+      if (old && old.before_outcome && known) { kept.push(old.id); return; }
       var entry = {
-        id: pid,
+        id: old ? old.id : pid,
         point: Object.assign({}, point),
         prediction: item.prediction,
         recorded_on: String(recordedOn),
-        before_outcome: !outcomeKnown,
+        before_outcome: !known && (!old || old.before_outcome),
         toolkit: String(toolkit),
         outcome: old ? old.outcome : null,
         pairing: old ? old.pairing : null,
       };
       if (k === null) {
-        where[pid] = entries.length;
+        k = entries.length;
         entries.push(entry);
       } else {
         entries[k] = entry;
       }
+      if (!own(byId, entry.id)) byId[entry.id] = k;
+      if (!own(byPoint, key)) byPoint[key] = k;
     });
-    return { ledger: { drilled: clean.drilled, entries: entries }, kept: kept };
+    return { ledger: { drilled: clean.drilled, entries: entries, project_id: identity }, kept: kept };
   }
 
   function ledgerDistance(point, outcome) {
@@ -24833,6 +24912,7 @@
         return Object.assign({}, entry, { outcome: drilled ? outcome : null,
           pairing: drilled ? paired.pairing : null });
       }),
+      project_id: clean.project_id,
     };
   }
 
@@ -24953,9 +25033,10 @@
   /** ledger.clean_ledger: a ledger as read from a file, in the shape the
    * functions here write. A bad entry is left out, a field of the wrong kind
    * is blank, a prediction whose timing is not recorded is taken as recorded
-   * after drilling, and an id met twice is kept the first time.
+   * after drilling, an id met twice is kept the first time, and the ledger's
+   * identity is kept where it is text.
    * @param {*} raw
-   * @returns {{drilled: string|null, entries: Rec[]}} */
+   * @returns {{drilled: string|null, entries: Rec[], project_id: string|null}} */
   function cleanLedger(raw) {
     if (!isRecord(raw)) return emptyLedger();
     /** @type {Rec[]} */
@@ -24985,9 +25066,10 @@
         toolkit: ledgerText(item.toolkit),
       });
     });
-    var drilled = raw.drilled;
+    var drilled = raw.drilled, identity = raw.project_id;
     return { drilled: typeof drilled === 'string' && own(seen, drilled) ? drilled : null,
-      entries: entries };
+      entries: entries,
+      project_id: typeof identity === 'string' && identity ? identity : null };
   }
 
   /** ledger.basement_check: how the depth to basement found compares with
@@ -25130,48 +25212,129 @@
     return [0, 1, 2, 3].map(function (k) { return [labels[k], predicted[k], found[k], checks[k]]; });
   }
 
-  /* ledger._rank: which of two copies of one entry a pool keeps - the one
-   * with an outcome, then one recorded before drilling, then the later
-   * recording. Whether a ranks above b. */
-  function ledgerRanksAbove(a, b) {
-    var ao = a.outcome !== null, bo = b.outcome !== null;
-    if (ao !== bo) return ao;
-    if (a.before_outcome !== b.before_outcome) return a.before_outcome;
-    return a.recorded_on > b.recorded_on;
+  /* ledger._facts: how many of an outcome's fields hold something */
+  function ledgerFacts(outcome) {
+    return Object.keys(outcome).filter(function (key) {
+      var v = outcome[key];
+      return v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length);
+    }).length;
   }
 
-  /** ledger.pool_ledgers: the entries of many projects' ledgers, each once,
-   * each carrying the label of the project it came from as project. An
-   * entry found in two files is kept once, the copy with the most in it.
+  /* ledger._rank: which of two copies of one entry a pool keeps, the higher
+   * first - the one with an outcome, a known success over one not known
+   * yet, a tested yield over the driller's recorded status, then one
+   * recorded before drilling, then the one with more of its outcome
+   * recorded, then the later recording - as a list compared item by item */
+  function ledgerRank(entry) {
+    var outcome = entry.outcome;
+    if (outcome === null) return [false, false, false, entry.before_outcome, 0, entry.recorded_on];
+    return [true, outcome.success !== null, outcome.success_basis === 'tested', entry.before_outcome,
+      ledgerFacts(outcome), entry.recorded_on];
+  }
+
+  function ledgerKind(value) {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'boolean') return 1;
+    if (typeof value === 'number') return 2;
+    if (typeof value === 'string') return 3;
+    if (Array.isArray(value)) return 4;
+    return 5;
+  }
+
+  /* ledger._order: a fixed order over the plain values a ledger holds, -1,
+   * 0 or 1, to choose between two copies nothing else tells apart: nothing
+   * first, then false before true, numbers, texts by code point, lists and
+   * then mappings item by item, a mapping's items in the order of its keys */
+  function ledgerOrder(a, b) {
+    var ka = ledgerKind(a), kb = ledgerKind(b);
+    if (ka !== kb) return ka < kb ? -1 : 1;
+    if (ka === 0) return 0;
+    if (ka === 3) return codePointCompare(a, b);
+    if (ka === 4) {
+      for (var i = 0; i < Math.min(a.length, b.length); i++) {
+        var c = ledgerOrder(a[i], b[i]);
+        if (c) return c;
+      }
+      return a.length > b.length ? 1 : a.length < b.length ? -1 : 0;
+    }
+    if (ka === 5) {
+      var pairs = function (m) {
+        return Object.keys(m).sort(codePointCompare).map(function (k) { return [k, m[k]]; });
+      };
+      return ledgerOrder(pairs(a), pairs(b));
+    }
+    return a > b ? 1 : a < b ? -1 : 0;
+  }
+
+  /** ledger.pool_ledgers: the entries of many projects' ledgers, each once.
+   * An entry found in more than one file is kept once, the copy whose
+   * borehole outcome is best established (an outcome over none, a known
+   * success over one not known yet, a test over the driller's word), then
+   * one recorded before drilling, then the one with more of its outcome
+   * recorded, then the later recording; copies alike in all of that are
+   * taken in a fixed order of what they hold, so the pool is the same
+   * whatever the order of the files. Each kept entry carries the label of
+   * the project it came from as project, its ledger's identity as
+   * project_id, how many files it was found in as copies, and whether those
+   * copies hold different outcomes as copies_differ.
    * @param {Array<Array<*>>} items [project label, ledger] pairs
    * @returns {Rec[]} */
   function poolLedgers(items) {
-    /** @type {Object<string, Rec>} */
+    /** @type {Object<string, Array<*>>} */
     var kept = {};
+    /** @type {Object<string, number>} */
+    var copies = {};
+    /** @type {Object<string, Rec[]>} */
+    var outcomes = {};
     /** @type {string[]} */
     var order = [];
     items.forEach(function (item) {
-      var label = item[0], ledger = item[1];
-      cleanLedger(ledger).entries.forEach(function (entry) {
-        var have = own(kept, entry.id) ? kept[entry.id] : null;
-        if (!have) order.push(entry.id);
-        if (!have || ledgerRanksAbove(entry, have)) {
-          kept[entry.id] = Object.assign({}, entry, { project: String(label || '') });
+      var label = item[0], clean = cleanLedger(item[1]);
+      clean.entries.forEach(function (entry) {
+        var pid = entry.id;
+        copies[pid] = (own(copies, pid) ? copies[pid] : 0) + 1;
+        if (entry.outcome !== null) {
+          if (!own(outcomes, pid)) outcomes[pid] = [];
+          var held = outcomes[pid];
+          if (!held.some(function (other) { return ledgerOrder(entry.outcome, other) === 0; })) {
+            held.push(entry.outcome);
+          }
         }
+        var mine = [entry, String(label || ''), clean.project_id];
+        if (!own(kept, pid)) {
+          order.push(pid);
+          kept[pid] = mine;
+          return;
+        }
+        var have = kept[pid];
+        var c = ledgerOrder(ledgerRank(entry), ledgerRank(have[0]));
+        if (c > 0 || (c === 0 && ledgerOrder(mine, have) < 0)) kept[pid] = mine;
       });
     });
-    return order.map(function (id) { return kept[id]; });
+    return order.map(function (pid) {
+      var held = kept[pid];
+      return Object.assign({}, held[0], { project: held[1], project_id: held[2], copies: copies[pid],
+        copies_differ: own(outcomes, pid) && outcomes[pid].length > 1 });
+    });
   }
 
-  /** ledger.ledger_counts: the points predicted, the projects they are in,
-   * those drilled, and those drilled whose prediction was recorded before.
+  /** ledger.ledger_counts: the points predicted, the projects they are in
+   * (told apart by their ledgers' identities, else by their labels), those
+   * drilled, those drilled whose prediction was recorded before, how those
+   * drilled turned out, and the points found in more than one file (copies),
+   * those whose copies hold different outcomes (copies_differ), and of those
+   * the ones from ledgers with no identity (copies_unsure), whose copies may
+   * be two projects.
    * @param {Rec[]} pooled
    * @returns {Rec} */
   function ledgerCounts(pooled) {
     var drilled = pooled.filter(function (e) { return e.outcome !== null; });
     /** @type {Object<string, boolean>} */
     var projects = {};
-    pooled.forEach(function (e) { projects[e.project] = true; });
+    pooled.forEach(function (e) {
+      projects[e.project_id ? 'id:' + e.project_id : 'label:' + e.project] = true;
+    });
+    var differ = pooled.filter(function (e) { return e.copies_differ === true; });
     return {
       points: pooled.length,
       projects: Object.keys(projects).length,
@@ -25180,17 +25343,29 @@
       success: drilled.filter(function (e) { return e.outcome.success === true; }).length,
       failure: drilled.filter(function (e) { return e.outcome.success === false; }).length,
       unknown: drilled.filter(function (e) { return e.outcome.success === null; }).length,
+      copies: pooled.filter(function (e) { return (e.copies === undefined ? 1 : e.copies) > 1; }).length,
+      copies_differ: differ.length,
+      copies_unsure: differ.filter(function (e) { return !e.project_id; }).length,
     };
   }
 
-  /** ledger.ledger_summary: what a pooled ledger holds, in a sentence.
+  /** ledger.ledger_summary: what a pooled ledger holds, in a sentence; then,
+   * where a point was found in more than one file, the rule that chose the
+   * copy counted, and a sentence for the points whose copies disagree.
    * @param {Rec[]} pooled
    * @returns {string} */
   function ledgerSummary(pooled) {
     if (!pooled.length) return phrase('ledger.pool_none');
     var counts = ledgerCounts(pooled);
-    return phrase('ledger.pool_counts', { points: counts.points, projects: counts.projects,
+    var text = phrase('ledger.pool_counts', { points: counts.points, projects: counts.projects,
       drilled: counts.drilled, forecast: counts.forecast });
+    if (counts.copies) text += ' ' + phrase('ledger.pool_copies', { copies: counts.copies });
+    var differ = counts.copies_differ - counts.copies_unsure;
+    if (differ) text += ' ' + phrase('ledger.pool_copies_differ', { differ: differ });
+    if (counts.copies_unsure) {
+      text += ' ' + phrase('ledger.pool_copies_unsure', { unsure: counts.copies_unsure });
+    }
+    return text;
   }
 
   /** ledger.ledger_rows: the drilled points of a pooled ledger as a table.
@@ -25221,14 +25396,16 @@
   }
 
   /* project_io.PROJECT_SCHEMA: 2 from PLAN.md step 5.1, when the file came
-   * to carry the ledger, and 3 from step 8.1, when it came to carry the
-   * issue records of the documents issued from it. Both apps' project files
+   * to carry the ledger, 3 from step 8.1, when it came to carry the issue
+   * records of the documents issued from it, and 4 when the ledger came to
+   * carry an identity of its own (project_id). Both apps' project files
    * write it. */
-  var PROJECT_SCHEMA = 3;
+  var PROJECT_SCHEMA = 4;
 
   /* The step from each schema to the next, applied in turn on load: schema
-   * 1 had no ledger, so a file of it opens with an empty one, and schema 2
-   * no issue records, so a file of it opens with none. */
+   * 1 had no ledger, so a file of it opens with an empty one, schema 2 no
+   * issue records, so a file of it opens with none, and schema 3's ledger
+   * no identity, so a file of it keeps its ledger as it is, with none. */
   /** @type {Object<number, function(Rec): Rec>} */
   var PROJECT_MIGRATIONS = {
     1: function (payload) {
@@ -25236,6 +25413,9 @@
     },
     2: function (payload) {
       return Object.assign({}, payload, { schema: 3, issued: [] });
+    },
+    3: function (payload) {
+      return Object.assign({}, payload, { schema: 4 });
     },
   };
 
@@ -25269,6 +25449,7 @@
     emptyLedger: emptyLedger, pointId: pointId, pointPrediction: pointPrediction,
     surveyPredictions: surveyPredictions, completionOutcome: completionOutcome,
     recordPredictions: recordPredictions, pairDrilled: pairDrilled, attachOutcome: attachOutcome,
+    usesDefinition: usesDefinition,
     cleanLedger: cleanLedger, basementCheck: basementCheck, outcomeText: outcomeText,
     entryHeader: entryHeader, entryRows: entryRows, poolLedgers: poolLedgers, ledgerCounts: ledgerCounts,
     ledgerRows: ledgerRows, ledgerSummary: ledgerSummary,
@@ -25410,7 +25591,9 @@
 
   /** calibration.odds_scores: the forecast chances of success against the
    * outcomes: the Brier score, the prior's, the skill, the reliability bins
-   * and the bases the outcomes rest on.
+   * and the bases the outcomes rest on. A forecast with no chance, no known
+   * outcome, or an outcome judged at another definition of success than the
+   * one in force is counted (no_odds, unknown, definition) and not scored.
    * @param {Rec[]} pooled
    * @param {Config} [config]
    * @returns {Rec} */
@@ -25418,12 +25601,13 @@
     var cfg = config || defaultConfig();
     /** @type {Rec[]} */
     var scored = [];
-    var noOdds = 0, unknown = 0;
+    var noOdds = 0, unknown = 0, definition = 0;
     forecastEntries(pooled).forEach(function (entry) {
       var p = calibrationChance(entry.prediction);
       var success = entry.outcome.success;
       if (p === null) { noOdds += 1; return; }
       if (success === null) { unknown += 1; return; }
+      if (!usesDefinition(entry.outcome, cfg)) { definition += 1; return; }
       var prior = entry.prediction.odds.prior;
       scored.push({
         project: entry.project,
@@ -25486,6 +25670,7 @@
       failures: n - successes,
       no_odds: noOdds,
       unknown: unknown,
+      definition: definition,
       bases: bases,
       minimum: minimum,
       verdict: n < minimum ? 'too_few' : 'scored',
@@ -25528,9 +25713,11 @@
   }
 
   /** calibration.hit_rates: the drilled points by geology unit, survey team
-   * or contractor, each group with its counts, its hit rate (null below
-   * ledger.min_group known) and the mean chance forecast over its forecasts
-   * with a known outcome. Named groups first, the most drilled first, then
+   * or contractor, each group with its counts (one judged at another
+   * definition of success than the one in force counted as definition, and
+   * neither successful nor not), its hit rate (null below ledger.min_group
+   * known) and the mean chance forecast over its forecasts with a known
+   * outcome at that definition. Named groups first, the most drilled first, then
    * by name; the groups that name none last.
    * @param {Rec[]} pooled
    * @param {string} by geology, team or contractor
@@ -25550,15 +25737,17 @@
       var group = groups.get(label);
       if (!group) {
         group = { label: label, recorded: named[1], drilled: 0, success: 0, failure: 0, unknown: 0,
-          chances: [] };
+          definition: 0, chances: [] };
         groups.set(label, group);
       }
       group.drilled += 1;
-      if (outcome.success === true) group.success += 1;
-      else if (outcome.success === false) group.failure += 1;
-      else group.unknown += 1;
+      var judged = outcome.success !== null && usesDefinition(outcome, cfg);
+      if (outcome.success === null) group.unknown += 1;
+      else if (!judged) group.definition += 1;
+      else if (outcome.success) group.success += 1;
+      else group.failure += 1;
       var p = calibrationChance(entry.prediction);
-      if (entry.before_outcome && outcome.success !== null && p !== null) group.chances.push(p);
+      if (entry.before_outcome && judged && p !== null) group.chances.push(p);
     });
     /** @type {Rec[]} */
     var out = [];
@@ -25567,7 +25756,7 @@
       var ps = group.chances;
       out.push({
         label: group.label, recorded: group.recorded, drilled: group.drilled, success: group.success,
-        failure: group.failure, unknown: group.unknown, known: known,
+        failure: group.failure, unknown: group.unknown, definition: group.definition, known: known,
         rate: known >= minimum && known ? pyRound(group.success / known, 3) : null,
         forecast_n: ps.length,
         forecast_mean: ps.length ? pyRound(calibrationSum(ps) / ps.length, 3) : null,
@@ -25643,10 +25832,14 @@
   function calibrationOddsSection(odds, cfg) {
     var section = calibrationSection('odds', phrase('calibration.odds_heading'));
     var paragraphs = section.paragraphs;
-    paragraphs.push(phrase('calibration.odds_intro', { rate: Number(cfg.odds.success_yield_m3_per_h) }));
-    if (!(odds.n || odds.no_odds || odds.unknown)) return section;
+    var rate = Number(cfg.odds.success_yield_m3_per_h);
+    paragraphs.push(phrase('calibration.odds_intro', { rate: rate }));
+    if (!(odds.n || odds.no_odds || odds.unknown || odds.definition)) return section;
     if (odds.no_odds || odds.unknown) {
       paragraphs.push(phrase('calibration.odds_left_out', { no_odds: odds.no_odds, unknown: odds.unknown }));
+    }
+    if (odds.definition) {
+      paragraphs.push(phrase('calibration.odds_definition', { n: odds.definition, rate: rate }));
     }
     if (odds.verdict === 'too_few') {
       paragraphs.push(phrase('calibration.odds_too_few', { n: odds.n, success: odds.successes,
@@ -25701,6 +25894,13 @@
     }
     section.paragraphs.push(phrase('calibration.hits_intro',
       { minimum: Math.trunc(Number(cfg.ledger.min_group)) }));
+    var other = pooled.filter(function (e) {
+      return e.outcome !== null && e.outcome.success !== null && !usesDefinition(e.outcome, cfg);
+    }).length;
+    if (other) {
+      section.paragraphs.push(phrase('calibration.hits_definition',
+        { n: other, rate: Number(cfg.odds.success_yield_m3_per_h) }));
+    }
     var tooFew = phrase('calibration.hits_too_few'), notForecast = phrase('calibration.hits_not_forecast');
     CALIBRATION_GROUPINGS.forEach(function (by) {
       var ids = CALIBRATION_HIT_TABLES[by];
@@ -25709,7 +25909,8 @@
           phrase('calibration.hits_col_failure'), phrase('calibration.hits_col_unknown'),
           phrase('calibration.hits_col_rate'), phrase('calibration.hits_col_forecast')],
         rows: hitRates(pooled, by, cfg).map(function (g) {
-          return [g.label, String(g.drilled), String(g.success), String(g.failure), String(g.unknown),
+          return [g.label, String(g.drilled), String(g.success), String(g.failure),
+            String(g.unknown + g.definition),
             g.rate !== null ? calibrationPercent(g.rate) : tooFew,
             g.forecast_mean !== null
               ? phrase('calibration.hits_forecast', { p: rangeShare(g.forecast_mean), n: g.forecast_n })
@@ -25919,7 +26120,8 @@
    * is the project's completion, or where the project holds no log the
    * outcome its ledger kept; its forecast the chance recorded before
    * drilling at the point it was drilled at; its identifier that point's,
-   * else one hashed from its reference, position and place.
+   * else one hashed from its reference, position and place, and from the
+   * identity of the project's ledger where it has one.
    * @param {Rec} site the project's site details
    * @param {DrillingLog|null} log
    * @param {PumpingAnalysis|null} analysis
@@ -25973,7 +26175,7 @@
     var rid = drilled !== null ? drilled.id
       : pointId('borehole ' + ref, at.easting === undefined ? null : at.easting,
         at.northing === undefined ? null : at.northing, at.utm_zone === undefined ? null : at.utm_zone,
-        community, district);
+        community, district, held.project_id || '');
     return {
       borehole_ref: ref,
       checklist: checklist,
@@ -27111,14 +27313,12 @@
    * and how many drilled entries were left out and why */
   function setJudged(pooled, cfg) {
     var kept = [], unknown = 0, definition = 0;
-    var rate = pyRound(cfg.odds.success_yield_m3_per_h, 3);
     pooled.forEach(function (entry) {
       var outcome = entry.outcome;
       if (!outcome) return;
       if (outcome.success === null || outcome.success === undefined) {
         unknown += 1;
-      } else if (outcome.success_yield_m3_per_h === null ||
-          !(Math.abs(outcome.success_yield_m3_per_h - rate) < 1e-9)) {
+      } else if (!usesDefinition(outcome, cfg)) {
         definition += 1;
       } else {
         kept.push(entry);
@@ -28548,41 +28748,70 @@
     return record;
   }
 
+  /* photos._reading: a recorded number as a report prints it, a finite
+   * number no further from zero than limit, else null; a number written as
+   * text is not one */
+  function photoReading(value, limit) {
+    return typeof value === 'number' && isFinite(value) && Math.abs(value) <= limit ? value : null;
+  }
+
+  /* photos._text: text the record keeps, or '' for anything but text */
+  function photoText(value) {
+    return typeof value === 'string' ? value : '';
+  }
+
+  /* photos._accuracy: a position's accuracy as a report prints it */
+  function photoAccuracy(value) {
+    if (value === null || value === undefined) return phrase('evidence.accuracy_unknown');
+    var metres = photoReading(value, Infinity);
+    if (metres === null || metres < 0.0) return phrase('evidence.accuracy_unreadable');
+    return phrase('evidence.accuracy_m', { m: metres });
+  }
+
   /**
    * A provenance record as a report prints it: {time, position, hash}. A
-   * photograph with no record gets the catalogue's "no provenance recorded"
-   * and nothing else, so nothing is printed that was never recorded.
+   * photograph with no record (or one whose hash is not text) gets the
+   * catalogue's "no provenance recorded" and nothing else, so nothing is
+   * printed that was never recorded. A position is printed only where its
+   * latitude and longitude are numbers, finite and within 90 and 180
+   * degrees, and its accuracy only where it is a finite number not below
+   * zero; a position or an accuracy that cannot be read so, as a
+   * hand-edited project file can hold, is said to be unreadable.
    * @param {Rec|null|undefined} record
    * @returns {{time: string, position: string, hash: string}}
    */
   function describePhotoProvenance(record) {
-    if (!record || typeof record !== 'object' || !record.sha256) {
+    if (!isRecord(record) || !photoText(/** @type {Rec} */ (record).sha256)) {
       return { time: phrase('evidence.no_provenance'), position: '', hash: '' };
     }
+    var rec = /** @type {Rec} */ (record);
     var timeSources = phraseTable('evidence.time_sources');
-    var shownTime = String(record.taken_at || '').replace(/T/g, ' ').replace(/Z$/, '');
+    var shownTime = photoText(rec.taken_at).replace(/T/g, ' ').replace(/Z$/, '');
+    var timeSource = photoText(rec.time_source);
     var time = phrase('evidence.time', { time: shownTime,
-      source: own(timeSources, record.time_source) ? timeSources[record.time_source] : '' });
+      source: own(timeSources, timeSource) ? timeSources[timeSource] : '' });
     var where;
-    var position = record.position;
-    if (position && typeof position === 'object' && position.lat !== null &&
-        position.lat !== undefined) {
-      var sources = phraseTable('evidence.position_sources');
-      var accuracy = position.accuracy_m;
-      where = phrase('evidence.position', {
-        lat: Number(position.lat), lon: Number(position.lon),
-        accuracy: accuracy === null || accuracy === undefined
-          ? phrase('evidence.accuracy_unknown')
-          : phrase('evidence.accuracy_m', { m: Number(accuracy) }),
-        source: own(sources, record.position_source) ? sources[record.position_source] : '',
-      });
+    var position = rec.position;
+    var notes = phraseTable('evidence.position_notes');
+    var blank = function (/** @type {*} */ v) { return v === null || v === undefined; };
+    if (blank(position) || (isRecord(position) && blank(position.lat) && blank(position.lon))) {
+      var note = photoText(rec.position_note);
+      where = own(notes, note) ? notes[note] : notes.not_requested;
     } else {
-      var notes = phraseTable('evidence.position_notes');
-      where = own(notes, record.position_note || '') ? notes[record.position_note]
-        : notes.not_requested;
+      /** @type {Rec} */
+      var held = isRecord(position) ? position : {};
+      var lat = photoReading(held.lat, 90), lon = photoReading(held.lon, 180);
+      if (lat === null || lon === null) {
+        where = notes.unreadable;
+      } else {
+        var sources = phraseTable('evidence.position_sources');
+        var source = photoText(rec.position_source);
+        where = phrase('evidence.position', { lat: lat, lon: lon, accuracy: photoAccuracy(held.accuracy_m),
+          source: own(sources, source) ? sources[source] : '' });
+      }
     }
     return { time: time, position: where,
-      hash: phrase('evidence.hash', { short: String(record.sha256).slice(0, 16) }) };
+      hash: phrase('evidence.hash', { short: String(rec.sha256).slice(0, 16) }) };
   }
 
   Object.assign(C, {
@@ -38331,13 +38560,6 @@
     return { section: section, found: { total: near.length, working: working, serving: serving, rehab: rehab } };
   }
 
-  /* a finite number, or null for anything that is not one: portfolio._num */
-  function deskNumber(value) {
-    if (value === null || value === undefined || typeof value === 'boolean') return null;
-    var number = typeof value === 'number' ? value : Number(String(value).trim() === '' ? NaN : value);
-    return isFinite(number) ? number : null;
-  }
-
   function deskWaterQuality(summary) {
     var read = summaryVerdictState(summary);
     var water = read[0] && own(VERDICT_SHORT, read[0]) ? String(VERDICT_SHORT[read[0]]) : '';
@@ -38386,7 +38608,7 @@
           phrase('desk_study.projects_col_status'), phrase('desk_study.projects_col_depth'),
           phrase('desk_study.projects_col_yield'), phrase('desk_study.projects_col_water')],
         rows: near.map(function (item, i) {
-          var depth = deskNumber(item[1].total_depth_m), yieldM3h = deskNumber(item[1].safe_yield_m3_per_h);
+          var depth = summaryNum(item[1].total_depth_m), yieldM3h = summaryNum(item[1].safe_yield_m3_per_h);
           return [portfolioSiteLabel(item[1]), pyFixed(item[0] / 1000.0, 1), statusLabel(statuses[i]),
             depth ? pyFixed(depth, 1) : '', yieldM3h ? pyFixed(yieldM3h, 2) : '', deskWaterQuality(item[1])];
         }),

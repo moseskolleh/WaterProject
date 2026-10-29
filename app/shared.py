@@ -1274,8 +1274,12 @@ def ledger_site(soundings) -> SimpleNamespace:
 
 def record_survey_predictions(soundings, interps, ranges, odds) -> list[str]:
     """Write the survey's predictions into the project's ledger, as recorded
-    before drilling unless the project holds a drilling log, and return the
-    ids of the points whose forecast was kept as it was made."""
+    before drilling unless the borehole has been drilled, and return the ids
+    of the points whose forecast was kept as it was made. The borehole has
+    been drilled when the project holds a drilling log or a pumping test (a
+    test is run in a drilled hole), when the ledger holds an outcome already,
+    or when the point drilled has been chosen (``record_predictions`` reads
+    those two itself)."""
     import datetime
 
     from groundwater.ledger import record_predictions, survey_predictions
@@ -1285,9 +1289,10 @@ def record_survey_predictions(soundings, interps, ranges, odds) -> list[str]:
     predictions = survey_predictions(interps, ranges, odds, ledger_site(soundings), config,
                                      teams=[sounding.site.supervisor for sounding in soundings],
                                      siting=assess_siting(interps, config.ves))
+    drilled = (st.session_state.get("drilling_log") is not None
+               or st.session_state.get("pump_analysis") is not None)
     ledger, kept = record_predictions(current_ledger(), predictions, datetime.date.today().isoformat(),
-                                      st.session_state.get("drilling_log") is not None,
-                                      groundwater.__version__)
+                                      drilled, groundwater.__version__)
     st.session_state["prediction_ledger"] = ledger
     return kept
 

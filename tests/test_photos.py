@@ -158,6 +158,57 @@ def test_the_report_states_each_source():
     assert device["position"] == phrase_table("evidence.position_notes")["unsupported"]
 
 
+_UNREADABLE = phrase_table("evidence.position_notes")["unreadable"]
+
+
+@pytest.mark.parametrize(("position", "shown"), [
+    ({"lat": "8.5N", "lon": -12.1, "accuracy_m": None}, _UNREADABLE),
+    ({"lat": "8.5", "lon": "-12.1"}, _UNREADABLE),
+    ({"lat": 8.5, "lon": None}, _UNREADABLE),
+    ({"lat": 95.0, "lon": -12.1}, _UNREADABLE),
+    ({"lat": 8.5, "lon": -181.0}, _UNREADABLE),
+    ({"lat": float("nan"), "lon": -12.1}, _UNREADABLE),
+    ({"lat": True, "lon": -12.1}, _UNREADABLE),
+    ("8.5N, 12.1W", _UNREADABLE),
+    ([8.5, -12.1], _UNREADABLE),
+    ({"lat": None, "lon": -12.1}, _UNREADABLE),
+    (0, _UNREADABLE),
+    ({"lat": 8.5, "lon": -12.1, "accuracy_m": "5 m"}, "8.500000, -12.100000, accuracy could not be read ("),
+    ({"lat": 8.5, "lon": -12.1, "accuracy_m": -3}, "8.500000, -12.100000, accuracy could not be read ("),
+    ({"lat": 8.5, "lon": -12.1, "accuracy_m": float("inf")}, "8.500000, -12.100000, accuracy could not be read ("),
+    ({"lat": 8.5, "lon": -12.1}, "8.500000, -12.100000, accuracy not recorded ("),
+    ({"lat": -90, "lon": 180, "accuracy_m": 4}, "-90.000000, 180.000000, within 4 m ("),
+    ({"lat": None, "lon": None}, phrase_table("evidence.position_notes")["refused"]),
+    ({}, phrase_table("evidence.position_notes")["refused"]),
+    (None, phrase_table("evidence.position_notes")["refused"]),
+])
+def test_a_hand_edited_position_is_printed_only_when_it_reads(position, shown):
+    """A project file edited by hand can hold anything where a position
+    belongs. Python raised on '8.5N' and the browser printed 'nan'; both now
+    print a position only when it is one, and say when it could not be read."""
+    record = {"sha256": "ab" * 32, "taken_at": "2026-10-03T09:00:00Z", "time_source": "device",
+              "position": position, "position_source": "exif", "position_note": "refused"}
+    assert describe_provenance(record)["position"].startswith(shown)
+
+
+def test_a_code_that_is_not_text_answers_no_entry():
+    record = {"sha256": "ab" * 32, "taken_at": "2026-10-03T09:00:00Z", "time_source": ["exif"],
+              "position": None, "position_note": ["refused"]}
+    shown = describe_provenance(record)
+    assert shown["position"] == phrase_table("evidence.position_notes")["not_requested"]
+    assert shown["time"] == "2026-10-03 09:00:00 ()"
+
+
+def test_a_time_or_a_hash_that_is_not_text_is_not_printed():
+    """A hand-edited time that is a number or a list prints no time, rather
+    than a number each engine writes its own way; a hash that is not text
+    is no record at all."""
+    record = {"sha256": "ab" * 32, "taken_at": 20261003, "time_source": "exif", "position": None}
+    assert describe_provenance(record)["time"] == " (camera clock, from the photograph's EXIF)"
+    for sha in (12345, ["ab" * 32], True):
+        assert describe_provenance(dict(record, sha256=sha))["hash"] == ""
+
+
 @pytest.mark.parametrize("record", [None, {}, {"taken_at": "2024-01-01T00:00:00"}])
 def test_a_photograph_without_a_record_is_said_to_have_none(record):
     """Nothing is filled in: a photograph from before this step says so."""

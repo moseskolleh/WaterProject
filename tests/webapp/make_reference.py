@@ -3012,6 +3012,29 @@ def build() -> dict:
         "detail": [list(row) for row in site_detail(summaries[1])],
         "one_pager": site_one_pager(summaries[1]),
     }
+    # summaries as hand-edited files hold them: numbers written as text the
+    # two engines read alike, and texts neither reads ("52 m", "0x10", a
+    # blank, an exponent past the largest number), which leave a cell blank
+    # where the browser printed NaN
+    edited = [
+        {"community": "Rokel", "district": "Port Loko", "status": "Completed", "total_depth_m": "52 m",
+         "safe_yield_m3_per_h": "1.2 m3/h", "cost_per_meter_usd": " 85 ", "easting": "235000",
+         "northing": " 963000 ", "utm_zone": "28.0"},
+        {"community": "Kuntoloh", "total_depth_m": "0x10", "safe_yield_m3_per_h": "  ",
+         "cost_per_meter_usd": "1_000", "easting": 778000.0, "northing": "abc", "status": "Dry hole"},
+        {"community": "Bo", "total_depth_m": "4.5e1", "safe_yield_m3_per_h": True, "cost_per_meter_usd": [],
+         "status": "", "easting": 778000.0, "northing": 946000.0, "utm_zone": "Zone 28"},
+        {"community": "Kenema", "total_depth_m": "1e999", "safe_yield_m3_per_h": "+.5", "cost_per_meter_usd": "5.",
+         "status": "Successful"},
+    ]
+    out["portfolio_edited"] = {
+        "summaries": edited,
+        "rows": clean(portfolio_rows(edited)),
+        "points": [[p["label"], clean(p["lat"]), clean(p["lon"]), p["status"]] for p in portfolio_points(edited)],
+        "stats": clean(portfolio_stats(edited)),
+        "details": [[list(row) for row in site_detail(s)] for s in edited],
+        "one_pagers": [site_one_pager(s) for s in edited],
+    }
 
     out["pdf_sheet"] = pdf_sheet_reference()
     out["extraction"] = extraction_reference()
@@ -4597,20 +4620,29 @@ LEDGER_DIRTY = [
     ]},
     {"drilled": "a5", "entries": [{"id": "a5", "point": {}, "prediction": {},
                                    "outcome": {"safe_yield_band_m3_per_h": [0.5, None]}}]},
+    # the ledger's identity: text is kept, anything else is none
+    {"project_id": "0a1b2c3d4e5f", "entries": []}, {"project_id": 7, "entries": []},
+    {"project_id": "", "entries": []}, {"project_id": ["a"], "drilled": None},
 ]
 
 #: Project files' top levels, as the schema is read from them and migrated.
 LEDGER_SCHEMAS = [{}, {"schema": 1}, {"schema": 2, "ledger": {"drilled": None, "entries": []}},
-                  {"schema": 3}, {"schema": 4}, {"schema": "2"}, {"schema": True}, {"version": 1}, {"schema": 0.5},
-                  {"schema": 2.7}, {"schema": None}]
+                  {"schema": 3}, {"schema": 4}, {"schema": 5}, {"schema": "2"}, {"schema": True}, {"version": 1},
+                  {"schema": 0.5}, {"schema": 2.7}, {"schema": None},
+                  # a schema 3 ledger keeps its ids and has no identity
+                  {"schema": 3, "issued": [], "ledger": {"drilled": None, "entries": [
+                      {"id": "a1", "point": {}, "prediction": {}, "before_outcome": True}]}}]
 
 #: Point identifiers: a name, a position and a place, a half metre that
-#: rounds to even, no position, and a name in another script.
+#: rounds to even, no position, and a name in another script; and in a
+#: ledger with an identity, or an empty one, which is none.
 LEDGER_IDS = [["VES 1", 708958.4, 926355.5, 28, "Rokel", "Port Loko"],
               ["VES 1", 708958.5, 926356.5, 28, "Rokel", "Port Loko"],
               ["VES 1", None, None, None, "", ""],
               ["VES 1", 708958.0, 926356.0, 28.0, "Rokel", ""],
-              ["Kpètèma 3", 166030.0, 930010.0, 29, "Kpètèma", "Bo"]]
+              ["Kpètèma 3", 166030.0, 930010.0, 29, "Kpètèma", "Bo"],
+              ["VES 1", None, None, None, "Rokel", "Port Loko", "0a1b2c3d4e5f"],
+              ["VES 1", 708958.4, 926355.5, 28, "Rokel", "Port Loko", ""]]
 
 
 def _ledger_run(ops: list) -> list:
@@ -4723,6 +4755,31 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
             {"op": "attach", "outcome": timbo},
             {"op": "record", "predictions": resurvey[:1], "on": "2026-12-02", "known": True},
         ],
+        "no_log": [
+            # a forecast with its outcome, recorded again while no log is
+            # loaded (removed, or only a pumping test in): kept as it was
+            # made, and a point added now is recorded after drilling
+            {"op": "record", "predictions": survey, "on": "2026-10-01", "known": False},
+            {"op": "attach", "outcome": dry},
+            {"op": "record", "predictions": resurvey + extra, "on": "2026-10-27", "known": False},
+            {"op": "attach", "outcome": None},
+        ],
+        "chosen": [
+            # the point drilled chosen before any log or outcome: the hole is
+            # drilled, so the forecasts are kept and a point added now is
+            # recorded after drilling
+            {"op": "record", "predictions": survey, "on": "2026-10-01", "known": False},
+            {"op": "choose", "id": 1},
+            {"op": "record", "predictions": resurvey + extra, "on": "2026-10-27", "known": False},
+        ],
+        "after_again": [
+            # recorded after drilling, then again with no log loaded, before
+            # and after its outcome is attached: after drilling throughout
+            {"op": "record", "predictions": survey[:1], "on": "2026-12-01", "known": True},
+            {"op": "record", "predictions": resurvey[:1], "on": "2026-12-05", "known": False},
+            {"op": "attach", "outcome": timbo},
+            {"op": "record", "predictions": survey[:1], "on": "2026-12-06", "known": False},
+        ],
         "across": [
             # a point in zone 28 near its eastern edge and a log written in
             # zone 29, the same place a few metres apart
@@ -4753,6 +4810,37 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
     pooled = L.pool_ledgers([tuple(item) for item in pool_items])
     header, rows = L.ledger_rows(pooled)
 
+    # copies of one project and two projects alike, each pooled in both
+    # orders: a save before the pumping test (the driller's word) and one
+    # after it (tested short); two tested saves that rank alike; and a dry
+    # hole and its replacement in one village, recorded a year apart at a
+    # point with no position
+    driller = next(o["expect"] for o in outcomes if o["log"] == "timbo" and o["analysis"] == "none")
+    tested = next(o["expect"] for o in outcomes if o["log"] == "timbo" and o["analysis"] == "tested")
+    one = L.record_predictions(L.empty_ledger(), survey[:1], "2026-01-10", False, "0.3.0")[0]
+    bare = [{"point": dict(survey[0]["point"], easting=None, northing=None), "prediction": survey[0]["prediction"]}]
+    village = [L.attach_outcome(L.record_predictions(L.empty_ledger(), bare, on, False, "0.3.0")[0], outcome)
+               for on, outcome in (("2025-02-01", dry), ("2026-02-01", timbo))]
+    # the same two holes in ledgers written before a ledger had an
+    # identity: one id, so one is counted, and the summary says it may be
+    # either an older record or two projects
+    legacy = [{"drilled": None, "entries": [dict(e, id=L.point_id(
+        e["point"]["sounding_id"], e["point"]["easting"], e["point"]["northing"], e["point"]["utm_zone"],
+        e["point"]["community"], e["point"]["district"])) for e in ledger["entries"]]} for ledger in village]
+    pool_pairs = {
+        "copies": [["Rokel, before the test", L.attach_outcome(one, driller)],
+                   ["Rokel, tested", L.attach_outcome(one, timbo)]],
+        "alike": [["Rokel", L.attach_outcome(one, tested)], ["Rokel again", L.attach_outcome(one, timbo)]],
+        "village": [["Rokel (Port Loko)", village[0]], ["Rokel (Port Loko)", village[1]]],
+        "legacy": [["Rokel (Port Loko)", legacy[0]], ["Rokel (Port Loko)", legacy[1]]],
+    }
+    pools = []
+    for name, pair in pool_pairs.items():
+        for order in (pair, pair[::-1]):
+            got = L.pool_ledgers([tuple(item) for item in order])
+            pools.append({"name": name, "items": order, "pooled": got, "counts": L.ledger_counts(got),
+                          "summary": L.ledger_summary(got)})
+
     on_file = copy.deepcopy(drilled[3]["ledger"])
     for entry in on_file["entries"]:
         if entry["outcome"] is not None:
@@ -4777,6 +4865,7 @@ def ledger_reference(rokel_interps, rokel_sites, short_ranges, rokel_odds) -> di
                  "header": header, "rows": rows, "none": list(L.ledger_rows([])),
                  "entry_header": L.entry_header(), "summary": L.ledger_summary(pooled),
                  "summary_none": L.ledger_summary([])},
+        "pools": pools,
         # a Streamlit project file holding a ledger with an outcome, a name
         # YAML writes escaped, positions left out and a quoted calibration,
         # as the browser's YAML reader has to read it
@@ -4902,12 +4991,19 @@ def calibration_reference() -> dict:
                                          _calibration_portfolio(6, 18, 0.8, "better")[0][1]["entries"]]}]],
         "undrilled": [["Rokel", {"entries": [dict(e, outcome=None) for e in
                                              _calibration_portfolio(7, 18, 0.8, "better")[0][1]["entries"]]}]],
+        # one borehole in three judged at another definition of success,
+        # which the odds and the hit rates count and leave out
+        "definition": [
+            [name, dict(ledger, entries=[
+                dict(e, outcome=dict(e["outcome"], success_yield_m3_per_h=3.0)) if e["outcome"] and k % 3 == 0 else e
+                for k, e in enumerate(ledger["entries"])])]
+            for name, ledger in _calibration_portfolio(8, 36, 0.8, "better")],
         "empty": [],
     }
     settings = [{}, {"min_boreholes": 3, "min_group": 2, "reliability_bins": 3},
                 {"min_boreholes": 40, "min_group": 12, "reliability_bins": 10}]
     # every portfolio under the defaults, and some under each of the others
-    others = {1: ("calibrated", "narrow", "few"), 2: ("wide", "priorless")}
+    others = {1: ("calibrated", "narrow", "few", "definition"), 2: ("wide", "priorless")}
     cases = []
     for name, items in portfolios.items():
         for k, overrides in enumerate(settings):
@@ -7371,9 +7467,28 @@ def photo_evidence_reference() -> dict:
         key: ("maybe" if n < 3 else "na") for n, key in enumerate(_critical)}}}
     gate["three_of_38"] = {"supervision": {"evidence": _photographed, "responses": {
         key: {"status": "yes"} for key in _photographed}}}
+    # records as a hand-edited project file can hold them: a position that
+    # is text, half a position, one out of range, not a number, an accuracy
+    # that is text or below zero, and codes that are not text
+    base = {"sha256": "ab" * 32, "taken_at": "2026-10-03T09:00:00Z", "time_source": "exif",
+            "position_source": "exif", "position_note": "refused"}
+    positions = [{"lat": "8.5N", "lon": -12.1, "accuracy_m": None}, {"lat": "8.5", "lon": "-12.1"},
+                 {"lat": 8.5, "lon": None}, {"lat": None, "lon": -12.1}, {"lat": 95.0, "lon": -12.1},
+                 {"lat": 8.5, "lon": -181.0}, {"lat": True, "lon": -12.1}, "8.5N, 12.1W", [8.5, -12.1], 0,
+                 {"lat": 8.5, "lon": -12.1, "accuracy_m": "5 m"}, {"lat": 8.5, "lon": -12.1, "accuracy_m": -3},
+                 {"lat": -90, "lon": 180, "accuracy_m": 4}, {"lat": None, "lon": None}, None, {}]
+    edited = [dict(base, position=position) for position in positions]
+    edited += [dict(base, position=None, position_note=["refused"], time_source=["exif"]),
+               dict(base, position={"lat": 8.5, "lon": -12.1}, position_source=["exif"]),
+               dict(base, position={"lat": 8.5, "lon": -12.1, "accuracy_m": True}),
+               dict(base, position={"lat": 8.5, "lon": -12.1, "accuracy_m": 0}),
+               dict(base, taken_at=20261003.5, position=None),
+               dict(base, taken_at=["2026-10-03"], position=None),
+               dict(base, sha256=12345), dict(base, sha256=["ab" * 32]), dict(base, sha256="")]
     return {
         "attached_at": attached,
         "cases": cases,
+        "hand_edited": [{"record": r, "shown": describe_provenance(r)} for r in edited],
         "no_record": describe_provenance(None),
         "gate": {
             name: [[r.key, r.state, r.detail]

@@ -216,7 +216,8 @@ def works_record(site, log, analysis, ledger, answers=None, metres=None, procure
     at, where that was recorded before drilling. Its identifier is that
     point's, so a file saved before this record and a later copy of it count
     the borehole once; a borehole paired with no point is identified by its
-    reference, position and place.
+    reference, position and place, and by the identity of the project's
+    ledger where it has one, as a ledger's points are.
     """
     config = config or Config()
     contractor = _name(getattr(site, "contractor", ""))
@@ -255,7 +256,7 @@ def works_record(site, log, analysis, ledger, answers=None, metres=None, procure
     else:
         at = outcome or {}
         rid = point_id("borehole " + ref, at.get("easting"), at.get("northing"), at.get("utm_zone"),
-                       community, district)
+                       community, district, held["project_id"] or "")
     return {
         "borehole_ref": ref,
         "checklist": dict(sorted(checklist.items())),

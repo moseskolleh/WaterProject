@@ -1929,6 +1929,30 @@ await withPage(async (page, base, consoleErrors) => {
       p[3] === R.portfolio.points[i][3]),
     `js ${JSON.stringify(parsed.portfolio.points)}\n     py ${JSON.stringify(R.portfolio.points)}`);
 
+  // --- Portfolio, over hand-edited summaries: a number written as text is
+  // read as Python's float() reads it, and anything else is a blank cell,
+  // never NaN in the table, the site detail or the brief
+  {
+    const PEd = R.portfolio_edited;
+    const edited = await page.evaluate((summaries) => {
+      const C = GWT.core;
+      return { rows: C.portfolioRows(summaries),
+        points: C.portfolioPoints(summaries).map((p) => [p.label, p.lat, p.lon, p.status]),
+        stats: C.portfolioStats(summaries), details: summaries.map((s) => C.portfolioSiteDetail(s)),
+        one_pagers: summaries.map((s) => C.portfolioOnePager(s)) };
+    }, PEd.summaries);
+    for (const key of ['rows', 'stats', 'details', 'one_pagers']) {
+      check(`portfolio, hand-edited summaries: ${key}`,
+        JSON.stringify(edited[key]) === JSON.stringify(PEd[key]),
+        `js ${JSON.stringify(edited[key])}\n     py ${JSON.stringify(PEd[key])}`);
+    }
+    check('portfolio, hand-edited summaries: points',
+      edited.points.length === PEd.points.length &&
+      edited.points.every((p, i) => p[0] === PEd.points[i][0] && close(p[1], PEd.points[i][1], 1e-9) &&
+        close(p[2], PEd.points[i][2], 1e-9) && p[3] === PEd.points[i][3]),
+      `js ${JSON.stringify(edited.points)}\n     py ${JSON.stringify(PEd.points)}`);
+  }
+
   // --- The unruled PDF field sheet ---
   // Both readers find this table from word positions rather than from ruling
   // lines, which is the case where the two implementations could most easily
@@ -2625,7 +2649,8 @@ await withPage(async (page, base, consoleErrors) => {
   const PE = R.photo_evidence;
   const photos = await page.evaluate((PE) => {
     const C = GWT.core, S = GWT.support;
-    const out = { cases: {}, no_record: C.describePhotoProvenance(null), gate: {} };
+    const out = { cases: {}, no_record: C.describePhotoProvenance(null), gate: {},
+      hand_edited: PE.hand_edited.map((c) => C.describePhotoProvenance(c.record)) };
     Object.keys(PE.cases).forEach((name) => {
       const c = PE.cases[name];
       const record = C.photoProvenance(S.base64ToBytes(c.b64),
@@ -2649,6 +2674,12 @@ await withPage(async (page, base, consoleErrors) => {
       canonical(photos.cases[name].shown) === canonical(PE.cases[name].shown),
       `js ${canonical(photos.cases[name].shown)}\n     py ${canonical(PE.cases[name].shown)}`);
   });
+  {
+    const failed = PE.hand_edited.map((c, i) => (canonical(photos.hand_edited[i]) === canonical(c.shown) ? ''
+      : `[${i}] js ${canonical(photos.hand_edited[i])}\n     py ${canonical(c.shown)}`)).filter(Boolean);
+    check(`photo provenance: hand-edited records, a position printed only when it reads (${PE.hand_edited.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+  }
   check('photo provenance: a photograph without a record is said to have none',
     canonical(photos.no_record) === canonical(PE.no_record),
     `js ${canonical(photos.no_record)}\n     py ${canonical(PE.no_record)}`);
@@ -4675,6 +4706,10 @@ await withPage(async (page, base, consoleErrors) => {
             rows: table.rows, none: [none.header, none.rows], entry_header: C.entryHeader(),
             summary: C.ledgerSummary(pooled), summary_none: C.ledgerSummary([]) };
         }),
+        pools: LG.pools.map((c) => attempt(() => {
+          const pooled = C.poolLedgers(c.items);
+          return { pooled: pooled, counts: C.ledgerCounts(pooled), summary: C.ledgerSummary(pooled) };
+        })),
         ids: LG.ids.map((c) => attempt(() => C.pointId.apply(null, c.args))),
         schemas: LG.schemas.map((c) => attempt(() => ({ schema: C.payloadSchema(c.payload),
           migrated: C.migratePayload(c.payload) }))),
@@ -4711,6 +4746,9 @@ await withPage(async (page, base, consoleErrors) => {
     held('ledger: pooled over files, counted and tabled', ledgerJs.pool, { pooled: LG.pool.pooled,
       counts: LG.pool.counts, header: LG.pool.header, rows: LG.pool.rows, none: LG.pool.none,
       entry_header: LG.pool.entry_header, summary: LG.pool.summary, summary_none: LG.pool.summary_none });
+    each('ledger: copies of one project, two projects alike and ledgers with no identity, pooled in both orders',
+      ledgerJs.pools,
+      LG.pools.map((c) => ({ pooled: c.pooled, counts: c.counts, summary: c.summary })));
     each('ledger: point identifiers', ledgerJs.ids, LG.ids.map((c) => c.expect));
     each('project file: schema read and migrated', ledgerJs.schemas, LG.schemas.map((c) => ({
       schema: c.schema, migrated: c.migrated })));

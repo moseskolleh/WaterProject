@@ -137,6 +137,35 @@ def _survey_point(before: bool, p: float = 0.62):
     return held
 
 
+def test_a_borehole_paired_with_no_point_carries_its_ledgers_identity(timbo):
+    """Two projects in one village, each surveyed at two points with no
+    position, whose boreholes share a reference and are paired with no
+    point: the identity of each project's ledger tells the two apart, as it
+    tells their points apart, and a ledger with none gives the identifier
+    it always did."""
+    def project(recorded_on):
+        interps = [SimpleNamespace(sounding_id=name, depth_to_basement_m=20.0, basement_not_resolved=False,
+                                   investigation_depth_m=60.0, water_zones=[(8.0, 20.0)], aquifer_thickness_m=12.0,
+                                   max_drilling_depth_m=35.0, drilling_depth_capped=False, fit_error_percent=3.0,
+                                   site_easting=None, site_northing=None, layers=[]) for name in ("VES 1", "VES 2")]
+        survey = L.survey_predictions(interps, None, None, SimpleNamespace(community="Dr Timbo",
+                                                                            district="Port Loko", utm_zone=28))
+        return L.record_predictions(L.empty_ledger(), survey, recorded_on, False, "0.3.0")[0]
+
+    first, second = project("2017-01-10"), project("2018-01-10")
+    records = [SC.works_record(_site(), timbo, None, ledger) for ledger in (first, second)]
+    assert [r["forecast"] for r in records] == [None, None], "paired with no point"
+    assert records[0]["id"] == L.point_id("borehole BH-1", timbo.site.easting, timbo.site.northing,
+                                          timbo.site.utm_zone, "Dr Timbo", "Port Loko", first["project_id"])
+    assert records[0]["id"] != records[1]["id"]
+    assert len(SC.scorecard_boreholes([("2017", records[0], first), ("2018", records[1], second)])) == 2
+    # copies of one project share it
+    assert SC.works_record(_site(), timbo, None, first)["id"] == records[0]["id"]
+    legacy = dict(first, project_id=None)
+    assert SC.works_record(_site(), timbo, None, legacy)["id"] == L.point_id(
+        "borehole BH-1", timbo.site.easting, timbo.site.northing, timbo.site.utm_zone, "Dr Timbo", "Port Loko")
+
+
 def test_the_forecast_is_the_chance_recorded_before_drilling_at_the_point_drilled(timbo):
     held = _survey_point(before=True)
     record = SC.works_record(_site(), timbo, None, held)

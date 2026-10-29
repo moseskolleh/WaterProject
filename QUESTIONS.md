@@ -546,3 +546,38 @@ need real project inputs or decisions to finish calibrating it.
    typed per attempt, so a dry attempt pays it as a working one does; say
    whether the programme's access costs (a road built once, say) are
    better typed once for the area.
+
+30. **The ledger's identity, which copy a pool keeps, and the definition
+   of success the calibration scores at (added with the ledger,
+   calibration and photograph fixes).** Each of these is a choice made
+   here, stated where it is made (`groundwater/ledger.py`,
+   `groundwater/calibration.py`, `groundwater/photos.py`), and wants the
+   owner's confirmation. (a) A ledger's identity is worked out from the
+   day and the points of its first recording, not drawn at random, so the
+   same recording gives the same file. Two surveys recorded on the same
+   day at points with the same names and places therefore share one
+   identity and pool as one project; and two project files made
+   separately from one survey on different days (one in each app, say)
+   are two projects, so a borehole recorded in both counts twice. A
+   random identity, made once with the project and kept in its file,
+   would part the first and not the second, and give a file that differs
+   each time it is made. (b) A file saved before ledgers had an identity
+   keeps none, and nothing in it tells copies of one project from two
+   projects whose points share a name and a place, so such a pool counts
+   one borehole and says that it may be either. (c) Between copies of one
+   point, a pool keeps the one whose outcome is best established before
+   the one recorded before drilling: a tested save recorded after
+   drilling wins over a forecast whose save holds only the driller's
+   word, and that forecast is lost to the calibration. Joining the
+   forecast of one copy to the outcome of the other would keep both, from
+   two files. (d) An outcome judged at another definition of success than
+   the one in force, or recording none, is left out of the chance of
+   success and the hit rates, as a calibration set leaves it out, rather
+   than judged again from its tested yield at the definition in force;
+   and the definition a forecast's chance was worked out at is not
+   checked. (e) Choosing the point drilled counts as saying the borehole
+   is drilled, so predictions recorded after that are not forecasts. (f)
+   A photograph's position written as text ("8.5") is not read, as the
+   ledger reads no number written as text, while a portfolio summary's
+   numbers written as text are read as Python's `float` reads them
+   (ASCII digits only, so both apps read the same texts).

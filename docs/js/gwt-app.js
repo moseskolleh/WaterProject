@@ -153,7 +153,7 @@
        * step 5.1): C.cleanLedger's shape. The project file carries it at its
        * top level, as the Python app's file does, so either app's portfolio
        * can pool it. */
-      ledger: { drilled: null, entries: [] },
+      ledger: { drilled: null, entries: [], project_id: null },
       /* the issue record of every document issued from the project (PLAN.md
        * step 8.1), C.cleanIssueRecords's shape, likewise at the top of the
        * project file */
@@ -1579,16 +1579,19 @@
   }
 
   /* The survey's predictions written into the ledger, as recorded before
-   * drilling unless the project holds a drilling log; the ids of the points
-   * whose forecast was kept as it was made. */
+   * drilling unless the borehole has been drilled: the project holds a
+   * drilling log or a pumping test (a test is run in a drilled hole), the
+   * ledger holds an outcome already, or the point drilled has been chosen
+   * (recordPredictions reads those two itself). The ids of the points whose
+   * forecast was kept as it was made. */
   function recordSurveyPredictions() {
     var interps = derived.interpretations || [];
     if (!interps.length) return [];
     var cfg = config();
     var predictions = C.surveyPredictions(interps, (derived.inversions || []).map(rangeFor),
       surveyOdds(), ledgerSite(), cfg, surveyTeams(interps), C.assessSiting(interps, cfg.ves));
-    var got = C.recordPredictions(currentLedger(), predictions, localDate(), !!derived.log,
-      (GWT.data || {}).version || '');
+    var got = C.recordPredictions(currentLedger(), predictions, localDate(),
+      !!derived.log || !!derived.analysis, (GWT.data || {}).version || '');
     store.set('ledger', got.ledger);
     return got.kept;
   }
@@ -1609,12 +1612,7 @@
     var ledger = currentLedger();
     var entries = ledger.entries;
     var body = [
-      el('p.muted', 'What the survey predicts at each point, written down now, so it can be set ' +
-        'beside what the borehole finds and the method can learn from the holes drilled with ' +
-        'it. A prediction recorded before drilling is kept as it was made; one recorded once a ' +
-        'drilling log is loaded is marked as recorded after drilling. Building the geophysical ' +
-        'report records its predictions too. The ledger is saved in the project file, and the ' +
-        'Portfolio page pools it across projects.'),
+      el('p.muted', C.phrase('ledger.page_intro')),
       el('div.btn-row', [button('Record the survey\'s predictions', function () {
         var n = (derived.interpretations || []).length;
         var kept = recordSurveyPredictions();

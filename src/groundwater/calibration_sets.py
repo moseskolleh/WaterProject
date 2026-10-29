@@ -72,7 +72,7 @@ from bisect import bisect_left, bisect_right
 import yaml
 
 from .config import Config, VESConfig
-from .ledger import SUITABILITY_PARTS, _name, _share
+from .ledger import SUITABILITY_PARTS, _name, _share, uses_definition
 from .text import phrase, phrase_table
 
 __all__ = [
@@ -133,12 +133,6 @@ def _round(value: float, digits: int) -> float:
     return round(float(value), digits)
 
 
-def _uses_definition(outcome: dict, config: Config) -> bool:
-    """Whether the borehole was judged at the definition of success in force."""
-    judged = outcome["success_yield_m3_per_h"]
-    return judged is not None and abs(judged - _round(config.odds.success_yield_m3_per_h, 3)) < 1e-9
-
-
 def _judged(pooled: list[dict], config: Config) -> tuple[list[dict], dict]:
     """The drilled entries whose success is known at the definition in
     force, and how many drilled entries were left out and why."""
@@ -149,7 +143,7 @@ def _judged(pooled: list[dict], config: Config) -> tuple[list[dict], dict]:
             continue
         if outcome["success"] is None:
             unknown += 1
-        elif not _uses_definition(outcome, config):
+        elif not uses_definition(outcome, config):
             definition += 1
         else:
             kept.append(entry)

@@ -143,6 +143,10 @@ def test_a_point_id_holds_to_the_metre_and_to_the_place():
     # two surveys whose soundings share a name and carry no position differ by place
     assert L.point_id("VES 1", None, None, None, "Rokel", "") != L.point_id("VES 1", None, None, None, "Bo", "")
     assert len(a) == 12 and int(a, 16) >= 0
+    # and by the identity of the ledger they are recorded in; none is the old id
+    assert L.point_id("VES 1", None, None, None, "Rokel", "", "a1b2") != L.point_id("VES 1", None, None, None,
+                                                                                     "Rokel", "")
+    assert L.point_id("VES 1", None, None, None, "Rokel", "", "") == L.point_id("VES 1", None, None, None, "Rokel")
 
 
 # ------------------------------------------------------------------ outcome
@@ -228,6 +232,96 @@ def test_an_entry_keeps_its_outcome_through_a_new_recording():
                                         "0.3.0")
     assert kept == [] and ledger["entries"][0]["prediction"]["depth_to_basement_m"] == 12.0
     assert ledger["entries"][0]["outcome"] is not None and ledger["entries"][0]["pairing"] is not None
+
+
+def test_a_forecast_with_its_outcome_is_kept_while_no_log_is_loaded():
+    """The ledger keeps an outcome when the log is not loaded (removed, not
+    rebuilt from the file, or only a pumping test in so far). Recording
+    again then must neither replace the forecast nor score a prediction made
+    after the result was known."""
+    ledger, _ = L.record_predictions(L.empty_ledger(), _survey(_interp()), "2026-01-10", False, "0.3.0")
+    ledger = L.attach_outcome(ledger, L.completion_outcome(_log(), _analysis(0.3)))
+    again, kept = L.record_predictions(ledger, _survey(_interp(depth_to_basement_m=40.0)), "2026-10-27", False,
+                                       "0.3.0")
+    entry = again["entries"][0]
+    assert kept == [entry["id"]] and entry == ledger["entries"][0], "the forecast is kept as it was made"
+    # a point added to the survey now is recorded after drilling
+    more, _ = L.record_predictions(ledger, _survey(_interp(sounding_id="VES 5", site_easting=709400.0)),
+                                   "2026-10-27", False, "0.3.0")
+    assert [e["before_outcome"] for e in more["entries"]] == [True, False]
+
+
+def test_a_point_chosen_as_drilled_says_the_borehole_is_drilled():
+    """With no log loaded and no outcome attached yet, a person who has
+    chosen the point drilled has said the hole is drilled: the forecasts
+    are kept, and a point recorded now is recorded after drilling."""
+    ledger, _ = L.record_predictions(L.empty_ledger(), _survey(_interp()), "2026-01-10", False, "0.3.0")
+    chosen = dict(ledger, drilled=ledger["entries"][0]["id"])
+    again, kept = L.record_predictions(chosen, _survey(_interp(depth_to_basement_m=40.0),
+                                                       _interp(sounding_id="VES 5", site_easting=709400.0)),
+                                       "2026-10-27", False, "0.3.0")
+    assert kept == [ledger["entries"][0]["id"]] and again["entries"][0] == ledger["entries"][0]
+    assert [e["before_outcome"] for e in again["entries"]] == [True, False]
+    assert again["drilled"] == ledger["entries"][0]["id"]
+    # with no point chosen the same recording replaces the forecast, as before
+    plain, kept = L.record_predictions(ledger, _survey(_interp(depth_to_basement_m=40.0)), "2026-10-27", False,
+                                       "0.3.0")
+    assert kept == [] and plain["entries"][0]["prediction"]["depth_to_basement_m"] == 40.0
+    assert plain["entries"][0]["before_outcome"] is True
+
+
+def test_a_new_recording_never_makes_a_prediction_earlier():
+    """An entry recorded after drilling stays so when it is recorded again
+    with no log loaded, whether or not it holds the outcome, so it is never
+    scored as a forecast."""
+    from groundwater.calibration import forecast_entries
+
+    ledger, _ = L.record_predictions(L.empty_ledger(), _survey(_interp()), "2026-12-01", True, "0.3.0")
+    drilled = L.attach_outcome(ledger, L.completion_outcome(_log(), _analysis(2.3)))
+    for held in (ledger, drilled):
+        again, kept = L.record_predictions(held, _survey(_interp(depth_to_basement_m=12.0)), "2026-12-05", False,
+                                           "0.3.0")
+        entry = again["entries"][0]
+        assert kept == [] and entry["before_outcome"] is False and entry["recorded_on"] == "2026-12-05"
+        assert entry["outcome"] == held["entries"][0]["outcome"]
+        assert forecast_entries([dict(entry, project="P")]) == []
+
+
+def test_a_ledger_takes_its_identity_at_its_first_recording():
+    """The identity is a hash of the day and the points first recorded, kept
+    from then on; a ledger written before ledgers had one keeps none and its
+    ids, and so do the points it gains."""
+    first, _ = L.record_predictions(L.empty_ledger(), _survey(_interp()), "2026-10-01", False, "0.3.0")
+    identity = first["project_id"]
+    assert isinstance(identity, str) and len(identity) == 12
+    assert L.record_predictions(L.empty_ledger(), _survey(_interp()), "2026-10-01", False, "0.3.0")[0] == first
+    assert L.record_predictions(L.empty_ledger(), _survey(_interp()), "2026-10-02", False,
+                                "0.3.0")[0]["project_id"] != identity
+    point = first["entries"][0]["point"]
+    plain = L.point_id(point["sounding_id"], point["easting"], point["northing"], point["utm_zone"],
+                       point["community"], point["district"])
+    assert first["entries"][0]["id"] == L.point_id(*[point[k] for k in ("sounding_id", "easting", "northing",
+                                                                         "utm_zone", "community", "district")],
+                                                     identity) != plain
+    later, _ = L.record_predictions(first, _survey(_interp(), _interp(sounding_id="VES 2", site_easting=709100.0)),
+                                    "2026-11-01", False, "0.3.0")
+    assert later["project_id"] == identity and len(later["entries"]) == 2
+    assert L.clean_ledger(later)["project_id"] == identity
+    assert L.attach_outcome(later, L.completion_outcome(_log(), None))["project_id"] == identity
+    # a ledger with entries and no identity, as one saved before, keeps the ids
+    older = dict(L.clean_ledger(first), project_id=None, entries=[dict(first["entries"][0], id=plain)])
+    grown, _ = L.record_predictions(older, _survey(_interp(), _interp(sounding_id="VES 2", site_easting=709100.0)),
+                                    "2026-11-01", False, "0.3.0")
+    assert grown["project_id"] is None and len(grown["entries"]) == 2 and grown["entries"][0]["id"] == plain
+    assert grown["entries"][1]["id"] == L.point_id("VES 2", 709100.0, 926355.5, 28, "Rokel", "Port Loko")
+    # one whose identity was lost on the way still finds its points
+    lost, _ = L.record_predictions(dict(later, project_id=None), _survey(_interp(depth_to_basement_m=9.0)),
+                                   "2026-11-02", False, "0.3.0")
+    assert [e["id"] for e in lost["entries"]] == [e["id"] for e in later["entries"]]
+    assert lost["entries"][0]["prediction"]["depth_to_basement_m"] == 9.0
+    # a hand-edited identity that is not text is none
+    assert L.clean_ledger(dict(first, project_id=7))["project_id"] is None
+    assert L.clean_ledger(dict(first, project_id=""))["project_id"] is None
 
 
 # ----------------------------------------------------------------- pairing
@@ -377,15 +471,125 @@ def test_a_portfolio_pools_each_entry_once_keeping_the_fullest_copy():
     assert [(e["project"], e["point"]["sounding_id"]) for e in pooled] == [
         ("Rokel, drilled", "VES 1"), ("Rokel", "VES 2"), ("Kuntolo", "A")]
     counts = L.ledger_counts(pooled)
-    assert counts == {"points": 3, "projects": 3, "drilled": 1, "forecast": 1, "success": 0, "failure": 1,
-                      "unknown": 0}
+    # "Rokel" and "Rokel, drilled" are copies of one project: one ledger
+    # identity, so one project under two labels
+    assert counts == {"points": 3, "projects": 2, "drilled": 1, "forecast": 1, "success": 0, "failure": 1,
+                      "unknown": 0, "copies": 2, "copies_differ": 0, "copies_unsure": 0}
+    assert [e["copies"] for e in pooled] == [2, 2, 1] and pooled[0]["project_id"] == ledger["project_id"]
     header, rows = L.ledger_rows(pooled)
     assert len(header) == 8 and len(rows) == 1
     assert rows[0][:3] == ["Rokel, drilled", "VES 1", phrase("ledger.recorded_before")]
     assert rows[0][-1] == "0.4 m3/h tested, short of the 1 m3/h counted as success"
-    assert L.ledger_summary(pooled) == ("3 survey points predicted in 3 projects, 1 of them drilled; 1 of the "
-                                        "drilled points had their prediction recorded before drilling.")
+    assert L.ledger_summary(pooled) == (
+        "3 survey points predicted in 2 projects, 1 of them drilled; 1 of the drilled points had their "
+        "prediction recorded before drilling. 2 of the points were found in more than one file and are "
+        "counted once. The copy kept is the one whose borehole outcome is best established: a pumping test "
+        "over the driller's word, and the driller's word over an outcome not known yet or none. Between "
+        "copies alike in that, it is the one recorded before drilling, then the one with more of its outcome "
+        "recorded, then the later recording.")
     assert L.ledger_summary([]) == phrase("ledger.pool_none")
+
+
+def _copies(first: dict, second: dict) -> list[dict]:
+    """One survey point recorded once, before drilling, in two saves of one
+    project whose outcomes are ``first`` and ``second``."""
+    ledger = L.record_predictions(L.empty_ledger(), _survey(_interp()), "2026-01-10", False, "0.3.0")[0]
+    return [L.attach_outcome(ledger, outcome) for outcome in (first, second)]
+
+
+def test_the_pool_keeps_the_best_established_outcome_whatever_the_order():
+    """A save made before the pumping test (the driller's word of success)
+    and one after it (tested short): the tested copy is kept, in either
+    order, and the pool says the copies disagree."""
+    older, newer = _copies(L.completion_outcome(_log(), None), L.completion_outcome(_log(), _analysis(0.3)))
+    for order in ([older, newer], [newer, older]):
+        pooled = L.pool_ledgers([("Rokel", ledger) for ledger in order])
+        assert len(pooled) == 1
+        outcome = pooled[0]["outcome"]
+        assert (outcome["success"], outcome["success_basis"], outcome["safe_yield_m3_per_h"]) == (False, "tested", 0.3)
+        assert pooled[0]["copies"] == 2 and pooled[0]["copies_differ"] is True
+        counts = L.ledger_counts(pooled)
+        assert (counts["success"], counts["failure"], counts["copies"], counts["copies_differ"],
+                counts["copies_unsure"]) == (0, 1, 1, 1, 0)
+        assert L.ledger_summary(pooled).endswith(
+            "The copies of 1 point disagree on what the borehole found, so one of the files holds an older record.")
+        assert "identity" not in L.ledger_summary(pooled)
+    # an outcome not known yet loses to one the driller recorded, and a copy
+    # with no outcome to either
+    pending = L.completion_outcome(_log(status="Awaiting pumping test"), None)
+    for first, second, want in ((pending, L.completion_outcome(_log(status="Dry hole"), None), "recorded_failure"),
+                                (None, pending, None)):
+        a, b = _copies(first, second)
+        for order in ([a, b], [b, a]):
+            pooled = L.pool_ledgers([("Rokel", ledger) for ledger in order])
+            assert pooled[0]["outcome"] is not None and pooled[0]["outcome"]["success_basis"] == want
+
+
+def test_copies_alike_in_rank_are_kept_the_same_whatever_the_order():
+    """Two tested saves that disagree on the yield (a test analysed again)
+    rank alike; a fixed order of what they hold decides, not the files'."""
+    a, b = _copies(L.completion_outcome(_log(), _analysis(1.4)), L.completion_outcome(_log(), _analysis(0.9)))
+    one = L.pool_ledgers([("Rokel", a), ("Rokel again", b)])
+    two = L.pool_ledgers([("Rokel again", b), ("Rokel", a)])
+    assert one == two and one[0]["copies_differ"] is True
+    # the same copy under two labels takes the label first in that order
+    assert L.pool_ledgers([("B", a), ("A", a)])[0]["project"] == "A"
+    assert L.pool_ledgers([("A", a), ("B", a)])[0]["copies_differ"] is False
+
+
+def test_two_projects_in_one_village_keep_both_boreholes():
+    """A dry hole and its replacement surveyed in one village a year apart,
+    the VES sheets numbered again and carrying no coordinates: the points
+    share a name and a place, and only the ledgers' identities tell them
+    apart. Both boreholes are pooled and counted, as two projects."""
+    site = ns({"community": "Rokel", "district": "Port Loko", "utm_zone": 29})
+    survey = L.survey_predictions([_interp(site_easting=None, site_northing=None)], None, None, site)
+
+    def project(recorded_on, safe, ref):
+        ledger = L.record_predictions(L.empty_ledger(), survey, recorded_on, False, "0.3.0")[0]
+        return L.attach_outcome(ledger, L.completion_outcome(
+            _log(borehole_ref=ref, site={"easting": None, "northing": None, "utm_zone": None}), _analysis(safe)))
+
+    dry, replacement = project("2025-02-01", 0.1, "BH-2025"), project("2026-02-01", 1.4, "BH-2026")
+    assert dry["project_id"] != replacement["project_id"]
+    assert dry["entries"][0]["id"] != replacement["entries"][0]["id"]
+    for order in ([dry, replacement], [replacement, dry]):
+        pooled = L.pool_ledgers([("Rokel (Port Loko)", ledger) for ledger in order])
+        assert sorted(e["outcome"]["borehole_ref"] for e in pooled) == ["BH-2025", "BH-2026"]
+        counts = L.ledger_counts(pooled)
+        assert (counts["points"], counts["projects"], counts["drilled"], counts["success"], counts["failure"],
+                counts["copies"]) == (2, 2, 2, 1, 1, 0)
+
+
+def test_copies_from_ledgers_with_no_identity_that_disagree_are_said_to_be_unsure():
+    """Two files written before ledgers had an identity whose points share
+    a name and a place: copies of one project, or two projects, nothing in
+    them tells. One is counted, the best established, and the summary says
+    which two things the disagreement may be rather than calling it an
+    older record."""
+    site = ns({"community": "Rokel", "district": "Port Loko", "utm_zone": 29})
+    survey = L.survey_predictions([_interp(site_easting=None, site_northing=None)], None, None, site)
+
+    def legacy(recorded_on, safe, ref):
+        ledger = L.record_predictions(L.empty_ledger(), survey, recorded_on, False, "0.3.0")[0]
+        point = ledger["entries"][0]["point"]
+        plain = L.point_id(point["sounding_id"], point["easting"], point["northing"], point["utm_zone"],
+                           point["community"], point["district"])
+        ledger = {"drilled": None, "entries": [dict(ledger["entries"][0], id=plain)]}
+        return L.attach_outcome(ledger, L.completion_outcome(
+            _log(borehole_ref=ref, site={"easting": None, "northing": None, "utm_zone": None}), _analysis(safe)))
+
+    dry, replacement = legacy("2025-02-01", 0.1, "BH-2025"), legacy("2026-02-01", 1.4, "BH-2026")
+    assert dry["project_id"] is None and dry["entries"][0]["id"] == replacement["entries"][0]["id"]
+    for order in ([dry, replacement], [replacement, dry]):
+        pooled = L.pool_ledgers([("Rokel (Port Loko)", ledger) for ledger in order])
+        # both tested and alike in what they record: the later recording
+        assert [e["outcome"]["borehole_ref"] for e in pooled] == ["BH-2026"]
+        counts = L.ledger_counts(pooled)
+        assert (counts["copies"], counts["copies_differ"], counts["copies_unsure"]) == (1, 1, 1)
+        summary = L.ledger_summary(pooled)
+        assert summary.endswith(phrase("ledger.pool_copies_unsure", unsure=1))
+        assert phrase("ledger.pool_copies_differ", differ=1) not in summary
 
 
 # ------------------------------------------------------------ project file
@@ -394,8 +598,9 @@ def test_the_project_file_carries_the_ledger():
     ledger = L.attach_outcome(_two_points(), L.completion_outcome(_log(), None))
     saved = serialize_project({"meta_community": "Rokel", "prediction_ledger": ledger}, "0.3.0")
     payload = yaml.safe_load(saved)
-    # 2 from step 5.1, which brought the ledger; 3 from step 8.1
-    assert payload["schema"] == PROJECT_SCHEMA == 3
+    # 2 from step 5.1, which brought the ledger; 3 from step 8.1; 4 when
+    # the ledger came to carry an identity
+    assert payload["schema"] == PROJECT_SCHEMA == 4
     assert payload["ledger"] == L.clean_ledger(ledger)
     back = deserialize_project(saved)
     assert back["prediction_ledger"] == L.clean_ledger(ledger)
@@ -408,22 +613,46 @@ def test_a_schema_1_file_migrates_to_an_empty_ledger():
            "state": {"meta_community": "Rokel"}}
     assert payload_schema(old) == 1
     migrated = migrate_payload(old)
-    assert migrated["schema"] == 3 and migrated["ledger"] == L.empty_ledger() and migrated["issued"] == []
+    assert migrated["schema"] == 4 and migrated["ledger"] == L.empty_ledger() and migrated["issued"] == []
     assert old["schema"] == 1 and "ledger" not in old, "the file read is not changed"
     back = deserialize_project(yaml.safe_dump(old).encode())
     assert back["prediction_ledger"] == L.empty_ledger() and "warnings" not in back
 
 
-@pytest.mark.parametrize(("schema", "read"), [(None, 1), (1, 1), (2, 2), (3, 3), ("2", 1), (True, 1),
+@pytest.mark.parametrize(("schema", "read"), [(None, 1), (1, 1), (2, 2), (3, 3), (4, 4), ("2", 1), (True, 1),
                                               (0.5, 1), (2.7, 2), (float("inf"), 1)])
 def test_the_schema_a_file_was_saved_in(schema, read):
     payload = {} if schema is None else {"schema": schema}
     assert payload_schema(payload) == read
 
 
+def test_a_schema_3_file_keeps_its_ledger_and_its_ids():
+    """A ledger saved before ledgers had an identity loads as it was, with
+    none: its entries keep the ids they were saved with, and a recording
+    into it finds them and gives the points it gains the ids they always
+    had, so a copy saved before this change and one after pool as one."""
+    first, _ = L.record_predictions(L.empty_ledger(), _survey(_interp()), "2026-10-01", False, "0.3.0")
+    point = first["entries"][0]["point"]
+    plain = L.point_id(point["sounding_id"], point["easting"], point["northing"], point["utm_zone"],
+                       point["community"], point["district"])
+    held = {"drilled": None, "entries": [dict(first["entries"][0], id=plain)]}
+    old = {"format": "groundwater-toolkit-project", "schema": 3, "issued": [], "ledger": held,
+           "state": {"meta_community": "Rokel"}}
+    migrated = migrate_payload(old)
+    assert migrated["schema"] == 4 and migrated["ledger"] == held and old["schema"] == 3
+    back = deserialize_project(yaml.safe_dump(old).encode())
+    assert back["prediction_ledger"]["project_id"] is None and "warnings" not in back
+    assert [e["id"] for e in back["prediction_ledger"]["entries"]] == [plain]
+    again, _ = L.record_predictions(back["prediction_ledger"], _survey(_interp(depth_to_basement_m=9.0)),
+                                    "2026-10-02", False, "0.3.0")
+    assert again["project_id"] is None and [e["id"] for e in again["entries"]] == [plain]
+    saved = yaml.safe_load(serialize_project({"prediction_ledger": again}, "0.3.0"))
+    assert saved["schema"] == 4 and saved["ledger"]["project_id"] is None
+
+
 def test_a_file_of_a_later_schema_warns_and_an_unreadable_one_loads():
-    later = deserialize_project(b"schema: 4\nledger: {entries: []}\nstate: {meta_community: X}\n")
-    assert later["meta_community"] == "X" and "format 4" in later["warnings"][0]
+    later = deserialize_project(b"schema: 5\nledger: {entries: []}\nstate: {meta_community: X}\n")
+    assert later["meta_community"] == "X" and "format 5" in later["warnings"][0]
     odd = deserialize_project(b"schema: .inf\nstate: {meta_community: X}\n")
     assert odd["meta_community"] == "X" and "warnings" not in odd
 
@@ -471,10 +700,11 @@ for await (const line of createInterface({ input: process.stdin })) {
     const kept = held.kept;
     held = C.attachOutcome(Object.assign({}, held.ledger, { drilled: r.drilled }), outcome, cfg);
     const pooled = C.poolLedgers([['A', held], ['B', r.held]]);
+    const reversed = C.poolLedgers([['B', r.held], ['A', held]]);
     const table = C.ledgerRows(pooled);
     answer = { ok: { survey, outcome, kept, held, rows: held.entries.map((e) => C.entryRows(e)),
-      pooled, counts: C.ledgerCounts(pooled), table: [table.header, table.rows],
-      clean: C.cleanLedger(r.dirty) } };
+      pooled, reversed, counts: C.ledgerCounts(pooled), table: [table.header, table.rows],
+      summary: C.ledgerSummary(pooled), clean: C.cleanLedger(r.dirty) } };
   } catch (e) {
     answer = { threw: String(e && e.stack || e) };
   }
@@ -582,13 +812,31 @@ def _case(seed: int) -> dict:
     teams = [None, ["  A.  Kamara", ""], ["B. Sesay"] * n][seed % 3]
     contractor = ["", "  Sierra   Drilling ", ""][(seed // 3) % 3]
     earlier = {"drilled": None, "entries": []}
+    held_outcome = {"borehole_ref": "BH-0", "status": "Successful", "success": True,
+                    "success_basis": "recorded_success", "success_yield_m3_per_h": 1.0, "total_depth_m": 40.0}
     if seed % 4 == 1:
-        # an earlier recording of the same survey, made before drilling
+        # an earlier recording of the same survey, made before drilling by a
+        # toolkit whose ledgers had no identity
         earlier = {"drilled": None, "entries": [
             {"id": L.point_id(i["sounding_id"], i["site_easting"], i["site_northing"], 28, site["community"],
                               site["district"]),
              "point": {"sounding_id": i["sounding_id"]}, "prediction": {"depth_to_basement_m": 1.0},
              "before_outcome": True, "recorded_on": "2026-09-01", "toolkit": "0.2.0"} for i in interps]}
+        if seed % 8 == 5:
+            # with the borehole's outcome, which a ledger keeps while no log is loaded
+            earlier["entries"][0].update(outcome=held_outcome, pairing={"how": "only", "distance_m": None})
+        else:
+            # with the point drilled chosen and no outcome attached yet
+            earlier["drilled"] = earlier["entries"][0]["id"]
+    elif seed % 4 == 3:
+        # an earlier recording that gave the ledger its identity, on another
+        # day; or one made after drilling, holding the outcome
+        after = seed % 8 == 7
+        earlier = L.record_predictions(L.empty_ledger(), L.survey_predictions(ns(interps), ns(ranges), ns(odds),
+                                                                              ns(site)),
+                                       "2026-09-01", after, "0.2.0")[0]
+        if after:
+            earlier["entries"][0].update(outcome=held_outcome, pairing={"how": "only", "distance_m": None})
     return {"interps": interps, "ranges": ranges, "odds": odds, "site": site, "log": log, "analysis": analysis,
             "teams": teams, "contractor": contractor,
             "held": earlier, "known": log is not None and seed % 3 == 0,
@@ -608,10 +856,12 @@ def _python(case: dict) -> dict:
     held, kept = L.record_predictions(case["held"], survey, "2026-10-01", case["known"], "0.3.0")
     held = L.attach_outcome(dict(held, drilled=case["drilled"]), outcome, config)
     pooled = L.pool_ledgers([("A", held), ("B", case["held"])])
+    reversed_ = L.pool_ledgers([("B", case["held"]), ("A", held)])
     header, rows = L.ledger_rows(pooled)
     return {"survey": survey, "outcome": outcome, "kept": kept, "held": held,
-            "rows": [L.entry_rows(e) for e in held["entries"]], "pooled": pooled, "counts": L.ledger_counts(pooled),
-            "table": [header, rows], "clean": L.clean_ledger(case["dirty"])}
+            "rows": [L.entry_rows(e) for e in held["entries"]], "pooled": pooled, "reversed": reversed_,
+            "counts": L.ledger_counts(pooled), "table": [header, rows], "summary": L.ledger_summary(pooled),
+            "clean": L.clean_ledger(case["dirty"])}
 
 
 def _plain(value):
@@ -636,7 +886,19 @@ def test_the_seeded_cases_reach_every_rule():
     pairings = {e["pairing"]["how"] for t in told for e in t["held"]["entries"] if e["pairing"]}
     assert pairings == {"nearest", "only"}
     assert any(t["kept"] for t in told), "a forecast kept once the borehole is drilled"
+    cases = [_case(seed) for seed in SEEDS]
+    assert any(t["kept"] and not c["known"] for t, c in zip(told, cases, strict=True)), \
+        "a forecast kept while no log is loaded, as the ledger holds its outcome"
+    assert any(t["kept"] and not c["known"] and c["held"]["drilled"]
+               and not any(e.get("outcome") for e in c["held"]["entries"])
+               for t, c in zip(told, cases, strict=True)), "a forecast kept as the point drilled is chosen"
     assert any(not e["before_outcome"] for t in told for e in t["held"]["entries"])
+    assert any(t["held"]["project_id"] for t in told) and any(not t["held"]["project_id"] for t in told)
+    assert any(t["counts"]["copies"] for t in told) and any(t["counts"]["copies_unsure"] for t in told)
+    assert any(t["counts"]["copies_differ"] > t["counts"]["copies_unsure"] for t in told)
+    for t in told:
+        # the pool is the same whatever the order of its files
+        assert sorted(t["pooled"], key=lambda e: e["id"]) == sorted(t["reversed"], key=lambda e: e["id"])
     checks = {L.basement_check(e["prediction"], e["outcome"]) for t in told for e in t["held"]["entries"]}
     assert {"inside", "deeper", "shallower", "unreached_allowed", "no_band", None} <= checks
     assert any(t["outcome"] and t["outcome"]["safe_yield_band_m3_per_h"] for t in told)

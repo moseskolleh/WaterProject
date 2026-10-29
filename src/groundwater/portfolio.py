@@ -10,6 +10,9 @@ statistics. Pure and map-library-free, so it is unit-testable.
 from __future__ import annotations
 
 import math
+import numbers
+import re
+
 from .geo import infer_zone_for_sierra_leone, utm_boxes_hold_degrees, utm_to_geographic
 from .quality.assess import VERDICT_LONG, VERDICT_ORDER, VERDICT_SHORT
 from .site_status import (
@@ -100,19 +103,30 @@ def verdict_state(summary: dict) -> tuple[str | None, bool]:
     return _LEGACY_VERDICTS.get(raw), True
 
 
+#: A number written as text, as float() reads one: a sign, digits with an
+#: underscore allowed between two of them, a point and an exponent. Spelt
+#: out, with the white space trimmed, so the browser's twin (summaryNum)
+#: reads the same texts: float() alone also reads digits of other scripts,
+#: and JavaScript's Number() reads "0x10" and a blank as numbers.
+_NUMBER_TEXT = re.compile(r"[+-]?(\d(_?\d)*(\.(\d(_?\d)*)?)?|\.\d(_?\d)*)([eE][+-]?\d(_?\d)*)?", re.ASCII)
+
+
 def _num(value):
     """A finite float, or None for anything that is not one.
 
     Summaries come out of project files people edit by hand; one
     ``total_depth_m: 52 m`` in one of forty files used to take the whole
-    portfolio page down with a traceback that named no file. The browser
-    app already reads such a value as blank, so the two now agree.
+    portfolio page down with a traceback that named no file. A number
+    written as text (``"52"``) is read; anything else is blank, in the
+    browser's twin too.
     """
-    if value is None or isinstance(value, bool):
+    if isinstance(value, bool):
         return None
-    try:
+    if isinstance(value, numbers.Real):
         number = float(value)
-    except (TypeError, ValueError):
+    elif isinstance(value, str) and _NUMBER_TEXT.fullmatch(value.strip(" \t\n\r\f\v")):
+        number = float(value.strip(" \t\n\r\f\v"))
+    else:
         return None
     return number if math.isfinite(number) else None
 
