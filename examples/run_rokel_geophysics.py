@@ -28,6 +28,8 @@ from groundwater.reporting.geophysical import (
 )
 from groundwater.siting import survey_odds
 from groundwater.utils import fmt_num
+from groundwater.text import phrase_table
+from groundwater.verification import Issue, evidence_entry
 from groundwater.ves import (
     drilling_preference_table,
     interpret_model,
@@ -185,6 +187,11 @@ def main(out_root: Path | None = None) -> None:
         ),
         project.report_path("Rokel_Geophysical_Survey_Report.docx"),
         project.config,
+        # the manifest lists the sheets by their SHA-256 (PLAN.md step 8.1); a
+        # worked example is issued on no day
+        issue=Issue(evidence=tuple(
+            evidence_entry(phrase_table("verification.evidence_kinds")[role], path.name, path.read_bytes())
+            for role, path in (("ves", VES_FILE), ("ipi2win", IPI_FILE)))),
     )
     print(f"\nreport written to {report_path}")
 

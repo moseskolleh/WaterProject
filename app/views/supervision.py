@@ -27,7 +27,8 @@ from shared import (
     cached_checklists,
     cached_separation_distances,
     _next_step,
-    offer_download,
+    issue_for,
+    offer_document,
     report_gate,
     site_from_state,
     workdir,
@@ -254,11 +255,17 @@ def render() -> None:
                         f"{spc.measured}: {spc.message}")
 
             st.markdown("**Drilled metres reconciliation**")
+            # Blank until typed, as the browser's are. Both used to start at
+            # 60 m, so every project that opened this page saved 60 m logged
+            # and 60 m invoiced whether anybody had counted them or not, and
+            # the contractor scorecards read these two figures as the
+            # record. The keys are new for the same reason: a file saved
+            # before carries the 60 m under the old ones, which are not read.
             r1, r2 = st.columns(2)
             logged = r1.number_input("Metres in signed daily logs", 0.0,
-                                     2000.0, None, 1.0, key="fx_logged")
+                                     2000.0, None, 1.0, key="fx_logs_m")
             claimed = r2.number_input("Metres invoiced", 0.0, 2000.0, None,
-                                      1.0, key="fx_claimed")
+                                      1.0, key="fx_invoiced_m")
             if logged is not None and claimed is not None:
                 recon = metres_reconciliation_check(logged, claimed)
                 field_checks.append(recon)
@@ -313,8 +320,14 @@ def render() -> None:
                 ),
                 workdir() / "Supervision_Checklist_Report.docx",
                 app_config(),
+                # the photographs the report embeds: those attached to the
+                # checklist's items, in its order (PLAN.md step 8.1)
+                issue=issue_for("supervision", photos=[
+                    photo for photo in ((st.session_state.get("sup_evidence") or {}).get(item.item_id)
+                                        for item in checklist_items)
+                    if isinstance(photo, dict) and photo.get("b64")]),
             )
-            offer_download(report_path, "Download supervision report (.docx)")
+            offer_document(report_path, "Download supervision report (.docx)")
 
     _next_step("Build the handover →", "Handover",
                "Quality assessed. Close the project out with the community.")

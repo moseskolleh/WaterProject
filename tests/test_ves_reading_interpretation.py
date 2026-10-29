@@ -77,9 +77,11 @@ def test_a_resistive_layer_over_a_water_zone_is_a_cover_not_basement():
     assert ("Layer 2 is as resistive as fresh basement, but conductive ground lies below it "
             "in the fitted model, so it is read as resistive cover and not as bedrock."
             in cover.narrative)
-    # the suitability no longer swings on whether the cover is 2,900 or 5,000 ohm-m
+    # the suitability no longer swings on whether the cover is 2,900 or 5,000
+    # ohm-m; its fit is the 60 ohm-m layer's own, without the 0.2 m of
+    # basement that rounding the zone to 23 m used to add (82.7)
     a, b = assess_siting([cover])[0], assess_siting([compact])[0]
-    assert a.suitability == b.suitability == 82.7
+    assert a.suitability == b.suitability == 82.3
     assert "overburden of about 1 m" not in a.rationale
     assert cover.max_drilling_depth_m == compact.max_drilling_depth_m == 35.0
 

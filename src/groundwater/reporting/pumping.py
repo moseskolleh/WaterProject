@@ -17,6 +17,7 @@ from pathlib import Path
 
 
 from ..config import Config
+from ..verification import Issue
 from ..decisions import pump_decision, yield_decision
 from ..hydraulics.analysis import (
     LEVEL_FLAGS,
@@ -152,6 +153,7 @@ def build_pumping_report(
     inputs: PumpingReportInputs,
     out_path: str | Path,
     config: Config | None = None,
+    issue: Issue | None = None,
 ) -> Path:
     config = config or Config()
     analysis = inputs.analysis
@@ -165,7 +167,8 @@ def build_pumping_report(
     slug = safe_slug(test.borehole_ref or test.site.community, "bh")
     figures.mkdir(parents=True, exist_ok=True)
 
-    rb = ReportBuilder(config.style, title=f"Pumping Test Report - {site.community}")
+    rb = ReportBuilder(config.style, title=f"Pumping Test Report - {site.community}",
+                       kind="pumping", issue=issue, config=config)
     rb.cover(
         title_lines=["PUMPING TEST REPORT"],
         subtitle_lines=[
@@ -259,8 +262,11 @@ def build_pumping_report(
         # a page above a Cooper-Jacob line read inside the period and adopted
         # as the best available
         source = analysis.transmissivity_source
+        # the casing the analysis took: the sheet's, where it records one
+        casing_in = (getattr(analysis, "casing_diameter_in", None)
+                     or config.pumping.casing_diameter_in)
         rb.paragraph(
-            f"Casing storage: with a {config.pumping.casing_diameter_in:g} inch "
+            f"Casing storage: with a {casing_in:g} inch "
             "casing and the specific capacity at the end of the first step, the "
             "water standing in the casing supplies the pump for about the first "
             f"{analysis.casing_storage_min:.0f} minutes (Schafer's rule). Drawdown "

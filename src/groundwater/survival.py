@@ -17,9 +17,11 @@ module reads them as a time-to-failure analysis.
   before a decommissioning, and a decommissioning before a report.
 * **Censoring** is the registry's "unknown is not functional" rule written as
   a method. A borehole that has not failed is counted as working up to the
-  last report of it working and not after: its commissioning, or a visit
+  last report of it working and not after: its commissioning, a visit
   that would have recorded a failure had it found one (a sanitary or
-  routine inspection, or a water sample). A note says nothing either way.
+  routine inspection, or a water sample), or a report from its plate or by
+  SMS that it is working (PLAN.md step 7.1). A note, and a report that it
+  is slow or that its water tastes or looks wrong, says nothing either way.
   Not reported since is not taken as working. A borehole decommissioned
   without a failure is censored on that day; one with no report since its
   commissioning is censored at commissioning, and contributes no time.
@@ -98,8 +100,10 @@ _FAILURE = "failure"
 #: happened by their day.
 _MENDING = ("repair", "restored")
 #: Records of a visit that found the borehole working, or of its
-#: commissioning: a report of working.
-_WORKING = ("commissioned", "inspection", "routine_inspection", "water_sample")
+#: commissioning, or a report from its plate or by SMS that it is working
+#: (PLAN.md step 7.1): a report of working.
+_WORKING = ("commissioned", "inspection", "routine_inspection", "water_sample",
+            "reported_working")
 
 #: How a borehole's time ends: by a failure (the first three) or censored.
 ENDS = ("failure", "repair", "restored", "decommissioned", "report", "commissioning",

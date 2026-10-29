@@ -27,6 +27,7 @@ _RANGE = _DEFAULTS["ves_range"]
 _ODDS = _DEFAULTS["odds"]
 _LEDGER = _DEFAULTS["ledger"]
 _COSTS = _DEFAULTS["cost_range"]
+_ALLOCATION = _DEFAULTS["allocation"]
 _TERRAIN = _DEFAULTS["terrain"]
 _SERVICE = _DEFAULTS["service"]
 _SURVIVAL = _DEFAULTS["survival"]
@@ -124,12 +125,17 @@ class PumpingConfig:
     pump_submergence_min_m: float = _PUMPING["pump_submergence_min_m"]  # minimum water column above pump
     seasonal_allowance_m: float = _PUMPING["seasonal_allowance_m"]  # dry season decline allowance
     cooper_jacob_u_max: float = _PUMPING["cooper_jacob_u_max"]  # validity criterion for straight line fit
-    # A late-time slope below what a dipper can resolve (2 cm per log cycle)
-    # is reading noise or a level that has stabilised, and 2.303 Q / (4 pi
-    # slope) turns it into a transmissivity of thousands of m2/day that no
-    # basement borehole has. The fit is refused rather than reported.
-    cooper_jacob_min_slope_m: float = _PUMPING["cooper_jacob_min_slope_m"]  # m per log cycle
     cooper_jacob_min_r2: float = _PUMPING["cooper_jacob_min_r2"]  # the line has to explain the window
+    # Where the pumped level has stopped growing (hydraulics.analysis
+    # stabilised_tail): the readings of the last stabilised_span_log10 log
+    # cycles move by less than a dipper reads, and their slope is under
+    # stabilised_slope_ratio of the slope over the log cycle before them. A
+    # Theis drawdown keeps its slope (a ratio near 1) and a recharge boundary
+    # flattens it; a half is a choice between the two, not a standard, as is
+    # judging the last half log cycle. A Cooper-Jacob window on such a tail
+    # is not adopted.
+    stabilised_span_log10: float = _PUMPING["stabilised_span_log10"]
+    stabilised_slope_ratio: float = _PUMPING["stabilised_slope_ratio"]
     # Fits below this R squared are passed over when choosing which
     # transmissivity the yield rests on (recovery first, then Cooper-Jacob,
     # then Theis, which is a curve fit with no R squared and always eligible).
@@ -311,9 +317,7 @@ class LedgerConfig:
     # tell a good band from a bad one. Provisional.
     min_boreholes: int = _LEDGER["min_boreholes"]
     # A hit rate is given for a geology unit, survey team or contractor only
-    # on at least this many boreholes whose outcome is known; the plan's
-    # contractor scorecards (step 6.3) never rank on fewer than five either.
-    # Provisional.
+    # on at least this many boreholes whose outcome is known. Provisional.
     min_group: int = _LEDGER["min_group"]
     # The reliability diagram groups the forecast chances into this many
     # equal bins between 0 and 1: fifths, which a few dozen forecasts can
@@ -339,6 +343,24 @@ class LedgerConfig:
     # toolkit's; an organisation may issue its sets under another, and a
     # set whose licence is blank cannot be pooled.
     set_licence: str = _LEDGER["set_licence"]
+    # The contractor scorecards (PLAN.md step 6.3, scorecards.py) judge a
+    # contractor's dry holes against the forecast, and rank it, only on at
+    # least this many boreholes forecast before drilling whose outcome is
+    # known; below it they give the counts and say why it is not ranked. The
+    # plan never ranks a contractor on fewer than five boreholes. With five,
+    # each forecast at a 30 percent chance of a dry hole, the range runs
+    # from none of them dry to three, so this is a floor rather than a
+    # sample that settles anything. A value below one is read as one: a
+    # contractor with no forecast has nothing to be ranked by. Provisional.
+    scorecard_min_boreholes: int = _LEDGER["scorecard_min_boreholes"]
+    # The supervision checklist's stages (data/supervision_checklists.csv)
+    # whose items a scorecard counts as the contractor's acceptance checks:
+    # the stages from mobilisation to demobilisation, the works the
+    # contractor carries out on site. Procurement, the pre-contract
+    # inspection and siting come before the contract is let or are the
+    # client's, and the handover and the monitoring after it are not the
+    # drilling contractor's alone. A choice of the toolkit's. Provisional.
+    scorecard_stages: tuple = tuple(_LEDGER["scorecard_stages"])
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +376,36 @@ class CostRangeConfig:
     # Boreholes (or programmes) sampled. bench/README.md says what that
     # costs and why this number.
     samples: int = _COSTS["samples"]
+
+
+# ---------------------------------------------------------------------------
+# Where to drill next, within a budget (PLAN.md step 6.1, allocation.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AllocationConfig:
+    # The people one functional water point is counted as serving, and the
+    # most one new borehole is counted as serving: the handpump figure of
+    # data/coverage_service_classes.csv, which gives the Sphere handbook as
+    # its basis and says no copy of it is committed here. A stated basis,
+    # not a standard this toolkit holds; a whole number, because the exact
+    # choice counts people one by one.
+    people_per_borehole: int = _ALLOCATION["people_per_borehole"]
+    # The choice is exact (every set of the candidate boreholes the budget
+    # covers is in effect weighed) when there are at most this many
+    # candidate boreholes, and greedy, by people served per dollar with the
+    # gap to the linear-programming bound reported, when there are more.
+    # The exact search keeps a mark for each candidate borehole at each
+    # number of people they could serve, so its table grows with the square
+    # of this number times people_per_borehole (allocation.EXACT_MAX_CELLS
+    # caps it). At 40 it takes a millisecond or two in either engine. A
+    # choice of the toolkit's.
+    exact_max_items: int = _ALLOCATION["exact_max_items"]
+    # An area's ground is read at the points of a grid this many points on
+    # a side over the area's bounding box, counting those inside the area:
+    # 256 points, a few hundred metres apart in a chiefdom and a few
+    # kilometres in a district. A choice of the toolkit's.
+    ground_grid: int = _ALLOCATION["ground_grid"]
 
 
 # ---------------------------------------------------------------------------
@@ -534,6 +586,12 @@ class ServiceConfig:
     # How long past its due date before a visit stops being "due" and is
     # "overdue": a visit is a journey, not a diary entry.
     grace_days: int = _SERVICE["grace_days"]
+    # The browser app's address, as the programme serves it, which a plate's
+    # QR code links to the report page of its borehole from (PLAN.md step
+    # 7.1): https, with no # part. Blank unless the programme sets one,
+    # because no address can be known here; a plate printed with none
+    # carries its details as plain text, as plates always have.
+    report_url: str = _SERVICE["report_url"]
 
 
 # ---------------------------------------------------------------------------
@@ -590,6 +648,7 @@ class Config:
     odds: OddsConfig = field(default_factory=OddsConfig)
     ledger: LedgerConfig = field(default_factory=LedgerConfig)
     cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
+    allocation: AllocationConfig = field(default_factory=AllocationConfig)
     terrain: TerrainConfig = field(default_factory=TerrainConfig)
     service: ServiceConfig = field(default_factory=ServiceConfig)
     survival: SurvivalConfig = field(default_factory=SurvivalConfig)
@@ -623,6 +682,7 @@ class Config:
             ("odds", cfg.odds),
             ("ledger", cfg.ledger),
             ("cost_range", cfg.cost_range),
+            ("allocation", cfg.allocation),
             ("terrain", cfg.terrain),
             ("service", cfg.service),
             ("survival", cfg.survival),
@@ -641,12 +701,12 @@ class Config:
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
             if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
-                           "ledger", "cost_range", "terrain", "service", "survival",
+                           "ledger", "cost_range", "allocation", "terrain", "service", "survival",
                            "calibration"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
                     "(expected style, ves, pumping, design, ves_range, odds, "
-                    "ledger, cost_range, terrain, service, survival or calibration)",
+                    "ledger, cost_range, allocation, terrain, service, survival or calibration)",
                     stacklevel=2,
                 )
         named = data.get("calibration")

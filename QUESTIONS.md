@@ -333,3 +333,216 @@ need real project inputs or decisions to finish calibrating it.
    different times counts its earlier boreholes twice. (f) A set saved
    before step 5.5 declares no licence and is refused for pooling; it can
    still be put in force.
+
+22. **Four choices in the pumping test reader and analysis want a
+   hydrogeologist's confirmation (added with the pumping test audit).**
+   None is a standard; each is stated where it is made
+   (`groundwater/units.py`, `groundwater/ingestion/pumping.py` and
+   `groundwater/hydraulics/analysis.py`). (a) The pumped level is called
+   stabilised, and a recharge boundary or leakage indicated, where its
+   fitted line moves by less than 0.01 m over the last half log cycle and
+   its slope there is under half the slope over the log cycle before
+   (`stabilised_span_log10` and `stabilised_slope_ratio`); a Cooper-Jacob
+   window that takes in such a tail is not adopted. (b) A time written as
+   two numbers with a colon, "5:30", is hours and minutes, as Excel reads
+   it typed into a cell, unless the column header names minutes and
+   seconds. (c) An earliest pumping reading written as a clock past the
+   first hour is taken for a time of day, and the sheet is refused. (d)
+   A recovery whose first time comes at or after the minute the pump
+   stopped is taken to be on the test's clock and moved back to the stop,
+   unless its header or heading says "stop", "shut" or "off".
+
+23. **Reports from the plate and by SMS (added with PLAN.md step 7.1).**
+   A plate printed with a report address links to the browser app's
+   report page, and both apps import reports sent by SMS. Six things need
+   the programme: (a) give the address the browser app is served from
+   (`service.report_url` in `groundwater/data/defaults.json`, blank until
+   it is set; it must be https, as a browser keeps an app for use with no
+   network only from a secure address), and say whether the plate should
+   also print an SMS number and the message's form, which it does not now
+   because no number is known here; (b) confirm the SMS words (WORKING,
+   BROKEN, SLOW, and TASTE, COLOUR, COLOR or BAD for bad taste or colour,
+   in `groundwater/data/text/fault_reports.yaml`) and give the words in
+   Krio and the other languages people will text in, which are not
+   guessed here (step 9.2); (c) say whether a report from somebody at the
+   pump that it is working should make the borehole "Working", as it does
+   now, in the way a report that it is broken makes it "Not working", or
+   whether only a mechanic's visit should; (d) say whether a report that
+   it is slow, or that the water tastes or looks wrong, should make a
+   visit or a water sample due at once, as neither does now; (e) confirm
+   that a report by SMS whose identifier the registry reads only with a
+   note is held until a person confirms it, and say whether a report from
+   a known sender (the area mechanic's number) should be taken without
+   one; (f) confirm that the reports waiting on a phone belong to that
+   browser rather than to a project file, so that saving a project does
+   not keep them and *Reset everything* deletes them.
+
+24. **Three choices in the water quality reader and the borehole design
+   want confirmation (added with the water quality, units and design
+   audit).** None is a standard; each is stated where it is made
+   (`groundwater/ingestion/waterquality.py`, `groundwater/quality/assess.py`
+   and `groundwater/design/designer.py`). (a) A unit in the result
+   column's header ("Result (ug/L)") is the unit of every row whose own
+   unit cell is blank, and a row that unit cannot measure, such as E. coli
+   under "Result (mg/L)", is refused rather than read in its guideline's
+   unit; a laboratory chemist may prefer the header to bind only the rows
+   it can measure. (b) "Present" or "TNTC" in a unit that cannot be read
+   is graded as a count above zero, while a number in such a unit is still
+   refused: zero is zero on every count scale, but 12 of an unknown unit
+   cannot be put against a limit that is not zero. (c) The top screen the
+   design places is kept the gravel pack's height
+   (`gravel_pack_above_top_screen_m`) below the foot of the seal, so the
+   pack is never shortened to fit a screen; the alternative, a screen at
+   the seal's foot with a shorter pack, is what the design did before and
+   what a screen set by hand still gets, with a warning. A hydrogeologist
+   should confirm which a Sierra Leone contract wants.
+
+25. **Contractor scorecards (added with PLAN.md step 6.3).** Each of these
+   is a choice made here, stated where it is made
+   (`groundwater/scorecards.py`, `groundwater/config.py`) and in the
+   report, and wants the owner's confirmation. (a) A contractor is
+   ranked, and its dry holes judged against the forecast, only on at least
+   five boreholes forecast before drilling whose outcome is known
+   (`ledger.scorecard_min_boreholes`), the plan's own floor. With five
+   boreholes each forecast at a 70 percent chance, anything from none of
+   them dry to three is within the range, so five allows a ranking rather
+   than settling one. (b) The ranking measure is the dry holes found less
+   the number the forecasts expected, for each forecast borehole. It sets
+   a contractor against the ground it was sent to, as the survey forecast
+   it, which a plain dry-hole rate does not; it also charges the
+   contractor with the survey's errors. Say whether another measure, or
+   none, is wanted. (c) The range is a binomial's at the forecasts' mean
+   chance, as the calibration report judges its band. The count of dry
+   holes on forecasts of different chances is a Poisson binomial, whose
+   variance is smaller, and its range could be worked out exactly instead.
+   (d) The acceptance checks counted are the supervision checklist's items
+   in the stages from mobilisation to demobilisation
+   (`ledger.scorecard_stages`): procurement, the pre-contract inspection
+   and siting come before the contract is let or are the client's, and
+   the handover and the monitoring after it are not the drilling
+   contractor's alone. Say whether the programme's contracts put other
+   stages on the contractor. (e) A log's completion date written in
+   figures alone is not read, even where only one reading is possible,
+   so that the dates read are not only those late in their month.
+
+26. **What a document's manifest lists, and how it is marked (added with
+   PLAN.md step 8.1).** Every document either app writes carries a
+   manifest, a code in its footers and, under a cover, a QR symbol of the
+   code. Each of these is a choice made here, not a standard, and wants the
+   programme's confirmation: (a) the code is the first 40 bits of a
+   SHA-256 in eight Crockford base-32 characters and an ISO 7064 MOD 37,36
+   check character, as the asset identifier has; 40 bits names one issue
+   among the few a programme makes, and the full hash behind it is what is
+   checked, but two different documents can share a code once in about a
+   million million; (b) the QR symbol is at error-correction level H and
+   2.6 cm across, at the foot of the cover, and the plate carries none, so
+   that the one symbol on the headworks is the borehole's; (c) a document
+   about the borehole lists as its evidence every sheet the project holds
+   (not only the ones that report reads) and the photographs it embeds, a
+   calibration report the project files pooled, a round sheet those of the
+   register, and the field kit and the desk study none; a photograph is
+   listed by the hash its provenance record took of the file as it
+   arrived, not of the copy the project keeps; (d) the day a document is
+   issued is the day it is built, from the device's clock, and a worked
+   example built by a script gives none; (e) a copy is checked against
+   the issue records of the project files given, and until documents are
+   signed (step 8.2) a copy rewritten throughout is caught by nothing
+   else. Say whether a document should also be issued on a day the user
+   names, whether its evidence should be narrowed to the sheets it reads,
+   and where the programme keeps the issue records it checks against.
+
+27. **What an evidence bundle carries, and what counts as confirming it
+   (added with PLAN.md step 8.3).** The Handover page of either app, and
+   `groundwater bundle`, put one borehole's evidence into one .zip. Each of
+   these is a choice made here, not a standard, and wants the programme's
+   confirmation: (a) `raw/` holds the sheets the project holds as they
+   were uploaded, and not the photographs, because the apps keep a smaller
+   copy of each rather than the file as it arrived (the documents list
+   each photograph by the hash of the file as it arrived, and the check
+   names them as evidence the bundle does not carry); (b) `reports/` holds
+   the documents the project issued in the session, the latest under each
+   file name, and those the user adds, and leaves out the calibration
+   report and the round sheets unless added, since they are about many
+   boreholes; `figures/` holds what the documents embed, taken out of
+   them; neither app writes `tables/` yet; (c) the documents taken
+   together are as ready as the least ready of those that had a
+   certification gate, so one provisional report makes the bundle
+   provisional; (d) a file counts as confirmed from outside the bundle
+   when an issue record given holds a document's hash, when a confirmed
+   document lists a file's SHA-256 (a sheet as evidence, a figure as a
+   part), or when it is the README or a folder's note exactly as the
+   toolkit writes it, and a bundle is "verified" only when every file is
+   confirmed, so a bundle with a processed table in it never is; (e) the
+   bundle's own hash is printed but kept nowhere, so a check confirms its
+   contents, not that the project made this bundle; (f) every entry is
+   stored, not compressed, and dated 1980-01-01, so that both engines
+   write the same bytes; a file's name keeps the last part of its path,
+   with what a folder cannot hold made an underscore, and a second file
+   under a name already taken is numbered, as `sheet (2).xlsx`. Say
+   whether the photographs as the project keeps them, the calibration
+   set's own file or the project file should go in, whether a processed
+   table should be allowed to rest on the bundle's manifest alone, and
+   where the programme keeps a bundle's hash.
+
+28. **Two choices in the costing and the siting score want confirmation
+   (added with the costing, siting and decisions audit).** Each is stated
+   where it is made (`groundwater/costing/model.py` and
+   `groundwater/siting/suitability.py`). (a) The no water, no pay price
+   of a successful borehole carries each expected failure as a dry
+   attempt: the siting, set-up and drilling lines, marked up as the
+   borehole is, without the journey from the base. That is how the
+   programme estimate, the cost distribution and the value of one more
+   measurement already count a dry hole. RWSN's pricing guide (Costing
+   and Pricing, Publication 2014-12, in `WaterProjectFiles/`) tells a
+   driller paid only for successful wells to "increase the price of each
+   successful well to cover your costs". It gives no formula. What a
+   failure costs depends on what has been done to the hole by the time it
+   is judged, and the same guide warns that "when mud drilling in
+   sediments you will only know if you have been successful once you have
+   installed your casing and screens". A contract that judges success
+   after the test, or a hole mud-drilled in the coastal sediments, puts
+   more into each failure. The price of a failure is a parameter
+   (`failed_attempt_usd`); neither app asks for it. Passing the borehole's
+   own price reproduces the earlier figure, the price over the success
+   rate, which priced every failure as a completed and equipped borehole.
+   (b) Two points are tied when the gap between their weighted scores,
+   taken to the tenth of a point the reports print it to, is under the
+   margin. So a real gap of 2.96 is not a tie on a 3-point margin, where
+   before it was. The alternative, printing the gap to more places, would
+   keep it a tie and say "2.96".
+
+29. **Where to drill next, within a budget (added with PLAN.md step
+   6.1).** Each of these is a choice made here, stated where it is made
+   (`groundwater/allocation.py`, `groundwater/config.py`) and on the
+   Coverage gap page, and wants the owner's confirmation. (a) Every
+   functional mapped point is counted as serving 500 people, and a new
+   borehole as serving up to 500 (`allocation.people_per_borehole`): the
+   handpump figure of `coverage_service_classes.csv`, which gives the
+   Sphere handbook as its basis with no copy of it committed here. A
+   functional tap, protected well and handpump borehole each count the
+   same, so an area whose points serve fewer people each (the same table
+   puts a tapstand at 250) reads as less short of water than it is, and
+   one whose points serve more reads as more; a figure for each kind of
+   point would need the owner's source. (b) An area's ground
+   is the aquifer class covering the most of a 16 by 16 grid over it
+   (`allocation.ground_grid`), so an area split between two classes is
+   costed at one of them throughout; averaging the chance over the grid's
+   points would be the other way. (c) Where areas tie on people per
+   dollar, as every area on the same ground does, the budget goes to the
+   area first in alphabetical order until its unserved people are all
+   served, as the plan asks for a tie broken by the area's identifier.
+   Breaking a tie by the coverage ranking (the worst served first), or
+   sharing a tied budget between the areas, are the alternatives. (d) The
+   choice is exact for up to 40 candidate boreholes
+   (`allocation.exact_max_items`) and greedy beyond, with the gap to the
+   linear-programming bound stated; a national budget is nearly always
+   beyond 40. (e) The budget buys boreholes at their expected cost, before
+   contingency, so it buys the stated number of working boreholes only on
+   average: a dearer outturn (the Costing page's P80) buys fewer. (f) Each
+   borehole is priced as the Costing page prices one, its journey from
+   the contractor's base included, where a package of boreholes shares one
+   mobilisation (`costing/programme.py`); say whether the programme's
+   boreholes should be priced as a package instead. (g) An access cost is
+   typed per attempt, so a dry attempt pays it as a working one does; say
+   whether the programme's access costs (a road built once, say) are
+   better typed once for the area.

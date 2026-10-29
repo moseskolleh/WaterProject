@@ -32,7 +32,7 @@ from ..config import DesignRules
 from ..models import DataFlag
 from ..registry import trim_field
 from ..text import phrase
-from ..utils import fmt_num, sum_in_order
+from ..utils import fmt_num, fmt_usd, sum_in_order
 
 # Canonical stage order for tables and charts (the six RWSN cost
 # components, with development and test pumping kept separate and the
@@ -50,6 +50,15 @@ STAGES = (
 
 # The five RWSN resource categories.
 RESOURCE_CATEGORIES = ("equipment", "labour", "consumables", "fuel", "vehicles")
+
+# The stages an attempt that finds no water still pays for: the hole is
+# sited, the rig set up and the hole drilled, then it is abandoned before
+# casing, development, testing and the wellhead. The programme estimate, the
+# cost distribution and the risk-loaded price all count a dry attempt so.
+_DRY_STAGES = ("Siting", "Mobilisation", "Drilling")
+
+#: A dry attempt does not pay this basis: the rig has made the journey.
+_JOURNEY = "per_km_round_trip"
 
 # Default exchange rate for display only (new Sierra Leonean leone per
 # US dollar). Confirm against the current market rate.
@@ -109,6 +118,15 @@ class RateItem:
             return replace(self, unit_cost_usd=value, min_usd=value, max_usd=value)
         factor = value / likely
         return replace(self, unit_cost_usd=value, min_usd=lo * factor, max_usd=hi * factor)
+
+
+def _price(direct: float, overheads: float, margin: float, vat: float) -> float:
+    """The contract price with any VAT on a direct cost, worked out in the
+    order CostEstimate works it out, so a borehole drawn at every likely rate
+    is priced to the bit as the bill of quantities prices it."""
+    total = direct + direct * overheads / 100.0
+    price = total + total * margin / 100.0
+    return price + price * vat / 100.0
 
 
 def load_rates(path: str | Path | None = None) -> list[RateItem]:
@@ -363,6 +381,9 @@ class CostLineItem:
     quantity: float
     unit_cost_usd: float
     note: str = ""
+    #: the rate's quantity basis, so that the journey from the base can be
+    #: told from the other mobilisation lines
+    quantity_basis: str = ""
 
     @property
     def amount_usd(self) -> float:
@@ -430,16 +451,58 @@ class CostEstimate:
         """Client-side planning budget: price (with any VAT) plus contingency."""
         return self.price_with_vat_usd + self.contingency_usd
 
-    def price_per_successful_well_usd(self, success_rate_percent: float) -> float:
+    @property
+    def dry_attempt_direct_usd(self) -> float:
+        """The direct cost of an attempt that finds no water: its siting,
+        set-up and drilling lines, without the journey from the base, which
+        the rig makes once. Added stage by stage, as the programme estimate
+        adds them."""
+        totals = {stage: 0.0 for stage in _DRY_STAGES}
+        for item in self.items:
+            if item.stage in totals and item.quantity_basis != _JOURNEY:
+                totals[item.stage] += item.amount_usd
+        return sum_in_order(totals[stage] for stage in _DRY_STAGES)
+
+    @property
+    def dry_attempt_price_usd(self) -> float:
+        """A dry attempt priced as the borehole is: the overheads, margin and
+        any VAT on :attr:`dry_attempt_direct_usd`."""
+        return _price(self.dry_attempt_direct_usd, self.overheads_percent,
+                      self.margin_percent, self.vat_percent)
+
+    def price_per_successful_well_usd(
+        self, success_rate_percent: float, failed_attempt_usd: float | None = None
+    ) -> float:
         """Risk loaded price under a no water no pay contract.
 
-        When the client only pays for successful boreholes, the price
-        of each successful well must carry the cost of the expected
-        failures: price / success rate.
+        The client pays nothing for an attempt that finds no water, so the
+        price of each successful well carries the attempts expected to fail
+        before it: (1 - p) / p of them at a success rate p, each at
+        ``failed_attempt_usd``. By default that is
+        :attr:`dry_attempt_price_usd`, the dry attempt the programme
+        estimate and the cost distribution count: siting, set-up and
+        drilling, priced with the estimate's overheads, margin and VAT.
+
+        RWSN's pricing guide (Costing and Pricing, Publication 2014-12)
+        tells a driller paid only for successful wells to "increase the
+        price of each successful well to cover your costs", and gives no
+        formula. What a failure costs is what has been done to the hole by
+        the time it is judged, which the contract and the ground decide:
+        the same guide warns that "when mud drilling in sediments you will
+        only know if you have been successful once you have installed your
+        casing and screens". Such a contract should pass that price here.
+        Passing :attr:`price_with_vat_usd` prices every failure as a whole
+        completed borehole, journey, handpump and all, which is what this
+        returned before (the price over the success rate): 10,272 against
+        9,232 for a 60 m hole at 80 percent.
         """
         if not 0 < success_rate_percent <= 100:
             raise ValueError("success rate must be in (0, 100]")
-        return self.price_with_vat_usd / (success_rate_percent / 100.0)
+        failed = self.dry_attempt_price_usd if failed_attempt_usd is None else failed_attempt_usd
+        if not (math.isfinite(failed) and failed >= 0.0):
+            raise ValueError("the price of a failed attempt must be a number, 0 or more")
+        p = success_rate_percent / 100.0
+        return self.price_with_vat_usd + failed * ((1.0 - p) / p)
 
     def in_local(self, usd: float) -> float:
         return usd * self.exchange_rate_sle_per_usd
@@ -479,10 +542,7 @@ class CostEstimate:
 
     def summary_rows(self) -> list[tuple[str, str, str]]:
         def pair(usd: float) -> tuple[str, str]:
-            return (
-                f"{usd:,.0f}",
-                f"{self.in_local(usd):,.0f}",
-            )
+            return fmt_usd(usd), fmt_usd(self.in_local(usd))
 
         rows = [
             ("Direct works cost", *pair(self.direct_cost_usd)),
@@ -593,6 +653,7 @@ def estimate_borehole_cost(
                 quantity=quantity,
                 unit_cost_usd=rate.unit_cost_usd,
                 note=rate.note,
+                quantity_basis=rate.quantity_basis,
             )
         )
     if (resolved.rising_main_material and resolved.handpumps > 0

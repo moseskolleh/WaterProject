@@ -7,12 +7,22 @@ from pathlib import Path
 
 from ..models import DataFlag, WaterQualityResult, WaterQualitySample
 from ..units import _normalise as normalise_unit_text
-from ..units import convert, parse_unit
+from ..units import convert, parse_unit, unit_from_label
 from ..utils import clean_text, parse_number
 from . import common
 
 
-def _find_results_header(grid: list[list]) -> tuple[int, dict] | None:
+def _find_results_header(grid: list[list]) -> tuple[int, dict, str] | None:
+    """The results table's header row, its columns, and the unit it declares.
+
+    A unit in the result column's header ("Result (ug/L)") is the unit of
+    every row whose own unit cell is blank. It was dropped, so arsenic 5
+    under "Result (ug/L)" was read as 5 mg/L, five hundred times the
+    guideline. Only a unit the toolkit can read is taken: "Result (lab)"
+    declares nothing. A row the header's unit cannot measure (E. coli
+    under "Result (mg/L)") is then refused rather than read in its
+    guideline's unit; that is a choice (QUESTIONS.md item 24).
+    """
     for r, row in enumerate(grid):
         texts = common.row_text(row)
         cols: dict[str, int] = {}
@@ -30,7 +40,8 @@ def _find_results_header(grid: list[list]) -> tuple[int, dict] | None:
             elif t.startswith("method"):
                 cols["method"] = c
         if "parameter" in cols and "value" in cols:
-            return r, cols
+            written, unit = unit_from_label(clean_text(row[cols["value"]]), dimension=None)
+            return r, cols, written if unit is not None else ""
     return None
 
 
@@ -183,7 +194,18 @@ def _read_cell(raw_value) -> dict:
     number = parse_number(raw_value)
     if number is None:
         return {"kind": "text", "number": None, "unit": "", "inclusive": False}
-    return {"kind": "number", "number": number, "unit": "", "inclusive": False}
+    # A unit written after a measured value is read as it is after a bound:
+    # "0.05 mg/L" in a ug/L row was read as 0.05 ug/L, a two-hundredth of
+    # the arsenic guideline, for water at five times it. Only a unit the toolkit can read
+    # is taken, so a note beside the number ("0.5 ND", "8 (field)", "8*")
+    # leaves the reading as it was.
+    unit = ""
+    read = _number_and_unit(plain)
+    if read is not None and read[1]:
+        candidate = re.sub(r"\s*[(\[].*$", "", read[1]).rstrip("*").strip()
+        if candidate and parse_unit(candidate) is not None:
+            unit = candidate
+    return {"kind": "number", "number": number, "unit": unit, "inclusive": False}
 
 
 def _as_written(text: str, unit: str) -> str:
@@ -199,6 +221,11 @@ def _in_row_unit(number: float, cell_unit: str, row_unit: str):
     becomes the row's unit when the unit column is blank, and is converted
     onto the column's unit when the two differ. ``(None, row_unit)`` when
     they cannot be reconciled, which is never the same as zero.
+
+    A chemical basis stated on one side only is not a contradiction, as
+    :func:`~groundwater.units.comparable` has it: "46 mg/L" in a column of
+    "mg/L as CaCO3" is the column's scale, and "10 mg/L as N" in a column of
+    "mg/L" keeps the basis the cell names, which the assessment converts.
     """
     if not cell_unit:
         return number, row_unit
@@ -208,8 +235,10 @@ def _in_row_unit(number: float, cell_unit: str, row_unit: str):
         return number, row_unit
     source, target = parse_unit(cell_unit), parse_unit(row_unit)
     if (source is None or target is None or source.dimension != target.dimension
-            or source.basis != target.basis):
+            or (source.basis and target.basis and source.basis != target.basis)):
         return None, row_unit
+    if source.basis and not target.basis:
+        return number, cell_unit
     return convert(number, cell_unit, row_unit), row_unit
 
 
@@ -227,7 +256,7 @@ def quality_from_grid(grid: list[list], source: str = "") -> WaterQualitySample:
     located = _find_results_header(grid)
     if located is None:
         raise ValueError(f"No results table (Parameter/Value) found in {source}")
-    header_row, cols = located
+    header_row, cols, header_unit = located
 
     results: list[WaterQualityResult] = []
     for row in grid[header_row + 1 :]:
@@ -240,6 +269,8 @@ def quality_from_grid(grid: list[list], source: str = "") -> WaterQualitySample:
             continue
         raw_value = cell("value")
         unit = clean_text(cell("unit"))
+        if header_unit and not normalise_unit_text(unit):
+            unit = header_unit
         dl = parse_number(cell("dl"))
         read = _read_cell(raw_value)
         kind = read["kind"]

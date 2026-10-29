@@ -10,6 +10,12 @@ calls the apps make; nothing is computed differently.
     groundwater portfolio FILES... [--csv OUT] [--map OUT.png]
     groundwater templates DIR
     groundwater extract FILE.pdf [--out DIR]
+    groundwater verify FILE.docx [--project FILE ...]
+    groundwater verify BUNDLE.zip [--project FILE ...]
+    groundwater verify --code CODE --project FILE ...
+    groundwater bundle OUT.zip [--folder DIR] [--raw ROLE FILE ...] [--report FILE ...]
+                       [--table FILE ...] [--figure FILE ...] [--project FILE ...]
+                       [--title TEXT] [--borehole ID] [--date YYYY-MM-DD]
 """
 
 from __future__ import annotations
@@ -191,6 +197,171 @@ def cmd_extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def _issue_records(projects: Sequence[str]) -> tuple[list | None, list[str]]:
+    """The issue records the named project files carry, and a line for each
+    file that could not be read; None where no file was named."""
+    import yaml
+
+    from .verification import issue_records_of
+
+    if not projects:
+        return None, []
+    records: list = []
+    problems = []
+    for name in projects:
+        path = Path(name)
+        try:
+            payload = yaml.safe_load(path.read_bytes().decode("utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+            problems.append(f"{path.name}: not read ({exc.__class__.__name__})")
+            continue
+        if not isinstance(payload, dict):
+            problems.append(f"{path.name}: not a project file")
+            continue
+        records += issue_records_of(payload)
+    return records, problems
+
+
+#: What a project folder holds that goes into a bundle, by folder: its own
+#: raw/ (source files), processed/ (tables), figures/ and reports/.
+_FOLDER_FILES = (("raw", "raw", None), ("processed", "tables", (".csv",)),
+                 ("figures", "figures", (".png", ".svg")), ("reports", "reports", (".docx",)))
+
+
+def cmd_bundle(args: argparse.Namespace) -> int:
+    """Put one borehole's evidence into one archive (PLAN.md step 8.3).
+
+    The files are named on the command line, or taken from a project folder
+    as the toolkit writes one (--folder). Without a folder, the figures are
+    taken out of the documents, as both apps take them. The date is the one
+    given (--date), never the clock."""
+    from .bundle import build_evidence_bundle, document_figures
+    from .text import phrase_table
+    from .verification import calibration_facts
+
+    kinds = phrase_table("verification.evidence_kinds")
+    records, problems = _issue_records(args.project or [])
+    for line in problems:
+        print(f"skipped {line}", file=sys.stderr)
+    files: list[dict] = []
+    title, calibration = args.title, None
+    try:
+        if args.folder:
+            import yaml
+
+            from .config import Config
+
+            root = Path(args.folder)
+            if not (root / "project.yaml").is_file():
+                print(f"{root}: not a project folder (it has no project.yaml)", file=sys.stderr)
+                return 1
+            # read as Project.open reads it, without making the folders it
+            # lacks: bundling a folder changes nothing in it
+            meta = yaml.safe_load((root / "project.yaml").read_text(encoding="utf-8")) or {}
+            site = meta.get("site") if isinstance(meta, dict) else None
+            community = site.get("community") if isinstance(site, dict) else None
+            calibration = Config.load(root / "config.yaml").calibration
+            if title is None:
+                title = str(community or "") or root.name
+            for sub, folder, suffixes in _FOLDER_FILES:
+                for path in sorted((root / sub).glob("*")):
+                    if path.is_file() and (suffixes is None or path.suffix.lower() in suffixes):
+                        files.append({"folder": folder, "name": path.name, "data": path.read_bytes()})
+        for role, name in args.raw or []:
+            if role not in kinds:
+                print(f"--raw {role}: the role is one of {', '.join(sorted(kinds))}", file=sys.stderr)
+                return 1
+            files.append({"folder": "raw", "name": Path(name).name, "data": Path(name).read_bytes(),
+                          "what": kinds[role]})
+        for option, folder in (("table", "tables"), ("figure", "figures"), ("report", "reports"),
+                               ("signature", "signatures")):
+            for name in getattr(args, option) or []:
+                files.append({"folder": folder, "name": Path(name).name, "data": Path(name).read_bytes()})
+        if not args.folder:
+            for report in [f for f in files if f["folder"] == "reports"]:
+                files += document_figures(report["name"], report["data"])
+    except OSError as exc:
+        print(f"{exc.filename}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+    try:
+        built = build_evidence_bundle(title or "", files, borehole=args.borehole or "",
+                                      made_on=args.date or "", calibration=calibration_facts(calibration),
+                                      records=records)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    out = Path(args.out)
+    try:
+        out.write_bytes(built["bytes"])
+    except OSError as exc:
+        print(f"{out}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+    facts = built["facts"]
+    print(f"wrote {out}: {len(facts['files'])} files, {len(facts['documents'])} document(s)")
+    for document in facts["documents"]:
+        print(f"  {document['path']}: document {document['code']}")
+    print(f"sha256: {built['sha256']}")
+    return 0
+
+
+def _verify_bundle(data: bytes, records) -> int:
+    """Check an evidence bundle and print what can be said of it, file by
+    file; the exit status as for a document."""
+    from .bundle import verify_evidence_bundle
+    from .text import phrase_table
+
+    report = verify_evidence_bundle(data, records)
+    for line in report["lines"]:
+        print(line)
+    states, confirmed = phrase_table("bundle.file_states"), phrase_table("bundle.confirmed_words")
+    for entry in report["files"]:
+        print(f"  {entry['path']}: {states[entry['state']]}, {confirmed[entry['confirmed']]}")
+    if report["sha256"]:
+        print(f"sha256: {report['sha256']}")
+    return {"verified": 0, "unconfirmed": 2}.get(report["verdict"], 1)
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Say whether a document, or an evidence bundle (.zip), was issued by
+    the toolkit and is unchanged.
+
+    Exit status 0 when it is verified against an issue record, 2 when it is
+    unchanged but no record was given to confirm it was issued, and 1 for
+    everything else; with --code, 0 when a record holds the code."""
+    from .verification import lookup_code, verify_document
+
+    records, problems = _issue_records(args.project or [])
+    for line in problems:
+        print(f"skipped {line}", file=sys.stderr)
+    if args.code is not None:
+        found = lookup_code(args.code, records or [])
+        for line in found["lines"]:
+            print(line)
+        return 0 if found["records"] else 1
+    if not args.file:
+        print("name a document to verify, or a --code to look up", file=sys.stderr)
+        return 1
+    try:
+        data = Path(args.file).read_bytes()
+    except OSError as exc:
+        print(f"{args.file}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+    if Path(args.file).suffix.lower() == ".zip":
+        return _verify_bundle(data, records)
+    report = verify_document(data, records)
+    for line in report["lines"]:
+        print(line)
+    for name in report["changed"] + report["missing"] + report["added"]:
+        print(f"  part: {name}")
+    if report["facts"]:
+        for entry in report["facts"]["evidence"]:
+            print(f"  evidence: {entry['name']} {entry['sha256']}")
+    if report["code"]:
+        print(f"code: {report['code']}")
+        print(f"sha256: {report['sha256']}")
+    return {"verified": 0, "unconfirmed": 2}.get(report["verdict"], 1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="groundwater",
@@ -220,6 +391,34 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("file")
     p.add_argument("--out", help="folder for the review workbook (default: beside the PDF)")
     p.set_defaults(func=cmd_extract)
+
+    p = sub.add_parser("bundle", help="put one borehole's evidence into one archive (.zip)")
+    p.add_argument("out", help="the bundle to write (.zip)")
+    p.add_argument("--folder", help="a project folder as the toolkit writes one: its raw/, "
+                   "processed/ tables, figures/ and reports/ go in")
+    p.add_argument("--raw", action="append", nargs=2, metavar=("ROLE", "FILE"),
+                   help="a source file as it was uploaded, and what it is (ves, drilling, pumping, "
+                        "quality, ipi2win, photo, project); may be given more than once")
+    p.add_argument("--table", action="append", help="a processed table (CSV)")
+    p.add_argument("--figure", action="append", help="a figure; without --folder the documents' "
+                   "own are taken out of them as well")
+    p.add_argument("--report", action="append", help="a document the toolkit issued (.docx)")
+    p.add_argument("--signature", action="append", help="a signature file (none are made yet)")
+    p.add_argument("--project", action="append",
+                   help="a saved project file whose issue records the bundle keeps "
+                        "(.yaml or .gwt.json; may be given more than once)")
+    p.add_argument("--title", help="what the bundle is about (default: the folder's community)")
+    p.add_argument("--borehole", help="the borehole's identifier, where it has one")
+    p.add_argument("--date", help="the day the bundle is made, YYYY-MM-DD (default: none)")
+    p.set_defaults(func=cmd_bundle)
+
+    p = sub.add_parser("verify", help="check a document (.docx) or an evidence bundle (.zip)")
+    p.add_argument("file", nargs="?", help="the document or bundle to check")
+    p.add_argument("--project", action="append",
+                   help="a saved project file whose issue records to check it against "
+                        "(.yaml or .gwt.json; may be given more than once)")
+    p.add_argument("--code", help="look a code read off a cover up in the project files instead")
+    p.set_defaults(func=cmd_verify)
     return parser
 
 

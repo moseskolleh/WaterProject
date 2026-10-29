@@ -194,15 +194,40 @@ the pump started, the pump setting depth and the borehole depth. Write
   recomputes drawdown from the static level, so small arithmetic slips
   there do not matter.
 - Reading times do not need to be evenly spaced. Record the actual
-  minute of each reading.
+  minute of each reading. A time written as hours and minutes, `1:30`,
+  or typed into a cell Excel shows as a clock, is read as the elapsed
+  time it shows (90 minutes), as Excel reads it; the page says how many
+  readings were read that way. Head the column `Time (mm:ss)` if `5:30`
+  means five and a half minutes. Do not write the time of day: a sheet
+  whose earliest reading is `08:05` is refused, with nothing on it used,
+  because the time since the pump started cannot be worked out from it.
+  A time that starts as a clock and is not one (`1:30 pm`, `1:60`) or
+  that writes hours and minutes as words (`1h 30m`) is left out, and the
+  page lists it; write `1:30` or `90`.
+- Write the length of each step with its unit if it is not in minutes
+  (`1 h`); a length the toolkit cannot read is not used, and each step is
+  taken to have run as long as its own readings show.
 - The four column groups cover hours one to four. For a step test each
   group is one step; for a constant test they continue one series.
 - The recovery block has its own time column: minutes since the pump
-  stopped.
+  stopped. A recovery written over several blocks is joined into one, as
+  the pumping blocks are; head each with the minutes it covers
+  (`Recovery 61-120 min`) if its times start again at 1. A recovery whose
+  first time is at or after the minute the pump stopped (241 after a
+  240-minute test) is read as the test's own clock and moved back to the
+  stop, and the page says so; head its time column `Time since pump
+  stopped (min)` if the times really count from the stop.
+- If the sheet records the casing and riser, as `Casing diameter (in)`
+  and `Riser diameter (in)` with the value beside each, the analysis uses
+  them for the casing-storage period instead of the project's settings.
+  Write each with its unit; one with no unit is not used, and the page
+  says so.
 - **Record the discharge of every step** in the discharge row (bucket
   and stopwatch: litres divided by seconds, times 3.6 gives m3/h).
-  Without discharge the system still draws the curves but reports
-  transmissivity and yield as pending.
+  Without any discharge the system still draws the curves but reports
+  transmissivity and yield as pending. Without the last step's, the
+  recovery is not analysed: it is read against the rate the pump stopped
+  at.
 
 What the pumping test page and report make of the sheet, besides the
 straight-line fits:
@@ -219,7 +244,18 @@ straight-line fits:
   given as bands too. Read the band as the least the spread can be: on
   test data it held the true value about seven times in ten, not eight.
   A yield is called sustainable only where the bottom of its band still
-  covers the recommended rate at the dry-season level.
+  covers the recommended rate at the dry-season level. The yield tables
+  print a second range beside the yield, labelled "range over the
+  assumptions": the safe yield over the fitted transmissivities, the
+  assumed storativity and well radius, and a dry-season decline of 1 to
+  4 m. It is not the band from the readings' scatter.
+- **A level that holds.** The pumped level is called stabilised, and a
+  recharge boundary or leakage indicated, only where its fitted line
+  moved by less than a dipper reads (1 cm) over the last half log cycle
+  of the test (or of the last step), at under half the slope it rose at
+  over the log cycle before. A drawdown still rising at its full slope is
+  not stabilised however close its last few readings are. A Cooper-Jacob
+  line drawn through such a level is not used.
 - **The early readings are used.** A test that never got past casing
   storage is fitted with the Papadopulos-Cooper solution for a
   large-diameter well, which models the water drawn from the casing.
@@ -316,8 +352,9 @@ start and stop of pumping and the GPS position in the header, and a
 second sheet logging every reading, timing and event. Upload it like
 any other sheet, or press **Use it as this project's pumping test** to
 analyse it at once; that also sets the project's casing and riser
-diameters to the ones entered here, which the readers do not take from
-the sheet. Save the project file as well (section 11).
+diameters to the ones entered here. The sheet carries them too, and both
+apps' readers take them from it, so the sheet analysed in another
+project keeps its own casing. Save the project file as well (section 11).
 
 ## 4. Drilling log
 
@@ -349,6 +386,17 @@ every reading carried a unit it could read.
 A lens logged inside a longer interval (`0-30`, `5-10`, `30-45`) is
 flagged as an overlap but not as a gap, and the total depth is checked
 against the deepest bottom logged only when the sheet states one.
+
+No screen is placed inside the grouted interval. Where the hole is
+wide enough for a gravel pack or a formation stabiliser (at least 50 mm
+of annulus a side), the top screen is also kept below the height the
+design rules put the pack above it (`gravel_pack_above_top_screen_m`,
+2 m by default), so that grout placed on the pack cannot reach the
+screen: under a 20 m grout, a fracture logged at 20-26 m is screened at
+22-26 m. A screen set by hand, or recorded as installed, higher than
+that keeps its place; the design basis then says where the pack's top
+falls against the top screen ("level with", "1 m above", "5 m below")
+and a warning, `gravel_pack_short`, says why.
 
 ## 4a. Drilling log co-pilot (browser app, at the rig)
 
@@ -426,6 +474,38 @@ not detected in the 100 mL sample, which is the guideline being met.
 Add extra parameters on new rows with their units: the common
 certificate spellings (`Iron (Fe)`, `Total alkalinity`, `Nitrate-N`,
 `Colour`, `Thermotolerant coliforms`) are recognised.
+
+**Units.** A unit written in the result cell is read before the unit
+column's: `0.05 mg/L` in a row whose unit is ug/L is 50 ug/L, and
+`8 ug/L` with the unit cell blank is 8 ug/L. A note beside the number
+(`0.5 ND`, `8 (field)`, `8*`) is not a unit, and the number is read in
+the row's unit. A unit in brackets in the result column's header,
+`Result (ug/L)`, is the unit of every row whose unit cell is blank; a
+row it cannot measure, such as E. coli under `Result (mg/L)`, is then
+refused rather than read in another unit, so give such rows their own
+unit. A count per 100 mL may be written `CFU/100 mL`, `MPN/100 mL`,
+`No./100 mL`, `Nº/100 mL`, `/100 mL` or `per 100 mL`, and `oC` or `ºC`
+is degrees Celsius. `Present` or `TNTC` for E. coli or coliforms is a
+count above zero whatever its unit, so it is not refused over a unit
+the toolkit cannot read; a number in such a unit still is.
+
+**Bases.** Nitrate and nitrite reported as nitrogen (`Nitrate (NO3-N)`,
+`Nitrate (N)`, `Nitrite (NO2-N)`, `Nitrate-N`) are held to the
+guideline for nitrogen, 11.3 and 0.91 mg/L (the 50 and 3 mg/L
+guidelines for the ions, expressed as nitrogen), and the remark gives
+the ion's figure. `Nitrate` with the unit `mg/L as N` is put on the
+ion's scale (x 62.004/14.007), and calcium, magnesium, bicarbonate and
+carbonate in `mg/L as CaCO3` on their own, by the ratio of the molar
+masses (calcium x 40.078/100.087); an info flag gives the factor. A name and a unit that state
+different bases (`Nitrate (as NO3)` in `mg/L as N`) are refused. The
+charge balance, the hazard index and the water quality index read
+nitrate and nitrite as the ions whichever basis the sheet used.
+
+A determinand with no guideline value (temperature, calcium,
+alkalinity) in a unit that cannot be read does not hold up the verdict:
+there is no limit for the unit to decide. It is left out of the charge
+balance and the corrosivity indices, and a warning, `value_not_used`,
+says so.
 
 Results are judged against two columns: the WHO guideline value and a
 national one. **The national column is provisional.** Its values are
@@ -513,6 +593,7 @@ further and name one thing on them:
 | [`#/supervision`](index.html#/supervision) | Supervision |
 | [`#/handover`](index.html#/handover) | Handover |
 | [`#/registry`](index.html#/registry), `#/registry/<asset id>` | Asset registry, for that borehole |
+| [`#/report`](index.html#/report), `#/report/<asset id>` | Report on a borehole, that one: what a linked plate's symbol opens (9d) |
 | [`#/templates`](index.html#/templates) | Templates |
 
 The other pages follow the same pattern (`#/guided`, `#/spine`,
@@ -521,7 +602,28 @@ The other pages follow the same pattern (`#/guided`, `#/spine`,
 whatever project the browser has open; it does not carry the project
 with it. If it names a sounding or a borehole the open project does not
 hold, the page says so across the top rather than showing another one
-in its place. An address the app does not know opens the Overview.
+in its place; the report page, which needs no project, is the
+exception, and checks the identifier instead. An address the app does not know opens the Overview.
+
+The browser app can be worked from the keyboard alone. The first Tab
+from the top of the page reaches **Skip to content**, which moves
+straight to the page you are on; after it come the buttons in the top
+bar and then the page list, in the order it is shown, and Enter opens a
+page and puts the keyboard on it. A question the app asks in a box over
+the page (*Reset the workspace?*, a figure's numbers as a table, a
+photograph shown full size) takes the keyboard when it opens: Tab and
+Shift+Tab go round inside it, Escape closes it, and the keyboard goes
+back to the button that opened it. On a phone the page list is behind
+the ☰ button in the top bar, which says to a screen reader whether the
+list is open; opening it puts the keyboard on the page you are on, and
+Escape closes it again. The short messages that appear in the bottom
+corner are read out by a screen reader as they arrive, an error at once
+and anything else when it next pauses. Every page is checked with
+axe-core, an automated accessibility checker, in the checks each change
+to the app goes through, in both themes and with each sample loaded.
+That finds what a machine can find (a field with no label, text too
+faint against its background); it is not a test with a screen reader,
+which has not been done. The Streamlit app has had none of this work.
 
 The browser app installs. Open it once with a connection and it keeps
 itself on the device; the Overview page then offers an **Install**
@@ -617,6 +719,18 @@ until a hydrogeologist confirms it and drilled outcomes calibrate it, and
 the reports say so. The suitability score stays beside the odds for
 comparison.
 
+The suitability score's resistivity part reads the water-bearing
+layers inside the point's water zones, as the odds do. A zone is
+rounded to whole metres, and the slice of dry cover or basement the
+rounding takes in is not part of it. The points are ranked on the
+score discounted by the fit's confidence, and equal weighted scores
+are ranked by sounding id. Two points whose weighted scores are less
+than the tie margin apart (3 points, `ves.ranking_tie_points` in the
+project's configuration) are called indistinguishable, and the choice
+between them is left to access and sanitary distances. The gap is
+taken to the tenth of a point the reports print it to, so a gap
+printed as 3.0 is never called inside a 3-point margin.
+
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
 Drilled → Tested → Assessed → Handover), and the cards below summarise
@@ -678,6 +792,22 @@ contract price, and every rule of thumb applied is listed under
   rising main from the water quality sample in the same way.
 - Download the bill of quantities (`.xlsx`, with live formulas the
   contractor can edit) or the full cost estimate report (`.docx`).
+- With an "Expected success rate" under 100 percent, the Streamlit
+  page gives the price of each successful borehole under a no water,
+  no pay contract. The client pays nothing for a dry hole, so each
+  successful borehole carries the dry attempts expected before it,
+  (100 - rate) / rate of them, each priced as a dry attempt: the
+  siting, set-up and drilling lines with the overheads, margin and
+  any VAT, but not the journey from the base, the casing, development,
+  test pumping, water sample or wellhead. At 80 percent a 60 m
+  borehole at the default rates is US$ 9,232, as the programme
+  estimate prices each of twenty such boreholes with no rig moves
+  between them. A contract that judges
+  success only after the hole has been cased and tested costs each
+  failure more, and so does mud drilling in sediments, where success is
+  known only once the casing and screens are in (RWSN's pricing guide).
+  From the Python API, `price_per_successful_well_usd(rate,
+  failed_attempt_usd)` takes that price (QUESTIONS.md item 15).
 - The programme estimate uses the siting success rate typed for it.
   Once soundings are inverted, the page offers the chance of a working
   borehole at the survey's first-ranked point beside it, with a **Use
@@ -738,7 +868,11 @@ Going to the alternative is taken to cost its expected cost per working
 borehole, from the distribution's mean completed borehole and mean dry
 attempt; drilling at the point first costs the completed borehole if
 it works, and the dry attempt and then the alternative if it does not.
-The cheaper choice is the one with the better odds.
+The cheaper choice is the one with the better odds. Two chances within
+one part in a billion of each other are the same chance. At the same
+odds the first-ranked point is kept, and a reading that leaves the
+point's chance equal to the alternative's keeps the choice. The
+alternative is the higher-ranked of two points at the same odds.
 
 The measurement could read any band of the evidence the odds use (the
 depth to basement and whether basement was resolved, for a sounding
@@ -786,6 +920,16 @@ No is an answer - the record states the failure - and so is N/A; a
 blank is what holds it back. That includes the stages not reached yet,
 so a record downloaded at the end of one stage stays provisional until
 the last stage is answered, or is issued on an override that says why.
+
+The drilled metres reconciliation is blank until both the metres in the
+signed daily logs and the metres invoiced are typed, and only then
+checked and printed in the record. Those two figures and the
+checklist's answers go into the project file for the Portfolio page's
+contractor scorecards (section 10a), and so does the contract on the
+Procurement page with its variation orders and its *Completion due
+(YYYY-MM-DD)*: the date the contract says the works are to be complete,
+as any extension of time granted leaves it, which the scorecards set the
+drilling log's completion date against.
 
 ## 8a. Depth Spine
 
@@ -838,7 +982,9 @@ committee members (add rows as needed), any extra works or
 recommendations, and the three signatories. Results already produced
 on the other pages - the borehole design, the pumping test and the
 water quality verdict - attach to the report automatically; the page
-shows what is attached before you build it.
+shows what is attached before you build it. At the foot of the page,
+*Evidence bundle* puts the borehole's sheets, documents and figures in
+one file for an auditor (section 9d).
 
 The Asset registry page ([`#/registry`](index.html#/registry)) gives
 the borehole its identifier and prints its headworks plate. The
@@ -1036,7 +1182,7 @@ reached". The method's works are listed under *References*.
 says it is too few to judge and gives its counts, never a curve. The
 times the table states are the setting `survival.at_risk_years`. Both
 are choices made in this toolkit, not a standard (`QUESTIONS.md` item
-14).
+20).
 
 **The groups.** The pump type and the contractor are those named on each
 borehole's record: name this borehole's under *This borehole* (*Pump
@@ -1065,6 +1211,269 @@ left out of the test, which says so.
 
 The browser app keeps the day with the project; the Streamlit app starts
 it at today each time the page is opened.
+
+## 9d. Reports from the plate and by SMS
+
+In the browser app: the report page,
+[`#/report/<identifier>`](index.html#/report), and the *Reports from
+plates and by SMS* card on [`#/registry`](index.html#/registry). In the
+Streamlit app: the Asset registry page, after *Look up an identifier*.
+The report page is in the browser app only; both apps take reports by
+SMS and the file of reports a phone exports.
+
+**The plate's symbol.** Under *For the headworks* (browser) or the
+history (Streamlit), *Report address* takes the browser app's address as
+the programme serves it, beginning `https://`
+(`service.report_url` in `groundwater/data/defaults.json`, blank by
+default, since no address can be known here; it is saved with the
+project). With one set, the plate's symbol is a link to the report page
+for that borehole, `<address>#/report/<identifier>`, and the caption under
+it says so. Left blank, the symbol carries what it always has: the
+identifier, the place and the position as plain text, which read with no
+network and no app. An address that is not `https://`, has a blank or a
+`#` in it, or has any character outside plain ASCII (write an
+international domain in its `xn--` form) is refused with the reason, and
+neither the plate nor the round sheets are printed until it is put right:
+the round sheets say what a scan of each plate begins with, and that
+follows the address. A plate printed before the address was set still
+carries the plain text, and nothing records which a plate carries, so
+check the identifier, which both carry. A browser keeps the app for use with no network
+only from an https address, and only on a phone that has opened the app
+there once.
+
+**The report page.** Scanning a linked plate opens the page on that
+borehole; the identifier can also be typed. The check character is
+checked as *Look up an identifier* checks it, so a mistyped identifier
+is refused with what it should have ended in, and no form is offered.
+Then choose one of four: *Working*, *Broken*, *Slow* or *Bad taste or
+colour*. The day (today unless changed, written 2026-05-01), a name, a
+note and a photograph are optional; the photograph keeps its capture
+time, its position where it or the phone gives one, and the SHA-256 of
+the file, as every photograph in the app does. *Save the
+report* keeps it on this phone, in the browser's own storage, with no
+network needed. It waits there, under *Reports waiting on this phone*,
+until the Asset registry page is opened here on that borehole's project,
+when it joins the history and leaves the queue. A report for a borehole
+whose project is somewhere else stays waiting: *Export the reports
+(.json)* writes the queue to a small file for the area mechanic or the
+district office, whose Asset registry page imports it in either app.
+The queue belongs to this browser, as the calibration in force does: no
+project file carries it, opening a project keeps it, and *Reset
+everything* deletes it, saying how many reports it would delete. *Clear
+the reports waiting* empties it, after asking; export the file first.
+
+**What each report records.** *Broken* is a failure, so the borehole is
+"Not working" from that day. *Working* is a new kind of record,
+*Reported working*, which makes it "Working", as a failure report makes
+it the opposite, and counts as a report of it working to *How long
+boreholes keep working* (9c). *Slow* (*Reported slow*) and *Bad taste or
+colour* (*Water quality complaint*) say something is the matter without
+saying whether water comes, so they change nothing about whether it
+works; they are kept in the history for whoever goes to look. A report
+is merged by its content, as every record is: the same report saved
+twice, imported twice, or sent twice in a day by one sender in the same
+words is one record.
+
+**By SMS.** A phone with no browser sends
+
+    BH SL-WAR-XXXXXXX-C BROKEN handle snapped
+
+that is, `BH`, the identifier from the plate (here `SL-WAR-XXXXXXX-C`
+stands for it), one word and any note. The
+words are WORKING, BROKEN, SLOW, and TASTE, COLOUR, COLOR or BAD for bad
+taste or colour, in capitals or not; a word in another language is added
+to `fault_reports.yaml` by somebody who speaks it, never guessed. A
+mistyped identifier is refused, with what it should have ended in. No
+gateway is built or needed. Copy the messages into a plain-text file,
+one a line, with the day and time received and the sender before `BH`
+where the copy has them:
+
+    2026-05-01 08:14 +23276123456 BH SL-WAR-XXXXXXX-C BROKEN handle snapped
+    2026-05-02T09:00:00Z,Fatmata Kamara,BH SL-WAR-XXXXXXX-C taste brown water
+
+and press *Import SMS messages or a file of reports* (browser) or upload
+it (Streamlit). The day is read only written year, month and day: a line
+dated 01/05/2026, which could be the first of May or the fifth of
+January, or carrying two days, is refused. *Day received* gives the day
+for lines that carry none; left blank, such a line is refused rather
+than dated on the day of the import. Every line is shown in a table with
+what became of it and why, and the summary counts what was accepted,
+held and refused. A programme that runs an SMS gateway can pass what it
+receives to `groundwater.fault_reports.receive_messages` (a list of
+messages, each with its `text` and, where the gateway gives them, the
+time `received`, day first, and the `sender`), which reads them as the
+import does and merges nothing; it is optional, and nothing here needs
+it.
+
+**Held for a person.** A report by SMS that the registry's check reads
+only with a note (an identifier that checks only by the character
+identifiers were minted with before the check character followed ISO
+7064 MOD 37,36, once that correction is in the toolkit) has nobody to
+read the note as it is typed, so it is held, not merged, until a person
+who has compared the identifier with the plate, or asked the sender,
+confirms it: *Confirmed against the plate* (browser) or the tick box of
+that line (Streamlit). The report page shows the note to the person at
+the plate, so a report made there is taken.
+
+**Into the registry.** In the browser, accepted reports join the queue,
+and those for the borehole of the project open here join its history as
+the page draws. In the Streamlit app, *Add N report(s) to this
+borehole's history* adds those for this project's borehole; importing
+the same file again adds nothing. In both, the reports for boreholes in
+*Many boreholes* are shown in their histories there, without changing
+their files, and the Streamlit app offers the rest as a file of reports
+(*Reports for other boreholes (.json)*), which either app imports.
+
+## 9c. Documents anyone can check
+
+In the browser app: [`#/verify`](index.html#/verify), *Verify a
+document* under *Project*. In the Streamlit app: the *Verify a document*
+page. On the command line: `groundwater verify`.
+
+**What every document carries.** Each document either app writes (the
+reports, the plate, the asset record, the certificate, the field kit, the
+desk study, the calibration report and the round sheets) carries a
+manifest inside the .docx file, which Word does not show. It records the
+day the document was issued (the day it was built, from the device's
+clock; a worked example built by a script gives none), which app and
+version wrote it, the calibration set in force, whether it was
+certifiable, issued on override or provisional and what was outstanding
+or overridden, every evidence file it was issued from with its SHA-256
+fingerprint, and the fingerprint of every part of the document itself.
+The evidence of a document about the borehole is every sheet the project
+holds and the photographs the document embeds, by the fingerprint of the
+file as it arrived; a calibration report's is the project files pooled,
+a round sheet's those of the register; the field kit and the desk study
+list none.
+
+**The code.** Every page's footer reads *Document 0A1B-2C3D-5 - page n*,
+except a cover's: a document with a cover carries the code and its QR
+symbol at the foot of the cover instead. The code is eight letters and digits and a check
+character, as the borehole identifier has. It is worked out from what the
+document says and records, so a copy whose text has been changed and its
+manifest brought into line no longer gives its own code.
+
+**Where the record is kept.** Building a document keeps its issue record
+(its code and fingerprint, kind, title, day and readiness) in the
+project, which saves it in the project file, and, for a document about
+the borehole, in the borehole's asset record, which the Asset registry
+page lists under *Documents issued*; a record stored after the document
+was issued takes its issue records from the project. The app says the
+code when it saves the document.
+
+**Checking a copy.** Open the page and choose the .docx. It is read on
+the device and sent nowhere; in the browser app the page works with no
+network. The page answers four questions:
+
+1. *Did the toolkit issue it?* Its manifest's fingerprint against the
+   issue records held: those of the project open in the app, and of any
+   project files added on the page (either app's, or the files of an
+   asset register). With none, the page says it cannot confirm the
+   document was issued.
+2. *Has it changed since?* Each part of the document against the
+   fingerprint its manifest recorded. A changed, removed or added part is
+   named: change one digit in the text and the page names
+   `word/document.xml (the text of the document)`. A document opened and
+   saved again in Word is a changed document, because Word rewrites its
+   parts.
+3. *Was it certifiable or provisional?* As the manifest records the
+   certification gate when the document was issued.
+4. *Which evidence was it issued from?* Each file by name and SHA-256,
+   so a copy of a workbook or a photograph can be checked against it.
+
+A code read off a paper copy, or off its QR symbol with a phone, can be
+typed into *Look up a code*, which says what was issued under it, when,
+and how ready.
+
+**What it cannot catch yet.** Until documents are signed (PLAN.md step
+8.2), someone who rewrites a document throughout - its text, its
+manifest, its code and its symbol - makes a copy that agrees with
+itself. Only the issue record catches that, which is why a copy checked
+with no record is *unconfirmed*, never *verified*. Keep the project file,
+or the register's files, where a forger cannot reach them.
+
+On the command line, `groundwater verify report.docx --project
+project.yaml` prints the same answers and exits 0 for a verified copy,
+2 for one unchanged but not confirmed, and 1 otherwise; `--code` looks a
+code up.
+
+## 9d. One evidence bundle for the borehole
+
+In the browser app: the *Evidence bundle* card at the foot of
+[`#/handover`](index.html#/handover). In the Streamlit app: the
+*Evidence bundle* section at the foot of the Handover page. On the
+command line: `groundwater bundle`.
+
+**What it holds.** One .zip file with what an auditor asks for about one
+borehole:
+
+- `raw/` - every sheet the project holds, as it was uploaded, under the
+  name it was uploaded with (less anything a folder cannot hold, such as
+  `:` or `?`) and listed with what it is (VES field sheet, drilling log,
+  pumping test sheet, water quality sheet);
+- `reports/` - the documents this project issued in the session, the
+  latest of each, and any issued earlier that you add on the card; each
+  carries its own manifest (section 9c). The calibration report and the
+  round sheets are about many boreholes and go in only if you add them;
+- `figures/` - the figures each document embeds, taken out of it as it
+  embeds them, named after the document;
+- `tables/` - processed tables; neither app writes any yet, so the
+  folder carries a note saying so;
+- `signatures/` - signatures over sign-offs; nothing the toolkit writes
+  is signed yet, so the folder carries a note saying so;
+- `manifest.json` - the size and SHA-256 of every other file, the app
+  and version that made the bundle, the day it was made (the device's
+  day), the calibration set in force, each document's code, hash and
+  readiness, how ready the documents are taken together (the least ready
+  of those that had a certification gate) and the issue records the
+  project held; its own SHA-256 is the bundle's hash;
+- `README.txt` - what the bundle is and how to check it, by hand or with
+  the toolkit.
+
+The photographs are not in `raw/`: the apps keep a smaller copy of each,
+not the file as it arrived, and the documents list each by the
+fingerprint of the file as it arrived. A file you add that is not a
+document the toolkit wrote, or one changed since, is refused rather
+than put in, and the card says why. Both apps write a bundle by the same
+rules, entry for entry, so the same files on the same day give the same
+bundle in either, but for the app and version it names as its maker.
+
+**Checking one.** On the Verify a document page, under *Verify a bundle*,
+choose the .zip. It is checked against the same issue records as a
+document: those of the project open in the app and of any project files
+added on the page. The page says:
+
+1. whether every file matches the size and SHA-256 `manifest.json`
+   lists for it, naming each file changed, missing or added;
+2. what each document's own check says (section 9c);
+3. what confirms each file from outside the bundle: a document by its
+   issue record; a field sheet or a figure by a confirmed document that
+   lists its SHA-256; the README and the folders' notes as the toolkit's
+   own text. A processed table rests on `manifest.json` alone;
+4. which evidence files the documents list that the bundle does not
+   carry (the photographs, usually);
+5. how ready its documents are taken together, and who made it, when.
+
+A bundle is *verified* only when every file in it is confirmed from
+outside it. Someone who rewrites a sheet and `manifest.json` to match
+makes a bundle that agrees with itself, but the document that lists the
+sheet still lists the old fingerprint, so the sheet is no longer
+confirmed; a bundle checked with no issue record at all is
+*unconfirmed*, as a document is.
+
+**On the command line.** `groundwater bundle bh1.zip --folder ./bh1`
+packs a project folder laid out as the worked examples are (its `raw/`,
+`processed/` tables, `figures/` and `reports/`); `--raw pumping
+test.xlsx` adds a sheet with what it is, `--report`, `--table`,
+`--figure` and `--signature` add files, `--project` keeps the issue
+records of a saved project file, and `--date` dates it (without it the
+bundle gives no date). Without `--folder` the figures are taken out of
+the documents, as the apps take them. `groundwater verify bh1.zip
+--project project.yaml` prints the same answers and every file with what
+confirms it, and exits 0 for a verified bundle, 2 for one unchanged but
+not confirmed, and 1 otherwise. The worked examples' packs,
+`examples/packs/*.zip`, are evidence bundles; a worked example is not
+issued, so they check as unconfirmed.
 
 ## 10. Site maps
 
@@ -1623,16 +2032,123 @@ left out of the median age and of the points counted as recently
 surveyed, and an area every dated survey of which is later is labelled
 *Surveyed after the plan year*.
 
+**Where to drill next, within a budget** (PLAN.md step 6.1) - at the
+foot of the Coverage gap page, the areas of the ranking above, at the
+population of the year you plan for, are chosen between for a drilling
+budget. It needs a borehole priced first: estimate one on the Costing
+page (section 7), and every borehole here is priced as that one, with
+its rates, its percentages and its mobilisation distance, its depth
+held at the estimate's. Then type the **Budget, US$**, as contract
+prices with any VAT and before contingency. For each area:
+
+- **Unserved people**: its population less 500 for each functional
+  mapped point, never fewer than none. 500 is the handpump figure of the
+  coverage map's service classes (the Sphere handbook's, which the
+  toolkit states rather than holds), and a point that serves more or
+  fewer is not told apart. The boreholes the unserved people justify are
+  that many over 500, rounded up, each serving up to 500 and the last
+  the rest.
+- **Ground**: the BGS aquifer class that covers the most of a 16 by 16
+  grid of points over the area (the points inside it), and the USGS unit
+  that covers the most of that class, with the share of the area's
+  points on the class. Surface water and ground off the map do not count;
+  an area with nothing else has no known odds and is left out, never
+  given the even chance a point off the map gets.
+- **Chance of a working borehole**: the prior for that ground, as the
+  Geophysics pages give it before any survey (section 5a), from the
+  calibration set in force where one is.
+- **US$ per working borehole**: the Costing page's mean completed
+  borehole, and its mean dry attempt for each dry attempt expected before
+  a working one, to the cent. An **Access, US$ per attempt** typed for an
+  area (a column of the table in the browser; a table under *Access, US$
+  per attempt* in the Streamlit app) is added once for each attempt a
+  working borehole there is expected to take. With none typed, the page
+  says access is not modelled.
+
+The choice aims at the set of boreholes that serves the most people
+within the budget at those expected costs. People served per dollar is
+the plan's expected people served per dollar: the chance of success
+times the people a working borehole serves, over the expected cost of
+one attempt, is the same figure. With up to 40 candidate boreholes (each
+area's, up to what its people justify and the whole budget could buy)
+the choice is exact; with more it takes the boreholes in order of people
+per dollar, each one that fits in what is left, and says how far it can
+be from the best (the linear-programming bound). A national budget
+usually has more than 40. Where areas tie, the one first in alphabetical
+order is served first, so areas on the same ground take the budget in
+that order.
+
+The table lists every area, the chosen first: its unserved people, its
+ground, its chance, its cost per working borehole, the boreholes chosen
+of those it justifies, the people they serve, the people per US$ 1,000
+its first borehole serves, and why it is in or out: all its boreholes,
+some of them and the next one costs more than the budget left, out
+because one costs more than what is left, out for lower value per dollar
+than every borehole chosen, no unserved people, or odds unknown. Above
+it the page says what the budget buys, how it was chosen, and the next
+borehole worth buying with its cost per extra person served. It also
+says plainly that chiefdom populations are too coarse for access
+distances: an area's people are one number, so the people a borehole
+serves are the handpump figure, not the people within reach of it,
+until settlement-level population (PLAN.md step 6.2) is added.
+*Download the choice (.csv)* saves the table and then every sentence,
+one to a line. The browser keeps the budget and the access costs in the
+project file with the year and the growth rate; the Streamlit app keeps
+none of them. The 500, the 40 and the 16 are
+`allocation.people_per_borehole`, `allocation.exact_max_items` and
+`allocation.ground_grid` in `defaults.json` or a `config.yaml`.
+
 **Portfolio** - upload several saved project files at once for the
 programme view: a status map, headline figures (success rate, mean cost
 per metre), a comparison table and a one-page brief for any single
 site. Files saved by either app are accepted, so a programme run across
-both still pools into one view. At its foot, **Predictions and
-outcomes** pools the files' ledgers (section 11): how many survey
-points were predicted and how many drilled, a table of the drilled ones
-with the depth to basement predicted and found and the chance predicted
-beside the outcome, and the whole pooled ledger as a `.json` file. A
-point found in two files (two copies of one project) counts once.
+both still pools into one view.
+
+**Contractor scorecards** (PLAN.md step 6.3) set each drilling
+contractor's boreholes out across the files, from what each project
+recorded of the contractor's work, and *Build the contractor scorecards
+(.docx)* writes them up with how each figure is worked out. For each
+contractor:
+
+- **Metres**: the metres invoiced against the metres in the signed daily
+  logs, from the drilled metres reconciliation on the Supervision page
+  (section 8), over the boreholes where both were typed, and how many
+  claimed more than 3 m over the logs.
+- **Failed acceptance checks**: the supervision checklist's items
+  answered No in the stages the contractor works in, mobilisation to
+  demobilisation, out of the boreholes with any of them answered; a
+  second table names the items that failed.
+- **Variation orders**: those recorded on the Procurement page, the
+  signed ones with the value they add to the contract sum and the
+  unsigned ones counted apart.
+- **Time**: the drilling log's completion date against the *Completion
+  due (YYYY-MM-DD)* typed on the Procurement page. Write the log's date
+  as YYYY-MM-DD or with its month by name (13th May, 2018): one written
+  in figures alone (05/06/2018) can be read two ways round and is not
+  read.
+- **Dry holes**: the boreholes that did not succeed as the odds define
+  success and, on those forecast before drilling (section 11), how many
+  the forecasts expected, with the range the count would fall in at
+  least nine times in ten if the forecasts were right.
+
+Every figure says how many boreholes it rests on, and one that no file
+records reads "Not recorded", never nought. A contractor is ranked, by
+its dry holes against the forecast, only on at least five forecast
+boreholes whose outcome is known (`ledger.scorecard_min_boreholes`);
+the rest are listed unranked with the reason, and the boreholes whose
+files name no contractor are listed together. The contractor is the one
+in the site details, else the one on the drilling log, grouped by its
+name as written: two spellings of one name make two scorecards. A file
+saved before this version gives only the outcome and the forecast its
+ledger kept. As with the calibration report, the Streamlit app offers
+the download for the files on the page when it was built.
+
+At the foot of the page, **Predictions and outcomes** pools the files'
+ledgers (section 11): how many survey points were predicted and how
+many drilled, a table of the drilled ones with the depth to basement
+predicted and found and the chance predicted beside the outcome, and
+the whole pooled ledger as a `.json` file. A point found in two files
+(two copies of one project) counts once.
 
 Under it, **Calibration** scores the pooled forecasts against what was
 drilled (PLAN.md step 5.2), and *Build the calibration report (.docx)*
@@ -1854,11 +2370,25 @@ found. It is how the toolkit will learn from the holes drilled with it.
   team and by contractor, and counts a borehole without them as "Not
   recorded".
 
+A project file also carries a **works record** (PLAN.md step 6.3): what
+the project records of its contractor's work, for the contractor
+scorecards on the Portfolio page (section 10a). Like the ledger's
+outcome it is worked out again whenever the project is saved. The
+Streamlit app's file now also carries the contract awarded on the
+Procurement page, what was measured and the variation orders, which it
+did not save before, and loading another project clears them.
+
 The file format went to schema 2 to carry the ledger. Either app opens
 a file saved before that with an empty ledger, and a file of a later
 schema than the app knows still opens, with a warning that what the app
 does not recognise is not restored. Loading another project replaces
 the ledger with that project's own.
+
+A project file also carries the **issue record of every document built
+from it** (section 9c), and went to schema 3 to carry them, for the same
+reason: an older version of either app warns that it does not restore
+everything in the file rather than dropping the records on its next
+save. A file saved before that opens with none.
 
 ## 12. Scanned sheets
 

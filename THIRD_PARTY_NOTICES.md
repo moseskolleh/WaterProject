@@ -239,3 +239,17 @@ The browser app vendors no third-party JavaScript: `docs/js/*.js` is written
 for this project, and the Depth Spine workspace bundles React (MIT) into
 `src/groundwater/depth_spine/frontend/` and `static/workspace.html` at build
 time.
+
+### Test-only tools
+
+Two npm packages run the browser checks and nothing else. Neither is
+committed, vendored, bundled into a page or shipped in a release: they are
+installed into `node_modules/` beside the checkout with
+`npm install --no-save`, at the versions `.github/workflows/ci.yml` pins, and
+`node_modules/` is ignored by git.
+
+- **Playwright** 1.56.1 (Microsoft) · Apache-2.0 · drives headless Chromium
+  for `tests/webapp/*.mjs`.
+- **axe-core** 4.10.3 (Deque Systems) · MPL-2.0 · the accessibility checker
+  `tests/webapp/a11y.mjs` reads from `node_modules/axe-core/axe.min.js` and
+  injects, unmodified, into each page under test (PLAN.md step 9.4).

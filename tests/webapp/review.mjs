@@ -731,8 +731,16 @@ await withPage(async (page, base, consoleErrors) => {
       analysis: d.analysis, seasonal,
     })).build());
     const moved = (d.design.flags || []).find((f) => f.code === 'pump_intake_moved');
+    // the same sheet carrying the casing and riser a co-pilot writes on it
+    const sheetTest = JSON.parse(JSON.stringify(d.analysis.test));
+    sheetTest.casing_diameter_in = 8;
+    sheetTest.riser_diameter_in = 2;
+    const sheetCasing = await window.__docText(await (await window.GWT.docx.pumpingReport({
+      style: app.config().style, site: app.store.get('site'), figures: [],
+      analysis: C.analysePumpingTest(sheetTest, app.config()),
+    })).build());
     const out = {
-      pumping, intake: intake[0],
+      pumping, sheetCasing, intake: intake[0],
       yieldDepth: d.analysis.yield_recommendation.pump_installation_depth_m,
       designIntake: d.design.pump_intake_m,
       requested: moved ? moved.message : null,
@@ -747,6 +755,18 @@ await withPage(async (page, base, consoleErrors) => {
     !timbo.pumping.includes('no straight line is read from it') &&
     timbo.pumping.includes('the Cooper-Jacob value is adopted only as the best available'),
     timbo.pumping.slice(0, 400));
+  // The yield table printed the assumption envelope bare, "0.39 m3/h (0.22 to
+  // 0.71)", in the report whose decision line gives the P10 to P90 band of
+  // the same yield; and the casing paragraph named the project's casing where
+  // the sheet recorded its own.
+  check('pumping report: the yield\'s range over the assumptions says what it is',
+    timbo.pumping.includes('0.39 m3/h (range over the assumptions, 0.22 to 0.71)') &&
+    !timbo.pumping.includes('0.39 m3/h (0.22 to 0.71)'), timbo.pumping.slice(0, 400));
+  check('pumping report: the casing is the one the sheet records',
+    timbo.pumping.includes('Casing storage: with a 5 inch casing') &&
+    timbo.sheetCasing.includes('Casing storage: with a 8 inch casing and the specific ' +
+      'capacity at the end of the first step, the water standing in the casing supplies ' +
+      'the pump for about the first 300 minutes'), timbo.sheetCasing.slice(0, 400));
   check('the design is given the intake the pumping report prints',
     timbo.intake > timbo.yieldDepth &&
     timbo.pumping.includes('Install the pump intake at ' + timbo.intake + ' m') &&
@@ -1496,6 +1516,155 @@ await withPage(async (page, base, consoleErrors) => {
     !light(printed.onScreen) && printed.backOnScreen === printed.onScreen,
     JSON.stringify({ documents: printed.documents, figures: printed.corners.length,
       dark: darkFigures, onScreen: printed.onScreen, back: printed.backOnScreen }));
+
+  // --- a document anyone can check (PLAN.md step 8.1) ------------------------
+  // The pumping report as the user gets it, through buildReport: it carries
+  // its manifest, its code in every footer and the code's symbol on its
+  // cover; its issue record is kept in the project and goes out at the top of
+  // the project file; it verifies against that record; and one digit changed
+  // in its text fails the check, which names the part.
+  {
+    await page.evaluate(() => window.GWT.app.loadSample('dr_timbo'));
+    await page.waitForFunction(
+      () => window.GWT.app.recomputeState.running === 0 &&
+            window.GWT.app.derived.analysis !== null, { timeout: 60000 });
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.evaluate(() => window.GWT.app.buildReport('pumping')),
+    ]);
+    const bytes = await readFile(await download.path());
+    const sealed = await page.evaluate(async (b64) => {
+      const C = window.GWT.core, S = window.GWT.support, app = window.GWT.app;
+      const data = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const parts = C.readPackage(data);
+      const text = (name) => (parts[name] ? new TextDecoder().decode(parts[name]) : '');
+      const manifest = C.readManifest(text(C.MANIFEST_PART));
+      const issued = app.store.get('issued') || [];
+      const payload = app.projectPayload();
+      const source = app.store.get('sources').pumping;
+      const asWritten = C.verifyDocument(data, issued);
+      const xml = text('word/document.xml');
+      const at = xml.search(/<w:t(?: [^>]*)?>[^<]*[0-9]/);
+      const digit = xml.indexOf(xml.slice(at).match(/[0-9]/)[0], at);
+      const edited = xml.slice(0, digit) + (xml[digit] === '9' ? '8' : '9') + xml.slice(digit + 1);
+      const entries = Object.keys(parts).map((name) => ({ name,
+        data: name === 'word/document.xml' ? new TextEncoder().encode(edited) : parts[name] }));
+      const changed = C.verifyDocument(await S.zip(entries), issued);
+      return {
+        code: manifest && manifest.code, facts: manifest && manifest.facts,
+        carriers: manifest ? manifest.carriers.map((p) => p[0]) : [],
+        footer: text('word/footer1.xml'), cover: text('word/footer2.xml'),
+        titlePg: xml.indexOf('<w:titlePg/>') >= 0,
+        issued, topLevel: payload.issued, inState: 'issued' in payload.state,
+        sourceHash: C.sha256Hex(S.base64ToBytes(source.b64)), sourceName: source.name,
+        asWritten: asWritten.verdict, changed: changed.verdict, changedParts: changed.changed,
+        changedLine: changed.answers.changed,
+      };
+    }, bytes.toString('base64'));
+    const record = sealed.issued.find((r) => r.code === sealed.code);
+    check('a report carries a manifest, and its issue record is kept in the project',
+      !!sealed.code && !!record && record.kind === 'pumping', JSON.stringify(sealed.issued));
+    check('the record goes out at the top of the project file, not in its state',
+      JSON.stringify(sealed.topLevel) === JSON.stringify(sealed.issued) && !sealed.inState);
+    check('every page\'s footer carries the code, and the cover its symbol and the code',
+      sealed.footer.indexOf('Document ' + sealed.code + ' - page') >= 0 &&
+      sealed.cover.indexOf('Document code ' + sealed.code) >= 0 && sealed.titlePg &&
+      JSON.stringify(sealed.carriers) === JSON.stringify(['word/footer1.xml', 'word/footer2.xml',
+        'word/media/document-code.png']), JSON.stringify(sealed.carriers));
+    check('the manifest says who wrote it, how ready it was and what it was issued from',
+      sealed.facts.engine.name === 'gwt-core' && sealed.facts.readiness.state === 'not_ready' &&
+      sealed.facts.document.kind === 'pumping' && /^\d{4}-\d{2}-\d{2}$/.test(sealed.facts.document.issued_on) &&
+      sealed.facts.evidence.some((f) => f.name === sealed.sourceName && f.sha256 === sealed.sourceHash),
+      JSON.stringify(sealed.facts));
+    check('as downloaded, it verifies against the project\'s issue record', sealed.asWritten === 'verified',
+      sealed.asWritten);
+    check('one digit changed in its text fails the check, which names the part',
+      sealed.changed === 'changed' && JSON.stringify(sealed.changedParts) === '["word/document.xml"]' &&
+      sealed.changedLine.indexOf('word/document.xml (the text of the document)') >= 0,
+      JSON.stringify({ verdict: sealed.changed, parts: sealed.changedParts }));
+  }
+
+  // The same document built twice from the same project and issue is the
+  // same document, part for part: its code and its hash are the same.
+  const twice = await page.evaluate(async () => {
+    const issue = { issued_on: '2026-10-29', evidence: [], calibration: null };
+    const records = [];
+    for (let k = 0; k < 2; k++) {
+      const d = window.GWT.app.derived;
+      const builder = await window.GWT.docx.handoverReport({
+        style: window.GWT.app.config().style, site: window.GWT.app.store.get('site'),
+        log: d.log, design: d.design, analysis: d.analysis, assessment: d.assessment,
+        interpretations: d.interpretations, committee: [], figures: [],
+        readiness: window.GWT.app.reportReadiness('handover'), issue,
+      });
+      await builder.build();
+      records.push(builder.record);
+    }
+    return records;
+  });
+  check('a document issued again from the same inputs has the same code and hash',
+    twice[0] && JSON.stringify(twice[0]) === JSON.stringify(twice[1]), JSON.stringify(twice));
+
+  // --- one evidence bundle for the borehole (PLAN.md step 8.3) --------------
+  // The Handover page's button, after the pumping report above was built:
+  // the bundle carries the project's sheets as they were uploaded, that
+  // report and the figures it embeds, and the project's issue records; it
+  // verifies against those records file by file, is unconfirmed with none,
+  // and one byte changed in a sheet fails the check, which names the file.
+  {
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.evaluate(async () => {
+        window.GWT.app.goto('handover');
+        let button = null;
+        for (let t = 0; t < 400 && !button; t++) {
+          button = Array.from(document.querySelectorAll('#page-host button'))
+            .find((b) => b.textContent === 'Download evidence bundle') || null;
+          if (!button) await new Promise((r) => setTimeout(r, 25));
+        }
+        button.click();
+      }),
+    ]);
+    const bytes = await readFile(await download.path());
+    const bundle = await page.evaluate(async ({ b64, name }) => {
+      const C = window.GWT.core, S = window.GWT.support, app = window.GWT.app;
+      const data = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const issued = app.store.get('issued') || [];
+      const withRecords = C.verifyEvidenceBundle(data, issued);
+      const parts = C.readPackage(data);
+      const sources = app.store.get('sources') || {};
+      const sheets = Object.keys(sources).filter((role) => sources[role] && sources[role].b64)
+        .map((role) => sources[role]);
+      const sheet = 'raw/' + C.bundleName(sheets[0].name);
+      const edited = Object.assign({}, parts);
+      edited[sheet] = Uint8Array.from(parts[sheet]);
+      edited[sheet][0] ^= 1;
+      const changed = C.verifyEvidenceBundle(C.storedZip(Object.keys(edited).sort()
+        .map((n) => [n, edited[n]])), issued);
+      return {
+        name, facts: withRecords.facts, verdict: withRecords.verdict, files: withRecords.files,
+        sheets: sheets.map((s) => ({ path: 'raw/' + C.bundleName(s.name), sha256: C.sha256Hex(S.base64ToBytes(s.b64)) })),
+        none: C.verifyEvidenceBundle(data, null).verdict,
+        changed: changed.verdict, changedFiles: changed.files.filter((f) => f.state !== 'ok').map((f) => f.path),
+        sheet,
+      };
+    }, { b64: bytes.toString('base64'), name: download.suggestedFilename() });
+    const docs = bundle.facts ? bundle.facts.documents : [];
+    check('the Handover page downloads one evidence bundle, with the report built and the sheets as uploaded',
+      /^Evidence_Bundle_.*\.zip$/.test(bundle.name) && docs.length === 1 && docs[0].kind === 'pumping' &&
+      bundle.sheets.length > 0 && bundle.sheets.every((s) => bundle.files.some((f) => f.path === s.path &&
+        f.sha256 === s.sha256)) && /^\d{4}-\d{2}-\d{2}$/.test(bundle.facts.made_on) &&
+      bundle.facts.engine.name === 'gwt-core' && bundle.facts.issued.some((r) => r.code === docs[0].code),
+      JSON.stringify({ name: bundle.name, docs, files: bundle.files.map((f) => f.path) }));
+    check('it verifies against the project\'s issue records, every file confirmed from outside it',
+      bundle.verdict === 'verified' && bundle.files.every((f) => f.confirmed !== 'none') &&
+      bundle.files.some((f) => f.path.startsWith('figures/') && f.confirmed === 'document'),
+      JSON.stringify({ verdict: bundle.verdict, files: bundle.files.map((f) => [f.path, f.confirmed]) }));
+    check('with no issue record it is unconfirmed, and one byte changed in a sheet names the sheet',
+      bundle.none === 'unconfirmed' && bundle.changed === 'changed' &&
+      JSON.stringify(bundle.changedFiles) === JSON.stringify([bundle.sheet]),
+      JSON.stringify({ none: bundle.none, changed: bundle.changed, files: bundle.changedFiles }));
+  }
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

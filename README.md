@@ -75,17 +75,23 @@ water quality guidelines.
    Group - and what that rock means for a borehole. It annotates rather
    than reclassifies: the polygon is still the 1:5,000,000 one, and where
    the two sources disagree the figure says both
-10. Twelve documents: geophysical survey, borehole completion, pumping
+10. Thirteen documents: geophysical survey, borehole completion, pumping
     test, water quality, project handover, cost estimate, supervision
     checklist record, interim payment certificate, borehole asset record,
     the laminated identification plate for the headworks, the desk
     study, put together before anyone travels to the site and stamped as a
-    pre-field document, and the calibration report, which scores a
-    portfolio's recorded forecasts against what was drilled. Every one of
+    pre-field document, the calibration report, which scores a
+    portfolio's recorded forecasts against what was drilled, and the
+    contractor scorecards, which set each drilling contractor's boreholes
+    out across a portfolio: metres claimed against the signed logs, failed
+    acceptance checks, variation orders, time against the contract and dry
+    holes against the forecast, each with the number of boreholes it rests
+    on, and a ranking only on five forecast boreholes or more. Every one of
     the site's reports opens on a map of the area; the plate is a single
     laminated sheet and carries the asset QR code instead, and the
-    calibration report, which covers many sites, carries neither. The web app
-    saves and reloads the whole working state as a project file
+    calibration report and the scorecards, which cover many sites, carry
+    neither. The web app saves and reloads the whole working state as a
+    project file
 11. A rehabilitate-or-drill check: existing water points near the site
     from the Water Point Data Exchange (WPdx+, CC BY 4.0), turned into a
     recommendation - a broken improved source nearby is a rehabilitation
@@ -96,7 +102,18 @@ water quality guidelines.
     census populations (Statistics Sierra Leone) with WPDx points, as a
     choropleth and a ranked table to steer where to drill next. Chiefdom
     populations aggregate the census onto the boundary polygons with
-    district totals conserved exactly and the reconciliation shown
+    district totals conserved exactly and the reconciliation shown. Given
+    a budget and a borehole priced on the Costing page, the same page
+    chooses where to drill (PLAN.md step 6.1): each area's people beyond
+    the handpump figure for every functional point, the prior chance of a
+    working borehole on the ground covering most of it, the expected cost
+    of a working borehole there with its dry attempts and any access cost
+    typed, and the boreholes that serve the most people the budget buys,
+    chosen exactly for up to 40 candidate boreholes and greedily, with the
+    gap to the linear-programming bound, beyond that. Each area is in or
+    out with its reason, the next borehole's cost per extra person is
+    given, and the page says plainly that chiefdom populations are too
+    coarse for access distances
 13. A certification-readiness gate on every document that has a cover to
     stamp (all but the identification plate, which is a single laminated
     sheet): each is judged
@@ -173,7 +190,18 @@ water quality guidelines.
     working only up to the last report of it working; a group of fewer
     than five boreholes followed says it is too few to judge and shows no
     curve; and groups are compared by the log-rank test, with its p-value
-    said to be what it is
+    said to be what it is. A plate printed with the programme's report
+    address carries a link to the browser app's report page for its
+    borehole, which works with no network on a phone that has opened the
+    app: working, broken, slow, or bad taste or colour, with an optional
+    photograph, kept on the phone until the borehole's record is opened
+    there or carried to it as a small file. A feature phone reports by
+    SMS (`BH <identifier> BROKEN`), and both apps import a file of
+    messages, refusing a mistyped identifier by its check character and a
+    message whose day cannot be told, and holding for a person one that
+    the registry reads only with a note. No SMS gateway is needed; a
+    programme that runs one hands its messages to
+    `fault_reports.receive_messages`
 18. The survey as an interactive map, not only as a picture: both apps
     write a [GeoLibre](https://geolibre.app) project file - an open,
     plain-JSON map format - carrying the site, the scored drill targets,
@@ -186,6 +214,42 @@ water quality guidelines.
     assembled offline. It opens on a blank background rather than a
     basemap, because switching one on is a request to the network and
     that is the operator's decision to make
+19. Documents anyone can check. Every document either app writes carries
+    a manifest inside the .docx: the day it was issued, the engine and
+    version that wrote it, the calibration set in force, whether it was
+    certifiable, issued on override or provisional (and what was
+    outstanding), the SHA-256 of every evidence file it was issued from
+    and of every part of the document itself. A short code, such as
+    `0A1B-2C3D-5`, is printed in every page's footer, and a document with
+    a cover carries it with a QR symbol at the foot of the cover. The
+    document's hash is kept in the project file and, for a document about
+    the borehole, in its asset record (a record stored later takes them
+    from the project). The *Verify a document* page in
+    both apps, and `groundwater verify`, say whether the toolkit issued a
+    copy (its hash against those records), whether it has changed since
+    (naming each part that has), whether it was certifiable or
+    provisional, and which evidence it was issued from; in the browser it
+    needs no network. Until documents are signed (PLAN.md step 8.2) a copy
+    rewritten throughout, manifest and code included, is caught only by
+    the issue record, which is why the check says so when none is given
+20. One evidence bundle for each borehole. The Handover page of either
+    app downloads one .zip holding what an auditor asks for: the field
+    sheets as they were uploaded (`raw/`), the documents the project
+    issued in the session and any issued earlier that are added there
+    (`reports/`, each with its own manifest), the figures they embed
+    (`figures/`), a `manifest.json` of every file's size and SHA-256 with
+    the engine, the calibration set, each document's code and readiness
+    and the project's issue records, and a `README.txt` saying how to
+    check it. A folder with nothing in it carries a note saying so, which
+    is how `tables/` (the apps write no processed tables yet) and
+    `signatures/` (nothing is signed yet) come out. *Verify a bundle*, on
+    the Verify a document page, and `groundwater verify bundle.zip` check
+    every file against `manifest.json`, every document against its own
+    manifest and the issue records given, and every other file against the
+    documents that list its SHA-256, and say file by file what confirms
+    it; a bundle checked with no issue record is at best unconfirmed. Both
+    engines write it by the same rules, so the same files and facts give
+    the same bytes
 
 ## Try it online
 
@@ -283,6 +347,7 @@ python examples/run_kuntolo_step_test.py     # step test with pending discharge
 python examples/run_dr_timbo_completion.py   # drilling -> design, completion,
                                              # water quality, handover reports
 python examples/build_catalogue.py           # index them, and pack each case up
+groundwater verify examples/packs/dr_timbo.zip   # a pack is an evidence bundle
 ```
 
 `examples/CATALOGUE.md` is what that last command writes: what went into
@@ -305,7 +370,10 @@ project layout:
     reports/         generated .docx reports
 ```
 
-Re-running on the same raw data produces byte-identical outputs.
+Re-running on the same raw data produces byte-identical outputs. Each
+example's reports list the workbooks they were issued from by their
+SHA-256 and give no issue date, since a worked example is not issued on
+a day.
 
 ## Web interface
 
@@ -329,6 +397,10 @@ groundwater recompute project.yaml --json summary.json   # rebuild a saved proje
 groundwater portfolio *.yaml --csv programme.csv --map programme.png
 groundwater templates ./templates                        # the five field templates
 groundwater extract field_sheet.pdf --out ./review       # a text-layer PDF into a review workbook
+groundwater verify report.docx --project project.yaml    # was it issued, and is it unchanged?
+groundwater verify --code 0A1B-2C3D-5 --project project.yaml
+groundwater bundle bh1.zip --folder ./bh1 --raw pumping test.xlsx --project project.yaml --date 2026-10-31
+groundwater verify bh1.zip --project project.yaml        # every file, and what confirms it
 ```
 
 `recompute` prints one line per saved source and exits non-zero when one
@@ -337,7 +409,16 @@ stops on the file that needs attention. `extract` writes the review
 workbook, and the filled VES template when the sheet's reading table can
 go into one (it says why when it cannot), and prints how many items the
 review lists; a scanned PDF with no text layer is refused with a pointer
-to the AI extraction. `python -m groundwater` is the same thing.
+to the AI extraction. `verify` prints the four answers and the parts
+that changed, and exits 0 for a document verified against an issue
+record in the project files named, 2 for one unchanged but with no
+record given to confirm it, and 1 for anything else; given a `.zip` it
+checks an evidence bundle instead, file by file, with the same exit
+codes. `bundle` writes one from a project folder as the examples lay one
+out (its `raw/`, `processed/`, `figures/` and `reports/`) or from the
+files named, keeps the issue records of the project files named, and is
+dated only when `--date` says so. `python -m groundwater` is the same
+thing.
 
 ## Package layout
 
@@ -366,6 +447,8 @@ groundwater/
                   yields, and the pump depth the worst of them needs
     planning.py   coverage as a planning figure: population projection,
                   survey freshness, dry-season service as a band
+    allocation.py where to drill next within a budget: the coverage-gap
+                  areas' ground, odds and cost, and the boreholes chosen
     procurement.py  contract, variation orders, measurement and the interim
                   payment certificate
     registry.py   asset identifiers, maintenance events, derived condition
@@ -373,7 +456,14 @@ groundwater/
                   in the order of a nearest-neighbour walk
     sanitary.py   the sanitary inspection form, scored and read with the
                   E. coli count into one risk statement
+    fault_reports.py  reports from the plate's report page and by SMS,
+                  each accepted, held for a person or refused, and merged
+                  into the registry by content
     qr.py         a dependency-free QR encoder for the headworks plate
+    verification.py  the manifest every document carries, its code, and
+                  the check of a copy against it and its issue record
+    bundle.py     one borehole's evidence in one archive, and the check
+                  of a bundle file by file
 ```
 
 ## Reference library
@@ -408,6 +498,17 @@ Key behaviours built in from the real field sheets:
 - missing discharge does not block parsing: curves, stabilised level
   and available drawdown are produced and yield results are marked
   pending until the discharge is supplied
+- elapsed times written as clocks (`1:30`, or a cell Excel shows as a
+  time) are read as the hours and minutes they show; a recovery written
+  in blocks is joined, and one written on the test's own clock is moved
+  back to the stop; a time of day is refused rather than guessed at
+- the length of each step is read in its unit (`1 hr`), and the casing
+  and riser diameters a sheet records set its casing-storage period
+- a unit written in a laboratory result cell (`0.05 mg/L`) or in the
+  result column's header (`Result (ug/L)`) is read; nitrate and nitrite
+  reported as nitrogen (`Nitrate (NO3-N)`) are held to the guideline for
+  nitrogen, and calcium or magnesium `as CaCO3` is put on the element's
+  scale before the charge balance and the corrosivity indices use it
 - metadata consistency checks flag copy-over errors (district that
   does not contain the GPS coordinates, differing client or community
   between sheets of one project)
@@ -460,10 +561,11 @@ away for that parameter — no code change needed.
 python -m pytest             # parsers, numerics, reports
 
 # the standalone web app, in a real browser
-npm install --no-save playwright && npx playwright install chromium
+npm install --no-save playwright@1.56.1 axe-core@4.10.3 && npx playwright install chromium
 node tests/webapp/parity.mjs                    # browser engine vs this package
-node tests/webapp/smoke.mjs                     # every page and every report
+node tests/webapp/smoke.mjs                     # every page and every report, and the keyboard
 node tests/webapp/copilot.mjs                   # the pumping test co-pilot, played back
+node tests/webapp/a11y.mjs                      # axe-core on every page
 python tests/webapp/make_reference.py --check   # the reference values are current
 ```
 

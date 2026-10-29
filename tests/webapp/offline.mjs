@@ -181,6 +181,80 @@ await withPage(async (page, base, consoleErrors) => {
     offlineMap.after.includes('charts') && offlineMap.maps >= 2 && !offlineMap.failed,
     JSON.stringify(offlineMap));
 
+  // The address a headworks plate's symbol links to (PLAN.md step 7.1),
+  // opened afresh with no network: the report page draws from the release,
+  // its photograph slot included, and a report made there waits on the
+  // phone through a reload.
+  const plateId = await page.evaluate(() => window.GWT.core.mintAssetId(
+    { district: 'Bo', easting: 790500, northing: 875300, utm_zone: 28 }));
+  await page.goto('about:blank');
+  await page.goto(base + '/#/report/' + plateId, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.GWT && window.GWT.app, { timeout: 30000 });
+  const offlineReport = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const host = document.querySelector('#page-host');
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline && !host.querySelector('[data-choice]')) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    app.store.set('reports', { queue: [], held: [] });
+    const out = { nav: app.store.get('nav'), choices: host.querySelectorAll('[data-choice]').length,
+      photo: !!host.querySelector('.img-slot'), failed: host.textContent.includes('could not be loaded') };
+    const broken = host.querySelector('[data-choice="broken"]');
+    if (broken) broken.click();
+    const when = host.querySelector('input[data-report="when"]');
+    if (when) { when.value = '2026-05-01'; when.dispatchEvent(new Event('change')); }
+    const save = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Save the report');
+    if (save) save.click();
+    out.queued = (app.store.get('reports.queue') || []).length;
+    /* written now rather than after the autosave's wait, as the page does
+     * when it is hidden */
+    out.written = await app.store.persist();
+    return out;
+  });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.GWT && window.GWT.app, { timeout: 30000 });
+  offlineReport.kept = await page.evaluate(() => {
+    const app = window.GWT.app;
+    const queue = (app.store.get('reports.queue') || []).map((r) => [r.asset_id, r.kind, r.when]);
+    app.store.set('reports', { queue: [], held: [] });
+    return queue;
+  });
+  check('no network: the report page a plate links to draws from the release and keeps a report on the phone',
+    offlineReport.nav === 'report' && offlineReport.choices === 4 && offlineReport.photo &&
+    !offlineReport.failed &&
+    JSON.stringify(offlineReport.kept) === JSON.stringify([[plateId, 'failure', '2026-05-01']]),
+    JSON.stringify(offlineReport));
+
+  // The Verify a document page (PLAN.md step 8.1) checks a copy with no
+  // network: the page, the package reader and the four answers are all in
+  // the first screen's scripts.
+  const offlineVerify = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, S = window.GWT.support;
+    const facts = C.manifestFacts('pumping', 'Offline', '2026-10-29', ['gwt-core', 'test'], null, null, []);
+    const sealed = C.sealPackage({
+      '[Content_Types].xml': '<Types xmlns="t"><Default Extension="xml" ContentType="application/xml"/></Types>',
+      'word/_rels/document.xml.rels': '<Relationships xmlns="r"></Relationships>',
+      'word/document.xml': '<w:document>1.25</w:document>',
+    }, facts);
+    const bytes = await S.zip(Object.keys(sealed.entries).map((name) => ({ name, data: sealed.entries[name] })));
+    const pickFile = S.pickFile;
+    S.pickFile = async () => new File([bytes], 'offline.docx');
+    try {
+      await app.goto('verify');
+      Array.from(document.querySelectorAll('#page-host button'))
+        .find((b) => b.textContent === 'Choose a document (.docx)').click();
+      for (let t = 0; t < 200 && !app.verifySession.bytes; t++) await new Promise((r) => setTimeout(r, 25));
+      await new Promise((r) => setTimeout(r, 60));
+      return document.querySelector('#page-host').textContent
+        .includes(C.phraseTable('verification.verdicts').unconfirmed);
+    } finally {
+      S.pickFile = pickFile;
+      app.verifySession.bytes = null;
+    }
+  });
+  check('no network: the Verify a document page checks a copy', offlineVerify === true);
+
   const answers = await page.evaluate(async (FOREIGN) => {
     const out = {};
     /* a file of the app's that genuinely was never downloaded */

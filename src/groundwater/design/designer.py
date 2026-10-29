@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 
 from ..config import DesignRules
 from ..models import DataFlag, DrillingLog
+from ..text import phrase
 from ..utils import sum_in_order
 from ..ves.interpret import SiteInterpretation
 from .lithology import is_clayey, read_fractures
@@ -204,6 +205,44 @@ def _interval_at(log: DrillingLog | None, depth: float):
     return None
 
 
+def _annular_fill(log: DrillingLog | None, rules: DesignRules) -> tuple[str, str, float, float]:
+    """``(fill, material, annulus_mm, bore_in)``: what the annulus can hold.
+
+    The same annulus rule the field checks apply (50 mm per side to place
+    gravel, 70 mm for it to filter), on the diameter the log says was
+    drilled, or the rule's when it records none. ``fill`` is ``"none"``,
+    ``"formation stabiliser"`` or ``"gravel pack"``.
+    """
+    bore_in = logged_diameter_in(log) or rules.borehole_diameter_in
+    annulus_mm = (bore_in - rules.casing_diameter_in) * 25.4 / 2.0
+    if annulus_mm < ANNULUS_PACK_MIN_MM:
+        return "none", "", annulus_mm, bore_in
+    if annulus_mm < ANNULUS_FILTER_MIN_MM:
+        return "formation stabiliser", rules.gravel_pack_material, annulus_mm, bore_in
+    return "gravel pack", rules.gravel_pack_material, annulus_mm, bore_in
+
+
+def _screen_floor(log: DrillingLog | None, rules: DesignRules, swl: float | None,
+                  total_depth: float) -> tuple[float, bool, str]:
+    """``(floor, sealed, why)``: the shallowest depth a designed screen may
+    start at, whether the seal rather than the static water level sets it,
+    and what a sentence calls the seal's part of it.
+
+    Below the seal, and below the fill the rules put above the top screen:
+    a screen placed at the seal's foot had grout sitting on it, with the
+    pack clamped to the seal and no word said. A hole too narrow for a fill
+    keeps the seal alone. Moving the screen rather than shortening the pack
+    is a choice (QUESTIONS.md item 24).
+    """
+    seal = seal_depth_for(log, rules, total_depth)
+    swl_floor = (swl or 0.0) + rules.min_screen_below_swl_m
+    fill = _annular_fill(log, rules)[0]
+    pack = rules.gravel_pack_above_top_screen_m if fill != "none" else 0.0
+    why = (phrase("design.under_seal", seal=seal, pack=pack, fill=fill) if pack > 0
+           else f"the {seal:g} m grouted interval")
+    return max(swl_floor, seal + pack), seal + pack >= swl_floor, why
+
+
 @dataclass
 class _Target:
     """One depth the log says is worth screening, and what became of it."""
@@ -254,9 +293,9 @@ def _target_zones(
     """
     seal = seal_depth_for(log, rules, total_depth)
     # nothing is screened inside the grouted interval, whatever the log says
-    # is wet there: the grout is there to keep that water out
-    swl_floor = (swl or 0.0) + rules.min_screen_below_swl_m
-    floor = max(swl_floor, seal)
+    # is wet there: the grout is there to keep that water out; nor in the
+    # fill the rules put above the top screen
+    floor, sealed, under_seal = _screen_floor(log, rules, swl, total_depth)
     sump_top = total_depth - rules.sump_length_m
 
     def clip_one(zone):
@@ -271,7 +310,7 @@ def _target_zones(
         cut = []
         if candidate[0] < floor:
             cut.append(
-                f"within the {seal:g} m grouted interval" if seal >= swl_floor
+                f"within {under_seal}" if sealed
                 else f"shallower than {floor:g} m, {rules.min_screen_below_swl_m:g} m "
                 "below the static water level"
             )
@@ -509,9 +548,7 @@ def design_borehole(
     fallback: list[str] = []
     if not screens:
         # fall back: screen the bottom third of the hole below the SWL margin
-        swl_floor = (swl or 0.0) + rules.min_screen_below_swl_m
-        seal = seal_depth_for(log, rules, total_depth_m)
-        floor = max(swl_floor, seal)
+        floor, sealed, under_seal = _screen_floor(log, rules, swl, total_depth_m)
         sump_top = max(total_depth_m - rules.sump_length_m, 0.0)
         bottom = sump_top
         # rounded to 0.5 m like every other screen top, so the summary does
@@ -529,7 +566,7 @@ def design_borehole(
             # recorded below the hole was blamed on the static water level.
             top = max(min(bottom - rules.screen_length_default_m, bottom - 1.0), 0.0)
             cause = (
-                f"The {seal:g} m grouted interval" if seal >= swl_floor
+                under_seal[0].upper() + under_seal[1:] if sealed
                 else f"Static water level plus the {rules.min_screen_below_swl_m:g} m "
                 "minimum screen depth"
             )
@@ -747,14 +784,18 @@ def _assemble(
                        if as_built else "."),
                 )
             )
-    gravel_top = max(top_screen - rules.gravel_pack_above_top_screen_m, seal_depth)
+    rule = rules.gravel_pack_above_top_screen_m
+    gravel_top = max(top_screen - rule, seal_depth)
     gravel = (gravel_top, total_depth_m)
     seal = (0.0, seal_depth)
     backfill = (seal_depth, gravel_top)
+    # where the fill's top falls against the top screen: the rule's height,
+    # unless the seal holds it lower
+    pack_held = seal_depth > top_screen - rule
+    margin = top_screen - seal_depth if pack_held else rule
 
     # the drilled diameter is what the log says was drilled, not the rule's
     # default; the rule applies when the log records none
-    bore_in = logged_diameter_in(log) or rules.borehole_diameter_in
     diameter_source = " as logged" if logged_diameter_in(log) else ""
 
     # The same annulus rule the field checks apply (50 mm per side to place
@@ -762,9 +803,8 @@ def _assemble(
     # no document while the drawing, the summary and the bill of quantities
     # carried a 2-4 mm pack that cannot be poured through 19 mm. The fill
     # now follows the annulus, and every document follows the fill.
-    annulus_mm = (bore_in - rules.casing_diameter_in) * 25.4 / 2.0
-    if annulus_mm < ANNULUS_PACK_MIN_MM:
-        fill, material = "none", ""
+    fill, material, annulus_mm, bore_in = _annular_fill(log, rules)
+    if fill == "none":
         flags.append(
             DataFlag(
                 "warning",
@@ -778,8 +818,7 @@ def _assemble(
                 "the formation; use a larger bit or smaller casing to fit one.",
             )
         )
-    elif annulus_mm < ANNULUS_FILTER_MIN_MM:
-        fill, material = "formation stabiliser", rules.gravel_pack_material
+    elif fill == "formation stabiliser":
         flags.append(
             DataFlag(
                 "info",
@@ -790,8 +829,17 @@ def _assemble(
                 "filter pack.",
             )
         )
-    else:
-        fill, material = "gravel pack", rules.gravel_pack_material
+    if fill != "none" and pack_held:
+        # The basis said "2 m above the top screen" of a pack the seal held
+        # level with it, or 5 m below it round a screen in the grout.
+        flags.append(
+            DataFlag(
+                "warning",
+                "gravel_pack_short",
+                phrase("design.fill_short", fill=fill, top=gravel_top, seal=seal_depth,
+                       screen=top_screen, rule=rule, need=seal_depth + rule),
+            )
+        )
 
     if fill == "none":
         fill_sentence = (
@@ -801,10 +849,12 @@ def _assemble(
             "the formation"
         )
     else:
-        fill_sentence = (
-            f"{fill} ({material}) from {gravel[0]:g} m to the bottom, "
-            f"{rules.gravel_pack_above_top_screen_m:g} m above the top screen"
-        )
+        where = ("design.fill_above" if margin > 0
+                 else "design.fill_below" if margin < 0 else "design.fill_level")
+        values = {"fill": fill, "material": material, "top": gravel[0]}
+        if margin:
+            values["margin"] = abs(margin)
+        fill_sentence = phrase(where, **values)
     if grout > seal_depth:
         # held at the top of the sump: not what the log records
         seal_sentence = (

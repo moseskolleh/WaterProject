@@ -936,6 +936,13 @@ await withPage(async (page, base, consoleErrors) => {
       decommissioned_twice: streams[0].slice(0, 1).concat([
         { when: '2022-08-01', kind: 'decommissioned', note: 'collapsed' },
         { when: '2023-01-05', kind: 'decommissioned', note: 'backfilled' }]),
+      /* reports from the plate and by SMS (PLAN.md step 7.1) */
+      reported: streams[0].concat([
+        { when: '2023-05-01', kind: 'reported_working', by: 'SMS from +232' },
+        { when: '2023-06-01', kind: 'failure' },
+        { when: '2023-07-01', kind: 'reported_slow' },
+        { when: '2023-08-01', kind: 'quality_complaint', photo: 'data:image/jpeg;base64,AAAA',
+          photo_provenance: { format: 1, sha256: 'ab'.repeat(32) } }]),
     };
     const today = '2024-06-01';
     const assets = {};
@@ -965,6 +972,7 @@ await withPage(async (page, base, consoleErrors) => {
     out.asset_placard = C.placardLines(assets.commissioned,
       C.assetState(assets.commissioned, today));
     out.asset_qr_payload = C.qrPayload(assets.commissioned);
+    out.asset_qr_link = C.qrPayload(assets.commissioned, 'https://water.example.org/toolkit/');
     out.registry_rows = C.registryRows(Object.keys(assets).map((k) => assets[k]), today);
     out.registry_stats = C.registryStats(Object.keys(assets).map((k) => assets[k]), today);
     out.asset_months = [['2023-08-31', 6], ['2023-12-31', 2], ['2020-02-29', 12],
@@ -1828,6 +1836,10 @@ await withPage(async (page, base, consoleErrors) => {
     parsed.asset_qr_payload === R.asset_qr_payload,
     JSON.stringify(parsed.asset_qr_payload) + '\n     vs ' +
     JSON.stringify(R.asset_qr_payload));
+  check('registry: with a report address, the symbol is the same link',
+    parsed.asset_qr_link === R.asset_qr_link && R.asset_qr_link.endsWith('#/report/' +
+      R.asset_ids[0].id),
+    JSON.stringify(parsed.asset_qr_link) + '\n     vs ' + JSON.stringify(R.asset_qr_link));
   check('registry: the table rows match',
     JSON.stringify(parsed.registry_rows) === JSON.stringify(R.registry_rows),
     JSON.stringify(parsed.registry_rows) + '\n     vs ' + JSON.stringify(R.registry_rows));
@@ -2049,6 +2061,124 @@ await withPage(async (page, base, consoleErrors) => {
       `js ${JSON.stringify(extraction.pdfs[name])}\n     py ${JSON.stringify(py)}`);
   });
 
+  // --- time cells ---
+  // A cell Excel formats as a clock reaches the readers as a clock, and the
+  // first number in it was read as the minutes: 01:30 was minute 1.
+  const timeCells = await page.evaluate((cases) => cases.map((c) => {
+    const read = GWT.core.readTime(c.cell, [c.header]);
+    return { cell: c.cell, header: c.header, format: GWT.core.clockFormat([c.header]),
+      value: read.quantity.value, status: read.quantity.status,
+      unit: read.quantity.unit_text, written: read.clock };
+  }), R.time_cells);
+  R.time_cells.forEach((py, i) => {
+    const js = timeCells[i];
+    check(`time cell ${JSON.stringify(py.cell)} under ${py.header}`,
+      close(js.value, py.value, 1e-12) && js.status === py.status &&
+        js.unit === py.unit && js.written === py.written && js.format === py.format,
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+  });
+
+  // --- water quality units and bases, and clocks read as quantities ---
+  // A unit after a measured value or in the result header, nitrate and
+  // nitrite as nitrogen, calcium and magnesium as CaCO3, a count per 100 mL
+  // written with a space, a determinand with no limit in a unit that cannot
+  // be read: the rows are Python's, read and assessed by both engines.
+  const QU = R.quality_units;
+  const qualityUnits = await page.evaluate((ref) => {
+    const C = GWT.core;
+    const result = (row) => Object.assign({ parameter: row[0], value: row[1], unit: row[2],
+      detection_limit: null, below_detection: false, method: '', greater_than: null,
+      greater_than_inclusive: false, unreadable: '' }, row[3] || {});
+    const summary = (a) => ({
+      state: a.verdict_state,
+      statuses: a.rows.map((r) => r.status),
+      reasons: a.rows.map((r) => r.reason),
+      remarks: a.rows.map((r) => r.remark),
+      converted: a.rows.map((r) => r.value_in_guideline_unit),
+      guidelines: a.rows.map((r) => r.who_health),
+      uncertainties: a.uncertainties,
+      flags: a.flags.map((f) => [f.level, f.code, f.message]),
+      ionic: a.ionic ? { error: a.ionic.error_percent, cations: a.ionic.cations_meq,
+        anions: a.ionic.anions_meq } : null,
+      hazard: a.health_risk ? { index: a.health_risk.hazard_index,
+        quotients: a.health_risk.hazard_quotients } : null,
+      wqi: a.wqi ? { value: a.wqi.value, rating: a.wqi.rating, n: a.wqi.n_parameters,
+        top: a.wqi.top_contributors } : null,
+      corrosivity: { lsi: a.corrosivity.lsi, rsi: a.corrosivity.rsi,
+        classification: a.corrosivity.classification,
+        assumptions: a.corrosivity.assumptions },
+      verdict: a.verdict,
+      recommendations: GWT.docx.qualityRecommendations(a),
+    });
+    const cases = {};
+    Object.keys(ref.cases).forEach((name) => {
+      cases[name] = summary(C.assessSample({ results: ref.cases[name].rows.map(result),
+        flags: [] }));
+    });
+    return {
+      cases,
+      sheets: ref.sheets.map((sheet) => {
+        const s = C.qualityFromGrid(sheet.grid, 'sheet.xlsx');
+        return Object.assign({ results: s.results.map((r) => [r.parameter, r.value, r.unit,
+          r.detection_limit, r.below_detection, r.greater_than, r.greater_than_inclusive,
+          r.unreadable]) }, summary(C.assessSample(s)));
+      }),
+      quantities: ref.quantities.map((q) => {
+        const read = C.readQuantity(q.cell, [q.header], 'time');
+        return { value: read.value, status: read.status, unit: read.unit_text };
+      }),
+      units: ref.units.map((u) => {
+        const unit = C.parseUnit(u[0]);
+        return unit ? [unit.canonical, unit.dimension, unit.factor, unit.offset, unit.basis]
+          : null;
+      }),
+      names: ref.names.map((n) => C.normaliseParameter(n[0])),
+    };
+  }, QU);
+  /* numbers to 1e-12 relative, everything else exactly */
+  function sameDeep(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return close(a, b, 1e-12);
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return a.length === b.length && a.every((v, i) => sameDeep(v, b[i]));
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const ka = Object.keys(a), kb = Object.keys(b);
+      return ka.length === kb.length && ka.every((k, i) => k === kb[i] && sameDeep(a[k], b[k]));
+    }
+    return a === b;
+  }
+  const QUALITY_KEYS = ['state', 'statuses', 'reasons', 'remarks', 'converted', 'guidelines',
+    'uncertainties', 'flags', 'ionic', 'hazard', 'wqi', 'corrosivity', 'verdict',
+    'recommendations'];
+  Object.keys(QU.cases).forEach((name) => {
+    QUALITY_KEYS.forEach((key) => {
+      const js = qualityUnits.cases[name][key], py = QU.cases[name][key];
+      check(`quality units ${name}: ${key}`, sameDeep(js, py),
+        `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+    });
+  });
+  QU.sheets.forEach((sheet, i) => {
+    ['results'].concat(QUALITY_KEYS).forEach((key) => {
+      const js = qualityUnits.sheets[i][key], py = sheet[key];
+      check(`quality units sheet ${i + 1}: ${key}`, sameDeep(js, py),
+        `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+    });
+  });
+  QU.quantities.forEach((py, i) => {
+    const js = qualityUnits.quantities[i];
+    check(`quantity ${JSON.stringify(py.cell)} under ${py.header}`,
+      sameDeep(js, { value: py.value, status: py.status, unit: py.unit }),
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+  });
+  QU.units.forEach((py, i) => {
+    check(`unit spelling ${JSON.stringify(py[0])}`, sameDeep(qualityUnits.units[i], py[1]),
+      `js ${JSON.stringify(qualityUnits.units[i])}\n     py ${JSON.stringify(py[1])}`);
+  });
+  QU.names.forEach((py, i) => {
+    check(`parameter name ${JSON.stringify(py[0])}`, qualityUnits.names[i] === py[1],
+      `js ${qualityUnits.names[i]} vs py ${py[1]}`);
+  });
+
   // --- pumping sheets at the edges ---
   // The two sample sheets are the ordinary case. These are the same sheets
   // with the cells rewritten that each hydraulics defect turned on: a rejected
@@ -2085,6 +2215,18 @@ await withPage(async (page, base, consoleErrors) => {
           rec_pumping_time: a.recovery ? a.recovery.pumping_time_min : null,
           step_numbers: a.step_test ? a.step_test.steps.map((s) => s.step) : null,
           flags: a.flags.map((f) => [f.level, f.code, f.message]),
+          // what the audit of the reader and the analysis moved: clock
+          // times, the step length, the recovery's blocks and clock, the
+          // stabilised level, the sheet's casing and the yield's root
+          step_length: test.step_length_min,
+          recovery: test.recovery_time_min ? [test.recovery_time_min.length,
+            Math.min(...test.recovery_time_min), Math.max(...test.recovery_time_min)] : null,
+          residual_end: a.recovery ? a.recovery.residual_at_end_m : null,
+          stabilised: a.stabilised_level_m,
+          casing_in: a.casing_diameter_in,
+          riser_in: a.riser_diameter_in,
+          casing_min: a.casing_storage_min,
+          long_term: rec.long_term_yield_m3_per_h,
         };
       } catch (e) { out[name] = { error: String(e && e.message || e) }; }
     });
@@ -3197,6 +3339,134 @@ await withPage(async (page, base, consoleErrors) => {
   check('measurement: the costs of a sounding and a profiling line, from field.yaml',
     JSON.stringify(valueJs.costs) === JSON.stringify(VM.surveys[0].values.map((v) => v.cost_usd)),
     JSON.stringify(valueJs.costs));
+
+  // Costing, siting and the value of a measurement: the cases an audit of
+  // the two engines found, each run from the spec make_reference.py wrote.
+  // The suitability fit on the water layer and not on what rounding a zone
+  // adds; the tie on the gap as printed, and equal weighted scores ranked by
+  // sounding id rather than by a last bit; two points at the same odds, and
+  // a reading whose factor is exactly the threshold, kept on the chances in
+  // both engines whatever the costs; the no water, no pay price on dry
+  // attempts; and the cost and programme tables rounded half to even.
+  // Numbers are held to 1e-9 (the even spread goes through exp and pow) and
+  // every word and table cell exactly.
+  const CS = R.costing_siting;
+  const csJs = await page.evaluate((CS) => {
+    const C = GWT.core;
+    const asDict = (v) => Object.assign({}, v, { summary: C.measurementSummary(v),
+      text: C.measurementText(v), basis: C.measurementBasis(v),
+      reading_rows: C.measurementReadingRows(v),
+      decision_header: C.measurementDecisionHeader(v),
+      decision_rows: C.measurementDecisionRows(v),
+      readings_caption: C.measurementReadingsCaption(v) });
+    const suitRows = (results) => results.map((r) => [r.sounding_id, r.suitability, r.grade,
+      r.confidence, r.rank, r.components.resistivity_fit, r.rationale]);
+    const layered = CS.specs.water_layer.map(([sid, rho, thick]) =>
+      C.interpretModel(null, C.layeredModel(rho, thick,
+        { fit_error_percent: 3.0, sounding_id: sid })));
+    const bare = CS.specs.last_bit.map(([sid, dtb, c]) => ({
+      sounding_id: sid, water_zones: [], layers: [], aquifer_thickness_m: 0.0,
+      depth_to_basement_m: dtb, confidence: c, site_easting: null, site_northing: null }));
+    const lastBit = C.assessSiting(bare);
+    const scored = (sid, s, c, rank) => ({ sounding_id: sid, suitability: s, grade: 'Good',
+      components: { aquifer_thickness: 1.0, resistivity_fit: 1.0, overburden: 1.0,
+        basal_fracture: 1.0 }, rationale: 'Driven by ' + sid + '.', rank: rank,
+      confidence: c });
+    const [completed, dry] = CS.specs.same_odds_costs[0];
+    return {
+      water_layer: {
+        zones: layered.map((i) => i.water_zones),
+        ranked: suitRows(C.assessSiting(layered)),
+      },
+      last_bit: { ranked: suitRows(lastBit), tie: C.rankingTie(lastBit),
+        preference: C.rankInterpretations(bare).map((i) => i.sounding_id) },
+      gaps: CS.specs.gaps.map(([[s1, c1], [s2, c2], within]) => {
+        const pair = [scored('VES-1', s1, c1, 1), scored('VES-2', s2, c2, 2)];
+        const points = pair.map((r, k) => ({ label: r.sounding_id, easting: 178000.0 + 50 * k,
+          northing: 1000000.0, value: C.pyRound(r.suitability * r.confidence, 1),
+          kind: 'Good', rank: r.rank }));
+        return { tied: C.tiedLeaders(pair, within) !== null,
+          tie: C.rankingTie(pair, within), verdict: C.suitabilityVerdict(pair, within),
+          map_tie: C.suitabilityMapState(points).tie };
+      }),
+      same_odds: CS.same_odds.map((s) => ({ odds: s.odds,
+        values: C.measurementValues(s.odds, [0, 1], completed, dry).map(asDict) })),
+      threshold: CS.specs.same_odds_costs.map(([c, d]) =>
+        C.measurementValues(CS.threshold_odds, [0, 1], c, d).map(asDict)),
+      alternatives: C.measurementValues(CS.tied_alternatives, [0, 1, 2], 5000.0, 2000.0)
+        .map(asDict),
+      estimates: CS.specs.estimates.map(([depth, km, vat]) => {
+        const e = C.estimateBoreholeCost(C.costingInputs({ total_depth_m: depth,
+          mobilisation_distance_km: km }), null, { vatPercent: vat });
+        return {
+          dry_attempt_direct_usd: e.dry_attempt_direct_usd,
+          dry_attempt_price_usd: e.dry_attempt_price_usd,
+          price_with_vat_usd: e.price_with_vat_usd,
+          per_successful: CS.specs.rates.map((r) => e.price_per_successful_well_usd(r)),
+          per_successful_whole: CS.specs.rates.map((r) =>
+            e.price_per_successful_well_usd(r, e.price_with_vat_usd)),
+          summary_rows: C.costSummaryRows(e),
+        };
+      }),
+      refused: (() => {
+        const e = C.estimateBoreholeCost(C.costingInputs({ total_depth_m: 60.0 }));
+        let n = 0;
+        [[80.0, -1.0], [80.0, NaN], [80.0, Infinity], [80.0, '5'], [0.0, null]].forEach(([r, f]) => {
+          try { e.price_per_successful_well_usd(r, f); } catch (err) { n += 1; }
+        });
+        return n;
+      })(),
+      programmes: CS.specs.programmes.map(([depth, km, wells, rate, vat]) => {
+        const p = C.estimateProgrammeCost(C.costingInputs({ total_depth_m: depth,
+          mobilisation_distance_km: km }), wells, { successRatePercent: rate, vatPercent: vat });
+        return { dry_attempt_cost_usd: p.dry_attempt_cost_usd,
+          transport_cost_usd: p.transport_cost_usd, summary_rows: C.programmeSummaryRows(p) };
+      }),
+    };
+  }, CS);
+  {
+    let d = oddsWithin(csJs.water_layer, CS.water_layer, 'water_layer');
+    check('siting: the resistivity fit reads the water layer, not the slices rounding a zone adds',
+      d === null, d);
+    d = oddsWithin(csJs.last_bit, CS.last_bit, 'last_bit');
+    check('siting: equal weighted scores a last bit apart are ranked by sounding id, ' +
+      'in the scorecard and the preference table', d === null, d);
+    CS.gaps.forEach((ref, i) => {
+      const [[s1, c1], [s2, c2], within] = CS.specs.gaps[i];
+      const g = oddsWithin(csJs.gaps[i], ref, `gaps[${i}]`);
+      check(`siting: ${s1} x ${c1} against ${s2} x ${c2} on a ${within}-point margin, ` +
+        'tied or not on the gap as printed, in the text, verdict and map', g === null, g);
+    });
+    CS.same_odds.forEach((ref, i) => {
+      const [code, glg, rho, err] = CS.specs.same_odds[i];
+      const g = oddsWithin(csJs.same_odds[i], ref, `same_odds[${i}]`);
+      check(`measurement: two points alike on ${code || 'no class'} / ${glg || 'no unit'} ` +
+        `at ${rho} ohm-m and ${err}% keep the first-ranked point, every figure and sentence`,
+        g === null, g);
+    });
+    CS.threshold.forEach((ref, i) => {
+      const g = oddsWithin(csJs.threshold[i], ref, `threshold[${i}]`);
+      check(`measurement: a reading at the threshold keeps the choice at costs ${
+        CS.specs.same_odds_costs[i].map((x) => Math.round(x)).join(' and ')}`, g === null, g);
+    });
+    d = oddsWithin(csJs.alternatives, CS.alternatives, 'alternatives');
+    check('measurement: alternatives at the same odds take the higher ranked', d === null, d);
+    CS.estimates.forEach((ref, i) => {
+      const [depth, km, vat] = CS.specs.estimates[i];
+      const g = oddsWithin(csJs.estimates[i], ref, `estimates[${i}]`, 1e-12);
+      check(`costing: ${depth} m, ${km} km, VAT ${vat}%: no water no pay on dry attempts, and ` +
+        'the summary rows half to even', g === null, g);
+    });
+    check('costing: a failure priced below 0, as no number or as text, and a success rate ' +
+      'of 0, are refused as Python refuses them', csJs.refused === CS.refused,
+      `js refused ${csJs.refused}, py ${CS.refused}`);
+    CS.programmes.forEach((ref, i) => {
+      const [depth, km, wells, rate, vat] = CS.specs.programmes[i];
+      const g = oddsWithin(csJs.programmes[i], ref, `programmes[${i}]`, 1e-12);
+      check(`costing: a programme of ${wells} at ${rate}% (${depth} m, ${km} km, VAT ${vat}%), ` +
+        'its summary rows half to even', g === null, g);
+    });
+  }
 
   // One way of reporting uncertainty (PLAN.md step 3.6). Both engines are
   // handed the same results - the drilling depth's quantiles, hand-built
@@ -4670,6 +4940,132 @@ await withPage(async (page, base, consoleErrors) => {
       failed.length === 0, failed.slice(0, 3).join('\n     '));
   }
 
+  // --- Contractor scorecards (PLAN.md step 6.3) ---
+  // The twins of groundwater/scorecards.py on make_reference.py's drawn
+  // portfolios, each under one of four settings: the works record made from
+  // each project and read back clean, the boreholes pooled with the ledgers
+  // of files saved before the record, the scorecards and the report's
+  // content, all held whole; hand-edited records; dates as logs write them;
+  // Dr Timbo's own log as the browser reads the workbook; and a Streamlit
+  // project file's record, through the browser's YAML reader.
+  {
+    const SR = R.scorecards;
+    const scJs = await page.evaluate(async ({ SR }) => {
+      const C = GWT.core, S = GWT.support, D = GWT.data;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.stack || e) }; }
+      };
+      const sheets = await GWT.support.readXlsx(S.base64ToBytes(D.samples.dr_timbo.files.drilling.b64));
+      const timboLog = C.drillingFromGrid(sheets[0].rows, 'dr_timbo_drilling_log.xlsx');
+      return {
+        cases: SR.cases.map((c) => attempt(() => {
+          const cfg = C.withConfig({ ledger: c.settings });
+          const records = c.projects.map((p) => C.worksRecord(p.site, p.log, p.analysis, p.ledger, p.answers,
+            p.metres, p.procurement, cfg));
+          const files = c.projects.map((p, i) => [p.label, p.on_file ? records[i] : null, p.ledger_file]);
+          const boreholes = C.scorecardBoreholes(files);
+          const clean = records.map((w) => C.cleanWorks(w));
+          return { records: records, boreholes: boreholes, cards: C.contractorScorecards(boreholes, cfg),
+            content: C.scorecardContent(files, c.issued, cfg), clean: clean };
+        })),
+        hand: SR.hand.map((h) => attempt(() => C.cleanWorks(h.raw))),
+        days: SR.days.map((d) => attempt(() => C.writtenDay(d.text))),
+        timbo: attempt(() => {
+          const t = SR.timbo.inputs;
+          const record = C.worksRecord(t.site, timboLog, null, null, t.answers, t.metres, t.procurement);
+          return { record: record, content: C.scorecardContent([['Dr Timbo', record, null]], '2026-10-29') };
+        }),
+        file: attempt(() => C.cleanWorks(S.parseYaml(SR.file.yaml).works)),
+      };
+    }, { SR });
+    const failed = SR.cases.map((c, i) => {
+      const got = scJs.cases[i];
+      if (!got || got.threw) return `[${i}] threw ${got ? got.threw : 'no answer'}`;
+      const { clean, ...made } = got.ok;
+      // and each record reads back as it was made
+      return firstDifference(made, c.expect, `[${i} ${JSON.stringify(c.settings)}]`) ||
+        firstDifference(clean, c.expect.records, `[${i}] read back`);
+    }).filter(Boolean);
+    check(`scorecards: works records, boreholes, scorecards and the report (${SR.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    const each = (label, gots, wants) => {
+      const wrong = wants.map((want, i) => {
+        const got = gots[i];
+        if (!got || got.threw) return `[${i}] threw ${got ? got.threw : 'no answer'}`;
+        return firstDifference(got.ok, want.expect, `[${i}]`);
+      }).filter(Boolean);
+      check(`${label} (${wants.length})`, wrong.length === 0, wrong.slice(0, 3).join('\n     '));
+    };
+    each('scorecards: hand-edited works records cleaned', scJs.hand, SR.hand);
+    each('scorecards: dates as a drilling log writes them', scJs.days, SR.days);
+    const timbo = scJs.timbo.ok ? firstDifference(scJs.timbo.ok, { record: SR.timbo.record,
+      content: SR.timbo.content }) : `threw ${scJs.timbo.threw}`;
+    check('scorecards: Dr Timbo\'s log, as the browser reads the workbook', !timbo, timbo);
+    const file = scJs.file.ok !== undefined ? firstDifference(scJs.file.ok, SR.file.expect)
+      : `threw ${scJs.file.threw}`;
+    check('scorecards: read out of a Streamlit project file as Python reads it', !file, file);
+  }
+
+  // --- Where to drill next, within a budget (PLAN.md step 6.1) ---
+  // The twins of groundwater/allocation.py on make_reference.py's cases: the
+  // ground of every district and chiefdom as the grid reads it on the bundled
+  // layers; small choices on given ground (the exact choice), areas alike in
+  // all but their names both ways, the ranking's own areas at budgets that
+  // buy nothing, a few boreholes and many (the greedy choice), access costs,
+  // a calibration set in force and other settings, held whole: the figures,
+  // the table and the sentences through the CSV, which carries both. Every
+  // cost is to the cent, so only the expected attempts, which divide by the
+  // odds, are held to 1e-9. And the refusals.
+  {
+    const AR = R.allocation;
+    const alJs = await page.evaluate(({ AR }) => {
+      const C = GWT.core;
+      const grounds = {};
+      for (const level of C.ALLOCATION_LEVELS) grounds[level] = C.areaGrounds(level);
+      const cases = AR.cases.map((c) => {
+        try {
+          const cfg = C.withConfig(Object.assign({ allocation: c.allocation },
+            c.set ? { calibration: c.set } : {}));
+          const a = C.allocate(c.rows, c.budget, c.cost, { level: c.level, access: c.access, config: cfg,
+            grounds: c.grounds || undefined });
+          return { ok: {
+            summary: {
+              method: a.method, items: a.items, boreholes: a.boreholes, areas: a.areas, cost: a.cost_usd,
+              left: a.left_usd, people: a.people, attempts: a.attempts, bound: a.bound, least: a.least_ratio,
+              marginal: a.marginal,
+              candidates: a.candidates.map((x) => [x.id, x.district, x.unserved, x.boreholes, x.chosen,
+                x.people, x.reason, x.cost_usd, x.access_usd]),
+            },
+            header: C.allocationHeader(a), csv: C.allocationCsv(a),
+          } };
+        } catch (e) {
+          return { threw: String(e && e.message || e) };
+        }
+      });
+      return { grounds, cases };
+    }, { AR });
+    const grounds = firstDifference(alJs.grounds, AR.grounds, 'grounds');
+    check(`allocation: the ground of every district and chiefdom (${Object.keys(AR.grounds.district).length}` +
+      ` and ${Object.keys(AR.grounds.chiefdom).length})`, !grounds, grounds);
+    const failed = AR.cases.map((c, i) => {
+      const got = alJs.cases[i];
+      if (!got) return `[${c.name}] no answer`;
+      if (c.expect.refused !== undefined) {
+        return got.threw ? null : `[${c.name}] chose where Python refused: ${c.expect.refused}`;
+      }
+      if (got.threw) return `[${c.name}] threw ${got.threw}`;
+      const { attempts, ...summary } = got.ok.summary;
+      const { attempts: want, ...expected } = c.expect.summary;
+      if (!close(attempts, want, 1e-9)) return `[${c.name}] attempts: js ${attempts} vs py ${want}`;
+      return firstDifference({ summary, header: got.ok.header, csv: got.ok.csv },
+        { summary: expected, header: c.expect.header, csv: c.expect.csv }, `[${c.name}]`);
+    }).filter(Boolean);
+    const methods = new Set(AR.cases.filter((c) => c.expect.summary).map((c) => c.expect.summary.method));
+    check(`allocation: the boreholes chosen, the table and the words (${AR.cases.length}, ` +
+      `${[...methods].sort().join(' and ')})`, failed.length === 0 && methods.size === 2,
+    failed.slice(0, 3).join('\n     '));
+  }
+
   // --- Sanitary inspection (PLAN.md step 7.5) ---
   // The twins of groundwater/sanitary.py on make_reference.py's cases: the
   // form, its bands, the grades and the matrix as the bundle carries them;
@@ -4821,7 +5217,7 @@ await withPage(async (page, base, consoleErrors) => {
         try {
           const plan = Object.assign(C.serviceSchedule(), c.schedule || {});
           const parsed = C.parseAreaMechanics(c.mechanics);
-          const result = C.serviceRounds(c.assets, c.as_of, plan, parsed.entries);
+          const result = C.serviceRounds(c.assets, c.as_of, plan, parsed.entries, c.report_url);
           const states = c.assets.map((raw) => {
             const asset = C.assetFromDict(raw);
             if (!asset) return null;
@@ -4906,6 +5302,339 @@ await withPage(async (page, base, consoleErrors) => {
       groups.some((g) => g.steps.some((s) => s.survival === 0));
     check('survival: the cases reach every ending, every comparison, a group left out of the ' +
       'test and a curve closing on nought', reached);
+  }
+
+  // --- Reports from the plate and by SMS (PLAN.md step 7.1) ---
+  // The twins of groundwater/fault_reports.py on make_reference.py's cases:
+  // files of SMS lines and a gateway's messages read, reports from the page
+  // made, the lot merged into a register, written to a file of reports and
+  // read back, and the import's table and summary, all held whole; and the
+  // report addresses a plate may carry, checked.
+  {
+    const FRR = R.fault_reports;
+    const frJs = await page.evaluate(({ FRR }) => {
+      const C = GWT.core;
+      const cases = FRR.cases.map((c) => {
+        try {
+          const lines = C.readSmsLines(c.text, c.received_on);
+          const messages = C.receiveMessages(c.messages, c.received_on);
+          const made = c.page.map((a) => C.reportRecord(...a));
+          const every = lines.concat(messages, made);
+          const file = C.reportsFile(every);
+          return { ok: {
+            lines, messages, page: made, merged: C.mergeReports(c.assets, every), file,
+            back: C.readReportsFile(JSON.parse(JSON.stringify(file))),
+            rows: C.reportRows(every), summary: C.importSummary(every),
+          } };
+        } catch (e) {
+          return { threw: String(e && e.stack || e) };
+        }
+      });
+      return { cases, header: C.reportHeader(), smsFormat: C.smsFormat(),
+        urls: FRR.urls.map((u) => ({ url: u.url, reason: C.checkReportUrl(u.url) })),
+        links: FRR.urls.slice(0, 4).map((u) => C.reportLink(FRR.cases[0].assets[0].asset_id,
+          u.url)) };
+    }, { FRR });
+    const failed = FRR.cases.map((c, i) => {
+      const g = frJs.cases[i];
+      if (!g || g.threw) return `[${c.name}] threw ${g ? g.threw : 'no answer'}`;
+      return firstDifference(g.ok, c.expect, `[${c.name}]`);
+    }).filter(Boolean);
+    check(`fault reports: SMS, the page and a file of reports, merged and tabled (${FRR.cases.length})`,
+      failed.length === 0, failed.slice(0, 3).join('\n     '));
+    check('fault reports: the table\'s header and the words of the import',
+      JSON.stringify(frJs.header) === JSON.stringify(FRR.header) &&
+      frJs.smsFormat === FRR.sms_format,
+      JSON.stringify([frJs.header, frJs.smsFormat]));
+    check(`fault reports: report addresses checked alike (${FRR.urls.length})`,
+      firstDifference(frJs.urls, FRR.urls) === null &&
+      firstDifference(frJs.links, FRR.links) === null,
+      String(firstDifference(frJs.urls, FRR.urls) || firstDifference(frJs.links, FRR.links)));
+    const all = FRR.cases.flatMap((c) => c.expect.lines.concat(c.expect.messages, c.expect.page));
+    const reasons = all.filter((r) => r.status === 'refused').map((r) => r.reason);
+    /* each refusal by the words it begins with */
+    const refusals = ['Not a report', 'There is no identifier', 'There is no word', 'FIXED is not',
+      'Choose what', 'The message carries no day', 'The day received', 'The line carries two days',
+      'The day of the report', 'The report has no day', 'No identifier was entered',
+      'The check character does not match'];
+    const missing = refusals.filter((w) => !reasons.some((r) => r.startsWith(w)));
+    const reached = missing.length === 0 &&
+      all.some((r) => r.status === 'accepted' && r.photo_provenance) &&
+      FRR.cases.some((c) => c.expect.merged.added) && FRR.cases.some((c) => c.expect.merged.already) &&
+      FRR.cases.some((c) => c.expect.merged.unmatched.length) &&
+      FRR.urls.some((u) => u.reason) && FRR.urls.some((u) => u.url && !u.reason);
+    check('fault reports: the cases reach every refusal, a photograph, a merge, a repeat and a ' +
+      'report for no borehole held', reached, 'not reached: ' + missing.join('; '));
+  }
+
+  // --- Documents that can be verified (PLAN.md step 8.1) ---
+  // The twins of groundwater/verification.py on make_reference.py's cases:
+  // codes from digests and from what is typed, the facts a manifest records,
+  // the manifest written, read and sealed into a package, packages read rule
+  // by rule (a python-docx report and the field kit Chromium wrote among
+  // them) with the four answers given of each, issue records kept, read out
+  // of either app's project file and looked up, and the documents an asset
+  // record keeps, all held whole.
+  {
+    const VR = R.verification;
+    const vrJs = await page.evaluate(({ VR }) => {
+      const C = GWT.core, S = GWT.support;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.message || e) }; }
+      };
+      const facts = (a) => C.manifestFacts(a.kind, a.title, a.issued_on, a.engine, a.calibration,
+        a.readiness, a.evidence);
+      const bytes = (b64) => S.base64ToBytes(b64);
+      const sealed = attempt(() => {
+        const out = C.sealPackage(VR.seal.entries, VR.seal.facts,
+          (code) => ({ 'word/footer1.xml': 'Document ' + code + ' - page' }));
+        const parts = {};
+        Object.keys(out.entries).forEach((name) => { parts[name] = new TextDecoder().decode(out.entries[name]); });
+        return { code: out.code, sha256: out.sha256, manifest: out.manifest, record: out.record, parts };
+      });
+      return {
+        codes: VR.codes.map((c) => C.documentCode(c[0])),
+        qrPng: VR.qr_png.map((c) => C.sha256Hex(C.qrPng(C.qrEncode(c[0], { ecc: 'H' })))),
+        parse: VR.parse.map((c) => C.parseDocumentCode(c[0])),
+        readiness: VR.readiness.map((c) => C.readinessFacts(c[0])),
+        calibration: C.calibrationFacts(null),
+        manifests: VR.manifests.map((m) => attempt(() => {
+          const f = facts(m.args);
+          const digest = C.codeDigest(f, VR.parts);
+          const code = C.documentCode(digest);
+          return { facts: f, digest, code, xml: C.manifestXml(f, code, VR.parts, VR.carriers) };
+        })),
+        refusals: VR.refusals.map((r) => attempt(() => facts(r.args))),
+        read: VR.read.map((c) => C.readManifest(c[0])),
+        seal: sealed,
+        sealXml: attempt(() => C.sealPackage(Object.assign({}, VR.seal.entries, {
+          '[Content_Types].xml': '<Types xmlns="t"><Default Extension="xml" ContentType="application/xml"/></Types>',
+        }), VR.seal.facts).manifest),
+        packages: VR.packages.map((p) => attempt(() => {
+          const data = bytes(p.b64);
+          const read = C.readPackage(data);
+          let parts = null;
+          if (read) {
+            parts = {};
+            Object.keys(read).forEach((name) => { parts[name] = C.sha256Hex(read[name]); });
+          }
+          const reports = {};
+          Object.keys(p.reports).forEach((key) => {
+            reports[key] = { records: p.reports[key].records,
+              report: C.verifyDocument(data, p.reports[key].records) };
+          });
+          return { parts, record: C.documentRecord(data), reports };
+        })),
+        records: { clean: C.cleanIssueRecords(VR.records.raw), borehole: C.boreholeRecords(VR.records.raw),
+          not_a_list: C.cleanIssueRecords({ a: 1 }) },
+        payloads: VR.payloads.map((c) => C.issueRecordsOf(c[0])),
+        lookups: VR.lookups.map((c) => C.lookupCode(c.text, c.records)),
+        assets: {
+          stored: VR.assets.stored.map((c) => (C.assetFromDict(c[0]) || {}).documents || []),
+          draft: (C.assetFromProject({ site: VR.assets.draft.site, issued: VR.assets.draft.issued }) || {})
+            .documents || [],
+        },
+      };
+    }, { VR });
+    const same = (label, got, want) => {
+      const found = firstDifference(got, want, label);
+      check(`verification: ${label}`, !found, found);
+    };
+    same('codes from digests', vrJs.codes, VR.codes.map((c) => c[1]));
+    same('the cover\'s symbol, the same PNG byte for byte', vrJs.qrPng, VR.qr_png.map((c) => c[1]));
+    same('codes read from what is typed', vrJs.parse, VR.parse.map((c) => c[1]));
+    same('the readiness a manifest records', vrJs.readiness, VR.readiness.map((c) => c[1]));
+    same('the calibration set in force, named', vrJs.calibration, VR.calibration);
+    same('facts, code digest, code and manifest', vrJs.manifests,
+      VR.manifests.map((m) => ({ ok: { facts: m.facts, digest: m.digest, code: m.code, xml: m.xml } })));
+    same('facts refused, with the same sentence', vrJs.refusals, VR.refusals.map((r) => ({ threw: r.error })));
+    same('manifests read back, or refused', vrJs.read, VR.read.map((c) => c[1]));
+    same('a package sealed', vrJs.seal, { ok: { code: VR.seal.code, sha256: VR.seal.sha256,
+      manifest: VR.seal.manifest, record: VR.seal.record, parts: VR.seal.parts } });
+    same('a package that types .xml already, sealed', vrJs.sealXml, { ok: VR.seal_xml });
+    VR.packages.forEach((p, i) => {
+      same(`the package "${p.name}": read, recorded and answered`, vrJs.packages[i],
+        { ok: { parts: p.parts, record: p.record, reports: p.reports } });
+    });
+    const verdicts = new Set(VR.packages.flatMap((p) => Object.values(p.reports).map((r) => r.report.verdict)));
+    check('verification: the packages reach every verdict', [
+      'verified', 'unconfirmed', 'changed', 'not_issued', 'altered_manifest', 'damaged_manifest',
+      'no_manifest', 'unreadable'].every((v) => verdicts.has(v)), JSON.stringify([...verdicts]));
+    same('issue records kept', vrJs.records, { clean: VR.records.clean, borehole: VR.records.borehole,
+      not_a_list: VR.records.not_a_list });
+    same('issue records read from either app\'s project file', vrJs.payloads, VR.payloads.map((c) => c[1]));
+    same('codes looked up', vrJs.lookups, VR.lookups.map((c) => c.result));
+    same('the documents an asset record keeps, stored and drafted', vrJs.assets,
+      { stored: VR.assets.stored.map((c) => c[1]), draft: VR.assets.draft.documents });
+  }
+
+  // --- One evidence bundle for each borehole (PLAN.md step 8.3) ---
+  // The twins of groundwater/bundle.py on make_reference.py's cases: names
+  // as a bundle holds them, the readiness of documents taken together, the
+  // notes and the README; bundles built byte for byte, and refused; the
+  // figures taken out of a document; manifest.json read back or refused; and
+  // a bundle changed in each way that matters (changed here as the reference
+  // changed it, with C.storedZip) checked with and without issue records.
+  {
+    const BD = R.bundle;
+    const fixtures = {};
+    R.verification.packages.forEach((p) => {
+      if (p.name === 'python-docx' || p.name === "the browser's") fixtures[p.name] = p.b64;
+    });
+    const bdJs = await page.evaluate(({ BD, fixtures }) => {
+      const C = GWT.core, S = GWT.support;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.message || e) }; }
+      };
+      const resolve = (spec) => S.base64ToBytes(spec.doc !== undefined ? BD.documents[spec.doc]
+        : spec.fixture !== undefined ? fixtures[spec.fixture] : spec.b64);
+      const filesOf = (list) => list.flatMap((f) => (f.figures_of
+        ? C.documentFigures(f.figures_of.name, resolve(f.figures_of))
+        : [{ folder: f.folder, name: f.name, data: resolve(f), what: f.what || '' }]));
+      const build = (kase) => C.buildEvidenceBundle(kase.title, filesOf(kase.files), {
+        borehole: kase.options.borehole || '', madeOn: kase.options.made_on, engine: kase.options.engine,
+        calibration: kase.options.calibration, records: kase.options.records });
+      const clone = (v) => JSON.parse(JSON.stringify(v));
+      // make_reference.py's _bd_edited, _bd_manifest_text and _bd_apply
+      const edited = (facts, edits) => {
+        const out = clone(facts);
+        edits.forEach((edit) => {
+          const path = edit[1];
+          let holder = out;
+          path.slice(0, -1).forEach((key) => { holder = holder[key]; });
+          const last = path[path.length - 1];
+          if (edit[0] === 'set') holder[last] = clone(edit[2]);
+          else if (edit[0] === 'append') holder[last].push(clone(edit[2]));
+          else if (edit[0] === 'insert') holder[last].splice(edit[2], 0, clone(edit[3]));
+          else if (edit[0] === 'reverse') holder[last].reverse();
+          else if (edit[0] === 'drop') holder[last] = holder[last].filter((x) => x.path.indexOf(edit[2]) !== 0);
+          else throw new Error(edit[0]);
+        });
+        return out;
+      };
+      const manifestText = (text, facts, recipe) => {
+        if ('text' in recipe) return recipe.text;
+        if ('nest' in recipe) return '['.repeat(recipe.nest) + ']'.repeat(recipe.nest);
+        if ('edits' in recipe || 'dump' in recipe) {
+          let e = edited(facts, recipe.edits || []);
+          const dump = recipe.dump || {};
+          if (dump.order) {
+            const ordered = {};
+            dump.order.forEach((key) => { ordered[key] = e[key]; });
+            e = ordered;
+          }
+          text = JSON.stringify(e, null, dump.indent === undefined ? 2 : dump.indent) + '\n';
+          if (dump.ascii) {
+            text = text.replace(/[\u0080-￿]/g, (ch) => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
+          }
+        }
+        if (recipe.replace) {
+          const at = text.indexOf(recipe.replace[0]);
+          text = text.slice(0, at) + recipe.replace[1] + text.slice(at + recipe.replace[0].length);
+        }
+        if (recipe.cut) text = text.slice(0, -recipe.cut);
+        if (recipe.wrap) text = recipe.wrap[0] + text + recipe.wrap[1];
+        if (recipe.crlf) text = text.split('\n').join('\r\n');
+        return text;
+      };
+      const byCodePoint = (a, b) => {
+        const x = Array.from(a, (ch) => ch.codePointAt(0)), y = Array.from(b, (ch) => ch.codePointAt(0));
+        for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i];
+        return x.length - y.length;
+      };
+      const apply = (base, recipe) => {
+        if (recipe.raw !== undefined && recipe.raw !== null) return S.base64ToBytes(recipe.raw);
+        const parts = Object.assign(Object.create(null), C.readPackage(base));
+        let text = new TextDecoder().decode(parts['manifest.json']);
+        const facts = C.readBundleManifest(text);
+        (recipe.drop || []).forEach((path) => { delete parts[path]; });
+        Object.keys(recipe.set || {}).forEach((path) => {
+          const value = recipe.set[path];
+          parts[path] = S.base64ToBytes(typeof value === 'string' ? value : BD.documents[value.doc]);
+        });
+        if (recipe.manifest) {
+          if (recipe.manifest.in_line) {
+            const changed = clone(facts);
+            changed.files.forEach((entry) => {
+              if (recipe.manifest.in_line.indexOf(entry.path) >= 0) {
+                entry.sha256 = C.sha256Hex(parts[entry.path]);
+                entry.bytes = parts[entry.path].length;
+              }
+            });
+            text = manifestText(text, changed, { edits: recipe.manifest.edits });
+          } else {
+            text = manifestText(text, facts, recipe.manifest);
+          }
+          parts['manifest.json'] = new TextEncoder().encode(text);
+        }
+        return C.storedZip(Object.keys(parts).sort(byCodePoint).map((name) => [name, parts[name]]));
+      };
+      const answered = (report, records) => {
+        const rest = Object.assign({}, report);
+        delete rest.facts;
+        return { records, facts: report.facts !== null, report: rest };
+      };
+      const smallFacts = C.readBundleManifest(BD.read_base);
+      const base = build(BD.builds[0]).bytes;
+      const fixtureBundle = build(BD.builds[BD.builds.length - 1]).bytes;
+      const fixtureRecords = BD.builds[BD.builds.length - 1].options.records;
+      return {
+        names: BD.names.map((c) => C.bundleName(c[0])),
+        readiness: BD.readiness.map((c) => C.bundleReadiness(c[0])),
+        notes: Object.fromEntries(C.BUNDLE_FOLDERS.map((folder) => [folder, C.bundleNote(folder)])),
+        readmes: [C.bundleReadme(smallFacts), attempt(() => C.bundleReadme(build(BD.builds[2]).facts)).ok],
+        figures: BD.figures.map((f) => C.documentFigures(f.name, resolve(f.spec)).map((x) => ({
+          folder: x.folder, name: x.name, sha256: C.sha256Hex(x.data), what: x.what }))),
+        builds: BD.builds.map((kase) => attempt(() => {
+          const out = build(kase);
+          return { sha256: out.sha256, manifest: out.manifest, bytes_sha256: C.sha256Hex(out.bytes),
+            size: out.bytes.length };
+        })),
+        refusals: BD.refusals.map((kase) => attempt(() => build(kase).sha256)),
+        read: BD.read.map((c) => C.readBundleManifest(manifestText(BD.read_base, smallFacts, c[0]))),
+        checks: BD.checks.map((kase) => attempt(() => {
+          const data = kase.recipe.doc !== undefined ? S.base64ToBytes(BD.documents[kase.recipe.doc])
+            : apply(base, kase.recipe);
+          const reports = {};
+          Object.keys(kase.reports).forEach((key) => {
+            reports[key] = answered(C.verifyEvidenceBundle(data, kase.reports[key].records),
+              kase.reports[key].records);
+          });
+          return { sha256: C.sha256Hex(data), reports };
+        })),
+        fixtureCheck: {
+          none: answered(C.verifyEvidenceBundle(fixtureBundle, null), null).report,
+          theirs: answered(C.verifyEvidenceBundle(fixtureBundle, fixtureRecords), null).report,
+        },
+      };
+    }, { BD, fixtures });
+    const same = (label, got, want) => {
+      const found = firstDifference(got, want, label);
+      check(`bundle: ${label}`, !found, found);
+    };
+    same('names as a bundle holds them', bdJs.names, BD.names.map((c) => c[1]));
+    same('the readiness of documents taken together', bdJs.readiness, BD.readiness.map((c) => c[1]));
+    same('the notes an empty folder carries', bdJs.notes, BD.notes);
+    same('the README, with a title and with none', bdJs.readmes, BD.readmes);
+    same('figures taken out of a document', bdJs.figures, BD.figures.map((f) => f.figures));
+    BD.builds.forEach((kase, i) => {
+      same(`the bundle "${kase.name}", byte for byte`, bdJs.builds[i], { ok: kase.result });
+    });
+    same('bundles refused, with the same sentence', bdJs.refusals, BD.refusals.map((r) => ({ threw: r.error })));
+    same('manifest.json read back, or refused', bdJs.read, BD.read.map((c) => c[1]));
+    BD.checks.forEach((kase, i) => {
+      same(`the bundle "${kase.recipe.name}": changed alike and answered`, bdJs.checks[i],
+        { ok: { sha256: kase.sha256, reports: kase.reports } });
+    });
+    same('the bundle of the committed documents, answered', bdJs.fixtureCheck, BD.fixture_check);
+    const verdicts = new Set(BD.checks.flatMap((c) => Object.values(c.reports).map((r) => r.report.verdict))
+      .concat(Object.values(BD.fixture_check).map((r) => r.verdict)));
+    check('bundle: the cases reach every verdict', ['verified', 'unconfirmed', 'changed', 'not_issued',
+      'damaged_manifest', 'no_manifest', 'unreadable'].every((v) => verdicts.has(v)), JSON.stringify([...verdicts]));
+    const confirmations = new Set(BD.checks.concat([{ reports: { x: { report: BD.fixture_check.theirs } } }])
+      .flatMap((c) => Object.values(c.reports).flatMap((r) => r.report.files.map((f) => f.confirmed))));
+    check('bundle: the cases reach every confirmation', ['issue_record', 'document', 'toolkit', 'none']
+      .every((v) => confirmations.has(v)), JSON.stringify([...confirmations]));
   }
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

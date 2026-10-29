@@ -228,6 +228,37 @@ DESIGN_CASES = [
     {"total": 60, "grout": 20, "swl": 5, "installed": [[15, 25], [48, 54], [54, 60]],
      "intervals": [[0, 10, "Laterite"], [10, 60, "Granite"]],
      "rules": {"borehole_diameter_in": 8.0, "casing_diameter_in": 4.0}},
+    # the gravel pack above the top screen: a fracture at the foot of the
+    # grout, a zone in the pack's room, a seal at the rule's 6 m over a
+    # shallow fracture, a hole with no room for a screen below seal and pack,
+    # and analyst screens the seal holds the pack below, level with and short
+    # of; the 19 mm annulus of the default hole keeps the seal alone
+    {"total": 60, "grout": 20, "swl": 5,
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 10, "Laterite"], [10, 20, "Granite"], [20, 26, "Granite, fractured"],
+                   [26, 60, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5,
+     "intervals": [[0, 10, "Laterite"], [10, 20, "Granite"], [20, 26, "Granite, fractured"],
+                   [26, 60, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5,
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 10, "Laterite"], [10, 45, "Granite, fracture zone 20-21 m"],
+                   [45, 60, "Granite"]]},
+    {"total": 30, "swl": 2, "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 7, "Laterite"], [7, 12, "Granite, fractured, water bearing"],
+                   [12, 30, "Granite"]]},
+    {"total": 24, "grout": 20, "swl": 5,
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 24, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5, "screens": [[15, 25]],
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 60, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5, "screens": [[20, 30]],
+     "rules": {"borehole_diameter_in": 10.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 60, "Granite"]]},
+    {"total": 60, "grout": 20, "swl": 5, "screens": [[21, 30]],
+     "rules": {"borehole_diameter_in": 8.0, "casing_diameter_in": 4.0},
+     "intervals": [[0, 60, "Granite"]]},
 ]
 
 
@@ -1410,6 +1441,195 @@ def measurement_reference(odds: dict, cost_range: dict) -> dict:
     }
 
 
+# ------------------------- costing, siting and the value of a measurement
+#
+# What an audit of the two engines' costing, siting and decision arithmetic
+# found, each held here on the input that showed it. A water zone rounded to
+# whole metres took in a slice of the dry cover and the basement, and the
+# suitability fit was scored on them. A gap of 2.999999999999993 between two
+# weighted scores, and one of 2.96 printed as 3.0, were called within the
+# 3-point margin. Equal weighted scores a last bit apart were ranked by the
+# last bit, not by sounding id. Two points at the same odds, and a reading
+# whose factor is exactly the threshold, were decided by costs a last bit
+# apart, the second differently in each engine. A no water, no pay price
+# charged every expected failure a whole completed borehole. And the
+# browser's cost and programme summary tables rounded a half up where Python
+# rounds it to even. Every input is a spec the browser runs through its own
+# engine.
+
+#: two points on one 150 ohm-m water layer, the first thicker, as layered
+#: models both engines interpret
+SITING_WATER_LAYER = [["VES-A", [1500.0, 150.0, 5000.0], [5.4, 14.6 - 5.4]],
+                      ["VES-B", [1500.0, 150.0, 5000.0], [5.6, 14.4 - 5.6]]]
+
+#: points with no water zone, scored on their overburden alone, and their
+#: confidences: 19.0 x 0.8 and 16.0 x 0.95 are 15.2 a last bit apart
+SITING_LAST_BIT = [["VES 2", 38.0, 0.8], ["VES 1", 47.0, 0.95], ["VES 3", None, 1.0]]
+
+#: [first, second] weighted scores (suitability, confidence) and the margin
+SITING_GAPS = [[[64.1, 1.0], [61.1, 1.0], 3.0], [[80.0, 1.0], [77.0, 1.0], 3.0],
+               [[64.06, 1.0], [61.1, 1.0], 3.0], [[64.04, 1.0], [61.1, 1.0], 3.0],
+               [[64.1, 1.0], [61.6, 1.0], 2.5], [[19.0, 0.8], [16.0, 0.95], 3.0],
+               [[82.3, 1.0], [79.5, 1.0], 3.0], [[70.0, 0.9], [66.1, 1.0], 3.0]]
+
+#: identical points on the ground and at the water-zone resistivity and fit
+#: that sent the client to the second-ranked one, and two that did not
+SAME_ODDS = [["B-L", "pCm", 500, 3.0], ["I-L", "Pi", 500, 3.0], ["CSF-L/M", "pCm", 500, 3.0],
+             ["CSF-L/M", "pCm", 1500, 25.0], ["U-M/H", "Qe", 120, 15.0],
+             ["U-M/H", "Qe", 1500, 7.0], ["B-L", "pCm", 30, 3.0], [None, None, 120, 3.0]]
+
+#: the cost distribution's mean completed borehole and mean dry attempt for
+#: a 60 m borehole 50 km out, 60 m on site and 45 m 20 km out
+SAME_ODDS_COSTS = [[9060.953887811545, 4288.96670020555],
+                   [8658.491187606725, 4288.96670020555],
+                   [7891.717914862075, 3630.7302310008904]]
+
+#: single boreholes: depth, one-way distance, VAT; 11 and 13 m have a
+#: direct cost on a half
+NWNP_ESTIMATES = [[60.0, 0.0, 0.0], [60.0, 40.0, 15.0], [11.0, 0.0, 0.0], [13.0, 0.0, 15.0],
+                  [85.0, 120.0, 0.0]]
+NWNP_RATES = [100.0, 80.0, 50.0, 35.0, 12.5]
+
+#: programmes: depth, one-way distance, wells, success rate, VAT. Transport
+#: at 2.50 USD a km lands on a half for half of all attempt counts
+PROGRAMME_ROWS = [[60.0, 40.0, 2, 60.0, 0.0], [60.0, 40.0, 21, 35.0, 0.0],
+                  [60.0, 40.0, 5, 60.0, 15.0], [11.0, 40.0, 2, 100.0, 0.0],
+                  [13.0, 40.0, 5, 35.0, 15.0], [85.0, 40.0, 21, 60.0, 0.0]]
+
+
+def _same_ground(sid, rho, err):
+    def layer(top, bottom, r, wet):
+        return SimpleNamespace(top_m=top, bottom_m=bottom, rho=r, water_bearing=wet)
+
+    return SimpleNamespace(
+        sounding_id=sid, water_zones=[(8.0, 30.0)], fit_error_percent=err,
+        layers=[layer(0, 8, 400, False), layer(8, 30, rho, True),
+                layer(30, float("inf"), 3000, False)])
+
+
+def _scored_point(sid, suitability, confidence, rank):
+    from groundwater.siting import SitingSuitability, SuitabilityComponents
+
+    return SitingSuitability(
+        sounding_id=sid, suitability=suitability, grade="Good",
+        components=SuitabilityComponents(1.0, 1.0, 1.0, 1.0),
+        rationale=f"Driven by {sid}.", rank=rank, confidence=confidence)
+
+
+def _suit_rows(results) -> list:
+    return [[r.sounding_id, clean(r.suitability), r.grade, clean(r.confidence), r.rank,
+             clean(r.components.resistivity_fit), r.rationale] for r in results]
+
+
+def costing_siting_reference() -> dict:
+    from groundwater.costing import estimate_borehole_cost, estimate_programme_cost
+    from groundwater.mapping import MapPoint, suitability_map_state
+    from groundwater.siting import tied_leaders
+    from groundwater.siting.measurement import measurement_values
+    from groundwater.siting.odds import success_odds
+    from groundwater.ves.interpret import rank_interpretations
+
+    layered = []
+    for sid, rho, thick in SITING_WATER_LAYER:
+        model = LayeredModel(resistivities=rho, thicknesses=thick, fit_error_percent=3.0,
+                             sounding_id=sid)
+        layered.append(interpret_model(None, model))
+    water_layer = {"zones": [[[clean(t), clean(b)] for t, b in i.water_zones] for i in layered],
+                   "ranked": _suit_rows(assess_siting(layered))}
+
+    bare = [SimpleNamespace(sounding_id=sid, water_zones=[], layers=[], aquifer_thickness_m=0.0,
+                            depth_to_basement_m=dtb, confidence=c, site_easting=None,
+                            site_northing=None)
+            for sid, dtb, c in SITING_LAST_BIT]
+    ranked = assess_siting(bare)
+    last_bit = {"ranked": _suit_rows(ranked), "tie": ranking_tie(ranked),
+                "preference": [i.sounding_id for i in rank_interpretations(bare)]}
+
+    gaps = []
+    for (s1, c1), (s2, c2), within in SITING_GAPS:
+        pair = [_scored_point("VES-1", s1, c1, 1), _scored_point("VES-2", s2, c2, 2)]
+        points = [MapPoint(label=r.sounding_id, easting=178000.0 + 50 * k, northing=1000000.0,
+                           value=round(r.weighted, 1), kind="Good", rank=r.rank)
+                  for k, r in enumerate(pair)]
+        gaps.append({"tied": tied_leaders(pair, within) is not None,
+                     "tie": ranking_tie(pair, within),
+                     "verdict": suitability_verdict(pair, within),
+                     "map_tie": suitability_map_state(points)["tie"]})
+
+    def odds_pair(code, glg, rho, err):
+        return [_odds_dict(success_odds(_same_ground(sid, rho, err), None, code, glg))
+                for sid in ("VES-1", "VES-2")]
+
+    same_odds = []
+    for code, glg, rho, err in SAME_ODDS:
+        pair = odds_pair(code, glg, rho, err)
+        completed, dry = SAME_ODDS_COSTS[0]
+        values = measurement_values([_odds_object(o) for o in pair], [0, 1], completed, dry)
+        same_odds.append({"odds": pair, "values": [_measurement_dict(v) for v in values]})
+
+    ranges = [_odds_range((20.0, 20.0, 20.0), 0.0), _odds_range((3.0, 3.0, 3.0), 0.5)]
+    threshold_odds = [_odds_dict(success_odds(_same_ground(sid, rho, 3.0), r, "B-L", "pCm"))
+                      for sid, rho, r in (("VES-1", 10, ranges[0]), ("VES-2", 30, ranges[1]))]
+    threshold = [[_measurement_dict(v) for v in measurement_values(
+        [_odds_object(o) for o in threshold_odds], [0, 1], completed, dry)]
+        for completed, dry in SAME_ODDS_COSTS]
+
+    def point(p, sid):
+        return {"probability": p, "prior": 0.5, "sounding_id": sid, "range_sampled": False,
+                "evidence": [{"key": "fit", "weight": 1.0}]}
+
+    tied_alternatives = [point(0.6, "A"), point(0.4, "B"), point(math.nextafter(0.4, 1.0), "C")]
+    alternatives = [_measurement_dict(v) for v in measurement_values(
+        [_odds_object(o) for o in tied_alternatives], [0, 1, 2], 5000.0, 2000.0)]
+
+    estimates = []
+    for depth, km, vat in NWNP_ESTIMATES:
+        e = estimate_borehole_cost(CostingInputs(total_depth_m=depth,
+                                                 mobilisation_distance_km=km),
+                                   vat_percent=vat)
+        estimates.append({
+            "dry_attempt_direct_usd": e.dry_attempt_direct_usd,
+            "dry_attempt_price_usd": e.dry_attempt_price_usd,
+            "price_with_vat_usd": e.price_with_vat_usd,
+            "per_successful": [e.price_per_successful_well_usd(r) for r in NWNP_RATES],
+            "per_successful_whole": [e.price_per_successful_well_usd(r, e.price_with_vat_usd)
+                                     for r in NWNP_RATES],
+            "summary_rows": clean(e.summary_rows()),
+        })
+
+    # a failure priced below 0, as no number or as text is refused, as is a
+    # success rate of 0
+    e = estimate_borehole_cost(CostingInputs(total_depth_m=60.0))
+    refused = 0
+    for rate, failed in ((80.0, -1.0), (80.0, float("nan")), (80.0, float("inf")),
+                         (80.0, "5"), (0.0, None)):
+        try:
+            e.price_per_successful_well_usd(rate, failed)
+        except (TypeError, ValueError):
+            refused += 1
+
+    programmes = []
+    for depth, km, wells, rate, vat in PROGRAMME_ROWS:
+        p = estimate_programme_cost(CostingInputs(total_depth_m=depth,
+                                                  mobilisation_distance_km=km),
+                                    wells, success_rate_percent=rate, vat_percent=vat)
+        programmes.append({"dry_attempt_cost_usd": p.dry_attempt_cost_usd,
+                           "transport_cost_usd": p.transport_cost_usd,
+                           "summary_rows": clean(p.summary_rows())})
+
+    return {
+        "specs": {"water_layer": SITING_WATER_LAYER, "last_bit": SITING_LAST_BIT,
+                  "gaps": SITING_GAPS, "same_odds": SAME_ODDS,
+                  "same_odds_costs": SAME_ODDS_COSTS,
+                  "estimates": NWNP_ESTIMATES, "rates": NWNP_RATES,
+                  "programmes": PROGRAMME_ROWS},
+        "water_layer": water_layer, "last_bit": last_bit, "gaps": gaps,
+        "same_odds": same_odds, "threshold_odds": threshold_odds, "threshold": threshold,
+        "tied_alternatives": tied_alternatives, "alternatives": alternatives,
+        "estimates": estimates, "refused": refused, "programmes": programmes,
+    }
+
+
 # --------------------------------------- one way of reporting uncertainty (3.6)
 #
 # Every decision number is built from results the other sections already
@@ -1982,6 +2202,7 @@ def build() -> dict:
                      r["basement_unresolved"]) for r in out["ves_range"]["short"]])
     out["cost_range"] = cost_range_reference(out["ves_range"]["short"])
     out["measurement"] = measurement_reference(out["odds"], out["cost_range"])
+    out["costing_siting"] = costing_siting_reference()
     out["decisions"] = decisions_reference(out["odds"], out["cost_range"])
     out["ledger"] = ledger_reference(rokel_interps, [sd.site for sd in soundings],
                                      out["ves_range"]["short"],
@@ -1990,10 +2211,15 @@ def build() -> dict:
     out["calibration_sets"] = calibration_sets_reference()
     out["calibration_in_force"] = calibration_in_force_reference()
     out["calibration_pooling"] = calibration_pooling_reference()
+    out["scorecards"] = scorecards_reference()
+    out["allocation"] = allocation_reference()
     out["sanitary"] = sanitary_reference()
     out["rising_main"] = rising_main_reference()
     out["rounds"] = rounds_reference()
     out["survival"] = survival_reference()
+    out["fault_reports"] = fault_reports_reference()
+    out["verification"] = verification_reference()
+    out["bundle"] = bundle_reference()
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -2555,6 +2781,15 @@ def build() -> dict:
         "decommissioned_twice": _streams[0][:1] + [
             {"when": "2022-08-01", "kind": "decommissioned", "note": "collapsed"},
             {"when": "2023-01-05", "kind": "decommissioned", "note": "backfilled"}],
+        # reports from the plate and by SMS (PLAN.md step 7.1): working says
+        # so; slow and a water quality complaint leave the failure standing
+        "reported": _streams[0] + [{"when": "2023-05-01", "kind": "reported_working",
+                                    "by": "SMS from +232"},
+                                   {"when": "2023-06-01", "kind": "failure"},
+                                   {"when": "2023-07-01", "kind": "reported_slow"},
+                                   {"when": "2023-08-01", "kind": "quality_complaint",
+                                    "photo": "data:image/jpeg;base64,AAAA",
+                                    "photo_provenance": {"format": 1, "sha256": "ab" * 32}}],
     }
     _today = _date(2024, 6, 1)
     _assets = {}
@@ -2574,6 +2809,9 @@ def build() -> dict:
         _assets["commissioned"],
         _registry.asset_state(_assets["commissioned"], _today)))
     out["asset_qr_payload"] = _registry.qr_payload(_assets["commissioned"])
+    # with a report address set, the symbol is a link to the report page
+    out["asset_qr_link"] = _registry.qr_payload(_assets["commissioned"],
+                                                "https://water.example.org/toolkit/")
     out["registry_rows"] = _registry.registry_rows(list(_assets.values()), _today)
     out["registry_stats"] = clean(
         _registry.registry_stats(list(_assets.values()), _today))
@@ -2778,6 +3016,8 @@ def build() -> dict:
     out["pdf_sheet"] = pdf_sheet_reference()
     out["extraction"] = extraction_reference()
     out["pumping_cases"] = pumping_cases()
+    out["time_cells"] = time_cells_reference()
+    out["quality_units"] = quality_units_reference()
     out["regional"] = regional_reference()
     out["survey_figures"] = survey_figures_reference(rokel_interps)
     out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
@@ -4361,7 +4601,7 @@ LEDGER_DIRTY = [
 
 #: Project files' top levels, as the schema is read from them and migrated.
 LEDGER_SCHEMAS = [{}, {"schema": 1}, {"schema": 2, "ledger": {"drilled": None, "entries": []}},
-                  {"schema": 3}, {"schema": "2"}, {"schema": True}, {"version": 1}, {"schema": 0.5},
+                  {"schema": 3}, {"schema": 4}, {"schema": "2"}, {"schema": True}, {"version": 1}, {"schema": 0.5},
                   {"schema": 2.7}, {"schema": None}]
 
 #: Point identifiers: a name, a position and a place, a half metre that
@@ -5194,10 +5434,11 @@ def rounds_reference() -> dict:
     table = "Koya: M. Kolleh\nkori: A. Bangura\nno colon\nKOYA: Someone Else\n: blank\n"
     cases = []
 
-    def case(name, assets, as_of="2024-06-01", mechanics=table, schedule=None, sheets=True):
+    def case(name, assets, as_of="2024-06-01", mechanics=table, schedule=None, sheets=True,
+             report_url=None):
         plan = Schedule(**{**_asdict(Schedule()), **(schedule or {})})
         parsed = RD.parse_area_mechanics(mechanics)
-        result = RD.service_rounds(assets, as_of, plan, parsed["entries"])
+        result = RD.service_rounds(assets, as_of, plan, parsed["entries"], report_url or "")
         states = []
         for raw in assets:
             asset = asset_from_dict(raw)
@@ -5212,6 +5453,7 @@ def rounds_reference() -> dict:
         cases.append({
             "name": name, "assets": assets, "as_of": as_of, "mechanics": mechanics,
             "schedule": schedule or {}, "sheets": sheets,
+            **({"report_url": report_url} if report_url is not None else {}),
             "expect": {"parsed": parsed, "result": result, "words": RD.rounds_text(result),
                        "rounds": rounds, "states": states},
         })
@@ -5260,6 +5502,9 @@ def rounds_reference() -> dict:
                                                  {"inspection_months": 6.5}])
             assets.append(raw)
         case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2024-02-29"]), sheets=False)
+    # plates printed with a report address (PLAN.md step 7.1): a scan of
+    # each begins with the link to its report page
+    case("linked", named["walk"], report_url=" https://water.example.org/toolkit/ ")
     return clean({"cases": cases})
 
 
@@ -5390,7 +5635,1212 @@ def survival_reference() -> dict:
                 raw["rising_main"] = rising
             assets.append(raw)
         case(f"seed {seed}", assets, as_of=rng.choice(["2024-06-01", "2022-02-28"]))
+    # reports from the plate and by SMS (PLAN.md step 7.1): one that it is
+    # working is a report of working; slow and a complaint are not
+    case("reported", [record(i, ("2018-01-10", "commissioned"),
+                             (f"2020-0{1 + i % 3}-15", "reported_working"),
+                             (f"2021-0{1 + i % 3}-15", "reported_slow"),
+                             (f"2022-0{1 + i % 3}-15", "quality_complaint"),
+                             *([(f"2023-0{1 + i % 3}-15", "failure")] if i % 2 else []),
+                             pump_type="AB"[i % 2])
+                      for i in range(10)])
     return clean({"cases": cases})
+
+
+def fault_reports_reference() -> dict:
+    """Reports from the plate and by SMS (PLAN.md step 7.1): files of SMS
+    lines and a gateway's messages read, page reports made, and the lot
+    merged into a register, written to a file of reports and read back, with
+    the import's table and summary; and report addresses checked. Named
+    cases for each rule, then cases drawn from seeds. The cases carry their
+    own inputs, so parity.mjs gives the browser exactly these. (The held
+    outcome needs an identifier the registry reads with a note, which this
+    registry has none of; tests/test_fault_reports.py holds both engines to
+    it with a check that stands in for one.)"""
+    import random as _random
+
+    from groundwater import fault_reports as FR
+    from groundwater import registry as RG
+
+    ids = [RG.mint_asset_id(SiteMetadata(district=d, easting=e, northing=n, utm_zone=z))
+           for d, e, n, z in (("Western Area Rural", 694912.0, 938150.0, 28),
+                              ("Bo", 790500.0, 875300.0, 28),
+                              ("Kailahun", 280400.0, 925600.0, 29))]
+    # neither the identifier's check character nor, where the registry still
+    # reads one, the character it was minted with before ISO 7064 was followed
+    _body, _given = ids[0].rsplit("-", 1)
+    _older = getattr(RG, "legacy_check_character", None)
+    _taken = {_given, _older(_body) if _older else _given}
+    mistyped = f"{_body}-" + next(c for c in "ZYXW" if c not in _taken)
+
+    def register(*which):
+        return [{"asset_id": ids[i], "community": "Case", "district": "Western Area Rural",
+                 "easting": 694912.0, "northing": 938150.0, "utm_zone": 28,
+                 "events": [{"when": "2020-01-10", "kind": "commissioned"},
+                            {"when": "2026-05-01", "kind": "failure", "note": "handle snapped",
+                             "by": "SMS from +23276123456"}]} for i in which]
+
+    photo = "data:image/jpeg;base64,AAAA"
+    provenance = {"format": 1, "sha256": "ab" * 32, "stored": "original"}
+    named = {
+        "lines": {
+            "text": "\r\n".join([
+                f"2026-05-01 08:14 +23276123456 BH {ids[0]} BROKEN handle snapped",
+                "",
+                f"2026-05-02T09:00:00Z,Fatmata Kamara,BH {ids[0]} taste brown water",
+                f"2026-05-02;+232;bh {ids[1].lower()} working",
+                f"08:30 BH {ids[0]} SLOW",
+                f"BH {ids[2]} colour",
+                f"01/05/2026 BH {ids[0]} SLOW",
+                f"2026-05-01 2026-05-02 BH {ids[0]} SLOW",
+                f"2026-13-01 BH {ids[0]} SLOW",
+                "hello there",
+                f"BH {mistyped} BROKEN",
+                f"BH {ids[0]} FIXED",
+                "BH",
+                f"BH {ids[0]}",
+                f"2026-05-01 +23276123456 BH {ids[0]} broken handle snapped",
+            ]),
+            "received_on": "2026-05-03",
+            "messages": [
+                {"text": f"BH {ids[0]} BROKEN", "received": "2026-05-01T07:00:00+00:00",
+                 "sender": "+232"},
+                f"BH {ids[1]} WORKING",
+                {"text": f"BH {ids[0]} SLOW", "received": "yesterday"},
+                {"text": f"BH {ids[0]} SLOW", "received": "2026-02-30"}, 7, None],
+            "page": [[ids[0], "slow", " 2026-05-01 ", " slow since Monday ", " Aminata "],
+                     [ids[0], "broken", "2026-05-01", "", "", photo, provenance],
+                     [ids[0], "broken", "2026-05-01", "", "", "", provenance],
+                     [mistyped, "slow", "2026-05-01"], [ids[0], "fixed", "2026-05-01"],
+                     [ids[0], "slow", "2026-02-30"], [ids[0], "slow", " "],
+                     ["", "slow", "2026-05-01"]],
+            "assets": register(0, 1),
+        },
+        "no_day": {"text": f"BH {ids[0]} BROKEN\n08:00 BH {ids[1]} WORKING", "received_on": "",
+                   "messages": [f"BH {ids[0]} BROKEN"], "page": [], "assets": register(0)},
+        "nothing": {"text": "", "received_on": "", "messages": [], "page": [], "assets": []},
+    }
+    urls = ["", "https://example.org/", " https://water.example.org/toolkit/ ",
+            "HTTPS://example.org/a?b=c", "http://example.org/", "water.example.org", "https://",
+            "https:///x", "https://example.org/#/report", "https://example .org/",
+            "https://example.org/a\u00a0b", "ftp://example.org", 7, None,
+            # printable ASCII only, the scheme read A to Z: a long s is not an s
+            "http\u017f://example.org/", "https://w\u00e1ter.example.org/",
+            "https://example.org/\x01", "https://xn--wter-6qa.example.org/a?b=c&d=%20"]
+
+    def answer(c):
+        lines = FR.read_sms_lines(c["text"], c["received_on"])
+        messages = FR.receive_messages(c["messages"], c["received_on"])
+        page = [FR.report_record(*a) for a in c["page"]]
+        every = lines + messages + page
+        merged = FR.merge_reports(c["assets"], every)
+        payload = FR.reports_file(every)
+        return {
+            "lines": lines, "messages": messages, "page": page,
+            "merged": {"assets": [a.as_dict() for a in merged["assets"]],
+                       "added": merged["added"], "already": merged["already"],
+                       "unmatched": merged["unmatched"]},
+            "file": payload, "back": FR.read_reports_file(json.loads(json.dumps(payload))),
+            "rows": FR.report_rows(every), "summary": FR.import_summary(every),
+        }
+
+    cases = [{"name": name, **c, "expect": answer(c)} for name, c in named.items()]
+    # cases drawn from seeds: the words in any case, prefixes of every kind,
+    # identifiers mistyped, lower-cased and shortened, and a stored report
+    # sent again
+    words = ["WORKING", "broken", "Slow", "taste", "COLOUR", "color", "BAD", "FIXED", "", "bh"]
+    prefixes = ["", "2026-05-01 ", "2026-05-01 08:14 ", "2026-05-01T08:14:00Z,",
+                "+23276123456 ", "2026-05-01;Fatmata Kamara;", "01/05/2026 ", "2026-13-01 ",
+                "08:14 ", "2026-05-01 2026-05-02 ", "\u00a0", "2026-05-01\t+232 ",
+                "2026-05-01 +23276123456 "]
+    notes = ["", " handle snapped", "  brown  water ", " \u3000noted", " \U0001f600"]
+    for seed in range(4):
+        rng = _random.Random(f"fault reports reference {seed}")
+
+        def ident():
+            chosen, pick = rng.choice(ids), rng.random()
+            if pick < 0.15:
+                return chosen[:-1] + rng.choice("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            if pick < 0.25:
+                return chosen.lower()
+            if pick < 0.3:
+                return chosen[3:]
+            return chosen
+
+        lines = [rng.choice(prefixes) + rng.choice(["BH", "bh", "BH:"]) + " " + ident()
+                 + (" " + w if (w := rng.choice(words)) else "") + rng.choice(notes)
+                 for _ in range(rng.randint(8, 30))]
+        lines.insert(rng.randint(0, len(lines)),
+                     f"2026-05-01 +23276123456 BH {ids[0]} BROKEN handle snapped")
+        c = {"text": "\n".join(lines), "received_on": rng.choice(["", "2026-05-03"]),
+             "messages": [{"text": rng.choice(lines),
+                           "received": rng.choice(["", "2026-05-02T10:00:00Z", "08:00"]),
+                           "sender": rng.choice(["", "+23276"])} for _ in range(4)],
+             "page": [[rng.choice(ids), rng.choice(["working", "broken", "slow", "taste", "x"]),
+                       rng.choice(["2026-05-01", ""]), "", "",
+                       rng.choice(["", photo]), rng.choice([None, provenance])]
+                      for _ in range(4)],
+             "assets": register(*range(rng.randint(0, 3)))}
+        cases.append({"name": f"seed {seed}", **c, "expect": answer(c)})
+    return clean({"cases": cases, "header": FR.report_header(), "sms_format": FR.sms_format(),
+                  "urls": [{"url": u, "reason": RG.check_report_url(u)} for u in urls],
+                  "links": [RG.report_link(ids[0], u) for u in urls[:4]]})
+
+
+# ----------------------------------------- contractor scorecards (step 6.3)
+
+#: Contractors as a log or the site details name them: one name in two
+#: spellings, an accent, letters beyond the Basic Multilingual Plane and a
+#: full-width one, names that are an object's keys in JavaScript, and none.
+SCORECARD_CONTRACTORS = ["WiNGiN Heavy Duty", "", " Kaba\tDrilling ", "Kaba Drilling", "Ñdoye Drilling",
+                         "\U0001d4b5 Drill", "ｱ Drill", "__proto__", "constructor"]
+SCORECARD_STATUSES = ["Successful", "Dry", "Dry hole", "", "Abandoned", "In progress"]
+#: Completion dates as logs write them, read and not.
+SCORECARD_DATES = ["13th May, 2018", "2018-05-20", "May 9, 2018", "05/06/2018", "", "2018-05-13 08:00",
+                   "31 Feb 2018", "2018-06-02", "3 Sept 2018", "13TH of MAY 2018"]
+#: Contract completion dates as typed, read and not; a number in a
+#: hand-edited file is not read.
+SCORECARD_DUES = ["2018-05-10", "", " 2018-05-25 ", "10/05/2018", "2018-02-30", 20180510.0, None]
+
+
+def _scorecard_project(rng, k: int, items: list, skew: str) -> dict:
+    """One project as an app holds it, drawn by random() alone: its site
+    details, log, test, ledger, checklist answers, the drilled metres
+    reconciliation and the contract. ``skew`` draws holes forecast to
+    succeed that the driller recorded dry ("dry"), or forecast to fail that
+    he recorded successful ("wet"), each a forecast of its own drilled by
+    one contractor."""
+    log = None if rng.random() < 0.15 else {
+        "borehole_ref": f"BH-{k % 7}", "total_depth_m": _pick(rng, [30.0, 45.0, 60.0]),
+        "intervals": [{"top_m": 0.0, "bottom_m": 10.0, "description": "Laterite"},
+                      {"top_m": 10.0, "bottom_m": 30.0, "description": "Weathered granite"},
+                      {"top_m": 30.0, "bottom_m": 45.0, "description": "Fresh granite"}],
+        "water_strikes_m": [], "status": {"dry": "Dry", "wet": "Successful"}.get(
+            skew, _pick(rng, SCORECARD_STATUSES)),
+        "completion_date": _pick(rng, SCORECARD_DATES),
+        "site": {"easting": None if rng.random() < 0.2 else round(708900.0 + 200.0 * rng.random(), 1),
+                 "northing": round(926300.0 + 150.0 * rng.random(), 1), "utm_zone": 28,
+                 "contractor": "Kaba Drilling" if skew else _pick(rng, SCORECARD_CONTRACTORS)}}
+    analysis = None if skew or rng.random() < 0.5 else {
+        "yield_recommendation": {"safe_yield_m3_per_h": round(0.1 + 3.9 * rng.random(), 4),
+                                 "confidence": "indicative"}, "spread": None}
+    low, high = {"dry": (0.8, 0.95), "wet": (0.05, 0.2)}.get(skew, (0.05, 0.95))
+    chance = round(low + (high - low) * rng.random(), 3)
+    ledger = {"drilled": None, "entries": []}
+    if skew or rng.random() < 0.7:
+        ledger["entries"].append({
+            # the same point in several files, but for the skewed ones
+            "id": f"sk{k:03d}" if skew else f"pt{k % 11:03d}",
+            "before_outcome": bool(skew) or rng.random() < 0.8, "recorded_on": "2018-04-01", "toolkit": "0.3.0",
+            "point": {"sounding_id": "VES 1", "community": "Rokel", "district": "Port Loko", "easting": None,
+                      "northing": None, "utm_zone": None},
+            "prediction": {"odds": None if not skew and rng.random() < 0.15
+                           else {"probability": chance, "low": 0.2, "high": 0.9}},
+            # a file whose log was not carried with it keeps its outcome
+            "outcome": None if log is not None or rng.random() < 0.5 else {
+                "success": rng.random() < 0.6, "success_basis": "tested", "contractor": "Kept Drilling",
+                "borehole_ref": "BH-kept", "completion_date": "2018-05-01"}})
+    answers = {item.item_id: _pick(rng, ["yes", "no", "na", "pending", "yes"]) for item in items
+               if rng.random() < 0.08}
+    metres = {"logged_m": None if rng.random() < 0.3 else round(40.0 + 40.0 * rng.random(), 3),
+              "claimed_m": None if rng.random() < 0.3 else round(40.0 + 45.0 * rng.random(), 3)}
+    procurement = None if rng.random() < 0.3 else {
+        "lines": [{"code": "DRL", "item": "Drilling", "unit": "m", "quantity": 60.0, "rate_usd": 40.0},
+                  {"code": "CAS", "item": "Casing", "unit": "m", "quantity": 60.0, "rate_usd": 12.5}],
+        "variations": [{"ref": f"VO-{j}", "code": _pick(rng, ["DRL", "CAS", "NEW", ""]),
+                        "quantity_delta": round(-10.0 + 30.0 * rng.random(), 1),
+                        "rate_usd": None if rng.random() < 0.7 else round(10.0 + 40.0 * rng.random(), 2),
+                        "authorised_by": _pick(rng, ["A. Kamara", "", " \t", "B.  Sesay"])}
+                       for j in range(int(rng.random() * 4))],
+        "due": _pick(rng, SCORECARD_DUES)}
+    site = {"contractor": "" if skew else _pick(rng, ["", "", "  Sierra   Drilling "]),
+            "community": "Rokel" if rng.random() < 0.85 else "", "district": "Port Loko"}
+    return {"label": f"Project {k}", "site": site, "log": log, "analysis": analysis, "ledger": ledger,
+            "answers": answers, "metres": metres, "procurement": procurement,
+            "on_file": rng.random() < 0.85, "ledger_file": ledger if rng.random() < 0.9 else None}
+
+
+def _scorecard_portfolio(seed: int, items: list) -> list:
+    import random
+
+    rng = random.Random(seed)
+    # two portfolios of skewed holes, under the settings with the smaller minimums
+    skew = {5: "dry", 6: "wet"}.get(seed, "")
+    count = 12 if skew else 1 + int(rng.random() * 12)
+    projects = [_scorecard_project(rng, k, items, skew if k % 3 else "") for k in range(count)]
+    if seed % 3 == 0:
+        # a project that records nothing a scorecard reads
+        projects.append({"label": "Empty", "site": {"contractor": "Kaba"}, "log": None, "analysis": None,
+                         "ledger": {"drilled": None, "entries": []}, "answers": {"drl-daily-drilling-log": "na"},
+                         "metres": {"logged_m": None, "claimed_m": None}, "procurement": None, "on_file": True,
+                         "ledger_file": None})
+    return projects
+
+
+def _scorecard_files(projects: list, records: list) -> list:
+    return [[p["label"], records[i] if p["on_file"] else None, p["ledger_file"]] for i, p in enumerate(projects)]
+
+
+#: Works records as a hand might edit them.
+SCORECARD_HAND = [
+    None, "works", {"id": ""}, {"id": 7},
+    {"id": "a", "drilled": "yes", "success": 1, "success_basis": "tested", "forecast": 1.5, "logged_m": -3,
+     "claimed_m": "70", "contractor": " A \t B ", "checklist": {
+         "drilling": {"answered": 1, "failed": ["x", "y"]}, "design": {"answered": 2, "failed": ["x", "x", 3, ""]},
+         "Design": {"answered": 1, "failed": []}, "10": {"answered": 1, "failed": []},
+         "development": {"answered": 0, "failed": []}, "demobilisation": {"answered": True},
+         "mobilisation": {"answered": 2.0, "failed": "x"}, "handover": []}},
+    {"id": "b", "drilled": True, "success": False, "success_basis": "made up", "contract": True,
+     "variations_signed": 2, "variations_unsigned": 0, "variation_usd": 120.456, "completion_due": " 2018-05-01 "},
+    {"id": "c", "contract": True, "variations_signed": -1, "variations_unsigned": 0, "variation_usd": 1.0,
+     "completion_due": "2018-05-01"},
+    {"id": "d", "contract": False, "variations_signed": 1, "variations_unsigned": 1, "variation_usd": 1.0,
+     "completion_due": "2018-05-01"},
+    {"id": "e", "contract": True, "variations_signed": 1.0, "variations_unsigned": 0.5, "variation_usd": 1.0},
+    {"id": "f", "contract": True, "variations_signed": True, "variations_unsigned": 0, "variation_usd": 1.0},
+    {"id": "g", "forecast": 0.0, "success": True, "success_basis": "recorded_success", "drilled": True,
+     "checklist": "none", "logged_m": 0, "claimed_m": 1e3},
+    {"id": "h", "contract": True, "variations_signed": 0, "variations_unsigned": 0, "variation_usd": 0.0,
+     "completion_due": 20180510.0, "completion_date": 43233.0},
+]
+
+#: Dates as logs write them, beyond the ones the cases draw.
+SCORECARD_DAYS = SCORECARD_DATES + SCORECARD_DUES + [
+    "13 May 2018", "13th of May 2018", "May. 13th, 2018", "13-May-2018", "3 Sept 2019", "Sep 3, 2019",
+    "29 Feb 2019", "29 Feb 2020", "31 April 2018", "13 Mayo 2018", "0000-01-01", "2018-13-01", "13 May",
+    "25/04/2018", "13.05.2018", "2018-05-13T08:30:00", "2018-05-13 08:30:00", "2018-05-13 8:30",
+    " 13 May 2018 ", "13 Kay 2018", "13 ſt May 2018", "Mayday 13 2018", 43233.0, 20180513]
+
+
+def scorecards_reference() -> dict:
+    """Contractor scorecards (PLAN.md step 6.3): works records made from
+    drawn projects of every kind (logs, tests, ledgers kept and paired,
+    checklist answers, metres, contracts with signed and unsigned variation
+    orders) and read back clean; pooled with the ledgers of files saved
+    before the record, the scorecards and the report's content, under the
+    default settings and others; hand-edited records; dates as logs write
+    them; Dr Timbo's own log, as each engine reads the workbook; and a
+    Streamlit project file carrying a record, as the browser's YAML reader
+    reads it."""
+    from groundwater import scorecards as SC
+    from groundwater.project_io import deserialize_project, serialize_project
+    from groundwater.supervision import load_checklists
+
+    items = load_checklists()
+    settings = [{}, {"scorecard_min_boreholes": 2},
+                {"scorecard_min_boreholes": 1, "scorecard_stages": ["drilling", "procurement", "handover", "drilling"]},
+                {"scorecard_stages": []}]
+    cases = []
+    for seed in range(9):
+        projects = _scorecard_portfolio(seed, items)
+        if seed == 8:
+            # a portfolio whose boreholes name no contractor anywhere
+            for p in projects:
+                p["site"]["contractor"] = ""
+                if p["log"] is not None:
+                    p["log"]["site"]["contractor"] = ""
+                for entry in p["ledger"]["entries"]:
+                    if entry["outcome"] is not None:
+                        entry["outcome"]["contractor"] = ""
+        # and a minimum of none, which is taken as one
+        over = {"scorecard_min_boreholes": 0} if seed == 4 else settings[seed % 4]
+        config = Config()
+        for key, value in over.items():
+            setattr(config.ledger, key, tuple(value) if isinstance(value, list) else value)
+        records = [SC.works_record(_ns(p["site"]), _ns(p["log"]), _ns(p["analysis"]), p["ledger"], p["answers"],
+                                   p["metres"], p["procurement"], config) for p in projects]
+        files = _scorecard_files(projects, records)
+        boreholes = SC.scorecard_boreholes([tuple(f) for f in files])
+        issued = "  2026-10-29 " if seed % 2 else ""
+        # each record reads back as it was made, which parity holds the
+        # browser's to, so the cleaned copies are not written out again
+        assert [SC.clean_works(w) for w in records] == records
+        cases.append({"projects": projects, "settings": over, "issued": issued, "expect": {
+            "records": records, "boreholes": boreholes, "cards": SC.contractor_scorecards(boreholes, config),
+            "content": SC.scorecard_content([tuple(f) for f in files], issued, config)}})
+
+    timbo_log = read_drilling_workbook(REPO / "examples" / "data" / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    timbo_inputs = {
+        "site": {"contractor": "", "community": "Dr Timbo", "district": "Port Loko"},
+        "answers": {"drl-daily-drilling-log": "no", "dev-plumb-test-passed": "yes", "dem-cleared-waste-removed": "no"},
+        "metres": {"logged_m": 70.0, "claimed_m": 74.5},
+        "procurement": {"lines": [{"code": "DRL", "item": "Drilling", "unit": "m", "quantity": 60.0,
+                                   "rate_usd": 40.0}],
+                        "variations": [{"ref": "VO-1", "code": "DRL", "quantity_delta": 10.0,
+                                        "authorised_by": "A. Kamara"}], "due": "2018-05-10"}}
+    timbo = SC.works_record(_ns(timbo_inputs["site"]), timbo_log, None, None, timbo_inputs["answers"],
+                            timbo_inputs["metres"], timbo_inputs["procurement"])
+    timbo_files = [("Dr Timbo", timbo, None)]
+
+    saved = serialize_project({"meta_community": "Dr Timbo", "works_record": timbo,
+                               "proc_contract_lines": timbo_inputs["procurement"]["lines"]}, "0.3.0")
+    return {
+        "cases": cases,
+        "hand": [{"raw": raw, "expect": SC.clean_works(raw)} for raw in SCORECARD_HAND],
+        "days": [{"text": text, "expect": SC.written_day(text)} for text in SCORECARD_DAYS],
+        "timbo": {"inputs": timbo_inputs, "record": timbo,
+                  "content": SC.scorecard_content(timbo_files, "2026-10-29")},
+        "file": {"yaml": saved.decode("utf-8"), "expect": deserialize_project(saved)["works"]},
+    }
+
+#: The document a browser wrote, committed (tests/webapp/fieldkit.mjs
+#: --write-fixtures): what the Python engine says of it is what the browser
+#: has to say.
+BROWSER_DOCUMENT = OUT.parent / "fixtures" / "fieldkit_browser.docx"
+#: And one python-docx wrote, committed likewise
+#: (fixtures/make_sealed_docx.py): python-docx writes other parts in another
+#: version and zlib builds other bytes, so a fresh one is another document.
+PYTHON_DOCUMENT = OUT.parent / "fixtures" / "sealed_python.docx"
+
+
+def _fixed_deflate(data: bytes) -> bytes:
+    """``data`` as one final DEFLATE block of fixed Huffman codes, literals
+    only (RFC 1951, 3.2.6): bytes the format fixes, where a compressor's are
+    its build's own."""
+    bits = [1, 1, 0]  # BFINAL, then BTYPE 01, least significant bit first
+
+    def code(value: int, length: int) -> None:
+        bits.extend((value >> (length - 1 - k)) & 1 for k in range(length))
+
+    for byte in data:
+        code(0x30 + byte, 8) if byte < 144 else code(0x190 + byte - 144, 9)
+    code(0, 7)  # the end of the block
+    out = bytearray((len(bits) + 7) // 8)
+    for k, bit in enumerate(bits):
+        out[k // 8] |= bit << (k % 8)
+    assert zlib.decompress(bytes(out), -15) == data
+    return bytes(out)
+
+
+def _vr_zip(entries: dict, deflate: bool = False) -> bytes:
+    """A package, entries sorted, each stored or (``deflate``) in a block of
+    fixed codes: written here field by field, so the bytes are the same on
+    every machine."""
+    return _vr_package([
+        _vr_entry(name.encode("utf-8"), body, flags=0 if name.isascii() else 0x800,
+                  method=8 if deflate else 0, payload=_fixed_deflate(body) if deflate else None)
+        for name, body in sorted(entries.items())])
+
+
+def _vr_rezip(data: bytes, changed: dict) -> bytes:
+    """``data``'s entries with their compressed bytes as they are, and those
+    named in ``changed`` stored afresh: a copy with one part edited, no
+    larger than it needs to be and with no byte a zlib build chose here."""
+    import io
+    import zipfile
+
+    entries = []
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        for info in z.infolist():
+            name = info.filename.encode("utf-8")
+            if info.filename in changed:
+                entries.append(_vr_entry(name, changed[info.filename]))
+                continue
+            name_len, extra_len = struct.unpack_from("<HH", data, info.header_offset + 26)
+            begin = info.header_offset + 30 + name_len + extra_len
+            entries.append(_vr_entry(name, z.read(info), method=info.compress_type,
+                                     payload=data[begin:begin + info.compress_size]))
+    return _vr_package(entries)
+
+
+def _vr_entry(name: bytes, body: bytes, *, method=0, flags=0, crc=None, usize=None, payload=None,
+              local_name=None):
+    payload = body if payload is None else payload
+    crc = (zlib.crc32(body) & 0xFFFFFFFF) if crc is None else crc
+    usize = len(body) if usize is None else usize
+    lname = name if local_name is None else local_name
+    local = struct.pack("<IHHHHHIIIHH", 0x04034B50, 20, flags, method, 0, 0x21, crc, len(payload), usize,
+                        len(lname), 0) + lname + payload
+    return local, (flags, method, crc, len(payload), usize, name)
+
+
+def _vr_package(entries, *, comment=b"", junk=b"", count=None) -> bytes:
+    """A package written field by field: the ones no writer makes, and the
+    rest with bytes no zlib build chooses."""
+    out, central = b"", b""
+    for local, (flags, method, crc, csize, usize, name) in entries:
+        central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, 20, 20, flags, method, 0, 0x21, crc, csize,
+                               usize, len(name), 0, 0, 0, 0, 0, len(out)) + name
+        out += local
+    n = len(entries) if count is None else count
+    end = struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, n, n, len(central), len(out), len(comment)) + comment
+    return out + central + end + junk
+
+
+def verification_reference() -> dict:
+    """Documents that can be verified (PLAN.md step 8.1): codes from digests
+    and read back from what is typed; the facts a manifest records, the
+    manifest written and read, the package sealed; packages read rule by
+    rule, the four answers given of each with and without issue records;
+    issue records kept, read out of either app's project file and looked up
+    by code; and the documents an asset record keeps. The cases carry their
+    own inputs, so parity.mjs gives the browser exactly these."""
+    import random as _random
+
+    from groundwater import verification as V
+    from groundwater.readiness import assess_readiness
+    from groundwater import qr
+    from groundwater.registry import asset_from_dict, asset_from_project
+    from groundwater.text import phrase
+
+    rng = _random.Random("verification")
+    out: dict = {}
+    digests = ["0" * 64, "f" * 64, "0123456789abcdef" * 4] + [
+        hashlib.sha256(f"document {k}".encode()).hexdigest() for k in range(40)]
+    out["codes"] = [[d, V.document_code(d)] for d in digests]
+    typed = [None, "", 7, "0A1B-2C3D", "document 0a1b-2c3d-x", "OA1B 2C3D", "0a1b_2c3d", "0A1B-2C3D-EE",
+             "0A1B-2C3Ü-E", "0A1B\t2C3D", "﻿0A1B2C3D", "DOCUMENT", "0A1B-2C3D-İ"]
+    for _, code in out["codes"][:12]:
+        body = code.replace("-", "")
+        typed += [code, code.lower(), f"DOCUMENT {code}", body, body[:4] + " " + body[4:],
+                  body.replace("1", "L").replace("0", "O"), body[:-1] + rng.choice("0123456789ABCDEFGHIJ")]
+    out["parse"] = [[t, V.parse_document_code(t)] for t in typed]
+    # the cover's symbol, as the two writers draw it: the same bytes, since
+    # its hash is one of the parts the manifest lists (held by that hash)
+    out["qr_png"] = [[text, hashlib.sha256(qr.to_png(qr.encode(text, ecc="H"), scale=8,
+                                                     stored=True)).hexdigest()]
+                     for text in [phrase("verification.qr", code=c) for _, c in out["codes"][:3]] + ["x" * 60]]
+
+    # the readiness a manifest records, from the shape each engine's gate has
+    gates = []
+    for kind, overrides in (("pumping", {}), ("completion", {"site_located": {"reason": "plate", "by": "A. K"}}),
+                            ("placard", {"site_located": "a reason, no name"}), ("costing", {})):
+        gate = assess_readiness({}, kind, overrides)
+        gates.append({"requirements": [{"state": r.state, "title": r.title, "override_by": r.override_by,
+                                        "override_reason": r.override_reason} for r in gate.requirements]})
+    gates += [None, {"requirements": []},
+              {"requirements": [{"state": "overridden", "title": " T\x01 ", "override_by": 5,
+                                 "override_reason": "r\ud800"}, {"state": "met", "title": "M"}]}]
+    out["readiness"] = [[g, V.readiness_facts(g)] for g in gates]
+
+    calibration = V.calibration_facts(None)
+    out["calibration"] = calibration
+    files = [{"what": "pumping test sheet", "name": "kuntolo.xlsx", "sha256": "1" * 64},
+             {"what": "photograph", "name": "seal & cap <1>.jpg", "sha256": "2" * 64},
+             {"what": "photograph", "name": "seal & cap <1>.jpg", "sha256": "2" * 64},
+             {"what": "", "name": "Kpètèma \"3\"\n\ttab.xlsx", "sha256": "0" * 64},
+             {"what": "VES field sheet", "name": "😀 sheet.xlsx", "sha256": "3" * 64},
+             {"what": "VES field sheet", "name": "０ sheet.xlsx", "sha256": "4" * 64}]
+    arg_cases = [
+        {"kind": "pumping", "title": "Pumping Test Report - Kuntoloh", "issued_on": "2024-05-01",
+         "engine": ["groundwater-python", "0.3.0"], "calibration": calibration, "readiness": gates[0],
+         "evidence": files[:1]},
+        {"kind": "completion", "title": " Kpètèma & <Bo> \"BH-1\"\r\n", "issued_on": "",
+         "engine": ["gwt-core", "0.3.0"], "calibration": None, "readiness": gates[1], "evidence": files},
+        {"kind": "placard", "title": "Borehole SL-WAR-8FEEVKQ-E", "issued_on": " 2026-10-29 ",
+         "engine": ["", ""], "calibration": calibration, "readiness": gates[2], "evidence": []},
+        {"kind": 7, "title": None, "issued_on": "", "engine": [None, 3], "calibration": None,
+         "readiness": {"state": "not_ready", "items": [{"state": "unmet", "title": "Site position",
+                                                       "by": "", "reason": ""}]}, "evidence": []},
+    ]
+    refusals = [dict(arg_cases[0], issued_on="2024-02-30"), dict(arg_cases[0], issued_on="20240501"),
+                dict(arg_cases[0], evidence=[{"what": "x", "name": "a", "sha256": "ABC"}]),
+                dict(arg_cases[0], evidence=[{"what": "x", "name": "a", "sha256": "A" * 64}]),
+                dict(arg_cases[0], calibration={"name": "a set", "sha256": ""}),
+                dict(arg_cases[0], calibration={"name": "", "sha256": "1" * 64})]
+    parts = [["[Content_Types].xml", "a" * 64], ["word/document.xml", "b" * 64],
+             ["word/media/é.png", "c" * 64]]
+    carriers = [["word/footer1.xml", "d" * 64]]
+    manifests = []
+    for args in arg_cases:
+        facts = V.manifest_facts(args["kind"], args["title"], args["issued_on"], tuple(args["engine"]),
+                                 args["calibration"], args["readiness"], args["evidence"])
+        digest = V.code_digest(facts, parts)
+        code = V.document_code(digest)
+        manifests.append({"args": args, "facts": facts, "digest": digest, "code": code,
+                          "xml": V.manifest_xml(facts, code, parts, carriers)})
+    errors = []
+    for args in refusals:
+        try:
+            V.manifest_facts(args["kind"], args["title"], args["issued_on"], tuple(args["engine"]),
+                             args["calibration"], args["readiness"], args["evidence"])
+        except ValueError as exc:
+            errors.append({"args": args, "error": str(exc)})
+        else:
+            raise AssertionError(f"manifest_facts took {args}")
+    out["manifests"], out["refusals"], out["parts"], out["carriers"] = manifests, errors, parts, carriers
+
+    # manifests read back, and the ones that are not exactly as written
+    good = manifests[1]["xml"]
+    texts = [m["xml"] for m in manifests] + [
+        good.replace('format="1"', 'format="2"'), good.replace("<engine name=", "<engine  name="),
+        good.replace("</evidence>", "</evidence>\n", 1), good.replace("&amp;", "&#38;", 1),
+        good.replace("&amp;", "&apos;", 1), good.replace('state="ready_with_overrides"', 'state="ready"', 1),
+        "﻿" + good, good.rstrip("\n"), good + "\n", good.replace("\n", "\r\n"),
+        good.replace(f'code="{manifests[1]["code"]}"', 'code="0A1B-2C3D-E"'),
+        good.replace(f'code="{manifests[1]["code"]}"', 'code="0A1B-2C3D-5"'),
+        good.replace(f'code="{manifests[1]["code"]}"', 'code=""'),
+        good.replace('<carriers>\n<part name="word/footer1.xml"', '<carriers>\n<part name="word/document.xml"'),
+        good.replace('name="word/media/é.png"', 'name="a.png"'),
+        good.replace("d" * 64, "D" * 64), "", "<manifest/>", 7]
+    out["read"] = [[t, V.read_manifest(t)] for t in texts]
+
+    # a package sealed, as the writers seal one
+    content = {"[Content_Types].xml": '<?xml version="1.0"?><Types xmlns="t"><Default Extension="rels" '
+                                      'ContentType="r"/></Types>',
+               "word/_rels/document.xml.rels": '<Relationships xmlns="r"></Relationships>',
+               "word/document.xml": "<w:document>The safe yield is 1.25 m3/h.</w:document>"}
+    seal_facts = manifests[0]["facts"]
+    sealed = V.seal_package({k: v.encode() for k, v in content.items()}, seal_facts,
+                            lambda code: {"word/footer1.xml": f"Document {code} - page".encode()})
+    out["seal"] = {"entries": content, "facts": seal_facts, "code": sealed["code"], "sha256": sealed["sha256"],
+                   "manifest": sealed["manifest"], "record": sealed["record"],
+                   "parts": {name: data.decode("utf-8") for name, data in sealed["entries"].items()}}
+    with_xml = dict(content, **{"[Content_Types].xml": '<Types xmlns="t"><Default Extension="xml" '
+                                                       'ContentType="application/xml"/></Types>'})
+    out["seal_xml"] = V.seal_package({k: v.encode() for k, v in with_xml.items()}, seal_facts)["manifest"]
+
+    # packages, and what each engine says of each
+    record = sealed["record"]
+    other = V.seal_package({k: v.encode() for k, v in content.items()}, manifests[2]["facts"],
+                           lambda code: {"word/footer1.xml": code.encode()})["record"]
+    entries = sealed["entries"]
+
+    def changed(name, old, new, manifest=False):
+        out_entries = dict(entries)
+        out_entries[name] = out_entries[name].replace(old, new)
+        if manifest:
+            held = V.read_manifest(entries[V.MANIFEST_PART].decode())
+            listed = [(n, V._sha256(out_entries[n]) if n == name else d) for n, d in held["parts"]]
+            carried = [(n, V._sha256(out_entries[n]) if n == name else d) for n, d in held["carriers"]]
+            out_entries[V.MANIFEST_PART] = V.manifest_xml(held["facts"], held["code"], listed,
+                                                          carried).encode()
+        return out_entries
+
+    deflated = _fixed_deflate(b"<a/>")
+    written = PYTHON_DOCUMENT.read_bytes()
+    written_entries = V.read_package(written)
+    written_changed = {"word/document.xml": written_entries["word/document.xml"].replace(b"1.25", b"1.35")}
+    browser = BROWSER_DOCUMENT.read_bytes()
+    browser_record = V.document_record(browser)
+    packages = {
+        "sealed": _vr_zip(entries), "deflated": _vr_zip(entries, deflate=True),
+        "one digit": _vr_zip(changed("word/document.xml", b"1.25", b"1.35")),
+        "part removed": _vr_zip({n: d for n, d in entries.items() if n != "word/footer1.xml"}),
+        "part added": _vr_zip(dict(entries, **{"word/media/image9.png": b"png", "z/extra.bin": b"x"})),
+        "manifest brought into line": _vr_zip(changed("word/document.xml", b"1.25", b"9.25", manifest=True)),
+        "carrier changed": _vr_zip(changed("word/footer1.xml", b"page", b"PAGE", manifest=True)),
+        "no manifest": _vr_zip({n: d for n, d in entries.items() if n != V.MANIFEST_PART}),
+        "manifest not utf-8": _vr_zip(dict(entries, **{V.MANIFEST_PART: b"\xff\xfe<"})),
+        "manifest with a bom": _vr_zip(dict(entries, **{V.MANIFEST_PART: b"\xef\xbb\xbf" + entries[V.MANIFEST_PART]})),
+        "not a package": b"PK\x03\x04 not a package",
+        "nothing": b"",
+        "python-docx": written,
+        "python-docx, one digit": _vr_rezip(written, written_changed),
+        "the browser's": browser,
+        "crafted": _vr_package([_vr_entry(b"a.xml", b"<a/>"), _vr_entry(b"dir/", b"")]),
+        "crafted, deflated": _vr_package([_vr_entry(b"a.xml", b"<a/>", method=8, payload=deflated)]),
+        "crafted, a comment": _vr_package([_vr_entry(b"a.xml", b"<a/>")], comment=b"a note"),
+        "crafted, utf-8 name": _vr_package([_vr_entry("é.xml".encode(), b"<a/>", flags=0x800)]),
+        "crafted, a descriptor flag": _vr_package([_vr_entry(b"a.xml", b"<a/>", flags=8)]),
+        "after the end": _vr_package([_vr_entry(b"a.xml", b"<a/>")], junk=b"x"),
+        "named twice": _vr_package([_vr_entry(b"a.xml", b"<a/>"), _vr_entry(b"a.xml", b"<b/>")]),
+        "a bad crc": _vr_package([_vr_entry(b"a.xml", b"<a/>", crc=1)]),
+        "a size that lies": _vr_package([_vr_entry(b"a.xml", b"<a/>", usize=5)]),
+        "encrypted": _vr_package([_vr_entry(b"a.xml", b"<a/>", flags=1)]),
+        "another method": _vr_package([_vr_entry(b"a.xml", b"<a/>", method=12)]),
+        "a name not ascii": _vr_package([_vr_entry("é.xml".encode(), b"<a/>")]),
+        "a name not utf-8": _vr_package([_vr_entry(b"\xff.xml", b"<a/>", flags=0x800)]),
+        "a local name that differs": _vr_package([_vr_entry(b"a.xml", b"<a/>", local_name=b"b.xml")]),
+        "bytes after the stream": _vr_package([_vr_entry(b"a.xml", b"<a/>", method=8, payload=deflated + b"\0")]),
+        "a stream cut short": _vr_package([_vr_entry(b"a.xml", b"<a/>", method=8, payload=deflated[:-1])]),
+        "a stream that runs on": _vr_package([_vr_entry(b"a.xml", b"<a/", method=8, payload=deflated)]),
+        "zip64": _vr_package([_vr_entry(b"a.xml", b"<a/>")], count=0xFFFF),
+    }
+    record_sets = {"none": None, "empty": [], "this": [record], "another": [other],
+                   "this and another": [other, record, {"junk": 1}]}
+    cases = []
+    for name, data in packages.items():
+        parts_read = V.read_package(data)
+        case = {"name": name, "b64": base64.b64encode(data).decode("ascii"),
+                "parts": None if parts_read is None else {n: V._sha256(b) for n, b in parts_read.items()},
+                "record": V.document_record(data), "reports": {}}
+        for key, records in record_sets.items():
+            if key == "none" or name in ("sealed", "one digit", "carrier changed", "python-docx"):
+                case["reports"][key] = {"records": records, "report": V.verify_document(data, records)}
+        if name == "the browser's":
+            case["reports"]["its own"] = {"records": [browser_record],
+                                          "report": V.verify_document(data, [browser_record])}
+        cases.append(case)
+    out["packages"] = cases
+
+    # issue records kept, read from project files, looked up
+    desk = dict(other, kind="desk_study")
+    raw_records = [record, other, record, desk, {"code": record["code"]}, "a", None,
+                   dict(record, readiness="maybe"), dict(record, sha256="AB"), dict(record, issued_on="today"),
+                   dict(record, code=record["code"].lower()), dict(record, title=" padded\x00 ", sha256="9" * 64),
+                   dict(other, issued_on="", sha256="8" * 64), dict(record, kind=7)]
+    out["records"] = {"raw": raw_records, "clean": V.clean_issue_records(raw_records),
+                      "borehole": V.borehole_records(raw_records), "not_a_list": V.clean_issue_records({"a": 1})}
+    payloads = [{"issued": [record], "asset": {"documents": [other, desk]}},
+                {"issued": [desk], "state": {"asset": {"documents": [record]}, "issued": [other]}},
+                {"asset": [record], "state": [record], "issued": "x"}, [record], None, {}]
+    out["payloads"] = [[p, V.issue_records_of(p)] for p in payloads]
+    lookups = [record["code"], record["code"].lower().replace("-", " "), f"DOCUMENT {other['code']}",
+               "0A1B-2C3D", "not a code", desk["code"]]
+    out["lookups"] = [{"text": t, "records": raw_records, "result": V.lookup_code(t, raw_records)}
+                      for t in lookups] + [{"text": record["code"], "records": [],
+                                            "result": V.lookup_code(record["code"], [])}]
+
+    # the documents an asset record keeps, and those a draft carries
+    site = {"district": "Western Area Rural", "easting": 694000.0, "northing": 938150.0, "utm_zone": 28,
+            "community": "Case"}
+    asset_id = asset_from_project({"site": SiteMetadata(**site)}).asset_id
+    stored = [{"asset_id": asset_id, "documents": raw_records}, {"asset_id": asset_id, "documents": "x"},
+              {"asset_id": asset_id}]
+    out["assets"] = {
+        "stored": [[s, asset_from_dict(s).documents] for s in stored],
+        "draft": {"site": site, "issued": raw_records,
+                  "documents": asset_from_project({"site": SiteMetadata(**site), "issued": raw_records}).documents},
+    }
+    return clean(out)
+
+
+def _bd_b64(data: bytes) -> str:
+    return base64.b64encode(data).decode("ascii")
+
+
+def _bd_edited(facts: dict, edits) -> dict:
+    """``facts`` with each edit made: ``["set", path, value]``, ``["append",
+    path, value]``, ``["insert", path, index, value]``, ``["reverse",
+    path]`` or ``["drop", path, prefix]`` (the entries of a list whose path
+    starts so), a path being keys and indexes from the top. parity.mjs makes
+    the same edits."""
+    out = copy.deepcopy(facts)
+    for edit in edits:
+        op, path = edit[0], edit[1]
+        holder = out
+        for key in path[:-1]:
+            holder = holder[key]
+        last = path[-1]
+        if op == "set":
+            holder[last] = copy.deepcopy(edit[2])
+        elif op == "append":
+            holder[last].append(copy.deepcopy(edit[2]))
+        elif op == "insert":
+            holder[last].insert(edit[2], copy.deepcopy(edit[3]))
+        elif op == "reverse":
+            holder[last].reverse()
+        elif op == "drop":
+            holder[last] = [x for x in holder[last] if not x["path"].startswith(edit[2])]
+        else:  # pragma: no cover - a recipe typed wrong
+            raise ValueError(op)
+    return out
+
+
+def _bd_manifest_text(text, facts: dict, recipe: dict):
+    """A manifest.json written otherwise, as ``recipe`` says: literally
+    (``text``, or ``nest`` brackets deep), with its facts edited and dumped
+    (``edits``, then ``dump`` with an ``indent``, ``ascii`` escapes or a key
+    ``order``), or its text changed (the first ``replace``, ``cut`` off the
+    end, ``wrap``ped, ``crlf`` line ends). parity.mjs writes the same."""
+    if "text" in recipe:
+        return recipe["text"]
+    if "nest" in recipe:
+        return "[" * recipe["nest"] + "]" * recipe["nest"]
+    if "edits" in recipe or "dump" in recipe:
+        edited = _bd_edited(facts, recipe.get("edits", []))
+        dump = recipe.get("dump", {})
+        if "order" in dump:
+            edited = {key: edited[key] for key in dump["order"]}
+        text = json.dumps(edited, indent=dump.get("indent", 2), ensure_ascii=dump.get("ascii", False)) + "\n"
+    if "replace" in recipe:
+        old, new = recipe["replace"]
+        assert old in text, old
+        text = text.replace(old, new, 1)
+    if "cut" in recipe:
+        text = text[:-recipe["cut"]]
+    if "wrap" in recipe:
+        text = recipe["wrap"][0] + text + recipe["wrap"][1]
+    if recipe.get("crlf"):
+        text = text.replace("\n", "\r\n")
+    return text
+
+
+def _bd_apply(base: bytes, recipe: dict, docs: dict) -> bytes:
+    """A bundle's parts changed as ``recipe`` says - parts replaced (by
+    bytes, or by one of the documents), dropped or added, manifest.json
+    rewritten (brought into line with the parts named, and edited, or its
+    text changed) - and stored afresh, as parity.mjs changes them with
+    C.storedZip; or the bytes it gives outright."""
+    from groundwater import verification as V
+    from groundwater.bundle import BUNDLE_MANIFEST, _stored_zip, read_bundle_manifest
+
+    if recipe.get("raw") is not None:
+        return base64.b64decode(recipe["raw"])
+    parts = dict(V.read_package(base))
+    text = parts[BUNDLE_MANIFEST].decode("utf-8")
+    facts = read_bundle_manifest(text)
+    for path in recipe.get("drop", []):
+        parts.pop(path, None)
+    for path, value in recipe.get("set", {}).items():
+        parts[path] = docs[value["doc"]] if isinstance(value, dict) else base64.b64decode(value)
+    manifest = recipe.get("manifest")
+    if manifest is not None:
+        if "in_line" in manifest:
+            changed = copy.deepcopy(facts)
+            for entry in changed["files"]:
+                if entry["path"] in manifest["in_line"]:
+                    entry["sha256"] = hashlib.sha256(parts[entry["path"]]).hexdigest()
+                    entry["bytes"] = len(parts[entry["path"]])
+            text = _bd_manifest_text(text, changed, {"edits": manifest["edits"]})
+        else:
+            text = _bd_manifest_text(text, facts, manifest)
+        parts[BUNDLE_MANIFEST] = text.encode("utf-8")
+    return _stored_zip(sorted(parts.items()))
+
+
+def bundle_reference() -> dict:
+    """One evidence bundle for each borehole (PLAN.md step 8.3): names as a
+    bundle holds them, the readiness of documents taken together, the README
+    and the folders' notes; bundles built from small documents sealed here
+    and from the two committed ones, and refused; the figures taken out of a
+    document; manifest.json read back, or refused; and a bundle changed in
+    each way that matters, checked with and without issue records. The
+    documents here are written field by field, so no zlib build moves a
+    byte, and a changed bundle is given as what changed, which parity.mjs
+    applies with C.storedZip."""
+    from groundwater import bundle as B
+    from groundwater import verification as V
+    from groundwater.readiness import assess_readiness
+    from groundwater.text import phrase_table
+
+    out: dict = {}
+    names = ["sheet.xlsx", " a/b\\c.xlsx ", "..", "", None, 7, 'CON:x?"<1>|*.csv', "tab\there.xlsx",
+             "é sheet.xlsx", "😀.csv", "\ufeff x \u3000", ". .hidden. .", "a\x00b\x1f.xlsx", "a\ud800b.csv",
+             "line\nbreak\r.csv", "del\x7f.csv", "dir/", "C:\\Users\\field\\Kpètèma BH-1.xlsx"]
+    out["names"] = [[n, B.bundle_name(n)] for n in names]
+    combos = [[], ["not_assessed"], ["ready"], ["ready", "not_assessed"], ["ready", "ready_with_overrides"],
+              ["ready_with_overrides", "not_ready", "ready"], ["not_assessed", "not_ready"]]
+    out["readiness"] = [[c, B.bundle_readiness(c)] for c in combos]
+    out["notes"] = {folder: B.bundle_note(folder) for folder in B.FOLDERS}
+
+    # small documents, sealed as the writers seal them and zipped field by
+    # field: one with figures, a carrier image and evidence, a desk study
+    # with no gate, a certifiable one
+    kinds = phrase_table("verification.evidence_kinds")
+    sheet = b"time_min,level_m\n0,12.50\n10,13.25\n"
+    photo = b"\xff\xd8\xff jpeg bytes"
+    calibration = V.calibration_facts(None)
+
+    def gate(kind, overrides=None):
+        g = assess_readiness({}, kind, overrides or {})
+        return {"requirements": [{"state": r.state, "title": r.title, "override_by": r.override_by,
+                                  "override_reason": r.override_reason} for r in g.requirements]}
+
+    def document(kind, title, issued_on, readiness, evidence, text, media=None):
+        content = {"[Content_Types].xml": b'<Types xmlns="t"><Default Extension="rels" ContentType="r"/></Types>',
+                   "word/_rels/document.xml.rels": b'<Relationships xmlns="r"></Relationships>',
+                   "word/document.xml": f"<w:document>{text}</w:document>".encode()}
+        content.update(media or {})
+        facts = V.manifest_facts(kind, title, issued_on, ("groundwater-python", "0.3.0"), calibration,
+                                 readiness, evidence)
+        sealed = V.seal_package(content, facts, lambda code: {
+            "word/footer1.xml": f"Document {code} - page".encode(),
+            "word/media/code.png": f"QR DOCUMENT {code}".encode()})
+        return _vr_zip(sealed["entries"]), sealed["record"]
+
+    evidence = [V.evidence_entry(kinds["pumping"], "case_pumping.xlsx", sheet),
+                V.evidence_entry(kinds["photo"], "seal.jpg", photo)]
+    media = {"word/media/image1.png": b"\x89PNG figure one", "word/media/charts/two.png": b"\x89PNG figure two"}
+    doc_a, rec_a = document("completion", "Completion report - Case", "2026-10-29", gate("quality"),
+                            evidence, "The safe yield is 1.25 m3/h.", media)
+    doc_b, rec_b = document("desk_study", "Desk study - Case", "", None, [], "A desk study.")
+    doc_c, rec_c = document("quality", "Water quality - Case", "2026-10-30", {"requirements": []},
+                            evidence[:1], "Certifiable.")
+    doc_o, rec_o = document("placard", "Plate - Case", "2026-10-29",
+                            gate("placard", {"site_located": {"reason": "plate", "by": "A. K"}}), [], "Plate.")
+    doc_a2, _ = document("completion", "Completion report - Case", "2026-10-29", gate("quality"),
+                         evidence, "The safe yield is 9.25 m3/h.", media)
+    unsealed = _vr_zip({"[Content_Types].xml": b"<Types/>", "word/document.xml": b"<w:document/>"})
+    changed_doc = _vr_rezip(doc_a, {"word/document.xml": V.read_package(doc_a)["word/document.xml"]
+                                    .replace(b"1.25", b"1.35")})
+    python_docx, browser_docx = PYTHON_DOCUMENT.read_bytes(), BROWSER_DOCUMENT.read_bytes()
+    fixtures = {"python-docx": python_docx, "the browser's": browser_docx}
+    docs = {"a": doc_a, "b": doc_b, "c": doc_c, "o": doc_o, "a2": doc_a2, "unsealed": unsealed,
+            "changed": changed_doc}
+    out["documents"] = {key: _bd_b64(data) for key, data in docs.items()}
+    out["records"] = {"a": rec_a, "b": rec_b, "c": rec_c, "o": rec_o}
+
+    def resolve(spec):
+        """A file of a case: its bytes inline, a document above, or one of
+        the committed documents parity.mjs reads out of the verification
+        section."""
+        if "doc" in spec:
+            return docs[spec["doc"]]
+        if "fixture" in spec:
+            return fixtures[spec["fixture"]]
+        return base64.b64decode(spec["b64"])
+
+    out["figures"] = []
+    for name, spec in (("Completion Report.docx", {"doc": "a"}), ("desk.DOCX", {"doc": "b"}),
+                       ("Field kit.docx", {"fixture": "the browser's"}), ("a.docx", {"fixture": "python-docx"}),
+                       (".docx", {"doc": "a"}), ("x", {"doc": "unsealed"}), ("y", {"doc": "changed"}),
+                       ("z", {"b64": _bd_b64(b"not a package")})):
+        figs = B.document_figures(name, resolve(spec))
+        out["figures"].append({"name": name, "spec": spec, "figures": [
+            {"folder": f["folder"], "name": f["name"], "sha256": hashlib.sha256(f["data"]).hexdigest(),
+             "what": f["what"]} for f in figs]})
+
+    def figure_files(name, spec):
+        """The figures of a document, taken out of it by each engine's own
+        document_figures when the case is built."""
+        return [{"figures_of": dict(spec, name=name)}]
+
+    raw ={"folder": "raw", "name": "case_pumping.xlsx", "b64": _bd_b64(sheet), "what": kinds["pumping"]}
+    table = {"folder": "tables", "name": "layered_models.csv", "b64": _bd_b64(b"sounding,N\nA,1\n"), "what": ""}
+    junk = {"code": "not a code"}
+    builds = [
+        {"name": "a borehole", "title": "Case borehole", "options": {
+            "borehole": "SL-WAR-8FEEVKQ-E", "made_on": "2026-10-31", "engine": ["groundwater-python", "0.3.0"],
+            "calibration": calibration, "records": [rec_b, rec_a, junk, rec_o]},
+         "files": [raw, table, {"folder": "reports", "name": "Completion Report.docx", "doc": "a"},
+                   {"folder": "reports", "name": "Desk study.docx", "doc": "b"}]
+         + figure_files("Completion Report.docx", {"doc": "a"})},
+        {"name": "names that collide", "title": ' Kpètèma & <Bo> "1"\t', "options": {
+            "made_on": "", "engine": ["gwt-core", "0.3.0"], "calibration": None, "records": []},
+         "files": [{"folder": "raw", "name": n, "b64": _bd_b64(d), "what": w}
+                   for n, d, w in (("a.xlsx", b"1", ""), ("A.xlsx", b"2", "VES field sheet"),
+                                   ("a.xlsx", b"1", "again"), ("a.xlsx", b"3", ""), ("a (2).xlsx", b"4", ""),
+                                   (".xlsx", b"5", ""), ("noext", b"6", ""), ("NOEXT", b"7", ""),
+                                   ("dir/sub/a.xlsx", b"8", ""), ("é.xlsx", b"9", ""), ("É.xlsx", b"10", ""))]
+         + [{"folder": " signatures ", "name": "keys.json", "b64": _bd_b64(b"{}"), "what": "public keys"}]},
+        {"name": "one certifiable document", "title": "", "options": {
+            "made_on": "2026-11-01", "engine": ["gwt-core", "0.3.0"], "calibration": calibration,
+            "records": [rec_c]},
+         "files": [{"folder": "reports", "name": "Quality.docx", "doc": "c"},
+                   {"folder": "reports", "name": "quality.docx", "doc": "c"}]},
+        {"name": "on override", "title": "Override", "options": {
+            "made_on": "", "engine": ["groundwater-python", "0.3.0"], "calibration": None, "records": None},
+         "files": [{"folder": "reports", "name": "Plate.docx", "doc": "o"},
+                   {"folder": "reports", "name": "Quality.docx", "doc": "c"}]},
+        {"name": "raw only", "title": "Raw", "options": {
+            "made_on": "", "engine": ["groundwater-python", "0.3.0"], "calibration": None, "records": None},
+         "files": [raw]},
+        {"name": "the committed documents", "title": "Fixtures", "options": {
+            "made_on": "2026-10-29", "engine": ["gwt-core", "0.3.0"], "calibration": calibration,
+            "records": [V.document_record(python_docx), V.document_record(browser_docx)]},
+         "files": [{"folder": "reports", "name": "Report.docx", "fixture": "python-docx"},
+                   {"folder": "reports", "name": "Field kit.docx", "fixture": "the browser's"}]
+         + figure_files("Field kit.docx", {"fixture": "the browser's"})},
+    ]
+
+    def build(case):
+        files = []
+        for f in case["files"]:
+            if "figures_of" in f:
+                files += B.document_figures(f["figures_of"]["name"], resolve(f["figures_of"]))
+            else:
+                files.append(dict(folder=f["folder"], name=f["name"], data=resolve(f), what=f.get("what", "")))
+        o = case["options"]
+        return B.build_evidence_bundle(case["title"], files, borehole=o.get("borehole", ""),
+                                       made_on=o["made_on"], engine=tuple(o["engine"]),
+                                       calibration=o["calibration"], records=o["records"])
+
+    built = []
+    for case in builds:
+        result = build(case)
+        built.append(dict(case, result={"sha256": result["sha256"], "manifest": result["manifest"],
+                                        "bytes_sha256": hashlib.sha256(result["bytes"]).hexdigest(),
+                                        "size": len(result["bytes"])}))
+    out["builds"] = built
+
+    plain = {"name": "", "title": "Refused", "files": [raw], "options": {
+        "made_on": "2026-10-31", "engine": ["groundwater-python", "0.3.0"], "calibration": None, "records": []}}
+    refusals = [
+        dict(plain, name="a folder that is not one", files=[dict(raw, folder="photos")]),
+        dict(plain, name="a day that is not one", options=dict(plain["options"], made_on="2026-02-30")),
+        dict(plain, name="a calibration with no hash", options=dict(plain["options"],
+                                                                    calibration={"name": "x", "sha256": ""})),
+        dict(plain, name="a document with no manifest", files=[{"folder": "reports", "name": "u.docx",
+                                                               "doc": "unsealed"}]),
+        dict(plain, name="a document changed since", files=[raw, {"folder": "reports", "name": "c.docx",
+                                                                 "doc": "changed"}]),
+        dict(plain, name="not a document", files=[{"folder": "reports", "name": "sheet.xlsx", "b64": raw["b64"]}]),
+        dict(plain, name="nothing", files=[]),
+    ]
+    out["refusals"] = []
+    for case in refusals:
+        try:
+            build(case)
+        except ValueError as exc:
+            out["refusals"].append(dict(case, error=str(exc)))
+        else:
+            raise AssertionError(f"build_evidence_bundle took {case['name']}")
+
+    # manifest.json read back, and the ones not exactly as written, from a
+    # small bundle so that the texts stay short
+    small = build({"title": "Small Kpètèma 😀",
+                   "files": [raw, {"folder": "reports", "name": "Plate.docx", "doc": "o"}],
+                   "options": {"made_on": "2026-10-31", "engine": ["gwt-core", "0.3.0"],
+                               "calibration": None, "records": [rec_o]}})
+    out["read_base"] = small["manifest"]
+    # the README, with a title and with none
+    out["readmes"] = [B.bundle_readme(small["facts"]), B.bundle_readme(build(builds[2])["facts"])]
+    zero = "0" * 64
+    first = small["facts"]["files"][0]
+    keys = list(small["facts"])
+    edits = [
+        {}, {"dump": {"indent": 1}}, {"dump": {"ascii": True}},
+        {"dump": {"order": ["borehole", "title"] + [k for k in keys if k not in ("title", "borehole")]}},
+        {"edits": [["set", ["extra"], 1]]},
+        {"replace": ['"version": 1,', '"version": 1.0,']}, {"replace": ['"version": 1,', '"version": true,']},
+        {"replace": [f'"bytes": {first["bytes"]}', '"bytes": NaN']},
+        {"replace": [f'"bytes": {first["bytes"]}', '"bytes": 2e1']},
+        {"replace": [f'"bytes": {first["bytes"]}', '"bytes": -0']},
+        {"replace": ['"title": "Small Kp', '"title": "Sm\\u0061ll Kp']},
+        {"edits": [["set", ["title"], " Small "]]},
+        {"edits": [["reverse", ["files"]]]},
+        {"edits": [["set", ["files", 1, "path"], "FIGURES/README.txt"]]},
+        {"edits": [["append", ["files"], {"path": "raw/../x", "what": "", "bytes": 1, "sha256": zero}]]},
+        {"edits": [["append", ["files"], {"path": "raw/a/b.xlsx", "what": "", "bytes": 1, "sha256": zero}]]},
+        {"edits": [["insert", ["files"], 0, {"path": "manifest.json", "what": "", "bytes": 1, "sha256": zero}]]},
+        {"edits": [["drop", ["files"], "signatures/"]]}, {"edits": [["drop", ["files"], "README.txt"]]},
+        {"edits": [["set", ["readiness"], "ready"]]},
+        {"edits": [["set", ["documents", 0, "items", 0, "state"], "unmet"]]},
+        {"edits": [["set", ["documents", 0, "items", 0, "by"], ""]]},
+        {"edits": [["set", ["documents", 0, "path"], "reports/elsewhere.docx"]]},
+        {"edits": [["append", ["documents"], small["facts"]["documents"][0]]]},
+        {"edits": [["append", ["issued"], junk]]},
+        {"edits": [["append", ["issued"], dict(rec_a, title=" padded ")]]},
+        {"edits": [["set", ["calibration"], {"name": "a set", "sha256": ""}]]},
+        {"edits": [["set", ["calibration"], {"name": "a set", "sha256": zero}]]},
+        {"edits": [["set", ["made_on"], "2026-13-01"]]},
+        {"edits": [["set", ["files", 0, "sha256"], first["sha256"].upper()]]},
+        {"edits": [["set", ["files", 0, "bytes"], V.MAX_PART_BYTES + 1]]},
+        {"edits": [["set", ["documents", 0, "code"], "0A1B-2C3D-E"]]},
+        {"edits": [["set", ["engine"], ["gwt-core", "0.3.0"]]]},
+        {"cut": 1}, {"wrap": ["", "\n"]}, {"crlf": True}, {"wrap": ["\ufeff", ""]},
+        {"text": ""}, {"text": "[]"}, {"text": "{}"}, {"nest": 5000}, {"text": 7}, {"text": None},
+    ]
+    out["read"] = [[edit, B.read_bundle_manifest(_bd_manifest_text(small["manifest"], small["facts"], edit))]
+                   for edit in edits]
+
+    # a bundle changed in each way that matters, checked with and without
+    # issue records: the first one built above, which parity.mjs builds too
+    base = build(builds[0])
+    data, facts = base["bytes"], base["facts"]
+    parts = V.read_package(data)
+
+    sheet2 = sheet.replace(b"13.25", b"13.75")
+    readme2 = parts["README.txt"] + b"Checked by nobody.\n"
+    figure_path = next(p for p in parts if p.startswith("figures/"))
+    figure2 = parts[figure_path] + b"x"
+    table2 = b"sounding,N\nA,2\n"
+    rec_a2 = V.document_record(doc_a2)
+    completion = next(i for i, d in enumerate(facts["documents"])
+                      if d["path"] == "reports/Completion Report.docx")
+
+    def in_line(paths, edits=()):
+        """manifest.json brought into line with the parts named, which
+        the recipe's set changes, and then edited."""
+        return {"in_line": list(paths), "edits": list(edits)}
+
+    recipes = [
+        {"name": "as made"},
+        {"name": "a field sheet changed", "set": {"raw/case_pumping.xlsx": _bd_b64(sheet2)}},
+        {"name": "a field sheet changed, manifest.json in line", "set": {"raw/case_pumping.xlsx": _bd_b64(sheet2)},
+         "manifest": in_line(["raw/case_pumping.xlsx"])},
+        {"name": "a table changed, manifest.json in line", "set": {"tables/layered_models.csv": _bd_b64(table2)},
+         "manifest": in_line(["tables/layered_models.csv"])},
+        {"name": "a figure changed, manifest.json in line", "set": {figure_path: _bd_b64(figure2)},
+         "manifest": in_line([figure_path])},
+        {"name": "the README changed, manifest.json in line", "set": {"README.txt": _bd_b64(readme2)},
+         "manifest": in_line(["README.txt"])},
+        {"name": "a document removed", "drop": ["reports/Desk study.docx"]},
+        {"name": "a file added", "set": {"raw/extra.xlsx": _bd_b64(b"extra")}},
+        {"name": "a document swapped, manifest.json in line", "set_doc": {"reports/Completion Report.docx": "a2"},
+         "manifest": in_line(["reports/Completion Report.docx"], [
+             ["set", ["documents", completion, "code"], rec_a2["code"]],
+             ["set", ["documents", completion, "sha256"], rec_a2["sha256"]]])},
+        {"name": "a document changed inside, manifest.json in line",
+         "set_doc": {"reports/Completion Report.docx": "changed"},
+         "manifest": in_line(["reports/Completion Report.docx"])},
+        {"name": "a document's readiness misstated", "manifest": in_line([], [
+            ["set", ["documents", completion, "readiness"], "ready"],
+            ["set", ["documents", completion, "items"], []],
+            ["set", ["readiness"], "ready"]])},
+        {"name": "manifest.json removed", "drop": ["manifest.json"]},
+        {"name": "manifest.json edited by hand", "manifest": {"replace": ['"title": ', '"title":  ']}},
+        {"name": "manifest.json not utf-8", "set": {"manifest.json": _bd_b64(b"\xff\xfe{")}},
+        {"name": "not a zip", "raw": _bd_b64(b"PK\x03\x04 not a zip")},
+        {"name": "a document, not a bundle", "doc": "a"},
+    ]
+    for recipe in recipes:
+        for path, key in recipe.pop("set_doc", {}).items():
+            recipe.setdefault("set", {})[path] = {"doc": key}
+    record_sets = {"none": None, "empty": [], "a": [rec_a], "a, b and o": [rec_o, rec_b, rec_a, junk]}
+    every = ("as made", "a field sheet changed, manifest.json in line", "a document swapped, manifest.json in line")
+    out["checks"] = []
+    for recipe in recipes:
+        changed = docs[recipe["doc"]] if "doc" in recipe else _bd_apply(data, recipe, docs)
+        reports = {}
+        for key, records in record_sets.items():
+            if key == "a, b and o" or recipe["name"] in every:
+                report = B.verify_evidence_bundle(changed, records)
+                reports[key] = {"records": records, "facts": report["facts"] is not None,
+                                "report": {k: v for k, v in report.items() if k != "facts"}}
+        out["checks"].append({"recipe": recipe, "sha256": hashlib.sha256(changed).hexdigest(),
+                              "reports": reports})
+    # the bundle of the committed documents, checked against their records
+    fixture = build(builds[-1])["bytes"]
+    out["fixture_check"] = {key: {k: v for k, v in B.verify_evidence_bundle(fixture, records).items()
+                                  if k != "facts"}
+                            for key, records in (("none", None),
+                                                 ("theirs", builds[-1]["options"]["records"]))}
+    return clean(out)
+
+
+# ------------------------------------------ where to drill next (step 6.1)
+
+#: grounds the prior table has a row of its own for, a class with no unit,
+#: surface water and no class at all
+ALLOCATION_GROUNDS = [("B-L", "pCm"), ("U-M/H", "Qe"), ("CSF-L/M", "pCm"), ("I-L", "Pi"),
+                      ("I-L", None), ("B-L", "H2O"), ("n/a", "H2O"), (None, None)]
+
+
+def _allocation_case(name: str, rows: list, budget, cost: dict, level: str, *, access=None,
+                     allocation=None, grounds=None, set_=None) -> dict:
+    """One choice as both engines are asked for it, and what Python made of
+    it: the figures, the sentences, the table and the CSV, or the refusal."""
+    from groundwater import allocation as AL
+    from groundwater import calibration_sets as CS
+
+    config = Config()
+    for key, value in (allocation or {}).items():
+        setattr(config.allocation, key, value)
+    if set_ is not None:
+        config = CS.apply_set(config, set_)
+    try:
+        a = AL.allocate(rows, budget, cost, level=level, access=access or {}, config=config,
+                        grounds=None if grounds is None
+                        else {k: AL.AreaGround(**v) for k, v in grounds.items()})
+    except ValueError as exc:
+        expect = {"refused": str(exc)}
+    else:
+        expect = {
+            "summary": {
+                "method": a.method, "items": a.items, "boreholes": a.boreholes, "areas": a.areas,
+                "cost": a.cost_usd, "left": a.left_usd, "people": a.people, "attempts": a.attempts,
+                "bound": a.bound, "least": a.least_ratio,
+                "marginal": dataclasses.asdict(a.marginal) if a.marginal is not None else None,
+                "candidates": [[c.id, c.district, c.unserved, c.boreholes, c.chosen, c.people,
+                                c.reason, c.cost_usd, c.access_usd] for c in a.candidates],
+            },
+            # the CSV is the table and then the sentences, word for word
+            "header": AL.allocation_header(a), "csv": AL.allocation_csv(a),
+        }
+    return clean({"name": name, "rows": rows, "budget": budget, "cost": cost, "level": level,
+                  "access": access or {}, "allocation": allocation or {}, "grounds": grounds,
+                  "set": set_, "expect": expect})
+
+
+def allocation_reference() -> dict:
+    """Where to drill next, within a budget (PLAN.md step 6.1): the ground
+    of every district and chiefdom as the grid reads it; small choices on
+    given ground, which the exact choice settles; areas alike in all but
+    their names, both ways; the ranking's own areas on the bundled layers at
+    budgets that buy nothing, a few boreholes and many, which the greedy
+    choice settles, with access costs typed for some; the same under a
+    calibration set in force and under other settings; and the refusals."""
+    import random
+
+    from groundwater import allocation as AL
+    from groundwater.costing import sample_cost
+    from groundwater.coverage import (
+        chiefdom_coverage_rows, chiefdom_population, coverage_rows, load_chiefdom_district,
+        load_district_population,
+    )
+
+    spread = sample_cost(CostingInputs(total_depth_m=60.0, mobilisation_distance_km=100.0))
+    cost = {"mean": spread.mean, "dry_mean": spread.dry_mean, "samples": spread.samples,
+            "seed": spread.seed, "depth_m": spread.depth_m}
+    deep = sample_cost(CostingInputs(total_depth_m=85.0, mobilisation_distance_km=40.0), vat_percent=15.0)
+    deep_cost = {"mean": deep.mean, "dry_mean": deep.dry_mean, "samples": deep.samples,
+                 "seed": deep.seed, "depth_m": deep.depth_m}
+
+    def ground(name, code, glg):
+        return {"area": name, "samples": 100, "bgs_code": code, "glg": glg,
+                "class_samples": 60 if code else 0, "unit_samples": 50 if glg else 0}
+
+    def row(name, population, functional, district=""):
+        return {"name": name, "district": district, "population": population,
+                "functional_points": functional}
+
+    cases = []
+    names = ["Bo", "Kono", "Bonthe", "Kambia", "Moyamba", "Falaba", "Koya (Port Loko)", "Kaffu Bullom"]
+    for seed in range(24):
+        rng = random.Random(600 + seed)
+        chosen = rng.sample(names, rng.randint(2, 6))
+        rows, grounds, access = [], {}, {}
+        for name in chosen:
+            rows.append(row(name, rng.choice([0.0, 250.0, 700.0, 1200.0, 1600.0, 2100.0, 3300.0])
+                            + 37.0 * rng.random(), rng.randint(0, 2), "Bonthe"))
+            grounds[name] = ground(name, *rng.choice(ALLOCATION_GROUNDS))
+            if rng.random() < 0.3:
+                access[name] = rng.choice([0.0, 450.0, 2500.0, 0.01])
+        level = "chiefdom" if seed % 3 == 0 else "district"
+        cases.append(_allocation_case(f"small {seed}", rows, rng.choice([8000.0, 19000.0, 31000.0, 47000.0,
+                                                                          90000.0, 150000.0]),
+                                      cost if seed % 4 else deep_cost, level, access=access,
+                                      grounds=grounds))
+    # areas alike in all but their names: the one first in alphabetical
+    # order, given in either order, exactly and greedily; and names whose
+    # order by code point is not their order by UTF-16 code unit
+    twins = [row("Kono", 1000.0, 0), row("Bo", 1000.0, 0), row("Bombali", 1000.0, 0)]
+    letters = [row("\uff71 Area", 1000.0, 0), row("\U0001d4b5 Area", 1000.0, 0), row("\u00d1doye", 1000.0, 0)]
+    letter_grounds = {r["name"]: ground(r["name"], "U-M/H", "Qe") for r in letters}
+    for limit in (40, 0):
+        cases.append(_allocation_case(f"letters {limit}", letters, 30000.0, cost, "district",
+                                      allocation={"exact_max_items": limit}, grounds=letter_grounds))
+    twin_grounds = {r["name"]: ground(r["name"], "B-L", "pCm") for r in twins}
+    for limit in (40, 0):
+        for order in (twins, twins[::-1]):
+            for budget in (16000.0, 33000.0, 1.0e5):
+                cases.append(_allocation_case(f"twins {limit} {budget:g} {order[0]['name']}", order, budget,
+                                              cost, "district", allocation={"exact_max_items": limit},
+                                              grounds=twin_grounds))
+
+    # the ranking's own areas, on the bundled layers
+    districts = load_district_population()
+    chiefdoms = chiefdom_population()[0]
+    crosswalk = load_chiefdom_district()
+    for seed in range(6):
+        rng = random.Random(700 + seed)
+        level = "chiefdom" if seed % 2 else "district"
+        base = chiefdoms if level == "chiefdom" else districts
+        grown = {name: people * (1.0 + 0.25 * rng.random()) for name, people in base.items()}
+        counts = {name: {"total": int(people / 400), "functional": int(people / (250 + 1500 * rng.random()))}
+                  for name, people in base.items()}
+        ranked = (chiefdom_coverage_rows(grown, counts, crosswalk) if level == "chiefdom"
+                  else coverage_rows(grown, counts))
+        rows = [row(r.name, r.population, r.functional_points, r.district if level == "chiefdom" else r.name)
+                for r in ranked]
+        access = {r["name"]: round(3000.0 * rng.random(), 2) for r in rows if rng.random() < 0.15}
+        for budget in (61000.0, 1.5e6) if level == "chiefdom" else (9000.0, 61000.0, 1.5e6):
+            cases.append(_allocation_case(f"{level} {seed} {budget:g}", rows, budget, cost, level,
+                                          access=access if seed % 4 > 1 else {}))
+    rows = [row(name, people, int(people / 900)) for name, people in districts.items()]
+    cases.append(_allocation_case("in force", rows, 250000.0, cost, "district", set_=IN_FORCE_SET))
+    cases.append(_allocation_case("settings", rows, 250000.0, deep_cost, "district",
+                                  allocation={"people_per_borehole": 300, "exact_max_items": 300,
+                                              "ground_grid": 9}))
+    cases.append(_allocation_case("exact on the ranking", rows, 30000.0, cost, "district"))
+    # refused
+    one = [row("Bo", 900.0, 0)]
+    for name, args in [("no budget", dict(budget=0.0)), ("negative access", dict(access={"Bo": -1.0})),
+                       ("twice", dict(rows=one + one)), ("table", dict(allocation={"exact_max_items": 400})),
+                       ("fraction", dict(allocation={"people_per_borehole": 500.5})),
+                       ("free", dict(cost=dict(cost, mean=0.0)))]:
+        spec = {"rows": one, "budget": 50000.0, "cost": cost, **args}
+        cases.append(_allocation_case(f"refused: {name}", spec["rows"], spec["budget"], spec["cost"], "district",
+                                      access=spec.get("access"), allocation=spec.get("allocation"),
+                                      grounds={"Bo": ground("Bo", "B-L", "pCm")}))
+    return {
+        "grounds": {level: {k: dataclasses.asdict(v) for k, v in AL.area_grounds(level).items()}
+                    for level in AL.LEVELS},
+        "cases": cases,
+    }
 
 
 def sanitary_reference() -> dict:
@@ -5481,8 +6931,9 @@ def sanitary_reference() -> dict:
         "undated": sample(ecoli(3.0), when=""),
         "bad_unit": sample(ecoli(3.0, unit="wibbles")),
         # results the assessment could not grade, whose remarks end in a
-        # full stop of their own or do not
-        "slash_unit": sample(ecoli(3.0, unit="/100 mL")),
+        # full stop of their own or do not ("/100 mL" was one until the
+        # water quality audit read it as a count per 100 mL)
+        "unread_unit": sample(ecoli(3.0, unit="colonies")),
         "unreadable": sample(ecoli(None, unreadable="lots")),
         "coarse_per_ml": sample(ecoli(None, below_detection=True, detection_limit=1.0,
                                       unit="CFU/mL")),
@@ -5822,8 +7273,14 @@ def pumping_spread_reference() -> dict:
 
     from groundwater.ingestion import common
 
-    # the edge sheets travel in pumping_cases already; parity reads them there
-    edge = _pumping_case_grids()
+    # the edge sheets travel in pumping_cases already; parity reads them there.
+    # The audit's sheets are not about the bands, and their readings are clean
+    # Theis curves with no casing storage in them, which leave the
+    # large-diameter fit's storativity running off down its valley to 1e-22
+    # or 1e-78, where the engines stop 1 percent apart: they are held in
+    # pumping_cases alone.
+    audit = _audit_case_grids()
+    edge = {name: grid for name, grid in _pumping_case_grids().items() if name not in audit}
     timbo, _ = common.load_grid(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
     own = {"dr_timbo": json.loads(json.dumps(timbo, default=str)),
            "large_diameter": _large_diameter_grid(),
@@ -6127,7 +7584,429 @@ def _pumping_case_grids() -> dict[str, list[list]]:
             short[11 + i][3 * k] = 50 * k + t
             short[11 + i][3 * k + 1] = round(10.0 + drawdown(50 * k + t), 2)
     cases["short_steps"] = short
+    cases.update(_audit_case_grids())
     return cases
+
+
+def _audit_sheet(blocks, *, recovery=None, headings=None, step_length=None,
+                 rates=(2.0,), test_type="constant", pump=45.0, time_head="Time (min)",
+                 recovery_head="Time (min)", extra=()) -> list[list]:
+    """A pumping sheet as the template lays one out, from ``blocks`` of
+    (time, level) side by side and a recovery block: the static level 10 m,
+    the hole 60 m deep, the step rates in row 4 and the readings from row 7."""
+    rows = [["PUMPING TEST FIELD SHEET"],
+            ["Community", "Test", None, "Static water level (m)", 10.0],
+            ["Depth of Borehole (m)", 60.0, None, "Pump setting (m)", pump],
+            ["Test type (step or constant)", test_type, None,
+             "Length of each step (min)", step_length]]
+    q_row = ["Discharge per step (m3/h)"]
+    for i, q in enumerate(rates):
+        q_row += [f"Step {i + 1} Q", q, None]
+    rows.append(q_row)
+    rows += [list(row) for row in extra]
+    groups = list(blocks) + ([recovery] if recovery is not None else [])
+    heads = list(headings or [None] * len(groups))
+    rows.append(sum(([h, None, None] for h in heads), []))
+    header = []
+    for _ in blocks:
+        header += [time_head, "Water Level (m)", "Drawdown (m)"]
+    if recovery is not None:
+        header += [recovery_head, "Water Level (m)", "Recovery (m)"]
+    rows.append(header)
+    for i in range(max(len(g) for g in groups)):
+        row = []
+        for g in groups:
+            row += [g[i][0], g[i][1], None] if i < len(g) else [None, None, None]
+        rows.append(row)
+    width = max(len(r) for r in rows)
+    return [r + [None] * (width - len(r)) for r in rows]
+
+
+def _audit_case_grids() -> dict[str, list[list]]:
+    """The sheets the audit of the pumping test reader and analysis turned
+    on: times written as clocks (in rows out of order too), a time of day, a
+    recovery in two blocks and
+    one on the test's clock, the step length in hours, blank and unreadable,
+    a last step with no rate, the casing on the sheet (with no unit, no
+    wider than its riser, and with the riser left blank above another
+    label), a Theis drawdown, a flattened one and a step test whose last
+    step flattens, a handpump line
+    Cooper-Jacob used to refuse, and a yield under 0.01 m3/h."""
+    from scipy.special import exp1
+
+    def theis(t, T, q, S=1e-3, r=0.1):
+        u = r * r * S / (4 * T * (t / 1440.0))
+        return q * 24 / (4 * math.pi * T) * float(exp1(u))
+
+    def steps_of(times, rates, T, loss=0.002):
+        """Superposed Theis drawdown of a step test whose steps begin every
+        ``len`` minutes, with C Q^2 of well loss."""
+        length = times[-1]
+        out = []
+        for k in range(len(rates)):
+            block = []
+            for m in times:
+                t = length * k + m
+                s = sum(theis(t - length * i, T, q - (rates[i - 1] if i else 0.0))
+                        for i, q in enumerate(rates[:k + 1]))
+                block.append((t, round(10.0 + s + loss * (rates[k] * 24) ** 2 / 24, 3)))
+            out.append(block)
+        return out
+
+    day = [1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480, 600,
+           720, 840, 960, 1080, 1200, 1320, 1380, 1440]
+    eight = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100, 120,
+             150, 180, 210, 240, 300, 360, 420, 480]
+    since = [1, 2, 3, 5, 10, 20, 30, 45, 60]
+    cases: dict[str, list[list]] = {}
+
+    def recovery_after(stop, T, q, minutes=since, offset=0.0):
+        return [(offset + m, round(10.0 + theis(stop + m, T, q) - theis(m, T, q), 3))
+                for m in minutes]
+
+    def clock(m, seconds=True):
+        return (f"{int(m) // 60:02d}:{int(m) % 60:02d}:00" if seconds
+                else f"{int(m) // 60}:{int(m) % 60:02d}")
+
+    # an eight-hour test with every reading from the first hour on in a clock
+    # cell, as the browser's reader writes one, and minute 90 typed as 1:30
+    levels = [(m, round(10.0 + theis(m, 20.0, 2.0), 3)) for m in eight]
+    cases["clock_cells"] = _audit_sheet(
+        [[(clock(m, seconds=m != 90) if m >= 60 else m, wl) for m, wl in levels]],
+        recovery=recovery_after(480, 20.0, 2.0))
+    # a column that names its clock as minutes and seconds
+    cases["clock_minutes_seconds"] = _audit_sheet(
+        [[(f"{int(m)}:{int(round(m % 1 * 60)):02d}", round(10.0 + theis(m, 20.0, 2.0), 3))
+          for m in (0.5, 1, 1.5, 2, 3, 5, 7.5, 10, 15, 20, 30)]],
+        time_head="Time (mm:ss)")
+    # the clock on the wall
+    cases["time_of_day"] = _audit_sheet(
+        [[(f"08:{m:02d}", round(10.0 + theis(m - 4, 20.0, 2.0), 3))
+          for m in (5, 6, 7, 9, 14, 24, 34, 49, 59)]],
+        recovery=recovery_after(55, 20.0, 2.0))
+    # elapsed clocks in rows out of order, the top one past the first hour
+    cases["clock_rows_out_of_order"] = _audit_sheet(
+        [[(clock(m, seconds=False), round(10.0 + theis(m, 20.0, 2.0), 3))
+          for m in (90, 5, 60, 1, 240, 30, 120, 10, 180, 2)]])
+    # four hours and a two-hour recovery in two hourly blocks, the second
+    # counted within its own hour
+    four = [(m, round(10.0 + theis(m, 20.0, 2.0), 3)) for m in eight if m <= 240]
+    first = recovery_after(240, 20.0, 2.0)
+    second = recovery_after(240, 20.0, 2.0, minutes=[65, 70, 80, 90, 105, 120],
+                            offset=-60.0)
+    grid = _audit_sheet([four, first], headings=["Constant discharge 0-240 min",
+                                                 "Recovery 0-60 min"])
+    grid[5] += ["Recovery 61-120 min", None, None]
+    grid[6] += ["Time (min)", "Water Level (m)", "Recovery (m)"]
+    for i, row in enumerate(grid[7:]):
+        row += [second[i][0], second[i][1], None] if i < len(second) else [None] * 3
+    for row in grid[:5]:
+        row += [None] * 3
+    cases["recovery_blocks"] = grid
+    # the recovery written on with the test's clock
+    cases["recovery_test_clock"] = _audit_sheet(
+        [four], recovery=recovery_after(240, 20.0, 2.0, offset=240.0))
+    # four steps of an hour, the length written in hours
+    hourly = steps_of([1, 2, 3, 5, 10, 15, 20, 30, 45, 60], [1.0, 2.0, 3.0, 4.0], 15.0)
+    cases["step_length_hour"] = _audit_sheet(
+        hourly, step_length="1 hr", rates=(1.0, 2.0, 3.0, 4.0), test_type="step",
+        recovery=recovery_after(240, 15.0, 4.0))
+    # four steps of 100 minutes with the length left blank, and unreadable
+    hundred = steps_of([1, 2, 3, 5, 10, 20, 30, 45, 60, 80, 100], [1.0, 2.0, 3.0, 4.0], 15.0)
+    cases["step_length_blank"] = _audit_sheet(
+        hundred, rates=(1.0, 2.0, 3.0, 4.0), test_type="step")
+    cases["step_length_unreadable"] = _audit_sheet(
+        hundred, step_length="1 fortnight", rates=(1.0, 2.0, 3.0, 4.0), test_type="step")
+    # the last rate blank, with a recovery that needs it
+    cases["last_rate_missing"] = _audit_sheet(
+        hundred, step_length=100, rates=(1.0, 2.0, 3.0, None), test_type="step",
+        recovery=recovery_after(400, 15.0, 4.0))
+    # the casing and riser a co-pilot writes, and a diameter with no unit
+    copilot = [[None] * 16 + ["Casing diameter (in)", 8],
+               [None] * 16 + ["Riser diameter (in)", "50 mm"]]
+    cases["sheet_casing"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 5.0, 2.0), 3)) for m in eight]], extra=copilot)
+    cases["bare_casing"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 5.0, 2.0), 3)) for m in eight]],
+        extra=[["Casing diameter", 6]])
+    cases["swapped_casing"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 5.0, 2.0), 3)) for m in eight]],
+        extra=[[None] * 16 + ["Casing diameter (in)", 2],
+               [None] * 16 + ["Riser diameter (in)", 5]])
+    # the co-pilot's riser left blank, its planned rate standing under it
+    cases["blank_riser"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 5.0, 2.0), 3)) for m in eight]],
+        extra=[[None] * 16 + ["Casing diameter (in)", 8],
+               [None] * 16 + ["Riser diameter (in)", None],
+               [None] * 16 + ["Planned rate (m3/h)", 2.93]])
+    # a day at 2 m3/h in 10 m2/day, its last readings an hour apart within 5 cm
+    cases["theis_day"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 10.0, 2.0), 2)) for m in day]], pump=50.0)
+    # Theis to two hours, then 1.5 cm a log cycle
+    flattened = []
+    for m in day:
+        s = theis(min(m, 120), 20.0, 3.0) + (0.015 * math.log10(m / 120) if m > 120 else 0.0)
+        flattened.append((m, round(10.0 + s, 3)))
+    cases["stabilised_tail"] = _audit_sheet([flattened], rates=(3.0,), pump=50.0)
+    # a step test whose second step flattens after an hour of its own clock
+    own = [1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240]
+    step_one = [round(theis(m, 20.0, 1.5), 3) for m in own]
+    step_two = [round(step_one[-1] + theis(min(m, 60), 20.0, 1.5)
+                      + (0.002 * math.log10(m / 60) if m > 60 else 0.0), 3) for m in own]
+    cases["stabilised_last_step"] = _audit_sheet(
+        [[(m, 10.0 + s) for m, s in zip(own, step_one, strict=True)],
+         [(240 + m, 10.0 + s) for m, s in zip(own, step_two, strict=True)]],
+        rates=(1.5, 3.0), test_type="step", step_length=240, pump=50.0)
+    # a handpump in 250 m2/day, levels to the millimetre
+    cases["handpump_line"] = _audit_sheet(
+        [[(m, round(10.6 + theis(m, 250.0, 1.0), 3)) for m in eight]], rates=(1.0,),
+        pump=50.0)
+    # 0.05 m3/h in 0.2 m2/day with 0.7 m of drawdown to spend
+    cases["low_yield"] = _audit_sheet(
+        [[(m, round(10.0 + theis(m, 0.2, 0.05), 3)) for m in eight if m <= 240]],
+        rates=(0.05,), pump=16.0)
+    return cases
+
+
+#: Time cells as a sheet holds them, each with the column header it sits
+#: under: clocks, a clock under a header that names minutes and seconds, a
+#: clock past a day, text that starts as a clock and is not one, hours and
+#: minutes as words, numbers with a unit or a note in the cell, and an
+#: Excel TRUE.
+TIME_CELLS = [
+    ("1:30", "Time (min)"), ("01:30:00", "Time (min)"), ("00:05:00", "Time (min)"),
+    ("01:30:00.500000", "Time (min)"), ("100:00", "Time (min)"), (" 2:05 ", "Time (h)"),
+    ("5:30", "Time (mm:ss)"), ("5:30", "Time (min:sec)"), ("00:05:30", "Time (mm:ss)"),
+    ("90:30", "Time (m:s)"), ("5:30", "Time (hh:mm)"), ("1:5", "Time (min)"),
+    ("1:60", "Time (min)"), ("12 min", "Time (min)"), ("1 hr", "Time (min)"),
+    ("5 (approx)", "Time (min)"), ("1 fortnight", "Time (min)"), (45, "Time (h)"),
+    (90, "Time (min)"), ("", "Time (min)"), ("n/a", "Time (min)"),
+    ("1:30 pm", "Time (min)"), ("08:05 AM", "Time (min)"), ("10:00 (approx)", "Time (min)"),
+    ("1: 30", "Time (min)"), ("-1:30", "Time (min)"), ("1000:00", "Time (min)"),
+    ("1h 30m", "Time (min)"), ("1 hr 30 min", "Time (min)"), ("1h30", "Time (min)"),
+    ("2 h", "Time (min)"), ("1.30", "Time (min)"), ("1:30 ", "Time (min)"),
+    (True, "Time (min)"),
+]
+
+
+def time_cells_reference() -> list:
+    """What the readers make of each of TIME_CELLS (units.read_time)."""
+    from groundwater.units import clock_format, read_time
+
+    out = []
+    for cell, header in TIME_CELLS:
+        quantity, written = read_time(cell, header)
+        out.append({"cell": cell, "header": header, "format": clock_format(header),
+                    "value": clean(quantity.value), "status": quantity.status,
+                    "unit": quantity.unit_text, "written": written})
+    return out
+
+
+#: Laboratory results the quality, units and design audit found misread,
+#: each as [parameter, value, unit] or [parameter, None, unit, extra], where
+#: extra names the other WaterQualityResult fields. The browser reads the same
+#: rows from reference.json.
+_QPANEL = [["pH", 7.0, "pH units"], ["E. coli", 0.0, "CFU/100 mL"],
+           ["Arsenic", 0.001, "mg/L"], ["Fluoride", 0.2, "mg/L"]]
+_QIONS = [["Calcium", 40.078, "mg/L"], ["Magnesium", 12.1525, "mg/L"],
+          ["Sodium", 16.426355, "mg/L"], ["Chloride", 35.453, "mg/L"],
+          ["Bicarbonate", 61.017, "mg/L"], ["Sulfate", 48.03, "mg/L"]]
+QUALITY_CASES = {
+    # nitrate and nitrite reported as nitrogen, by name and by unit
+    "nitrogen_by_name": _QPANEL + [["Nitrate (NO3-N)", 20.0, "mg/L"],
+                                   ["Nitrite (NO2-N)", 0.5, "mg/L"]],
+    "nitrogen_spellings": _QPANEL + [["Nitrate (N)", 2.0, "mg/L"],
+                                     ["Nitrite (NO2 as N)", 0.1, "mg/L"],
+                                     ["Ammonium (NH4-N)", 0.2, "mg/L"]],
+    "nitrogen_combined_by_name": _QPANEL + [["Nitrate (NO3-N)", 9.0, "mg/L"],
+                                            ["Nitrite (NO2-N)", 0.5, "mg/L"]],
+    "nitrogen_contradicted": _QPANEL + [["Nitrite (NO3-N)", 0.5, "mg/L"],
+                                        ["Nitrate", 3.0, "mg/L"]],
+    "nitrate_in_mg_n": _QPANEL + [["Nitrate", 10.0, "mg/L as N"]],
+    "nitrate_n_in_mg_no3": _QPANEL + [["Nitrate-N", 44.0, "mg/L as NO3"]],
+    "nitrate_basis_contradicted": _QPANEL + [["Nitrate (as NO3)", 10.0, "mg/L as N"]],
+    # the same water, nitrate as the ion and as nitrogen, through the indices
+    "ions_as_ion": _QPANEL + _QIONS + [["Nitrate", 10.0 * 62.004 / 14.007, "mg/L"]],
+    "ions_as_n_by_name": _QPANEL + _QIONS + [["Nitrate (as N)", 10.0, "mg/L"]],
+    "ions_as_n_by_unit": _QPANEL + _QIONS + [["Nitrate", 10.0, "mg/L as N"]],
+    "ions_both_forms": _QPANEL + _QIONS + [["Nitrate-N", 10.0, "mg/L"],
+                                           ["Nitrate", 10.0 * 62.004 / 14.007, "mg/L"]],
+    "nitrite_as_n_indices": _QPANEL + _QIONS + [["Nitrate", 4.0, "mg/L"],
+                                                ["Nitrite-N", 0.5, "mg/L"],
+                                                ["Iron", 0.1, "mg/L"]],
+    "nitrate_n_below_detection": _QPANEL + _QIONS + [
+        ["Nitrate-N", None, "mg/L", {"detection_limit": 0.1, "below_detection": True}]],
+    # calcium, magnesium, bicarbonate and carbonate as CaCO3
+    "caco3_as_element": _QPANEL + [
+        ["Nitrate", 4.43, "mg/L"], ["Sodium", 36.126486, "mg/L"],
+        ["Chloride", 17.7265, "mg/L"], ["Alkalinity", 100.09, "mg/L as CaCO3"],
+        ["Sulfate", 24.015, "mg/L"], ["TDS", 200, "mg/L"], ["Temperature", 27, "deg C"],
+        ["Calcium", 20.039, "mg/L"], ["Magnesium", 6.076, "mg/L"]],
+    "caco3_as_caco3": _QPANEL + [
+        ["Nitrate", 4.43, "mg/L"], ["Sodium", 36.126486, "mg/L"],
+        ["Chloride", 17.7265, "mg/L"], ["Alkalinity", 100.09, "mg/L as CaCO3"],
+        ["Sulfate", 24.015, "mg/L"], ["TDS", 200, "mg/L"], ["Temperature", 27, "deg C"],
+        ["Calcium", 50.037383, "mg/L as CaCO3"], ["Magnesium", 25.020968, "mg/L as CaCO3"]],
+    "caco3_carbonates": _QPANEL + [
+        ["Nitrate", 4.0, "mg/L"], ["Calcium", 20.0, "mg/L as Ca"],
+        ["Magnesium", 5.0, "mg/L as Ca"], ["Bicarbonate", 100.0, "mg/L as CaCO3"],
+        ["Carbonate", 5.0, "mg/L as CaCO3"], ["Sodium", 10.0, "mg/L as CaCO3"]],
+    # E. coli and coliform counts in units with a space, or none readable
+    "ecoli_per_100_ml_spaced": _QPANEL[:1] + [["E. coli", 12.0, "No./100 mL"],
+                                              ["Arsenic", 0.001, "mg/L"],
+                                              ["Fluoride", 0.2, "mg/L"],
+                                              ["Nitrate", 3.0, "mg/L"]],
+    "counts_in_any_unit": _QPANEL + [
+        ["Nitrate", 3.0, "mg/L"],
+        ["Total coliforms", None, "colonies", {"greater_than": 0.0}],
+        ["Faecal coliforms", None, "mg/L", {"greater_than": 0.0}],
+        ["Total coliforms", None, "per 100 mL", {"greater_than": 0.0}]],
+    "count_bound_needs_unit": _QPANEL + [
+        ["Nitrate", 3.0, "mg/L"],
+        ["Total coliforms", None, "colonies", {"greater_than": 5.0}]],
+    # a determinand with no guideline value, in a unit that cannot be read
+    "no_limit_units": _QPANEL + [
+        ["Nitrate", 3.1, "mg/L"], ["Calcium", 8.0, "mg/L Ca"],
+        ["Alkalinity", 30.0, "mg/L CaCO3"], ["Temperature", 29.0, "wibbles"],
+        ["Potassium", None, "wibbles", {"greater_than": 1.0}],
+        ["Silica", None, "mg/L", {"greater_than": 10.0}],
+        ["Magnesium", 5.0, "mg/L as Ca"]],
+    "temperature_oc": _QPANEL + [
+        ["Nitrate", 3.1, "mg/L"], ["Temperature", 29.0, "oC"], ["Calcium", 8.0, "mg/L"],
+        ["Alkalinity", 30.0, "mg/L as CaCO3"]],
+    "temperature_degree_ordinal": _QPANEL + [
+        ["Nitrate", 3.1, "mg/L"], ["Temperature", 29.0, "\u00baC"], ["Calcium", 8.0, "mg/L"],
+        ["Alkalinity", 30.0, "mg/L as CaCO3"]],
+    "temperature_unreadable": _QPANEL + [
+        ["Nitrate", 3.1, "mg/L"], ["Temperature", 29.0, "degrees"], ["Calcium", 8.0, "mg/L"],
+        ["Alkalinity", 30.0, "mg/L as CaCO3"]],
+}
+
+#: Laboratory sheets as grids, read by both sheet readers and assessed.
+_QHEAD = [["Laboratory", "Central Lab"], ["Sample ID", "S"], []]
+QUALITY_SHEETS = [
+    # a unit written after a measured value, against its column
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "CFU/100 mL", 0, ""],
+              ["Arsenic", "ug/L", "0.05 mg/L", ""], ["Fluoride", "mg/L", 0.2, ""],
+              ["Nitrate", "mg/L", 3.1, ""], ["Manganese", "ug/L", "<0.05 mg/L", ""],
+              ["Lead", "", "8 ug/L", ""], ["Iron", "mg/L", "5 NTU", ""],
+              ["Alkalinity", "mg/L as CaCO3", "46 mg/L", ""],
+              ["Nitrite", "mg/L", "0.1 mg/L as N", ""], ["Zinc", "mg/L", "0.5 ND", ""],
+              ["Copper", "mg/L", "0.2 (field)", ""], ["Sulfate", "mg/L", "20*", ""],
+              ["Temperature", "", "27 oC", ""]],
+    # a unit in the result column's header
+    _QHEAD + [["Parameter", "Unit", "Result (ug/L)"],
+              ["Arsenic", "", 5], ["Lead", "mg/L", 0.003], ["Manganese", "-", 40],
+              ["Cadmium", "", "<1"], ["E. coli", "", 0]],
+    _QHEAD + [["Parameter", "Result (lab)"], ["Arsenic", 0.004], ["Lead", "2 ug/L"]],
+    # counts per 100 mL written with a space
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "No./100 mL", "Present", ""],
+              ["Total coliforms", "per 100 mL", 12, ""], ["Arsenic", "mg/L", 0.001, ""],
+              ["Fluoride", "mg/L", 0.2, ""], ["Nitrate", "mg/L", 3.1, ""]],
+    _QHEAD + [["Parameter", "Unit", "Result", "Detection limit"],
+              ["pH", "pH units", 7.1, ""], ["E. coli", "/100 mL", "Absent", ""],
+              ["Total coliforms", "MPN/100 mL", 0, ""], ["Arsenic", "mg/L", 0.001, ""],
+              ["Fluoride", "mg/L", 0.2, ""], ["Nitrate (NO3-N)", "mg/L", 2.0, ""]],
+]
+
+#: Units the audit found unread or read apart, by spelling.
+UNIT_SPELLINGS = [
+    "/100 mL", "No./100 mL", "per 100 mL", "CFU/100mL", "MPN/100 mL", "#/100 mL",
+    "count/100 mL", "per 100 millilitres", "cfu / 100 ml", "/100ml", "N\u00ba/100 mL",
+    "N\u00b0 per 100 mL", "\u00b0N/100 mL", "oC", "\u00baC",
+    "\u00b0 C", "o C", "mg/L as NO3-N", "mg/L as NO3\u2013N", "mg/l as nitrogen",
+    "mg/L as NO2-N", "mg/L as N", "mg/L as Ca", "mg/L as CaCO3", "mg/L CaCO3", "mg/L Ca",
+]
+
+#: Parameter names that say nitrogen, and some that do not.
+PARAMETER_NAMES = [
+    "Nitrate (NO3-N)", "Nitrate (N)", "Nitrate (NO3 as N)", "Nitrate (as NO3-N)",
+    "Nitrate (NO3--N)", "Nitrate (NO3 \u2013 N)", "nitrate (no3n)", "Nitrate (nitrogen)",
+    "Nitrite (NO2-N)", "Nitrite (no2 - n)", "Ammonia (NH3-N)", "Ammonium (NH4-N)",
+    "Ammonium (as NH4-N)", "Nitrite (NO3-N)", "Nitrate (NO2-N)", "Nitrate (NO3)",
+    "Nitrate (as NO3)", "Nitrate (as N)", "Nitrate", "NO3-N", "Nitrate-N (mg/L)",
+    "Calcium (as CaCO3)",
+]
+
+#: Cells read in the time dimension by units.read_quantity, which took a
+#: clock for its first number.
+QUANTITY_CELLS = [
+    ("0:30", "Time (mm:ss)"), ("1:30", "Time (mm:ss)"), ("2:00", "Time (hh:mm)"),
+    ("1:30", "Time (min)"), ("00:05:30", "Time"), ("1:60", "Time (min)"),
+    ("1:30 pm", "Time"), (True, "Time (min)"), ("12 pump stopped", "Time (min)"),
+    ("90 s", "Time (min)"), ("1.5 hrs", "Time (min)"),
+]
+
+
+def _quality_result(row) -> WaterQualityResult:
+    extra = row[3] if len(row) > 3 else {}
+    return WaterQualityResult(row[0], row[1], row[2], **extra)
+
+
+def _quality_summary(a) -> dict:
+    return {
+        "state": a.verdict_state,
+        "statuses": [r.status for r in a.rows],
+        "reasons": [r.reason for r in a.rows],
+        "remarks": [r.remark for r in a.rows],
+        "converted": [clean(r.value_in_guideline_unit) for r in a.rows],
+        "guidelines": [r.who_health for r in a.rows],
+        "uncertainties": list(a.uncertainties),
+        "flags": [[f.level, f.code, f.message] for f in a.flags],
+        "ionic": None if a.ionic is None else {
+            "error": clean(a.ionic.error_percent),
+            "cations": clean(a.ionic.cations_meq), "anions": clean(a.ionic.anions_meq)},
+        "hazard": None if a.health_risk is None else {
+            "index": a.health_risk.hazard_index,
+            "quotients": a.health_risk.hazard_quotients},
+        "wqi": None if a.wqi is None else {
+            "value": a.wqi.value, "rating": a.wqi.rating, "n": a.wqi.n_parameters,
+            "top": [list(c) for c in a.wqi.top_contributors]},
+        "corrosivity": {
+            "lsi": a.corrosivity.lsi, "rsi": a.corrosivity.rsi,
+            "classification": a.corrosivity.classification,
+            "assumptions": list(a.corrosivity.assumptions)},
+        "verdict": a.verdict,
+        "recommendations": quality_recommendations(a),
+    }
+
+
+def quality_units_reference() -> dict:
+    """What the quality, units and design audit's cases come to in Python."""
+    from groundwater.quality.standards import normalise_parameter
+    from groundwater.units import parse_unit, read_quantity
+
+    def unit(text):
+        u = parse_unit(text)
+        return None if u is None else [u.canonical, u.dimension, u.factor, u.offset, u.basis]
+
+    cases = {}
+    for name, rows in QUALITY_CASES.items():
+        sample = WaterQualitySample(site=SiteMetadata(community="Ref"),
+                                    results=[_quality_result(r) for r in rows])
+        cases[name] = {"rows": rows, **_quality_summary(assess_sample(sample))}
+    sheets = []
+    for grid in QUALITY_SHEETS:
+        sample = quality_from_grid(grid, "sheet.xlsx")
+        sheets.append({
+            "grid": grid,
+            "results": [[r.parameter, clean(r.value), r.unit, clean(r.detection_limit),
+                         r.below_detection, clean(r.greater_than), r.greater_than_inclusive,
+                         r.unreadable] for r in sample.results],
+            **_quality_summary(assess_sample(sample)),
+        })
+    quantities = []
+    for cell, header in QUANTITY_CELLS:
+        q = read_quantity(cell, header, dimension="time")
+        quantities.append({"cell": cell, "header": header, "value": clean(q.value),
+                           "status": q.status, "unit": q.unit_text})
+    return {
+        "cases": cases, "sheets": sheets, "quantities": quantities,
+        "units": [[text, unit(text)] for text in UNIT_SPELLINGS],
+        "names": [[name, normalise_parameter(name)] for name in PARAMETER_NAMES],
+    }
 
 
 def pumping_cases() -> dict:
@@ -6169,6 +8048,18 @@ def pumping_cases() -> dict:
             "step_numbers": [s["step"] for s in analysis.step_test.steps]
                             if analysis.step_test else None,
             "flags": flags(analysis.flags),
+            # what the audit of the reader and the analysis moved
+            "step_length": clean(test.step_length_min),
+            "recovery": None if test.recovery_time_min is None else [
+                len(test.recovery_time_min), clean(float(np.min(test.recovery_time_min))),
+                clean(float(np.max(test.recovery_time_min)))],
+            "residual_end": clean(analysis.recovery.residual_at_end_m)
+                            if analysis.recovery else None,
+            "stabilised": clean(analysis.stabilised_level_m),
+            "casing_in": clean(analysis.casing_diameter_in),
+            "riser_in": clean(analysis.riser_diameter_in),
+            "casing_min": clean(analysis.casing_storage_min),
+            "long_term": clean(rec.long_term_yield_m3_per_h),
         }
     return out
 
@@ -6305,10 +8196,10 @@ SURVEY_CASES = {
         ("VES 1", None, None, None, [320, 150, 4200], [2.5, 6]),
         ("VES 2", None, None, None, [320, 60, 4200], [2.5, 20]),
     ],
-    # 75.3 against 71.5: a tie on a five-point margin, not on three
+    # 75.3 against 71.1: a tie on a five-point margin, not on three
     "margin": [
         ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
-        ("VES 2", _E + 80, _N + 40, 72.0, [320, 60, 4200], [2.5, 11]),
+        ("VES 2", _E + 80, _N + 40, 72.0, [320, 60, 4200], [2.5, 12.5]),
     ],
     # 75.3 and 75.3, with a third point elsewhere
     "tie": [

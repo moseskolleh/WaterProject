@@ -56,9 +56,20 @@ from groundwater.project_io import (
     stale_on_load,
 )
 from groundwater.readiness import assess_readiness
+from groundwater.registry import asset_from_dict
 from groundwater.seasonal import month_of, seasonal_yield
 from groundwater.supervision import load_checklists, load_separation_distances
-from groundwater.text import phrase_table
+from groundwater.text import phrase, phrase_table
+from groundwater.bundle import PROGRAMME_KINDS, build_evidence_bundle, document_figures
+from groundwater.verification import (
+    BOREHOLE_KINDS,
+    Issue,
+    calibration_facts,
+    clean_issue_records,
+    document_record,
+    evidence_entry,
+    issue_records_of,
+)
 from groundwater.ves.cache import cache_entry, inversion_key
 from groundwater.ves.interpret import rank_interpretations
 
@@ -223,6 +234,14 @@ def cov_crosswalk():
 def cov_chiefdom_population():
     """(population per chiefdom polygon, census members) from the 2015 census."""
     return chiefdom_population()
+
+
+def plain(text: str) -> str:
+    """A sentence for st.markdown, st.info, st.caption or st.write, its
+    dollar signs kept as written. Streamlit reads text between two dollar
+    signs as LaTeX, so "US$ 9,463 ... US$ 4,289" was shown with both signs
+    gone."""
+    return text.replace("$", "\\$")
 
 
 def content_token(data: bytes) -> str:
@@ -520,13 +539,13 @@ def project_summaries(files) -> tuple[list[dict], int]:
     could not be read as a project: the Portfolio page's table and the
     desk study's earlier projects alike."""
     read, skipped = project_files(files)
-    return [summary for summary, _ in read], skipped
+    return [summary for summary, _, _ in read], skipped
 
 
-def project_files(files) -> tuple[list[tuple[dict, dict]], int]:
-    """Each saved project file's summary and its ledger of predictions and
-    outcomes (PLAN.md step 5.1), and how many could not be read as a
-    project."""
+def project_files(files) -> tuple[list[tuple[dict, dict, dict | None]], int]:
+    """Each saved project file's summary, its ledger of predictions and
+    outcomes (PLAN.md step 5.1) and its works record (step 6.3, None where
+    it carries none), and how many could not be read as a project."""
     from groundwater.geo import parse_utm_zone
     from groundwater.project_io import deserialize_project
 
@@ -551,7 +570,7 @@ def project_files(files) -> tuple[list[tuple[dict, dict]], int]:
                 # than taking the page down or standing in a default 29N
                 "utm_zone": parse_utm_zone(updates.get("meta_zone")),
             }
-        read.append((summary, updates["prediction_ledger"]))
+        read.append((summary, updates["prediction_ledger"], updates.get("works")))
     return read, skipped
 
 
@@ -788,7 +807,8 @@ def _loaded_sources() -> dict:
 
 
 def _project_state() -> dict:
-    """The session, keyed as groundwater.readiness expects it."""
+    """The session, keyed as groundwater.readiness expects it, with the
+    documents issued from it, which the draft asset record carries."""
     return {
         "site": site_from_state(),
         "sources": _loaded_sources(),
@@ -802,7 +822,158 @@ def _project_state() -> dict:
             "responses": supervision_answers(),
             "evidence": st.session_state.get("sup_evidence") or {},
         },
+        "issued": st.session_state.get("issued_documents") or [],
     }
+
+
+# ---------------------------------------------------------------------------
+# Documents issued (PLAN.md step 8.1)
+# ---------------------------------------------------------------------------
+
+#: The upload keys the session keeps its files under, by the role a
+#: manifest names each by (the browser app's roles).
+_EVIDENCE_ROLES = {"ves": "ves", "wiz_ves": "ves", "log": "drilling", "pump": "pumping",
+                   "wq": "quality"}
+
+
+def _source_bytes(source) -> tuple[str, bytes] | None:
+    """A kept source's file name and bytes; a bundled sample's are read
+    from its file. None where there are none to read."""
+    if not isinstance(source, dict):
+        return None
+    if source.get("bytes") is not None:
+        return str(source.get("name") or "data"), bytes(source["bytes"])
+    root = sample_data_dir()
+    if source.get("sample") and root is not None:
+        path = root / str(source["sample"])
+        if path.is_file():
+            return path.name, path.read_bytes()
+    return None
+
+
+def photo_evidence(photo: dict) -> dict:
+    """A photograph as a manifest lists it: by the SHA-256 of the file as it
+    arrived, which its provenance record holds, or by the bytes kept where
+    it was attached before records existed."""
+    import base64
+
+    what = phrase_table("verification.evidence_kinds")["photo"]
+    held = (photo.get("provenance") or {}).get("sha256")
+    if isinstance(held, str) and _re.fullmatch(r"[0-9a-f]{64}", held):
+        return {"what": what, "name": str(photo.get("name") or ""), "sha256": held}
+    return evidence_entry(what, str(photo.get("name") or ""),
+                          base64.b64decode(str(photo.get("b64") or "")))
+
+
+def project_file_evidence(name: str, data: bytes) -> dict:
+    """A saved project file pooled or read into the register, as a manifest
+    lists it."""
+    return evidence_entry(phrase_table("verification.evidence_kinds")["project"], name, data)
+
+
+def issue_for(kind: str, photos=(), files=()) -> Issue:
+    """What the app knows of a document it is about to issue: the day, which
+    is today unless a page names another (the engine never reads the
+    clock), and the evidence it is issued from. A document about the
+    borehole is issued from every file the session holds and the
+    photographs it embeds; the others from the ``files`` they are drawn
+    from, or from none. The browser app's ``issueFor`` is the twin."""
+    import datetime
+
+    kinds = phrase_table("verification.evidence_kinds")
+    evidence = []
+    if kind in BOREHOLE_KINDS:
+        for key, role in _EVIDENCE_ROLES.items():
+            held = _source_bytes(st.session_state.get(f"src_{key}"))
+            if held is not None:
+                evidence.append(evidence_entry(kinds[role], held[0], held[1]))
+    evidence += [photo_evidence(photo) for photo in photos]
+    evidence += list(files)
+    return Issue(issued_on=datetime.date.today().isoformat(), evidence=tuple(evidence))
+
+
+def record_issue(path) -> dict | None:
+    """Keep the issue record of the document just written at ``path``: in the
+    session's ``issued_documents``, which the project file saves, and for a
+    document about the borehole in its stored asset record. A record stored
+    later starts from the session's, as the draft carries them."""
+    record = document_record(Path(path).read_bytes())
+    if record is None:
+        return None
+    st.session_state["issued_documents"] = clean_issue_records(
+        [*(st.session_state.get("issued_documents") or []), record])
+    held = st.session_state.get("asset_record")
+    asset = asset_from_dict(held) if held and record["kind"] in BOREHOLE_KINDS else None
+    if asset is not None:
+        asset.documents = clean_issue_records([*asset.documents, record])
+        st.session_state["asset_record"] = asset.as_dict()
+    return record
+
+
+def offer_document(path: Path, label: str, keep: bool = True) -> dict | None:
+    """Keep the issue record of a document just written and offer it for
+    download, with its code beside the button."""
+    record = record_issue(path)
+    offer_download(path, label, keep=keep)
+    if record is not None:
+        st.caption(phrase("verification.cover_code", code=record["code"]))
+    return record
+
+
+# ---------------------------------------------------------------------------
+# The evidence bundle (PLAN.md step 8.3)
+# ---------------------------------------------------------------------------
+
+def _project_records() -> list[dict]:
+    """The issue records the project holds: its own and its asset record's."""
+    return issue_records_of({"issued": st.session_state.get("issued_documents") or [],
+                             "asset": st.session_state.get("asset_record")})
+
+
+def session_documents() -> list[tuple[str, bytes]]:
+    """The documents built in this session that a borehole's bundle carries:
+    the latest of each on the Deliverables list whose issue record the
+    project holds (so a document built before another project was opened
+    stays out), leaving out the calibration report and the round sheets,
+    which are about many boreholes. The browser app's ``bundleDocuments`` is
+    the twin."""
+    held = {r["sha256"] for r in _project_records()}
+    out: dict[str, bytes] = {}
+    for _, path in _deliverables():
+        if path.suffix.lower() != ".docx" or str(path) in out:
+            continue
+        data = path.read_bytes()
+        record = document_record(data)
+        if record is not None and record["kind"] not in PROGRAMME_KINDS and record["sha256"] in held:
+            out[str(path)] = data
+    return sorted((Path(p).name, d) for p, d in out.items())
+
+
+def evidence_bundle(added=()) -> dict:
+    """This borehole's evidence bundle: every sheet the session holds, as it
+    was uploaded, the documents built in this session and those ``added``
+    (``(name, bytes)`` pairs), the figures each document embeds, and the
+    issue records the project file and the asset record keep; made on the
+    device's day, with the calibration set in force. Raises ValueError, in
+    the catalogue's words, for a document that cannot go in."""
+    import datetime
+
+    kinds = phrase_table("verification.evidence_kinds")
+    files: list[dict] = []
+    for key, role in _EVIDENCE_ROLES.items():
+        held = _source_bytes(st.session_state.get(f"src_{key}"))
+        if held is not None:
+            files.append({"folder": "raw", "name": held[0], "data": held[1], "what": kinds[role]})
+    for name, data in [*session_documents(), *added]:
+        files.append({"folder": "reports", "name": name, "data": data})
+        files += document_figures(name, data)
+    site = site_from_state()
+    stored = st.session_state.get("asset_record")
+    asset = asset_from_dict(stored) if stored else None
+    return build_evidence_bundle(
+        site.community or site.project, files, borehole=asset.asset_id if asset is not None else "",
+        made_on=datetime.date.today().isoformat(), calibration=calibration_facts(app_config().calibration),
+        records=_project_records())
 
 
 #: The supervision page's radio labels, as the checklist's answer codes.
@@ -1000,6 +1171,7 @@ def _inversion_cache_now() -> dict:
 #: out on load as well as on save.
 UNSAVED_BUTTONS = frozenset({
     "wiz_back", "wiz_next", "wiz_restart", "wiz_cost_run", "wiz_run_ves",
+    "proc_award", "proc_build",
 })
 
 
@@ -1011,7 +1183,65 @@ def project_file_bytes() -> bytes:
     # the ledger goes out with the borehole's outcome as the project now
     # holds it: a corrected log corrects it
     session["prediction_ledger"] = current_ledger()
+    # and the works record for the contractor scorecards, from the project
+    # as it now stands
+    session["works_record"] = current_works()
     return serialize_project(session, groundwater.__version__)
+
+
+def procurement_variations(rows) -> list[dict]:
+    """The Procurement page's variation orders, from its table's rows, as
+    plain records (ref, date, code, quantity_delta, rate_usd, reason,
+    authorised_by): what the page's certificate values and the works record
+    counts. A row naming no line is left out, an empty or unreadable number
+    is none (a quantity of nought, the contract's rate), and a signature of
+    white space alone is no signature, as the browser's form has it."""
+    import math
+
+    def number(value):
+        try:
+            x = float(value)
+        except (TypeError, ValueError):
+            return None
+        return x if math.isfinite(x) else None
+
+    def text(value) -> str:
+        # an empty cell of the data editor comes back as None or NaN
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            return ""
+        return str(value)
+
+    out = []
+    for row in rows or []:
+        if not hasattr(row, "get") or not text(row.get("Code")).strip():
+            continue
+        out.append({
+            "ref": text(row.get("Ref")), "date": text(row.get("Date")), "code": text(row.get("Code")),
+            "quantity_delta": number(row.get("Quantity change")) or 0.0,
+            "rate_usd": number(row.get("New rate (USD)")),
+            "reason": text(row.get("Reason")),
+            "authorised_by": text(row.get("Authorised by")).strip(),
+        })
+    return out
+
+
+def current_works() -> dict | None:
+    """The project's works record (PLAN.md step 6.3): what it records of its
+    contractor's work, for the Portfolio page's contractor scorecards, or
+    None where it records nothing they read."""
+    from groundwater.scorecards import works_record
+
+    config = app_config()
+    lines = st.session_state.get("proc_contract_lines")
+    procurement = None
+    if lines:
+        procurement = {"lines": lines,
+                       "variations": procurement_variations(st.session_state.get("proc_variations")),
+                       "due": st.session_state.get("proc_due") or ""}
+    metres = {"logged_m": st.session_state.get("fx_logs_m"), "claimed_m": st.session_state.get("fx_invoiced_m")}
+    return works_record(site_from_state(), st.session_state.get("drilling_log"),
+                        st.session_state.get("pump_analysis"), current_ledger(), supervision_answers(),
+                        metres, procurement, config, cached_checklists())
 
 
 def current_ledger() -> dict:
@@ -1091,7 +1321,7 @@ def _load_project() -> None:
         st.session_state.pop(stale, None)
     for result_key in (
         "ves_results", "ves_ranges", "pump_analysis", "wq_assessment", "borehole_design",
-        "drilling_log", "cost_estimate", "cost_artifacts", "cost_spread",
+        "drilling_log", "cost_estimate", "cost_artifacts", "cost_spread", "allocation_cost",
         "wp_result", "handover_built", "_design_follows_page",
         # cleared too, so a project with no sources at all cannot inherit the
         # previous project's rebuild banner
@@ -1114,6 +1344,14 @@ def _load_project() -> None:
     # serialize_project reads back, so the round trip has to be closed here
     asset = updates.pop("asset", None)
     evidence = updates.pop("evidence", None)
+    # the contract on the Procurement page, as its tables hold it; the works
+    # record is worked out again from the project when it is next saved
+    procurement = updates.pop("procurement", None)
+    updates.pop("works", None)
+    if isinstance(procurement, dict) and procurement.get("lines"):
+        st.session_state["proc_contract_lines"] = procurement["lines"]
+        st.session_state["proc_measured"] = procurement.get("measured") or None
+        st.session_state["proc_variations"] = procurement.get("variations") or None
     if isinstance(evidence, dict) and evidence:
         st.session_state["sup_evidence"] = evidence
     for key, value in updates.items():
@@ -1150,7 +1388,7 @@ def _load_project() -> None:
 # ---------------------------------------------------------------------------
 
 NAV_GROUPS: list[tuple[str, list[str]]] = [
-    ("Project", ["Overview", "Guided start", "Site maps"]),
+    ("Project", ["Overview", "Guided start", "Site maps", "Verify a document"]),
     ("Investigation", ["Geophysics (VES)", "Borehole design", "Depth Spine",
                        "Scanned sheets"]),
     ("Testing", ["Pumping test", "Water quality"]),
@@ -1319,6 +1557,9 @@ def app_config() -> Config:
     cfg = Config()
     cfg.style.organisation = st.session_state.get("org_name", "") or ""
     cfg.style.organisation_details = st.session_state.get("org_details", "") or ""
+    # the report address a plate's symbol links to (PLAN.md step 7.1), as
+    # typed on the Asset registry page; checked where a plate is printed
+    cfg.service.report_url = str(st.session_state.get("org_report_url", "") or "")
     held = st.session_state.get(CALIBRATION_SET)
     return apply_set(cfg, held) if held is not None else cfg
 
@@ -1641,7 +1882,6 @@ def show_measurements(values, nested: bool = False) -> None:
         measurement_readings_caption,
         measurement_text,
     )
-    from groundwater.text import phrase
 
     if nested:
         st.markdown(f"**{phrase('measurement.heading')}**")
@@ -1654,8 +1894,8 @@ def show_measurements(values, nested: bool = False) -> None:
     for v in values:
         text = measurement_text(v)
         with st.container(border=True):
-            st.markdown(f"**{text[0]}**")
-            st.write(" ".join(text[1:]))
+            st.markdown(f"**{plain(text[0])}**")
+            st.write(plain(" ".join(text[1:])))
             st.table([dict(zip(measurement_decision_header(v), row, strict=True))
                       for row in measurement_decision_rows(v)])
             st.caption(measurement_decision_caption())
@@ -1664,8 +1904,8 @@ def show_measurements(values, nested: bool = False) -> None:
         st.table([dict(zip(measurement_reading_header(), row, strict=True))
                   for row in measurement_reading_rows(values[0])])
         if nested:
-            st.caption(measurement_readings_caption(values[0]))
-    st.caption(measurement_basis(values[0]))
+            st.caption(plain(measurement_readings_caption(values[0])))
+    st.caption(plain(measurement_basis(values[0])))
 
 
 def cost_spread_inputs() -> dict:
@@ -1702,6 +1942,30 @@ def _sample_cost_spread(estimate, inputs, rates, pct: dict, survey: dict) -> Non
         spread.curve, [(marks["boq"], spread.boq_usd), (marks["budget"], spread.budget_usd)],
         spread_path, app_config().style, title=marks["title"])
     st.session_state.cost_spread = (estimate, spread, spread_path, inputs, rates, pct, survey)
+
+
+def allocation_cost():
+    """The cost distribution the Coverage gap page prices a programme's
+    boreholes from (PLAN.md step 6.1): the Costing page's borehole, its
+    inputs, rates and percentages as estimated, sampled with the depth held
+    at the estimate's and no dry hole drawn, since the range of models and
+    the odds at the survey's first-ranked point belong to one site and the
+    allocation gives every area its own odds. None before an estimate is
+    made (or where one was made without its distribution). Kept with the
+    estimate it belongs to and the sampling settings, so the page does not
+    sample it again on every rerun."""
+    kept = st.session_state.get("cost_spread")
+    estimate = st.session_state.get("cost_estimate")
+    if kept is None or estimate is None or kept[0] is not estimate:
+        return None
+    _estimate, _spread, _path, inputs, rates, pct, _survey = kept
+    settings = (app_config().cost_range.seed, app_config().cost_range.samples)
+    held = st.session_state.get("allocation_cost")
+    if held is not None and held[0] is estimate and held[1] == settings:
+        return held[2]
+    spread = sample_cost(inputs, rates, config=app_config(), **pct)
+    st.session_state.allocation_cost = (estimate, settings, spread)
+    return spread
 
 
 def cost_spread_for(estimate):

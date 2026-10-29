@@ -57,6 +57,7 @@ from ..calibration_sets import fitted_prior, in_force, set_changes, set_name
 from ..config import Config
 from ..text import phrase, phrase_table
 from ..ves.model_range import _share, quoted_basement_band
+from .suitability import _water_zone_rho
 
 __all__ = [
     "Evidence",
@@ -316,36 +317,6 @@ def _band_of(bands: list[dict], value: float) -> dict:
         if "below" in band and value < band["below"]:
             return band
     return bands[-1]
-
-
-def _water_zone_rho(interp) -> float | None:
-    """The thickness-weighted geometric mean resistivity of the water-bearing
-    layers inside the water zones; None where there are none.
-
-    Not :func:`suitability._zone_geomean_rho`, which takes every layer
-    inside a zone. The zones are rounded to whole metres, so that took in
-    the slice of dry layer or basement the rounding added: a zone whose only
-    layer was 200 ohm-m read 307 ohm-m, "resistive", with 0.4 m of 5,000
-    ohm-m basement in it, and a band edge turned that into a step in the
-    odds. The logarithms are taken relative to the first such layer's
-    resistivity, so a zone of one resistivity reads exactly that and not a
-    rounding error either side of an edge (exp(ln 50) is 49.999...).
-    """
-    reference = 0.0
-    acc = 0.0
-    total = 0.0
-    for top, bottom in interp.water_zones:
-        for layer in interp.layers:
-            if not layer.water_bearing:
-                continue
-            lo = max(layer.top_m, top)
-            hi = min(layer.bottom_m if math.isfinite(layer.bottom_m) else bottom, bottom)
-            if hi > lo:
-                if total == 0.0:
-                    reference = layer.rho
-                acc += math.log(layer.rho / reference) * (hi - lo)
-                total += hi - lo
-    return reference * math.exp(acc / total) if total > 0 else None
 
 
 def _survey_evidence(interp, model_range) -> list[tuple[str, str, float | None, float]]:

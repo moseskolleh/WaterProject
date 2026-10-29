@@ -24,7 +24,7 @@ from typing import TypeVar
 
 import numpy as np
 
-__all__ = ["point_in_ring", "ring_bbox", "RingIndex"]
+__all__ = ["point_in_ring", "points_in_ring", "ring_bbox", "RingIndex"]
 
 
 def point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
@@ -51,6 +51,39 @@ def point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
     yb = y2[straddles]
     x_cross = x1 + (lat - ya) * (x2 - x1) / (yb - ya)
     return bool(np.count_nonzero(lon < x_cross) & 1)
+
+
+#: Points tested against a ring at once by :func:`points_in_ring`: a block of
+#: them times the ring's edges is the size of the arrays it builds.
+_POINTS_BLOCK = 512
+
+
+def points_in_ring(lon: np.ndarray, lat: np.ndarray, ring: np.ndarray) -> np.ndarray:
+    """:func:`point_in_ring` for many points at once, as a boolean array.
+
+    Each point's crossings are the same arithmetic, in the same order, as
+    :func:`point_in_ring` takes for it alone, so the answer is that
+    function's point by point; the browser's ``ringHolds`` is the same loop
+    again (allocation.py reads an area's ground with them).
+    """
+    lon = np.asarray(lon, dtype=float)
+    lat = np.asarray(lat, dtype=float)
+    out = np.zeros(lon.shape[0], dtype=bool)
+    if ring.shape[0] < 2:
+        return out
+    x1, x2 = ring[:-1, 0], ring[1:, 0]
+    y1, y2 = ring[:-1, 1], ring[1:, 1]
+    for start in range(0, lon.shape[0], _POINTS_BLOCK):
+        la = lat[start:start + _POINTS_BLOCK, None]
+        lo = lon[start:start + _POINTS_BLOCK, None]
+        straddles = (y1 > la) != (y2 > la)
+        # an edge the point's latitude does not straddle can be level, and
+        # its division is by zero; it is masked out by straddles
+        with np.errstate(divide="ignore", invalid="ignore"):
+            x_cross = x1 + (la - y1) * (x2 - x1) / (y2 - y1)
+        crossings = np.count_nonzero(straddles & (lo < x_cross), axis=1)
+        out[start:start + _POINTS_BLOCK] = (crossings & 1).astype(bool)
+    return out
 
 
 def ring_bbox(ring: np.ndarray) -> tuple[float, float, float, float]:

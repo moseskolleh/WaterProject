@@ -88,3 +88,45 @@ repeat_testing: >-
   Repeat physico-chemical and bacteriological testing at least once a year,
   and after any flooding, repair work on the wellhead or change in taste,
   colour or odour.
+
+# The assessment's own words (quality/assess.py, corrosivity.py and their
+# ports in gwt-core.js) where they are new; the older remarks are still
+# worded once in each engine.
+
+# A value whose unit states a chemical basis its guideline is not written
+# on, put on that basis by a ratio of molar masses (standards.py
+# _BASIS_FACTORS): calcium as CaCO3, nitrate as N.
+unit_basis_converted: >-
+  '{parameter}' is reported in '{unit}' and was put on the basis its guideline
+  is written on, {guideline} as {basis}, by a factor of {factor:.4f}, the ratio
+  of their molar masses.
+
+# A nitrate or nitrite row reported as nitrogen is graded against the
+# guideline for nitrogen; the remark says so and gives the ion's figure.
+as_nitrogen: >-
+  reported as nitrogen: {value:g} {unit} as N is {ion_value:num} {unit} as {ion}
+
+# A determinand with no guideline value whose unit cannot be put on the
+# table's scale: it decides nothing, so it no longer holds up the verdict,
+# and the indices leave it out. {why} is the reason a graded row would give.
+no_guideline_unit: >-
+  {note}; it is reported in '{unit}': {why}, so the value is left out of the
+  indices computed from the sample
+
+value_not_used: >-
+  '{parameter}' has no guideline value and does not decide the verdict, but it
+  is reported in '{unit}': {why}, so the value is left out of the indices
+  computed from the sample.
+
+# A count seen and not numbered ("Present", "TNTC") in a unit that cannot be
+# put on the guideline's scale. Zero is zero on every count scale, so it is
+# graded as a count above zero rather than refused.
+zero_any_unit: >-
+  in '{unit}': {why}; a count above zero is above zero whatever the unit
+
+# The corrosivity indices' temperature, when none can be used.
+temperature_not_reported: Temperature assumed 25 C (not reported).
+
+temperature_unreadable: >-
+  Temperature assumed 25 C (the temperature is reported in a unit that could
+  not be read).

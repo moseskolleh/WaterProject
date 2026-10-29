@@ -1099,13 +1099,11 @@
   function offerToProject() {
     var held = (app().store.get('sources') || {}).pumping;
     if (!held) return act(useInProject)();
-    S.modal('Replace the pumping test sheet?', el('p', 'This project already holds ' +
+    var asked = S.modal('Replace the pumping test sheet?', el('p', 'This project already holds ' +
       held.name + '. The co-pilot\'s sheet takes its place; the other file is not ' +
       'changed.'), [
       button('Replace it', function () {
-        document.querySelectorAll('.modal-overlay').forEach(function (n) {
-          n.parentNode.removeChild(n);
-        });
+        asked.close();
         act(useInProject)();
       }, { variant: 'danger' }),
     ]);
@@ -1551,13 +1549,11 @@
           ]) : null,
         pumping ? button('Stop the pump', function () {
           if (now() < ev.stopBefore) {
-            S.modal('Stop before ' + laterClockText(ev.stopBefore) + '?', el('p',
+            var asked = S.modal('Stop before ' + laterClockText(ev.stopBefore) + '?', el('p',
               'Stopping now gives a test too short to read a transmissivity from. ' +
               'Stop only if the pump has to.'), [
               button('Stop anyway', function () {
-                document.querySelectorAll('.modal-overlay').forEach(function (n) {
-                  n.parentNode.removeChild(n);
-                });
+                asked.close();
                 act(stopPump)();
               }, { variant: 'danger' }),
             ]);
@@ -1597,12 +1593,10 @@
           button(s.gps ? 'Take the GPS position again' : 'Record GPS position', takeGps,
             { variant: 'ghost' }),
           button('Discard this test', function () {
-            S.modal('Discard this test?', el('p', 'Every reading and discharge of this ' +
+            var asked = S.modal('Discard this test?', el('p', 'Every reading and discharge of this ' +
               'test is removed from this device. Write the workbook first to keep them.'), [
               button('Discard', function () {
-                document.querySelectorAll('.modal-overlay').forEach(function (n) {
-                  n.parentNode.removeChild(n);
-                });
+                asked.close();
                 discard();
                 rerender();
               }, { variant: 'danger' }),

@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..config import Config
+from ..verification import Issue
 from ..field_kit import field_kit_content
 from ..models import SiteMetadata
 from .docx_utils import ReportBuilder
@@ -30,7 +31,8 @@ def _table(rb: ReportBuilder, table: dict, widths: list[float] | None = None) ->
 
 
 def build_field_kit(site: SiteMetadata, boreholes: list[str], out_path: str | Path,
-                    figures_dir: str | Path, config: Config | None = None) -> Path:
+                    figures_dir: str | Path, config: Config | None = None,
+                    issue: Issue | None = None) -> Path:
     """Write the field kit for ``boreholes`` to ``out_path``.
 
     Raises ValueError when no borehole is named, since a kit with no sheet
@@ -40,7 +42,7 @@ def build_field_kit(site: SiteMetadata, boreholes: list[str], out_path: str | Pa
     content = field_kit_content(site, boreholes, config)
     if not content["sheets"]:
         raise ValueError("Name at least one borehole for the field kit.")
-    rb = ReportBuilder(config.style, title=content["title"])
+    rb = ReportBuilder(config.style, title=content["title"], kind="field_kit", issue=issue, config=config)
 
     for k, sheet in enumerate(content["sheets"]):
         if k:

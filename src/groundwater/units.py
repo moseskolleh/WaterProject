@@ -24,10 +24,11 @@ CFU/100 mL, flow m3/h, time min, length m.
 
 from __future__ import annotations
 
+import datetime
 import re
 from dataclasses import dataclass
 
-from .utils import parse_number
+from .utils import clean_text, parse_number
 
 __all__ = [
     "Unit",
@@ -38,6 +39,10 @@ __all__ = [
     "canonical_unit",
     "unit_from_label",
     "read_quantity",
+    "clock_format",
+    "read_clock",
+    "read_time",
+    "is_date_cell",
     "AMBIGUOUS_UNITS",
     "CANONICAL_UNITS",
 ]
@@ -81,6 +86,9 @@ _CHAR_FIXES = {
     "³": "3",  # SUPERSCRIPT THREE
     "²": "2",
     "°": "deg ",
+    # MASCULINE ORDINAL INDICATOR, the key a keyboard without a degree sign
+    # offers: "27 ºC" was a unit nobody could read
+    "º": "deg ",
     "⁄": "/",  # FRACTION SLASH
     "’": "",
 }
@@ -91,6 +99,9 @@ _BASIS_RE = re.compile(r"\bas\s+([a-z0-9()\.\-]+)\s*$")
 def _normalise(text: str) -> str:
     """Lowercase and regularise a written unit before matching it."""
     s = str(text or "")
+    # "Nº/100 mL" and "N°/100 mL" are "No./100 mL" with the numero sign; the
+    # sign would otherwise read as a degree
+    s = re.sub(r"(?<![A-Za-z0-9_])[nN][º°](?=\s*(?:/|[pP][eE][rR]\b))", "no", s)
     for bad, good in _CHAR_FIXES.items():
         s = s.replace(bad, good)
     s = s.lower().strip()
@@ -110,6 +121,11 @@ def _normalise(text: str) -> str:
     s = re.sub(r"\bdegrees?\b|\bdeg\b", "deg ", s)
     s = re.sub(r"\bcelsius\b|\bcentigrade\b", "c", s)
     s = s.replace(".", "")
+    # "/100 mL", "No./100 mL" and "per 100 mL" are "/100ml" written with a
+    # space, and only the CFU and MPN spellings had a spaced twin: an E. coli
+    # count of 12 per 100 mL was a unit nobody could read, while "Absent" in
+    # the same unit passed
+    s = re.sub(r"(\d)\s+(m?l)\b", r"\1\2", s)
     # "-", "n/a" and friends are how a sheet writes "no unit here", not a
     # unit. Reading "-" as pH units made every non-pH row carrying the
     # ordinary blank marker unevaluable.
@@ -120,12 +136,20 @@ def _normalise(text: str) -> str:
     return re.sub(r"\s*/\s*", "/", s)
 
 
+#: The spellings of nitrogen as a basis: "as N", "as NO3-N", "as nitrogen".
+#: They are one basis, so "mg/L as NO3-N" is the same scale as "mg/L as N".
+_NITROGEN_BASIS_RE = re.compile(r"(?:no3|no2|nh4|nh3)-{0,2}n|nitrogen")
+
+
 def _split_basis(text: str) -> tuple[str, str]:
     """Separate a trailing chemical basis: "mg/l as caco3" -> ("mg/l", "caco3")."""
     match = _BASIS_RE.search(text)
     if not match:
         return text, ""
-    return text[: match.start()].strip(), match.group(1).replace(" ", "")
+    basis = match.group(1).replace(" ", "")
+    if _NITROGEN_BASIS_RE.fullmatch(basis):
+        basis = "n"
+    return text[: match.start()].strip(), basis
 
 
 # (dimension, factor to base, offset), keyed by normalised spelling.
@@ -164,7 +188,7 @@ _register("NTU", "turbidity", 1.0, ["ntu", "fnu", "ftu", "nephelometric"])
 
 # --- microbiological, base CFU/100 mL ---------------------------------------
 _register("CFU/100 mL", "microbial", 1.0,
-          ["cfu/100ml", "cfu/100 ml", "mpn/100ml", "mpn/100 ml", "/100ml",
+          ["cfu/100ml", "mpn/100ml", "/100ml", "#/100ml",
            "count/100ml", "counts/100ml", "no/100ml", "cfu/100cm3"])
 _register("CFU/mL", "microbial", 100.0, ["cfu/ml", "mpn/ml", "count/ml"])
 _register("CFU/L", "microbial", 0.1, ["cfu/l", "mpn/l", "count/l"])
@@ -174,8 +198,9 @@ _register("pH units", "ph", 1.0, ["ph units", "ph unit", "ph", "su",
                                   "standard units"])
 
 # --- temperature, base deg C ------------------------------------------------
+# "oC" is the degree sign typed as a letter o
 _register("deg C", "temperature", 1.0, ["deg c", "c", "°c", "degc",
-                                        "celsius"])
+                                        "celsius", "oc"])
 _register("deg F", "temperature", 5.0 / 9.0, ["deg f", "f", "°f", "degf"],
           offset=-32.0 * 5.0 / 9.0)
 
@@ -312,6 +337,8 @@ class Quantity:
         no unit was declared anywhere, so the canonical one was assumed.
     ``"unknown"``
         a unit was declared and could not be read. ``value`` is ``None``.
+    ``"clock"``
+        an elapsed time written as a clock, "1:30" (:func:`read_time`).
     """
 
     value: float | None
@@ -346,7 +373,7 @@ def _is_unit_shaped(text: str) -> bool:
             or len(normalised) <= 5)
 
 
-def unit_from_label(text: str, *, dimension: str) -> tuple[str, Unit | None]:
+def unit_from_label(text: str, *, dimension: str | None) -> tuple[str, Unit | None]:
     """The unit a column header or row label declares, if any.
 
     Returns ``(written, parsed)``. ``("", None)`` means nothing was declared;
@@ -409,7 +436,18 @@ def read_quantity(cell, *hints: str, dimension: str) -> Quantity:
     The unit is taken from the cell's own text first, then from each hint in
     turn - typically the column header, then the row label. ``hints`` are
     scanned with :func:`unit_from_label`, so only bracketed text counts.
+
+    A time is read by :func:`read_time`, so a clock is a clock wherever it
+    is read: this function took the first number of "2:00" under "Time
+    (hh:mm)" as 2 minutes, and of "0:30" under "Time (mm:ss)" as none.
     """
+    if dimension == "time":
+        return read_time(cell, *hints)[0]
+    return _read_number(cell, *hints, dimension=dimension)
+
+
+def _read_number(cell, *hints: str, dimension: str) -> Quantity:
+    """:func:`read_quantity` for a cell that is a number, with any unit."""
     canonical = CANONICAL_UNITS[dimension]
     raw = parse_number(cell)
     if raw is None:
@@ -453,3 +491,119 @@ def convert(value: float, from_unit: str, to_unit: str,
         return None
     base = float(value) * source.factor + source.offset
     return (base - target.offset) / target.factor
+
+
+# ---------------------------------------------------------------------------
+# Elapsed time written as a clock
+# ---------------------------------------------------------------------------
+
+#: An elapsed time typed as a clock: "1:30", "01:30:00", "1:30:00.5". A cell
+#: Excel formats as a time reaches the readers as a time (openpyxl) or as
+#: this text (the browser's reader), and the first number of it was read as
+#: the minutes: 01:30 became minute 1 and 00:05 minute 0. The digits are
+#: ASCII ones, as the browser's regular expressions read them.
+_CLOCK_RE = re.compile(r"^\s*([0-9]{1,3}):([0-5][0-9])(?::([0-5][0-9](?:\.[0-9]+)?))?\s*$")
+#: Text that starts as a clock and is not one - "1:60", "1:5", "1:30 pm",
+#: "10:00 (approx)", "1: 30" - or that writes hours and minutes as words -
+#: "1h 30m", "1 hr 30 min". Each was read for its first number, so 1:30 pm
+#: and 1h 30m were both minute 1; they are refused instead.
+_NOT_A_CLOCK_RE = re.compile(
+    r"^\s*[-+]?[0-9]+(?:[.,][0-9]+)?\s*"
+    r"(?::\s*[0-9]|(?:hours?|hrs?|h|minutes?|mins?|m)\.?\s*[0-9])",
+    re.IGNORECASE,
+)
+
+#: openpyxl hands a duration of a day or more, in a cell formatted h:mm, back
+#: as a datetime on Excel's serial calendar. Up to its phantom 29 February
+#: 1900 the serial is the number of days since 31 December 1899, so such a
+#: datetime is a duration; any other date is a date.
+_SERIAL_ZERO = datetime.datetime(1899, 12, 31)
+_SERIAL_PHANTOM = datetime.datetime(1900, 2, 28)
+
+
+def clock_format(*hints: str) -> str:
+    """How a two-part clock in a column is read: ``"hm"`` or ``"ms"``.
+
+    A header that names its clock - "Time (mm:ss)", "Time (min:sec)" - says
+    that "5:30" is five and a half minutes. Otherwise it is read as Excel
+    reads "5:30" typed into a cell: five hours and a half. A clock with
+    seconds, "00:05:30", is hours, minutes and seconds either way.
+    """
+    for hint in hints:
+        for match in _BRACKETED_RE.finditer(str(hint or "")):
+            parts = [p.strip().lower() for p in match.group(1).split(":")]
+            if (len(parts) >= 2 and parts[0][:1] in ("h", "m")
+                    and parts[1][:1] in ("m", "s")):
+                return "ms" if parts[0].startswith("m") else "hm"
+    return "hm"
+
+
+def _clock_text(seconds: float) -> str:
+    """``"01:30:00"``: a time cell as the browser's reader writes one."""
+    ms = round(seconds * 1000)
+    text = f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d}"
+    return text + (f".{ms % 1000 * 1000:06d}" if ms % 1000 else "")
+
+
+def read_clock(cell, fmt: str = "hm") -> tuple[float, str] | None:
+    """``(minutes, as_written)`` for an elapsed time written as a clock.
+
+    A time cell, a duration, a day-or-more duration on Excel's serial
+    calendar and clock text all qualify; ``None`` for anything else, so the
+    cell is read as a number. ``fmt`` is :func:`clock_format`'s answer for
+    the column.
+    """
+    if isinstance(cell, datetime.timedelta):
+        seconds = cell.total_seconds()
+    elif isinstance(cell, datetime.datetime):
+        if cell.tzinfo is not None or not _SERIAL_ZERO < cell < _SERIAL_PHANTOM:
+            return None
+        seconds = (cell - _SERIAL_ZERO).total_seconds()
+    elif isinstance(cell, datetime.time):
+        # worked as the browser works the "01:30:00.5" its reader writes
+        return (cell.hour * 60 + cell.minute
+                + (cell.second + cell.microsecond / 1e6) / 60), str(cell)
+    elif isinstance(cell, str):
+        match = _CLOCK_RE.match(cell)
+        if match is None:
+            return None
+        first, second, third = int(match.group(1)), int(match.group(2)), match.group(3)
+        if third is not None:
+            minutes = first * 60 + second + float(third) / 60
+        elif fmt == "ms":
+            minutes = first + second / 60
+        else:
+            minutes = float(first * 60 + second)
+        return minutes, clean_text(cell)
+    else:
+        return None
+    return seconds / 60, _clock_text(seconds)
+
+
+def is_date_cell(cell) -> bool:
+    """A date, or a date and time of day: never an elapsed time."""
+    return isinstance(cell, datetime.date) and read_clock(cell) is None
+
+
+def read_time(cell, *hints: str) -> tuple[Quantity, str]:
+    """An elapsed time in minutes, and the clock it was written as.
+
+    A clock (:func:`read_clock`) is read as one, with status ``"clock"`` and
+    the clock as written beside it. A date is refused, status ``"unknown"``:
+    a reading's time since the pump started cannot be told from the day it
+    was taken; so is text that starts as a clock and is not one, such as
+    "1:60" or "1:30 pm", and hours and minutes written as words, "1h 30m".
+    Anything else is read as a number in the time dimension, its unit taken
+    as :func:`read_quantity` takes one, with ``""`` beside it.
+    """
+    clock = read_clock(cell, clock_format(*hints))
+    if clock is not None:
+        minutes, written = clock
+        return Quantity(minutes, minutes, "", "clock", "time"), written
+    # an Excel TRUE is no time either: Python read it as minute 1 and the
+    # browser left it out without a word
+    if isinstance(cell, bool):
+        return Quantity(None, None, "TRUE" if cell else "FALSE", "unknown", "time"), ""
+    if is_date_cell(cell) or (isinstance(cell, str) and _NOT_A_CLOCK_RE.match(cell)):
+        return Quantity(None, None, clean_text(cell), "unknown", "time"), ""
+    return _read_number(cell, *hints, dimension="time"), ""

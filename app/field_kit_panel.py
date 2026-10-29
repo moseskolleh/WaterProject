@@ -13,7 +13,7 @@ import streamlit as st
 from groundwater.reporting.field_kit import build_field_kit
 from groundwater.text import phrase
 
-from shared import app_config, offer_download, site_from_state, workdir
+from shared import app_config, issue_for, offer_document, site_from_state, workdir
 
 
 def known_boreholes() -> list[str]:
@@ -59,8 +59,9 @@ def field_kit_panel(key: str, known: list[str] | None = None) -> None:
         folder = workdir() / "field_kit"
         try:
             path = build_field_kit(site_from_state(), names.splitlines(),
-                                   folder / "field_kit.docx", folder, app_config())
+                                   folder / "field_kit.docx", folder, app_config(),
+                                   issue=issue_for("field_kit"))
         except ValueError as exc:
             st.error(f"Could not build the field kit: {exc}")
         else:
-            offer_download(path, "Download the field kit (.docx)")
+            offer_document(path, "Download the field kit (.docx)")

@@ -390,11 +390,12 @@ def test_a_portfolio_pools_each_entry_once_keeping_the_fullest_copy():
 
 # ------------------------------------------------------------ project file
 
-def test_the_project_file_carries_the_ledger_at_schema_2():
+def test_the_project_file_carries_the_ledger():
     ledger = L.attach_outcome(_two_points(), L.completion_outcome(_log(), None))
     saved = serialize_project({"meta_community": "Rokel", "prediction_ledger": ledger}, "0.3.0")
     payload = yaml.safe_load(saved)
-    assert payload["schema"] == PROJECT_SCHEMA == 2
+    # 2 from step 5.1, which brought the ledger; 3 from step 8.1
+    assert payload["schema"] == PROJECT_SCHEMA == 3
     assert payload["ledger"] == L.clean_ledger(ledger)
     back = deserialize_project(saved)
     assert back["prediction_ledger"] == L.clean_ledger(ledger)
@@ -407,7 +408,7 @@ def test_a_schema_1_file_migrates_to_an_empty_ledger():
            "state": {"meta_community": "Rokel"}}
     assert payload_schema(old) == 1
     migrated = migrate_payload(old)
-    assert migrated["schema"] == 2 and migrated["ledger"] == L.empty_ledger()
+    assert migrated["schema"] == 3 and migrated["ledger"] == L.empty_ledger() and migrated["issued"] == []
     assert old["schema"] == 1 and "ledger" not in old, "the file read is not changed"
     back = deserialize_project(yaml.safe_dump(old).encode())
     assert back["prediction_ledger"] == L.empty_ledger() and "warnings" not in back
@@ -421,8 +422,8 @@ def test_the_schema_a_file_was_saved_in(schema, read):
 
 
 def test_a_file_of_a_later_schema_warns_and_an_unreadable_one_loads():
-    later = deserialize_project(b"schema: 3\nledger: {entries: []}\nstate: {meta_community: X}\n")
-    assert later["meta_community"] == "X" and "format 3" in later["warnings"][0]
+    later = deserialize_project(b"schema: 4\nledger: {entries: []}\nstate: {meta_community: X}\n")
+    assert later["meta_community"] == "X" and "format 4" in later["warnings"][0]
     odd = deserialize_project(b"schema: .inf\nstate: {meta_community: X}\n")
     assert odd["meta_community"] == "X" and "warnings" not in odd
 

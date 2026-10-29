@@ -65,6 +65,7 @@
       ['overview', 'Overview'],
       ['guided', 'Guided start'],
       ['site', 'Site & maps'],
+      ['verify', 'Verify a document'],
     ]],
     ['Investigation', [
       ['ves', 'Geophysics (VES)'],
@@ -91,6 +92,7 @@
       ['coverage', 'Coverage gap'],
       ['portfolio', 'Portfolio'],
       ['registry', 'Asset registry'],
+      ['report', 'Report on a borehole'],
     ]],
     ['', [
       ['settings', 'Settings'],
@@ -110,6 +112,9 @@
       /* the calibration set in force in this browser (PLAN.md step 5.3),
        * null for the provisional default: see keepBrowserState */
       calibration: null,
+      /* reports from plates and by SMS waiting on this phone, and those held
+       * for a person to confirm (PLAN.md step 7.1): see keepBrowserState */
+      reports: { queue: [], held: [] },
       sources: {},
       ves: { preferredOrder: [] },
       pumping: { manualDischarges: {} },
@@ -135,8 +140,9 @@
       overrides: {},
       asset: null,
       seasonal: {},
+      /* due: the contract's completion date, for the contractor scorecards */
       procurement: { contract: null, measured: {}, variations: [],
-        number: 1, date: '', previous: 0 },
+        number: 1, date: '', previous: 0, due: '' },
       theme: 'dark',
       /* the soundings' inversions, keyed by what they were computed from
        * (C.inversionCacheKey), so reopening a survey does not invert it
@@ -148,6 +154,10 @@
        * top level, as the Python app's file does, so either app's portfolio
        * can pool it. */
       ledger: { drilled: null, entries: [] },
+      /* the issue record of every document issued from the project (PLAN.md
+       * step 8.1), C.cleanIssueRecords's shape, likewise at the top of the
+       * project file */
+      issued: [],
     };
   }
 
@@ -307,12 +317,18 @@
     portfolio: null, extraction: null,
     /* the ledgers of the portfolio's files, by the index of their summaries */
     portfolioLedgers: null,
+    /* and their works records (PLAN.md step 6.3), null for a file with none */
+    portfolioWorks: null,
     /* a calibration set fitted on the Portfolio page and under review: the
      * set and what it was fitted from (calibrationSetsCard) */
     calibrationCandidate: null,
     /* a calibration set pooled from other organisations' files and under
      * review: the set and the set in force it was pooled beside */
     calibrationPooled: null,
+    /* the reports of the last import on the Asset registry page, and how
+     * many waiting on this phone the page last merged into a borehole's
+     * history (PLAN.md step 7.1) */
+    reportImport: null, reportsMerged: null,
   };
 
   /* ------------------------------------------------------------------ chrome */
@@ -333,20 +349,33 @@
         'Load a sample or upload a field sheet to begin'),
     ]);
 
+    /* The buttons are drawn again, and the keyboard on one of them (the
+     * theme button, pressed with Enter) would be left on nothing: it is put
+     * back on the button in the same place. */
     var actions = $('#top-actions');
+    var held = Array.prototype.indexOf.call(actions.children, document.activeElement);
     S.clear(actions);
+    var theme = button(themeIcon(), toggleTheme, { variant: 'ghost', title: 'Switch theme' });
+    /* the moon, sun or half circle is not a name a screen reader can say */
+    theme.setAttribute('aria-label', 'Switch theme, now ' + themeName());
     S.append(actions, [
       button('Save project', saveProject, { variant: 'ghost',
         title: 'Download the whole working session as a .gwt file' }),
       button('Open project', openProject, { variant: 'ghost' }),
-      button(themeIcon(), toggleTheme, { variant: 'ghost', title: 'Switch theme' }),
+      theme,
     ]);
+    if (held >= 0 && actions.children[held]) actions.children[held].focus();
     renderNav();
   }
 
   function themeIcon() {
     var theme = store.get('theme', 'dark');
     return theme === 'dark' ? '☾' : (theme === 'light' ? '☀' : '◐');
+  }
+
+  function themeName() {
+    var theme = store.get('theme', 'dark');
+    return theme === 'dark' ? 'dark' : (theme === 'light' ? 'light' : 'as the device is set');
   }
 
   function toggleTheme() {
@@ -380,8 +409,13 @@
     }
   }
 
+  /* Drawn again with every page, so that its dots and its current page
+   * are right; the keyboard on one of its items is put back on the same
+   * item, where it used to be dropped on the page body mid-Tab. */
   function renderNav() {
     var nav = $('#app-nav');
+    var held = nav.contains(document.activeElement)
+      ? document.activeElement.getAttribute('data-page') : null;
     S.clear(nav);
     var current = store.get('nav');
     NAV_GROUPS.forEach(function (group) {
@@ -392,6 +426,7 @@
           type: 'button',
           onclick: function () { goto(key); },
           'aria-current': key === current ? 'page' : null,
+          dataset: { page: key },
         }, [el('span.nav-dot'), el('span', page[1])]);
       });
       S.append(nav, el('div.nav-group', [
@@ -399,6 +434,56 @@
         el('div', items),
       ]));
     });
+    var again = held && nav.querySelector('.nav-item[data-page="' + held + '"]');
+    if (again) again.focus();
+  }
+
+  /* The navigation is a drawer on a narrow screen, behind the toggle in the
+   * top bar. The toggle says whether it is open (aria-expanded); opening it
+   * puts the keyboard on the page it shows, and Escape, or the keyboard
+   * leaving it for the page it covers, closes it. `refocus` sends the
+   * keyboard back to the toggle as it closes. */
+  function setNavOpen(open, refocus) {
+    var nav = $('#app-nav'), toggle = $('#nav-toggle');
+    nav.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      var here = nav.querySelector('.nav-item[aria-current="page"]') ||
+        nav.querySelector('.nav-item');
+      if (here) here.focus();
+    } else if (refocus) {
+      toggle.focus();
+    }
+  }
+
+  function watchNavToggle() {
+    var nav = $('#app-nav'), toggle = $('#nav-toggle');
+    toggle.addEventListener('click', function () {
+      setNavOpen(!nav.classList.contains('open'));
+    });
+    /* an Escape a dialog has already answered is not this one's */
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !e.defaultPrevented && nav.classList.contains('open')) {
+        setNavOpen(false, true);
+      }
+    });
+    nav.addEventListener('focusout', function (e) {
+      var to = /** @type {Node | null} */ (e.relatedTarget);
+      if (nav.classList.contains('open') && to && !nav.contains(to) && to !== toggle) {
+        setNavOpen(false);
+      }
+    });
+    /* The skip link names #main, which the router reads as an address it
+     * does not know and answers with the Overview: from any other page it
+     * went there. It moves the keyboard to the page, and leaves the address
+     * as it is. */
+    var skip = $('.skip-link');
+    if (skip) {
+      skip.addEventListener('click', function (e) {
+        e.preventDefault();
+        $('#main').focus();
+      });
+    }
   }
 
   /* ------------------------------------------------------------------ routes */
@@ -440,7 +525,7 @@
     route.item = item || '';
     route.focused = !route.item;
     var drawn = render();
-    $('#app-nav').classList.remove('open');
+    setNavOpen(false);
     $('#main').focus({ preventScroll: true });
     if (!route.item) {
       /* the main pane is the scroll container on a wide screen and the page
@@ -925,16 +1010,30 @@
      * project now holds it: a corrected log corrects it */
     var ledger = currentLedger();
     delete state.ledger;
-    /* the calibration set in force belongs to this browser, not the project */
+    /* the issue records likewise (PLAN.md step 8.1) */
+    var issued = C.cleanIssueRecords(state.issued);
+    delete state.issued;
+    /* the calibration set in force belongs to this browser, not the project,
+     * and so do the reports waiting on it */
     delete state.calibration;
-    return {
+    delete state.reports;
+    /** @type {Record<string, *>} */
+    var payload = {
       format: 'groundwater-toolkit-project',
       schema: C.PROJECT_SCHEMA,
       saved: new Date().toISOString(),
       summary: projectSummary(),
       ledger: ledger,
-      state: state,
+      issued: issued,
     };
+    /* what the project records of its contractor's work, for the Portfolio
+     * page's contractor scorecards (PLAN.md step 6.3), at the top of the
+     * file where the Python app writes and reads it too; only where there
+     * is something in it, as a key an older toolkit ignores */
+    var works = currentWorks();
+    if (works) payload.works = works;
+    payload.state = state;
+    return payload;
   }
 
   function saveProject() {
@@ -965,7 +1064,9 @@
    * The calibration set in force (PLAN.md step 5.3) belongs to this browser
    * too, and stays in force for every project or sample opened. A project
    * file never brings one: a set is put in force only on the Portfolio
-   * page, where a named person adopts it. */
+   * page, where a named person adopts it. So do the reports waiting on this
+   * phone (PLAN.md step 7.1), which name boreholes of any project: a project
+   * file neither carries nor brings them. */
   var FIELD_SESSIONS = ['pumpCopilot', 'vesCopilot', 'drillCopilot'];
 
   function keepBrowserState(next) {
@@ -973,6 +1074,7 @@
       if (store.state[key]) next[key] = store.state[key];
     });
     next.calibration = store.state.calibration || null;
+    next.reports = store.state.reports || { queue: [], held: [] };
     return next;
   }
 
@@ -1000,6 +1102,8 @@
     var newer = schema > C.PROJECT_SCHEMA;
     /* the ledger is at the file's top level; a bare state carries its own */
     state.ledger = C.cleanLedger(payload.state ? C.migratePayload(payload).ledger : state.ledger);
+    /* and so are the issue records (PLAN.md step 8.1) */
+    state.issued = C.cleanIssueRecords(payload.state ? C.migratePayload(payload).issued : state.issued);
     /* A hand-edited or old-build project file can carry a key; it must
      * never be adopted into this session's storage. The key held for this
      * tab is untouched - it belongs to this browser, not to the file. */
@@ -1421,6 +1525,27 @@
     return C.attachOutcome(store.get('ledger'),
       C.completionOutcome(derived.log || null, derived.analysis || null, cfg,
         String((store.get('site') || {}).contractor || '')), cfg);
+  }
+
+  /* The project's works record (PLAN.md step 6.3): what it records of its
+   * contractor's work, for the Portfolio page's contractor scorecards, or
+   * null where it records nothing they read. Worked out again from the
+   * project whenever it is saved, as the ledger's outcome is. */
+  function currentWorks() {
+    var cfg = config();
+    var responses = store.get('supervision.responses') || {};
+    /** @type {Record<string, string>} */
+    var answers = {};
+    Object.keys(responses).forEach(function (id) {
+      var response = responses[id];
+      if (response && typeof response.status === 'string') answers[id] = response.status;
+    });
+    var checks = store.get('supervision.checks') || {};
+    var procurement = procurementState();
+    return C.worksRecord(store.get('site') || {}, derived.log || null, derived.analysis || null,
+      currentLedger(), answers, { logged_m: checks.loggedM, claimed_m: checks.claimedM },
+      procurement.contract ? { lines: procurement.contract.lines, variations: procurement.variations,
+        due: procurement.due || '' } : null, cfg);
   }
 
   /* The place a survey's points are recorded under: the project's community
@@ -4521,7 +4646,8 @@
           q: S.numberInput(step.discharge_m3_per_h, function (value) {
             store.set('pumping.manualDischarges.' + step.step_number, value);
             recompute().then(refresh);
-          }, { step: 'any', class: 'input cell', style: { maxWidth: '9rem' } }),
+          }, { step: 'any', class: 'input cell', style: { maxWidth: '9rem' },
+            'aria-label': 'Discharge (m³/h), ' + step.label }),
         };
       })),
     ]));
@@ -4790,7 +4916,7 @@
 
   function procurementState() {
     return Object.assign({ contract: null, measured: {}, variations: [],
-      number: 1, date: '', previous: 0 }, store.get('procurement') || {});
+      number: 1, date: '', previous: 0, due: '' }, store.get('procurement') || {});
   }
 
   function saveProcurement(patch) {
@@ -4869,6 +4995,7 @@
       previouslyCertifiedUsd: state.previous,
     });
 
+    var due = String(state.due || '');
     nodes.push(card('Contract', [
       S.statRow([
         S.stat('Reference', contract.ref),
@@ -4879,12 +5006,20 @@
           : C.pyFixed(certificate.percent_complete, 0) + '%',
         'of the revised sum'),
       ]),
+      /* the contract's completion date as any extension of time leaves it,
+       * which the Portfolio page's contractor scorecards set the drilling
+       * log's completion date against (PLAN.md step 6.3) */
+      field(C.phrase('scorecards.page_due'), S.textInput(due, function (v) {
+        saveProcurement({ due: String(v).trim() });
+      }, { placeholder: '2024-06-30', 'data-procurement': 'due' }), C.phrase('scorecards.page_due_help')),
+      due && C.isoDay(due) === null
+        ? el('div.callout.callout-warn', el('p', C.phrase('scorecards.page_due_unread'))) : null,
       el('div.btn-row', [
         button('Start again from the estimate', function () {
           saveProcurement({ contract: null, measured: {}, variations: [] });
         }, { variant: 'ghost' }),
       ]),
-    ]));
+    ].filter(Boolean)));
 
     nodes.push(card('Measured to date', [
       el('p.muted', 'Cumulative quantities, not increments: this is ' +
@@ -5007,6 +5142,7 @@
     nodes.push(el('div.btn-row', [
       button('Interim payment certificate (.docx)', async function (event) {
         var host = event.target.closest('.card');
+        var issued = null;
         charts.usePrintPalette(true);
         try {
           await S.withBusy(host, 'Building the certificate…', async function () {
@@ -5017,11 +5153,14 @@
                * held back by the costing gate's design requirements */
               readiness: reportReadiness('procurement'),
               areaNote: areaNote(), areaMaps: await areaFigures(false),
+              issue: issueFor('procurement'),
             });
-            S.download('IPC_' + certificate.number + '.docx',
-              await builder.build());
+            var name = 'IPC_' + certificate.number + '.docx';
+            var bytes = await builder.build();
+            S.download(name, bytes);
+            issued = recordIssue(builder.record, name, bytes);
           });
-          S.toast('Certificate ready.', 'ok');
+          S.toast('Certificate ready.' + codeWords(issued), 'ok');
         } catch (err) {
           S.toast('Could not build the certificate: ' + err.message, 'error');
         } finally {
@@ -5311,7 +5450,8 @@
             function (value) {
               store.set('costing.rateOverrides.' + rate.code, value);
               rebuildCosting(); render();
-            }, { step: 'any', class: 'input cell', style: { maxWidth: '7rem' } }),
+            }, { step: 'any', class: 'input cell', style: { maxWidth: '7rem' },
+              'aria-label': 'Rate (US$), ' + rate.code + ' ' + rate.item }),
         };
       })),
     ]));
@@ -5476,10 +5616,11 @@
               function (value) {
                 update({ status: value });
                 render();
-              }, { class: 'input cell', style: { maxWidth: '6rem' } }),
+              }, { class: 'input cell', style: { maxWidth: '6rem' },
+                'aria-label': 'Answer: ' + item.text }),
             remark: S.textInput(response.remark || '', function (value) {
               update({ remark: value });
-            }, { class: 'input cell' }),
+            }, { class: 'input cell', 'aria-label': 'Remark: ' + item.text }),
           };
         }), {
           /* a failed item is the reason the page exists, so it is marked */
@@ -5629,7 +5770,8 @@
         { key: 'item', label: 'Input' },
         { key: 'state', label: 'State',
           format: function (v) { return S.badge(v ? 'ready' : 'missing', v ? 'ok' : 'warn'); } },
-        { key: 'action', label: '' },
+        /* a heading only a screen reader reads: the column is its buttons */
+        { key: 'action', label: el('span.sr-only', 'Go to its page') },
       ], ready.map(function (r) {
         return {
           item: r[0], state: r[1],
@@ -5645,8 +5787,105 @@
     nodes.push(reportCard('Project handover report', 'handover',
       'Project summary, works completed, the borehole data sheet, water quality, ' +
       'operation and maintenance guidance, the committee and the signature block.'));
+    nodes.push(bundleCard());
     return nodes;
   };
+
+  /* --- the evidence bundle (PLAN.md step 8.3) ------------------------------
+   * One archive for the borehole (C.buildEvidenceBundle): the sheets the
+   * project holds, as they were uploaded; the documents built in this
+   * session, the latest of each, and any issued earlier that are added
+   * here; the figures each document embeds; the issue records; and a
+   * manifest.json of every file's SHA-256, with a README saying how to check
+   * it. Made on this device's day, with the calibration set in force. The
+   * Streamlit Handover page has the same section. */
+  var bundleSession = { added: /** @type {Array<{name: string, bytes: Uint8Array}>} */ ([]) };
+
+  function projectRecords() {
+    return C.issueRecordsOf({ issued: store.get('issued') || [], asset: store.get('asset') });
+  }
+
+  /* the documents built in this session that a borehole's bundle carries:
+   * those whose issue record the project holds (so a document built before
+   * another project was opened stays out), not the calibration report or
+   * the round sheets, which are about many boreholes
+   * (shared.session_documents is the twin) */
+  function bundleDocuments() {
+    var held = Object.create(null);
+    projectRecords().forEach(function (r) { held[r.sha256] = true; });
+    return Object.keys(issuedThisSession).sort().map(function (name) { return issuedThisSession[name]; })
+      .filter(function (doc) { return C.PROGRAMME_KINDS.indexOf(doc.kind) < 0 && held[doc.sha256] === true; });
+  }
+
+  function evidenceBundle() {
+    var kinds = C.phraseTable('verification.evidence_kinds');
+    var sources = store.get('sources') || {};
+    /** @type {Array<*>} */
+    var files = [];
+    SOURCE_ROLES.forEach(function (role) {
+      var source = sources[role];
+      if (source && source.b64) {
+        files.push({ folder: 'raw', name: source.name || role, data: S.base64ToBytes(source.b64), what: kinds[role] });
+      }
+    });
+    /** @type {Array<{name: string, bytes: Uint8Array}>} */
+    var documents = [];
+    documents = documents.concat(bundleDocuments(), bundleSession.added);
+    documents.forEach(function (doc) {
+      files.push({ folder: 'reports', name: doc.name, data: doc.bytes });
+      files = files.concat(C.documentFigures(doc.name, doc.bytes));
+    });
+    var site = store.get('site') || {};
+    var stored = store.get('asset');
+    var asset = stored ? C.assetFromDict(stored) : null;
+    return C.buildEvidenceBundle(site.community || site.project || '', files, {
+      borehole: asset ? asset.asset_id : '', madeOn: issueToday(),
+      calibration: C.calibrationFacts(config().calibration || null), records: projectRecords() });
+  }
+
+  function bundleCard() {
+    var held = bundleDocuments();
+    var rows = held.map(function (doc) { return [doc.name, 'built in this session']; })
+      .concat(bundleSession.added.map(function (doc) { return [doc.name, 'added here']; }));
+    return card('Evidence bundle', [
+      el('p.muted', C.phrase('bundle.page_lead')),
+      el('p.muted', held.length ? C.phrase('bundle.page_documents') : C.phrase('bundle.page_no_documents')),
+      rows.length ? S.table(['Document', 'From'], rows) : null,
+      el('div.btn-row', [
+        button('Add documents issued earlier (.docx)', async function () {
+          var list = await S.pickFile('.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            true);
+          if (!list || !list.length) return;
+          for (var i = 0; i < list.length; i++) {
+            try {
+              bundleSession.added.push({ name: list[i].name,
+                bytes: new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(list[i]))) });
+            } catch (e) {
+              S.toast('Could not read ' + list[i].name + ': ' + e.message, 'error');
+            }
+          }
+          render();
+        }, { variant: 'ghost' }),
+        bundleSession.added.length ? button('Clear the added documents', function () {
+          bundleSession.added = [];
+          render();
+        }, { variant: 'ghost' }) : null,
+        button('Download evidence bundle', function () {
+          var built;
+          try {
+            built = evidenceBundle();
+          } catch (e) {
+            S.toast(String(e && e.message || e), 'error');
+            return;
+          }
+          var name = 'Evidence_Bundle_' + S.slug(siteLabel()) + '.zip';
+          S.download(name, new Blob([built.bytes], { type: 'application/zip' }));
+          S.toast('Saved ' + name + '. ' + C.phrase('bundle.built', { files: built.facts.files.length,
+            documents: built.facts.documents.length, sha256: built.sha256 }), 'ok');
+        }),
+      ]),
+    ]);
+  }
 
   /* --- pumping test co-pilot ------------------------------------------------ */
 
@@ -5837,6 +6076,7 @@
 
   async function buildFieldKit(boreholes, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     try {
       await S.withBusy(host, 'Building the field kit…', async function () {
         await need(REPORT_BUNDLES);
@@ -5850,11 +6090,14 @@
           symbols: content.sheets.map(function (sheet) {
             return qrDataUrl(sheet.payload, { ecc: 'H', scale: 8 });
           }),
+          issue: issueFor('field_kit'),
         });
         var bytes = await builder.build();
-        S.download('field_kit_' + S.slug(content.project || siteLabel()) + '.docx', bytes);
+        var name = 'field_kit_' + S.slug(content.project || siteLabel()) + '.docx';
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
-      S.toast('Field kit ready.', 'ok');
+      S.toast('Field kit ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the field kit: ' + err.message, 'error');
     }
@@ -6508,8 +6751,103 @@
         'review) and ' + (unplaced.length === 1 ? 'was' : 'were') +
         ' not counted in any area above.') : null,
     ].filter(Boolean)));
+    nodes.push(allocationCard(rows, level));
     return nodes;
   };
+
+  /* Where to drill next, within a budget (PLAN.md step 6.1). The boreholes
+   * are priced as the Costing page prices its borehole, sampled once more
+   * with the depth held at the estimate's and no dry hole drawn: the range
+   * of models and the odds at the survey's first-ranked point belong to one
+   * site, and the allocation gives every area its own odds. Kept with the
+   * estimate it belongs to, so a page drawn again does not sample it again. */
+  var allocationCostHeld = new WeakMap();
+
+  function allocationCost() {
+    var estimate = derived.estimate;
+    if (!estimate || !derived.costInputs) return null;
+    var cfg = config();
+    var settings = cfg.cost_range.seed + '|' + cfg.cost_range.samples;
+    var held = allocationCostHeld.get(estimate);
+    if (held && held.settings === settings) return held.cost;
+    var cost = C.sampleCost(derived.costInputs, derived.costRates,
+      Object.assign({}, costingOptions(), { config: cfg }));
+    allocationCostHeld.set(estimate, { settings: settings, cost: cost });
+    return cost;
+  }
+
+  /* The areas of the ranking above, at the population of the year planned
+   * for, chosen between for the budget typed. The budget and the access
+   * costs are kept with the year and the growth rate. */
+  function allocationCard(rows, level) {
+    var heading = C.phrase('allocation.heading');
+    var cost = allocationCost();
+    if (!cost) {
+      return card(heading, [
+        el('p', C.phrase('allocation.no_estimate')),
+        el('div.btn-row', button('Costing & BoQ', function () { goto('costing'); },
+          { variant: 'ghost' })),
+      ]);
+    }
+    var budget = store.get('coverage.budget', null);
+    var accessKey = 'coverage.access_' + level;
+    var access = store.get(accessKey, {}) || {};
+    var nodes = [
+      el('div.field-row', [
+        field(C.phrase('allocation.col_budget'), S.numberInput(budget, function (v) {
+          store.set('coverage.budget', v === null || v === undefined ? null : Number(v));
+          render();
+        }, { min: 0, step: 10000 })),
+      ]),
+    ];
+    if (!(typeof budget === 'number' && budget > 0)) {
+      nodes.push(el('p.muted', C.phrase('allocation.no_budget')));
+      return card(heading, nodes);
+    }
+    var chosen;
+    try {
+      chosen = C.allocate(rows, budget, cost, { level: level, access: access, config: config() });
+    } catch (e) {
+      nodes.push(el('div.callout.callout-bad', el('p', String(e && e.message || e))));
+      return card(heading, nodes);
+    }
+    var text = C.allocationText(chosen);
+    nodes.push(el('p.muted', text[0]));
+    nodes.push(el('div.callout', el('p', text[1])));
+    text.slice(2).forEach(function (line) { nodes.push(el('p', line)); });
+    var header = C.allocationHeader(chosen);
+    var table = C.allocationRows(chosen).map(function (cells, i) {
+      return { cells: cells, id: chosen.candidates[i].id, chosen: chosen.candidates[i].chosen };
+    });
+    var columns = header.map(function (label, k) {
+      return { key: function (row) { return row.cells[k]; }, label: label };
+    });
+    /* an access cost per area, per attempt; blank, the default, is none */
+    columns.push({ label: C.phrase('allocation.col_access'), key: function (row) {
+      return S.numberInput(Object.prototype.hasOwnProperty.call(access, row.id) ? access[row.id] : null,
+        function (v) {
+          var next = Object.assign({}, store.get(accessKey, {}) || {});
+          if (v === null || v === undefined || !(Number(v) > 0)) delete next[row.id];
+          else next[row.id] = Number(v);
+          store.set(accessKey, next);
+          render();
+        }, { min: 0, step: 100 });
+    } });
+    nodes.push(S.table(columns, table.slice(0, TABLE_ROWS_SHOWN), {
+      rowClass: function (row) { return row.chosen ? 'row-ok' : ''; },
+    }));
+    C.allocationBasisText(chosen).forEach(function (line) { nodes.push(el('p.muted', line)); });
+    var hidden = table.length - Math.min(table.length, TABLE_ROWS_SHOWN);
+    nodes.push(el('div.btn-row', [
+      el('p.muted', hidden ? 'Showing ' + TABLE_ROWS_SHOWN + ' of ' + S.thousands(table.length) +
+        '. The ' + S.thousands(hidden) + ' not shown come after these; download the table for all of them.'
+        : 'Showing all ' + S.thousands(table.length) + '.'),
+      button(C.phrase('allocation.download'), function () {
+        S.download(C.phrase('allocation.csv_name'), C.allocationCsv(chosen), 'text/csv');
+      }, { variant: 'ghost' }),
+    ]));
+    return card(heading, nodes);
+  }
 
   /* A long table is cut short on screen so the page stays readable, which is
    * fine until nobody says so. This is the ranking that decides where to drill
@@ -6662,8 +7000,9 @@
     return projectFileEntry(name, text).summary;
   }
 
-  /* A saved project file's summary and its ledger of predictions and
-   * outcomes (PLAN.md step 5.1), from either app's file. */
+  /* A saved project file's summary, its ledger of predictions and
+   * outcomes (PLAN.md step 5.1) and its works record (step 6.3, null where
+   * it carries none), from either app's file. */
   function projectFileEntry(name, text) {
     var payload;
     if (/\.ya?ml$/i.test(name)) {
@@ -6673,7 +7012,7 @@
     }
     if (!payload || typeof payload !== 'object') throw new Error('not a project file');
     return { summary: summaryFromPayload(payload),
-      ledger: C.cleanLedger(C.migratePayload(payload).ledger) };
+      ledger: C.cleanLedger(C.migratePayload(payload).ledger), works: C.cleanWorks(payload.works) };
   }
 
   function summaryFromPayload(payload) {
@@ -6749,7 +7088,7 @@
   }
 
   PAGES.registry = function () {
-    var asset = currentAsset();
+    var asset = mergeQueuedReports(currentAsset());
     var nodes = [
       pageHead('Asset registry', 'A drilling project ends; the borehole does ' +
         'not. This page holds the other half: a stable identifier that ' +
@@ -6818,7 +7157,16 @@
         }).join(' ')),
         mechanicField(asset),
         pumpField(asset),
+        el('div.btn-row', [button('Report on this borehole', function () {
+          goto('report', asset.asset_id);
+        }, { variant: 'ghost' })]),
       ])));
+      if (derived.reportsMerged && derived.reportsMerged.asset_id === asset.asset_id) {
+        nodes.push(el('div.callout.callout-ok.reports-merged', el('p',
+          derived.reportsMerged.added + ' ' + S.plural(derived.reportsMerged.added, 'report') +
+          ' waiting on this phone ' + (derived.reportsMerged.added === 1 ? 'was' : 'were') +
+          ' added to this borehole’s history.')));
+      }
 
       var draft = { when: new Date().toISOString().slice(0, 10),
         kind: 'inspection', note: '', by: '', photo: '' };
@@ -6868,19 +7216,37 @@
         ]));
       }
 
+      /* the documents issued about the borehole, which its record keeps
+       * (PLAN.md step 8.1) */
+      if ((asset.documents || []).length) {
+        var readinessWords = C.phraseTable('verification.readiness_words');
+        nodes.push(card('Documents issued', [
+          el('p.muted', C.phrase('verification.registry_documents')),
+          S.table(['Code', 'Document', 'Issued on', 'Readiness'], asset.documents.map(function (r) {
+            return [r.code, r.title, r.issued_on, readinessWords[r.readiness]];
+          })),
+        ]));
+      }
+
+      var address = String(config().service.report_url || '');
+      var refused = C.checkReportUrl(address);
       nodes.push(card('For the headworks', [
-        el('p.muted', 'The plate carries the identifier, the symbol that ' +
-          'encodes it and the facts that do not go out of date. The symbol ' +
-          'holds the details themselves rather than a link, because the ' +
-          'reason it is on the borehole is that there is no network there.'),
+        el('p.muted', 'The plate carries the identifier, the symbol and the ' +
+          'facts that do not go out of date.'),
+        field('Report address', S.textInput(address, function (v) {
+          store.set('config.service.report_url', C.trimField(v));
+          render();
+        }, { placeholder: 'https://', 'data-report': 'address' }),
+        C.phrase('fault_reports.address_help')),
+        refused ? el('div.callout.callout-bad.report-address', el('p', refused)) : null,
         el('div.qr-preview', {
-          html: C.qrSvg(C.qrEncode(C.qrPayload(asset), { ecc: 'H' }),
+          html: C.qrSvg(C.qrEncode(C.qrPayload(asset, refused ? '' : address), { ecc: 'H' }),
             { scale: 3, border: 4 }),
         }),
         el('div.btn-row', [
           button('Identification plate (.docx)', async function (event) {
             await buildAssetDoc('placard', asset, event.target);
-          }),
+          }, { disabled: !!refused }),
           button('Asset record (.docx)', async function (event) {
             await buildAssetDoc('record', asset, event.target);
           }, { variant: 'ghost' }),
@@ -6899,6 +7265,7 @@
       lookupResult(store.get('registry.lookup', '')),
     ]));
 
+    nodes.push(reportsCard(asset));
     nodes.push(registryCard());
     nodes.push(roundsCard(asset));
     nodes.push(survivalCard(asset));
@@ -6957,7 +7324,7 @@
     }
     /* this borehole first, so its record, kept in step with the design,
      * is the one read where the register holds the same borehole */
-    var assets = (asset ? [asset] : []).concat(derived.registry || []);
+    var assets = (asset ? [asset] : []).concat(registerAssets());
     var result = C.survivalAnalysis(assets, when, config());
     var words = C.survivalText(result);
     nodes.push(el('div.survival-summary', words.summary.map(function (line) {
@@ -7064,8 +7431,15 @@
     }
     /* this borehole first, so its record, kept in step with the design,
      * is the one read where the register holds the same borehole */
-    var assets = (asset ? [asset] : []).concat(derived.registry || []);
-    var result = C.serviceRounds(assets, when, C.serviceSchedule(config()), parsed.entries);
+    var assets = (asset ? [asset] : []).concat(registerAssets());
+    /* the round sheet says what a scan of each plate begins with, which
+     * follows the report address: one the registry refuses is said here
+     * and no sheet is printed until it is put right (PLAN.md step 7.1) */
+    var address = String(config().service.report_url || '');
+    var refused = C.checkReportUrl(address);
+    if (refused) nodes.push(el('div.callout.callout-bad.rounds-address', el('p', refused)));
+    var result = C.serviceRounds(assets, when, C.serviceSchedule(config()), parsed.entries,
+      refused ? '' : address);
     var words = C.roundsText(result);
     nodes.push(el('div.rounds-summary', words.summary.map(function (line) {
       return el('p', line);
@@ -7082,19 +7456,24 @@
     }
     nodes.push(el('div.btn-row', [button('Round sheets (.docx)', async function (event) {
       await buildRoundSheet(result, event.target);
-    }, { disabled: !result.n_boreholes })]));
+    }, { disabled: !result.n_boreholes || !!refused })]));
     return card('Service rounds', nodes);
   }
 
   async function buildRoundSheet(result, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     try {
       await S.withBusy(host, 'Building the round sheets…', async function () {
         await need(REPORT_BUNDLES);
-        var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result });
-        S.download('rounds_' + result.as_of + '.docx', await builder.build());
+        var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result,
+          issue: issueFor('rounds', { files: derived.registryFiles || [] }) });
+        var name = 'rounds_' + result.as_of + '.docx';
+        var bytes = await builder.build();
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
-      S.toast('Document ready.', 'ok');
+      S.toast('Document ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the document: ' + err.message, 'error');
     }
@@ -7175,7 +7554,7 @@
   }
 
   function registryCard() {
-    var assets = derived.registry || [];
+    var assets = registerAssets();
     var nodes = [
       el('p.muted', 'Drop in saved project files to see the whole register: ' +
         'what is working, what is not, and what is overdue a visit. A file ' +
@@ -7185,15 +7564,24 @@
           var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
           if (!list || !list.length) return;
           var loaded = (derived.registry || []).slice();
+          /* the files, by their hashes, which a round sheet drawn from the
+           * register is issued from (PLAN.md step 8.1) */
+          var files = (derived.registryFiles || []).slice();
           var skipped = 0;
           for (var i = 0; i < list.length; i++) {
             try {
               var text = await S.readFile(list[i], 'text');
               var record = assetFromProjectFile(list[i].name, text);
-              if (record) loaded.push(record); else skipped += 1;
+              if (record) {
+                loaded.push(record);
+                files.push(projectFileEvidence(list[i].name, text));
+              } else {
+                skipped += 1;
+              }
             } catch (e) { skipped += 1; }
           }
           derived.registry = loaded;
+          derived.registryFiles = files;
           S.toast(loaded.length + ' ' + S.plural(loaded.length, 'borehole') +
             ' in the register' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
           skipped ? 'warn' : 'ok');
@@ -7201,6 +7589,7 @@
         }),
         assets.length ? button('Clear', function () {
           derived.registry = [];
+          derived.registryFiles = [];
           render();
         }, { variant: 'ghost' }) : null,
       ].filter(Boolean)),
@@ -7254,8 +7643,323 @@
     return C.assetFromDict(raw || {});
   }
 
+  /* --- reports from the plate and by SMS (PLAN.md step 7.1) ----------------
+   * A plate printed with the report address set carries a link to
+   * #/report/<identifier> here. A report made on that page waits in this
+   * browser's queue (reports.queue, kept in IndexedDB with the rest of the
+   * session and carried across projects, as the calibration in force is)
+   * until the Asset registry page is opened on the borehole it names, when
+   * it is merged into that borehole's history by the registry's own rule. A
+   * mechanic can carry the queue to whoever holds that borehole's project as
+   * a small file. SMS messages and such a file are imported on the Asset
+   * registry page; a report by SMS that the registry reads only with a note
+   * waits in reports.held until a person confirms it.
+   * ---------------------------------------------------------------------- */
+
+  /* what the report page holds while it is being filled in */
+  var reportDraft = null;
+
+  /* the list kept under path, its entries that are records: a session from a
+   * hand-edited or damaged store reads as an empty queue, not as a page
+   * that cannot be drawn */
+  function reportList(path) {
+    var list = store.get(path);
+    return Array.isArray(list) ? list.filter(function (r) {
+      return r !== null && typeof r === 'object' && !Array.isArray(r);
+    }) : [];
+  }
+  function reportQueue() { return reportList('reports.queue'); }
+  function heldReports() { return reportList('reports.held'); }
+
+  /* An identifier to show the shape of one, its check character worked out
+   * rather than typed, so it stays right if the calculation is corrected. */
+  function exampleAssetId() {
+    return 'SL-WAR-8FEEVKQ-' + C.checkCharacter('SL-WAR-8FEEVKQ');
+  }
+
+  /* One queued report is told from another by its borehole and the
+   * identifier the registry gives its record, so the same report queued
+   * twice is kept once, the copy with a photograph if one has it. */
+  function reportKey(r) {
+    return r.asset_id + '|' + C.eventId(r.asset_id, r.when, r.kind, r.note, r.by);
+  }
+
+  function keepReports(path, records) {
+    var list = reportList(path);
+    /** @type {Object<string, number>} */
+    var at = {};
+    list.forEach(function (r, i) { at[reportKey(r)] = i; });
+    var added = 0;
+    records.forEach(function (r) {
+      var key = reportKey(r);
+      if (!Object.prototype.hasOwnProperty.call(at, key)) {
+        at[key] = list.length;
+        list.push(r);
+        added += 1;
+      } else if (!list[at[key]].photo && r.photo) {
+        list[at[key]] = r;
+      }
+    });
+    store.set(path, list);
+    return added;
+  }
+
+  /* The registry page opened on a borehole: the reports waiting for it are
+   * merged into its history and leave the queue; the rest stay. */
+  function mergeQueuedReports(asset) {
+    if (!asset) return asset;
+    var queue = reportQueue();
+    var mine = queue.filter(function (r) { return r.asset_id === asset.asset_id; });
+    if (!mine.length) return asset;
+    var merged = C.mergeReports([asset], mine);
+    var record = merged.assets[0];
+    store.set('asset', record);
+    store.set('reports.queue', queue.filter(function (r) { return r.asset_id !== asset.asset_id; }));
+    /* a report already in the history leaves the queue and adds nothing */
+    if (merged.added) derived.reportsMerged = { asset_id: asset.asset_id, added: merged.added };
+    return C.assetWithRisingMain(record, derived.design ? derived.design.rising_main : null);
+  }
+
+  /* The register of Many boreholes, with the reports waiting on this phone
+   * shown in the histories of the boreholes they name. The project files
+   * are not changed: a report reaches a borehole's own record when its
+   * project is opened here. */
+  function registerAssets() {
+    var register = derived.registry || [];
+    var queue = reportQueue();
+    return queue.length && register.length ? C.mergeReports(register, queue).assets : register;
+  }
+
+  function reportTable(records) {
+    return S.table(['Borehole', 'Day', 'Says', 'Note', 'By', 'Photograph'],
+      records.map(function (r) {
+        return [r.asset_id, r.when, C.phraseTable('fault_reports.choices')[r.choice] || '',
+          r.note || '', r.by || '', r.photo ? 'yes' : ''];
+      }));
+  }
+
+  function exportReports() {
+    var queue = reportQueue();
+    S.download('borehole-reports.json', JSON.stringify(C.reportsFile(queue), null, 1),
+      'application/json');
+    S.toast(queue.length + ' ' + S.plural(queue.length, 'report') + ' written to ' +
+      'borehole-reports.json. They stay on this phone until their boreholes’ records ' +
+      'are opened here, or until they are cleared.', 'ok');
+  }
+
+  /* The queue emptied by a person, once the file has gone to whoever holds
+   * the boreholes' records: asked first, since nothing else keeps them. */
+  function clearReports() {
+    var n = reportQueue().length;
+    var asked = S.modal('Clear the reports waiting?', el('p', n + ' ' + S.plural(n, 'report') +
+      ' on this phone will be deleted. Nothing else keeps ' + (n === 1 ? 'it' : 'them') +
+      ' until ' + (n === 1 ? 'it reaches its borehole’s' : 'they reach their boreholes’') +
+      ' records, so export the file first and see it arrive.'), [
+      button('Clear', function () {
+        store.set('reports.queue', []);
+        /* closed through its own close(), which hands the keyboard back to
+         * the page, before the toast a dialog still open could keep from
+         * being heard */
+        asked.close();
+        S.toast('The reports waiting on this phone were cleared.', 'ok');
+        render();
+      }, { variant: 'danger' }),
+    ]);
+  }
+
+  PAGES.report = function () {
+    var typed = route.item || '';
+    var verdict = typed ? C.validateAssetId(typed) : null;
+    var nodes = [
+      pageHead('Report on a borehole', 'Say whether a borehole is working, broken, ' +
+        'slow, or giving water that tastes or looks wrong. The report waits on this ' +
+        'phone, with no network needed, until the borehole’s record is opened on the ' +
+        'Asset registry page here, or the reports are carried as a file to whoever ' +
+        'holds it.'),
+      el('p.muted.reports-browser-only', C.phrase('fault_reports.browser_only')),
+    ];
+    var open = currentAsset();
+    /* The card is the item the address names, whatever was typed into it:
+     * this page needs no project, so an identifier the project open here
+     * does not hold is not "nothing here" (showItem) but a report to make,
+     * or a mistyped identifier, which lookupResult says. */
+    nodes.push(itemNode(typed, card('The borehole', [
+      field('Identifier on the plate', S.textInput(typed, function (v) {
+        goto('report', String(v).trim());
+      }, { placeholder: exampleAssetId(), 'data-report': 'identifier' }),
+      'Quote it in full, the last character included: it is a check character, and ' +
+      'it is what stops a report being recorded against another village’s borehole.'),
+      lookupResult(typed),
+      verdict && verdict.ok && open && open.asset_id === verdict.assetId
+        ? el('p.muted', 'This is the borehole of the project open here: ' +
+          C.assetLabel(open) + ', on record as ' +
+          C.assetState(open, null, C.serviceSchedule(config())).label.toLowerCase() + '.')
+        : null,
+    ])));
+    if (verdict && verdict.ok) nodes.push(reportForm(String(verdict.assetId)));
+    var queue = reportQueue();
+    nodes.push(card('Reports waiting on this phone', queue.length ? [
+      reportTable(queue),
+      el('div.btn-row', [
+        button('Export the reports (.json)', exportReports),
+        button('Open the Asset registry', function () { goto('registry'); },
+          { variant: 'ghost' }),
+        button('Clear the reports waiting', clearReports, { variant: 'ghost' }),
+      ]),
+      el('p.muted', 'A report is merged into its borehole’s history when the Asset ' +
+        'registry page is opened here on that borehole’s project. For a borehole whose ' +
+        'project is elsewhere, export the reports and import the file on the Asset ' +
+        'registry page of either app where it is kept.'),
+    ] : [el('p.muted', 'None.')]));
+    return nodes;
+  };
+
+  function reportForm(assetId) {
+    if (!reportDraft || reportDraft.asset_id !== assetId) {
+      reportDraft = { asset_id: assetId, choice: '', when: new Date().toISOString().slice(0, 10),
+        by: '', note: '', photo: null };
+    }
+    var draft = reportDraft;
+    var choices = C.phraseTable('fault_reports.choices');
+    return card('What is the matter', [
+      el('div.btn-row.report-choices', C.REPORT_CHOICES.map(function (choice) {
+        return el('button.btn' + (draft.choice === choice ? '' : '.btn-ghost'), {
+          type: 'button', 'data-choice': choice,
+          'aria-pressed': draft.choice === choice ? 'true' : 'false',
+          onclick: function () { draft.choice = choice; render(); },
+        }, choices[choice]);
+      })),
+      el('div.field-row', [
+        field('Day', S.textInput(draft.when, function (v) { draft.when = String(v).trim(); },
+          { placeholder: 'YYYY-MM-DD', 'data-report': 'when' }), ''),
+        field('Your name', S.textInput(draft.by, function (v) { draft.by = String(v); },
+          { placeholder: 'Optional', 'data-report': 'by' }), ''),
+      ]),
+      field('Note', S.textInput(draft.note, function (v) { draft.note = String(v); },
+        { placeholder: 'Optional: what was seen', 'data-report': 'note' }), ''),
+      GWT.imageSlot.create({
+        key: 'report', label: 'Photograph (optional)', value: draft.photo,
+        askPosition: askPhotoPosition,
+        onChange: function (v) { draft.photo = v; },
+      }),
+      photoPositionToggle(),
+      el('div.btn-row', [button('Save the report', function () {
+        var photo = draft.photo || {};
+        var record = C.reportRecord(assetId, draft.choice, draft.when, draft.note, draft.by,
+          photo.dataUrl || '', photo.provenance || null);
+        if (record.status !== 'accepted') {
+          S.toast(record.reason, 'warn', 8000);
+          return;
+        }
+        keepReports('reports.queue', [record]);
+        reportDraft = null;
+        S.toast('Saved on this phone. ' + reportQueue().length + ' ' +
+          S.plural(reportQueue().length, 'report') + ' waiting.', 'ok');
+        render();
+      })]),
+    ]);
+  }
+
+  /* The registry page's card for reports: what waits on this phone, the
+   * import of SMS messages and of a phone's file of reports, what the last
+   * import made of each line, and the reports held for a person to confirm. */
+  function reportsCard(asset) {
+    var queue = reportQueue(), held = heldReports();
+    var elsewhere = queue.filter(function (r) { return !asset || r.asset_id !== asset.asset_id; });
+    var registered = {};
+    (derived.registry || []).forEach(function (a) { registered[a.asset_id] = true; });
+    var shown = elsewhere.filter(function (r) {
+      return Object.prototype.hasOwnProperty.call(registered, r.asset_id);
+    }).length;
+    var nodes = [
+      el('p.muted', C.phrase('fault_reports.browser_only')),
+      el('p.muted', C.smsFormat()),
+      el('div.field-row', [
+        field('Day received', S.textInput(
+          store.get('reports.receivedOn', ''), function (v) {
+            store.set('reports.receivedOn', String(v).trim());
+          }, { placeholder: 'YYYY-MM-DD', 'data-report': 'received-on' }),
+        C.phrase('fault_reports.received_on_help')),
+      ]),
+      el('div.btn-row', [
+        button('Import SMS messages or a file of reports', importReports),
+        queue.length ? button('Export the reports waiting (.json)', exportReports,
+          { variant: 'ghost' }) : null,
+        queue.length ? button('Clear the reports waiting', clearReports,
+          { variant: 'ghost' }) : null,
+        button('Report on a borehole', function () {
+          goto('report', asset ? asset.asset_id : '');
+        }, { variant: 'ghost' }),
+      ].filter(Boolean)),
+    ];
+    if (elsewhere.length) {
+      nodes.push(el('p.reports-waiting', elsewhere.length + ' ' +
+        S.plural(elsewhere.length, 'report') + ' on this phone ' +
+        (elsewhere.length === 1 ? 'names a borehole' : 'name boreholes') +
+        ' whose project is not open here' +
+        (shown ? '; ' + shown + ' of them ' + (shown === 1 ? 'is' : 'are') +
+          ' shown in Many boreholes below, whose files are not changed' : '') +
+        '. They wait until the project is opened here, or the file is exported.'));
+    }
+    var last = derived.reportImport;
+    if (last && last.length) {
+      nodes.push(el('p.reports-summary', C.importSummary(last)));
+      nodes.push(S.table(C.reportHeader(), C.reportRows(last)));
+    }
+    if (held.length) {
+      nodes.push(el('h3', C.phraseTable('fault_reports.outcome').held));
+      held.forEach(function (r, i) {
+        nodes.push(el('div.callout.callout-warn.report-held', [
+          el('p', [el('strong', r.asset_id + ', ' + r.when + ': '),
+            C.phraseTable('fault_reports.choices')[r.choice] + (r.note ? ' (' + r.note + ')' : '') +
+            ', ' + r.by + '.']),
+          el('p', r.reason),
+          el('div.btn-row', [
+            button(C.phrase('fault_reports.confirm'), function () {
+              keepReports('reports.queue', [C.confirmReport(r)]);
+              store.set('reports.held', heldReports().filter(function (x, j) { return j !== i; }));
+              render();
+            }),
+            button('Discard', function () {
+              store.set('reports.held', heldReports().filter(function (x, j) { return j !== i; }));
+              render();
+            }, { variant: 'ghost' }),
+          ]),
+        ]));
+      });
+    }
+    return card(C.phrase('fault_reports.heading'), nodes);
+  }
+
+  /* SMS messages (any text file, one a line) or a file of reports (.json):
+   * each read, what it accepted queued, what it held kept for a person,
+   * and the lot shown, refusals and their reasons included. */
+  async function importReports() {
+    var list = await S.pickFile('.txt,.csv,.json,text/plain,application/json', true);
+    if (!list || !list.length) return;
+    var records = [];
+    for (var i = 0; i < list.length; i++) {
+      var text = String(await S.readFile(list[i], 'text'));
+      if (/\.json$/i.test(list[i].name)) {
+        try {
+          records = records.concat(C.readReportsFile(JSON.parse(text)));
+        } catch (e) {
+          S.toast(list[i].name + ': ' + C.phrase('fault_reports.file_refused'), 'error', 8000);
+        }
+      } else {
+        records = records.concat(C.readSmsLines(text, store.get('reports.receivedOn', '')));
+      }
+    }
+    keepReports('reports.queue', records.filter(function (r) { return r.status === 'accepted'; }));
+    keepReports('reports.held', records.filter(function (r) { return r.status === 'held'; }));
+    derived.reportImport = records;
+    S.toast(C.importSummary(records), 'ok', 8000);
+    render();
+  }
+
   async function buildAssetDoc(kind, asset, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the document…', async function () {
@@ -7267,7 +7971,12 @@
           /* a plate on the headworks makes no claim about the water, so it is
            * not held back for want of a laboratory panel */
           readiness: reportReadiness(kind === 'placard' ? 'placard' : 'asset'),
-          symbol: qrDataUrl(C.qrPayload(asset), { ecc: 'H', scale: 8 }),
+          /* only the plate carries the symbol, so only the plate is held to
+           * the report address it links to (PLAN.md step 7.1) */
+          symbol: kind === 'placard'
+            ? qrDataUrl(C.qrPayload(asset, cfg.service.report_url), { ecc: 'H', scale: 8 })
+            : null,
+          reportUrl: cfg.service.report_url,
         };
         if (kind !== 'placard') {
           /* the record is what a district water office reads before sending a
@@ -7277,14 +7986,16 @@
           /* the sample whose E. coli count the sanitary risk reads */
           context.assessment = derived.assessment || null;
         }
+        context.issue = issueFor(kind === 'placard' ? 'placard' : 'asset');
         var builder = kind === 'placard'
           ? await GWT.docx.assetPlacard(context)
           : await GWT.docx.assetRecordReport(context);
         var bytes = await builder.build();
-        S.download((kind === 'placard' ? 'placard_' : 'asset_') +
-          asset.asset_id + '.docx', bytes);
+        var name = (kind === 'placard' ? 'placard_' : 'asset_') + asset.asset_id + '.docx';
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
-      S.toast('Document ready.', 'ok');
+      S.toast('Document ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the document: ' + err.message, 'error');
     } finally {
@@ -7311,6 +8022,10 @@
             if (!list || !list.length) return;
             var loaded = derived.portfolio ? derived.portfolio.slice() : [];
             var ledgers = portfolioLedgers().slice();
+            var works = portfolioWorks().slice();
+            /* the files, by their hashes, which a calibration report over the
+             * pooled ledgers is issued from (PLAN.md step 8.1) */
+            var files = (derived.portfolioFiles || []).slice();
             var skipped = 0;
             for (var i = 0; i < list.length; i++) {
               try {
@@ -7318,10 +8033,14 @@
                 var entry = projectFileEntry(list[i].name, text);
                 loaded.push(entry.summary);
                 ledgers.push(entry.ledger);
+                works.push(entry.works);
+                files.push(projectFileEvidence(list[i].name, text));
               } catch (e) { skipped += 1; }
             }
             derived.portfolio = loaded;
             derived.portfolioLedgers = ledgers;
+            derived.portfolioWorks = works;
+            derived.portfolioFiles = files;
             S.toast(loaded.length + ' ' + S.plural(loaded.length, 'project') +
               ' loaded' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
             skipped ? 'warn' : 'ok');
@@ -7329,11 +8048,14 @@
           }),
           summaries.length ? button('Add this project', function () {
             derived.portfolioLedgers = portfolioLedgers().concat([currentLedger()]);
+            derived.portfolioWorks = portfolioWorks().concat([currentWorks()]);
             derived.portfolio = (derived.portfolio || []).concat([projectSummary()]);
             render();
           }, { variant: 'ghost' }) : null,
           summaries.length ? button('Clear', function () {
-            derived.portfolio = null; derived.portfolioLedgers = null; render();
+            derived.portfolio = null; derived.portfolioLedgers = null; derived.portfolioWorks = null;
+            derived.portfolioFiles = null;
+            render();
           }, { variant: 'ghost' }) : null,
         ]),
         !summaries.length ? el('p.muted', 'Nothing loaded yet. You can also ' +
@@ -7341,6 +8063,7 @@
         !summaries.length ? button('Start from the open project', function () {
           derived.portfolio = [projectSummary()];
           derived.portfolioLedgers = [currentLedger()];
+          derived.portfolioWorks = [currentWorks()];
           render();
         }, { variant: 'ghost' }) : null,
       ]),
@@ -7447,6 +8170,8 @@
         }),
       ]),
     ]));
+
+    nodes.push(scorecardsCard(summaries));
 
     /* the files' ledgers of predictions and outcomes, pooled (PLAN.md step
      * 5.1): each point once, the drilled ones beside what was found */
@@ -7676,14 +8401,18 @@
     try {
       await S.withBusy(host, 'Building the calibration report…', async function () {
         var cfg = config();
-        var content = C.calibrationContent(pooled, localDate(), cfg);
+        var issue = issueFor('calibration', { files: derived.portfolioFiles || [] });
+        var content = C.calibrationContent(pooled, issue.issued_on, cfg);
         var figures = {};
         var list = calibrationFigureList(pooled, content, cfg);
         /* one at a time, so that no more than one figure's canvas is held */
         for (var i = 0; i < list.length; i++) figures[list[i].key] = await charts.toPng(list[i].draw());
-        await GWT.docx.calibrationReport({ style: cfg.style, content: content, figures: figures })
-          .save('Calibration_Report.docx');
-        S.toast('Saved Calibration_Report.docx', 'ok');
+        var builder = GWT.docx.calibrationReport({ style: cfg.style, content: content, figures: figures,
+          issue: issue });
+        /* saved first: the builder has no record until it has built the document */
+        var calibrationBytes = await builder.save('Calibration_Report.docx');
+        recordIssue(builder.record, 'Calibration_Report.docx', calibrationBytes);
+        S.toast(savedWords('Calibration_Report.docx', builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the calibration report: ' + e.message, 'error');
@@ -7699,6 +8428,71 @@
     var summaries = derived.portfolio || [];
     var ledgers = derived.portfolioLedgers || [];
     return summaries.map(function (_, i) { return ledgers[i] || null; });
+  }
+
+  /* likewise their works records (PLAN.md step 6.3), null for a file with none */
+  function portfolioWorks() {
+    var summaries = derived.portfolio || [];
+    var works = derived.portfolioWorks || [];
+    return summaries.map(function (_, i) { return works[i] || null; });
+  }
+
+  /* each project file on the Portfolio page as the contractor scorecards
+   * read it: [label, works record, ledger] */
+  function scorecardFiles(summaries) {
+    var ledgers = portfolioLedgers(), works = portfolioWorks();
+    return summaries.map(function (s, i) { return [C.portfolioSiteLabel(s), works[i], ledgers[i]]; });
+  }
+
+  /* The contractor scorecards over the files (PLAN.md step 6.3): the
+   * summary, the scorecards and the checks that failed on the page, and the
+   * whole report as a Word document. The Streamlit app shows the same. */
+  function scorecardsCard(summaries) {
+    var cfg = config();
+    var files = scorecardFiles(summaries);
+    var content = C.scorecardContent(files, localDate(), cfg);
+    /** @type {Array<Node|null>} */
+    var body = [el('p.muted', C.phrase('scorecards.page_lead'))];
+    content.summary.forEach(function (text) { body.push(el('p', text)); });
+    content.sections.forEach(function (section) {
+      if (section.key !== 'cards' && section.key !== 'checks') return;
+      section.tables.forEach(function (table) {
+        body.push(el('p.muted', table.caption));
+        body.push(S.table(table.header, table.rows));
+      });
+    });
+    body.push(el('div.btn-row', [
+      button(C.phrase('scorecards.page_build'), function (event) {
+        buildScorecards(files, event.target);
+      }, { title: C.phrase('scorecards.page_build_help') }),
+    ]));
+    return card(C.phrase('scorecards.page_heading'), body.filter(Boolean));
+  }
+
+  async function buildScorecards(files, node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    try {
+      await need(REPORT_BUNDLES);
+    } catch (e) {
+      S.toast('Could not build the contractor scorecards: ' + e.message, 'error');
+      return;
+    }
+    try {
+      await S.withBusy(host, 'Building the contractor scorecards…', async function () {
+        var cfg = config();
+        /* issued from the project files on the page (PLAN.md step 8.1) */
+        var issue = issueFor('scorecards', { files: derived.portfolioFiles || [] });
+        var builder = GWT.docx.scorecardReport({ style: cfg.style,
+          content: C.scorecardContent(files, issue.issued_on, cfg), issue: issue });
+        /* saved first: the builder has no record until it has built the document */
+        var scorecardBytes = await builder.save('Contractor_Scorecards.docx');
+        recordIssue(builder.record, 'Contractor_Scorecards.docx', scorecardBytes);
+        S.toast(savedWords('Contractor_Scorecards.docx', builder.record), 'ok');
+      });
+    } catch (e) {
+      S.toast('Could not build the contractor scorecards: ' + e.message, 'error');
+      console.error(e);
+    }
   }
 
   /* --- settings ------------------------------------------------------------- */
@@ -7829,10 +8623,16 @@
           button('Save project file', saveProject),
           button('Open project file', openProject, { variant: 'ghost' }),
           button('Reset everything', function () {
-            S.modal('Reset the workspace?', el('p',
+            /* the reports waiting on this phone (PLAN.md step 7.1) are in no
+             * project file, so saving the project does not keep them */
+            var queued = reportQueue().length, waiting = queued + heldReports().length;
+            var asked = S.modal('Reset the workspace?', [el('p',
               'This clears the site details, the uploaded sheets, every result ' +
               'and the saved copy in this browser. Save the project first if you ' +
-              'want to keep it.'), [
+              'want to keep it.'), waiting ? el('p.reset-reports', 'It also deletes the ' +
+              waiting + ' ' + S.plural(waiting, 'report') + ' from plates and by SMS ' +
+              'waiting on this phone, which no project file carries.' + (queued
+                ? ' Export the ones waiting on the Asset registry page first.' : '')) : null], [
               button('Reset', async function () {
                 await store.forget();
                 forgetApiKey();
@@ -7840,10 +8640,11 @@
                 Object.keys(derived).forEach(function (k) { derived[k] = null; });
                 forgetTerrain();
                 applyTheme(); renderChrome(); render();
+                /* closed through its own close(), which hands the keyboard
+                 * back to the page, and before the toast, which a dialog
+                 * still open over the page could keep from being heard */
+                asked.close();
                 S.toast('Workspace reset.', 'ok');
-                document.querySelectorAll('.modal-overlay').forEach(function (n) {
-                  n.parentNode.removeChild(n);
-                });
               }, { variant: 'danger' }),
             ]);
           }, { variant: 'ghost' }),
@@ -8122,7 +8923,115 @@
         responses: store.get('supervision.responses') || {},
         evidence: store.get('supervision.evidence') || {},
       },
+      /* the documents issued from the project, which the draft asset record
+       * carries (PLAN.md step 8.1) */
+      issued: store.get('issued') || [],
     };
+  }
+
+  /* --- documents issued (PLAN.md step 8.1) ---------------------------------
+   * Every document this app writes is sealed (gwt-docx.js). It is issued on
+   * this device's day, as an input: the engine never reads the clock. A
+   * document about the borehole is issued from every file the project holds
+   * and the photographs it embeds, each listed by its SHA-256; the others
+   * from the files they are drawn from (the project files pooled or in the
+   * register), or from none. Its issue record goes into the project, which
+   * saves it at the top of the project file, and, for a document about the
+   * borehole, into its asset record where one is stored; a record stored
+   * later starts from the project's, as the draft carries them. */
+  function issueToday() {
+    return localDate();
+  }
+
+  /* a photograph by the SHA-256 of the file as it arrived, which its
+   * provenance record holds; one attached before records existed, by the
+   * bytes the project keeps */
+  function photoEvidence(photo) {
+    var what = C.phraseTable('verification.evidence_kinds').photo;
+    var name = photo.name || photo.caption || photo.label || '';
+    var held = photo.provenance && photo.provenance.sha256;
+    if (typeof held === 'string' && /^[0-9a-f]{64}$/.test(held)) {
+      return { what: what, name: name, sha256: held };
+    }
+    return C.evidenceEntry(what, name, S.base64ToBytes(photo.dataUrl));
+  }
+
+  /* a project file pooled on the Portfolio page or read into the register */
+  function projectFileEvidence(name, text) {
+    return C.evidenceEntry(C.phraseTable('verification.evidence_kinds').project, name,
+      new TextEncoder().encode(text));
+  }
+
+  /* What a document of this kind is issued on and from: options.photos are
+   * the photographs it embeds, options.files more evidence entries. */
+  function issueFor(kind, options) {
+    var opts = options || {};
+    var kinds = C.phraseTable('verification.evidence_kinds');
+    var evidence = [];
+    if (C.BOREHOLE_KINDS.indexOf(kind) >= 0) {
+      var sources = store.get('sources') || {};
+      SOURCE_ROLES.forEach(function (role) {
+        var source = sources[role];
+        if (source && source.b64) {
+          evidence.push(C.evidenceEntry(kinds[role], source.name || role, S.base64ToBytes(source.b64)));
+        }
+      });
+    }
+    (opts.photos || []).forEach(function (photo) {
+      if (photo && photo.dataUrl) evidence.push(photoEvidence(photo));
+    });
+    return { issued_on: issueToday(), evidence: evidence.concat(opts.files || []),
+      calibration: config().calibration || null };
+  }
+
+  /* the photographs a report of this kind embeds, as buildReport embeds
+   * them: on the supervision record, those attached to the checklist's
+   * items, then the page's photo plate */
+  function reportPhotos(kind) {
+    /** @type {Array<*>} */
+    var photos = [];
+    if (kind === 'supervision') {
+      var evidence = store.get('supervision.evidence') || {};
+      C.loadChecklists().forEach(function (item) {
+        var photo = evidence[item.item_id];
+        if (photo && photo.dataUrl) photos.push(photo);
+      });
+    }
+    return photos.concat(GWT.imageSlot ? GWT.imageSlot.collect(store.get('photos.' + kind), kind) : []);
+  }
+
+  /* what a toast says of a document built: its code */
+  function codeWords(record) {
+    return record ? ' ' + C.phrase('verification.cover_code', { code: record.code }) + '.' : '';
+  }
+
+  function savedWords(filename, record) {
+    return 'Saved ' + filename + '.' + codeWords(record);
+  }
+
+  /* The documents built in this session, the latest under each file name,
+   * for the evidence bundle (PLAN.md step 8.3). Held in memory only: a
+   * project file does not carry them, so after a reload the documents
+   * issued earlier are added on the Handover page. */
+  /** @type {Object<string, {name: string, bytes: Uint8Array, kind: string, sha256: string}>} */
+  var issuedThisSession = Object.create(null);
+
+  /* the issue record of a document just built, kept, with the document
+   * itself for this session's bundle; returns the record */
+  function recordIssue(record, name, bytes) {
+    if (!record) return null;
+    if (name && bytes) {
+      issuedThisSession[name] = { name: name, bytes: new Uint8Array(bytes), kind: record.kind,
+        sha256: record.sha256 };
+    }
+    store.set('issued', C.cleanIssueRecords((store.get('issued') || []).concat([record])));
+    var stored = store.get('asset');
+    var asset = stored && C.BOREHOLE_KINDS.indexOf(record.kind) >= 0 ? C.assetFromDict(stored) : null;
+    if (asset) {
+      asset.documents = C.cleanIssueRecords((asset.documents || []).concat([record]));
+      store.set('asset', asset);
+    }
+    return record;
   }
 
   function reportReadiness(kind) {
@@ -8475,6 +9384,7 @@
           style: cfg.style, site: store.get('site'),
           signOff: signOffFor(kind),
           readiness: reportReadiness(kind),
+          issue: issueFor(kind, { photos: reportPhotos(kind) }),
         };
         /* every report opens on where it is; the three reports that argue
          * from the ground carry the aquifer and geology setting too */
@@ -8800,10 +9710,12 @@
         }
 
         var filename = S.slug(siteLabel()) + '_' + kind + '_report.docx';
-        await builder.save(filename);
+        /* saved first: the builder has no record until it has built the document */
+        var reportBytes = await builder.save(filename);
+        recordIssue(builder.record, filename, reportBytes);
         /* what the report predicts goes into the ledger as it is issued */
         if (kind === 'geophysical') recordSurveyPredictions();
-        S.toast('Saved ' + filename, 'ok');
+        S.toast(savedWords(filename, builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the report: ' + e.message, 'error');
@@ -8884,9 +9796,13 @@
             config: config(),
           });
         var context = { style: config().style, content: content, areaNote: areaNote(),
-          areaMaps: await areaFigures(true), figures: await deskStudyFigures(session) };
-        await GWT.docx.deskStudyReport(context).save('Desk_Study.docx');
-        S.toast('Saved Desk_Study.docx', 'ok');
+          areaMaps: await areaFigures(true), figures: await deskStudyFigures(session),
+          issue: issueFor('desk_study') };
+        var builder = GWT.docx.deskStudyReport(context);
+        /* saved first: the builder has no record until it has built the document */
+        var deskBytes = await builder.save('Desk_Study.docx');
+        recordIssue(builder.record, 'Desk_Study.docx', deskBytes);
+        S.toast(savedWords('Desk_Study.docx', builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the desk study: ' + e.message, 'error');
@@ -8895,6 +9811,167 @@
       charts.usePrintPalette(false);
     }
   }
+
+  /* --- verify a document (PLAN.md step 8.1) --------------------------------
+   * Whether the toolkit issued a .docx, whether it has changed since, whether
+   * it was certifiable or provisional, and which evidence it was issued from
+   * (C.verifyDocument), worked out here with no network. It is checked
+   * against the issue records of the project open here and of any project
+   * files added, either app's; with none, it says it cannot confirm the
+   * document was issued. Nothing on the page is saved with the project. */
+  var verifySession = { name: '', bytes: null, files: [], typed: '', bundleName: '',
+    bundle: /** @type {Uint8Array|null} */ (null) };
+
+  function verifyRecords() {
+    var held = C.issueRecordsOf({ issued: store.get('issued') || [], asset: store.get('asset') });
+    verifySession.files.forEach(function (file) { held = held.concat(file.records); });
+    var records = C.cleanIssueRecords(held);
+    /* none held and no file added: nothing was given to check against */
+    return records.length || verifySession.files.length ? records : null;
+  }
+
+  function verifyResultCard(report) {
+    var questions = C.phraseTable('verification.questions');
+    var tone = report.verdict === 'verified' ? 'ok' : (report.verdict === 'unconfirmed' ? 'warn' : 'bad');
+    var nodes = [el('div.callout.callout-' + tone, [
+      el('p', el('strong', report.lines[0])),
+      verifySession.name ? el('p.muted', verifySession.name) : null,
+    ])];
+    ['issued', 'changed', 'readiness', 'evidence'].forEach(function (key) {
+      if (!report.answers[key]) return;
+      nodes.push(el('h3', questions[key]));
+      nodes.push(el('p', report.answers[key]));
+    });
+    if (report.facts) {
+      nodes.push(el('p.muted', report.lines[report.lines.length - 1]));
+      if (report.facts.evidence.length) {
+        nodes.push(S.table(['Evidence file', 'What it is', 'SHA-256'],
+          report.facts.evidence.map(function (f) { return [f.name, f.what, el('code', f.sha256)]; })));
+      }
+    }
+    if (report.code) {
+      nodes.push(S.table(['', ' '], [['Document code', report.code],
+        ['Hash of its manifest (SHA-256)', el('code', report.sha256)]]));
+    }
+    return card('What can be said of it', nodes);
+  }
+
+  /* what can be said of an evidence bundle (PLAN.md step 8.3), file by file */
+  function bundleResultCard(report) {
+    var tone = report.verdict === 'verified' ? 'ok' : (report.verdict === 'unconfirmed' ? 'warn' : 'bad');
+    var states = C.phraseTable('bundle.file_states'), confirmed = C.phraseTable('bundle.confirmed_words');
+    var nodes = [el('div.callout.callout-' + tone, [
+      el('p', el('strong', report.lines[0])),
+      verifySession.bundleName ? el('p.muted', verifySession.bundleName) : null,
+    ])];
+    report.lines.slice(1).forEach(function (line) { nodes.push(el('p', line)); });
+    if (report.files.length) {
+      nodes.push(S.table(['File', 'What it is', 'State', 'What confirms it', 'Listed by'],
+        report.files.map(function (f) {
+          return [f.path, f.what, states[f.state], confirmed[f.confirmed], f.listed_by.join('; ')];
+        })));
+    }
+    if (report.sha256) nodes.push(el('p.muted', C.phrase('bundle.hash_line', { sha256: report.sha256 })));
+    return card('What can be said of the bundle', nodes);
+  }
+
+  PAGES.verify = function () {
+    var records = verifyRecords();
+    var nodes = [pageHead('Verify a document', C.phrase('verification.page_lead'))];
+    nodes.push(card('The document', [
+      el('p.muted', C.phrase('verification.document_lead')),
+      el('div.btn-row', [
+        button('Choose a document (.docx)', async function () {
+          var file = await S.pickFile('.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          if (!file) return;
+          try {
+            verifySession.bytes = new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(file)));
+            verifySession.name = file.name;
+          } catch (e) {
+            S.toast('Could not read the file: ' + e.message, 'error');
+            return;
+          }
+          render();
+        }),
+        verifySession.bytes ? button('Clear', function () {
+          verifySession.bytes = null;
+          verifySession.name = '';
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+    ]));
+    if (verifySession.bytes) nodes.push(verifyResultCard(C.verifyDocument(verifySession.bytes, records)));
+
+    nodes.push(card('Verify a bundle', [
+      el('p.muted', C.phrase('bundle.verify_lead')),
+      el('div.btn-row', [
+        button('Choose a bundle (.zip)', async function () {
+          var file = await S.pickFile('.zip,application/zip');
+          if (!file) return;
+          try {
+            verifySession.bundle = new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(file)));
+            verifySession.bundleName = file.name;
+          } catch (e) {
+            S.toast('Could not read the file: ' + e.message, 'error');
+            return;
+          }
+          render();
+        }),
+        verifySession.bundle ? button('Clear', function () {
+          verifySession.bundle = null;
+          verifySession.bundleName = '';
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+    ]));
+    if (verifySession.bundle) nodes.push(bundleResultCard(C.verifyEvidenceBundle(verifySession.bundle, records)));
+
+    var issued = C.cleanIssueRecords(store.get('issued') || []);
+    var readinessWords = C.phraseTable('verification.readiness_words');
+    nodes.push(card('Issue records', [
+      el('p', records ? C.phrase('verification.page_records', { n: records.length })
+        : C.phrase('verification.page_no_records')),
+      el('div.btn-row', [
+        button('Add project files', async function () {
+          var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
+          if (!list || !list.length) return;
+          var skipped = 0;
+          for (var i = 0; i < list.length; i++) {
+            try {
+              var text = await S.readFile(list[i], 'text');
+              var payload = /\.ya?ml$/i.test(list[i].name) ? S.parseYaml(text) : JSON.parse(text);
+              if (!payload || typeof payload !== 'object') throw new Error('not a project file');
+              verifySession.files.push({ name: list[i].name, records: C.issueRecordsOf(payload) });
+            } catch (e) { skipped += 1; }
+          }
+          if (skipped) S.toast(skipped + ' ' + S.plural(skipped, 'file') + ' could not be read.', 'warn');
+          render();
+        }),
+        verifySession.files.length ? button('Clear the files', function () {
+          verifySession.files = [];
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+      verifySession.files.length ? S.table(['Project file', 'Issue records'],
+        verifySession.files.map(function (f) { return [f.name, String(f.records.length)]; })) : null,
+      el('h3', 'Issued from this project'),
+      S.table(['Code', 'Document', 'Issued on', 'Readiness', 'SHA-256'], issued.map(function (r) {
+        return [r.code, r.title, r.issued_on, readinessWords[r.readiness], el('code', r.sha256.slice(0, 16) + '…')];
+      }), { emptyText: C.phrase('verification.none_issued') }),
+    ]));
+
+    var lookup = verifySession.typed ? C.lookupCode(verifySession.typed, records || []) : null;
+    nodes.push(card('Look up a code', [
+      el('p.muted', C.phrase('verification.lookup_lead')),
+      field('Document code', S.textInput(verifySession.typed, function (v) {
+        verifySession.typed = String(v).trim();
+        render();
+      }, { placeholder: '0A1B-2C3D-5' }), ''),
+      lookup ? el('div.callout.callout-' + (lookup.records.length ? 'ok' : 'warn'),
+        lookup.lines.map(function (line) { return el('p', line); })) : null,
+    ]));
+    return nodes;
+  };
 
   /* ------------------------------------------------------------------ render */
 
@@ -8908,7 +9985,7 @@
    * its status column, so the page and the report cannot word a result
    * differently. */
   var FIRST_SCREEN = { overview: true, guided: true, templates: true,
-    extract: true, settings: true, about: true };
+    extract: true, settings: true, about: true, verify: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
   /* A page that is a module of its own, fetched with what it draws with: the
    * pumping and VES co-pilots each draw one figure and no map, and the
@@ -8917,6 +9994,9 @@
     pumpcopilot: ['charts', 'pumpCopilot'],
     vescopilot: ['charts', 'vesCopilot'],
     drillcopilot: ['imageSlot', 'drillCopilot'],
+    /* the page a plate's QR code opens on a phone (PLAN.md step 7.1): a
+     * photograph slot and nothing else, so it draws without the maps */
+    report: ['imageSlot'],
   };
 
   function bundlesFor(key) {
@@ -9175,9 +10255,7 @@
     registerServiceWorker();
     watchInstallPrompt();
 
-    $('#nav-toggle').addEventListener('click', function () {
-      $('#app-nav').classList.toggle('open');
-    });
+    watchNavToggle();
 
     if (Object.keys(store.get('sources') || {}).length) {
       /* the mirrored session carries its inversion cache, so a reload
@@ -9194,7 +10272,7 @@
     inversionsSettled: inversionsSettled, loadProject: loadProject,
     reanalyseTest: reanalyseTest, cancelWork: cancelWork, working: working,
     blankState: blankState, PAGES: PAGES, buildReport: buildReport, buildDeskStudy: buildDeskStudy,
-    buildCalibration: buildCalibration,
+    buildCalibration: buildCalibration, buildScorecards: buildScorecards, currentWorks: currentWorks,
     siteLatLon: siteLatLon, utmToLatLon: utmToLatLon,
     templates: TEMPLATE_SPECS, recomputeState: recomputeState,
     loadSample: loadSample, uploadZone: uploadZone,
@@ -9211,6 +10289,10 @@
     hashFor: hashFor, routeFrom: routeFrom,
     sampleRanges: sampleRanges, rangeFor: rangeFor, surveyOdds: surveyOdds,
     costSpreads: costSpreads, surveyMeasurements: surveyMeasurements,
+    /* documents issued and verified (PLAN.md step 8.1) */
+    issueFor: issueFor, recordIssue: recordIssue, verifySession: verifySession,
+    /* the evidence bundle (PLAN.md step 8.3) */
+    bundleSession: bundleSession, bundleDocuments: bundleDocuments, evidenceBundle: evidenceBundle,
     /* the Topography and terrain card's files, read and analysis */
     terrainSession: function () { return terrainSession; },
   };

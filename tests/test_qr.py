@@ -206,3 +206,39 @@ def test_the_png_is_a_png_and_is_the_same_bytes_every_time():
                      (code.size - 1, code.size - 1)):
         pixel = raw[((row + 4) * 4) * stride + 1 + (col + 4) * 4]
         assert (pixel == 0) == code.modules[row][col], (row, col)
+
+
+def test_a_stored_png_is_the_same_image_in_bytes_no_zlib_build_chooses():
+    """The symbol of a document's code is hashed into its manifest (PLAN.md
+    step 8.1), so it is written with its pixels in stored DEFLATE blocks:
+    bytes the format fixes, where zlib and zlib-ng compress differently.
+    parity.mjs holds them to the browser's qrPng byte for byte."""
+    code = qr.encode("DOCUMENT 0A1B-2C3D-5", ecc="H")
+    stored = qr.to_png(code, scale=8, stored=True)
+    packed = qr.to_png(code, scale=8)
+
+    def idat(png):
+        out, at = b"", 8
+        while at < len(png):
+            length = int.from_bytes(png[at:at + 4], "big")
+            if png[at + 4:at + 8] == b"IDAT":
+                out += png[at + 8:at + 8 + length]
+            at += 12 + length
+        return out
+
+    raw = zlib.decompress(idat(packed))
+    assert stored[:33] == packed[:33]  # the signature and the same header
+    assert zlib.decompress(idat(stored)) == raw
+    # stored blocks: a header, then each block's flag, length and its
+    # complement and the bytes as they are, then the Adler-32
+    stream, at, rebuilt = idat(stored), 2, b""
+    assert stream[:2] == b"\x78\x01"
+    while True:
+        final, size, check = stream[at], int.from_bytes(stream[at + 1:at + 3], "little"), \
+            int.from_bytes(stream[at + 3:at + 5], "little")
+        assert final in (0, 1) and size ^ check == 0xFFFF and size <= 65535
+        rebuilt += stream[at + 5:at + 5 + size]
+        at += 5 + size
+        if final:
+            break
+    assert rebuilt == raw and stream[at:] == (zlib.adler32(raw) & 0xFFFFFFFF).to_bytes(4, "big")

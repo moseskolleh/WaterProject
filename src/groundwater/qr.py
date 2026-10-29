@@ -526,12 +526,30 @@ def _png_chunk(kind: bytes, payload: bytes) -> bytes:
             + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF))
 
 
-def to_png(code: QRCode, *, scale: int = 8, border: int = 4) -> bytes:
+def _stored_zlib(raw: bytes) -> bytes:
+    """``raw`` as a zlib stream of stored DEFLATE blocks, 65,535 bytes at
+    most to a block: the bytes are fixed by the format alone, where what a
+    compressor writes is its own (zlib and zlib-ng differ at one level), and
+    they are the bytes ``qrPng`` in gwt-core.js writes."""
+    out = bytearray(b"\x78\x01")
+    blocks = max(1, -(-len(raw) // 65535))
+    for b in range(blocks):
+        chunk = raw[b * 65535:(b + 1) * 65535]
+        out.append(1 if b == blocks - 1 else 0)
+        out += struct.pack("<HH", len(chunk), len(chunk) ^ 0xFFFF) + chunk
+    return bytes(out + struct.pack(">I", zlib.adler32(raw) & 0xFFFFFFFF))
+
+
+def to_png(code: QRCode, *, scale: int = 8, border: int = 4, stored: bool = False) -> bytes:
     """The symbol as a greyscale PNG.
 
     Written here rather than through matplotlib so the bytes are identical
     on every machine: a report that changes because a plotting backend
-    changed is a report nobody can diff.
+    changed is a report nobody can diff. ``stored`` leaves the pixels
+    uncompressed (the .docx the symbol goes into compresses them), so the
+    bytes do not depend on the zlib build either, and are the browser's
+    (``qrPng``): the symbol of a document's code is hashed into its manifest
+    (PLAN.md step 8.1).
     """
     size = (code.size + 2 * border) * scale
     raw = bytearray()
@@ -546,6 +564,6 @@ def to_png(code: QRCode, *, scale: int = 8, border: int = 4) -> bytes:
     return (
         b"\x89PNG\r\n\x1a\n"
         + _png_chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 0, 0, 0, 0))
-        + _png_chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + _png_chunk(b"IDAT", _stored_zlib(bytes(raw)) if stored else zlib.compress(bytes(raw), 9))
         + _png_chunk(b"IEND", b"")
     )

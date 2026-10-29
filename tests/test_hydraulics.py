@@ -52,7 +52,8 @@ def test_recovery_method():
 def _handpump_test(T, q=0.8, offset=0.3):
     """A day's test at a handpump rate, read to the centimetre, with 0.3 m of
     well loss, and its recovery: 2.303 Q / (4 pi T) is 1.5 cm a log cycle at
-    T = 300 m2/day, under the 2 cm Cooper-Jacob asks of its window."""
+    T = 300 m2/day, which Cooper-Jacob's window used to be refused for, under
+    a fixed 2 cm."""
     t = np.array([1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360,
                   480, 720, 960, 1200, 1440], float)
 
@@ -77,7 +78,10 @@ def test_a_slow_but_readable_drawdown_still_gives_theis_and_recovery():
     assert abs(theis.transmissivity_m2_per_day - 300) / 300 < 0.1
     recovery = theis_recovery(t_rec, s_rec, 1440.0, 0.8)
     assert abs(recovery.transmissivity_m2_per_day - 300) / 300 < 0.1
-    with pytest.raises(ValueError, match="is flat"):
+    # Cooper-Jacob's window, 180 to 1440 minutes, rises 1.4 cm, which a
+    # dipper reads; read to the centimetre the line explains too little of
+    # it. It was refused as "flat" for a slope under 2 cm a log cycle.
+    with pytest.raises(ValueError, match="explains too little of the window 180-1440"):
         cooper_jacob(t, s, 0.8)
 
 
@@ -223,7 +227,8 @@ def test_a_stabilised_tail_is_refused_by_cooper_jacob_and_flagged():
     flat = s.copy()
     held = t_min > 45
     flat[held] = s[t_min == 45][0] + 0.002 * np.log10(t_min[held] / 45)
-    with pytest.raises(ValueError, match="flat"):
+    with pytest.raises(ValueError, match="window 45-360 min the drawdown rises by less "
+                                         "than 0.01 m"):
         cooper_jacob(t_min, flat, 5.0)
     analysis = analyse_pumping_test(_constant_test(t_min, flat))
     codes = {f.code for f in analysis.flags}
@@ -561,6 +566,10 @@ def test_levels_below_the_pump_make_the_yield_indicative_and_set_no_intake(
     # the envelope's corners did not bracket this yield, and 0.0067 m3/h was
     # printed beside a range that began at 0.0068
     assert yr.safe_yield_low_m3_per_h <= yr.safe_yield_m3_per_h <= yr.safe_yield_high_m3_per_h
+    # and 0.0067 was not a yield at all: it was the yield search's floor of
+    # 0.01 m3/h over the safety factor; the projection allows 0.0062 m3/h
+    assert yr.safe_yield_m3_per_h == pytest.approx(0.0041656, rel=1e-4)
+    assert yr.long_term_yield_m3_per_h == pytest.approx(1.5 * 0.0041656, rel=1e-4)
 
     # a clean long test is established; the same test with one such flag is not
     t_min, s = _theis_series()
@@ -596,18 +605,20 @@ def test_the_yield_range_leaves_out_the_fits_the_analysis_rejected(sample_data):
     # one-method factor of 1.5 around it, not the spread to the recovery
     assert f"{adopted / 1.5:.1f}-{adopted * 1.5:.1f} m2/day" in yr.envelope_basis
     assert "spread between the fitted methods" not in yr.envelope_basis
-    assert yr.yield_range_text == "0.39 m3/h (0.22 to 0.71)"
+    assert yr.yield_range_text == "0.39 m3/h (range over the assumptions, 0.22 to 0.71)"
 
 
-def _step_test(times_by_step, rates=(1.5, 2.2, 3.0), step_length=None):
-    """A step test in an ideal well, each step's level rising with log time."""
+def _step_test(times_by_step, rates=(1.5, 2.2, 3.0), step_length=None, levels=None):
+    """A step test in an ideal well, each step's level rising with log time,
+    or at the ``levels`` given for each step."""
     from groundwater.models import PumpingStep, PumpingTest, SiteMetadata
 
     swl = 10.0
     steps = [
         PumpingStep(step_number=n, discharge_m3_per_h=q,
                     time_min=np.asarray(times, float),
-                    water_level_m=swl + q * (1.0 + 0.3 * np.log10(np.asarray(times, float))),
+                    water_level_m=(np.asarray(levels[n - 1], float) if levels is not None
+                                   else swl + q * (1.0 + 0.3 * np.log10(np.asarray(times, float)))),
                     label=f"Step {n}")
         for n, (times, q) in enumerate(zip(times_by_step, rates, strict=True), start=1)
     ]
@@ -717,3 +728,174 @@ def test_a_negative_recovery_intercept_is_a_share_of_a_positive_drawdown(sample_
     flag = next(f for f in analysis.flags if f.code == "recovery_intercept")
     assert "of the -" not in flag.message
     assert f"of the {abs(rec.intercept_m) / rec.intercept_fraction:.1f} m the recovery" in flag.message
+
+
+# --- the audit of the pumping test reading and analysis -----------------------
+
+#: A day's readings as a crew takes them, hourly towards the end.
+DAY_MIN = np.array([1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360,
+                    480, 600, 720, 840, 960, 1080, 1200, 1320, 1380, 1440], float)
+
+
+def _theis_drawdown(t_min, T, q, S=1e-3, r=0.1):
+    u = r * r * S / (4 * T * (np.asarray(t_min, float) / 1440.0))
+    return q * 24 / (4 * np.pi * T) * exp1(u)
+
+
+def test_a_drawdown_still_rising_at_its_full_slope_has_not_stabilised():
+    """A 24-hour test at 2 m3/h in an aquifer of 10 m2/day, its last three
+    readings an hour apart and within 5 cm: the analysis called the level
+    stabilised by a recharge boundary while the drawdown still rose 0.88 m a
+    log cycle, and its own derivative showed radial flow."""
+    s = np.round(_theis_drawdown(DAY_MIN, 10.0, 2.0), 2)
+    assert s[-1] - s[-3] <= 0.05          # what the old rule looked at
+    analysis = analyse_pumping_test(_constant_test(DAY_MIN, s, q=2.0, pump=50.0))
+    assert analysis.stabilised_level_m is None
+    assert "drawdown_stabilised" not in {f.code for f in analysis.flags}
+    assert [r.key for r in analysis.diagnostic.regimes] == ["radial_flow"]
+    assert analysis.transmissivity_source == "cooper_jacob"
+
+
+def test_a_tail_that_flattens_after_rising_is_stabilised_and_not_read_by_cooper_jacob():
+    """Theis to two hours, then 1.5 cm a log cycle. The window a dipper can
+    read is no longer refused for its slope, but its slope is a level that
+    has stopped growing, and read as the aquifer's it gave about 870 m2/day
+    for an aquifer of 20."""
+    s = _theis_drawdown(DAY_MIN, 20.0, 3.0)
+    late = DAY_MIN > 120
+    s[late] = s[DAY_MIN == 120][0] + 0.015 * np.log10(DAY_MIN[late] / 120)
+    s = np.round(s, 3)
+    cj = cooper_jacob(DAY_MIN, s, 3.0)          # readable, so not refused here
+    assert cj.transmissivity_m2_per_day > 500
+    analysis = analyse_pumping_test(_constant_test(DAY_MIN, s, q=3.0, pump=50.0))
+    assert analysis.stabilised_level_m == pytest.approx(10.0 + float(np.mean(s[DAY_MIN >= 480])))
+    flag = next(f for f in analysis.flags if f.code == "drawdown_stabilised")
+    assert flag.message.startswith(
+        f"The pumped water level held at about {analysis.stabilised_level_m:.2f} m from "
+        "480 to 1440 minutes: its fitted line moved by less than 0.01 m over those "
+        "minutes, having risen ")
+    assert analysis.invalid_fits["cooper_jacob"] == (
+        "its fitted window 180-1440 minutes takes in the level that held from 480 "
+        "minutes, where the drawdown had stopped growing, so its slope is not the "
+        "aquifer's")
+    assert analysis.transmissivity_source != "cooper_jacob"
+
+    # A step test's last step is judged on its own clock: on the test's, its
+    # readings from 241 to 480 minutes are under a third of a log cycle.
+    own = np.array([1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240], float)
+    first = np.round(_theis_drawdown(own, 20.0, 1.5), 3)
+    rise = _theis_drawdown(own, 20.0, 1.5)
+    rise[own > 60] = rise[own == 60][0] + 0.002 * np.log10(own[own > 60] / 60)
+    second = np.round(first[-1] + rise, 3)
+    steps = analyse_pumping_test(_step_test([own, own + 240], rates=(1.5, 3.0),
+                                            levels=[10.0 + first, 10.0 + second]))
+    flag = next(f for f in steps.flags if f.code == "drawdown_stabilised")
+    assert " from 90 to 240 minutes into step 2: " in flag.message
+    # the drawdown fits are on the first step, which did not flatten
+    assert "cooper_jacob" not in steps.invalid_fits
+
+
+def test_cooper_jacob_reads_a_straight_handpump_line_a_dipper_can_read():
+    """1 m3/h in an aquifer of 250 m2/day, levels to the millimetre: 1.8 cm a
+    log cycle, a 1.7 cm rise across the window. Cooper-Jacob refused it for a
+    slope under a fixed 2 cm and said the drawdown had stabilised; the Theis
+    fit on the same readings gave 249."""
+    t = np.array([1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100,
+                  120, 150, 180, 210, 240, 300, 360, 420, 480], float)
+    s = np.round(0.6 + _theis_drawdown(t, 250.0, 1.0), 3)
+    cj = cooper_jacob(t, s, 1.0)
+    assert cj.fit_window_min == (50.0, 480.0)
+    assert abs(cj.transmissivity_m2_per_day - 250) / 250 < 0.01
+    analysis = analyse_pumping_test(_constant_test(t, s, q=1.0, pump=50.0))
+    assert analysis.transmissivity_source == "cooper_jacob"
+    assert analysis.stabilised_level_m is None
+    assert analysis.yield_recommendation.confidence == "established"
+    # a window that does not move by what a dipper reads is still refused
+    with pytest.raises(ValueError, match=r"^Across the fitted window 50-480 min the "
+                                         r"drawdown rises by less than 0\.01 m"):
+        cooper_jacob(t, np.round(0.6 + _theis_drawdown(t, 20000.0, 1.0), 3), 1.0)
+
+
+def test_the_recovery_is_read_against_the_rate_the_pump_stopped_at():
+    """A step test with its last rate blank read its recovery against step
+    3's rate over the whole test, and that transmissivity was adopted ahead
+    of the drawdown fits at established confidence."""
+    t = np.arange(1, 101, dtype=float)
+    times = [t, t + 100, t + 200, t + 300]
+    rates = (1.0, 2.0, 3.0, 4.0)
+    whole = analyse_pumping_test(_step_test(times, rates=rates, step_length=100.0))
+    assert whole.recovery is not None
+    blank = _step_test(times, rates=rates, step_length=100.0)
+    blank.steps[-1].discharge_m3_per_h = None
+    analysis = analyse_pumping_test(blank)
+    assert analysis.recovery is None
+    assert analysis.transmissivity_source != "recovery"
+    flag = next(f for f in analysis.flags if f.code == "recovery_rate_missing")
+    assert flag.message.startswith("The rate pumped when the pump stopped, step 4's, "
+                                   "is not recorded, so the recovery is not analysed")
+
+
+def test_a_blank_step_length_projects_from_the_steps_own_length():
+    """With the length of each step left blank the yield was projected from
+    the whole test's duration, four steps of it, while the short-test check
+    read the first step's own length."""
+    t = np.array([1, 2, 3, 5, 10, 20, 30, 45, 60, 80, 100], float)
+    times = [t, t + 100, t + 200, t + 300]
+    rates = (1.0, 2.0, 3.0, 4.0)
+    stated = analyse_pumping_test(_step_test(times, rates=rates, step_length=100.0))
+    blank = analyse_pumping_test(_step_test(times, rates=rates))
+    assert blank.test.step_length_min is None and blank.test.pumping_duration_min == 400
+    assert blank.step_test is not None
+    assert blank.yield_recommendation.long_term_yield_m3_per_h == pytest.approx(
+        stated.yield_recommendation.long_term_yield_m3_per_h, rel=1e-12)
+
+
+def test_a_yield_under_a_hundredth_of_a_cubic_metre_an_hour_is_its_own_root():
+    """The bisection began at 0.01 m3/h and never checked the root lay above
+    it, so any lower yield came back as exactly 0.01, safe 0.0067."""
+    import math
+
+    t_min, s = _theis_series()
+    # 1 m between the static level and the reserves: 0.7 m to spend
+    test = _constant_test(t_min, s, pump=16.0)
+    rec = recommend_yield(test, 0.2, None)
+    log_term = math.log10(2.25 * 0.2 * 365.0 / (0.1**2 * 1e-3))
+    root = 0.7 / (2.303 * 24.0 / (4 * math.pi * 0.2) * log_term)
+    assert rec.usable_drawdown_m == pytest.approx(0.7)
+    assert root < 0.005
+    assert rec.long_term_yield_m3_per_h == pytest.approx(root, rel=1e-9)
+    assert rec.safe_yield_m3_per_h == pytest.approx(root / 1.5, rel=1e-9)
+
+
+def test_the_casing_the_sheet_records_sets_the_casing_storage(sample_data):
+    """Dr Timbo with the 8 inch casing and 2 inch riser a co-pilot writes on
+    the sheet: no reader took them, and the casing-storage period came from
+    the configured 5 inch casing, 117 minutes where the sheet's give 300."""
+    from groundwater.hydraulics.analysis import sheet_config
+    from groundwater.hydraulics.spread import casing_radius_m
+
+    configured = analyse_pumping_test(_dr_timbo(sample_data))
+    test = _dr_timbo(sample_data)
+    test.casing_diameter_in, test.riser_diameter_in = 8.0, 2.0
+    analysis = analyse_pumping_test(test)
+    assert configured.casing_storage_min == pytest.approx(117.38, abs=0.01)
+    assert analysis.casing_storage_min == pytest.approx(
+        configured.casing_storage_min * (8**2 - 2**2) / (5**2 - 1.25**2))
+    assert analysis.casing_storage_min == pytest.approx(300.49, abs=0.01)
+    assert (analysis.casing_diameter_in, analysis.riser_diameter_in) == (8.0, 2.0)
+    casing = next(f for f in analysis.flags if f.code == "casing_storage")
+    assert casing.message.startswith("With a 8 inch casing")
+    # the large-diameter fit takes the sheet's casing too; a sheet that
+    # records none keeps the configuration's
+    assert casing_radius_m(sheet_config(test)) == pytest.approx(
+        np.sqrt((8 * 0.0254) ** 2 - (2 * 0.0254) ** 2) / 2)
+    assert configured.papadopulos_cooper.casing_radius_m == pytest.approx(
+        casing_radius_m(PumpingConfig()))
+    assert sheet_config(_dr_timbo(sample_data)) == PumpingConfig()
+    # one diameter on the sheet is read with the configuration's other, unless
+    # the pair would leave no water between casing and riser
+    test.riser_diameter_in = None
+    assert (sheet_config(test).casing_diameter_in, sheet_config(test).riser_diameter_in) == (
+        8.0, PumpingConfig().riser_diameter_in)
+    test.casing_diameter_in = 1.0
+    assert sheet_config(test) == PumpingConfig()

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Config
+from ..verification import Issue
 from ..decisions import cost_decision
 from ..costing.distribution import (
     CostDistribution,
@@ -104,6 +105,7 @@ def build_cost_report(
     inputs: CostReportInputs,
     out_path: str | Path,
     config: Config | None = None,
+    issue: Issue | None = None,
 ) -> Path:
     config = config or Config()
     estimate = inputs.estimate
@@ -113,6 +115,7 @@ def build_cost_report(
     rb = ReportBuilder(
         config.style,
         title=f"Cost Estimate - {site.community or 'Borehole'}",
+        kind="costing", issue=issue, config=config,
     )
     rb.cover(
         title_lines=["BOREHOLE COST ESTIMATE"],

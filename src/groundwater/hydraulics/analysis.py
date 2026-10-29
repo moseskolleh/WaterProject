@@ -32,7 +32,8 @@ from scipy.optimize import curve_fit
 from scipy.special import exp1
 
 from ..config import PumpingConfig
-from ..models import DataFlag, PumpingTest, step_durations_min
+from ..models import DataFlag, PumpingTest, step_durations_min, step_offsets_min
+from ..text import phrase
 from ..utils import plural, sum_in_order
 from .spread import (
     Diagnostic,
@@ -232,19 +233,27 @@ class YieldRecommendation:
 
     @property
     def yield_range_text(self) -> str:
-        """"2.4 m3/h (1.8 to 3.1)" - never a bare number for an assumed one."""
+        """"2.4 m3/h (range over the assumptions, 1.8 to 3.1)".
+
+        Never a bare number for an assumed one, and never a bare range
+        either: the reports print the bootstrap's P10 to P90 band on the same
+        yield in their decision lines (PLAN.md step 3.6), and the yield
+        tables and the readiness gate printed this one, the assumption
+        envelope, as "(1.8 to 3.1)" with nothing to tell the two apart.
+        """
         if self.safe_yield_m3_per_h is None:
             return "pending"
-        text = f"{self.safe_yield_m3_per_h:.2g} m3/h"
+        value = f"{self.safe_yield_m3_per_h:.2g}"
         if (
-            self.safe_yield_low_m3_per_h is not None
-            and self.safe_yield_high_m3_per_h is not None
+            self.safe_yield_low_m3_per_h is None
+            or self.safe_yield_high_m3_per_h is None
         ):
-            text += (
-                f" ({self.safe_yield_low_m3_per_h:.2g} to "
-                f"{self.safe_yield_high_m3_per_h:.2g})"
-            )
-        return text
+            return f"{value} m3/h"
+        return phrase(
+            "decision.yield_envelope", value=value,
+            low=f"{self.safe_yield_low_m3_per_h:.2g}",
+            high=f"{self.safe_yield_high_m3_per_h:.2g}",
+        )
 
 
 @dataclass
@@ -276,6 +285,12 @@ class PumpingTestAnalysis:
     # the casing and riser diameters and the specific capacity. None when
     # there is no specific capacity to compute it from.
     casing_storage_min: float | None = None
+    # The casing and riser diameters, in inches, the analysis took: the ones
+    # the field sheet records, else the configuration's (sheet_config).
+    # analyse_pumping_test always sets them; None only on an analysis built
+    # by hand, which the report reads with the configuration's casing.
+    casing_diameter_in: float | None = None
+    riser_diameter_in: float | None = None
     # The Papadopulos-Cooper large-diameter fit to every reading of the first
     # step, casing storage included. It is not one of fits(): it is adopted
     # only where every one of those is disqualified, so a test with a fit
@@ -473,17 +488,21 @@ def cooper_jacob(
         raise ValueError(
             "Drawdown does not increase with log time; Cooper-Jacob does not apply"
         )
-    # T is inversely proportional to the slope, so a tail that has flattened
-    # to within reading resolution gave thousands of m2/day with a straight
-    # face; a line that does not explain the window is no better.
-    if slope < config.cooper_jacob_min_slope_m:
-        raise ValueError(
-            f"The fitted window {fit_window_min[0]:g}-{fit_window_min[1]:g} min "
-            f"is flat ({max(slope, 0.0):.3f} m per log cycle, under "
-            f"{config.cooper_jacob_min_slope_m:g} m): the drawdown has stabilised "
-            "or the slope is below reading resolution, so Cooper-Jacob does not "
-            "apply"
-        )
+    # T is inversely proportional to the slope, so a window whose drawdown
+    # moves by less than a dipper reads gave thousands of m2/day with a
+    # straight face; a line that does not explain the window is no better.
+    # The test is the one the Theis and recovery fits apply, the rise across
+    # the readings. It was a fixed 0.02 m per log cycle, which also refused a
+    # straight, readable line from a handpump in an aquifer of a few hundred
+    # m2/day: 1.8 cm a log cycle, a 1.7 cm rise across its window, and the
+    # refusal said the drawdown had stabilised. A window on a tail that has
+    # flattened after rising is judged in analyse_pumping_test, against the
+    # slope before it (stabilised_tail).
+    log_window = np.log10(t[window])
+    if slope * float(log_window.max() - log_window.min()) < READING_RESOLUTION_M:
+        raise ValueError(phrase(
+            "pumping.cj_unreadable", start=fit_window_min[0], end=fit_window_min[1],
+            resolution=READING_RESOLUTION_M))
     if r2 < config.cooper_jacob_min_r2:
         raise ValueError(
             f"The straight line explains too little of the window "
@@ -559,11 +578,11 @@ def theis_fit(
     towards zero, and the transmissivity reported is wherever the optimiser
     stopped. That was a storativity of 1e-316 beside thousands of m2/day
     adopted at established confidence, and a different number in each
-    engine. The test is the reading resolution across the whole record, not
-    the 0.02 m per log cycle ``cooper_jacob`` asks of its late window: a
-    handpump rate in an aquifer of a few hundred m2/day draws down 1 to 2 cm
-    a log cycle, and over three log cycles of readings the curve still
-    returns T to within a few percent. A fit that drives S to the floor is
+    engine. The test is the reading resolution across the whole record, as
+    ``cooper_jacob`` asks of its late window: a handpump rate in an aquifer
+    of a few hundred m2/day draws down 1 to 2 cm a log cycle, and over three
+    log cycles of readings the curve still returns T to within a few
+    percent. A fit that drives S to the floor is
     refused for the same reason as a flat record: the drawdown is nearly all
     an offset the curve does not model, such as well loss.
     """
@@ -748,6 +767,85 @@ def casing_storage_min(
     if area <= 0:
         return None
     return CASING_STORAGE_COEFFICIENT * area / specific_capacity_m3h_per_m
+
+
+def sheet_config(test: PumpingTest, config: PumpingConfig | None = None) -> PumpingConfig:
+    """``config`` with the casing and riser the field sheet records.
+
+    The casing-storage period, the Papadopulos-Cooper casing radius and the
+    sentences that name the casing all read the diameters from the
+    configuration. A pumping test co-pilot writes the borehole's own on the
+    sheet, and no reader took them: a downloaded sheet analysed in another
+    project used that project's casing, and an 8 inch casing with a 2 inch
+    riser on the sheet gave a casing-storage period of 117 minutes where
+    the sheet's own diameters give 300.
+
+    A sheet that records one of the two is read with the configuration's
+    other; where that pair leaves no water between casing and riser (a 1
+    inch casing on the sheet beside the configured 1.25 inch riser) the
+    configuration's pair is kept, since it would leave no casing storage
+    to check any fit against.
+    """
+    config = config or PumpingConfig()
+    recorded = {
+        key: value for key in ("casing_diameter_in", "riser_diameter_in")
+        if (value := getattr(test, key, None)) is not None
+    }
+    if not recorded:
+        return config
+    merged = replace(config, **recorded)
+    return merged if merged.casing_diameter_in > merged.riser_diameter_in else config
+
+
+def stabilised_tail(
+    time_min: np.ndarray, level_m: np.ndarray, config: PumpingConfig | None = None
+) -> tuple[float, float, float, float] | None:
+    """``(start, end, level, early_slope)`` where the drawdown has stopped growing.
+
+    The readings of the last ``stabilised_span_log10`` log cycles are the
+    tail, and the log cycle before them is what the tail is held against.
+    The level has stabilised when the tail's fitted line moves by less than
+    a dipper reads across it, and its slope is under
+    ``stabilised_slope_ratio`` of the slope before it, which rose by at
+    least a dipper's reading. ``start`` and ``end`` are the tail's first and
+    last minutes, ``level`` the mean level over it and ``early_slope`` the
+    slope before it, in metres a log cycle. None when the level has not
+    stabilised or there are under three readings in either stretch.
+
+    It was judged on the last three readings, within 5 cm of each other. A
+    24-hour test read hourly at its end spans 0.04 log cycles over those
+    three, so an ordinary Theis drawdown at 2 m3/h in an aquifer of 10
+    m2/day, rising 0.88 m a log cycle, held "within 5 cm" and was reported
+    as stabilised by a recharge boundary, beside a derivative that showed
+    radial flow. A straight line that rises less than a dipper reads is not
+    a stabilised one either: a slope that keeps its size has not flattened.
+    """
+    config = config or PumpingConfig()
+    t = np.asarray(time_min, dtype=float)
+    wl = np.asarray(level_m, dtype=float)
+    keep = np.isfinite(t) & np.isfinite(wl) & (t > 0)
+    t, wl = t[keep], wl[keep]
+    if len(t) < 6:
+        return None
+    end = float(t.max())
+    cut = end / pow10(config.stabilised_span_log10)
+    tail = t >= cut
+    before = (t >= cut / 10.0) & (t < cut)
+    if tail.sum() < 3 or before.sum() < 3:
+        return None
+    log_t = np.log10(t)
+    late = _line_fit(log_t[tail], wl[tail])[0]
+    early = _line_fit(log_t[before], wl[before])[0]
+    late_span = float(log_t[tail].max() - log_t[tail].min())
+    early_span = float(log_t[before].max() - log_t[before].min())
+    if abs(late) * late_span >= READING_RESOLUTION_M:
+        return None
+    if early * early_span < READING_RESOLUTION_M:
+        return None
+    if late >= config.stabilised_slope_ratio * early:
+        return None
+    held = wl[tail]
+    return float(t[tail].min()), end, sum_in_order(held) / len(held), float(early)
 
 
 def deepest_pumping_level(test: PumpingTest) -> float | None:
@@ -985,8 +1083,11 @@ def recommend_yield(
         if swl is None:
             missing.append("static water level is missing")
         if transmissivity is None:
+            # a sheet with no pumping readings has no step to carry a rate,
+            # and was said to be missing its discharge beside the one it has
             missing.append(
-                "discharge is missing on the field sheet"
+                phrase("pumping.no_readings_pending") if not test.steps
+                else "discharge is missing on the field sheet"
                 if not any(s.discharge_m3_per_h for s in test.steps)
                 else no_transmissivity_reason
                 or "transmissivity could not be fitted from the readings"
@@ -1009,13 +1110,20 @@ def recommend_yield(
         2.25 * transmissivity * t_design / (effective_radius_m**2 * assumed_storativity)
     )
 
+    # B Q + C Q^2 is the drawdown at the end of a step, so the projection
+    # from a step test runs from the length of a step: the one the sheet
+    # states, or the first step's own last reading, as the short-test check
+    # reads it. A blank length used to project from the whole test's
+    # duration instead, four steps' worth on a four-step test.
+    t_step_min = (_pumped_duration_min(test)[0] or test.pumping_duration_min
+                  or 180.0)
+
     def projected_drawdown(q_m3_per_h: float) -> float:
         q_day = q_m3_per_h * 24.0
         s = 2.303 * q_day / (4.0 * math.pi * transmissivity) * log_term
         if step_result is not None:
             # B Q + C Q^2 reflects drawdown at the step duration; add the
             # Cooper-Jacob time projection from step length to design period
-            t_step_min = test.step_length_min or test.pumping_duration_min or 180.0
             s = step_result.drawdown_at(q_day)
             s += (
                 2.303
@@ -1025,8 +1133,12 @@ def recommend_yield(
             )
         return s
 
-    # bisect Q so projected drawdown equals the usable drawdown
-    q_lo, q_hi = 0.01, 200.0
+    # Bisect Q so projected drawdown equals the usable drawdown. The bracket
+    # starts at nothing, which projects no drawdown: it started at 0.01 m3/h
+    # and nothing checked that the root lay above it, so any yield below
+    # that came back as 0.01 whatever the transmissivity, up to eight times
+    # what the projection allows. Eighty halvings of 200 resolve 2e-22 m3/h.
+    q_lo, q_hi = 0.0, 200.0
     if projected_drawdown(q_hi) <= usable:
         # The search would hand back its ceiling as if it were an answer.
         # Either the transmissivity is implausible or the drawdown budget is
@@ -1289,8 +1401,11 @@ def analyse_pumping_test(
     skipped with a flag instead of failing, so partially filled sheets
     still produce curves and a report skeleton.
     """
-    config = config or PumpingConfig()
-    analysis = PumpingTestAnalysis(test=test, min_fit_r_squared=config.min_fit_r_squared)
+    # the casing and riser the sheet records, where it records them
+    config = sheet_config(test, config)
+    analysis = PumpingTestAnalysis(test=test, min_fit_r_squared=config.min_fit_r_squared,
+                                   casing_diameter_in=config.casing_diameter_in,
+                                   riser_diameter_in=config.riser_diameter_in)
     # drop parse-time discharge flags that the analyst has since resolved
     flags = [
         f
@@ -1320,12 +1435,23 @@ def analyse_pumping_test(
 
     swl = test.static_water_level_m
 
+    held: tuple[float, float, float, float] | None = None
     if test.steps and swl is not None:
         last = test.steps[-1]
         analysis.max_drawdown_m = float(np.nanmax(last.water_level_m) - swl)
-        tail = last.water_level_m[-3:]
-        if len(tail) >= 2 and (np.max(tail) - np.min(tail)) <= 0.05:
-            analysis.stabilised_level_m = float(np.mean(tail))
+        # The last step is judged on its own clock, the minutes since it
+        # began: on the test's clock a step's readings lie in the last part
+        # of a log cycle, which says nothing about how its drawdown grows.
+        timed = [s for s in test.steps if np.isfinite(s.time_min).any()]
+        began = 0.0
+        k = next((i for i, s in enumerate(timed) if s is last), 0)
+        if k > 0:
+            offsets = step_offsets_min(timed)
+            previous = timed[k - 1]
+            began = float(np.nanmax(previous.time_min)) + offsets[k - 1] - offsets[k]
+        held = stabilised_tail(last.time_min - began, last.water_level_m, config)
+        if held is not None:
+            analysis.stabilised_level_m = held[2]
             # Theis assumes an infinite aquifer whose drawdown never stops
             # growing with log time; a level that has held still is being
             # fed by something, and projecting it to 365 days is the wrong
@@ -1334,11 +1460,14 @@ def analyse_pumping_test(
                 DataFlag(
                     "warning",
                     "drawdown_stabilised",
-                    f"The pumped water level held at about "
-                    f"{analysis.stabilised_level_m:.2f} m over the last readings: "
-                    "a recharge boundary or leakage is indicated, so the "
-                    "Theis/Cooper-Jacob projection to the design period is not "
-                    "the governing check; the stabilised level is.",
+                    phrase("pumping.drawdown_stabilised", level=held[2],
+                           minutes=(phrase("pumping.stabilised_minutes_step",
+                                           start=held[0], end=held[1],
+                                           step=last.step_number)
+                                    if len(test.steps) > 1 else
+                                    phrase("pumping.stabilised_minutes",
+                                           start=held[0], end=held[1])),
+                           resolution=READING_RESOLUTION_M, early=held[3]),
                 )
             )
 
@@ -1477,11 +1606,23 @@ def analyse_pumping_test(
     # ---- recovery -----------------------------------------------------------
     residual = test.residual_drawdown()
     if residual is not None and test.recovery_time_min is not None:
-        q_rec = None
-        for step in reversed(test.steps):
-            if step.discharge_m3_per_h is not None:
-                q_rec = step.discharge_m3_per_h
-                break
+        # The recovery is read against the rate pumped when the pump stopped,
+        # the last step's. It used to be the latest step with a rate, so a
+        # step test with its last rate blank read its recovery against step
+        # 3's rate over the whole test, and that transmissivity was adopted
+        # ahead of the drawdown fits as established.
+        q_rec = test.steps[-1].discharge_m3_per_h if test.steps else None
+        if q_rec is None and test.has_discharge:
+            last = test.steps[-1]
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "recovery_rate_missing",
+                    phrase("pumping.recovery_rate_missing",
+                           step=f"step {last.step_number}"),
+                    context=last.label or f"step {last.step_number}",
+                )
+            )
         t_pump, equivalent = equivalent_pumping_time_min(test)
         if q_rec is not None and t_pump:
             try:
@@ -1652,6 +1793,20 @@ def analyse_pumping_test(
                 "not the aquifer draining. The fit is not adopted.",
             )
         )
+
+    # A Cooper-Jacob window that takes in a level that has stopped growing
+    # reads the flattening as a small slope, and T is inversely proportional
+    # to it. Its own refusal is for a window a dipper cannot read; a tail
+    # that still rises a centimetre or two after rising a metre a log cycle
+    # is readable and wrong. Judged where the drawdown fits are, so only when
+    # the stabilised step is the first.
+    cj = analysis.cooper_jacob
+    if (held is not None and cj is not None and len(test.steps) == 1
+            and cj.fit_window_min[1] >= held[0]):
+        reason = phrase("pumping.cj_on_stabilised", start=cj.fit_window_min[0],
+                        end=cj.fit_window_min[1], tail=held[0])
+        analysis.disqualified.setdefault("cooper_jacob", reason)
+        analysis.invalid_fits["cooper_jacob"] = reason
 
     # The large-diameter fit is held to what it claims: a storativity an
     # aquifer can have, and readings it describes no worse than the Theis

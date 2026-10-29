@@ -44,9 +44,12 @@ from .indices import (
     compute_wqi,
 )
 from .ionic import IonicBalanceResult, ionic_balance, ionic_balance_gap
+from ..text import phrase
 from ..utils import plural_noun
 from .standards import (
+    AS_NITROGEN,
     StandardEntry,
+    basis_conversion,
     faecal_pathogen,
     load_standards,
     normalise_parameter,
@@ -476,6 +479,59 @@ def _limit_maximums(entry: StandardEntry) -> list[float]:
 _convert_to_guideline_unit = to_standard_unit
 
 
+#: The reasons a unit keeps a value off the table's scale.
+_UNIT_REFUSALS = ("unit_unreadable", "unit_mismatch", "unit_basis_conflict")
+
+
+def _has_limit(entry: StandardEntry) -> bool:
+    return bool(entry.who_health or entry.who_aesthetic or entry.sl_standard)
+
+
+def _scale(reported_unit: str, entry: StandardEntry, reason: str) -> str:
+    """The guideline's unit as a remark names it, with the basis a
+    conversion put the value on: "mg/L as Ca" for calcium reported as CaCO3."""
+    if reason == "unit_basis_converted":
+        basis = basis_conversion(reported_unit, entry)
+        if basis is not None:
+            return f"{entry.unit} as {basis[1]}"
+    return entry.unit
+
+
+def _as_nitrogen_note(entry: StandardEntry, converted: float, reason: str) -> str:
+    """What a nitrate or nitrite row reported as nitrogen adds to its remark.
+
+    "Nitrate (NO3-N)" was held to the 50 mg/L guideline for nitrate as the
+    ion. It is held to the one for nitrogen, and the remark says which basis
+    the sheet used and gives the ion's figure, which is the one most readers
+    know the limit by. A value converted onto nitrogen from the ion says so
+    in its unit note instead.
+    """
+    key = normalise_parameter(entry.parameter)
+    if key not in AS_NITROGEN or reason == "unit_basis_converted":
+        return ""
+    _, factor, ion = AS_NITROGEN[key]
+    return phrase("quality.as_nitrogen", value=converted, unit=entry.unit,
+                  ion_value=converted * factor, ion=ion)
+
+
+def _no_guideline_unit(row: ParameterAssessment, entry: StandardEntry, result,
+                       reason: str, stated: str = "") -> ParameterAssessment:
+    """A determinand with no limit whose unit cannot be put on the table's scale.
+
+    There is no limit to compare it with, so its unit decides nothing. It was
+    indeterminate all the same, and a sample whose certificate wrote its
+    temperature as "27 oC" was "not proven safe" on it; the same row in a
+    unit the toolkit reads is "no guideline value" and does not block.
+    """
+    row.status = "no_guideline"
+    row.reason = reason
+    note = phrase("quality.no_guideline_unit",
+                  note=entry.note or ("No guideline value" if stated else "no guideline value"),
+                  unit=str(result.unit or ""), why=INDETERMINATE_REASONS[reason])
+    row.remark = f"{stated}. {note}" if stated else note
+    return row
+
+
 def _unit_note(reported: float, unit: str, converted: float, reason: str,
                guideline_unit: str) -> str:
     """How a remark says which unit a number was read in."""
@@ -565,9 +621,11 @@ def _assess_result(result, entry: StandardEntry | None) -> ParameterAssessment:
         return _assess_below_detection(row, result, entry, limits)
 
     converted, reason = _convert_to_guideline_unit(
-        float(result.value), result.unit, entry
+        float(result.value), result.unit, entry, result.parameter
     )
     if converted is None:
+        if not _has_limit(entry):
+            return _no_guideline_unit(row, entry, result, reason)
         row.status = "indeterminate"
         row.evaluable = False
         row.reason = reason
@@ -581,8 +639,11 @@ def _assess_result(result, entry: StandardEntry | None) -> ParameterAssessment:
     row.value_in_guideline_unit = converted
     row.reason = reason
     unit_note = _unit_note(float(result.value), result.unit, converted, reason,
-                           guideline_unit)
+                           _scale(result.unit, entry, reason))
     _grade(row, entry, converted, unit_note)
+    nitrogen = _as_nitrogen_note(entry, converted, reason)
+    if nitrogen:
+        row.remark = f"{row.remark}; {nitrogen}" if row.remark else nitrogen
     return row
 
 
@@ -673,8 +734,23 @@ def _assess_unquantified(
     """
     reported = float(result.greater_than)
     stated = _stated_bound(result)
-    converted, reason = _convert_to_guideline_unit(reported, result.unit, entry)
-    if converted is None:
+    inclusive = bool(result.greater_than_inclusive)
+    converted, reason = _convert_to_guideline_unit(reported, result.unit, entry,
+                                                   result.parameter)
+    microbiological = (entry.category or "").strip().lower() == "microbiological"
+    if converted is None and reported == 0 and not inclusive and microbiological:
+        # "Present" or "TNTC" is a count above zero, and zero is zero on every
+        # count scale, so the unit decides nothing. Refused on it, an E. coli
+        # "Present" in a unit the toolkit could not read made the sample "not
+        # proven safe" where "Absent" in the same unit passed. A number in
+        # such a unit is still refused: grading only the bound is a choice
+        # (QUESTIONS.md item 24).
+        stated += " (" + phrase("quality.zero_any_unit", unit=str(result.unit or ""),
+                                why=INDETERMINATE_REASONS[reason]) + ")"
+        converted, reason = 0.0, ""
+    elif converted is None:
+        if not _has_limit(entry):
+            return _no_guideline_unit(row, entry, result, reason, stated)
         row.status = "indeterminate"
         row.evaluable = False
         row.reason = reason
@@ -684,8 +760,9 @@ def _assess_unquantified(
             "not compared against any limit."
         )
         return row
-    stated += _unit_note(reported, result.unit, converted, reason, entry.unit)
-    inclusive = bool(result.greater_than_inclusive)
+    else:
+        stated += _unit_note(reported, result.unit, converted, reason,
+                             _scale(result.unit, entry, reason))
 
     def certainly_over(limit) -> bool:
         # The true value is above the bound, or at it for ">=", so a limit is
@@ -801,7 +878,7 @@ def _assess_below_detection(
         return row
 
     dl, reason = _convert_to_guideline_unit(
-        float(result.detection_limit), result.unit, entry
+        float(result.detection_limit), result.unit, entry, result.parameter
     )
     if dl is None:
         row.status = "indeterminate"
@@ -1015,6 +1092,29 @@ def assess_sample(
                     "the laboratory certificate.",
                 )
             )
+        elif row.reason == "unit_basis_converted":
+            basis = basis_conversion(result.unit, table[normalise_parameter(result.parameter)])
+            if basis is not None:
+                flags.append(
+                    DataFlag(
+                        "info",
+                        "unit_basis_converted",
+                        phrase("quality.unit_basis_converted",
+                               parameter=result.parameter, unit=str(result.unit or ""),
+                               guideline=row.guideline_unit, basis=basis[1],
+                               factor=basis[0]),
+                    )
+                )
+        elif row.status == "no_guideline" and row.reason in _UNIT_REFUSALS:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "value_not_used",
+                    phrase("quality.value_not_used", parameter=result.parameter,
+                           unit=str(result.unit or ""),
+                           why=INDETERMINATE_REASONS[row.reason]),
+                )
+            )
         elif row.reason == "unit_basis_assumed":
             flags.append(
                 DataFlag(
@@ -1198,7 +1298,7 @@ def _nitrate_nitrite_index(rows: list[ParameterAssessment], table):
                 if (row.below_detection and entry is not None
                         and row.detection_limit is not None):
                     dl, _ = to_standard_unit(
-                        float(row.detection_limit), row.unit, entry)
+                        float(row.detection_limit), row.unit, entry, row.parameter)
                     if dl is not None:
                         return float(dl), gv, True
         return None, None, False

@@ -107,7 +107,7 @@
     var cfg = defaultConfig();
     if (!overrides) return cfg;
     ['style', 'ves', 'pumping', 'design', 'ves_range', 'odds', 'ledger', 'cost_range',
-      'terrain', 'service', 'survival']
+      'allocation', 'terrain', 'service', 'survival']
       .forEach(function (section) {
       var over = overrides[section];
       if (!over) return;
@@ -2907,8 +2907,41 @@
     if ((cmf & 15) !== 8 || (cmf >> 4) > 7 || ((cmf << 8) | flg) % 31 !== 0 || (flg & 32)) {
       throw codecError('damaged');
     }
+    var run = inflateRun(src, 2, full);
+    var out = run.out, op = run.size, pos = run.end, i, end;
+    /* the Adler-32, after the stream */
+    if (pos + 4 > size) throw codecError('damaged');
+    var a = 1, b = 0;
+    for (i = 0; i < op;) {
+      for (end = Math.min(op, i + 5552); i < end; i++) {
+        a += out[i];
+        b += a;
+      }
+      a %= 65521;
+      b %= 65521;
+    }
+    var check = ((src[pos] << 24) | (src[pos + 1] << 16) | (src[pos + 2] << 8) | src[pos + 3]) >>> 0;
+    if ((((b << 16) | a) >>> 0) !== check || op < expected) throw codecError('damaged');
+    return expected === full ? out : out.slice(0, expected);
+  }
+
+  /** A raw DEFLATE stream, as a ZIP package stores an entry: exactly `size`
+   * bytes, by zlib's rules (inflateRun), with nothing in `bytes` after the
+   * stream's last block. groundwater/verification.py read_package holds
+   * zlib to the same. */
+  function inflateRaw(bytes, size) {
+    var run = inflateRun(bytes, 0, size);
+    if (run.size !== size || run.end !== bytes.length) throw codecError('damaged');
+    return run.out;
+  }
+
+  /* The DEFLATE blocks of src from byte `pos` to the end of its last block,
+   * into at most `full` bytes: {out, size, end}, `end` the byte after the
+   * stream's last, whose unused high bits are padding. */
+  function inflateRun(src, start, full) {
+    var size = src.length;
     var out = new Uint8Array(full);
-    var op = 0, pos = 2, bitbuf = 0, bitcnt = 0;
+    var op = 0, pos = start, bitbuf = 0, bitcnt = 0;
     var last, type, lit, dist, codes, len, sym, extra, from, end, i;
     var lengths = new Uint8Array(19), all, nlen, ndist, ncode, repeat, value;
 
@@ -3027,21 +3060,8 @@
       }
     } while (!last);
 
-    /* the Adler-32, after the whole bytes still unread in the bit buffer */
-    pos -= bitcnt >> 3;
-    if (pos + 4 > size) throw codecError('damaged');
-    var a = 1, b = 0;
-    for (i = 0; i < op;) {
-      for (end = Math.min(op, i + 5552); i < end; i++) {
-        a += out[i];
-        b += a;
-      }
-      a %= 65521;
-      b %= 65521;
-    }
-    var check = ((src[pos] << 24) | (src[pos + 1] << 16) | (src[pos + 2] << 8) | src[pos + 3]) >>> 0;
-    if ((((b << 16) | a) >>> 0) !== check || op < expected) throw codecError('damaged');
-    return expected === full ? out : out.slice(0, expected);
+    /* the whole bytes still unread in the bit buffer are not the stream's */
+    return { out: out, size: op, end: pos - (bitcnt >> 3) };
   }
 
   /* libtiff's table bound: 4,096 twelve-bit codes plus 1,023 entries no code
@@ -8929,7 +8949,8 @@
    */
   function rankingWeight(interp, cfg) {
     var result = C.assessSiting([interp], cfg)[0];
-    return result.suitability * result.confidence;
+    /* to the 0.0001 it is exact to, as the scorecard ranks it (weightedExact) */
+    return weightedExact(result.suitability * result.confidence);
   }
 
   /**
@@ -9230,15 +9251,18 @@
       throw new Error('Drawdown does not increase with log time; ' +
         'Cooper-Jacob does not apply');
     }
-    /* T is inversely proportional to the slope, so a tail that has flattened
-     * to within reading resolution gave thousands of m2/day with a straight
-     * face; a line that does not explain the window is no better. */
-    if (fit.slope < cfg.cooper_jacob_min_slope_m) {
-      throw new Error('The fitted window ' + formatG(fitWindow[0]) + '-' +
-        formatG(fitWindow[1]) + ' min is flat (' + pyFixed(Math.max(fit.slope, 0), 3) +
-        ' m per log cycle, under ' + formatG(cfg.cooper_jacob_min_slope_m) +
-        ' m): the drawdown has stabilised or the slope is below reading ' +
-        'resolution, so Cooper-Jacob does not apply');
+    /* T is inversely proportional to the slope, so a window whose drawdown
+     * moves by less than a dipper reads gave thousands of m2/day with a
+     * straight face; a line that does not explain the window is no better.
+     * The test is the one the Theis and recovery fits apply, the rise across
+     * the readings; it was a fixed 0.02 m per log cycle, which also refused
+     * a straight, readable handpump line in an aquifer of a few hundred
+     * m2/day. A window on a tail that has flattened after rising is judged
+     * in analysePumpingTest (stabilisedTail). */
+    var logWindow = window.map(function (k) { return Math.log(t[k]) / Math.LN10; });
+    if (fit.slope * (arrMax(logWindow) - arrMin(logWindow)) < READING_RESOLUTION_M) {
+      throw new Error(phrase('pumping.cj_unreadable', { start: fitWindow[0],
+        end: fitWindow[1], resolution: READING_RESOLUTION_M }));
     }
     if (fit.r2 < cfg.cooper_jacob_min_r2) {
       throw new Error('The straight line explains too little of the window ' +
@@ -9307,8 +9331,8 @@
    * S towards zero, and the transmissivity reported is wherever the
    * optimiser stopped - 1282 m2/day here and 2190 in the Python package for
    * the same sheet, both adopted at established confidence. The test is the
-   * reading resolution across the whole record, not the 0.02 m per log cycle
-   * cooperJacob asks of its late window: a handpump rate in an aquifer of a
+   * reading resolution across the whole record, as cooperJacob asks of its
+   * late window: a handpump rate in an aquifer of a
    * few hundred m2/day draws down 1 to 2 cm a log cycle, and over three log
    * cycles of readings the curve still returns T to within a few percent. A
    * fit that drives S to the floor is refused for the same reason as a flat
@@ -9813,6 +9837,71 @@
     return CASING_STORAGE_COEFFICIENT * area / specificCapacity;
   }
 
+  /** config with the casing and riser the field sheet records (analysis.py
+   * sheet_config): the casing-storage period, the Papadopulos-Cooper casing
+   * radius and the sentences naming the casing all read them from there. A
+   * sheet that records one of the two is read with the configuration's
+   * other, and where that pair leaves no water between casing and riser the
+   * configuration's pair is kept.
+   * @param {PumpingTest} test
+   * @param {PumpingConfig} [config]
+   * @returns {PumpingConfig}
+   */
+  function sheetConfig(test, config) {
+    var cfg = config || defaultConfig().pumping;
+    var recorded = {};
+    ['casing_diameter_in', 'riser_diameter_in'].forEach(function (key) {
+      if (test[key] !== null && test[key] !== undefined) recorded[key] = test[key];
+    });
+    if (!Object.keys(recorded).length) return cfg;
+    var merged = Object.assign({}, cfg, recorded);
+    return merged.casing_diameter_in > merged.riser_diameter_in ? merged : cfg;
+  }
+
+  /** [start, end, level, earlySlope] where the drawdown has stopped growing,
+   * or null (analysis.py stabilised_tail). The readings of the last
+   * stabilised_span_log10 log cycles are the tail, and the log cycle before
+   * them is what it is held against: the level has stabilised when the
+   * tail's fitted line moves by less than a dipper reads across it, and its
+   * slope is under stabilised_slope_ratio of the slope before it, which rose
+   * by at least a dipper's reading. It was judged on the last three
+   * readings, within 5 cm of each other, which an ordinary Theis drawdown
+   * read hourly at the end of a 24-hour test met.
+   * @param {ArrayLike<number>} timeMin
+   * @param {ArrayLike<number>} levelM
+   * @param {PumpingConfig} [config]
+   * @returns {number[]|null}
+   */
+  function stabilisedTail(timeMin, levelM, config) {
+    var cfg = config || defaultConfig().pumping;
+    var t = [], wl = [], i;
+    for (i = 0; i < timeMin.length; i++) {
+      if (isFinite(timeMin[i]) && isFinite(levelM[i]) && timeMin[i] > 0) {
+        t.push(timeMin[i]); wl.push(levelM[i]);
+      }
+    }
+    if (t.length < 6) return null;
+    var end = arrMax(t);
+    var cut = end / Math.pow(10, cfg.stabilised_span_log10);
+    var tailT = [], tailWl = [], beforeT = [], beforeWl = [];
+    for (i = 0; i < t.length; i++) {
+      var lt = Math.log(t[i]) / Math.LN10;
+      if (t[i] >= cut) { tailT.push(lt); tailWl.push(wl[i]); }
+      else if (t[i] >= cut / 10.0) { beforeT.push(lt); beforeWl.push(wl[i]); }
+    }
+    if (tailT.length < 3 || beforeT.length < 3) return null;
+    var late = lineFit(tailT, tailWl).slope;
+    var early = lineFit(beforeT, beforeWl).slope;
+    if (Math.abs(late) * (arrMax(tailT) - arrMin(tailT)) >= READING_RESOLUTION_M) return null;
+    if (early * (arrMax(beforeT) - arrMin(beforeT)) < READING_RESOLUTION_M) return null;
+    if (late >= cfg.stabilised_slope_ratio * early) return null;
+    var held = 0;
+    tailWl.forEach(function (v) { held += v; });
+    var start = Infinity;
+    for (i = 0; i < t.length; i++) if (t[i] >= cut && t[i] < start) start = t[i];
+    return [start, end, held / tailWl.length, early];
+  }
+
   /** The deepest water level any pumping step reached, metres below datum.
    * @param {PumpingTest} test
    * @returns {number|null}
@@ -10005,9 +10094,10 @@
       if (transmissivity === null || transmissivity === undefined) {
         var anyQ = (test.steps || []).some(function (s) { return s.discharge_m3_per_h; });
         /* opts.noTransmissivityReason says why, when fits ran and every one
-         * was rejected on its own result */
-        missing.push(anyQ
-          ? (opts.noTransmissivityReason ||
+         * was rejected on its own result; a sheet with no pumping readings
+         * has no step to carry a rate (analysis.py) */
+        missing.push(!(test.steps || []).length ? phrase('pumping.no_readings_pending')
+          : anyQ ? (opts.noTransmissivityReason ||
             'transmissivity could not be fitted from the readings')
           : 'discharge is missing on the field sheet');
       }
@@ -10027,6 +10117,12 @@
     var logTerm = Math.log(2.25 * transmissivity * tDesign /
       (effectiveRadiusM * effectiveRadiusM * assumedStorativity)) / Math.LN10;
 
+    /* B Q + C Q^2 is the drawdown at the end of a step, so the projection
+     * from a step test runs from the length of a step: the one the sheet
+     * states, or the first step's own last reading, as the short-test check
+     * reads it. A blank length used to project from the whole test. */
+    var tStepMin = pumpedDurationMin(test)[0] || test.pumping_duration_min || 180.0;
+
     function projectedDrawdown(qM3PerH) {
       var qDay = qM3PerH * 24.0;
       var s = 2.303 * qDay / (4.0 * Math.PI * /** @type {number} */ (transmissivity)) * logTerm;
@@ -10034,7 +10130,6 @@
         /* B Q + C Q^2 is the drawdown at the step duration; the Cooper-Jacob
          * time projection from step length to design period replaces the
          * plain projection above rather than adding to it. */
-        var tStepMin = test.step_length_min || test.pumping_duration_min || 180.0;
         s = stepDrawdownAt(stepResult, qDay);
         s += 2.303 * qDay / (4.0 * Math.PI * /** @type {number} */ (transmissivity)) *
           Math.log(tDesign / (tStepMin / MIN_PER_DAY)) / Math.LN10;
@@ -10042,8 +10137,11 @@
       return s;
     }
 
-    /* bisect Q so projected drawdown equals the usable drawdown */
-    var qLo = 0.01, qHi = 200.0;
+    /* Bisect Q so projected drawdown equals the usable drawdown. The bracket
+     * starts at nothing, which projects no drawdown: it started at 0.01 m3/h
+     * and nothing checked that the root lay above it, so any yield below that
+     * came back as 0.01 whatever the transmissivity. */
+    var qLo = 0.0, qHi = 200.0;
     if (projectedDrawdown(qHi) <= usable) {
       /* The search would hand back its ceiling as if it were an answer.
        * Either the transmissivity is implausible or the drawdown budget is
@@ -10224,18 +10322,23 @@
       'the supply must not fail in a dry year.';
   }
 
-  /** "2.4 m3/h (1.8 to 3.1)" - never a bare number for an assumed one.
+  /** "2.4 m3/h (range over the assumptions, 1.8 to 3.1)": never a bare
+   * number for an assumed one, and never a bare range either, beside the
+   * bootstrap's P10 to P90 band the decision lines print on the same yield.
    * @param {Rec|null} [rec] a yield recommendation
    * @returns {string}
    */
   function yieldRangeText(rec) {
     if (!rec || rec.safe_yield_m3_per_h === null) return 'pending';
-    var text = formatG(roundSig(rec.safe_yield_m3_per_h, 2), 2) + ' m3/h';
-    if (rec.safe_yield_low_m3_per_h !== null && rec.safe_yield_high_m3_per_h !== null) {
-      text += ' (' + formatG(roundSig(rec.safe_yield_low_m3_per_h, 2), 2) + ' to ' +
-        formatG(roundSig(rec.safe_yield_high_m3_per_h, 2), 2) + ')';
+    var value = formatG(roundSig(rec.safe_yield_m3_per_h, 2), 2);
+    if (rec.safe_yield_low_m3_per_h === null || rec.safe_yield_high_m3_per_h === null ||
+        rec.safe_yield_low_m3_per_h === undefined ||
+        rec.safe_yield_high_m3_per_h === undefined) {
+      return value + ' m3/h';
     }
-    return text;
+    return phrase('decision.yield_envelope', { value: value,
+      low: formatG(roundSig(rec.safe_yield_low_m3_per_h, 2), 2),
+      high: formatG(roundSig(rec.safe_yield_high_m3_per_h, 2), 2) });
   }
 
   /* Run every applicable analysis on a parsed pumping test. Methods that need
@@ -10356,8 +10459,9 @@
    */
   function analysePumpingTest(test, config, options) {
     var opts = options || {};
-    var cfg = (config && config.pumping) ? config.pumping
-      : (config || defaultConfig().pumping);
+    /* the casing and riser the sheet records, where it records them */
+    var cfg = sheetConfig(test, (config && config.pumping) ? config.pumping
+      : (config || defaultConfig().pumping));
     var observationRadiusM = opts.observationRadiusM;
     var progress = opts.onProgress || function () {};
     /** @type {PumpingAnalysis} */
@@ -10377,8 +10481,10 @@
        * is disqualified as well, but its line may be sound, so it can still
        * be adopted as the best of the poor fits; a wrong result never can. */
       invalid_fits: {},
-      /* how long casing storage controls the drawdown in this borehole */
+      /* how long casing storage controls the drawdown in this borehole, and
+       * the casing and riser diameters it was worked out from */
       casing_storage_min: null,
+      casing_diameter_in: cfg.casing_diameter_in, riser_diameter_in: cfg.riser_diameter_in,
       /* the large-diameter fit, adopted only when no other fit can be, and
        * why it is invalid when its storativity is; the Bourdet derivative;
        * the bands (spread.py) */
@@ -10415,22 +10521,37 @@
     var swl = test.static_water_level_m;
     var hasSwl = swl !== null && swl !== undefined;
 
+    var held = null;
     if (test.steps && test.steps.length && hasSwl) {
       var last = test.steps[test.steps.length - 1];
       analysis.max_drawdown_m = arrMax(last.water_level_m.filter(isFinite)) - swl;
-      var tail = last.water_level_m.slice(-3);
-      if (tail.length >= 2 && (arrMax(tail) - arrMin(tail)) <= 0.05) {
-        analysis.stabilised_level_m = arrMean(tail);
+      /* The last step is judged on its own clock, the minutes since it began
+       * (analysis.py). */
+      var timedSteps = test.steps.filter(function (s) {
+        return (s.time_min || []).some(function (v) { return isFinite(v); });
+      });
+      var lastAt = timedSteps.indexOf(last), began = 0.0;
+      if (lastAt > 0) {
+        var lastOffsets = stepOffsetsMin(timedSteps);
+        var previousStep = timedSteps[lastAt - 1];
+        began = arrMax(previousStep.time_min.filter(function (v) { return isFinite(v); })) +
+          lastOffsets[lastAt - 1] - lastOffsets[lastAt];
+      }
+      held = stabilisedTail(last.time_min.map(function (v) { return v - began; }),
+        last.water_level_m, cfg);
+      if (held) {
+        analysis.stabilised_level_m = held[2];
         /* Theis assumes an infinite aquifer whose drawdown never stops
          * growing with log time; a level that has held still is being fed
          * by something, and projecting it to 365 days is the wrong question. */
         flags.push({
           level: 'warning', code: 'drawdown_stabilised',
-          message: 'The pumped water level held at about ' +
-            pyFixed(analysis.stabilised_level_m, 2) + ' m over the last ' +
-            'readings: a recharge boundary or leakage is indicated, so the ' +
-            'Theis/Cooper-Jacob projection to the design period is not the ' +
-            'governing check; the stabilised level is.',
+          message: phrase('pumping.drawdown_stabilised', { level: held[2],
+            minutes: test.steps.length > 1
+              ? phrase('pumping.stabilised_minutes_step', { start: held[0], end: held[1],
+                step: last.step_number })
+              : phrase('pumping.stabilised_minutes', { start: held[0], end: held[1] }),
+            resolution: READING_RESOLUTION_M, early: held[3] }),
         });
       }
     }
@@ -10573,14 +10694,18 @@
     progress(0.5, 'recovery');
     if (test.recovery_level_m && hasSwl && test.recovery_time_min) {
       var residual = test.recovery_level_m.map(function (v) { return v - swl; });
-      var qRec = null;
+      /* The recovery is read against the rate pumped when the pump stopped,
+       * the last step's; it used to be the latest step with a rate, so a step
+       * test with its last rate blank read its recovery against step 3's. */
       var recSteps = test.steps || [];
-      for (var k = recSteps.length - 1; k >= 0; k--) {
-        if (recSteps[k].discharge_m3_per_h !== null &&
-            recSteps[k].discharge_m3_per_h !== undefined) {
-          qRec = recSteps[k].discharge_m3_per_h;
-          break;
-        }
+      var lastStep = recSteps.length ? recSteps[recSteps.length - 1] : null;
+      var qRec = lastStep && lastStep.discharge_m3_per_h !== undefined
+        ? lastStep.discharge_m3_per_h : null;
+      if (qRec === null && lastStep && hasDischarge(test)) {
+        flags.push({ level: 'warning', code: 'recovery_rate_missing',
+          message: phrase('pumping.recovery_rate_missing',
+            { step: 'step ' + lastStep.step_number }),
+          context: lastStep.label || ('step ' + lastStep.step_number) });
       }
       var equivalentInfo = equivalentPumpingTimeMin(test);
       var tPump = equivalentInfo[0], equivalent = equivalentInfo[1];
@@ -10763,6 +10888,19 @@
       });
     }
 
+    /* A Cooper-Jacob window that takes in a level that has stopped growing
+     * reads the flattening as a small slope; judged where the drawdown fits
+     * are, so only when the stabilised step is the first (analysis.py). */
+    var cjHeld = analysis.cooper_jacob;
+    if (held && cjHeld && test.steps.length === 1 && cjHeld.fit_window_min[1] >= held[0]) {
+      var heldReason = phrase('pumping.cj_on_stabilised', {
+        start: cjHeld.fit_window_min[0], end: cjHeld.fit_window_min[1], tail: held[0] });
+      if (!Object.prototype.hasOwnProperty.call(analysis.disqualified, 'cooper_jacob')) {
+        analysis.disqualified.cooper_jacob = heldReason;
+      }
+      analysis.invalid_fits.cooper_jacob = heldReason;
+    }
+
     /* the large-diameter fit is held to a storativity an aquifer can have,
      * and to describing the readings no worse than the Theis curve does
      * without the casing (analysis.py) */
@@ -10901,6 +11039,7 @@
     CASING_STORAGE_COEFFICIENT: CASING_STORAGE_COEFFICIENT,
     testTypeText: testTypeText, equivalentPumpingTimeMin: equivalentPumpingTimeMin,
     stepDurationsMin: stepDurationsMin, stepOffsetsMin: stepOffsetsMin,
+    sheetConfig: sheetConfig, stabilisedTail: stabilisedTail,
     LEVEL_FLAGS: LEVEL_FLAGS,
     levelsInDoubt: levelsInDoubt, hasDischarge: hasDischarge,
     casingStorageMin: casingStorageMin, deepestPumpingLevel: deepestPumpingLevel,
@@ -11806,7 +11945,7 @@
   /** @type {Array<[RegExp, string]>} */
   var UNIT_CHAR_FIXES = [
     [/µ/g, 'u'], [/μ/g, 'u'], [/³/g, '3'], [/²/g, '2'],
-    [/°/g, 'deg '], [/⁄/g, '/'], [/’/g, ''],
+    [/°/g, 'deg '], [/º/g, 'deg '], [/⁄/g, '/'], [/’/g, ''],
   ];
 
   /**
@@ -11815,6 +11954,9 @@
    */
   function normaliseUnit(text) {
     var s = String(text === null || text === undefined ? '' : text);
+    /* "Nº/100 mL" and "N°/100 mL" are "No./100 mL" with the numero sign; the
+     * sign would otherwise read as a degree (units.py _normalise) */
+    s = s.replace(/(?<![A-Za-z0-9_])[nN][º°](?=\s*(?:\/|[pP][eE][rR]\b))/g, 'no');
     UNIT_CHAR_FIXES.forEach(function (pair) { s = s.replace(pair[0], pair[1]); });
     s = s.toLowerCase().trim().replace(/[–—]/g, '-');
     s = s.replace(/\bper\b/g, '/');
@@ -11829,6 +11971,10 @@
     s = s.replace(/\bdegrees?\b|\bdeg\b/g, 'deg ');
     s = s.replace(/\bcelsius\b|\bcentigrade\b/g, 'c');
     s = s.replace(/\./g, '');
+    /* "/100 mL", "No./100 mL" and "per 100 mL" are "/100ml" written with a
+     * space (units.py _normalise): an E. coli count of 12 per 100 mL was a
+     * unit nobody could read, while "Absent" in the same unit passed. */
+    s = s.replace(/(\d)\s+(m?l)\b/g, '$1$2');
     /* "-", "n/a" and friends are how a sheet writes "no unit here", not a
      * unit. Reading "-" as pH units made every non-pH row carrying the
      * ordinary blank marker unevaluable. */
@@ -11838,11 +11984,17 @@
   }
 
   var UNIT_BASIS_RE = /\bas\s+([a-z0-9().-]+)\s*$/;
+  /* The spellings of nitrogen as a basis: "as N", "as NO3-N", "as nitrogen".
+   * They are one basis, so "mg/L as NO3-N" is the same scale as "mg/L as N"
+   * (units.py _NITROGEN_BASIS_RE). */
+  var NITROGEN_BASIS_RE = /^(?:(?:no3|no2|nh4|nh3)-{0,2}n|nitrogen)$/;
 
   function splitUnitBasis(text) {
     var m = UNIT_BASIS_RE.exec(text);
     if (!m) return [text, ''];
-    return [text.slice(0, m.index).trim(), m[1].replace(/\s+/g, '')];
+    var basis = m[1].replace(/\s+/g, '');
+    if (NITROGEN_BASIS_RE.test(basis)) basis = 'n';
+    return [text.slice(0, m.index).trim(), basis];
   }
 
   var UNIT_TABLE = {};
@@ -11875,14 +12027,15 @@
    * not, and is refused above rather than converted. */
   registerUnit('NTU', 'turbidity', 1.0, ['ntu', 'fnu', 'ftu', 'nephelometric']);
   registerUnit('CFU/100 mL', 'microbial', 1.0,
-    ['cfu/100ml', 'cfu/100 ml', 'mpn/100ml', 'mpn/100 ml', '/100ml',
+    ['cfu/100ml', 'mpn/100ml', '/100ml', '#/100ml',
       'count/100ml', 'counts/100ml', 'no/100ml', 'cfu/100cm3']);
   registerUnit('CFU/mL', 'microbial', 100.0, ['cfu/ml', 'mpn/ml', 'count/ml']);
   registerUnit('CFU/L', 'microbial', 0.1, ['cfu/l', 'mpn/l', 'count/l']);
   registerUnit('pH units', 'ph', 1.0,
     ['ph units', 'ph unit', 'ph', 'su', 'standard units']);
+  /* "oC" is the degree sign typed as a letter o */
   registerUnit('deg C', 'temperature', 1.0, ['deg c', 'c', '°c', 'degc',
-    'celsius']);
+    'celsius', 'oc']);
   registerUnit('deg F', 'temperature', 5.0 / 9.0, ['deg f', 'f', '°f',
     'degf'], -32.0 * 5.0 / 9.0);
   registerUnit('m3/h', 'flow', 1.0,
@@ -12042,13 +12195,22 @@
   /** Read a value off a sheet and put it in the canonical unit. The unit is
    * taken from the cell's own text first - a crew that types "0.81 L/s" into
    * a column headed m3/h means L/s - then from each hint in turn. Status is
-   * "absent" | "ok" | "converted" | "assumed" | "unknown"; on "unknown" the
-   * value is null and the caller must refuse it rather than default.
+   * "absent" | "ok" | "converted" | "assumed" | "unknown" (and "clock" for a
+   * time written as one); on "unknown" the value is null and the caller must
+   * refuse it rather than default. A time is read by readTime, so a clock is
+   * a clock wherever it is read: "2:00" under "Time (hh:mm)" was 2 minutes.
    * @param {*} cell
    * @param {Array<*>|null} hints the labels the unit may be written in
    * @param {string} dimension
    */
   function readQuantity(cell, hints, dimension) {
+    if (dimension === 'time') return readTime(cell, hints).quantity;
+    return readNumber(cell, hints, dimension);
+  }
+
+  /* readQuantity for a cell that is a number, with any unit (units.py
+   * _read_number) */
+  function readNumber(cell, hints, dimension) {
     var canonical = CANONICAL_UNITS[dimension];
     var raw = parseNumber(cell);
     if (raw === null || raw === undefined) {
@@ -12080,11 +12242,128 @@
       status: 'assumed', dimension: dimension };
   }
 
+  /* units.py read_clock: an elapsed time typed as a clock, "1:30",
+   * "01:30:00", "1:30:00.5". A cell Excel formats as a time reaches this
+   * reader as that text (support.js) and the Python one as a time, and the
+   * first number of it was read as the minutes: 01:30 became minute 1 and
+   * 00:05 minute 0. */
+  var CLOCK_RE = /^\s*([0-9]{1,3}):([0-5][0-9])(?::([0-5][0-9](?:\.[0-9]+)?))?\s*$/;
+  /* Text that starts as a clock and is not one - "1:60", "1:5", "1:30 pm",
+   * "10:00 (approx)", "1: 30" - or that writes hours and minutes as words -
+   * "1h 30m", "1 hr 30 min". Each was read for its first number, so 1:30 pm
+   * and 1h 30m were both minute 1; they are refused instead (units.py
+   * _NOT_A_CLOCK_RE). */
+  var NOT_A_CLOCK_RE = new RegExp('^\\s*[-+]?[0-9]+(?:[.,][0-9]+)?\\s*' +
+    '(?::\\s*[0-9]|(?:hours?|hrs?|h|minutes?|mins?|m)\\.?\\s*[0-9])', 'i');
+  /* A duration of a day or more, in a cell formatted h:mm, reaches here as a
+   * Date on Excel's serial calendar: up to its phantom 29 February 1900 the
+   * serial is the days since 31 December 1899. Any other date is a date. */
+  var SERIAL_ZERO_MS = Date.UTC(1899, 11, 31);
+  var SERIAL_PHANTOM_MS = Date.UTC(1900, 1, 28);
+
+  /** How a two-part clock in a column is read: 'hm' or 'ms'. A header that
+   * names its clock - "Time (mm:ss)", "Time (min:sec)" - says "5:30" is five
+   * and a half minutes; otherwise it is read as Excel reads "5:30" typed into
+   * a cell, five hours and a half (units.py clock_format).
+   * @param {Array<*>|null} hints the labels the clock may be named in
+   * @returns {string}
+   */
+  function clockFormat(hints) {
+    var list = hints || [];
+    for (var i = 0; i < list.length; i++) {
+      var re = new RegExp(BRACKETED_UNIT_RE.source, 'g');
+      var raw = String(list[i] === null || list[i] === undefined ? '' : list[i]);
+      var match;
+      while ((match = re.exec(raw)) !== null) {
+        var parts = match[1].split(':').map(function (p) { return p.trim().toLowerCase(); });
+        if (parts.length >= 2 && ['h', 'm'].indexOf(parts[0].charAt(0)) >= 0 &&
+            ['m', 's'].indexOf(parts[1].charAt(0)) >= 0) {
+          return parts[0].charAt(0) === 'm' ? 'ms' : 'hm';
+        }
+      }
+    }
+    return 'hm';
+  }
+
+  /* "01:30:00": a time cell as support.js writes one */
+  function clockText(seconds) {
+    var ms = Math.round(seconds * 1000);
+    var two = function (/** @type {number} */ n) { return String(n).padStart(2, '0'); };
+    var text = two(Math.floor(ms / 3600000)) + ':' + two(Math.floor(ms / 60000) % 60) +
+      ':' + two(Math.floor(ms / 1000) % 60);
+    return ms % 1000 ? text + '.' + String((ms % 1000) * 1000).padStart(6, '0') : text;
+  }
+
+  /** {minutes, written} for an elapsed time written as a clock, or null for
+   * a cell that is not one (units.py read_clock).
+   * @param {*} cell
+   * @param {string} [format] what clockFormat says of the column
+   * @returns {{minutes: number, written: string}|null}
+   */
+  function readClock(cell, format) {
+    if (cell instanceof Date) {
+      var ms = cell.getTime();
+      if (!(ms > SERIAL_ZERO_MS && ms < SERIAL_PHANTOM_MS)) return null;
+      var seconds = (ms - SERIAL_ZERO_MS) / 1000;
+      return { minutes: seconds / 60, written: clockText(seconds) };
+    }
+    if (typeof cell !== 'string') return null;
+    var m = CLOCK_RE.exec(cell);
+    if (!m) return null;
+    var first = parseInt(m[1], 10), second = parseInt(m[2], 10);
+    var minutes;
+    if (m[3] !== undefined) minutes = first * 60 + second + parseFloat(m[3]) / 60;
+    else if (format === 'ms') minutes = first + second / 60;
+    else minutes = first * 60 + second;
+    return { minutes: minutes, written: cleanText(cell) };
+  }
+
+  /** A date, or a date and time of day: never an elapsed time.
+   * @param {*} cell
+   * @returns {boolean}
+   */
+  function isDateCell(cell) {
+    return cell instanceof Date && readClock(cell) === null;
+  }
+
+  /** {quantity, clock}: an elapsed time in minutes, and the clock it was
+   * written as ('' when none). A clock is read as one, status 'clock'; a date
+   * is refused, status 'unknown', since a reading's time since the pump
+   * started cannot be told from the day it was taken, and so is text that
+   * starts as a clock and is not one ("1:60", "1:30 pm") or writes hours and
+   * minutes as words ("1h 30m"); anything else is read as a number in the
+   * time dimension, its unit taken as readQuantity takes one (units.py
+   * read_time).
+   * @param {*} cell
+   * @param {Array<*>|null} hints the labels the unit may be written in
+   * @returns {{quantity: Rec, clock: string}}
+   */
+  function readTime(cell, hints) {
+    var clock = readClock(cell, clockFormat(hints));
+    if (clock) {
+      return { quantity: { value: clock.minutes, raw_value: clock.minutes, unit_text: '',
+        status: 'clock', dimension: 'time' }, clock: clock.written };
+    }
+    /* an Excel TRUE is no time either: Python read it as minute 1 and this
+     * reader left it out without a word */
+    if (typeof cell === 'boolean') {
+      return { quantity: { value: null, raw_value: null, unit_text: cell ? 'TRUE' : 'FALSE',
+        status: 'unknown', dimension: 'time' }, clock: '' };
+    }
+    if (isDateCell(cell) || (typeof cell === 'string' && NOT_A_CLOCK_RE.test(cell))) {
+      return { quantity: { value: null, raw_value: null, unit_text: cleanText(cell),
+        status: 'unknown', dimension: 'time' }, clock: '' };
+    }
+    return { quantity: readNumber(cell, hints, 'time'), clock: '' };
+  }
+
   Object.assign(C, {
     normaliseUnit: normaliseUnit, parseUnit: parseUnit,
     convertUnit: convertUnit, unitsComparable: unitsComparable,
     canonicalUnit: canonicalUnit, unitFromLabel: unitFromLabel,
     readQuantity: readQuantity, CANONICAL_UNITS: CANONICAL_UNITS,
+    clockFormat: clockFormat, readClock: readClock, isDateCell: isDateCell,
+    readTime: readTime,
   });
 
   /* ======================================================== water quality
@@ -12204,6 +12483,25 @@
    * that is a symbol or a unit, not a basis ("(as NO3)") */
   var TRAILING_QUALIFIER_RE = /\s*\((?!\s*as\s)[^)]*\)\s*$/;
 
+  /* A trailing bracket that names nitrogen as the basis: "Nitrate (NO3-N)",
+   * "Nitrate (N)", "Nitrite (NO2 as N)", "Nitrate (as NO3-N)". It was
+   * stripped like a symbol, so "Nitrate (NO3-N)" was held to the 50 mg/L
+   * guideline for nitrate as the ion, where 20 mg/L as N is 88.5 mg/L as
+   * nitrate (standards.py _NITROGEN_QUALIFIER_RE). */
+  var NITROGEN_QUALIFIER_RE = new RegExp('^(.+?)\\s*\\(\\s*(?:as\\s+)?' +
+    '(?:(no3|no2|nh4|nh3)\\s*(?:[-\u2013\u2014]{0,2}|\\s+as)\\s*)?' +
+    '(?:n|nitrogen)\\s*\\)$');
+  /* the table key each name takes when it is reported as nitrogen, and the
+   * ion a qualifier may name for it; "Nitrite (NO3-N)" contradicts itself
+   * and is left to resolve to nothing */
+  /** @type {Record<string, [string, string[]]>} */
+  var AS_NITROGEN_KEYS = {
+    nitrate: ['nitrate (as n)', ['no3']],
+    nitrite: ['nitrite (as n)', ['no2']],
+    ammonia: ['ammonia (as n)', ['nh3', 'nh4']],
+    ammonium: ['ammonia (as n)', ['nh3', 'nh4']],
+  };
+
   /** The standards-table key a certificate's parameter name refers to. The
    * assessment is fail-closed - an unknown name makes the whole sample "not
    * proven safe" - so name resolution is load-bearing.
@@ -12213,6 +12511,11 @@
   function normaliseParameter(name) {
     var key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
     if (own(PARAMETER_ALIASES, key)) return PARAMETER_ALIASES[key];
+    var nitrogen = NITROGEN_QUALIFIER_RE.exec(key);
+    if (nitrogen && own(AS_NITROGEN_KEYS, nitrogen[1])) {
+      var asN = AS_NITROGEN_KEYS[nitrogen[1]];
+      return (nitrogen[2] === undefined || asN[1].indexOf(nitrogen[2]) >= 0) ? asN[0] : key;
+    }
     var stripped = key.replace(TRAILING_QUALIFIER_RE, '');
     if (stripped !== key) {
       return own(PARAMETER_ALIASES, stripped) ? PARAMETER_ALIASES[stripped] : stripped;
@@ -12307,6 +12610,66 @@
    * more than 10% means an unreliable analysis or a missing major ion.
    */
 
+  /* Molar masses, g/mol, to three decimals: the figures the ionic balance and
+   * the hazard index already used, and calcium carbonate's 100.087, on which
+   * the corrosivity indices' 2.497 from calcium to CaCO3 rests (standards.py
+   * MOLAR_MASS). */
+  var MOLAR_MASS = {
+    N: 14.007, NO3: 62.004, NO2: 46.005, Ca: 40.078, Mg: 24.305,
+    CaCO3: 100.087, HCO3: 61.017, CO3: 60.009,
+  };
+  /* The basis an entry's values are written on, where its name does not say:
+   * calcium is reported as the element, so "mg/L as Ca" is its own scale. */
+  /** @type {Record<string, string>} */
+  var NATIVE_BASIS = { calcium: 'ca', magnesium: 'mg', bicarbonate: 'hco3',
+    carbonate: 'co3' };
+  /* What puts a value stated on one chemical basis onto the basis its entry
+   * is written on, and that basis as a remark names it: a ratio of molar
+   * masses, so a conversion rather than an assumption (standards.py
+   * _BASIS_FACTORS). Calcium and magnesium as CaCO3 used to be taken at face
+   * value, 2.5 and 4.1 times the element, and a balanced analysis was
+   * flagged as an unreliable one. */
+  /** @type {Record<string, [number, string]>} */
+  var BASIS_FACTORS = {
+    'nitrate (as no3)|n': [MOLAR_MASS.NO3 / MOLAR_MASS.N, 'NO3'],
+    'nitrate (as n)|no3': [MOLAR_MASS.N / MOLAR_MASS.NO3, 'N'],
+    'nitrite (as no2)|n': [MOLAR_MASS.NO2 / MOLAR_MASS.N, 'NO2'],
+    'nitrite (as n)|no2': [MOLAR_MASS.N / MOLAR_MASS.NO2, 'N'],
+    'calcium|caco3': [MOLAR_MASS.Ca / MOLAR_MASS.CaCO3, 'Ca'],
+    'magnesium|caco3': [MOLAR_MASS.Mg / MOLAR_MASS.CaCO3, 'Mg'],
+    'bicarbonate|caco3': [2 * MOLAR_MASS.HCO3 / MOLAR_MASS.CaCO3, 'HCO3'],
+    'carbonate|caco3': [MOLAR_MASS.CO3 / MOLAR_MASS.CaCO3, 'CO3'],
+  };
+  /* The entries a value reported as nitrogen is graded on, and the ion's
+   * entry, factor and formula that put it on the ion's scale. The row is
+   * graded against the as-N guideline; the charge balance, the hazard index
+   * and the water quality index are written for the ion, and read it there
+   * (standards.py AS_NITROGEN). */
+  /** @type {Record<string, [string, number, string]>} */
+  var AS_NITROGEN = {
+    'nitrate (as n)': ['nitrate (as no3)', MOLAR_MASS.NO3 / MOLAR_MASS.N, 'NO3'],
+    'nitrite (as n)': ['nitrite (as no2)', MOLAR_MASS.NO2 / MOLAR_MASS.N, 'NO2'],
+  };
+
+  /* the key the indices read a result under: the ion's, for nitrogen */
+  function indexKey(key) {
+    return own(AS_NITROGEN, key) ? AS_NITROGEN[key][0] : key;
+  }
+
+  /** [factor, basis]: what puts the unit's basis on the entry's, for the
+   * remark and the flag of a row toGuidelineUnit converted; null where no
+   * factor is known (standards.py basis_conversion).
+   * @param {*} reportedUnit
+   * @param {Rec} entry a standards-table entry
+   * @returns {[number, string]|null}
+   */
+  function basisConversion(reportedUnit, entry) {
+    var source = parseUnit(String(reportedUnit || ''));
+    if (!source || !source.basis) return null;
+    var key = normaliseParameter(entry.parameter) + '|' + source.basis;
+    return own(BASIS_FACTORS, key) ? BASIS_FACTORS[key] : null;
+  }
+
   var CATION_MEQ = {
     calcium: 2 / 40.078,
     magnesium: 2 / 24.305,
@@ -12346,6 +12709,8 @@
     var table = loadStandards(standardsRows);
     /** @type {Record<string, number>} */
     var values = {};
+    /** @type {Record<string, number>} */
+    var asNitrogen = {};
     (sample.results || []).forEach(function (result) {
       if (result.value === null || result.value === undefined) return;
       var key = normaliseParameter(result.parameter);
@@ -12356,8 +12721,21 @@
         values[key] = Number(result.value);
         return;
       }
-      var converted = toGuidelineUnit(Number(result.value), result.unit, entry);
-      if (converted.value !== null) values[key] = converted.value;
+      var converted = toGuidelineUnit(Number(result.value), result.unit, entry,
+        result.parameter);
+      if (converted.value === null) return;
+      if (own(AS_NITROGEN, key)) {
+        /* Nitrate and nitrite reported as nitrogen go on the ion's scale,
+         * under the ion's key: the meq factor, the reference dose and the
+         * water quality index's exclusion are written for the ion. */
+        asNitrogen[AS_NITROGEN[key][0]] = converted.value * AS_NITROGEN[key][1];
+        return;
+      }
+      values[key] = converted.value;
+    });
+    /* a certificate that reports both forms is not counted twice */
+    Object.keys(asNitrogen).forEach(function (ion) {
+      if (!own(values, ion)) values[ion] = asNitrogen[ion];
     });
     return values;
   }
@@ -12372,7 +12750,7 @@
     if (Object.prototype.hasOwnProperty.call(canonical, key)) return canonical[key];
     var results = sample.results || [];
     for (var i = 0; i < results.length; i++) {
-      if (normaliseParameter(results[i].parameter) === key) {
+      if (indexKey(normaliseParameter(results[i].parameter)) === key) {
         if (results[i].value !== null && results[i].value !== undefined) {
           /* present but not convertible: refuse it rather than use the raw
            * number on an unknown scale */
@@ -12482,9 +12860,12 @@
   /* The IRIS reference doses for nitrate and nitrite are expressed as
    * nitrogen, but the toolkit records the whole ion. Convert before dividing,
    * else the hazard quotient is overstated by the mass ratio. */
+  /* A result reported as nitrogen reaches here on the ion's scale, under the
+   * ion's key (canonicalValues), so it is scored once and on the same
+   * footing, and is kept out of the quality index as the ion is. */
   var AS_NITROGEN_FACTOR = {
-    'nitrate (as no3)': 62.004 / 14.007,
-    'nitrite (as no2)': 46.005 / 14.007,
+    'nitrate (as no3)': MOLAR_MASS.NO3 / MOLAR_MASS.N,
+    'nitrite (as no2)': MOLAR_MASS.NO2 / MOLAR_MASS.N,
   };
 
   /* The reference doses and index weights below are all mg/L figures, so
@@ -12659,8 +13040,15 @@
       }
     }
     if (temp === null || temp <= 0) {
+      /* "not reported" was said of a temperature written as "27 oC", which
+       * was reported in a unit that could not be read */
+      var unread = temp === null && (sample.results || []).some(function (r) {
+        return normaliseParameter(r.parameter) === 'temperature' &&
+          r.value !== null && r.value !== undefined;
+      });
       temp = 25.0;
-      assumptions.push('Temperature assumed 25 C (not reported).');
+      assumptions.push(phrase(unread ? 'quality.temperature_unreadable'
+        : 'quality.temperature_not_reported'));
     }
 
     if (ph === null || calcium === null || alkalinity === null ||
@@ -12851,10 +13239,12 @@
 
   var PARAMETER_BASIS_RE = /\(\s*as\s+([^)]+?)\s*\)/;
 
-  /* "Nitrate (as NO3)" -> "no3" */
+  /* "Nitrate (as NO3)" -> "no3"; "as NO3-N" is nitrogen, as a unit's basis is */
   function parameterBasis(parameter) {
     var m = PARAMETER_BASIS_RE.exec(String(parameter || ''));
-    return m ? m[1].toLowerCase().replace(/\s+/g, '') : '';
+    if (!m) return '';
+    var basis = m[1].toLowerCase().replace(/\s+/g, '');
+    return NITROGEN_BASIS_RE.test(basis) ? 'n' : basis;
   }
 
   function limitMaximums(entry) {
@@ -12869,8 +13259,12 @@
   }
 
   /* Put a reported value on the guideline's scale. Returns
-   * {value, reason}; value null means the number must NOT be compared. */
-  function toGuidelineUnit(value, reportedUnit, entry) {
+   * {value, reason}; value null means the number must NOT be compared.
+   * `parameter` is the name as the laboratory wrote it: a basis it states and
+   * the unit contradicts ("Nitrate (as NO3)" in "mg/L as N") is refused, and
+   * "Nitrate" in "mg/L as N" is converted; without it the entry's own name
+   * speaks for the sheet (standards.py to_standard_unit). */
+  function toGuidelineUnit(value, reportedUnit, entry, parameter) {
     var reported = String(reportedUnit || '').trim();
     var guideline = String(entry.unit || '').trim();
 
@@ -12911,11 +13305,21 @@
        * The parameter name often carries it instead: "Nitrate (as NO3)"
        * reported in "mg/L as N" is a different number by a factor of 4.4,
        * and grading it at face value passed a sample the guideline fails. */
-      var named = parameterBasis(entry.parameter);
-      if (named && named !== source.basis) {
-        return { value: null, reason: 'unit_basis_conflict' };
+      var key = normaliseParameter(entry.parameter);
+      var native = parameterBasis(entry.parameter) ||
+        (own(NATIVE_BASIS, key) ? NATIVE_BASIS[key] : '');
+      if (source.basis === native) return { value: converted, reason: '' };
+      var written = parameterBasis(parameter === undefined || parameter === null
+        ? entry.parameter : parameter);
+      var factor = basisConversion(reported, entry);
+      if (factor && !(written && written !== source.basis)) {
+        return { value: converted * factor[0], reason: 'unit_basis_converted' };
       }
-      if (!named) return { value: converted, reason: 'unit_basis_assumed' };
+      if (native) return { value: null, reason: 'unit_basis_conflict' };
+      /* Nothing states the guideline's basis, so the reading is taken but it
+       * is worth an analyst's eye: an 'as CaCO3' figure is about 2.5 times
+       * the same concentration expressed as the element. */
+      return { value: converted, reason: 'unit_basis_assumed' };
     } else if (target.basis && !source.basis) {
       return { value: converted, reason: 'unit_basis_assumed' };
     }
@@ -13047,7 +13451,7 @@
         entry.unit + ' cannot be shown. Ask the laboratory for the detection limit.';
       return row;
     }
-    var converted = toGuidelineUnit(dlText, result.unit, entry);
+    var converted = toGuidelineUnit(dlText, result.unit, entry, result.parameter);
     if (converted.value === null) {
       row.status = 'indeterminate';
       row.evaluable = false;
@@ -13082,6 +13486,49 @@
     row.remark = 'below detection limit (' + formatG(converted.value) + ' ' +
       entry.unit + '), which is at or under the limit of ' +
       formatG(strictest) + ' ' + entry.unit;
+    return row;
+  }
+
+  /* the reasons a unit keeps a value off the table's scale */
+  var UNIT_REFUSALS = ['unit_unreadable', 'unit_mismatch', 'unit_basis_conflict'];
+
+  function hasLimit(entry) {
+    return !!(entry.who_health || entry.who_aesthetic || entry.sl_standard);
+  }
+
+  /* The guideline's unit as a remark names it, with the basis a conversion
+   * put the value on: "mg/L as Ca" for calcium reported as CaCO3 (assess.py
+   * _scale). */
+  function wqScale(reportedUnit, entry, reason) {
+    if (reason === 'unit_basis_converted') {
+      var basis = basisConversion(reportedUnit, entry);
+      if (basis) return entry.unit + ' as ' + basis[1];
+    }
+    return entry.unit;
+  }
+
+  /* What a nitrate or nitrite row reported as nitrogen adds to its remark
+   * (assess.py _as_nitrogen_note): it is held to the guideline for nitrogen,
+   * and the remark says which basis the sheet used and gives the ion's
+   * figure. A value converted onto nitrogen from the ion says so in its unit
+   * note instead. */
+  function asNitrogenNote(entry, converted, reason) {
+    var key = normaliseParameter(entry.parameter);
+    if (!own(AS_NITROGEN, key) || reason === 'unit_basis_converted') return '';
+    return phrase('quality.as_nitrogen', { value: converted, unit: entry.unit,
+      ion_value: converted * AS_NITROGEN[key][1], ion: AS_NITROGEN[key][2] });
+  }
+
+  /* A determinand with no limit whose unit cannot be put on the table's
+   * scale (assess.py _no_guideline_unit): its unit decides nothing, and a
+   * temperature written as "27 oC" made the sample "not proven safe". */
+  function noGuidelineUnit(row, entry, result, reason, stated) {
+    row.status = 'no_guideline';
+    row.reason = reason;
+    var note = phrase('quality.no_guideline_unit', {
+      note: entry.note || (stated ? 'No guideline value' : 'no guideline value'),
+      unit: String(result.unit || ''), why: INDETERMINATE_REASONS[reason] });
+    row.remark = stated ? stated + '. ' + note : note;
     return row;
   }
 
@@ -13145,8 +13592,24 @@
   function assessUnquantified(row, result, entry) {
     var reported = Number(result.greater_than);
     var stated = statedBound(result);
-    var converted = toGuidelineUnit(reported, result.unit, entry);
-    if (converted.value === null) {
+    var inclusive = !!result.greater_than_inclusive;
+    var converted = toGuidelineUnit(reported, result.unit, entry, result.parameter);
+    var microbiological = String(entry.category || '').trim().toLowerCase() ===
+      'microbiological';
+    if (converted.value === null && reported === 0 && !inclusive && microbiological) {
+      /* "Present" or "TNTC" is a count above zero, and zero is zero on every
+       * count scale, so the unit decides nothing. Refused on it, an E. coli
+       * "Present" in a unit this engine could not read made the sample "not
+       * proven safe" where "Absent" in the same unit passed. A number in
+       * such a unit is still refused: grading only the bound is a choice
+       * (QUESTIONS.md item 24). */
+      stated += ' (' + phrase('quality.zero_any_unit', { unit: String(result.unit || ''),
+        why: INDETERMINATE_REASONS[converted.reason] }) + ')';
+      converted = { value: 0.0, reason: '' };
+    } else if (converted.value === null) {
+      if (!hasLimit(entry)) {
+        return noGuidelineUnit(row, entry, result, converted.reason, stated);
+      }
       row.status = 'indeterminate';
       row.evaluable = false;
       row.reason = converted.reason;
@@ -13155,11 +13618,11 @@
         INDETERMINATE_REASONS[converted.reason] + '. The value was not ' +
         'compared against any limit.';
       return row;
+    } else {
+      stated += wqUnitNote(reported, result.unit || '', converted.value,
+        converted.reason, wqScale(result.unit, entry, converted.reason));
     }
-    var bound = converted.value;
-    stated += wqUnitNote(reported, result.unit || '', bound, converted.reason,
-      entry.unit);
-    var inclusive = !!result.greater_than_inclusive;
+    var bound = /** @type {number} */ (converted.value);
 
     /* The true value is above the bound, or at it for ">=", so a limit is
      * crossed only when the bound already reaches it: ">50" exceeds 50,
@@ -13340,8 +13803,10 @@
       return assessBelowDetection(row, result, entry, limits);
     }
 
-    var converted = toGuidelineUnit(Number(result.value), result.unit, entry);
+    var converted = toGuidelineUnit(Number(result.value), result.unit, entry,
+      result.parameter);
     if (converted.value === null) {
+      if (!hasLimit(entry)) return noGuidelineUnit(row, entry, result, converted.reason, '');
       row.status = 'indeterminate';
       row.evaluable = false;
       row.reason = converted.reason;
@@ -13355,7 +13820,10 @@
     row.value_in_guideline_unit = converted.value;
     row.reason = converted.reason;
     gradeRow(row, entry, converted.value, wqUnitNote(Number(result.value),
-      result.unit || '', converted.value, converted.reason, guidelineUnit));
+      result.unit || '', converted.value, converted.reason,
+      wqScale(result.unit, entry, converted.reason)));
+    var nitrogen = asNitrogenNote(entry, converted.value, converted.reason);
+    if (nitrogen) row.remark = row.remark ? row.remark + '; ' + nitrogen : nitrogen;
     return row;
   }
 
@@ -13419,7 +13887,8 @@
           }
           if (row.below_detection && entry &&
               row.detection_limit !== null && row.detection_limit !== undefined) {
-            var dl = toGuidelineUnit(Number(row.detection_limit), row.unit, entry);
+            var dl = toGuidelineUnit(Number(row.detection_limit), row.unit, entry,
+              row.parameter);
             if (dl.value !== null) return [Number(dl.value), gv, true];
           }
         }
@@ -13462,6 +13931,23 @@
             (result.unit ? " ('" + result.unit + "')" : '') +
             '; it was read as ' + row.guideline_unit +
             '. Confirm against the laboratory certificate.',
+        });
+      } else if (row.reason === 'unit_basis_converted') {
+        var basis = basisConversion(result.unit, table[normaliseParameter(result.parameter)]);
+        if (basis) {
+          flags.push({
+            level: 'info', code: 'unit_basis_converted',
+            message: phrase('quality.unit_basis_converted', {
+              parameter: String(result.parameter), unit: String(result.unit || ''),
+              guideline: row.guideline_unit, basis: basis[1], factor: basis[0] }),
+          });
+        }
+      } else if (row.status === 'no_guideline' && UNIT_REFUSALS.indexOf(row.reason) >= 0) {
+        flags.push({
+          level: 'warning', code: 'value_not_used',
+          message: phrase('quality.value_not_used', {
+            parameter: String(result.parameter), unit: String(result.unit || ''),
+            why: INDETERMINATE_REASONS[row.reason] }),
         });
       } else if (row.reason === 'unit_basis_assumed') {
         flags.push({
@@ -14261,6 +14747,38 @@
     return deepest === null ? null : Number(deepest.bit_diameter_in);
   }
 
+  /* [fill, material, annulusMm, boreIn]: what the annulus can hold, by the
+   * same rule the field checks apply (50 mm per side to place gravel, 70 mm
+   * for it to filter), on the diameter the log says was drilled or the
+   * rule's (designer._annular_fill). */
+  function annularFill(log, rules) {
+    var boreIn = loggedDiameterIn(log) || rules.borehole_diameter_in;
+    var annulusMm = (boreIn - rules.casing_diameter_in) * 25.4 / 2.0;
+    if (annulusMm < ANNULUS_PACK_MIN_MM) return ['none', '', annulusMm, boreIn];
+    if (annulusMm < ANNULUS_FILTER_MIN_MM) {
+      return ['formation stabiliser', rules.gravel_pack_material, annulusMm, boreIn];
+    }
+    return ['gravel pack', rules.gravel_pack_material, annulusMm, boreIn];
+  }
+
+  /* {floor, sealed, why}: the shallowest depth a designed screen may start
+   * at, whether the seal rather than the static water level sets it, and
+   * what a sentence calls the seal's part of it (designer._screen_floor).
+   * Below the seal, and below the fill the rules put above the top screen:
+   * a screen placed at the seal's foot had grout sitting on it, with the
+   * pack clamped to the seal and no word said. Moving the screen rather than
+   * shortening the pack is a choice (QUESTIONS.md item 24). */
+  function screenFloor(log, rules, swl, totalDepth) {
+    var seal = sealDepthFor(log, rules, totalDepth);
+    var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
+    var fill = annularFill(log, rules)[0];
+    var pack = fill !== 'none' ? rules.gravel_pack_above_top_screen_m : 0.0;
+    var why = pack > 0 ? phrase('design.under_seal', { seal: seal, pack: pack, fill: fill })
+      : 'the ' + formatG(seal) + ' m grouted interval';
+    return { floor: Math.max(swlFloor, seal + pack), sealed: seal + pack >= swlFloor,
+      why: why };
+  }
+
   /**
    * @param {DrillingLog|null} log
    * @param {number} depth
@@ -14309,9 +14827,10 @@
                   rules.fracture_zone_margin_m === null)
       ? configDefaults().design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     /* nothing is screened inside the grouted interval, whatever the log says
-     * is wet there: the grout is there to keep that water out */
-    var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
-    var floor = Math.max(swlFloor, seal);
+     * is wet there: the grout is there to keep that water out; nor in the
+     * fill the rules put above the top screen */
+    var below = screenFloor(log, rules, swl, totalDepth);
+    var floor = below.floor;
     var sumpTop = totalDepth - rules.sump_length_m;
     function clipOne(z) {
       var top = Math.ceil(Math.max(z[0], floor) * 2.0) / 2.0;
@@ -14324,8 +14843,8 @@
     function target(kind, label, first, candidate) {
       var cut = [];
       if (candidate[0] < floor) {
-        cut.push(seal >= swlFloor
-          ? 'within the ' + formatG(seal) + ' m grouted interval'
+        cut.push(below.sealed
+          ? 'within ' + below.why
           : 'shallower than ' + formatG(floor) + ' m, ' +
             formatG(rules.min_screen_below_swl_m) + ' m below the static water level');
       }
@@ -14606,27 +15125,28 @@
         });
       }
     });
-    var gravelTop = Math.max(topScreen - rules.gravel_pack_above_top_screen_m, sealDepth);
+    var rule = rules.gravel_pack_above_top_screen_m;
+    var gravelTop = Math.max(topScreen - rule, sealDepth);
     var gravel = [gravelTop, totalDepthM];
     var seal = [0.0, sealDepth];
     var backfill = [sealDepth, gravelTop];
+    /* where the fill's top falls against the top screen: the rule's height,
+     * unless the seal holds it lower */
+    var packHeld = sealDepth > topScreen - rule;
+    var margin = packHeld ? topScreen - sealDepth : rule;
 
     /* the drilled diameter is what the log says was drilled, not the rule's
      * default; the rule applies when the log records none */
-    var logged = loggedDiameterIn(log);
-    var boreIn = logged || rules.borehole_diameter_in;
-    var diameterSource = logged ? ' as logged' : '';
+    var diameterSource = loggedDiameterIn(log) ? ' as logged' : '';
 
     /* The same annulus rule the field checks apply (50 mm per side to place
      * gravel, 70 mm for it to filter). It used to raise a flag that reached
      * no document while the drawing, the summary and the bill of quantities
      * carried a 2-4 mm pack that cannot be poured through 19 mm. The fill
      * now follows the annulus, and every document follows the fill. */
-    var annulusMm = (boreIn - rules.casing_diameter_in) * 25.4 / 2.0;
-    var fill, material;
-    if (annulusMm < ANNULUS_PACK_MIN_MM) {
-      fill = 'none';
-      material = '';
+    var annular = annularFill(log, rules);
+    var fill = annular[0], material = annular[1], annulusMm = annular[2], boreIn = annular[3];
+    if (fill === 'none') {
       flags.push({
         level: 'warning', code: 'thin_annulus',
         message: 'A ' + formatG(rules.casing_diameter_in) + ' inch casing in a ' +
@@ -14637,9 +15157,7 @@
           'gravel pack is drawn or priced and the screen slot must suit the ' +
           'formation; use a larger bit or smaller casing to fit one.',
       });
-    } else if (annulusMm < ANNULUS_FILTER_MIN_MM) {
-      fill = 'formation stabiliser';
-      material = rules.gravel_pack_material;
+    } else if (fill === 'formation stabiliser') {
       flags.push({
         level: 'info', code: 'thin_annulus',
         message: 'The ' + pyFixed(annulusMm, 0) + ' mm annulus meets the ' +
@@ -14647,9 +15165,15 @@
           formatG(ANNULUS_FILTER_MIN_MM) + ' mm, so the annular fill acts as a ' +
           'formation stabiliser rather than a filter pack.',
       });
-    } else {
-      fill = 'gravel pack';
-      material = rules.gravel_pack_material;
+    }
+    if (fill !== 'none' && packHeld) {
+      /* The basis said "2 m above the top screen" of a pack the seal held
+       * level with it, or 5 m below it round a screen in the grout. */
+      flags.push({
+        level: 'warning', code: 'gravel_pack_short',
+        message: phrase('design.fill_short', { fill: fill, top: gravelTop,
+          seal: sealDepth, screen: topScreen, rule: rule, need: sealDepth + rule }),
+      });
     }
 
     var fillSentence;
@@ -14659,9 +15183,12 @@
         formatG(boreIn) + ' inch hole is too thin to place one, so the annulus ' +
         'below the seal is left to the formation';
     } else {
-      fillSentence = fill + ' (' + material + ') from ' + formatG(gravel[0]) +
-        ' m to the bottom, ' + formatG(rules.gravel_pack_above_top_screen_m) +
-        ' m above the top screen';
+      var where = margin > 0 ? 'design.fill_above'
+        : (margin < 0 ? 'design.fill_below' : 'design.fill_level');
+      /** @type {Rec} */
+      var values = { fill: fill, material: material, top: gravel[0] };
+      if (margin) values.margin = Math.abs(margin);
+      fillSentence = phrase(where, values);
     }
     var sealSentence;
     if (grout > sealDepth) {
@@ -15080,9 +15607,8 @@
     if (!screens.length) {
       /* fall back: screen the bottom third of the hole below the SWL margin,
        * and never inside the grout */
-      var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
-      var sealAt = sealDepthFor(log, rules, totalDepthM);
-      var floor = Math.max(swlFloor, sealAt);
+      var below = screenFloor(log, rules, swl, totalDepthM);
+      var floor = below.floor;
       var sumpTop = Math.max(totalDepthM - rules.sump_length_m, 0.0);
       var bottom = sumpTop;
       /* rounded to 0.5 m like every other screen top */
@@ -15098,8 +15624,8 @@
          * whichever of the two is in the way: a grout recorded below the hole
          * was blamed on the static water level. */
         top = Math.max(Math.min(bottom - rules.screen_length_default_m, bottom - 1.0), 0.0);
-        var cause = sealAt >= swlFloor
-          ? 'The ' + formatG(sealAt) + ' m grouted interval'
+        var cause = below.sealed
+          ? below.why.charAt(0).toUpperCase() + below.why.slice(1)
           : 'Static water level plus the ' + formatG(rules.min_screen_below_swl_m) +
             ' m minimum screen depth';
         flags.push({
@@ -15163,6 +15689,9 @@
     'Test pumping', 'Water quality', 'Wellhead'];
   var RESOURCE_CATEGORIES = ['equipment', 'labour', 'consumables', 'fuel', 'vehicles'];
   var DEFAULT_EXCHANGE_RATE_SLE_PER_USD = 23.0;
+  /* the stages an attempt that finds no water still pays for: _DRY_STAGES.
+   * The programme estimate, the cost distribution and the risk-loaded price
+   * all count a dry attempt so. */
   var DRY_STAGES = ['Siting', 'Mobilisation', 'Drilling'];
   /* The quantity basis that prices a rising main in place of the one the
    * handpump line includes, by material in lower case: RISING_MAIN_BASES in
@@ -15176,6 +15705,9 @@
     var key = trimField(material).toLowerCase();
     return own(RISING_MAIN_BASES, key) ? RISING_MAIN_BASES[key] : null;
   }
+
+  /* a dry attempt does not pay this basis: the rig has made the journey */
+  var COST_JOURNEY = 'per_km_round_trip';
 
   /** The rate catalogue: load_rates. min_usd and max_usd are the ends of
    * the triangle the cost distribution draws the rate from, unit_cost_usd
@@ -15451,6 +15983,9 @@
         code: rate.code, stage: rate.stage, category: rate.category,
         item: rate.item, unit: rate.unit, quantity: quantity,
         unit_cost_usd: rate.unit_cost_usd, note: rate.note,
+        /* so that the journey from the base can be told from the other
+         * mobilisation lines */
+        quantity_basis: rate.quantity_basis,
         amount_usd: quantity * rate.unit_cost_usd,
       });
     });
@@ -15512,14 +16047,45 @@
       cost_per_meter_usd: inputs.total_depth_m ? totalCost / inputs.total_depth_m : 0.0,
     }, pct);
 
+    /* An attempt that finds no water: its siting, set-up and drilling lines,
+     * without the journey from the base, added stage by stage as the
+     * programme estimate adds them (dry_attempt_direct_usd), and priced as
+     * the borehole is (dry_attempt_price_usd). */
+    var dryTotals = DRY_STAGES.map(function (stage) {
+      return items.reduce(function (a, i) {
+        return i.stage === stage && i.quantity_basis !== COST_JOURNEY ? a + i.amount_usd : a;
+      }, 0.0);
+    });
+    estimate.dry_attempt_direct_usd = dryTotals.reduce(function (a, v) { return a + v; }, 0);
+    estimate.dry_attempt_price_usd = costPrice(estimate.dry_attempt_direct_usd,
+      pct.overheads_percent, pct.margin_percent, pct.vat_percent);
+
     estimate.in_local = function (usd) { return usd * pct.exchange_rate_sle_per_usd; };
-    /* Under a no-water-no-pay contract the price of each successful borehole
-     * must carry the cost of the expected failures. */
-    estimate.price_per_successful_well_usd = function (successRatePercent) {
+    /** price_per_successful_well_usd: the risk-loaded price under a no water,
+     * no pay contract. The client pays nothing for an attempt that finds no
+     * water, so each successful borehole carries the (1 - p) / p attempts
+     * expected to fail before it, each at failedAttemptUsd: by default the
+     * dry attempt the programme estimate and the cost distribution count.
+     * What a failure costs is what has been done to the hole when it is
+     * judged, which the contract and the ground decide (RWSN's pricing guide:
+     * in mud drilling in sediments, only once the casing and screens are
+     * in); the borehole's own price with VAT prices every failure as a whole
+     * completed borehole, which is what this returned before (the price over
+     * the success rate).
+     * @param {number} successRatePercent
+     * @param {number|null} [failedAttemptUsd]
+     * @returns {number} */
+    estimate.price_per_successful_well_usd = function (successRatePercent, failedAttemptUsd) {
       if (!(successRatePercent > 0 && successRatePercent <= 100)) {
         throw new Error('success rate must be in (0, 100]');
       }
-      return priceWithVat / (successRatePercent / 100.0);
+      var failed = failedAttemptUsd === undefined || failedAttemptUsd === null
+        ? estimate.dry_attempt_price_usd : failedAttemptUsd;
+      if (!(typeof failed === 'number' && isFinite(failed) && failed >= 0.0)) {
+        throw new Error('the price of a failed attempt must be a number, 0 or more');
+      }
+      var p = successRatePercent / 100.0;
+      return priceWithVat + failed * ((1.0 - p) / p);
     };
     estimate.by_stage = function () {
       var totals = {}, order = STAGES.slice();
@@ -15587,9 +16153,9 @@
       exchangeRate: opts.exchangeRate,
     });
 
-    var dryCost = well.by_stage().filter(function (sv) {
-      return DRY_STAGES.indexOf(sv[0]) >= 0;
-    }).reduce(function (a, sv) { return a + sv[1]; }, 0);
+    /* the well carries no journey (charged at package level), so this is
+     * its siting, set-up and drilling */
+    var dryCost = well.dry_attempt_direct_usd;
 
     var kmRate = catalogue.filter(function (r) {
       return r.quantity_basis === 'per_km_round_trip';
@@ -15653,8 +16219,10 @@
    * @returns {string[][]}
    */
   function costSummaryRows(estimate) {
+    /* costUsd, half to even as Python's f"{x:,.0f}": toLocaleString rounds a
+     * half up, and a 4,132.5 direct cost printed 4,133 against 4,132 */
     function pair(usd) {
-      return [thousandsFixed(usd, 0), thousandsFixed(estimate.in_local(usd), 0)];
+      return [costUsd(usd), costUsd(estimate.in_local(usd))];
     }
     var rows = [
       ['Direct works cost'].concat(pair(estimate.direct_cost_usd)),
@@ -15682,8 +16250,10 @@
    * @returns {string[][]}
    */
   function programmeSummaryRows(programme) {
+    /* costUsd: transport at 2.50 USD a km lands on a half for half of all
+     * attempt counts, and toLocaleString printed 313 against 312 */
     function pair(usd) {
-      return [thousandsFixed(usd, 0), thousandsFixed(programme.in_local(usd), 0)];
+      return [costUsd(usd), costUsd(programme.in_local(usd))];
     }
     var dry = (programme.n_attempted - programme.n_successful) *
       programme.dry_attempt_cost_usd;
@@ -16013,6 +16583,10 @@
       '>= 50 mm (70 mm for a true gravel pack)', note);
   }
 
+  /* field_checks.METRES_TOLERANCE_M: how far the invoiced metres may run over
+   * the signed daily logs, as the casing reconciliation rule allows 3 m */
+  var METRES_TOLERANCE_M = 3.0;
+
   /** Paying per metre invites overstated depths; the daily logs signed by the
    * rig operator and the supervisor are the audit trail.
    * @param {number} loggedM
@@ -16020,7 +16594,7 @@
    * @param {number} [toleranceM]
    */
   function metresReconciliationCheck(loggedM, claimedM, toleranceM) {
-    var tolerance = toleranceM === undefined ? 3.0 : toleranceM;
+    var tolerance = toleranceM === undefined ? METRES_TOLERANCE_M : toleranceM;
     var difference = claimedM - loggedM;
     var passed = difference <= tolerance;
     var message;
@@ -16354,6 +16928,10 @@
     drill_rig: ['^drill\\s*rig'],
     installed_screens: ['^screens?\\s*installed', '^installed\\s*screens?',
                         '^screens?\\s*(set|as\\s*built)'],
+    /* the casing and riser a pumping test co-pilot writes on its sheet,
+     * which set how long casing storage lasts */
+    casing_diameter_in: ['^casing\\s*diameter'],
+    riser_diameter_in: ['^riser(\\s*pipe)?\\s*diameter'],
   };
 
   var COMPILED_LABELS = (function () {
@@ -17922,6 +18500,14 @@
 
   /* --- water quality sheets ------------------------------------------------- */
 
+  /* The results table's header row, its columns, and the unit it declares
+   * (waterquality.py _find_results_header). A unit in the result column's
+   * header ("Result (ug/L)") is the unit of every row whose own unit cell is
+   * blank; it was dropped, so arsenic 5 under "Result (ug/L)" was read as 5
+   * mg/L. Only a unit this engine can read is taken. A row the header's unit
+   * cannot measure (E. coli under "Result (mg/L)") is then refused rather
+   * than read in its guideline's unit; that is a choice (QUESTIONS.md item
+   * 24). */
   function findResultsHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
       var texts = rowText(grid[r]);
@@ -17935,7 +18521,10 @@
         else if (t.indexOf('detection') >= 0 || t === 'dl') cols.dl = c;
         else if (t.indexOf('method') === 0) cols.method = c;
       }
-      if ('parameter' in cols && 'value' in cols) return { row: r, cols: cols };
+      if ('parameter' in cols && 'value' in cols) {
+        var declared = unitFromLabel(cleanText(grid[r][cols.value]), null);
+        return { row: r, cols: cols, unit: declared.unit ? declared.written : '' };
+      }
     }
     return null;
   }
@@ -18093,7 +18682,19 @@
     /* "50+" is 50 or more */
     if (/^(\d+(?:[.,]\d+)?|[.,]\d+)\s*\+/.test(plain)) return above(plain, true);
     var number = parseNumber(rawValue);
-    return number === null ? reading('text') : reading('number', number);
+    if (number === null) return reading('text');
+    /* A unit written after a measured value is read as it is after a bound:
+     * "0.05 mg/L" in a ug/L row was read as 0.05 ug/L. Only a unit this engine
+     * can read is taken, so a note beside the number ("0.5 ND", "8 (field)",
+     * "8*") leaves the reading as it was. */
+    var unit = '';
+    var written = numberAndUnit(plain);
+    if (written && written[1]) {
+      var candidate = String(written[1]).replace(/\s*[([][\s\S]*$/, '')
+        .replace(/\*+$/, '').trim();
+      if (candidate && parseUnit(candidate)) unit = candidate;
+    }
+    return reading('number', number, unit);
   }
 
   /* a unit read from the lower-cased cell, in the case the cell wrote it */
@@ -18106,16 +18707,20 @@
    * unit written in the cell ("ND (<0.05 mg/L)") is read, not dropped: it
    * becomes the row's unit when the unit column is blank, and is converted
    * onto the column's unit when the two differ. [null, rowUnit] when they
-   * cannot be reconciled, which is never the same as zero. */
+   * cannot be reconciled, which is never the same as zero. A chemical basis
+   * stated on one side only is not a contradiction (unitsComparable): "46
+   * mg/L" in a column of "mg/L as CaCO3" is the column's scale, and "10 mg/L
+   * as N" in a column of "mg/L" keeps the basis the cell names. */
   function inRowUnit(number, cellUnit, rowUnit) {
     if (!cellUnit) return [number, rowUnit];
     if (!normaliseUnit(rowUnit)) return [number, cellUnit];
     if (normaliseUnit(cellUnit) === normaliseUnit(rowUnit)) return [number, rowUnit];
     var source = parseUnit(cellUnit), target = parseUnit(rowUnit);
     if (!source || !target || source.dimension !== target.dimension ||
-        source.basis !== target.basis) {
+        (source.basis && target.basis && source.basis !== target.basis)) {
       return [null, rowUnit];
     }
+    if (source.basis && !target.basis) return [number, cellUnit];
     return [convertUnit(number, cellUnit, rowUnit), rowUnit];
   }
 
@@ -18144,6 +18749,7 @@
       if (!parameter || parameter.toLowerCase().indexOf('note') === 0) continue;
       var rawValue = cell('value');
       var unit = cleanText(cell('unit'));
+      if (located.unit && !normaliseUnit(unit)) unit = located.unit;
       var dl = parseNumber(cell('dl'));
       var read = readQualityCell(rawValue);
       var kind = read.kind, number = read.number;
@@ -18418,9 +19024,13 @@
     return best;
   }
 
-  /* Returns {times, levels, unitText}. unitText is '' when nothing was
-   * declared (minutes assumed) and '?<text>' when a unit was declared that
-   * could not be read, in which case the caller drops the group. */
+  /* Returns {times, levels, unitText, skipped, clocks}. unitText is '' when
+   * nothing was declared (minutes assumed) and '?<text>' when a unit was
+   * declared that could not be read, in which case the caller drops the
+   * group. clocks names the readings written as a clock, [index, as
+   * written]: each is read as the elapsed time it shows (readTime). Read for
+   * the first number in it, 01:30 was minute 1 and 00:05 minute 0. A date is
+   * one of the skipped cells. */
   function readSeries(grid, headerRow, group) {
     var header = group.time_header || '';
     /* A unit the header declares applies to the whole column, so an
@@ -18430,23 +19040,29 @@
     var declared = unitFromLabel(header, 'time');
     if (declared.written && !declared.unit) {
       return { times: [], levels: [], unitText: '?' + declared.written,
-        skipped: [] };
+        skipped: [], clocks: [] };
     }
-    var times = [], levels = [], skipped = [], unitText = declared.written;
+    var times = [], levels = [], skipped = [], clocks = [], unitText = declared.written;
     for (var r = headerRow + 1; r < grid.length; r++) {
       var row = grid[r] || [];
       var cell = group.time < row.length ? row[group.time] : null;
       var wl = group.level < row.length ? parseNumber(row[group.level]) : null;
-      var quantity = readQuantity(cell, [header], 'time');
+      var read = readTime(cell, [header]);
+      var quantity = read.quantity;
       if (quantity.status === 'absent' || wl === null) continue;
       if (quantity.status === 'unknown') {
-        skipped.push(String(cell));   // never silent
+        // never silent; a date as Python's str() writes it, a TRUE as Excel
+        // shows it
+        skipped.push(cell instanceof Date ? cleanText(cell)
+          : typeof cell === 'boolean' ? quantity.unit_text : String(cell));
         continue;
       }
-      if (quantity.unit_text) unitText = quantity.unit_text;
+      if (read.clock) clocks.push([times.length, read.clock]);
+      else if (quantity.unit_text) unitText = quantity.unit_text;
       times.push(quantity.value); levels.push(wl);
     }
-    return { times: times, levels: levels, unitText: unitText, skipped: skipped };
+    return { times: times, levels: levels, unitText: unitText, skipped: skipped,
+      clocks: clocks };
   }
 
   /* The row's own leading label, e.g. "Discharge per step (m3/h)". */
@@ -18538,7 +19154,16 @@
     return '';
   }
 
-  /* Join the hourly blocks of a constant discharge test into one series.
+  /* What a joined series is called, for the constant discharge readings and
+   * the recovery: [readings, what a block's minutes count from, an example
+   * heading] (pumping.py _BLOCK_SERIES). */
+  var BLOCK_SERIES = {
+    constant: ['constant discharge readings', 'test', 'Constant discharge 121-180 min'],
+    recovery: ['recovery readings', 'recovery', 'Recovery 61-120 min'],
+  };
+
+  /* Join the hourly blocks of a constant discharge test, or of a recovery,
+   * into one series.
    *
    * A constant discharge sheet is written in hourly column groups side by
    * side and each group's elapsed time is often counted within its own hour:
@@ -18546,19 +19171,23 @@
    * the groups and sorting the result interleaved them into a sawtooth -
    * minute 1 of every hour, then minute 2 of every hour - and every drawdown
    * curve and every transmissivity fitted to it was wrong (ROADMAP
-   * data-ingestion-10).
+   * data-ingestion-10). A long recovery is written the same way, and only
+   * its first block used to be read, without a word.
    *
-   * Each block's place in the test is read off the sheet: the minutes its own
-   * heading names ("Constant discharge 61-120 min"), or, when the heading
+   * Each block's place in the series is read off the sheet: the minutes its
+   * own heading names ("Constant discharge 61-120 min"), or, when the heading
    * names none, the last reading of the block before it, which is what a
    * block whose times go backwards continues from. A block that is neither -
    * one starting inside the readings already taken and running past them - is
    * left out and named, because a block placed at a minute nobody can check
    * produces a curve nobody can trust.
    *
-   * Returns {times, levels, joined, dropped}; joined and dropped are
-   * sentences naming what was done, for the caller to raise as flags. */
-  function joinConstantBlocks(blocks) {
+   * series is 'constant' or 'recovery', for the sentences. Returns {times,
+   * levels, joined, dropped}; joined and dropped are sentences naming what
+   * was done, for the caller to raise as flags. */
+  function joinBlocks(blocks, series) {
+    var names = BLOCK_SERIES[series || 'constant'];
+    var readings = names[0], what = names[1];
     var times = [], levels = [], joined = [], dropped = [], end = null;
     blocks.forEach(function (block, index) {
       var number = index + 1;
@@ -18582,35 +19211,25 @@
          * and a four-hour test ended at 226 minutes. */
         offset = Math.max(span[0] - 1.0, 0.0);
         if (offset) {
-          note = 'block ' + number + ' counts its time within its own hour and ' +
-            "its heading '" + heading + "' covers " + formatG(span[0]) + ' to ' +
-            formatG(span[1]) + ' min, so ' + formatG(offset) + ' min were added ' +
-            'to it and its first reading, at ' + formatG(first) + ' min, is minute ' +
-            formatG(first + offset) + ' of the test';
+          note = phrase('pumping.block_by_heading', { number: number, heading: heading,
+            start: span[0], end: span[1], offset: offset, first: first,
+            placed: first + offset, what: what });
         }
       } else if (span !== null || end === null || first > end) {
         offset = 0;
       } else if (last <= end) {
         offset = end;
-        note = 'block ' + number + ' restarts its time at ' +
-          formatG(first) + ' min, inside the ' + formatG(end) + ' min already ' +
-          'read, and its heading names no minutes, so it was read as ' +
-          'continuing from the last reading before it and ' + formatG(offset) +
-          ' min were added to it';
+        note = phrase('pumping.block_continued', { number: number, first: first,
+          end: end, offset: offset });
       } else {
-        dropped.push('Block ' + number + ' of the constant discharge readings ' +
-          'starts at ' + formatG(first) + ' min, inside the ' + formatG(end) +
-          ' min already read, and runs past them to ' + formatG(last) +
-          ' min, so the sheet does not say whether its times count from the ' +
-          'start of the test or from the start of the block.');
+        dropped.push(phrase('pumping.block_ambiguous', { number: number,
+          readings: readings, first: first, end: end, last: last, what: what }));
         return;
       }
       var shifted = t.map(function (v) { return v + offset; });
       if (end !== null && shifted[0] < end) {
-        dropped.push('Block ' + number + ' of the constant discharge readings ' +
-          'still starts at ' + formatG(shifted[0]) + ' min once placed, ' +
-          'before the ' + formatG(end) + ' min already read, so its readings ' +
-          'would run backwards into the block before it.');
+        dropped.push(phrase('pumping.block_backwards', { number: number,
+          readings: readings, placed: shifted[0], end: end }));
         return;
       }
       if (note) joined.push(note);
@@ -18627,13 +19246,82 @@
     };
   }
 
+  /* joinBlocks, with what it did raised as flags: {times, levels, flags}
+   * (pumping.py _join_flags). */
+  function joinFlags(blocks, series) {
+    var names = BLOCK_SERIES[series];
+    var joinedBlocks = joinBlocks(blocks, series);
+    var flags = joinedBlocks.dropped.map(function (note) {
+      return { level: 'warning', code: series + '_block_unreadable',
+        message: phrase('pumping.block_left_out', { note: note, example: names[2] }) };
+    });
+    if (joinedBlocks.joined.length && joinedBlocks.times.length) {
+      flags.push({ level: 'info', code: series + '_blocks_joined',
+        message: phrase('pumping.blocks_joined', { readings: names[0],
+          count: blocks.length, notes: joinedBlocks.joined.join('; '),
+          first: arrMin(joinedBlocks.times), last: arrMax(joinedBlocks.times) }) });
+    }
+    return { times: joinedBlocks.times, levels: joinedBlocks.levels, flags: flags };
+  }
+
+  /* Words in a recovery block's time header or heading that say its times
+   * count from the pump stopping: "Time since pump stopped", "after
+   * shut-off", "since pump off"; "since start" does not (pumping.py
+   * _SINCE_STOP_RE). */
+  var SINCE_STOP_RE = /stop|shut|\boff\b/;
+
+  /* A value cell whose text starts as a number does: "8", "50 mm", "-2". */
+  var STARTS_AS_NUMBER_RE = /^\s*[-+]?\.?[0-9]/;
+
+  /* The casing and riser diameters the sheet records, in inches, from what
+   * extractHeaderFields found; a diameter with no unit, or none the toolkit
+   * reads, is refused with a flag (pumping.py _diameters). */
+  function sheetDiameters(found, flags) {
+    var out = {};
+    [['casing_diameter_in', 'casing'], ['riser_diameter_in', 'riser']].forEach(function (k) {
+      if (!Object.prototype.hasOwnProperty.call(found, k[0])) return;
+      var label = found[k[0]][0], value = found[k[0]][1];
+      /* text that does not start with a number is the next label or a note
+       * standing where the value would be, not a diameter: with the
+       * co-pilot's riser left blank, the "Planned rate (m3/h)" label under it
+       * was read as a riser of 3 inches (pumping.py _diameters) */
+      if (typeof value === 'string' && !STARTS_AS_NUMBER_RE.test(value)) return;
+      var quantity = typeof value === 'number' || typeof value === 'string'
+        ? readQuantity(value, [label], 'length')
+        : { value: null, raw_value: null, unit_text: '', status: 'unknown', dimension: 'length' };
+      if (quantity.status === 'absent') return;
+      if (quantity.status === 'unknown' || quantity.status === 'assumed' ||
+          quantity.value === null || !(quantity.value > 0)) {
+        flags.push({ level: 'warning', code: 'diameter_unreadable',
+          message: phrase('pumping.diameter_unreadable', { what: k[1],
+            written: cleanText(value) }) });
+        return;
+      }
+      var unit = parseUnit(quantity.unit_text, 'length');
+      out[k[0]] = unit && unit.canonical === 'in' ? Number(quantity.raw_value)
+        : quantity.value / 0.0254;
+    });
+    /* a casing no wider than its riser leaves no casing storage at all: a
+     * slip on the sheet, not a borehole (pumping.py _diameters) */
+    if (out.casing_diameter_in !== undefined && out.riser_diameter_in !== undefined &&
+        out.casing_diameter_in <= out.riser_diameter_in) {
+      flags.push({ level: 'warning', code: 'diameters_inconsistent',
+        message: phrase('pumping.diameters_inconsistent', {
+          casing: out.casing_diameter_in, riser: out.riser_diameter_in }) });
+      return {};
+    }
+    return out;
+  }
+
   /**
    * @param {Grid} grid
    * @param {string} [source]
    * @returns {PumpingTest}
    */
   function pumpingFromGrid(grid, source) {
-    var fields = extractHeaderFields(grid, grid.length);
+    /** @type {Record<string, Array<*>>} */
+    var found = {};
+    var fields = extractHeaderFields(grid, grid.length, found);
     var site = siteFromFields(fields, source);
     var flags = [];
     var located = findGroups(grid);
@@ -18699,7 +19387,8 @@
         }
         /* Each block is handed back with the group it came from, because a
          * constant test's blocks are placed by the heading the sheet prints
-         * over them before they are joined into one series. */
+         * over them before they are joined into one series, and with the
+         * readings in it written as a clock. */
         if (series.times.length) {
           series.group = g;
           out.push(series);
@@ -18710,6 +19399,49 @@
 
     var pumpingSeries = seriesOfKind('pumping');
     var recoverySeries = seriesOfKind('recovery');
+
+    /* A test's first reading is taken in its first hour, so an earliest
+     * pumping reading written as a clock past it, 08:05, is a time of day,
+     * and the sheet is refused rather than read as a test that began eight
+     * hours in. A block whose heading names its minutes is held to its
+     * heading instead. The earliest reading, not the first row: rows written
+     * out of order put a later reading at the top (pumping.py _assemble). */
+    if (pumpingSeries.length) {
+      var block0 = pumpingSeries[0];
+      var span0 = blockSpanMin(String(block0.group.block_heading || ''));
+      var earliest = 0;
+      for (var e = 1; e < block0.times.length; e++) {
+        if (block0.times[e] < block0.times[earliest]) earliest = e;
+      }
+      var t0 = block0.times[earliest];
+      var clock0 = block0.clocks.filter(function (/** @type {Array<*>} */ c) {
+        return c[0] === earliest;
+      })[0];
+      if (clock0 && clockFormat([block0.group.time_header || '']) === 'hm' &&
+          t0 > 60.0 && (span0 === null || t0 > span0[1])) {
+        flags.push({ level: 'error', code: 'time_of_day',
+          message: phrase('pumping.time_of_day', { example: clock0[1] }) });
+        pumpingSeries = [];
+        recoverySeries = [];
+      }
+    }
+
+    [['pumping', pumpingSeries, 'started'], ['recovery', recoverySeries, 'stopped']]
+      .forEach(function (kind) {
+        var read = [];
+        /** @type {Rec[]} */ (kind[1]).forEach(function (series) {
+          series.clocks.forEach(function (/** @type {Array<*>} */ c) {
+            read.push([series.times[c[0]], c[1],
+              clockFormat([series.group.time_header || ''])]);
+          });
+        });
+        if (read.length) {
+          flags.push({ level: 'info', code: 'time_clock_read',
+            message: phrase('pumping.time_clock_read', { count: read.length,
+              kind: kind[0], format: phraseTable('pumping.time_clock_formats')[read[0][2]],
+              event: kind[2], example: read[0][1], minutes: read[0][0] }) });
+        }
+      });
 
     var testType = String(fields.test_type || '').trim().toLowerCase();
     var stated = !!testType;
@@ -18730,29 +19462,40 @@
       /* The hourly column groups are one continuous series on a constant
        * test, but each block's times are often counted within its own hour,
        * so every block is put back in its place before they are joined. */
-      var blockCount = pumpingSeries.length;
-      var joinedBlocks = joinConstantBlocks(pumpingSeries);
-      joinedBlocks.dropped.forEach(function (note) {
-        flags.push({
-          level: 'warning', code: 'constant_block_unreadable',
-          message: note + ' The block was left out of the series rather than ' +
-            'joined at a minute nobody can check. Head each block with the ' +
-            "minutes it covers, as in 'Constant discharge 121-180 min'.",
-        });
-      });
-      if (joinedBlocks.joined.length && joinedBlocks.times.length) {
-        flags.push({
-          level: 'info', code: 'constant_blocks_joined',
-          message: 'The constant discharge readings are written in ' +
-            blockCount + ' blocks: ' + joinedBlocks.joined.join('; ') +
-            '. The blocks have been joined into one series running ' +
-            formatG(arrMin(joinedBlocks.times)) + ' to ' +
-            formatG(arrMax(joinedBlocks.times)) + ' min.',
-        });
-      }
+      var joinedBlocks = joinFlags(pumpingSeries, 'constant');
+      Array.prototype.push.apply(flags, joinedBlocks.flags);
       pumpingSeries = joinedBlocks.times.length
         ? [{ times: joinedBlocks.times, levels: joinedBlocks.levels }] : [];
     }
+
+    /* A recovery written in blocks is joined by the same rules. */
+    var recoveryTime = null, recoveryLevel = null;
+    if (recoverySeries.length > 1) {
+      var joinedRecovery = joinFlags(recoverySeries, 'recovery');
+      Array.prototype.push.apply(flags, joinedRecovery.flags);
+      if (joinedRecovery.times.length) {
+        recoveryTime = joinedRecovery.times;
+        recoveryLevel = joinedRecovery.levels;
+      }
+    } else if (recoverySeries.length) {
+      recoveryTime = recoverySeries[0].times;
+      recoveryLevel = recoverySeries[0].levels;
+    }
+
+    /* The length of each step is read in the unit its label or its own cell
+     * names: "1 hr" was a step of 1 minute. */
+    var stepLength = null;
+    if (Object.prototype.hasOwnProperty.call(found, 'step_length_min')) {
+      var lengthRead = readTime(found.step_length_min[1], [found.step_length_min[0]]);
+      if (lengthRead.quantity.status === 'unknown') {
+        flags.push({ level: 'warning', code: 'step_length_unreadable',
+          message: phrase('pumping.step_length_unreadable', {
+            written: cleanText(found.step_length_min[1]) }) });
+      } else if (lengthRead.quantity.value !== null && lengthRead.quantity.value > 0) {
+        stepLength = lengthRead.quantity.value;
+      }
+    }
+    var diameters = sheetDiameters(found, flags);
 
     var discharges = findStepDischarges(grid);
     var steps = pumpingSeries.map(function (s, i) {
@@ -18812,12 +19555,7 @@
       }
     }
 
-    var recoveryTime = null, recoveryLevel = null;
-    if (recoverySeries.length) {
-      recoveryTime = recoverySeries[0].times;
-      recoveryLevel = recoverySeries[0].levels;
-      testType += '+recovery';
-    }
+    if (recoveryTime !== null) testType += '+recovery';
 
     var swl = fields.static_water_level_m === undefined ? null : fields.static_water_level_m;
     /* on the test's clock: a step test whose times restart each step pumped
@@ -18827,15 +19565,39 @@
       ? arrMax(steps.map(function (s, i) { return arrMax(s.time_min) + stepOffsets[i]; }))
       : null;
 
+    /* Recovery times written on the test's clock - 241, 242 after a
+     * 240-minute test - were taken as minutes since the pump stopped. A
+     * recovery whose first reading comes at or after the minute the pump
+     * stopped is on the test's clock unless its header says it counts from
+     * the stop, and is moved back by the pumping time (pumping.py). */
+    if (recoveryTime !== null && pumpingDuration !== null && recoveryTime.length) {
+      var firstRecovery = arrMin(recoveryTime);
+      var saysSince = recoverySeries.some(function (s) {
+        return SINCE_STOP_RE.test((String(s.group.time_header || '') + ' ' +
+          String(s.group.block_heading || '')).toLowerCase());
+      });
+      if (!saysSince && firstRecovery >= pumpingDuration) {
+        var stopped = pumpingDuration;
+        recoveryTime = recoveryTime.map(function (v) { return v - stopped; });
+        flags.push({ level: 'info', code: 'recovery_on_test_clock',
+          message: phrase('pumping.recovery_on_test_clock', { first: firstRecovery,
+            duration: pumpingDuration }) });
+      }
+    }
+
     /** @type {PumpingTest} */
     var test = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
       test_type: testType, static_water_level_m: swl,
       borehole_depth_m: fields.borehole_depth_m === undefined ? null : fields.borehole_depth_m,
       pump_setting_m: fields.pump_setting_m === undefined ? null : fields.pump_setting_m,
-      step_length_min: fields.step_length_min === undefined ? null : fields.step_length_min,
+      step_length_min: stepLength,
       steps: steps, recovery_time_min: recoveryTime, recovery_level_m: recoveryLevel,
       pumping_duration_min: pumpingDuration, source: String(source || ''), flags: [],
+      casing_diameter_in: diameters.casing_diameter_in === undefined
+        ? null : diameters.casing_diameter_in,
+      riser_diameter_in: diameters.riser_diameter_in === undefined
+        ? null : diameters.riser_diameter_in,
     };
 
     if (swl === null) {
@@ -18845,10 +19607,10 @@
     var missingQ = steps.filter(function (s) { return s.discharge_m3_per_h === null; })
       .map(function (s) { return s.step_number; });
     if (missingQ.length) {
+      /* every result is pending only when no step has a rate */
       flags.push({ level: 'warning', code: 'missing_discharge',
-        message: 'Discharge not recorded for step(s) ' + missingQ.join(', ') +
-          '. Drawdown and recovery curves are produced, but transmissivity and ' +
-          'yield results are pending until discharge values are supplied.' });
+        message: phrase(missingQ.length === steps.length ? 'pumping.missing_discharge'
+          : 'pumping.missing_discharge_some', { steps: missingQ.join(', ') }) });
     }
     if (swl !== null) {
       /* The recovery limb is checked too: a recovery that overshoots the
@@ -21384,28 +22146,38 @@
     return 'Poor';
   }
 
-  /** Thickness-weighted geometric mean resistivity across the water zones.
+  /** siting/suitability.py _water_zone_rho: the thickness-weighted geometric
+   * mean resistivity of the water-bearing layers inside the water zones, or
+   * null where there are none. Only the water-bearing layers: the zones are
+   * rounded to whole metres, so every layer inside a zone took in the slice
+   * of dry layer or basement the rounding added, and a 150 ohm-m layer from
+   * 5.4 to 14.6 m read 189 ohm-m and ranked behind the same layer from 5.6
+   * to 14.4 m. The odds read the water-zone resistivity through this too.
+   * The logarithms are relative to the first such layer's resistivity, so a
+   * zone of one resistivity reads exactly it.
    * @param {Interpretation} interp
    * @returns {number|null}
    */
-  function zoneGeomeanRho(interp) {
-    var acc = 0.0, total = 0.0;
+  function waterZoneRho(interp) {
+    var reference = 0.0, acc = 0.0, total = 0.0;
     interp.water_zones.forEach(function (zone) {
       var top = zone[0], bottom = zone[1];
       interp.layers.forEach(function (layer) {
+        if (!layer.water_bearing) return;
         var lo = Math.max(layer.top_m, top);
         var hi = Math.min(isFinite(layer.bottom_m) ? layer.bottom_m : bottom, bottom);
         if (hi > lo) {
-          acc += Math.log(layer.rho) * (hi - lo);
+          if (total === 0.0) reference = layer.rho;
+          acc += Math.log(layer.rho / reference) * (hi - lo);
           total += hi - lo;
         }
       });
     });
-    return total > 0 ? Math.exp(acc / total) : null;
+    return total > 0 ? reference * Math.exp(acc / total) : null;
   }
 
   function resistivityFitScore(interp, vesConfig) {
-    var mid = zoneGeomeanRho(interp);
+    var mid = waterZoneRho(interp);
     if (mid === null) return 0.0;
     var centre = Math.sqrt(vesConfig.fractured_zone_rho[0] *
       vesConfig.fractured_zone_rho[1]);
@@ -21485,10 +22257,26 @@
     return text;
   }
 
+  /* A weighted score, or a difference of two, to the 0.0001 it is exact to:
+   * _exact. A score to 0.1 times a confidence to 0.001 is a multiple of
+   * 0.0001, but in doubles not always the one nearest it (32.0 x 0.85 is
+   * 27.2 and 34.0 x 0.8 is 27.200000000000003), so equal scores were ranked
+   * by a last bit rather than by sounding id. */
+  function weightedExact(weighted) { return pyRound(weighted, 4); }
+
+  /* How far the first point's weighted score is ahead of the second's: _gap */
+  function weightedGap(first, second) {
+    return weightedExact(first.suitability * first.confidence -
+      second.suitability * second.confidence);
+  }
+
   /** siting/suitability.py tied_leaders: the two highest-ranked points when the
    * ranking cannot separate them, else null. One test for the tie sentence,
    * the preference table's "=1st" and the report's summary and conclusions,
-   * decided on the confidence-weighted scores as they are, not as printed.
+   * decided on the gap between the confidence-weighted scores to the tenth
+   * of a point the tie sentence prints it to: 64.1 less 61.1 is
+   * 2.999999999999993 in doubles and 2.96 prints as 3.0, and both were
+   * called "ahead by 3.0 points, within the 3-point margin".
    * @param {Rec[]} results what assessSiting returns
    * @param {number} [withinPoints]
    * @returns {Rec[]|null}
@@ -21501,8 +22289,7 @@
     });
     if (ranked.length < 2) return null;
     var first = ranked[0], second = ranked[1];
-    if (Math.abs(first.suitability * first.confidence -
-                 second.suitability * second.confidence) >= within) return null;
+    if (pyRound(Math.abs(weightedGap(first, second)), 1) >= within) return null;
     return [first, second];
   }
 
@@ -21519,7 +22306,7 @@
     var w1 = first.suitability * first.confidence, w2 = second.suitability * second.confidence;
     /* "by name only" is true only of equal scores; said of 82.3 against 79.5
      * it told the client the order was alphabetical when it was not */
-    var gap = w1 - w2;
+    var gap = weightedGap(first, second);
     var order = gap === 0
       ? first.sounding_id + ' is listed first by name only'
       : first.sounding_id + ' is ahead by ' +
@@ -21595,10 +22382,12 @@
         index: index,
       };
     });
-    /* rank on the confidence-weighted score, highest first; ties broken by
-     * sounding id for stability, and said in words by rankingTie() */
+    /* rank on the confidence-weighted score, highest first, compared to the
+     * 0.0001 it is exact to; equal scores are ranked by sounding id, and a
+     * tie is said in words by rankingTie() */
     var ranked = results.slice().sort(function (a, b) {
-      return (b.suitability * b.confidence) - (a.suitability * a.confidence) ||
+      return weightedExact(b.suitability * b.confidence) -
+        weightedExact(a.suitability * a.confidence) ||
         (a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0);
     });
     ranked.forEach(function (result, i) { result.rank = i + 1; });
@@ -21607,7 +22396,7 @@
 
   Object.assign(C, {
     assessSiting: assessSiting,
-    suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
+    suitabilityGrade: suitabilityGrade, waterZoneRho: waterZoneRho,
     rankingTie: rankingTie, tiedLeaders: tiedLeaders,
     suitabilityVerdict: suitabilityVerdict,
   });
@@ -21802,30 +22591,6 @@
       if ('below' in bands[i] && value < bands[i].below) return bands[i];
     }
     return bands[bands.length - 1];
-  }
-
-  /* The thickness-weighted geometric mean resistivity of the water-bearing
-   * layers inside the water zones, or null: _water_zone_rho. Not
-   * zoneGeomeanRho, which takes every layer inside a zone, so the slice of
-   * dry layer or basement that rounding a zone to whole metres added moved
-   * the mean across a band edge. The logarithms are relative to the first
-   * such layer's resistivity, so a zone of one resistivity reads exactly it. */
-  function waterZoneRho(interp) {
-    var reference = 0.0, acc = 0.0, total = 0.0;
-    interp.water_zones.forEach(function (zone) {
-      var top = zone[0], bottom = zone[1];
-      interp.layers.forEach(function (layer) {
-        if (!layer.water_bearing) return;
-        var lo = Math.max(layer.top_m, top);
-        var hi = Math.min(isFinite(layer.bottom_m) ? layer.bottom_m : bottom, bottom);
-        if (hi > lo) {
-          if (total === 0.0) reference = layer.rho;
-          acc += Math.log(layer.rho / reference) * (hi - lo);
-          total += hi - lo;
-        }
-      });
-    });
-    return total > 0 ? reference * Math.exp(acc / total) : null;
   }
 
   /* [key, band, value, ratio] for the three survey classes: _survey_evidence */
@@ -22174,8 +22939,6 @@
 
   var COST_RATES = 0, COST_DEPTH = 1, COST_OUTCOME = 2;
   var COST_CURVE_STEPS = 100;
-  /* a dry attempt does not pay this basis: the rig has made the journey */
-  var COST_JOURNEY = 'per_km_round_trip';
 
   /** The triangle's inverse distribution function: triangle_quantile.
    * @param {number} lo
@@ -22643,6 +23406,19 @@
   var MEASUREMENT_KINDS = ['sounding', 'profiling'];
   /* how far the tilt of the even spread is searched either way: _TILT */
   var MEASUREMENT_TILT = 1.0e4;
+  /* _SAME_CHANCE: two chances of a working borehole within this share of
+   * each other are the same chance. The choice is taken on the chances, not
+   * on the costs worked out from them, which came out a last bit apart
+   * either way for two points in the same bands and sent the client to the
+   * second-ranked point "at 37 percent, against 37"; a reading whose factor
+   * is exactly the threshold fell on the side the last bit of the even
+   * spread's exponentials put it, which differs between engines. A tie
+   * keeps the choice. */
+  var MEASUREMENT_SAME_CHANCE = 1e-9;
+
+  /* _better: whether the chance a is higher than b by more than
+   * MEASUREMENT_SAME_CHANCE of it; a tie is not better */
+  function measurementBetter(a, b) { return a - b > MEASUREMENT_SAME_CHANCE * b; }
 
   /** How often each band is seen among dry boreholes and among working
    * ones, from the bands' likelihood ratios alone: the most even spread
@@ -22692,7 +23468,9 @@
   }
 
   /** The decision before and after a measurement: preposterior. classes is
-   * a list of classes, each a list of [factor, ifSuccess, ifDry].
+   * a list of classes, each a list of [factor, ifSuccess, ifDry]. Each
+   * choice is taken on the chances, two within MEASUREMENT_SAME_CHANCE of
+   * each other counting as a tie, and a tie keeps the choice.
    * @param {number} p @param {number} q
    * @param {number} completedUsd @param {number} dryUsd
    * @param {number[][][]} classes
@@ -22706,8 +23484,9 @@
     }
     var move = measurementAlternativeUsd(completedUsd, dryUsd, q);
     var here = measurementDrillHereUsd(p, completedUsd, dryUsd, move);
-    /* a tie keeps the first-ranked point */
-    var stayHere = here <= move;
+    /* drilling here costs dry x (q - p) / q more than moving, so the choice
+     * is the chances' alone; a tie keeps the first-ranked point */
+    var stayHere = !measurementBetter(q, p);
     var now = stayHere ? here : move;
 
     /* every combination of one band from each class, the first outermost */
@@ -22729,9 +23508,12 @@
       var chance = p * s + (1.0 - p) * f;
       if (chance <= 0.0) return;
       var after = p * s / chance;
-      var costHere = measurementDrillHereUsd(after, completedUsd, dryUsd, move);
-      var saving = stayHere ? costHere - move : move - costHere;
-      if (saving > 0.0) {
+      /* the reading changes the choice where the chance after it is on the
+       * other side of the alternative's, and not where it ties with it */
+      var changes = stayHere ? measurementBetter(q, after) : measurementBetter(after, q);
+      if (changes) {
+        var costHere = measurementDrillHereUsd(after, completedUsd, dryUsd, move);
+        var saving = stayHere ? costHere - move : move - costHere;
         value += chance * saving;
         change[0] += chance;
         change[1] += chance * after;
@@ -22869,7 +23651,8 @@
     /** @type {?Rec} */
     var alternative = null;
     ranking.slice(1).forEach(function (i) {
-      if (alternative === null || odds[i].probability > alternative.probability) {
+      if (alternative === null ||
+          measurementBetter(odds[i].probability, alternative.probability)) {
         alternative = odds[i];
       }
     });
@@ -24438,15 +25221,21 @@
   }
 
   /* project_io.PROJECT_SCHEMA: 2 from PLAN.md step 5.1, when the file came
-   * to carry the ledger. Both apps' project files write it. */
-  var PROJECT_SCHEMA = 2;
+   * to carry the ledger, and 3 from step 8.1, when it came to carry the
+   * issue records of the documents issued from it. Both apps' project files
+   * write it. */
+  var PROJECT_SCHEMA = 3;
 
   /* The step from each schema to the next, applied in turn on load: schema
-   * 1 had no ledger, so a file of it opens with an empty one. */
+   * 1 had no ledger, so a file of it opens with an empty one, and schema 2
+   * no issue records, so a file of it opens with none. */
   /** @type {Object<number, function(Rec): Rec>} */
   var PROJECT_MIGRATIONS = {
     1: function (payload) {
       return Object.assign({}, payload, { schema: 2, ledger: emptyLedger() });
+    },
+    2: function (payload) {
+      return Object.assign({}, payload, { schema: 3, issued: [] });
     },
   };
 
@@ -25005,6 +25794,1290 @@
     BAND_COVERAGE: BAND_COVERAGE, forecastEntries: forecastEntries, binomialRange: binomialRange,
     depthScores: depthScores, oddsScores: oddsScores, hitRates: hitRates,
     calibrationContent: calibrationContent,
+  });
+
+  /* =================================================== contractor scorecards
+   * groundwater/scorecards.py (PLAN.md step 6.3). Each project file carries
+   * a works record at its top level (worksRecord, read back by cleanWorks):
+   * the project's borehole and contractor, the supervision checklist's
+   * answers by stage, the drilled metres reconciliation's two figures, the
+   * variation orders on its contract and the contract's completion date.
+   * The Portfolio page pools the records (scorecardBoreholes), a file saved
+   * before the record existed giving its ledger's drilled points, and sets
+   * them out by contractor (contractorScorecards, scorecardContent). A
+   * figure no record holds is null and reads "not recorded", never nought,
+   * and a contractor is ranked, by dry holes against the forecast, only on
+   * at least ledger.scorecard_min_boreholes forecast boreholes. Every
+   * function is the twin of the one of the same name in snake case, and
+   * parity holds them to one another. */
+
+  var SCORECARD_BASES = ['tested', 'recorded_failure', 'recorded_success'];
+  var SCORECARD_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+    'september', 'october', 'november', 'december'];
+  /* an ISO day, with the time of day a date cell can carry after it */
+  var SCORECARD_ISO_WRITTEN = /^([0-9]{4}-[0-9]{2}-[0-9]{2})(?:[ T][0-9]{2}:[0-9]{2}(?::[0-9]{2})?)?$/;
+  var SCORECARD_DAY_FIRST =
+    /^([0-9]{1,2})(?:st|nd|rd|th)?(?:[ \t]+of)?[ \t,./-]+([A-Za-z]+)\.?[ \t,./-]+([0-9]{4})$/i;
+  var SCORECARD_MONTH_FIRST = /^([A-Za-z]+)\.?[ \t,./-]+([0-9]{1,2})(?:st|nd|rd|th)?[ \t,./-]+([0-9]{4})$/i;
+  /* a checklist stage's key, as the checklist writes them */
+  var SCORECARD_STAGE_KEY = /^[a-z][a-z0-9_]*$/;
+
+  /* the month a word names in full or by its first three letters ("Sept" too) */
+  function scorecardMonth(word) {
+    var w = word.toLowerCase();
+    for (var k = 0; k < SCORECARD_MONTHS.length; k++) {
+      var name = SCORECARD_MONTHS[k];
+      if (w === name || w === name.slice(0, 3) || (k === 8 && w === 'sept')) return k + 1;
+    }
+    return null;
+  }
+
+  function scorecardIsoText(year, month, day) {
+    return String(year).padStart(4, '0') + '-' + twoDigits(month) + '-' + twoDigits(day);
+  }
+
+  /** scorecards.written_day: the day a date as written on a drilling log
+   * names, as YYYY-MM-DD, or null where it cannot be read without a guess:
+   * an ISO day (with the time a date cell can carry), or a day with its
+   * month by name either way round. A date in figures alone is not read.
+   * @param {*} text
+   * @returns {string|null} */
+  function writtenDay(text) {
+    var raw = trimField(text);
+    var iso = SCORECARD_ISO_WRITTEN.exec(raw);
+    if (iso) {
+      var day = isoDay(iso[1]);
+      return day === null ? null : iso[1];
+    }
+    var forms = [[SCORECARD_DAY_FIRST, 1, 2], [SCORECARD_MONTH_FIRST, 2, 1]];
+    for (var f = 0; f < forms.length; f++) {
+      var found = /** @type {RegExp} */ (forms[f][0]).exec(raw);
+      if (!found) continue;
+      var month = scorecardMonth(found[/** @type {number} */ (forms[f][2])]);
+      if (month === null) return null;
+      var year = Number(found[3]), date = Number(found[/** @type {number} */ (forms[f][1])]);
+      if (year < 1 || date < 1 || date > daysInMonth(year, month)) return null;
+      return scorecardIsoText(year, month, date);
+    }
+    return null;
+  }
+
+  /* days done (as the log writes it) fell after due (YYYY-MM-DD), negative
+   * where early, or null where either cannot be read */
+  function scorecardDaysLate(due, done) {
+    var dueDay = isoDay(due);
+    var doneText = writtenDay(done);
+    var doneDay = doneText === null ? null : isoDay(doneText);
+    if (dueDay === null || doneDay === null) return null;
+    return doneDay - dueDay;
+  }
+
+  /* drilled metres as typed: a number not below nought, to the centimetre */
+  function scorecardMetres(value) {
+    var x = ledgerNum(value, 2);
+    return x !== null && x >= 0.0 ? x : null;
+  }
+
+  function scorecardText(value) { return typeof value === 'string' ? value : ''; }
+
+  /* a contract's completion date as typed, trimmed; '' for anything but
+   * text, which Python's twin would write out differently */
+  function scorecardDue(value) { return typeof value === 'string' ? trimField(value) : ''; }
+
+  /* the signed and unsigned variation orders on a contract and the value the
+   * signed ones add to its sum, as the payment certificate values them, or
+   * null where no contract is recorded */
+  function scorecardVariationFigures(procurement) {
+    if (!isRecord(procurement)) return null;
+    var lines = procurement.lines;
+    if (!Array.isArray(lines) || !lines.length) return null;
+    var contract = { ref: '', lines: lines.filter(isRecord).map(function (line) {
+      return { code: trimField(line.code), item: scorecardText(line.item), unit: scorecardText(line.unit),
+        quantity: ledgerNum(line.quantity, null) || 0.0, rate_usd: ledgerNum(line.rate_usd, null) || 0.0 };
+    }), retention_percent: 10.0, retention_cap_percent: 5.0, advance_percent: 0.0 };
+    var raws = procurement.variations;
+    var variations = Array.isArray(raws) ? raws.filter(function (v) {
+      return isRecord(v) && trimField(v.code) !== '';
+    }).map(function (v) {
+      return { ref: scorecardText(v.ref), date: scorecardText(v.date), code: trimField(v.code),
+        quantity_delta: ledgerNum(v.quantity_delta, null) || 0.0, rate_usd: ledgerNum(v.rate_usd, null),
+        reason: scorecardText(v.reason), authorised_by: ledgerName(v.authorised_by),
+        item: scorecardText(v.item), unit: scorecardText(v.unit) };
+    }) : [];
+    var certificate = certify(contract, [], { number: 1, date: '', variations: variations });
+    var signed = variations.filter(function (v) { return v.authorised_by; }).length;
+    return [signed, variations.length - signed, certificate.variation_usd];
+  }
+
+  /* an object's own keys in the order Python's sorted() gives a dict's */
+  function scorecardSortedKeys(map) {
+    return Object.keys(map).sort(codePointCompare);
+  }
+
+  /** scorecards.works_record: what one project records of its contractor's
+   * work, or null where it records nothing a scorecard reads. The borehole
+   * is the project's completion, or where the project holds no log the
+   * outcome its ledger kept; its forecast the chance recorded before
+   * drilling at the point it was drilled at; its identifier that point's,
+   * else one hashed from its reference, position and place.
+   * @param {Rec} site the project's site details
+   * @param {DrillingLog|null} log
+   * @param {PumpingAnalysis|null} analysis
+   * @param {Rec|null} ledger the project's ledger of predictions and outcomes
+   * @param {Record<string, string>|null} [answers] the checklist's answers by item id
+   * @param {Rec|null} [metres] the reconciliation's logged_m and claimed_m as typed
+   * @param {Rec|null} [procurement] the contract's lines, variations and due date, or null
+   * @param {Config} [config]
+   * @param {Rec[]} [items] the checklist's items, the bundled checklist where omitted
+   * @returns {Rec|null} */
+  function worksRecord(site, log, analysis, ledger, answers, metres, procurement, config, items) {
+    var cfg = config || defaultConfig();
+    var contractor = ledgerName((site || {}).contractor);
+    var outcome = completionOutcome(log || null, analysis || null, cfg, contractor);
+    var held = attachOutcome(ledger || null, outcome, cfg);
+    var drilled = null;
+    for (var i = 0; i < held.entries.length; i++) {
+      if (held.entries[i].outcome !== null) { drilled = held.entries[i]; break; }
+    }
+    /* a file whose log was not carried with it keeps what its ledger recorded */
+    if (outcome === null && drilled !== null) outcome = drilled.outcome;
+    var forecast = null;
+    if (drilled !== null && drilled.before_outcome && drilled.prediction.odds !== null) {
+      var p = drilled.prediction.odds.probability;
+      forecast = p !== null && p >= 0.0 && p <= 1.0 ? p : null;
+    }
+
+    var given = isRecord(answers) ? /** @type {Rec} */ (answers) : {};
+    /** @type {Rec} */
+    var stages = {};
+    (items || loadChecklists()).forEach(function (item) {
+      var status = own(given, item.item_id) ? given[item.item_id] : undefined;
+      if (status !== 'yes' && status !== 'no') return;
+      if (!own(stages, item.checklist)) stages[item.checklist] = { answered: 0, failed: [] };
+      stages[item.checklist].answered += 1;
+      if (status === 'no') stages[item.checklist].failed.push(item.item_id);
+    });
+    /** @type {Rec} */
+    var checklist = {};
+    scorecardSortedKeys(stages).forEach(function (key) { checklist[key] = stages[key]; });
+
+    var logged = isRecord(metres) ? scorecardMetres(/** @type {Rec} */ (metres).logged_m) : null;
+    var claimed = isRecord(metres) ? scorecardMetres(/** @type {Rec} */ (metres).claimed_m) : null;
+    var figures = scorecardVariationFigures(procurement);
+    if (outcome === null && !Object.keys(checklist).length && logged === null && claimed === null &&
+        figures === null) return null;
+    var community = String((site || {}).community || '');
+    var district = String((site || {}).district || '');
+    var ref = outcome !== null ? outcome.borehole_ref : '';
+    var at = outcome || {};
+    var rid = drilled !== null ? drilled.id
+      : pointId('borehole ' + ref, at.easting === undefined ? null : at.easting,
+        at.northing === undefined ? null : at.northing, at.utm_zone === undefined ? null : at.utm_zone,
+        community, district);
+    return {
+      borehole_ref: ref,
+      checklist: checklist,
+      claimed_m: claimed,
+      community: community,
+      completion_date: outcome !== null ? outcome.completion_date : '',
+      completion_due: figures !== null ? scorecardDue(/** @type {Rec} */ (procurement).due) : '',
+      contract: figures !== null,
+      contractor: outcome !== null ? outcome.contractor : contractor,
+      district: district,
+      drilled: outcome !== null,
+      forecast: forecast,
+      id: rid,
+      logged_m: logged,
+      success: outcome !== null ? outcome.success : null,
+      success_basis: outcome !== null ? outcome.success_basis : null,
+      variation_usd: figures !== null ? ledgerNum(figures[2], 2) : null,
+      variations_signed: figures !== null ? figures[0] : null,
+      variations_unsigned: figures !== null ? figures[1] : null,
+    };
+  }
+
+  /* a whole count not below nought, or null */
+  function scorecardCount(value) {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+  }
+
+  /** scorecards.clean_works: a works record as read from a file, in the
+   * shape worksRecord writes, or null where it is not one. A field of the
+   * wrong kind is blank, a stage that fails more items than it answered is
+   * left out, and counts that do not go with a contract are dropped.
+   * @param {*} raw
+   * @returns {Rec|null} */
+  function cleanWorks(raw) {
+    if (!isRecord(raw) || typeof raw.id !== 'string' || !raw.id) return null;
+    /** @type {Rec} */
+    var checklist = {};
+    var stages = isRecord(raw.checklist) ? raw.checklist : {};
+    scorecardSortedKeys(stages).forEach(function (stage) {
+      var held = stages[stage];
+      if (!SCORECARD_STAGE_KEY.test(stage) || !isRecord(held)) return;
+      var answered = scorecardCount(held.answered);
+      var failed = Array.isArray(held.failed) ? held.failed.filter(function (f, k, all) {
+        return typeof f === 'string' && f !== '' && all.indexOf(f) === k;
+      }) : [];
+      if (answered === null || answered === 0 || failed.length > answered) return;
+      checklist[stage] = { answered: answered, failed: failed };
+    });
+    var contract = raw.contract === true;
+    var success = typeof raw.success === 'boolean' ? raw.success : null;
+    var basis = success !== null && SCORECARD_BASES.indexOf(raw.success_basis) >= 0 ? raw.success_basis : null;
+    var forecast = ledgerNum(raw.forecast, 3);
+    var signed = scorecardCount(raw.variations_signed), unsigned = scorecardCount(raw.variations_unsigned);
+    var value = ledgerNum(raw.variation_usd, 2);
+    if (!contract || signed === null || unsigned === null || value === null) {
+      contract = false; signed = null; unsigned = null; value = null;
+    }
+    return {
+      borehole_ref: scorecardText(raw.borehole_ref),
+      checklist: checklist,
+      claimed_m: scorecardMetres(raw.claimed_m),
+      community: scorecardText(raw.community),
+      completion_date: scorecardText(raw.completion_date),
+      completion_due: contract ? scorecardDue(raw.completion_due) : '',
+      contract: contract,
+      contractor: ledgerName(raw.contractor),
+      district: scorecardText(raw.district),
+      drilled: raw.drilled === true,
+      forecast: forecast !== null && forecast >= 0.0 && forecast <= 1.0 ? forecast : null,
+      id: raw.id,
+      logged_m: scorecardMetres(raw.logged_m),
+      success: success,
+      success_basis: basis,
+      variation_usd: value,
+      variations_signed: signed,
+      variations_unsigned: unsigned,
+    };
+  }
+
+  /* a borehole a file saved before the works record holds in its ledger
+   * alone: its contractor, outcome and forecast, and nothing else recorded */
+  function scorecardLedgerRow(entry) {
+    var outcome = entry.outcome, odds = entry.prediction.odds;
+    var p = odds !== null && entry.before_outcome ? odds.probability : null;
+    return {
+      borehole_ref: outcome.borehole_ref, checklist: {}, claimed_m: null,
+      community: entry.point.community, completion_date: outcome.completion_date,
+      completion_due: '', contract: false, contractor: outcome.contractor,
+      district: entry.point.district, drilled: true,
+      forecast: p !== null && p >= 0.0 && p <= 1.0 ? p : null, id: entry.id, logged_m: null,
+      success: outcome.success, success_basis: outcome.success !== null ? outcome.success_basis : null,
+      variation_usd: null, variations_signed: null, variations_unsigned: null,
+      project: entry.project, source: 'ledger',
+    };
+  }
+
+  /* how many of the scorecard's measures a borehole's record holds */
+  function scorecardRecorded(row) {
+    return [row.logged_m !== null && row.claimed_m !== null, Object.keys(row.checklist).length > 0,
+      row.contract, row.completion_due !== '', row.success !== null, row.forecast !== null]
+      .filter(Boolean).length;
+  }
+
+  function scorecardRicher(row, have) {
+    var a = row.source === 'works', b = have.source === 'works';
+    if (a !== b) return a;
+    return scorecardRecorded(row) > scorecardRecorded(have);
+  }
+
+  /** scorecards.scorecard_boreholes: the boreholes drilled across a
+   * portfolio's project files, each once: a file's works record where it has
+   * one, else its ledger's drilled points, pooled as the ledger pools them.
+   * Each carries its file's label as project and its source (works, ledger).
+   * @param {Array<Array<*>>} files [project label, works record, ledger] for each file
+   * @returns {Rec[]} */
+  function scorecardBoreholes(files) {
+    /** @type {Map<string, Rec>} */
+    var kept = new Map();
+    function keep(row) {
+      var have = kept.get(row.id);
+      if (have === undefined || scorecardRicher(row, have)) kept.set(row.id, row);
+    }
+    /** @type {Array<Array<*>>} */
+    var older = [];
+    files.forEach(function (file) {
+      var record = cleanWorks(file[1]);
+      if (record === null) older.push([file[0], file[2]]);
+      else if (record.drilled) keep(Object.assign(record, { project: String(file[0] || ''), source: 'works' }));
+    });
+    poolLedgers(older).forEach(function (entry) {
+      if (entry.outcome !== null) keep(scorecardLedgerRow(entry));
+    });
+    return Array.from(kept.values());
+  }
+
+  /* one contractor's scorecard over its boreholes */
+  function scorecardCard(name, rows, stages, minimum, order) {
+    var pairs = rows.filter(function (r) { return r.logged_m !== null && r.claimed_m !== null; });
+    var logged = calibrationSum(pairs.map(function (r) { return r.logged_m; }));
+    var claimed = calibrationSum(pairs.map(function (r) { return r.claimed_m; }));
+    var metres = {
+      n: pairs.length,
+      logged_m: pairs.length ? pyRound(logged, 2) : null,
+      claimed_m: pairs.length ? pyRound(claimed, 2) : null,
+      over_m: pairs.length ? pyRound(claimed - logged, 2) : null,
+      beyond: pairs.filter(function (r) { return !metresReconciliationCheck(r.logged_m, r.claimed_m).passed; }).length,
+    };
+
+    var checked = rows.filter(function (r) {
+      return stages.some(function (stage) { return own(r.checklist, stage); });
+    });
+    /** @type {Map<string, Array<*>>} */
+    var failures = new Map();
+    var failedTotal = 0, withFailures = 0;
+    checked.forEach(function (r) {
+      var failed = [];
+      stages.forEach(function (stage) {
+        if (!own(r.checklist, stage)) return;
+        r.checklist[stage].failed.forEach(function (item) { failed.push([stage, item]); });
+      });
+      failedTotal += failed.length;
+      withFailures += failed.length ? 1 : 0;
+      failed.forEach(function (key) {
+        var at = key[0] + '\u0000' + key[1];
+        var have = failures.get(at);
+        if (have) have[2] += 1; else failures.set(at, [key[0], key[1], 1]);
+      });
+    });
+    var listed = Array.from(failures.values()).sort(function (a, b) {
+      var sa = stages.indexOf(a[0]), sb = stages.indexOf(b[0]);
+      if (sa !== sb) return sa - sb;
+      var oa = order.has(a[1]) ? order.get(a[1]) : order.size;
+      var ob = order.has(b[1]) ? order.get(b[1]) : order.size;
+      if (oa !== ob) return oa - ob;
+      return codePointCompare(a[1], b[1]);
+    });
+    var checks = { n: checked.length, with_failures: withFailures, failed: failedTotal, items: listed };
+
+    var contracts = rows.filter(function (r) { return r.contract; });
+    var variations = {
+      n: contracts.length,
+      signed: contracts.length ? contracts.reduce(function (t, r) { return t + r.variations_signed; }, 0) : null,
+      unsigned: contracts.length ? contracts.reduce(function (t, r) { return t + r.variations_unsigned; }, 0)
+        : null,
+      value_usd: contracts.length ? pyRound(calibrationSum(contracts.map(function (r) {
+        return r.variation_usd;
+      })), 2) : null,
+    };
+
+    var timed = [], unread = 0;
+    rows.forEach(function (r) {
+      if (!r.completion_due) return;
+      var days = scorecardDaysLate(r.completion_due, r.completion_date);
+      if (days === null) unread += 1; else timed.push(days);
+    });
+    var late = timed.filter(function (d) { return d > 0; });
+    var time = {
+      n: timed.length, late: late.length,
+      days_late: timed.length ? late.reduce(function (t, d) { return t + d; }, 0) : null,
+      most_days: late.length ? Math.max.apply(null, late) : null, unread: unread,
+    };
+
+    var known = rows.filter(function (r) { return r.success !== null; });
+    var forecast = known.filter(function (r) { return r.forecast !== null; });
+    var expected = calibrationSum(forecast.map(function (r) { return 1.0 - r.forecast; }));
+    var found = forecast.filter(function (r) { return r.success === false; }).length;
+    var span = forecast.length ? binomialRange(forecast.length, expected / forecast.length) : null;
+    var verdict;
+    if (forecast.length < minimum || span === null) verdict = 'too_few';
+    else if (found > span[1]) verdict = 'more';
+    else if (found < span[0]) verdict = 'fewer';
+    else verdict = 'within';
+    var dry = {
+      known: known.length, dry: known.filter(function (r) { return r.success === false; }).length,
+      forecast: forecast.length, forecast_dry: found,
+      expected: forecast.length ? pyRound(expected, 2) : null, range: span, verdict: verdict,
+    };
+    var ranked = !!name && forecast.length >= minimum;
+    return {
+      contractor: name || phrase('scorecards.no_contractor'),
+      recorded: !!name,
+      boreholes: rows.length,
+      from_ledger: rows.filter(function (r) { return r.source === 'ledger'; }).length,
+      metres: metres, checks: checks, variations: variations, time: time, dry: dry,
+      measure: ranked ? pyRound((found - expected) / forecast.length, 3) : null,
+      rank: null,
+      unranked: ranked ? null : (name ? 'too_few' : 'no_contractor'),
+    };
+  }
+
+  /* the fewest forecast boreholes a contractor is judged and ranked on, and
+   * never fewer than one, since one with no forecast has nothing to be
+   * ranked by */
+  function scorecardMinimum(cfg) {
+    return Math.max(1, Math.trunc(Number(cfg.ledger.scorecard_min_boreholes)));
+  }
+
+  /* the checklist stages whose items are the contractor's acceptance checks,
+   * each once, so a stage named twice does not count its failures twice */
+  function scorecardStages(cfg) {
+    var named = (cfg.ledger.scorecard_stages || []).map(function (s) { return String(s); });
+    return named.filter(function (s, k) { return named.indexOf(s) === k; });
+  }
+
+  /** scorecards.contractor_scorecards: a scorecard for each contractor of
+   * scorecardBoreholes, the boreholes naming none together: its figures,
+   * each with the number of boreholes it rests on and null where none
+   * records it; the ranking measure and rank (on at least
+   * ledger.scorecard_min_boreholes forecast boreholes) or why it has none.
+   * The ranked first by rank and name, then the rest, the most boreholes
+   * first, and the boreholes naming no contractor last.
+   * @param {Rec[]} boreholes
+   * @param {Config} [config]
+   * @param {Rec[]} [items] the checklist's items, the bundled checklist where omitted
+   * @returns {Rec[]} */
+  function contractorScorecards(boreholes, config, items) {
+    var cfg = config || defaultConfig();
+    var minimum = scorecardMinimum(cfg);
+    var stages = scorecardStages(cfg);
+    /** @type {Map<string, number>} */
+    var order = new Map();
+    (items || loadChecklists()).forEach(function (item, k) { order.set(item.item_id, k); });
+    /** @type {Map<string, Rec[]>} */
+    var groups = new Map();
+    boreholes.forEach(function (row) {
+      var name = ledgerName(row.contractor);
+      var group = groups.get(name);
+      if (group) group.push(row); else groups.set(name, [row]);
+    });
+    /** @type {Rec[]} */
+    var cards = [];
+    groups.forEach(function (rows, name) { cards.push(scorecardCard(name, rows, stages, minimum, order)); });
+    var measures = cards.filter(function (c) { return c.measure !== null; }).map(function (c) { return c.measure; });
+    cards.forEach(function (card) {
+      if (card.measure === null) return;
+      card.rank = 1 + measures.filter(function (m) { return m < card.measure; }).length;
+    });
+    cards.sort(function (a, b) {
+      var ar = a.rank === null, br = b.rank === null;
+      if (ar !== br) return ar ? 1 : -1;
+      if (a.recorded !== b.recorded) return a.recorded ? -1 : 1;
+      if (!ar && a.rank !== b.rank) return a.rank - b.rank;
+      if (ar && a.boreholes !== b.boreholes) return b.boreholes - a.boreholes;
+      return codePointCompare(a.contractor, b.contractor);
+    });
+    return cards;
+  }
+
+  /* a difference in metres with its sign: "+4", "-2.5", "0" */
+  function scorecardSignedG(value) {
+    if (value === 0) return '0';
+    return (value > 0 ? '+' : '') + formatG(value);
+  }
+
+  /* a sum of money with its sign outside the currency, as the payment
+   * certificate writes it */
+  function scorecardSignedMoney(value) {
+    return (value < 0 ? '-' : '+') + money0(Math.abs(value));
+  }
+
+  function scorecardMetresCell(m) {
+    if (!m.n) return phrase('scorecards.not_recorded');
+    var text = phrase('scorecards.metres_cell', { over: scorecardSignedG(m.over_m), n: m.n,
+      claimed: m.claimed_m, logged: m.logged_m });
+    if (m.beyond) {
+      text += '; ' + phrase('scorecards.metres_beyond', { k: m.beyond, tolerance: METRES_TOLERANCE_M });
+    }
+    return text;
+  }
+
+  function scorecardChecksCell(c) {
+    if (!c.n) return phrase('scorecards.not_recorded');
+    if (!c.failed) return phrase('scorecards.checks_cell_none', { n: c.n });
+    return phrase('scorecards.checks_cell', { failed: c.failed, k: c.with_failures, n: c.n });
+  }
+
+  function scorecardVariationsCell(v) {
+    if (!v.n) return phrase('scorecards.not_recorded');
+    var text = v.signed
+      ? phrase('scorecards.variations_cell', { signed: v.signed, value: scorecardSignedMoney(v.value_usd), n: v.n })
+      : phrase('scorecards.variations_cell_none', { n: v.n });
+    if (v.unsigned) text += '; ' + phrase('scorecards.variations_unsigned', { k: v.unsigned });
+    return text;
+  }
+
+  function scorecardTimeCell(t) {
+    var parts = [];
+    if (t.n) {
+      parts.push(t.late
+        ? phrase('scorecards.time_cell', { late: t.late, n: t.n, days: t.days_late, most: t.most_days })
+        : phrase('scorecards.time_cell_none', { n: t.n }));
+    }
+    if (t.unread) parts.push(phrase('scorecards.time_unread', { k: t.unread }));
+    return parts.length ? parts.join('; ') : phrase('scorecards.not_recorded');
+  }
+
+  function scorecardDryCell(d) {
+    if (!d.known) return phrase('scorecards.dry_cell_unknown');
+    var text = phrase('scorecards.dry_cell', { dry: d.dry, known: d.known });
+    if (d.forecast) {
+      text += '; ' + phrase('scorecards.dry_forecast', { fdry: d.forecast_dry, f: d.forecast,
+        expected: d.expected, low: d.range[0], high: d.range[1] });
+    }
+    return text;
+  }
+
+  function scorecardRankCell(card, minimum) {
+    if (card.rank !== null) return String(card.rank);
+    if (card.unranked === 'no_contractor') return phrase('scorecards.rank_no_contractor');
+    return phrase('scorecards.rank_too_few', { f: card.dry.forecast, minimum: minimum });
+  }
+
+  /* the stages' titles in a sentence, in lower case */
+  function scorecardStagesText(stages) {
+    var titles = stages.map(function (s) { return stageTitle(s).toLowerCase(); });
+    if (titles.length < 2) return titles.join('');
+    if (titles.length === 2) return titles[0] + ' and ' + titles[1];
+    return titles.slice(0, -1).join(', ') + ', and ' + titles[titles.length - 1];
+  }
+
+  /** scorecards.scorecard_content: everything the contractor scorecards say,
+   * as plain data the two document writers lay out as the calibration report
+   * is laid out: the title and subtitle, the cover's rows, the summary, the
+   * sections (paragraphs, tables, bullets; cards holds the scorecards'
+   * table and checks the checks that failed) and the references.
+   * @param {Array<Array<*>>} files [project label, works record, ledger] for each file
+   * @param {string} [issuedOn] the date the report is issued ('' to leave it off)
+   * @param {Config} [config]
+   * @returns {Rec} */
+  function scorecardContent(files, issuedOn, config) {
+    var cfg = config || defaultConfig();
+    var minimum = scorecardMinimum(cfg);
+    var stages = scorecardStages(cfg);
+    var items = loadChecklists();
+    var boreholes = scorecardBoreholes(files);
+    var cards = contractorScorecards(boreholes, cfg, items);
+    var named = cards.filter(function (c) { return c.recorded; });
+    var rows = [[phrase('scorecards.row_projects'), String(files.length)],
+      [phrase('scorecards.row_boreholes'), String(boreholes.length)],
+      [phrase('scorecards.row_contractors'), String(named.length)]];
+    var issued = ledgerName(issuedOn);
+    if (issued) rows.push([phrase('scorecards.row_issued'), issued]);
+
+    var summary = [];
+    if (!boreholes.length) {
+      summary.push(phrase('scorecards.summary_none'));
+    } else {
+      summary.push(named.length
+        ? phrase('scorecards.summary_counts', { boreholes: boreholes.length, contractors: named.length,
+          projects: files.length })
+        : phrase('scorecards.summary_counts_unnamed', { boreholes: boreholes.length, projects: files.length }));
+      var unnamed = cards.filter(function (c) { return !c.recorded; })
+        .reduce(function (t, c) { return t + c.boreholes; }, 0);
+      if (unnamed) summary.push(phrase('scorecards.summary_unnamed', { n: unnamed }));
+      var older = cards.reduce(function (t, c) { return t + c.from_ledger; }, 0);
+      if (older) summary.push(phrase('scorecards.summary_ledger_only', { n: older }));
+      var ranked = cards.filter(function (c) { return c.rank !== null; }).length;
+      summary.push(ranked ? phrase('scorecards.summary_ranked', { ranked: ranked, minimum: minimum })
+        : phrase('scorecards.summary_unranked', { minimum: minimum }));
+      summary.push(phrase('scorecards.summary_n'));
+    }
+
+    var sections = [];
+    if (boreholes.length) {
+      var table = calibrationSection('cards', phrase('scorecards.cards_heading'));
+      table.paragraphs.push(phrase('scorecards.cards_intro'));
+      table.tables.push({
+        header: [phrase('scorecards.col_contractor'), phrase('scorecards.col_boreholes'),
+          phrase('scorecards.col_metres'), phrase('scorecards.col_checks'), phrase('scorecards.col_variations'),
+          phrase('scorecards.col_time'), phrase('scorecards.col_dry'), phrase('scorecards.col_rank')],
+        rows: cards.map(function (c) {
+          return [c.contractor, String(c.boreholes), scorecardMetresCell(c.metres), scorecardChecksCell(c.checks),
+            scorecardVariationsCell(c.variations), scorecardTimeCell(c.time), scorecardDryCell(c.dry),
+            scorecardRankCell(c, minimum)];
+        }),
+        caption: phrase('scorecards.cards_table'),
+      });
+      sections.push(table);
+
+      var checks = calibrationSection('checks', phrase('scorecards.checks_heading'));
+      checks.paragraphs.push(stages.length ? phrase('scorecards.checks_intro', { stages: scorecardStagesText(stages) })
+        : phrase('scorecards.checks_no_stages'));
+      /** @type {Map<string, string>} */
+      var texts = new Map();
+      items.forEach(function (item) { texts.set(item.item_id, item.text); });
+      var failed = [];
+      cards.forEach(function (c) {
+        c.checks.items.forEach(function (it) {
+          failed.push([c.contractor, stageTitle(it[0]), texts.has(it[1]) ? texts.get(it[1]) : it[1], String(it[2])]);
+        });
+      });
+      if (failed.length) {
+        checks.tables.push({
+          header: [phrase('scorecards.col_contractor'), phrase('scorecards.col_stage'),
+            phrase('scorecards.col_check'), phrase('scorecards.col_failed_on')],
+          rows: failed,
+          caption: phrase('scorecards.checks_table'),
+        });
+      } else if (cards.some(function (c) { return c.checks.n > 0; })) {
+        checks.paragraphs.push(phrase('scorecards.checks_none'));
+      } else if (stages.length) {
+        checks.paragraphs.push(phrase('scorecards.checks_unchecked'));
+      }
+      sections.push(checks);
+
+      var dry = calibrationSection('dry', phrase('scorecards.dry_heading'));
+      dry.paragraphs.push(phrase('scorecards.dry_intro', { rate: Number(cfg.odds.success_yield_m3_per_h) }),
+        phrase('scorecards.dry_range', { minimum: minimum }), phrase('scorecards.dry_rank', { minimum: minimum }));
+      var verdicts = phraseTable('scorecards.dry_verdict');
+      var none = phrase('scorecards.not_recorded');
+      dry.tables.push({
+        header: [phrase('scorecards.col_contractor'), phrase('scorecards.col_known'),
+          phrase('scorecards.col_dry_found'), phrase('scorecards.col_forecast'),
+          phrase('scorecards.col_dry_forecast'), phrase('scorecards.col_expected'),
+          phrase('scorecards.col_range'), phrase('scorecards.col_verdict')],
+        rows: cards.map(function (c) {
+          var d = c.dry;
+          return [c.contractor, String(d.known), String(d.dry), String(d.forecast),
+            d.forecast ? String(d.forecast_dry) : none,
+            d.forecast ? formatG(d.expected) : none,
+            d.forecast ? phrase('scorecards.dry_range_cell', { low: d.range[0], high: d.range[1] }) : none,
+            verdicts[d.verdict]];
+        }),
+        caption: phrase('scorecards.dry_table'),
+      });
+      sections.push(dry);
+    }
+
+    var method = calibrationSection('method', phrase('scorecards.method_heading'));
+    method.bullets.push(
+      phrase('scorecards.method_boreholes'),
+      phrase('scorecards.method_metres', { tolerance: METRES_TOLERANCE_M }),
+      stages.length ? phrase('scorecards.method_checks', { stages: scorecardStagesText(stages) })
+        : phrase('scorecards.checks_no_stages'),
+      phrase('scorecards.method_variations'),
+      phrase('scorecards.method_time'),
+      phrase('scorecards.method_dry'),
+      phrase('scorecards.method_names'),
+      phrase('scorecards.method_minimum', { minimum: minimum }),
+      phrase('scorecards.method_report'));
+    sections.push(method);
+    var citations = phraseTable('references.citations');
+    return {
+      title: phrase('scorecards.title'),
+      subtitle: phrase('scorecards.subtitle'),
+      rows: rows,
+      summary: summary,
+      sections: sections,
+      references: [citations.rwsn_supervision],
+    };
+  }
+
+  Object.assign(C, {
+    writtenDay: writtenDay, worksRecord: worksRecord, cleanWorks: cleanWorks,
+    scorecardBoreholes: scorecardBoreholes, contractorScorecards: contractorScorecards,
+    scorecardContent: scorecardContent,
+  });
+
+  /* ============================================================ allocation
+   * groundwater/allocation.py (PLAN.md step 6.1). Where to drill next within
+   * a budget: the areas of the coverage-gap ranking, each with its unserved
+   * people (its population less allocation.people_per_borehole for each
+   * functional mapped point), the boreholes they justify, the prior odds on
+   * the ground covering most of it (areaGround, read at a grid of points)
+   * and the expected cost of a working borehole there at those odds, access
+   * included; the boreholes chosen to serve the most people within the
+   * budget, exactly by dynamic programming over the people served for at
+   * most allocation.exact_max_items candidate boreholes, greedily by people
+   * per dollar with the linear-programming bound for more. The grid, the ray
+   * casting, the sums and the comparisons are Python's, operation for
+   * operation, so parity holds the choice to the bit. */
+
+  var ALLOCATION_LEVELS = ['district', 'chiefdom'];
+  /* the most entries the exact choice's tables may hold: EXACT_MAX_CELLS */
+  var ALLOCATION_MAX_CELLS = 50000000;
+
+  /** _geometry.point_in_ring, operation for operation: each edge from one
+   * vertex to the next, crossed where it straddles the point's latitude to
+   * the right of it. pointInRing walks the edges the other way round and
+   * works the crossing from the other end, which can differ in the last bit.
+   * @param {number} lon
+   * @param {number} lat
+   * @param {number[][]} ring
+   * @returns {boolean} */
+  function ringHolds(lon, lat, ring) {
+    var inside = false;
+    for (var k = 0; k + 1 < ring.length; k++) {
+      var ya = ring[k][1], yb = ring[k + 1][1];
+      if ((ya > lat) !== (yb > lat)) {
+        var xa = ring[k][0], xb = ring[k + 1][0];
+        if (lon < xa + (lat - ya) * (xb - xa) / (yb - ya)) inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  /* a ring's bounding box: ring_bbox */
+  function allocationBox(ring) {
+    var box = [Infinity, Infinity, -Infinity, -Infinity];
+    for (var k = 0; k < ring.length; k++) {
+      if (ring[k][0] < box[0]) box[0] = ring[k][0];
+      if (ring[k][1] < box[1]) box[1] = ring[k][1];
+      if (ring[k][0] > box[2]) box[2] = ring[k][0];
+      if (ring[k][1] > box[3]) box[3] = ring[k][1];
+    }
+    return box;
+  }
+
+  /* inside the ring and none of its holes, a point outside its bounding box
+   * untested: _holds */
+  function allocationHolds(lon, lat, ring, holes, box) {
+    if (lon < box[0] || lon > box[2] || lat < box[1] || lat > box[3]) return false;
+    if (!ringHolds(lon, lat, ring)) return false;
+    for (var h = 0; h < holes.length; h++) {
+      if (ringHolds(lon, lat, holes[h])) return false;
+    }
+    return true;
+  }
+
+  /* a map layer's polygons, part by part in the layer's order, each with the
+   * code it is read by (the BGS class's "code", the USGS unit's "glg") */
+  function allocationUnits(layer, key) {
+    var out = [];
+    ((layer || {}).features || []).forEach(function (feature) {
+      var geometry = feature.geometry || {};
+      var code = String((feature.properties || {})[key] || '') || null;
+      var parts = geometry.type === 'MultiPolygon' ? geometry.coordinates
+        : [geometry.coordinates || []];
+      (parts || []).forEach(function (part) {
+        if (!part || !part.length) return;
+        out.push({ code: code, ring: part[0], holes: part.slice(1), box: allocationBox(part[0]) });
+      });
+    });
+    return out;
+  }
+
+  /* the code on the first unit that holds the point, or null: _first_unit */
+  function allocationFirstUnit(lon, lat, units) {
+    for (var u = 0; u < units.length; u++) {
+      if (allocationHolds(lon, lat, units[u].ring, units[u].holes, units[u].box)) return units[u].code;
+    }
+    return null;
+  }
+
+  /** the [key, count] counted most of some (at least one), a tie to the key
+   * first in alphabetical order and null after every name: _most
+   * @param {Array<Array<*>>} counts
+   * @returns {Array<*>} */
+  function allocationMost(counts) {
+    var best = counts[0];
+    counts.forEach(function (entry) {
+      if (entry[1] !== best[1]) { if (entry[1] > best[1]) best = entry; return; }
+      if (entry[0] === null) return;
+      if (best[0] === null || codePointCompare(entry[0], best[0]) < 0) best = entry;
+    });
+    return best;
+  }
+
+  function allocationCount(counts, key) {
+    for (var i = 0; i < counts.length; i++) {
+      if (counts[i][0] === key) { counts[i][1] += 1; return; }
+    }
+    counts.push([key, 1]);
+  }
+
+  /* whether the prior table has a row of its own for the class: _has_prior */
+  function allocationHasPrior(code) {
+    return oddsTables().prior.some(function (/** @type {Rec} */ r) {
+      return r.bgs_code === code && r.status !== 'fallback';
+    });
+  }
+
+  /** The ground covering most of the area some chiefdom polygons make up,
+   * read at a grid by grid grid of points over their bounding box:
+   * allocation.area_ground.
+   * @param {string} name
+   * @param {Polygon[]} polys as loadPolygons reads them
+   * @param {Rec[]} aquifers the BGS units, part by part, as the layer orders them
+   * @param {Rec[]} units the USGS units likewise
+   * @param {number} grid points on a side
+   * @returns {Rec} */
+  function areaGround(name, polys, aquifers, units, grid) {
+    var rings = [];
+    polys.forEach(function (poly) {
+      poly.rings.forEach(function (/** @type {number[][]} */ ring) { if (ring.length) rings.push(ring); });
+    });
+    var none = { area: name, samples: 0, bgs_code: null, glg: null, class_samples: 0, unit_samples: 0 };
+    if (!rings.length) return none;
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    rings.forEach(function (ring) {
+      var b = allocationBox(ring);
+      x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]);
+      x1 = Math.max(x1, b[2]); y1 = Math.max(y1, b[3]);
+    });
+    var parts = [];
+    polys.forEach(function (poly) {
+      poly.rings.forEach(function (/** @type {number[][]} */ ring, /** @type {number} */ i) {
+        if (ring.length) parts.push({ ring: ring, holes: poly.holes[i] || [], box: allocationBox(ring) });
+      });
+    });
+    var codes = [], glgs = [];
+    for (var j = 0; j < grid; j++) {
+      var lat = y0 + (j + 0.5) * (y1 - y0) / grid;
+      for (var i = 0; i < grid; i++) {
+        var lon = x0 + (i + 0.5) * (x1 - x0) / grid;
+        var inside = false;
+        for (var p = 0; p < parts.length && !inside; p++) {
+          inside = allocationHolds(lon, lat, parts[p].ring, parts[p].holes, parts[p].box);
+        }
+        if (!inside) continue;
+        codes.push(allocationFirstUnit(lon, lat, aquifers));
+        glgs.push(allocationFirstUnit(lon, lat, units));
+      }
+    }
+    var byClass = [];
+    codes.forEach(function (code) {
+      if (code !== null && allocationHasPrior(code)) allocationCount(byClass, code);
+    });
+    if (!byClass.length) return Object.assign(none, { samples: codes.length });
+    var top = allocationMost(byClass);
+    var byUnit = [];
+    codes.forEach(function (code, k) { if (code === top[0]) allocationCount(byUnit, glgs[k]); });
+    var unit = allocationMost(byUnit);
+    return { area: name, samples: codes.length, bgs_code: top[0], glg: unit[0],
+      class_samples: top[1], unit_samples: unit[1] };
+  }
+
+  /* worked out once a page: the layers do not change */
+  /** @type {Record<string, Record<string, Rec>>} */
+  var allocationGroundsHeld = {};
+
+  function allocationWhole(value, name, least) {
+    if (typeof value !== 'number' || !isFinite(value) || value !== Math.floor(value) || value < least) {
+      throw new Error(name + ' must be a whole number of at least ' + least + ', not ' + String(value));
+    }
+    return value;
+  }
+
+  function allocationFigure(value, name) {
+    if (typeof value !== 'number' || !isFinite(value)) {
+      throw new Error(name + ' must be a finite number, not ' + String(value));
+    }
+    return value;
+  }
+
+  /** The ground of every district or chiefdom on the bundled layers, a
+   * district being the chiefdoms the crosswalk puts in it: area_grounds. The
+   * map layers (gwt-geo.js) must be loaded.
+   * @param {string} level "district" or "chiefdom"
+   * @param {Config} [config]
+   * @returns {Record<string, Rec>} */
+  function areaGrounds(level, config) {
+    if (ALLOCATION_LEVELS.indexOf(level) < 0) {
+      throw new Error('the resolution must be district or chiefdom, not ' + String(level));
+    }
+    var cfg = config || defaultConfig();
+    var grid = allocationWhole(cfg.allocation.ground_grid, 'allocation.ground_grid', 1);
+    var key = level + '|' + grid;
+    if (!allocationGroundsHeld[key]) {
+      var layers = geoLayers();
+      if (!layers) throw new Error('The map layers (gwt-geo.js) are not loaded.');
+      var polys = loadPolygons(layers.chiefdomBoundaries);
+      var aquifers = allocationUnits(layers.hydrogeology, 'code');
+      var units = allocationUnits(layers.geology, 'glg');
+      var crosswalk = loadChiefdomDistrict();
+      /** @type {Record<string, Polygon[]>} */
+      var groups = {};
+      /** @type {string[]} */
+      var order = [];
+      polys.forEach(function (poly) {
+        var area = level === 'chiefdom' ? poly.name
+          : (Object.prototype.hasOwnProperty.call(crosswalk, poly.name) ? crosswalk[poly.name] : '');
+        if (!area) return;
+        if (!Object.prototype.hasOwnProperty.call(groups, area)) { groups[area] = []; order.push(area); }
+        groups[area].push(poly);
+      });
+      /** @type {Record<string, Rec>} */
+      var held = {};
+      order.forEach(function (area) { held[area] = areaGround(area, groups[area], aquifers, units, grid); });
+      allocationGroundsHeld[key] = held;
+    }
+    return Object.assign({}, allocationGroundsHeld[key]);
+  }
+
+  /* the people the k-th borehole of an area serves (1 for the first) */
+  function allocationServed(unserved, per, k) {
+    return Math.min(per, unserved - per * (k - 1));
+  }
+
+  function allocationField(row, name) {
+    return row === null || row === undefined ? undefined : row[name];
+  }
+
+  /* the cost distribution's figures, refused where they cannot be costs:
+   * _cost_figures */
+  function allocationCostFigures(cost) {
+    var mean = allocationFigure(allocationField(cost, 'mean'), 'the mean cost of a borehole');
+    var dry = allocationFigure(allocationField(cost, 'dry_mean'), 'the mean cost of a dry attempt');
+    if (!(mean > 0.0) || dry < 0.0) {
+      throw new Error('a completed borehole must cost more than nothing, and a dry attempt ' +
+        'nothing or more');
+    }
+    return { mean: mean, dry: dry,
+      samples: allocationWhole(allocationField(cost, 'samples'), "the cost's samples", 1),
+      seed: allocationWhole(allocationField(cost, 'seed'), "the cost's seed", 0),
+      depth: allocationFigure(allocationField(cost, 'depth_m'), "the cost's depth") };
+  }
+
+  function allocationCandidates(rows, level, mean, dry, access, cfg, grounds) {
+    var per = cfg.allocation.people_per_borehole;
+    var out = [];
+    /** @type {Record<string, boolean>} */
+    var seen = {};
+    /* a few kinds of ground between them all, so each is looked up once */
+    /** @type {Record<string, Rec>} */
+    var priors = {};
+    (rows || []).forEach(function (/** @type {Rec} */ row) {
+      var name = allocationField(row, 'name');
+      if (typeof name !== 'string' || !name) {
+        throw new Error('an area of the ranking has no name: ' + String(name));
+      }
+      if (Object.prototype.hasOwnProperty.call(seen, name)) {
+        throw new Error('the area ' + name + ' is in the ranking twice');
+      }
+      seen[name] = true;
+      var population = allocationFigure(allocationField(row, 'population'), 'the population of ' + name);
+      var functional = allocationWhole(allocationField(row, 'functional_points'),
+        'the functional points of ' + name, 0);
+      var short = population - per * functional;
+      var unserved = short > 0.0 ? Math.floor(short) : 0;
+      var boreholes = Math.ceil(unserved / per);
+      var typed = Object.prototype.hasOwnProperty.call(access, name) ? access[name] : 0.0;
+      var accessUsd = allocationFigure(typed, 'the access cost of ' + name);
+      if (accessUsd < 0.0) {
+        throw new Error('the access cost of ' + name + ' must be nothing or more, not ' + String(typed));
+      }
+      var ground = Object.prototype.hasOwnProperty.call(grounds, name) ? grounds[name] : null;
+      var odds = null, costUsd = null;
+      if (ground && ground.bgs_code !== null) {
+        var key = JSON.stringify([ground.bgs_code, ground.glg]);
+        if (!Object.prototype.hasOwnProperty.call(priors, key)) {
+          priors[key] = priorOdds(ground.bgs_code, ground.glg, cfg);
+        }
+        odds = priors[key];
+        if (odds.matched === 'fallback') odds = null;
+      }
+      if (odds) {
+        var p = odds.probability;
+        /* to the cent, as Python works it out: the odds take logarithms the
+         * engines need not round alike */
+        costUsd = pyRound(mean + dry * ((1.0 - p) / p) + accessUsd / p, 2);
+      }
+      out.push({ id: name, district: level === 'district' ? '' : String(allocationField(row, 'district') || ''),
+        population: population, functional_points: functional, unserved: unserved,
+        boreholes: boreholes, ground: ground, odds: odds, access_usd: accessUsd, cost_usd: costUsd,
+        chosen: 0, chosen_usd: 0.0, people: 0, reason: '' });
+    });
+    /* by code point, as Python sorts them */
+    out.sort(function (a, b) { return codePointCompare(a.id, b.id); });
+    return out;
+  }
+
+  function allocationEligible(c) { return c.unserved > 0 && c.cost_usd !== null; }
+
+  /* the set serving the most people within the budget, the cheapest of
+   * those, ties to earlier items: _exact */
+  function allocationExact(items, budget) {
+    var total = 0;
+    items.forEach(function (it) { total += it.people; });
+    var dp = new Float64Array(total + 1).fill(Infinity);
+    dp[0] = 0.0;
+    var takes = [];
+    items.forEach(function (it) {
+      var w = it.people, c = it.cost;
+      var take = new Uint8Array(total + 1);
+      for (var v = total; v >= w; v--) {
+        var cand = dp[v - w] + c;
+        if (cand < dp[v]) { dp[v] = cand; take[v] = 1; }
+      }
+      takes.push(take);
+    });
+    var best = 0;
+    for (var v = 0; v <= total; v++) if (dp[v] <= budget) best = v;
+    var spent = dp[best];
+    var chosen = [];
+    for (var i = items.length - 1; i >= 0; i--) {
+      var w = items[i].people;
+      if (best >= w && takes[i][best]) { chosen.push(i); best -= w; }
+    }
+    return { chosen: chosen, spent: spent };
+  }
+
+  /** Choose where to drill within a budget: allocation.allocate.
+   * @param {Rec[]} rows the coverage-gap ranking's rows: name, district, population, functional_points
+   * @param {number} budgetUsd
+   * @param {Rec} cost what sampleCost returns for the Costing page's borehole
+   * @param {Rec} options level ("district" or "chiefdom"); access, US$ per attempt by area;
+   *   config; grounds in place of areaGrounds(level), for a test
+   * @returns {Rec} */
+  function allocate(rows, budgetUsd, cost, options) {
+    var opts = options || {};
+    var level = opts.level;
+    if (ALLOCATION_LEVELS.indexOf(level) < 0) {
+      throw new Error('the resolution must be district or chiefdom, not ' + String(level));
+    }
+    var cfg = opts.config || defaultConfig();
+    var budget = allocationFigure(budgetUsd, 'the budget');
+    if (!(budget > 0.0)) throw new Error('the budget must be more than nothing, not ' + String(budgetUsd));
+    var per = allocationWhole(cfg.allocation.people_per_borehole, 'allocation.people_per_borehole', 1);
+    var limit = allocationWhole(cfg.allocation.exact_max_items, 'allocation.exact_max_items', 0);
+    var grid = allocationWhole(cfg.allocation.ground_grid, 'allocation.ground_grid', 1);
+    if (limit * limit * per > ALLOCATION_MAX_CELLS) {
+      throw new Error('allocation.exact_max_items squared times allocation.people_per_borehole is ' +
+        costUsd(limit * limit * per) + '; the exact choice keeps a table that large, and takes at most ' +
+        costUsd(ALLOCATION_MAX_CELLS));
+    }
+    var figures = allocationCostFigures(cost);
+    var grounds = opts.grounds || areaGrounds(level, cfg);
+    var candidates = allocationCandidates(rows, level, figures.mean, figures.dry, opts.access || {}, cfg,
+      grounds);
+
+    var items = [];
+    candidates.forEach(function (cand, ci) {
+      if (!allocationEligible(cand)) return;
+      var c = cand.cost_usd;
+      var most = Math.min(cand.boreholes, Math.floor(budget / c));
+      for (var k = 1; k <= most; k++) {
+        items.push({ ci: ci, k: k, people: allocationServed(cand.unserved, per, k), cost: c });
+      }
+    });
+    var order = items.map(function (_it, i) { return i; });
+    order.sort(function (a, b) {
+      var ra = items[a].people / items[a].cost, rb = items[b].people / items[b].cost;
+      return (rb - ra) || (items[a].ci - items[b].ci) || (items[a].k - items[b].k);
+    });
+    var method, picked;
+    if (items.length <= limit) {
+      method = 'exact';
+      picked = items.length ? allocationExact(items, budget) : { chosen: [], spent: 0.0 };
+    } else {
+      method = 'greedy';
+      var spentSoFar = 0.0, greedy = [];
+      order.forEach(function (i) {
+        if (spentSoFar + items[i].cost <= budget) { spentSoFar += items[i].cost; greedy.push(i); }
+      });
+      picked = { chosen: greedy, spent: spentSoFar };
+    }
+    /* the linear-programming bound: _bound */
+    var bound = 0.0;
+    if (items.length) {
+      var lpSpent = 0.0;
+      for (var b = 0; b < order.length; b++) {
+        var it = items[order[b]];
+        if (lpSpent + it.cost <= budget) { lpSpent += it.cost; bound += it.people; }
+        else { bound += it.people * ((budget - lpSpent) / it.cost); break; }
+      }
+    }
+    picked.chosen.forEach(function (/** @type {number} */ i) { candidates[items[i].ci].chosen += 1; });
+    var spent = picked.spent, left = budget - spent;
+    var least = null, people = 0, boreholes = 0, attempts = 0.0;
+    candidates.forEach(function (cand) {
+      if (!cand.chosen) return;
+      var c = cand.cost_usd;
+      cand.chosen_usd = c * cand.chosen;
+      cand.people = Math.min(per * cand.chosen, cand.unserved);
+      var ratio = 1000.0 * allocationServed(cand.unserved, per, cand.chosen) / c;
+      least = least === null || ratio < least ? ratio : least;
+      people += cand.people;
+      boreholes += cand.chosen;
+      attempts += cand.chosen / cand.odds.probability;
+    });
+    candidates.forEach(function (cand) {
+      if (cand.unserved <= 0) cand.reason = 'unserved';
+      else if (cand.cost_usd === null) cand.reason = 'odds';
+      else if (cand.chosen === cand.boreholes) cand.reason = 'all';
+      else if (cand.chosen) cand.reason = 'part';
+      else if (least !== null && 1000.0 * allocationServed(cand.unserved, per, 1) / cand.cost_usd < least) {
+        cand.reason = 'value';
+      } else cand.reason = 'budget';
+    });
+    var marginal = null;
+    candidates.forEach(function (cand) {
+      if (!allocationEligible(cand) || cand.chosen >= cand.boreholes) return;
+      var c = cand.cost_usd, w = allocationServed(cand.unserved, per, cand.chosen + 1);
+      if (marginal === null || w / c > marginal.people / marginal.cost_usd) {
+        marginal = { area: cand.id, cost_usd: c, people: w, usd_per_person: c / w, more_usd: c - left };
+      }
+    });
+    var cheapest = null;
+    candidates.forEach(function (cand) {
+      if (allocationEligible(cand) && (cheapest === null || cand.cost_usd < cheapest.cost_usd)) cheapest = cand;
+    });
+    function group(cand) {
+      if (cand.chosen) return 0;
+      if (allocationEligible(cand)) return 1;
+      return cand.reason === 'odds' ? 2 : 3;
+    }
+    function firstRatio(cand) {
+      return group(cand) < 2 ? allocationServed(cand.unserved, per, 1) / cand.cost_usd : 0.0;
+    }
+    var ordered = candidates.slice().sort(function (a, b) {
+      return (group(a) - group(b)) || (firstRatio(b) - firstRatio(a)) || codePointCompare(a.id, b.id);
+    });
+    var basis = '';
+    loadServiceClasses().some(function (band) {
+      if (band.kind === 'class' && band.max_people_per_point === per) { basis = band.basis; return true; }
+      return false;
+    });
+    return {
+      level: level, budget_usd: budget, people_per_borehole: per, exact_max_items: limit,
+      ground_grid: grid, method: method, items: items.length, candidates: ordered,
+      boreholes: boreholes, areas: candidates.filter(function (c) { return c.chosen; }).length,
+      cost_usd: spent, left_usd: left, people: people, attempts: attempts, bound: Math.floor(bound),
+      marginal: marginal,
+      mean_usd: figures.mean, dry_usd: figures.dry, cost_samples: figures.samples,
+      cost_seed: figures.seed, depth_m: figures.depth,
+      calibration: setName(inForce(cfg)), people_basis: basis, least_ratio: least,
+      access_areas: candidates.filter(function (c) { return c.access_usd > 0.0; }).length,
+      cheapest: cheapest,
+    };
+  }
+
+  /** The choice in sentences, the basis apart: allocation_text.
+   * @param {Rec} a what allocate returns
+   * @returns {string[]} */
+  function allocationText(a) {
+    var out = [phrase('allocation.lead', { per: a.people_per_borehole })];
+    if (a.cheapest === null) {
+      out.push(phrase('allocation.headline_no_candidates'));
+    } else if (!a.boreholes) {
+      out.push(phrase('allocation.headline_none', { budget: costUsd(a.budget_usd),
+        area: a.cheapest.id, cheapest: costUsd(Number(a.cheapest.cost_usd || 0.0)) }));
+    } else {
+      out.push(phrase('allocation.headline', { budget: costUsd(a.budget_usd), n: a.boreholes,
+        areas: a.areas, people: costUsd(a.people), cost: costUsd(a.cost_usd),
+        attempts: a.attempts, left: costUsd(a.left_usd) }));
+    }
+    if (a.items) {
+      if (a.method === 'exact') {
+        out.push(phrase('allocation.method_exact', { items: costUsd(a.items), n: a.items,
+          limit: a.exact_max_items }));
+      } else {
+        var gap = a.bound - a.people;
+        out.push(phrase('allocation.method_greedy', { items: costUsd(a.items),
+          limit: a.exact_max_items }));
+        if (gap > 0) {
+          out.push(phrase('allocation.greedy_gap', { bound: costUsd(a.bound), gap: costUsd(gap),
+            share: rangeShare(gap / a.bound) }));
+        } else {
+          out.push(phrase('allocation.greedy_best', { bound: costUsd(a.bound) }));
+        }
+      }
+    }
+    if (a.cheapest !== null) {
+      var m = a.marginal;
+      if (m === null) {
+        out.push(phrase('allocation.marginal_none'));
+      } else {
+        out.push(phrase('allocation.marginal', { area: m.area, cost: costUsd(m.cost_usd),
+          people: costUsd(m.people), per_person: costUsd(m.usd_per_person), more: costUsd(m.more_usd) }));
+      }
+    }
+    out.push(phrase('allocation.coarse'));
+    out.push(a.access_areas ? phrase('allocation.access_some', { n: a.access_areas })
+      : phrase('allocation.access_none'));
+    return out;
+  }
+
+  /** What the people, the ground and the cost of a borehole rest on:
+   * allocation_basis_text.
+   * @param {Rec} a what allocate returns
+   * @returns {string[]} */
+  function allocationBasisText(a) {
+    var out = [];
+    out.push(a.people_basis
+      ? phrase('allocation.basis_people', { per: a.people_per_borehole, basis: a.people_basis })
+      : phrase('allocation.basis_people_set', { per: a.people_per_borehole }));
+    out.push(phrase('allocation.basis_ground', { grid: a.ground_grid, calibration: a.calibration }));
+    out.push(phrase('allocation.basis_cost', { mean: costUsd(a.mean_usd), dry: costUsd(a.dry_usd),
+      n: costUsd(a.cost_samples), seed: a.cost_seed, depth: a.depth_m }));
+    return out;
+  }
+
+  /** The table's header: allocation_header.
+   * @param {Rec} a what allocate returns
+   * @returns {string[]} */
+  function allocationHeader(a) {
+    var cols = ['allocation.col_area'].concat(a.level === 'chiefdom' ? ['allocation.col_district'] : [], [
+      'allocation.col_unserved', 'allocation.col_ground', 'allocation.col_odds', 'allocation.col_cost',
+      'allocation.col_chosen', 'allocation.col_people', 'allocation.col_ratio', 'allocation.col_why']);
+    return cols.map(function (c) { return phrase(c); });
+  }
+
+  function allocationGroundCell(cand) {
+    var g = cand.ground;
+    if (!g || g.bgs_code === null) return phrase('allocation.ground_none');
+    var share = rangeShare(g.class_samples / g.samples);
+    if (g.glg === null) return phrase('allocation.ground_cell_class', { code: g.bgs_code, share: share });
+    return phrase('allocation.ground_cell', { code: g.bgs_code, glg: g.glg, share: share });
+  }
+
+  function allocationWhy(a, cand) {
+    var per = a.people_per_borehole;
+    if (cand.reason === 'unserved') {
+      return phrase('allocation.why_unserved', { f: cand.functional_points, per: per });
+    }
+    if (cand.reason === 'odds') return phrase('allocation.why_odds');
+    if (cand.reason === 'all') return phrase('allocation.why_all', { k: cand.chosen });
+    if (cand.reason === 'part') {
+      return phrase('allocation.why_part', { k: cand.chosen, n: cand.boreholes, left: costUsd(a.left_usd) });
+    }
+    if (cand.reason === 'value') {
+      return phrase('allocation.why_value', {
+        ratio: 1000.0 * allocationServed(cand.unserved, per, 1) / Number(cand.cost_usd || 1.0),
+        least: Number(a.least_ratio || 0.0) });
+    }
+    return phrase('allocation.why_budget', { cost: costUsd(Number(cand.cost_usd || 0.0)),
+      left: costUsd(a.left_usd) });
+  }
+
+  /** The table, one row for each area: allocation_rows.
+   * @param {Rec} a what allocate returns
+   * @returns {string[][]} */
+  function allocationRows(a) {
+    return a.candidates.map(function (/** @type {Rec} */ cand) {
+      var eligible = allocationEligible(cand);
+      return [cand.id].concat(a.level === 'chiefdom' ? [cand.district] : [], [
+        costUsd(cand.unserved),
+        allocationGroundCell(cand),
+        cand.odds ? oddsShort(cand.odds) : '',
+        cand.cost_usd !== null ? costUsd(cand.cost_usd) : '',
+        eligible ? phrase('allocation.chosen_cell', { k: cand.chosen, n: cand.boreholes }) : '',
+        costUsd(cand.people),
+        eligible ? pyFixed(1000.0 * allocationServed(cand.unserved, a.people_per_borehole, 1) /
+          cand.cost_usd, 1) : '',
+        allocationWhy(a, cand),
+      ]);
+    });
+  }
+
+  function allocationCsvField(text) {
+    return /[,"\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  }
+
+  /** The table as CSV, then a blank line and each sentence on a line of its
+   * own: allocation_csv, byte for byte.
+   * @param {Rec} a what allocate returns
+   * @returns {string} */
+  function allocationCsv(a) {
+    var lines = [allocationHeader(a).map(allocationCsvField).join(',')];
+    allocationRows(a).forEach(function (row) { lines.push(row.map(allocationCsvField).join(',')); });
+    lines.push('');
+    allocationText(a).concat(allocationBasisText(a)).forEach(function (t) {
+      lines.push(allocationCsvField(t));
+    });
+    return lines.join('\n') + '\n';
+  }
+
+  Object.assign(C, {
+    ALLOCATION_LEVELS: ALLOCATION_LEVELS, ALLOCATION_MAX_CELLS: ALLOCATION_MAX_CELLS,
+    ringHolds: ringHolds, areaGround: areaGround, areaGrounds: areaGrounds, allocate: allocate,
+    allocationText: allocationText, allocationBasisText: allocationBasisText,
+    allocationHeader: allocationHeader, allocationRows: allocationRows,
+    allocationCsv: allocationCsv,
   });
 
   /* ======================================================= calibration sets
@@ -29182,9 +31255,75 @@
       '<path fill="#000000" d="' + parts.join('') + '"/></svg>';
   }
 
+  function pngChunk(kind, payload) {
+    var out = new Uint8Array(12 + payload.length);
+    var view = new DataView(out.buffer);
+    view.setUint32(0, payload.length);
+    for (var i = 0; i < 4; i++) out[4 + i] = kind.charCodeAt(i);
+    out.set(payload, 8);
+    view.setUint32(8 + payload.length, crc32Of(out.subarray(4, 8 + payload.length)));
+    return out;
+  }
+
+  /** The symbol as a greyscale PNG, as qr.to_png(stored=True) draws it, byte
+   * for byte, with no canvas: the cover of a document the worker or a test
+   * writes has none. Its pixel data is stored in a zlib stream without
+   * compression, so the bytes are the same in every browser and in Python;
+   * the package it goes into compresses them.
+   * @param {{size: number, modules: boolean[][]}} code what qrEncode returns
+   * @param {Rec} [options] scale, border
+   * @returns {Uint8Array}
+   */
+  function qrPng(code, options) {
+    var opts = options || {};
+    var scale = opts.scale || 8, border = opts.border === undefined ? 4 : opts.border;
+    var size = (code.size + 2 * border) * scale, stride = size + 1;
+    var raw = new Uint8Array(size * stride);
+    for (var y = 0; y < size; y++) {
+      var row = Math.floor(y / scale) - border;
+      for (var x = 0; x < size; x++) {
+        var col = Math.floor(x / scale) - border;
+        var dark = row >= 0 && row < code.size && col >= 0 && col < code.size && code.modules[row][col];
+        raw[y * stride + 1 + x] = dark ? 0 : 255;
+      }
+    }
+    var blocks = Math.max(1, Math.ceil(raw.length / 65535));
+    var zlib = new Uint8Array(2 + raw.length + 5 * blocks + 4);
+    zlib[0] = 0x78;
+    zlib[1] = 0x01;
+    var at = 2;
+    for (var b = 0; b < blocks; b++) {
+      var from = b * 65535, len = Math.min(65535, raw.length - from);
+      zlib[at] = b === blocks - 1 ? 1 : 0;
+      zlib[at + 1] = len & 255;
+      zlib[at + 2] = len >> 8;
+      zlib[at + 3] = ~len & 255;
+      zlib[at + 4] = (~len >> 8) & 255;
+      zlib.set(raw.subarray(from, from + len), at + 5);
+      at += 5 + len;
+    }
+    var a = 1, s = 0;
+    for (var i = 0; i < raw.length; i++) {
+      a = (a + raw[i]) % 65521;
+      s = (s + a) % 65521;
+    }
+    new DataView(zlib.buffer).setUint32(at, ((s << 16) | a) >>> 0);
+    var header = new Uint8Array(13);
+    var hv = new DataView(header.buffer);
+    hv.setUint32(0, size);
+    hv.setUint32(4, size);
+    header[8] = 8;   // eight bits a pixel, greyscale, no interlace
+    var chunks = [Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a),
+      pngChunk('IHDR', header), pngChunk('IDAT', zlib), pngChunk('IEND', new Uint8Array(0))];
+    var total = chunks.reduce(function (n, c) { return n + c.length; }, 0);
+    var png = new Uint8Array(total), off = 0;
+    chunks.forEach(function (c) { png.set(c, off); off += c.length; });
+    return png;
+  }
+
   Object.assign(C, {
     QR_ECC_LEVELS: QR_ECC_LEVELS, QR_MAX_VERSION: QR_MAX_VERSION,
-    qrEncode: qrEncode, qrSvg: qrSvg, qrCapacityBytes: qrCapacityBytes,
+    qrEncode: qrEncode, qrSvg: qrSvg, qrPng: qrPng, qrCapacityBytes: qrCapacityBytes,
     qrPenalty: qrPenalty
   });
 
@@ -29389,7 +31528,11 @@
   /* kind -> [label, what it establishes about function, is it a service visit].
    * A routine inspection is the area mechanic's visit to the pump and the
    * rising main (PLAN.md step 7.3); an inspection is the sanitary inspection,
-   * as it always was. A repair is not counted as a routine inspection. */
+   * as it always was. A repair is not counted as a routine inspection. The
+   * last three are what somebody at the pump reports from its plate or by
+   * SMS (PLAN.md step 7.1; a report that it is broken is a failure): working
+   * says so, and slow or a water quality complaint says something is the
+   * matter without saying whether water comes, so establishes nothing. */
   var EVENT_KINDS = {
     commissioned: ['Commissioned', 'functional', false],
     inspection: ['Sanitary inspection', null, true],
@@ -29399,7 +31542,10 @@
     failure: ['Failure', 'non_functional', true],
     restored: ['Returned to service', 'functional', true],
     decommissioned: ['Decommissioned', 'decommissioned', false],
-    note: ['Note', null, false]
+    note: ['Note', null, false],
+    reported_working: ['Reported working', 'functional', false],
+    reported_slow: ['Reported slow', null, false],
+    quality_complaint: ['Water quality complaint', null, false]
   };
 
   /* The order events recorded on one day are read in (registry.py
@@ -29583,6 +31729,19 @@
     }).join('');
   }
 
+  /** A photograph's provenance record as an event keeps it, or null: kept as
+   * it stands when it is a mapping whose sha256 is 64 hexadecimal digits in
+   * lower case, as both engines write one, and dropped otherwise
+   * (registry.clean_photo_provenance).
+   * @param {*} raw
+   * @returns {Rec|null}
+   */
+  function cleanPhotoProvenance(raw) {
+    if (!isRecord(raw) || typeof raw.sha256 !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(raw.sha256)) return null;
+    return Object.assign({}, raw);
+  }
+
   function coerceEvent(raw) {
     if (!raw || typeof raw !== 'object') return null;
     var kind = trimField(raw.kind || '');
@@ -29600,6 +31759,10 @@
       event.form = form;
       event.answers = answers;
     }
+    /* likewise the photograph's provenance (PLAN.md step 7.1), which is not
+     * part of the event's identifier and travels with the photograph */
+    var provenance = cleanPhotoProvenance(raw.photo_provenance);
+    if (provenance) event.photo_provenance = provenance;
     event.event_id = String(raw.event_id || '');
     return event;
   }
@@ -29891,13 +32054,66 @@
     };
   }
 
-  /** Plain text, not a link. A link is only useful where there is a network,
-   * and the reason this symbol is on the headworks is that there is not one.
-   * @param {Rec} asset
+  /* The browser app's address for the report page of one borehole, after
+   * the app's own address (PLAN.md steps 1.4 and 7.1): registry.REPORT_ROUTE. */
+  var REPORT_ROUTE = '#/report/';
+
+  /* registry._REPORT_URL: https:// in either case, A to Z only, a first
+   * character that is not /, ? or #, then printable ASCII with no blank and
+   * no # */
+  var REPORT_URL_RE =
+    /^[Hh][Tt][Tt][Pp][Ss]:\/\/[\x21\x22\x24-\x2e\x30-\x3e\x40-\x7e][\x21\x22\x24-\x7e]*$/;
+
+  /** Why url cannot be the address a plate's symbol links to, or '' when it
+   * can or none is set (registry.check_report_url): https, because a browser
+   * keeps an app for use with no network only from a secure address, in
+   * printable ASCII with no blank and no # part.
+   * @param {*} url
    * @returns {string}
    */
-  function qrPayload(asset) {
-    var lines = ['BOREHOLE ' + asset.asset_id, assetLabel(asset)];
+  function checkReportUrl(url) {
+    var text = trimField(url);
+    if (!text) return '';
+    if (!REPORT_URL_RE.test(text)) return phrase('fault_reports.url_refused', { url: text });
+    return '';
+  }
+
+  /** The link a plate's symbol carries to the report page of assetId, or ''
+   * when no address is set; an address checkReportUrl refuses is refused.
+   * @param {string} assetId
+   * @param {*} [reportUrl]
+   * @returns {string}
+   */
+  function reportLink(assetId, reportUrl) {
+    var reason = checkReportUrl(reportUrl);
+    if (reason) throw new Error(reason);
+    var text = trimField(reportUrl);
+    return text ? text + REPORT_ROUTE + assetId : '';
+  }
+
+  /** What a scan of the plate of assetId begins with: the link to its report
+   * page where an address is set, else BOREHOLE and the identifier.
+   * @param {string} assetId
+   * @param {*} [reportUrl]
+   * @returns {string}
+   */
+  function scanStart(assetId, reportUrl) {
+    return reportLink(assetId, reportUrl) || 'BOREHOLE ' + assetId;
+  }
+
+  /** With no report address set, plain text, not a link: a technician who
+   * scans it sees the identifier, the place and the position with nothing to
+   * load, where there is no network. With one set (service.report_url), the
+   * link to the browser app's report page for this borehole (PLAN.md step
+   * 7.1), which works with no network on a phone that has opened the app.
+   * @param {Rec} asset
+   * @param {*} [reportUrl]
+   * @returns {string}
+   */
+  function qrPayload(asset, reportUrl) {
+    var link = reportLink(asset.asset_id, reportUrl);
+    if (link) return link;
+    var lines = [scanStart(asset.asset_id), assetLabel(asset)];
     var latlon = assetLatLon(asset);
     if (latlon) {
       lines.push(pyFixed(Math.abs(latlon[0]), 5) + ' ' + (latlon[0] >= 0 ? 'N' : 'S') +
@@ -29968,6 +32184,10 @@
     var rising = cleanRisingMain(payload.rising_main);
     if (rising) asset.rising_main = rising;
     asset.events = mergeEvents(assetId, payload.events || []);
+    /* the issue records of the documents issued about it (PLAN.md step
+     * 8.1), likewise only where there are some */
+    var documents = cleanIssueRecords(payload.documents);
+    if (documents.length) asset.documents = documents;
     return asset;
   }
 
@@ -30003,6 +32223,10 @@
     var design = state.borehole_design;
     var rising = cleanRisingMain(design ? design.rising_main : null);
     if (rising) asset.rising_main = rising;
+    /* the documents issued about the borehole from the project, so a record
+     * first stored after they were issued holds them (PLAN.md step 8.1) */
+    var documents = boreholeRecords(state.issued);
+    if (documents.length) asset.documents = documents;
     return asset;
   }
 
@@ -30074,11 +32298,422 @@
     SAME_DAY_ORDER: SAME_DAY_ORDER,
     eventId: eventId, eventLabel: eventLabel, mergeEvents: mergeEvents,
     cleanAnswers: cleanAnswers, trimField: trimField,
+    cleanPhotoProvenance: cleanPhotoProvenance, REPORT_ROUTE: REPORT_ROUTE,
+    checkReportUrl: checkReportUrl, reportLink: reportLink, scanStart: scanStart,
     assetState: assetState, assetLatLon: assetLatLon, assetLabel: assetLabel,
     assetFromDict: assetFromDict, assetFromProject: assetFromProject,
     qrPayload: qrPayload, placardLines: placardLines,
     registryRows: registryRows, registryStats: registryStats,
     addMonths: addMonths, isoDay: isoDay, dayToIso: dayToIso
+  });
+
+  /* ===================================================================
+   * Reports from the plate and by SMS - a port of groundwater/fault_reports.py
+   * (PLAN.md 7.1)
+   *
+   * What the people who pump a borehole say about it, from the report page a
+   * plate's QR code opens, by SMS (BH <identifier> <WORD> [note]), or from
+   * the file of reports a phone exports, made into registry records. Every
+   * report is accepted, held or refused, with the reason. The identifier is
+   * checked by validateAssetId, the registry's own check, so a mistyped one
+   * is refused, and one it reads with a note is held for a person to
+   * confirm when it comes by SMS, since nobody reads the note as an SMS is
+   * typed. Nothing here reads the clock: a report's day is the person's, the
+   * gateway's or the file's, or the day the person importing gives. The
+   * gateway adapter, which is optional and not built, is receiveMessages.
+   * =================================================================== */
+
+  /* what a report can say, in the order the page offers it, and the
+   * registry event each is recorded as */
+  var REPORT_CHOICES = ['working', 'broken', 'slow', 'taste'];
+  var REPORT_KINDS = { working: 'reported_working', broken: 'failure',
+    slow: 'reported_slow', taste: 'quality_complaint' };
+  var REPORTS_FORMAT = 'gwt-borehole-reports';
+  var REPORTS_VERSION = 1;
+
+  /* the blanks trimField takes off a field's ends separate a message's
+   * words, the same in both engines; with commas and semicolons they
+   * separate the time received, the sender and the message on a line */
+  var REPORT_BLANKS = new RegExp('[' + TRIMMED + ']+');
+  var REPORT_BREAKS = new RegExp('[' + TRIMMED + ',;]+');
+  var REPORT_BH = new RegExp('(?:^|[' + TRIMMED + ',;])BH(?=[' + TRIMMED + ']|$)', 'i');
+  var REPORT_ISO_TIME = /^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?$/;
+  var REPORT_CLOCK = /^[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?$/;
+  var REPORT_OTHER_DAY = /^[0-9]{1,4}[/.-][0-9]{1,2}[/.-][0-9]{1,4}$/;
+  var REPORT_DAY_FIRST = /^([0-9]{4}-[0-9]{2}-[0-9]{2})(?:[T ]|$)/;
+
+  /* The registry's own check of an identifier, validateAssetId, called
+   * through C as fault_reports.py calls registry.validate_asset_id through
+   * its module: whatever that check reads with a note rather than plainly
+   * is held when it comes by SMS, and a test can stand in for such a check. */
+  function checkReportedId(typed) {
+    return C.validateAssetId(typed);
+  }
+
+  /* a field of a report, trimmed, or blank when it is not text */
+  function reportText(value) {
+    return typeof value === 'string' ? trimField(value) : '';
+  }
+
+  function asciiUpper(text) {
+    return text.replace(/[a-z]/g, function (c) { return c.toUpperCase(); });
+  }
+
+  /* the SMS words, "WORKING, BROKEN, ... or BAD" */
+  function reportWords() {
+    var words = Object.keys(phraseTable('fault_reports.sms_words'));
+    return words.slice(0, -1).join(', ') + ' or ' + words[words.length - 1];
+  }
+
+  /* a report with every field, in the order both engines write them */
+  function reportShape(fields) {
+    return Object.assign({ status: 'refused', reason: '', asset_id: '', typed: '',
+      choice: '', kind: '', when: '', note: '', by: '', photo: '', photo_provenance: null,
+      line: null, text: '', received: '', sender: '' }, fields);
+  }
+
+  /** A report as the report page makes it (fault_reports.report_record): on
+   * the borehole assetId, one of the four choices, on the day when
+   * (YYYY-MM-DD, the page's input), with an optional note, name and
+   * photograph (a data URL) with its provenance record. Refused, with the
+   * reason, when the identifier does not check (the registry's own words),
+   * the choice is not one of the four or the day is not one; an identifier
+   * the registry reads with a note is accepted, since the page shows the
+   * note to the person at the plate.
+   * @param {*} assetId
+   * @param {*} choice
+   * @param {*} when
+   * @param {*} [note]
+   * @param {*} [by]
+   * @param {*} [photo]
+   * @param {*} [photoProvenance]
+   * @returns {Rec}
+   */
+  function reportRecord(assetId, choice, when, note, by, photo, photoProvenance) {
+    var typed = reportText(assetId);
+    var verdict = checkReportedId(typed);
+    if (!verdict.ok) return reportShape({ reason: verdict.reason, typed: typed });
+    var parsed = parseAssetId(typed) || '';
+    if (REPORT_CHOICES.indexOf(choice) < 0) {
+      return reportShape({ reason: phrase('fault_reports.no_choice'), asset_id: parsed,
+        typed: typed });
+    }
+    var day = reportText(when);
+    if (isoDay(day) === null) {
+      return reportShape({ reason: day ? phrase('fault_reports.bad_day', { when: day })
+        : phrase('fault_reports.no_day'), asset_id: parsed, typed: typed, choice: choice });
+    }
+    var picture = typeof photo === 'string' ? photo : '';
+    return reportShape({ status: 'accepted', asset_id: parsed, typed: typed, choice: choice,
+      kind: REPORT_KINDS[choice], when: day, note: reportText(note), by: reportText(by),
+      photo: picture,
+      photo_provenance: picture ? cleanPhotoProvenance(photoProvenance) : null });
+  }
+
+  /* an SMS report from message received on day ('' when there is none),
+   * with what to show of the line it came from */
+  function smsReport(message, day, received, sender, line, text) {
+    var shown = { line: line, text: text, received: received, sender: sender };
+    var words = reportText(message).split(REPORT_BLANKS).filter(Boolean);
+    if (!words.length || asciiUpper(words[0]) !== 'BH') {
+      return reportShape(Object.assign({
+        reason: phrase('fault_reports.no_bh', { words: reportWords() }) }, shown));
+    }
+    if (words.length < 2) {
+      return reportShape(Object.assign({
+        reason: phrase('fault_reports.no_identifier', { words: reportWords() }) }, shown));
+    }
+    var typed = words[1];
+    if (words.length < 3) {
+      return reportShape(Object.assign({
+        reason: phrase('fault_reports.no_word', { words: reportWords() }), typed: typed },
+      shown));
+    }
+    var verdict = checkReportedId(typed);
+    if (!verdict.ok) return reportShape(Object.assign({ reason: verdict.reason, typed: typed }, shown));
+    var parsed = parseAssetId(typed) || '';
+    var table = phraseTable('fault_reports.sms_words');
+    var key = asciiUpper(words[2]);
+    if (!own(table, key)) {
+      return reportShape(Object.assign({
+        reason: phrase('fault_reports.unknown_word', { word: words[2], words: reportWords() }),
+        asset_id: parsed, typed: typed }, shown));
+    }
+    var choice = table[key];
+    var found = { asset_id: parsed, typed: typed, choice: choice };
+    if (!day) {
+      return reportShape(Object.assign({ reason: phrase('fault_reports.no_date') }, found, shown));
+    }
+    if (isoDay(day) === null) {
+      return reportShape(Object.assign({ reason: phrase('fault_reports.bad_date', { date: day }) },
+        found, shown));
+    }
+    var by = sender ? phrase('fault_reports.sms_by', { sender: sender })
+      : phrase('fault_reports.sms_by_unknown');
+    var fields = Object.assign({}, found, { kind: REPORT_KINDS[choice], when: day,
+      note: words.slice(3).join(' '), by: by }, shown);
+    if (verdict.reason) {
+      /* read, but with a note the registry shows to whoever types the
+       * identifier; an SMS has nobody to show it to as it is typed */
+      return reportShape(Object.assign({ status: 'held',
+        reason: phrase('fault_reports.held', { note: verdict.reason }) }, fields));
+    }
+    return reportShape(Object.assign({ status: 'accepted' }, fields));
+  }
+
+  /* the day a report was received on: the day the time received begins
+   * with, else the day given for messages that carry none */
+  function reportDayOf(received, receivedOn) {
+    if (received) {
+      var match = REPORT_DAY_FIRST.exec(received);
+      return match ? match[1] : received;
+    }
+    return reportText(receivedOn);
+  }
+
+  /** One SMS, BH <identifier> <WORD> [note], as a report (fault_reports.parse_sms).
+   * @param {*} text the message
+   * @param {*} [received] the time it was received as the gateway writes it,
+   *   read only when it begins with a day written YYYY-MM-DD
+   * @param {*} [sender] who sent it, kept as the report's "by"
+   * @param {*} [receivedOn] the day for a message with no time received
+   * @returns {Rec}
+   */
+  function parseSms(text, received, sender, receivedOn) {
+    var stamp = reportText(received), who = reportText(sender);
+    return smsReport(text, reportDayOf(stamp, receivedOn), stamp, who, null, reportText(text));
+  }
+
+  /** The interface of an SMS gateway adapter, which is optional
+   * (fault_reports.receive_messages): what a gateway received, in order,
+   * each with its text and, where the gateway gives them, the time it was
+   * received and the sender (or the text alone), as reports numbered from 1.
+   * Nothing is sent back and nothing is merged.
+   * @param {*} messages
+   * @param {*} [receivedOn] the day for messages with no time received
+   * @returns {Rec[]}
+   */
+  function receiveMessages(messages, receivedOn) {
+    return (Array.isArray(messages) ? messages : []).map(function (message, i) {
+      var m = typeof message === 'string' ? { text: message } : (isRecord(message) ? message : {});
+      var stamp = reportText(m.received), who = reportText(m.sender);
+      var text = reportText(m.text);
+      return smsReport(text, reportDayOf(stamp, receivedOn), stamp, who, i + 1, text);
+    });
+  }
+
+  /** A plain-text file of SMS messages, one a line, as reports
+   * (fault_reports.read_sms_lines). Before BH a line may carry the time
+   * received (a day written YYYY-MM-DD, alone or with a time after a T,
+   * then perhaps a time of day) and the sender, separated by blanks, commas
+   * or semicolons; whatever else is there is the sender. A day written any
+   * other way, or two days, is refused; blank lines are skipped.
+   * @param {*} text
+   * @param {*} [receivedOn] the day for lines that carry none
+   * @returns {Rec[]}
+   */
+  function readSmsLines(text, receivedOn) {
+    var out = [];
+    var raw = typeof text === 'string' ? text : '';
+    raw.split(/\r\n|\r|\n/).forEach(function (line, i) {
+      var number = i + 1;
+      var shown = trimField(line);
+      if (!shown) return;
+      var found = REPORT_BH.exec(shown);
+      if (!found) {
+        out.push(reportShape({ reason: phrase('fault_reports.no_bh', { words: reportWords() }),
+          line: number, text: shown }));
+        return;
+      }
+      var start = found.index + found[0].length - 2;
+      var days = [], clock = [], sender = [];
+      var tokens = shown.slice(0, start).split(REPORT_BREAKS);
+      for (var t = 0; t < tokens.length; t++) {
+        var token = tokens[t];
+        if (!token) continue;
+        if (REPORT_ISO_TIME.test(token)) days.push(token);
+        else if (REPORT_CLOCK.test(token)) clock.push(token);
+        else if (REPORT_OTHER_DAY.test(token)) {
+          out.push(reportShape({ reason: phrase('fault_reports.bad_date', { date: token }),
+            line: number, text: shown }));
+          return;
+        } else sender.push(token);
+      }
+      var stamp = days.concat(clock).join(' ');
+      var who = sender.join(' ');
+      if (days.length > 1) {
+        out.push(reportShape({ reason: phrase('fault_reports.two_dates',
+          { first: days[0], second: days[1] }),
+        line: number, text: shown, received: stamp, sender: who }));
+        return;
+      }
+      var day = days.length ? days[0].slice(0, 10) : reportText(receivedOn);
+      out.push(smsReport(shown.slice(start), day, stamp, who, number, shown));
+    });
+    return out;
+  }
+
+  /** A held report, confirmed by a person: the same report, accepted
+   * (fault_reports.confirm_report). Anything else is returned as it is.
+   * @param {*} record
+   * @returns {*}
+   */
+  function confirmReport(record) {
+    if (!isRecord(record) || record.status !== 'held') return record;
+    return Object.assign({}, record, { status: 'accepted', reason: '' });
+  }
+
+  /** The registry event an accepted report is recorded as.
+   * @param {Rec} record
+   * @returns {Rec}
+   */
+  function reportEvent(record) {
+    /* read as the registry reads any saved event (coerceEvent), so a record
+     * from a hand-edited queue or file becomes the same event in both engines */
+    return /** @type {Rec} */ (coerceEvent({ when: record.when, kind: record.kind,
+      note: record.note, by: record.by, photo: record.photo,
+      photo_provenance: record.photo_provenance }));
+  }
+
+  /** The accepted records merged into the boreholes they name
+   * (fault_reports.merge_reports): each asset with the reports naming it
+   * merged by the registry's rule, the rest as they were; added counts the
+   * records new to a history, already those it held, and unmatched are the
+   * accepted reports that name none of the boreholes.
+   * @param {*} assets registry records
+   * @param {*} records reports
+   * @returns {{assets: Rec[], added: number, already: number, unmatched: Rec[]}}
+   */
+  function mergeReports(assets, records) {
+    var accepted = (Array.isArray(records) ? records : []).filter(function (r) {
+      return isRecord(r) && r.status === 'accepted';
+    });
+    /** @type {Object<string, boolean>} */
+    var matched = {};
+    var out = [], added = 0, already = 0;
+    (Array.isArray(assets) ? assets : []).forEach(function (raw) {
+      var asset = assetFromDict(raw);
+      if (!asset) return;
+      var assetId = asset.asset_id;
+      /** @type {number[]} */
+      var mine = [];
+      accepted.forEach(function (r, i) { if (r.asset_id === assetId) mine.push(i); });
+      if (!mine.length) { out.push(asset); return; }
+      /** @type {Object<string, boolean>} */
+      var known = {};
+      mergeEvents(assetId, asset.events).forEach(function (e) { known[e.event_id] = true; });
+      var events = mine.map(function (i) { return reportEvent(accepted[i]); });
+      /** @type {Object<string, boolean>} */
+      var ids = {};
+      events.forEach(function (e) {
+        ids[identifiedFor(/** @type {Rec} */ (coerceEvent(e)), assetId).event_id] = true;
+      });
+      Object.keys(ids).forEach(function (id) { if (own(known, id)) already += 1; else added += 1; });
+      mine.forEach(function (i) { matched[i] = true; });
+      out.push(Object.assign({}, asset, {
+        events: mergeEvents(asset.asset_id, asset.events, events) }));
+    });
+    return { assets: out, added: added, already: already,
+      unmatched: accepted.filter(function (r, i) { return !own(matched, String(i)); }) };
+  }
+
+  /** The accepted records as the file a phone exports (fault_reports.reports_file).
+   * @param {*} records
+   * @returns {Rec}
+   */
+  function reportsFile(records) {
+    var out = [];
+    (Array.isArray(records) ? records : []).forEach(function (record) {
+      if (!isRecord(record) || record.status !== 'accepted') return;
+      /* each field as text, so a hand-edited record is written the same by
+       * both engines; read back, every report is checked again anyway */
+      /** @type {Rec} */
+      var entry = { asset_id: reportText(record.asset_id), choice: reportText(record.choice),
+        when: reportText(record.when), note: reportText(record.note), by: reportText(record.by) };
+      if (typeof record.photo === 'string' && record.photo) {
+        entry.photo = record.photo;
+        var provenance = cleanPhotoProvenance(record.photo_provenance);
+        if (provenance) entry.photo_provenance = provenance;
+      }
+      out.push(entry);
+    });
+    return { format: REPORTS_FORMAT, version: REPORTS_VERSION, reports: out };
+  }
+
+  /** The reports in a file reportsFile wrote, each checked again as the page
+   * checks one, numbered from 1 in line (fault_reports.read_reports_file). A
+   * file not of this format and version is refused whole.
+   * @param {*} payload the file, parsed
+   * @returns {Rec[]}
+   */
+  function readReportsFile(payload) {
+    if (!isRecord(payload) || payload.format !== REPORTS_FORMAT ||
+        payload.version !== REPORTS_VERSION || !Array.isArray(payload.reports)) {
+      throw new Error(phrase('fault_reports.file_refused'));
+    }
+    return payload.reports.map(function (entry, i) {
+      var e = isRecord(entry) ? entry : {};
+      return Object.assign(reportRecord(reportText(e.asset_id), e.choice, e.when, e.note, e.by,
+        e.photo, e.photo_provenance), { line: i + 1 });
+    });
+  }
+
+  /** The header of the table of an import, in both apps.
+   * @returns {string[]}
+   */
+  function reportHeader() {
+    var columns = phraseTable('fault_reports.columns');
+    return Object.keys(columns).map(function (k) { return columns[k]; });
+  }
+
+  /** One row of the table of an import a report: its line, when it was
+   * received, who sent it, the borehole as given, what it says, what became
+   * of it and why (fault_reports.report_rows).
+   * @param {*} records
+   * @returns {string[][]}
+   */
+  function reportRows(records) {
+    var says = phraseTable('fault_reports.choices');
+    var outcome = phraseTable('fault_reports.outcome');
+    return (Array.isArray(records) ? records : []).filter(function (r) {
+      return isRecord(r) && typeof r.status === 'string' && own(outcome, r.status);
+    }).map(function (r) {
+      return [r.line === null || r.line === undefined ? '' : String(r.line),
+        r.received || r.when || '', r.sender || '', r.asset_id || r.typed || '',
+        r.choice && own(says, r.choice) ? says[r.choice] : '', outcome[r.status], r.reason || ''];
+    });
+  }
+
+  /** What a report by SMS and a file of them look like, as both apps' imports
+   * say it (fault_reports.sms_format).
+   * @returns {string}
+   */
+  function smsFormat() {
+    return phrase('fault_reports.sms_format', { words: reportWords() });
+  }
+
+  /** How many reports an import read and what became of them.
+   * @param {*} records
+   * @returns {string}
+   */
+  function importSummary(records) {
+    var list = (Array.isArray(records) ? records : []).filter(isRecord);
+    /** @param {string} status */
+    function count(status) {
+      return list.filter(function (r) { return r.status === status; }).length;
+    }
+    return phrase('fault_reports.import_summary', { n: list.length, accepted: count('accepted'),
+      held: count('held'), refused: count('refused') });
+  }
+
+  Object.assign(C, {
+    REPORT_CHOICES: REPORT_CHOICES, REPORT_KINDS: REPORT_KINDS,
+    REPORTS_FORMAT: REPORTS_FORMAT, REPORTS_VERSION: REPORTS_VERSION,
+    reportRecord: reportRecord, parseSms: parseSms, receiveMessages: receiveMessages,
+    readSmsLines: readSmsLines, confirmReport: confirmReport, reportEvent: reportEvent,
+    mergeReports: mergeReports, reportsFile: reportsFile, readReportsFile: readReportsFile,
+    reportHeader: reportHeader, reportRows: reportRows, importSummary: importSummary,
+    smsFormat: smsFormat
   });
 
   /* ===================================================================
@@ -30760,9 +33395,15 @@
    * @param {string} asOf the day, YYYY-MM-DD; never read off the clock
    * @param {Rec|null} [schedule] the intervals (serviceSchedule)
    * @param {Rec[]|null} [mechanics] the area mechanics by chiefdom
+   * @param {*} [reportUrl] the report address plates are printed with
+   *   (service.report_url): with one, a scan of a plate begins with the link
+   *   to its report page (PLAN.md step 7.1); one checkReportUrl refuses is
+   *   refused here too
    * @returns {Rec}
    */
-  function serviceRounds(assets, asOf, schedule, mechanics) {
+  function serviceRounds(assets, asOf, schedule, mechanics, reportUrl) {
+    var check = checkReportUrl(reportUrl);
+    if (check) throw new Error(check);
     var day = roundDay(asOf);
     var today = /** @type {string} */ (dayToIso(day));
     var plan = checkSchedule(Object.assign({}, serviceSchedule(), schedule || {}));
@@ -30786,7 +33427,7 @@
       groups[who[0]].push({
         order: 0,
         asset_id: asset.asset_id,
-        plate: 'BOREHOLE ' + asset.asset_id,
+        plate: scanStart(asset.asset_id, reportUrl),
         /* as the registry labels a borehole, from the fields as read here */
         label: district ? place + ' (' + district + ')' : place,
         community: community,
@@ -30992,9 +33633,11 @@
   var DAYS_PER_YEAR = 365.25;
   var Z_95 = 1.959963984540054;
   /* survival._MENDING and _WORKING: records that mend a breakdown, and
-   * records that report the borehole working */
+   * records that report the borehole working (a report from its plate or by
+   * SMS that it is working among them, PLAN.md step 7.1) */
   var SURVIVAL_MENDING = ['repair', 'restored'];
-  var SURVIVAL_WORKING = ['commissioned', 'inspection', 'routine_inspection', 'water_sample'];
+  var SURVIVAL_WORKING = ['commissioned', 'inspection', 'routine_inspection', 'water_sample',
+    'reported_working'];
   /* the works the method cites, as reporting/citations.py lists them for
    * "survival" */
   var SURVIVAL_CITED = ['kaplan_meier', 'greenwood', 'kalbfleisch_prentice',
@@ -34523,8 +37166,10 @@
     var order = ranking || ranked.map(function (p) { return p.label; });
     var tied = tie;
     if (tied === undefined || tied === null) {
+      /* the gap to the tenth of a point, as tiedLeaders takes it: 64.1 less
+       * 61.1 is 2.999999999999993 in doubles, not under 3 */
       tied = ranked.length >= 2 && ranked[0].rank === 1 && ranked[1].rank === 2 &&
-        Math.abs(Number(ranked[0].value) - Number(ranked[1].value)) <
+        pyRound(Math.abs(Number(ranked[0].value) - Number(ranked[1].value)), 1) <
         defaultConfig().ves.ranking_tie_points;
     }
     tied = !!tied;
@@ -35973,6 +38618,1459 @@
   Object.assign(C, {
     PORTFOLIO_RADIUS_M: PORTFOLIO_RADIUS_M, WATER_POINTS_LISTED: WATER_POINTS_LISTED,
     siteGround: siteGround, deskStudyTerrain: deskStudyTerrain, deskStudyContent: deskStudyContent,
+  });
+
+  /* ================================================== documents verified
+   * groundwater/verification.py (PLAN.md step 8.1). Every document either
+   * engine writes carries a manifest, customXml/groundwater-manifest.xml:
+   * what it is, the engine, the calibration set in force, its readiness, the
+   * SHA-256 of each evidence file it was issued from and of every other part
+   * of the package. The SHA-256 of the manifest is the document's hash, which
+   * the issue records in the project file and the asset record hold. The
+   * code on the cover and in every footer is a short form of the code
+   * digest: the manifest written without the code and without the parts that
+   * carry it (the footers and the QR symbol, listed apart as carriers), so a
+   * copy whose text is changed and whose manifest is brought into line no
+   * longer gives its own code. The two engines write different parts, but
+   * the same manifest for the same facts and parts, read a package by the
+   * same rules and say the same four things of it. */
+
+  var MANIFEST_PART = 'customXml/groundwater-manifest.xml';
+  var MANIFEST_NS = 'urn:groundwater-toolkit:manifest';
+  var MANIFEST_FORMAT = 1;
+  var MANIFEST_REL_ID = 'rIdGroundwaterManifest';
+  var MANIFEST_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml';
+  var DOCUMENT_RELS = 'word/_rels/document.xml.rels';
+  var CONTENT_TYPES = '[Content_Types].xml';
+  var XML_DEFAULT = '<Default Extension="xml" ContentType="application/xml"/>';
+  /* the engine a manifest names, as the inversion cache names it, with the
+   * toolkit's version (verification.ENGINE is the Python engine's) */
+  var DOCUMENT_ENGINE = 'gwt-core';
+  var READINESS_STATES = ['ready', 'ready_with_overrides', 'not_ready', 'not_assessed'];
+  /* the kinds of document about the borehole itself, whose issue records go
+   * into its asset record too: those with a certification gate */
+  var BOREHOLE_KINDS = Object.keys(READINESS_REPORTS);
+  var VERDICTS = ['verified', 'unconfirmed', 'changed', 'not_issued', 'altered_manifest',
+    'damaged_manifest', 'no_manifest', 'unreadable'];
+  /* a part larger than this, or a package larger in all, is not read */
+  var MAX_PART_BYTES = 128 * 1024 * 1024;
+  var MAX_PACKAGE_BYTES = 512 * 1024 * 1024;
+  var HEX64_RE = /^[0-9a-f]{64}$/;
+  var DOCUMENT_CODE_RE = /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]$/;
+  /* what XML 1.0 cannot carry, dropped from a value; with the u flag a lone
+   * surrogate matches and a pair does not, as in a Python str */
+  var UNWRITABLE_CLASS = '\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\ufffe\\uffff\\u{d800}-\\u{dfff}';
+  var UNWRITABLE_RE = new RegExp('[' + UNWRITABLE_CLASS + ']', 'gu');
+  var CODE_BLANKS_RE = new RegExp('[' + TRIMMED + '_\\-]+', 'g');
+  var MANIFEST_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
+    '\t': '&#9;', '\n': '&#10;', '\r': '&#13;' };
+  var MANIFEST_UNESCAPES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"',
+    '&#9;': '\t', '&#10;': '\n', '&#13;': '\r' };
+  var MANIFEST_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  var MANIFEST_OPEN = '<manifest xmlns="' + MANIFEST_NS + '" format="' + MANIFEST_FORMAT + '">';
+  var MANIFEST_V = '([^"<>]*)';
+  var MANIFEST_LINES = {
+    document: new RegExp('^<document kind="' + MANIFEST_V + '" title="' + MANIFEST_V + '" issued="' +
+      MANIFEST_V + '" code="' + MANIFEST_V + '"/>$'),
+    engine: new RegExp('^<engine name="' + MANIFEST_V + '" version="' + MANIFEST_V + '"/>$'),
+    calibration: new RegExp('^<calibration name="' + MANIFEST_V + '" sha256="' + MANIFEST_V + '"/>$'),
+    readiness: new RegExp('^<readiness state="' + MANIFEST_V + '">$'),
+    item: new RegExp('^<item state="' + MANIFEST_V + '" title="' + MANIFEST_V + '" by="' + MANIFEST_V +
+      '" reason="' + MANIFEST_V + '"/>$'),
+    file: new RegExp('^<file what="' + MANIFEST_V + '" name="' + MANIFEST_V + '" sha256="' +
+      MANIFEST_V + '"/>$'),
+    part: new RegExp('^<part name="' + MANIFEST_V + '" sha256="' + MANIFEST_V + '"/>$'),
+  };
+  var RECORD_KEYS = ['code', 'sha256', 'kind', 'title', 'issued_on', 'readiness'];
+
+  /* a field of the manifest: text with what XML cannot carry dropped, trimmed
+   * as both engines trim; anything but text is blank */
+  function manifestText(value) {
+    return typeof value === 'string' ? trimField(value.replace(UNWRITABLE_RE, '')) : '';
+  }
+
+  function utf8Encode(text) {
+    return new TextEncoder().encode(text);
+  }
+
+  /** verification.document_code: the short code of a code digest, its first
+   * 40 bits as eight Crockford base-32 characters in two groups and an ISO
+   * 7064 MOD 37,36 check character, as the asset identifier has.
+   * @param {string} digest a SHA-256 as hex
+   * @returns {string} */
+  function documentCode(digest) {
+    var body = '';
+    [0, 5].forEach(function (start) {
+      var value = parseInt(digest.slice(start, start + 5), 16);
+      [15, 10, 5, 0].forEach(function (shift) {
+        body += CROCKFORD.charAt((value >>> shift) & 31);
+      });
+    });
+    return body.slice(0, 4) + '-' + body.slice(4) + '-' + checkCharacter(body);
+  }
+
+  /** verification.parse_document_code: a typed or scanned code as the
+   * toolkit writes it, or null. Case, blanks, missing hyphens, the word
+   * DOCUMENT the QR symbol leads with and the four Crockford confusions in
+   * the body are forgiven; a wrong check character, and anything but ASCII,
+   * is not.
+   * @param {*} text
+   * @returns {string|null} */
+  function parseDocumentCode(text) {
+    var raw = String(text === null || text === undefined ? '' : text).replace(CODE_BLANKS_RE, '');
+    if (/[^\x20-\x7e]/.test(raw)) return null;
+    raw = raw.toUpperCase();
+    if (raw.indexOf('DOCUMENT') === 0) raw = raw.slice('DOCUMENT'.length);
+    if (raw.length !== 9) return null;
+    var body = raw.slice(0, 8).split('').map(function (ch) {
+      return own(CROCKFORD_FOLD, ch) ? CROCKFORD_FOLD[ch] : ch;
+    }).join('');
+    for (var i = 0; i < body.length; i++) {
+      if (CROCKFORD.indexOf(body.charAt(i)) < 0) return null;
+    }
+    if (checkCharacter(body) !== raw.charAt(8)) return null;
+    return body.slice(0, 4) + '-' + body.slice(4) + '-' + raw.charAt(8);
+  }
+
+  function readinessStateOf(items) {
+    if (items.some(function (item) { return item.state === 'unmet'; })) return 'not_ready';
+    return items.length ? 'ready_with_overrides' : 'ready';
+  }
+
+  /** verification.readiness_facts: what a manifest records of a readiness,
+   * its state and each requirement that held the document back, in the
+   * gate's order; null is a document no gate was run for.
+   * @param {Rec|null} [readiness] what assessReadiness returns
+   * @returns {{state: string, items: Rec[]}} */
+  function readinessFacts(readiness) {
+    if (!readiness) return { state: 'not_assessed', items: [] };
+    var items = [];
+    (readiness.requirements || []).forEach(function (req) {
+      if (req.state === 'unmet') {
+        items.push({ state: 'unmet', title: manifestText(req.title), by: '', reason: '' });
+      } else if (req.state === 'overridden') {
+        items.push({ state: 'overridden', title: manifestText(req.title),
+          by: manifestText(req.override_by), reason: manifestText(req.override_reason) });
+      }
+    });
+    return { state: readinessStateOf(items), items: items };
+  }
+
+  /** verification.evidence_entry: one evidence file as a manifest lists it.
+   * @param {string} what
+   * @param {string} name
+   * @param {Uint8Array} bytes
+   * @returns {{what: string, name: string, sha256: string}} */
+  function evidenceEntry(what, name, bytes) {
+    return { what: manifestText(what), name: manifestText(name), sha256: sha256Hex(bytes) };
+  }
+
+  /** verification.calibration_facts: the calibration set in force as a
+   * manifest names it, by its name and the SHA-256 of its calibration.yaml;
+   * null is the provisional default.
+   * @param {Rec|null} [set]
+   * @returns {{name: string, sha256: string}} */
+  function calibrationFacts(set) {
+    var s = cleanSet(set || defaultSet());
+    return { name: setName(s), sha256: sha256Hex(setYaml(s)) };
+  }
+
+  function evidenceCompare(a, b) {
+    return codePointCompare(a.what, b.what) || codePointCompare(a.name, b.name) ||
+      codePointCompare(a.sha256, b.sha256);
+  }
+
+  /** verification.manifest_facts: the facts a manifest records, cleaned and
+   * in order. An issue date that is not a day, an evidence file with no
+   * SHA-256 and a calibration named without a hash throw.
+   * @param {string} kind
+   * @param {string} title
+   * @param {string} [issuedOn] an ISO day, or blank
+   * @param {string[]} [engine] [name, version]
+   * @param {{name: string, sha256: string}|null} [calibration] calibrationFacts, or null: not stated
+   * @param {Rec|null} [readiness] as readinessFacts takes it, or its result
+   * @param {Rec[]} [evidence] evidenceEntry's
+   * @returns {Rec} */
+  function manifestFacts(kind, title, issuedOn, engine, calibration, readiness, evidence) {
+    var issued = manifestText(issuedOn === undefined ? '' : issuedOn);
+    if (issued && isoDay(issued) === null) {
+      throw new Error(phrase('verification.bad_date', { date: issued }));
+    }
+    /** @type {Rec[]} */
+    var files = [];
+    (evidence || []).forEach(function (entry) {
+      var digest = manifestText(entry.sha256);
+      if (!HEX64_RE.test(digest)) {
+        throw new Error(phrase('verification.bad_hash', { name: manifestText(entry.name) }));
+      }
+      var item = { what: manifestText(entry.what), name: manifestText(entry.name), sha256: digest };
+      if (!files.some(function (f) { return evidenceCompare(f, item) === 0; })) files.push(item);
+    });
+    files.sort(evidenceCompare);
+    var cal = { name: '', sha256: '' };
+    if (calibration) {
+      cal = { name: manifestText(calibration.name), sha256: manifestText(calibration.sha256) };
+      if (!cal.name || !HEX64_RE.test(cal.sha256)) throw new Error(phrase('verification.bad_calibration'));
+    }
+    var ready;
+    if (readiness && Object.keys(readiness).sort().join(',') === 'items,state') {
+      /* already the manifest's shape, as read back from one: cleaned as it
+       * would have been written */
+      ready = { state: manifestText(readiness.state),
+        items: (readiness.items || []).map(function (item) {
+          return { state: manifestText(item.state), title: manifestText(item.title),
+            by: manifestText(item.by), reason: manifestText(item.reason) };
+        }) };
+    } else {
+      ready = readinessFacts(readiness);
+    }
+    var eng = engine || ['', ''];
+    return {
+      document: { kind: manifestText(kind), title: manifestText(title), issued_on: issued },
+      engine: { name: manifestText(eng[0]), version: manifestText(eng[1]) },
+      calibration: cal,
+      readiness: ready,
+      evidence: files,
+    };
+  }
+
+  function manifestAttr(value) {
+    return value.replace(/[&<>"\t\n\r]/g, function (ch) { return MANIFEST_ESCAPES[ch]; });
+  }
+
+  function manifestElement(name, attrs, close) {
+    return '<' + name + attrs.map(function (pair) {
+      return ' ' + pair[0] + '="' + manifestAttr(pair[1]) + '"';
+    }).join('') + (close === false ? '>' : '/>');
+  }
+
+  /** verification.manifest_xml: the manifest as the toolkit writes it, one
+   * element to a line, every attribute always present and in one order.
+   * @param {Rec} facts manifestFacts
+   * @param {string} [code]
+   * @param {string[][]} [parts] [name, sha256] pairs, in order
+   * @param {string[][]} [carriers] likewise, the parts that carry the code
+   * @returns {string} */
+  function manifestXml(facts, code, parts, carriers) {
+    var d = facts.document, e = facts.engine, c = facts.calibration, r = facts.readiness;
+    var lines = [MANIFEST_HEAD, MANIFEST_OPEN,
+      manifestElement('document', [['kind', d.kind], ['title', d.title], ['issued', d.issued_on],
+        ['code', code || '']]),
+      manifestElement('engine', [['name', e.name], ['version', e.version]]),
+      manifestElement('calibration', [['name', c.name], ['sha256', c.sha256]]),
+      manifestElement('readiness', [['state', r.state]], false)];
+    r.items.forEach(function (/** @type {Rec} */ i) {
+      lines.push(manifestElement('item', [['state', i.state], ['title', i.title], ['by', i.by],
+        ['reason', i.reason]]));
+    });
+    lines.push('</readiness>', '<evidence>');
+    facts.evidence.forEach(function (/** @type {Rec} */ f) {
+      lines.push(manifestElement('file', [['what', f.what], ['name', f.name], ['sha256', f.sha256]]));
+    });
+    lines.push('</evidence>', '<parts>');
+    (parts || []).forEach(function (p) {
+      lines.push(manifestElement('part', [['name', p[0]], ['sha256', p[1]]]));
+    });
+    lines.push('</parts>', '<carriers>');
+    (carriers || []).forEach(function (p) {
+      lines.push(manifestElement('part', [['name', p[0]], ['sha256', p[1]]]));
+    });
+    lines.push('</carriers>', '</manifest>');
+    return lines.join('\n') + '\n';
+  }
+
+  /** verification.code_digest: the SHA-256 of the manifest written with no
+   * code and no carriers, which the code is a short form of.
+   * @param {Rec} facts
+   * @param {string[][]} parts
+   * @returns {string} */
+  function codeDigest(facts, parts) {
+    return sha256Hex(manifestXml(facts, '', parts, []));
+  }
+
+  function manifestUnescape(value) {
+    return value.replace(/&[^;&]*;|&/g, function (token) {
+      if (!own(MANIFEST_UNESCAPES, token)) throw new Error('entity');
+      return MANIFEST_UNESCAPES[token];
+    });
+  }
+
+  function manifestParsed(kind, line) {
+    var match = MANIFEST_LINES[kind].exec(line);
+    if (!match) throw new Error(kind);
+    return match.slice(1).map(manifestUnescape);
+  }
+
+  function manifestListed(lines, at, kind, end) {
+    var out = [];
+    while (at < lines.length && lines[at] !== end) {
+      out.push(manifestParsed(kind, lines[at]));
+      at += 1;
+    }
+    if (at >= lines.length) throw new Error(end);
+    return { items: out, at: at + 1 };
+  }
+
+  function partNamesOk(pairs) {
+    for (var i = 0; i < pairs.length; i++) {
+      var name = pairs[i][0];
+      if (!name || name === MANIFEST_PART || !HEX64_RE.test(pairs[i][1])) return false;
+      if (i && codePointCompare(pairs[i - 1][0], name) >= 0) return false;
+    }
+    return true;
+  }
+
+  /** verification.read_manifest: {facts, code, parts, carriers} from a
+   * manifest's text, or null unless the text is exactly what manifestXml
+   * writes for what it holds and what it holds is sound.
+   * @param {*} text
+   * @returns {Rec|null} */
+  function readManifest(text) {
+    if (typeof text !== 'string' || text.slice(-1) !== '\n') return null;
+    var lines = text.slice(0, -1).split('\n');
+    var facts, code, parts, carriers;
+    try {
+      if (lines[0] !== MANIFEST_HEAD || lines[1] !== MANIFEST_OPEN ||
+          lines[lines.length - 1] !== '</manifest>' || lines.length < 6) {
+        throw new Error('frame');
+      }
+      var doc = manifestParsed('document', lines[2]);
+      var engine = manifestParsed('engine', lines[3]);
+      var cal = manifestParsed('calibration', lines[4]);
+      var state = manifestParsed('readiness', lines[5])[0];
+      var items = manifestListed(lines, 6, 'item', '</readiness>');
+      var at = items.at;
+      if (lines[at] !== '<evidence>') throw new Error('evidence');
+      var files = manifestListed(lines, at + 1, 'file', '</evidence>');
+      at = files.at;
+      if (lines[at] !== '<parts>') throw new Error('parts');
+      var listed = manifestListed(lines, at + 1, 'part', '</parts>');
+      at = listed.at;
+      if (lines[at] !== '<carriers>') throw new Error('carriers');
+      var carried = manifestListed(lines, at + 1, 'part', '</carriers>');
+      if (carried.at !== lines.length - 1) throw new Error('trailing');
+      var readiness = { state: state, items: items.items.map(function (i) {
+        return { state: i[0], title: i[1], by: i[2], reason: i[3] };
+      }) };
+      if (READINESS_STATES.indexOf(state) < 0 ||
+          readiness.items.some(function (i) { return i.state !== 'unmet' && i.state !== 'overridden'; }) ||
+          readiness.items.some(function (i) { return i.state === 'unmet' && (i.by || i.reason); }) ||
+          (state === 'not_assessed' && readiness.items.length) ||
+          (state !== 'not_assessed' && state !== readinessStateOf(readiness.items))) {
+        throw new Error('readiness');
+      }
+      var calibration = cal[0] || cal[1] ? { name: cal[0], sha256: cal[1] } : null;
+      facts = manifestFacts(doc[0], doc[1], doc[2], engine, calibration, readiness,
+        files.items.map(function (f) { return { what: f[0], name: f[1], sha256: f[2] }; }));
+      code = doc[3];
+      parts = listed.items;
+      carriers = carried.items;
+      var held = Object.create(null);
+      parts.forEach(function (p) { held[p[0]] = true; });
+      if (!partNamesOk(parts) || !partNamesOk(carriers) ||
+          carriers.some(function (p) { return own(held, p[0]); })) {
+        throw new Error('parts');
+      }
+      if (!DOCUMENT_CODE_RE.test(code) || parseDocumentCode(code) !== code) throw new Error('code');
+    } catch (e) {
+      return null;
+    }
+    if (manifestXml(facts, code, parts, carriers) !== text) return null;
+    return { facts: facts, code: code, parts: parts, carriers: carriers };
+  }
+
+  function documentRecordOf(facts, code, digest) {
+    var d = facts.document;
+    return { code: code, sha256: digest, kind: d.kind, title: d.title, issued_on: d.issued_on,
+      readiness: facts.readiness.state };
+  }
+
+  function asBytes(data) {
+    return typeof data === 'string' ? utf8Encode(data)
+      : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+
+  /** verification.seal_package: a document's parts with its manifest added.
+   * `entries` maps each part's name to its bytes (or text), without the
+   * parts that carry the code; the manifest is linked from the document's
+   * relationships, .xml given a content type where it has none, every part
+   * hashed, the code worked out, and makeCarriers(code) asked for the parts
+   * that print it. Returns {entries, manifest, code, sha256, record}.
+   * @param {Object<string, Uint8Array|string>} entries
+   * @param {Rec} facts manifestFacts
+   * @param {function(string): Object<string, Uint8Array|string>} [makeCarriers]
+   * @returns {Rec} */
+  function sealPackage(entries, facts, makeCarriers) {
+    if (own(entries, MANIFEST_PART)) throw new Error('the package already has a part named ' + MANIFEST_PART);
+    /** @type {Object<string, Uint8Array>} */
+    var out = Object.create(null);
+    Object.keys(entries).forEach(function (name) { out[name] = asBytes(entries[name]); });
+    var decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+    var rels = decoder.decode(out[DOCUMENT_RELS]);
+    if (rels.split('</Relationships>').length !== 2) {
+      throw new Error("the document's relationships are not one list");
+    }
+    var link = '<Relationship Id="' + MANIFEST_REL_ID + '" Type="' + MANIFEST_REL_TYPE +
+      '" Target="../' + MANIFEST_PART + '"/>';
+    out[DOCUMENT_RELS] = utf8Encode(rels.replace('</Relationships>', link + '</Relationships>'));
+    var types = decoder.decode(out[CONTENT_TYPES]);
+    if (types.indexOf('Extension="xml"') < 0) {
+      var start = types.indexOf('<Types');
+      var end = types.indexOf('>', start) + 1;
+      out[CONTENT_TYPES] = utf8Encode(types.slice(0, end) + XML_DEFAULT + types.slice(end));
+    }
+    var parts = Object.keys(out).sort(codePointCompare).map(function (name) {
+      return [name, sha256Hex(out[name])];
+    });
+    var code = documentCode(codeDigest(facts, parts));
+    var made = makeCarriers ? makeCarriers(code) : Object.create(null);
+    var carriers = Object.keys(made).sort(codePointCompare).map(function (name) {
+      if (own(out, name) || name === MANIFEST_PART) throw new Error('a part that carries the code is named twice');
+      out[name] = asBytes(made[name]);
+      return [name, sha256Hex(out[name])];
+    });
+    var manifest = manifestXml(facts, code, parts, carriers);
+    out[MANIFEST_PART] = utf8Encode(manifest);
+    var digest = sha256Hex(out[MANIFEST_PART]);
+    return { entries: out, manifest: manifest, code: code, sha256: digest,
+      record: documentRecordOf(facts, code, digest) };
+  }
+
+  /** verification.clean_issue_records: issue records as both engines keep
+   * them, each well formed, one per document hash, in the order issued (by
+   * date, then code, then hash); a record that is not one is dropped.
+   * @param {*} raw
+   * @returns {Rec[]} */
+  function cleanIssueRecords(raw) {
+    /** @type {Rec[]} */
+    var kept = [];
+    var seen = Object.create(null);
+    (Array.isArray(raw) ? raw : []).forEach(function (entry) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+      if (!RECORD_KEYS.every(function (key) { return typeof entry[key] === 'string'; })) return;
+      /** @type {Rec} */
+      var record = {};
+      RECORD_KEYS.forEach(function (key) { record[key] = manifestText(entry[key]); });
+      if (parseDocumentCode(record.code) !== record.code || !HEX64_RE.test(record.sha256) ||
+          (record.issued_on && isoDay(record.issued_on) === null) ||
+          READINESS_STATES.indexOf(record.readiness) < 0 || own(seen, record.sha256)) return;
+      seen[record.sha256] = true;
+      kept.push(record);
+    });
+    return kept.sort(function (a, b) {
+      return codePointCompare(a.issued_on, b.issued_on) || codePointCompare(a.code, b.code) ||
+        codePointCompare(a.sha256, b.sha256);
+    });
+  }
+
+  /** verification.borehole_records: the issue records among raw of
+   * documents about the borehole itself, which its asset record keeps.
+   * @param {*} raw
+   * @returns {Rec[]} */
+  function boreholeRecords(raw) {
+    return cleanIssueRecords(raw).filter(function (r) { return BOREHOLE_KINDS.indexOf(r.kind) >= 0; });
+  }
+
+  /** verification.issue_records_of: every issue record a saved project file
+   * carries, as either app wrote it: the project's own (issued) and its
+   * asset record's (documents, at the top of a Python app's file and in the
+   * state of this app's).
+   * @param {*} payload
+   * @returns {Rec[]} */
+  function issueRecordsOf(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+    var raw = [];
+    var state = payload.state && typeof payload.state === 'object' && !Array.isArray(payload.state)
+      ? payload.state : {};
+    [payload.asset, state.asset].forEach(function (asset) {
+      if (asset && typeof asset === 'object' && !Array.isArray(asset) && Array.isArray(asset.documents)) {
+        raw = raw.concat(asset.documents);
+      }
+    });
+    [payload.issued, state.issued].forEach(function (issued) {
+      if (Array.isArray(issued)) raw = raw.concat(issued);
+    });
+    return cleanIssueRecords(raw);
+  }
+
+  function issuedWords(day) {
+    return day ? phrase('verification.on_day', { date: day }) : phrase('verification.on_no_day');
+  }
+
+  /** verification.lookup_code: what the issue records say of a code typed in
+   * or read off a cover: {code, records, lines}.
+   * @param {*} text
+   * @param {*} records
+   * @returns {Rec} */
+  function lookupCode(text, records) {
+    var held = cleanIssueRecords(records);
+    var code = parseDocumentCode(text);
+    if (code === null) {
+      return { code: null, records: [], lines: [phrase('verification.code_unreadable',
+        { code: manifestText(String(text || '')) })] };
+    }
+    var found = held.filter(function (r) { return r.code === code; });
+    if (!found.length) {
+      return { code: code, records: [], lines: [phrase('verification.code_not_found',
+        { n: held.length, code: code })] };
+    }
+    var words = phraseTable('verification.readiness_words');
+    return { code: code, records: found, lines: found.map(function (r) {
+      return phrase('verification.code_found', { code: code, title: r.title, when: issuedWords(r.issued_on),
+        readiness: words[r.readiness], sha256: r.sha256 });
+    }) };
+  }
+
+  var CRC32_TABLE = (function () {
+    var table = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    return table;
+  }());
+
+  function crc32Of(bytes) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) c = CRC32_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  /** verification.read_package: the parts of a ZIP package by name, or null
+   * when it is not one this toolkit reads, rule for rule as the Python reads
+   * it: one end-of-directory record at the end of the file with nothing after
+   * its comment, on one disk and not ZIP64, its directory running up to it;
+   * no entry encrypted, compressed by anything but DEFLATE, named twice or
+   * named in other than ASCII without the UTF-8 flag; each local header
+   * naming its entry and method as the directory does, its data before the
+   * directory, and its size and CRC-32 as the directory says, with nothing
+   * after the end of its DEFLATE stream.
+   * @param {Uint8Array|ArrayBuffer} bytes
+   * @returns {Object<string, Uint8Array>|null} */
+  function readPackage(bytes) {
+    var data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    var n = data.length;
+    var view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    var eocd = -1, at;
+    for (at = n - 22; at >= 0 && at >= n - 22 - 65535; at--) {
+      if (view.getUint32(at, true) === 0x06054b50) { eocd = at; break; }
+    }
+    if (eocd < 0) return null;
+    var count = view.getUint16(eocd + 10, true), size = view.getUint32(eocd + 12, true);
+    var start = view.getUint32(eocd + 16, true);
+    if (view.getUint16(eocd + 4, true) || view.getUint16(eocd + 6, true) ||
+        view.getUint16(eocd + 8, true) !== count || eocd + 22 + view.getUint16(eocd + 20, true) !== n ||
+        start + size !== eocd || count === 0xFFFF || start === 0xFFFFFFFF) return null;
+    /* no prototype, so a part named __proto__ is a part like any other */
+    /** @type {Object<string, Uint8Array>} */
+    var parts = Object.create(null);
+    var total = 0, utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+    at = start;
+    for (var k = 0; k < count; k++) {
+      if (at + 46 > eocd || view.getUint32(at, true) !== 0x02014b50) return null;
+      var flags = view.getUint16(at + 8, true), method = view.getUint16(at + 10, true);
+      var crc = view.getUint32(at + 16, true), csize = view.getUint32(at + 20, true);
+      var usize = view.getUint32(at + 24, true), nameLen = view.getUint16(at + 28, true);
+      var extraLen = view.getUint16(at + 30, true), commentLen = view.getUint16(at + 32, true);
+      var local = view.getUint32(at + 42, true);
+      var rawName = data.subarray(at + 46, at + 46 + nameLen);
+      at += 46 + nameLen + extraLen + commentLen;
+      if (at > eocd || (flags & 0x2041) || (method !== 0 && method !== 8)) return null;
+      var name;
+      if (flags & 0x800) {
+        try {
+          name = utf8.decode(rawName);
+        } catch (e) {
+          return null;
+        }
+      } else {
+        for (var b = 0; b < rawName.length; b++) if (rawName[b] >= 0x80) return null;
+        name = String.fromCharCode.apply(null, Array.from(rawName));
+      }
+      if (local + 30 > start || view.getUint32(local, true) !== 0x04034b50) return null;
+      var lNameLen = view.getUint16(local + 26, true), lExtraLen = view.getUint16(local + 28, true);
+      if (view.getUint16(local + 8, true) !== method || lNameLen !== nameLen) return null;
+      for (var j = 0; j < nameLen; j++) if (data[local + 30 + j] !== rawName[j]) return null;
+      var begin = local + 30 + lNameLen + lExtraLen;
+      if (begin + csize > start) return null;
+      if (name.slice(-1) === '/') continue;
+      if (own(parts, name) || usize > MAX_PART_BYTES) return null;
+      total += usize;
+      if (total > MAX_PACKAGE_BYTES) return null;
+      var stored = data.subarray(begin, begin + csize), body;
+      if (method === 0) {
+        body = stored;
+      } else {
+        try {
+          body = inflateRaw(stored, usize);
+        } catch (e) {
+          return null;
+        }
+      }
+      if (body.length !== usize || crc32Of(body) !== crc) return null;
+      parts[name] = body;
+    }
+    if (at !== eocd) return null;
+    return parts;
+  }
+
+  function manifestOf(parts) {
+    if (!own(parts, MANIFEST_PART)) return null;
+    var text;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(parts[MANIFEST_PART]);
+    } catch (e) {
+      return null;
+    }
+    return readManifest(text);
+  }
+
+  function codeOf(manifest) {
+    return documentCode(codeDigest(manifest.facts, manifest.parts));
+  }
+
+  /** verification.document_record: the issue record of a document the
+   * toolkit has just written, from its own bytes, or null.
+   * @param {Uint8Array|ArrayBuffer} bytes
+   * @returns {Rec|null} */
+  function documentRecord(bytes) {
+    var parts = readPackage(bytes);
+    if (parts === null) return null;
+    var manifest = manifestOf(parts);
+    if (!manifest || codeOf(manifest) !== manifest.code) return null;
+    return documentRecordOf(manifest.facts, manifest.code, sha256Hex(parts[MANIFEST_PART]));
+  }
+
+  function partLabel(name) {
+    var names = phraseTable('verification.part_names');
+    if (own(names, name)) return phrase('verification.part_label', { name: name, what: names[name] });
+    if (name.indexOf('word/media/') === 0) {
+      return phrase('verification.part_label', { name: name, what: names['word/media'] });
+    }
+    return name;
+  }
+
+  function readinessLine(readiness) {
+    var state = readiness.state;
+    if (state === 'ready') return phrase('verification.readiness_ready');
+    if (state === 'not_assessed') return phrase('verification.readiness_not_assessed');
+    var overridden = readiness.items.filter(function (i) { return i.state === 'overridden'; })
+      .map(function (i) {
+        return i.by ? phrase('verification.overridden_by', { title: i.title, by: i.by }) : i.title;
+      }).join('; ');
+    if (state === 'ready_with_overrides') {
+      return phrase('verification.readiness_overrides', { titles: overridden });
+    }
+    var line = phrase('verification.readiness_not_ready', { titles: readiness.items
+      .filter(function (i) { return i.state === 'unmet'; })
+      .map(function (i) { return i.title; }).join('; ') });
+    if (overridden) line += ' ' + phrase('verification.readiness_also_overridden', { titles: overridden });
+    return line;
+  }
+
+  function evidenceLine(evidence) {
+    if (!evidence.length) return phrase('verification.evidence_none');
+    var files = evidence.map(function (f) {
+      return f.what
+        ? phrase('verification.evidence_file', { name: f.name, what: f.what, short: f.sha256.slice(0, 16) })
+        : phrase('verification.evidence_file_bare', { name: f.name, short: f.sha256.slice(0, 16) });
+    }).join('; ');
+    return phrase('verification.evidence_some', { n: evidence.length, files: files });
+  }
+
+  function engineLine(facts) {
+    return phrase('verification.engine_line', { engine: facts.engine.name, version: facts.engine.version,
+      calibration: facts.calibration.name || phrase('verification.calibration_unstated'),
+      when: issuedWords(facts.document.issued_on) });
+  }
+
+  function verificationAnswered(report, issued, changed, readiness, evidence, engine) {
+    report.answers = { issued: issued, changed: changed, readiness: readiness, evidence: evidence };
+    var headline = phraseTable('verification.verdicts')[report.verdict];
+    report.lines = [headline, issued, changed, readiness, evidence, engine || '']
+      .filter(function (line) { return line; });
+    return report;
+  }
+
+  /** verification.verify_document: whether the toolkit issued a .docx,
+   * whether it has changed since, whether it was certifiable or
+   * provisional, and which evidence it was issued from. `records` are the
+   * issue records to check it against, or null when none were given.
+   * @param {Uint8Array|ArrayBuffer} bytes
+   * @param {*} [records]
+   * @returns {Rec} */
+  function verifyDocument(bytes, records) {
+    /** @type {Rec} */
+    var report = { verdict: 'unreadable', issued: 'unreadable', code: '', sha256: '', facts: null,
+      changed: [], missing: [], added: [], record: null, answers: {}, lines: [] };
+    var parts = readPackage(bytes);
+    if (parts === null) {
+      return verificationAnswered(report, phrase('verification.issued_unreadable'), '', '', '');
+    }
+    if (!own(parts, MANIFEST_PART)) {
+      report.verdict = report.issued = 'no_manifest';
+      return verificationAnswered(report, phrase('verification.issued_no_manifest'),
+        phrase('verification.changed_unknown'), '', '');
+    }
+    var manifest = manifestOf(parts);
+    if (!manifest) {
+      report.verdict = report.issued = 'damaged_manifest';
+      return verificationAnswered(report, phrase('verification.issued_damaged'),
+        phrase('verification.changed_unknown'), '', '');
+    }
+    var digest = sha256Hex(parts[MANIFEST_PART]);
+    report.code = manifest.code;
+    report.sha256 = digest;
+    if (codeOf(manifest) !== manifest.code) {
+      report.verdict = report.issued = 'altered_manifest';
+      return verificationAnswered(report, phrase('verification.issued_altered', { code: manifest.code }),
+        phrase('verification.changed_unknown'), '', '');
+    }
+    var facts = manifest.facts, code = manifest.code;
+    report.facts = facts;
+    /** @type {Object<string, string>} */
+    var listed = Object.create(null);
+    manifest.parts.concat(manifest.carriers).forEach(function (p) { listed[p[0]] = p[1]; });
+    var names = Object.keys(listed).sort(codePointCompare);
+    var held = /** @type {Object<string, Uint8Array>} */ (parts);
+    report.changed = names.filter(function (name) {
+      return own(held, name) && sha256Hex(held[name]) !== listed[name];
+    });
+    report.missing = names.filter(function (name) { return !own(held, name); });
+    report.added = Object.keys(held).filter(function (name) {
+      return !own(listed, name) && name !== MANIFEST_PART;
+    }).sort(codePointCompare);
+    var altered = report.changed.length || report.missing.length || report.added.length;
+
+    var issued;
+    if (records === null || records === undefined) {
+      report.issued = 'not_checked';
+      issued = phrase('verification.issued_not_checked');
+    } else {
+      var kept = cleanIssueRecords(records);
+      var match = kept.filter(function (r) { return r.sha256 === digest; })[0] || null;
+      var sameCode = kept.filter(function (r) { return r.code === code; });
+      if (match) {
+        report.issued = 'matched';
+        report.record = match;
+        issued = phrase('verification.issued_matched', { code: code });
+      } else if (sameCode.length) {
+        report.issued = 'record_differs';
+        report.record = sameCode[0];
+        issued = phrase('verification.issued_record_differs', { code: code });
+      } else {
+        report.issued = 'no_record';
+        issued = phrase('verification.issued_no_record', { n: kept.length, code: code });
+      }
+    }
+
+    var changed;
+    if (altered) {
+      var pieces = [];
+      if (report.changed.length) {
+        pieces.push(phrase('verification.changed_parts', { n: report.changed.length,
+          parts: report.changed.map(partLabel).join('; ') }));
+      }
+      if (report.missing.length) {
+        pieces.push(phrase('verification.missing_parts', { parts: report.missing.map(partLabel).join('; ') }));
+      }
+      if (report.added.length) {
+        pieces.push(phrase('verification.added_parts', { parts: report.added.map(partLabel).join('; ') }));
+      }
+      changed = pieces.join(' ');
+    } else {
+      changed = phrase('verification.unchanged');
+    }
+    if (altered || report.issued === 'record_differs') {
+      report.verdict = 'changed';
+    } else {
+      report.verdict = report.issued === 'matched' ? 'verified'
+        : report.issued === 'not_checked' ? 'unconfirmed' : 'not_issued';
+    }
+    return verificationAnswered(report, issued, changed, readinessLine(facts.readiness),
+      evidenceLine(facts.evidence), engineLine(facts));
+  }
+
+  Object.assign(C, {
+    MANIFEST_PART: MANIFEST_PART, DOCUMENT_ENGINE: DOCUMENT_ENGINE, READINESS_STATES: READINESS_STATES,
+    BOREHOLE_KINDS: BOREHOLE_KINDS, VERDICTS: VERDICTS,
+    documentCode: documentCode, parseDocumentCode: parseDocumentCode, readinessFacts: readinessFacts,
+    evidenceEntry: evidenceEntry, calibrationFacts: calibrationFacts, manifestFacts: manifestFacts,
+    manifestXml: manifestXml, codeDigest: codeDigest, readManifest: readManifest, sealPackage: sealPackage,
+    cleanIssueRecords: cleanIssueRecords, boreholeRecords: boreholeRecords, issueRecordsOf: issueRecordsOf,
+    lookupCode: lookupCode, readPackage: readPackage, documentRecord: documentRecord,
+    verifyDocument: verifyDocument,
+  });
+
+  /* ================================================== evidence bundles
+   * groundwater/bundle.py (PLAN.md step 8.3). One archive for a borehole:
+   * raw/ (the source files as uploaded), tables/, figures/ (as the documents
+   * embed them), reports/ (the documents issued, each with its own
+   * manifest), signatures/, a manifest.json of every file's size and
+   * SHA-256 with the engine, the calibration set, each document's code,
+   * hash and readiness and the issue records, and a README.txt saying how
+   * to check it. A folder that holds nothing carries a note. Every entry is
+   * stored, sorted, with one fixed timestamp, so both engines write the same
+   * bytes for the same files; the SHA-256 of manifest.json is the bundle's
+   * hash. The check confirms a document by an issue record and the other
+   * files by the confirmed documents that list them, since a bundle
+   * rewritten throughout agrees with itself. */
+
+  var BUNDLE_FORMAT = 'groundwater-toolkit evidence bundle';
+  var BUNDLE_VERSION = 1;
+  var BUNDLE_MANIFEST = 'manifest.json';
+  var BUNDLE_README = 'README.txt';
+  var BUNDLE_FOLDERS = ['raw', 'tables', 'figures', 'reports', 'signatures'];
+  var BUNDLE_NOTE = 'README.txt';
+  /* documents about many boreholes, which the apps leave out of one's
+   * bundle unless they are added by hand */
+  var PROGRAMME_KINDS = ['calibration', 'rounds'];
+  var BUNDLE_VERDICTS = ['verified', 'unconfirmed', 'changed', 'not_issued', 'damaged_manifest',
+    'no_manifest', 'unreadable'];
+  /* readPackage refuses a count of 0xFFFF; manifest.json is one of them */
+  var BUNDLE_MAX_ENTRIES = 0xFFFF - 1;
+  /* a document's own check that leaves it sound, whatever the records say */
+  var BUNDLE_SOUND = ['verified', 'unconfirmed', 'not_issued'];
+  /* what a folder cannot hold, and the control characters XML does carry;
+   * built from text, as UNWRITABLE_RE is, since matching them is the point */
+  var CONTROL_CLASS = '\\x00-\\x1f\\x7f';
+  var BUNDLE_NAME_BAD_RE = new RegExp('[' + CONTROL_CLASS + '<>:"|?*]', 'g');
+  var NOT_ASCII_RE = new RegExp('[^' + '\\x00-\\x7f' + ']');
+  var BUNDLE_NAME_EDGES_RE = new RegExp('^[' + TRIMMED + '.]+|[' + TRIMMED + '.]+$', 'g');
+
+  /* A to Z folded and nothing else, as bundle._lower folds them */
+  function asciiLower(name) {
+    return name.replace(/[A-Z]/g, function (ch) { return ch.toLowerCase(); });
+  }
+
+  function bundleBytes(data) {
+    if (typeof data === 'string') return utf8Encode(data);
+    if (data instanceof ArrayBuffer) return new Uint8Array(data);
+    if (data && ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    return new Uint8Array(0);
+  }
+
+  function bytesEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  /** bundle.bundle_name: a file's name as a bundle holds it, the last part
+   * of a path with what XML cannot carry dropped, what a folder cannot hold
+   * made an underscore and blanks and dots taken off its ends; "file" where
+   * nothing is left.
+   * @param {*} name
+   * @returns {string} */
+  function bundleName(name) {
+    var text = manifestText(name).split(/[\/\\]/).pop() || '';
+    text = text.replace(BUNDLE_NAME_BAD_RE, '_').replace(BUNDLE_NAME_EDGES_RE, '');
+    return text || 'file';
+  }
+
+  /* one folder's files named as the bundle holds them: sorted by name and
+   * hash, a file listed twice once, a different file under a taken name
+   * numbered (bundle._placed) */
+  function bundlePlaced(items) {
+    /** @type {Rec[]} */
+    var out = [];
+    var taken = Object.create(null), seen = Object.create(null);
+    items.slice().sort(function (a, b) {
+      return codePointCompare(a.name, b.name) || codePointCompare(a.sha256, b.sha256);
+    }).forEach(function (item) {
+      var low = asciiLower(item.name);
+      if (own(seen, low) && seen[low].indexOf(item.sha256) >= 0) return;
+      if (!own(seen, low)) seen[low] = [];
+      seen[low].push(item.sha256);
+      var name = item.name;
+      if (own(taken, asciiLower(name))) {
+        var dot = name.lastIndexOf('.');
+        var stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+        var k = 2;
+        while (own(taken, asciiLower(stem + ' (' + k + ')' + ext))) k += 1;
+        name = stem + ' (' + k + ')' + ext;
+      }
+      taken[asciiLower(name)] = true;
+      out.push(Object.assign({}, item, { name: name }));
+    });
+    return out;
+  }
+
+  function bundleMadeLine(facts) {
+    var when = facts.made_on ? phrase('bundle.on_day', { date: facts.made_on }) : phrase('bundle.on_no_day');
+    return phrase('bundle.made', { engine: facts.engine.name, version: facts.engine.version, when: when,
+      calibration: facts.calibration.name || phrase('verification.calibration_unstated') });
+  }
+
+  /** bundle.bundle_readme: README.txt, from what manifest.json records.
+   * @param {Rec} facts
+   * @returns {string} */
+  function bundleReadme(facts) {
+    var folders = phraseTable('bundle.folders');
+    var lines = [facts.title ? phrase('bundle.readme_title', { title: facts.title })
+      : phrase('bundle.readme_title_bare'), bundleMadeLine(facts), '', phrase('bundle.readme_lead'), ''];
+    BUNDLE_FOLDERS.forEach(function (folder) {
+      lines.push(phrase('bundle.readme_entry', { name: folder + '/', what: folders[folder] }));
+    });
+    lines.push(phrase('bundle.readme_entry', { name: BUNDLE_MANIFEST, what: folders.manifest }), '',
+      phrase('bundle.readme_check'), phrase('bundle.readme_check_toolkit'),
+      phrase('bundle.readme_check_hand'), phrase('bundle.readme_check_outside'));
+    return lines.join('\n') + '\n';
+  }
+
+  /** bundle.bundle_note: the note a folder that holds nothing carries.
+   * @param {string} folder
+   * @returns {string} */
+  function bundleNote(folder) {
+    return phraseTable('bundle.empty_notes')[folder] + '\n';
+  }
+
+  /** bundle.bundle_readiness: the readiness of documents taken together,
+   * the least ready of those a gate was run for; not_assessed where none
+   * was. A choice.
+   * @param {string[]} states
+   * @returns {string} */
+  function bundleReadiness(states) {
+    var gated = states.filter(function (s) { return s !== 'not_assessed'; });
+    if (!gated.length) return 'not_assessed';
+    if (gated.indexOf('not_ready') >= 0) return 'not_ready';
+    if (gated.indexOf('ready_with_overrides') >= 0) return 'ready_with_overrides';
+    return 'ready';
+  }
+
+  /** bundle.bundle_manifest: manifest.json, two-space indents and a
+   * newline at the end, as Python's json.dumps writes it.
+   * @param {Rec} facts
+   * @returns {string} */
+  function bundleManifest(facts) {
+    return JSON.stringify(facts, null, 2) + '\n';
+  }
+
+  /* a sealed document's manifest, hash and parts, or null where it carries
+   * none that can be relied on or has changed since it was written;
+   * `checked` is what verifyDocument already said of it */
+  function bundleDocumentOf(bytes, checked) {
+    var report = checked || verifyDocument(bytes, null);
+    if (BUNDLE_SOUND.indexOf(report.verdict) < 0) return null;
+    var parts = readPackage(bytes);
+    var manifest = parts ? manifestOf(parts) : null;
+    if (!parts || !manifest) return null;
+    return { manifest: manifest, sha256: report.sha256, parts: parts };
+  }
+
+  function bundleDocumentEntry(path, held) {
+    var facts = held.manifest.facts, readiness = facts.readiness;
+    return { path: path, code: held.manifest.code, sha256: held.sha256, kind: facts.document.kind,
+      title: facts.document.title, issued_on: facts.document.issued_on, readiness: readiness.state,
+      items: readiness.items.map(function (i) {
+        return { state: i.state, title: i.title, by: i.by, reason: i.reason };
+      }) };
+  }
+
+  /** bundle.document_figures: the figures a document embeds, taken out of
+   * it as it embeds them (the parts its manifest lists under word/media/,
+   * not the cover's code), named after it, for the figures folder; none
+   * from a document with no manifest that can be relied on.
+   * @param {*} name
+   * @param {Uint8Array|ArrayBuffer} bytes
+   * @returns {Rec[]} */
+  function documentFigures(name, bytes) {
+    var held = bundleDocumentOf(bundleBytes(bytes), null);
+    if (!held) return [];
+    var stem = bundleName(name);
+    if (/\.docx$/.test(asciiLower(stem)) && stem.length > '.docx'.length) stem = stem.slice(0, -'.docx'.length);
+    /** @type {Rec[]} */
+    var out = [];
+    var parts = held.parts;
+    held.manifest.parts.forEach(function (p) {
+      if (p[0].indexOf('word/media/') !== 0) return;
+      var image = p[0].slice('word/media/'.length).replace(/\//g, '_');
+      out.push({ folder: 'figures', name: stem + ' - ' + image, data: parts[p[0]], what: '' });
+    });
+    return out;
+  }
+
+  /** bundle._stored_zip: a ZIP archive of [name, bytes] pairs as given,
+   * each stored, dated 1980-01-01 00:00, a name in ASCII as it is and any
+   * other flagged UTF-8, with no extra fields, comments or attributes.
+   * @param {Array<[string, Uint8Array]>} entries
+   * @returns {Uint8Array} */
+  function storedZip(entries) {
+    var prepared = entries.map(function (e) {
+      return { raw: utf8Encode(e[0]), body: e[1], flags: NOT_ASCII_RE.test(e[0]) ? 0x800 : 0,
+        crc: crc32Of(e[1]) };
+    });
+    var size = 22;
+    prepared.forEach(function (p) { size += 30 + 46 + 2 * p.raw.length + p.body.length; });
+    var out = new Uint8Array(size);
+    var view = new DataView(out.buffer);
+    var at = 0;
+    var offsets = prepared.map(function (p) {
+      var start = at;
+      view.setUint32(at, 0x04034b50, true);
+      view.setUint16(at + 4, 20, true);
+      view.setUint16(at + 6, p.flags, true);
+      view.setUint16(at + 12, 0x21, true);
+      view.setUint32(at + 14, p.crc, true);
+      view.setUint32(at + 18, p.body.length, true);
+      view.setUint32(at + 22, p.body.length, true);
+      view.setUint16(at + 26, p.raw.length, true);
+      out.set(p.raw, at + 30);
+      out.set(p.body, at + 30 + p.raw.length);
+      at += 30 + p.raw.length + p.body.length;
+      return start;
+    });
+    var directory = at;
+    prepared.forEach(function (p, i) {
+      view.setUint32(at, 0x02014b50, true);
+      view.setUint16(at + 4, 20, true);
+      view.setUint16(at + 6, 20, true);
+      view.setUint16(at + 8, p.flags, true);
+      view.setUint16(at + 14, 0x21, true);
+      view.setUint32(at + 16, p.crc, true);
+      view.setUint32(at + 20, p.body.length, true);
+      view.setUint32(at + 24, p.body.length, true);
+      view.setUint16(at + 28, p.raw.length, true);
+      view.setUint32(at + 42, offsets[i], true);
+      out.set(p.raw, at + 46);
+      at += 46 + p.raw.length;
+    });
+    view.setUint32(at, 0x06054b50, true);
+    view.setUint16(at + 8, prepared.length, true);
+    view.setUint16(at + 10, prepared.length, true);
+    view.setUint32(at + 12, at - directory, true);
+    view.setUint32(at + 16, directory, true);
+    return out;
+  }
+
+  /** bundle.build_evidence_bundle: an evidence bundle of `files`, each
+   * {folder, name, data, what}: {bytes, manifest, sha256, facts}. options
+   * are borehole, madeOn (an ISO day or blank, never the clock), engine
+   * ([name, version], this engine's by default), calibration (as
+   * calibrationFacts names it; null is not stated) and records (the
+   * project's issue records). A document that does not pass its own check,
+   * an unknown folder, a file too large to read back and nothing at all
+   * throw.
+   * @param {*} title
+   * @param {Rec[]} files
+   * @param {{borehole?: string, madeOn?: string, engine?: string[], calibration?: Rec|null, records?: Rec[]}} [options]
+   * @returns {{bytes: Uint8Array, manifest: string, sha256: string, facts: Rec}} */
+  function buildEvidenceBundle(title, files, options) {
+    var opts = options || {};
+    var when = manifestText(opts.madeOn === undefined ? '' : opts.madeOn);
+    if (when && isoDay(when) === null) throw new Error(phrase('verification.bad_date', { date: when }));
+    var engine = opts.engine || [DOCUMENT_ENGINE, (GWT.data && GWT.data.version) || ''];
+    var cal = { name: '', sha256: '' };
+    if (opts.calibration) {
+      cal = { name: manifestText(opts.calibration.name), sha256: manifestText(opts.calibration.sha256) };
+      if (!cal.name || !HEX64_RE.test(cal.sha256)) throw new Error(phrase('verification.bad_calibration'));
+    }
+    var words = phraseTable('bundle.what');
+    /** @type {Object<string, Rec[]>} */
+    var byFolder = {};
+    BUNDLE_FOLDERS.forEach(function (folder) { byFolder[folder] = []; });
+    /** @type {Object<string, Rec>} */
+    var documents = Object.create(null);
+    (files || []).forEach(function (item) {
+      var folder = manifestText(item.folder);
+      if (BUNDLE_FOLDERS.indexOf(folder) < 0) throw new Error(phrase('bundle.bad_folder', { folder: folder }));
+      var data = bundleBytes(item.data);
+      var name = bundleName(item.name);
+      if (data.length > MAX_PART_BYTES) throw new Error(phrase('bundle.file_too_big', { name: name }));
+      var digest = sha256Hex(data);
+      if (folder === 'reports') {
+        var held = bundleDocumentOf(data, null);
+        if (!held) {
+          throw new Error(phrase('bundle.bad_document', { name: name, why: verifyDocument(data, null).lines[0] }));
+        }
+        documents[digest] = held;
+      }
+      byFolder[folder].push({ name: name, sha256: digest, data: data,
+        what: manifestText(item.what) || words[folder] });
+    });
+    if (!BUNDLE_FOLDERS.some(function (folder) { return byFolder[folder].length; })) {
+      throw new Error(phrase('bundle.nothing'));
+    }
+    /** @type {Rec[]} */
+    var entries = [];
+    /** @type {Rec[]} */
+    var docEntries = [];
+    BUNDLE_FOLDERS.forEach(function (folder) {
+      var placed = bundlePlaced(byFolder[folder]);
+      if (!placed.length) {
+        entries.push({ path: folder + '/' + BUNDLE_NOTE, what: words.note, data: utf8Encode(bundleNote(folder)) });
+      }
+      placed.forEach(function (item) {
+        var path = folder + '/' + item.name;
+        entries.push({ path: path, what: item.what, data: item.data });
+        if (folder === 'reports') docEntries.push(bundleDocumentEntry(path, documents[item.sha256]));
+      });
+    });
+    docEntries.sort(function (a, b) { return codePointCompare(a.path, b.path); });
+    /** @type {Rec} */
+    var facts = {
+      format: BUNDLE_FORMAT,
+      version: BUNDLE_VERSION,
+      title: manifestText(title),
+      borehole: manifestText(opts.borehole),
+      made_on: when,
+      engine: { name: manifestText(engine[0]), version: manifestText(engine[1]) },
+      calibration: cal,
+      readiness: bundleReadiness(docEntries.map(function (d) { return d.readiness; })),
+      documents: docEntries,
+      issued: cleanIssueRecords(opts.records || []),
+      files: [],
+    };
+    entries.push({ path: BUNDLE_README, what: words.readme, data: utf8Encode(bundleReadme(facts)) });
+    entries.sort(function (a, b) { return codePointCompare(a.path, b.path); });
+    if (entries.length + 1 > BUNDLE_MAX_ENTRIES) throw new Error(phrase('bundle.bundle_too_big'));
+    facts.files = entries.map(function (e) {
+      return { path: e.path, what: e.what, bytes: e.data.length, sha256: sha256Hex(e.data) };
+    });
+    var manifest = bundleManifest(facts);
+    var rawManifest = utf8Encode(manifest);
+    var total = rawManifest.length;
+    entries.forEach(function (e) { total += e.data.length; });
+    if (total > MAX_PACKAGE_BYTES) throw new Error(phrase('bundle.bundle_too_big'));
+    /** @type {Array<[string, Uint8Array]>} */
+    var pairs = entries.map(function (e) {
+      return /** @type {[string, Uint8Array]} */ ([e.path, e.data]);
+    });
+    pairs.push([BUNDLE_MANIFEST, rawManifest]);
+    pairs.sort(function (a, b) { return codePointCompare(a[0], b[0]); });
+    return { bytes: storedZip(pairs), manifest: manifest, sha256: sha256Hex(rawManifest), facts: facts };
+  }
+
+  function bundleField(obj, key) {
+    return own(obj, key) ? obj[key] : undefined;
+  }
+
+  function bundleDict(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object');
+    return value;
+  }
+
+  function bundleList(value) {
+    if (!Array.isArray(value)) throw new Error('list');
+    return value;
+  }
+
+  function bundleStr(value) {
+    if (typeof value !== 'string') throw new Error('text');
+    return manifestText(value);
+  }
+
+  function bundleInt(value, top) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > top) {
+      throw new Error('count');
+    }
+    return value;
+  }
+
+  function bundleDay(value) {
+    var day = bundleStr(value);
+    if (day && isoDay(day) === null) throw new Error('day');
+    return day;
+  }
+
+  function bundleItems(raw, state) {
+    var items = bundleList(raw).map(function (value) {
+      var item = bundleDict(value);
+      return { state: bundleStr(bundleField(item, 'state')), title: bundleStr(bundleField(item, 'title')),
+        by: bundleStr(bundleField(item, 'by')), reason: bundleStr(bundleField(item, 'reason')) };
+    });
+    if (READINESS_STATES.indexOf(state) < 0 ||
+        items.some(function (i) { return i.state !== 'unmet' && i.state !== 'overridden'; }) ||
+        items.some(function (i) { return i.state === 'unmet' && (i.by || i.reason); }) ||
+        (state === 'not_assessed' && items.length) ||
+        (state !== 'not_assessed' && state !== readinessStateOf(items))) {
+      throw new Error('readiness');
+    }
+    return items;
+  }
+
+  function bundlePathOk(path) {
+    if (path === BUNDLE_README) return true;
+    var cut = path.indexOf('/');
+    if (cut < 0) return false;
+    var folder = path.slice(0, cut), name = path.slice(cut + 1);
+    return BUNDLE_FOLDERS.indexOf(folder) >= 0 && !!name && bundleName(name) === name;
+  }
+
+  /* what a parsed manifest.json records, cleaned as it would have been
+   * written; throws where it could not have been written so */
+  function bundleFactsFrom(value) {
+    var obj = bundleDict(value);
+    if (bundleField(obj, 'format') !== BUNDLE_FORMAT ||
+        bundleInt(bundleField(obj, 'version'), 1 << 30) !== BUNDLE_VERSION) throw new Error('format');
+    var engine = bundleDict(bundleField(obj, 'engine')), cal = bundleDict(bundleField(obj, 'calibration'));
+    var calibration = { name: bundleStr(bundleField(cal, 'name')), sha256: bundleStr(bundleField(cal, 'sha256')) };
+    if ((calibration.name || calibration.sha256) && !(calibration.name && HEX64_RE.test(calibration.sha256))) {
+      throw new Error('calibration');
+    }
+    var documents = bundleList(bundleField(obj, 'documents')).map(function (raw) {
+      var d = bundleDict(raw);
+      /** @type {Rec} */
+      var entry = { path: bundleStr(bundleField(d, 'path')), code: bundleStr(bundleField(d, 'code')),
+        sha256: bundleStr(bundleField(d, 'sha256')), kind: bundleStr(bundleField(d, 'kind')),
+        title: bundleStr(bundleField(d, 'title')), issued_on: bundleDay(bundleField(d, 'issued_on')),
+        readiness: bundleStr(bundleField(d, 'readiness')) };
+      entry.items = bundleItems(bundleField(d, 'items'), entry.readiness);
+      if (parseDocumentCode(entry.code) !== entry.code || !HEX64_RE.test(entry.sha256)) throw new Error('document');
+      return entry;
+    });
+    var files = bundleList(bundleField(obj, 'files')).map(function (raw) {
+      var f = bundleDict(raw);
+      var entry = { path: bundleStr(bundleField(f, 'path')), what: bundleStr(bundleField(f, 'what')),
+        bytes: bundleInt(bundleField(f, 'bytes'), MAX_PART_BYTES), sha256: bundleStr(bundleField(f, 'sha256')) };
+      if (!bundlePathOk(entry.path) || !HEX64_RE.test(entry.sha256)) throw new Error('file');
+      return entry;
+    });
+    var facts = {
+      format: BUNDLE_FORMAT,
+      version: BUNDLE_VERSION,
+      title: bundleStr(bundleField(obj, 'title')),
+      borehole: bundleStr(bundleField(obj, 'borehole')),
+      made_on: bundleDay(bundleField(obj, 'made_on')),
+      engine: { name: bundleStr(bundleField(engine, 'name')), version: bundleStr(bundleField(engine, 'version')) },
+      calibration: calibration,
+      readiness: bundleStr(bundleField(obj, 'readiness')),
+      documents: documents,
+      issued: cleanIssueRecords(bundleList(bundleField(obj, 'issued'))),
+      files: files,
+    };
+    var paths = files.map(function (f) { return f.path; });
+    var lowered = Object.create(null);
+    for (var i = 0; i < paths.length; i++) {
+      if ((i && codePointCompare(paths[i - 1], paths[i]) > 0) || own(lowered, asciiLower(paths[i]))) {
+        throw new Error('files');
+      }
+      lowered[asciiLower(paths[i])] = true;
+    }
+    if (paths.indexOf(BUNDLE_README) < 0 || BUNDLE_FOLDERS.some(function (folder) {
+      return !paths.some(function (p) { return p.indexOf(folder + '/') === 0; });
+    })) throw new Error('files');
+    var docPaths = documents.map(function (d) { return d.path; });
+    for (var j = 1; j < docPaths.length; j++) {
+      if (codePointCompare(docPaths[j - 1], docPaths[j]) >= 0) throw new Error('documents');
+    }
+    var reports = paths.filter(function (p) { return p.indexOf('reports/') === 0; });
+    var wanted = docPaths.length ? docPaths : ['reports/' + BUNDLE_NOTE];
+    if (reports.length !== wanted.length || reports.some(function (p, k) { return p !== wanted[k]; })) {
+      throw new Error('documents');
+    }
+    if (facts.readiness !== bundleReadiness(documents.map(function (d) { return d.readiness; }))) {
+      throw new Error('readiness');
+    }
+    return facts;
+  }
+
+  /** bundle.read_bundle_manifest: what a manifest.json records, or null
+   * unless it is exactly what bundleManifest writes for what it holds and
+   * what it holds is sound.
+   * @param {*} text
+   * @returns {Rec|null} */
+  function readBundleManifest(text) {
+    if (typeof text !== 'string') return null;
+    var facts;
+    try {
+      facts = bundleFactsFrom(JSON.parse(text));
+    } catch (e) {
+      return null;
+    }
+    return bundleManifest(facts) === text ? facts : null;
+  }
+
+  /* what the toolkit writes at path for these facts, or null */
+  function bundleOwnText(path, facts) {
+    if (path === BUNDLE_README) return utf8Encode(bundleReadme(facts));
+    var cut = path.indexOf('/');
+    if (cut >= 0 && path.slice(cut + 1) === BUNDLE_NOTE && BUNDLE_FOLDERS.indexOf(path.slice(0, cut)) >= 0) {
+      return utf8Encode(bundleNote(path.slice(0, cut)));
+    }
+    return null;
+  }
+
+  function bundleEvidenceWords(f) {
+    var short = f.sha256.slice(0, 16);
+    return f.what ? phrase('verification.evidence_file', { name: f.name, what: f.what, short: short })
+      : phrase('verification.evidence_file_bare', { name: f.name, short: short });
+  }
+
+  function bundleAnswered(report, lines) {
+    report.lines = [phraseTable('bundle.verdicts')[report.verdict]].concat(lines);
+    return report;
+  }
+
+  /** bundle.verify_evidence_bundle: whether every file of a bundle is as it
+   * was made, whether each document passes its own check and was issued,
+   * and what confirms each file from outside the bundle. `records` are the
+   * issue records to check its documents against, or null when none were
+   * given.
+   * @param {Uint8Array|ArrayBuffer} bytes
+   * @param {*} [records]
+   * @returns {Rec} */
+  function verifyEvidenceBundle(bytes, records) {
+    /** @type {Rec} */
+    var report = { verdict: 'unreadable', sha256: '', facts: null, files: [], documents: [], lines: [] };
+    var parts = readPackage(bundleBytes(bytes));
+    if (parts === null) return bundleAnswered(report, [phrase('bundle.unreadable')]);
+    if (!own(parts, BUNDLE_MANIFEST)) {
+      report.verdict = 'no_manifest';
+      return bundleAnswered(report, [phrase('bundle.no_manifest')]);
+    }
+    var facts = null;
+    try {
+      facts = readBundleManifest(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+        .decode(parts[BUNDLE_MANIFEST]));
+    } catch (e) {
+      facts = null;
+    }
+    if (!facts) {
+      report.verdict = 'damaged_manifest';
+      return bundleAnswered(report, [phrase('bundle.damaged')]);
+    }
+    var held = /** @type {Object<string, Uint8Array>} */ (parts);
+    var known = /** @type {Rec} */ (facts);
+    report.sha256 = sha256Hex(held[BUNDLE_MANIFEST]);
+    report.facts = known;
+    var outside = records === null || records === undefined ? null : cleanIssueRecords(records);
+    var ownRecords = Object.create(null);
+    known.issued.forEach(function (r) { ownRecords[r.sha256] = true; });
+
+    /** @type {Rec[]} */
+    var documents = [];
+    var listing = Object.create(null);
+    var confirming = Object.create(null);
+    /** @type {Rec[]} */
+    var evidence = [];
+    known.documents.forEach(function (entry) {
+      var body = own(held, entry.path) ? held[entry.path] : null;
+      /** @type {Rec} */
+      var doc = { path: entry.path, present: body !== null, verdict: '', issued: '', code: '', sha256: '',
+        agrees: false, held: false, headline: '' };
+      if (body !== null) {
+        var checked = verifyDocument(body, outside);
+        doc.verdict = checked.verdict;
+        doc.issued = checked.issued;
+        doc.code = checked.code;
+        doc.sha256 = checked.sha256;
+        doc.headline = checked.lines[0];
+        doc.held = own(ownRecords, checked.sha256);
+        var sealed = bundleDocumentOf(body, checked);
+        if (sealed) {
+          doc.agrees = JSON.stringify(bundleDocumentEntry(entry.path, sealed)) === JSON.stringify(entry);
+          var manifest = sealed.manifest;
+          var hashes = Object.create(null);
+          manifest.parts.forEach(function (p) { hashes[p[1]] = true; });
+          manifest.facts.evidence.forEach(function (f) { hashes[f.sha256] = true; });
+          Object.keys(hashes).forEach(function (digest) {
+            if (!own(listing, digest)) listing[digest] = [];
+            if (listing[digest].indexOf(entry.path) < 0) listing[digest].push(entry.path);
+            if (checked.verdict === 'verified') confirming[digest] = true;
+          });
+          manifest.facts.evidence.forEach(function (f) {
+            if (!evidence.some(function (e) { return evidenceCompare(e, f) === 0; })) evidence.push(f);
+          });
+        }
+      }
+      documents.push(doc);
+    });
+    var byPath = Object.create(null);
+    documents.forEach(function (d) { byPath[d.path] = d; });
+
+    /** @type {Rec[]} */
+    var files = [];
+    var foundHashes = Object.create(null);
+    known.files.forEach(function (entry) {
+      var path = entry.path;
+      var body = own(held, path) ? held[path] : null;
+      var found = body === null ? '' : sha256Hex(body);
+      if (found) foundHashes[found] = true;
+      var state = body === null ? 'missing'
+        : (found === entry.sha256 && body.length === entry.bytes ? 'ok' : 'changed');
+      var confirmed = 'none';
+      if (state === 'ok' && body !== null) {
+        var mine = bundleOwnText(path, known);
+        if (own(byPath, path)) {
+          confirmed = byPath[path].verdict === 'verified' ? 'issue_record' : 'none';
+        } else if (mine && bytesEqual(body, mine)) {
+          confirmed = 'toolkit';
+        } else if (own(confirming, found)) {
+          confirmed = 'document';
+        }
+      }
+      files.push({ path: path, what: entry.what, bytes: entry.bytes, sha256: entry.sha256, found: found,
+        state: state, confirmed: confirmed,
+        listed_by: (own(listing, found) ? listing[found] : []).filter(function (p) { return p !== path; })
+          .sort(codePointCompare) });
+    });
+    var listed = Object.create(null);
+    known.files.forEach(function (f) { listed[f.path] = true; });
+    Object.keys(held).filter(function (p) { return !own(listed, p) && p !== BUNDLE_MANIFEST; })
+      .sort(codePointCompare).forEach(function (path) {
+        var found = sha256Hex(held[path]);
+        foundHashes[found] = true;
+        files.push({ path: path, what: '', bytes: held[path].length, sha256: '', found: found, state: 'added',
+          confirmed: 'none', listed_by: [] });
+      });
+    report.files = files;
+    report.documents = documents;
+
+    var broken = files.some(function (f) { return f.state !== 'ok'; }) || documents.some(function (d) {
+      return d.present && !(BUNDLE_SOUND.indexOf(d.verdict) >= 0 && d.agrees);
+    });
+    var verdict;
+    if (broken) verdict = 'changed';
+    else if (outside === null) verdict = 'unconfirmed';
+    else if (documents.some(function (d) { return d.verdict === 'not_issued'; })) verdict = 'not_issued';
+    else if (documents.length && files.every(function (f) { return f.confirmed !== 'none'; })) verdict = 'verified';
+    else verdict = 'unconfirmed';
+    report.verdict = verdict;
+
+    var lines = [];
+    if (!files.some(function (f) { return f.state !== 'ok'; })) {
+      lines.push(phrase('bundle.files_match', { n: files.length }));
+    }
+    [['changed', 'bundle.files_changed'], ['missing', 'bundle.files_missing'], ['added', 'bundle.files_added']]
+      .forEach(function (pair) {
+        var paths = files.filter(function (f) { return f.state === pair[0]; }).map(function (f) { return f.path; });
+        if (paths.length) lines.push(phrase(pair[1], { paths: paths.join('; ') }));
+      });
+    known.documents.forEach(function (entry, i) {
+      var doc = documents[i];
+      if (!doc.present) return;
+      lines.push(phrase('bundle.document_line', { path: doc.path, code: entry.code, verdict: doc.headline }));
+      if (BUNDLE_SOUND.indexOf(doc.verdict) >= 0 && !doc.agrees) {
+        lines.push(phrase('bundle.document_disagrees', { path: doc.path, code: entry.code }));
+      }
+    });
+    if (outside === null) {
+      lines.push(phrase('bundle.confirm_no_records'));
+    } else {
+      var resting = files.filter(function (f) { return f.confirmed === 'none'; }).map(function (f) { return f.path; });
+      lines.push(resting.length
+        ? phrase('bundle.confirm_some', { k: files.length - resting.length, n: files.length,
+          paths: resting.join('; ') })
+        : phrase('bundle.confirm_all', { n: files.length }));
+    }
+    var missing = evidence.filter(function (f) { return !own(foundHashes, f.sha256); }).sort(evidenceCompare);
+    if (missing.length) {
+      lines.push(phrase('bundle.not_carried', { n: missing.length,
+        files: missing.map(bundleEvidenceWords).join('; ') }));
+    }
+    lines.push(phrase('bundle.readiness', { words: phraseTable('bundle.readiness_words')[known.readiness] }));
+    lines.push(bundleMadeLine(known));
+    return bundleAnswered(report, lines);
+  }
+
+  Object.assign(C, {
+    BUNDLE_FOLDERS: BUNDLE_FOLDERS, BUNDLE_MANIFEST: BUNDLE_MANIFEST, BUNDLE_VERDICTS: BUNDLE_VERDICTS,
+    PROGRAMME_KINDS: PROGRAMME_KINDS,
+    bundleName: bundleName, bundleReadme: bundleReadme, bundleNote: bundleNote, bundleReadiness: bundleReadiness,
+    bundleManifest: bundleManifest, readBundleManifest: readBundleManifest, documentFigures: documentFigures,
+    buildEvidenceBundle: buildEvidenceBundle, verifyEvidenceBundle: verifyEvidenceBundle, storedZip: storedZip,
   });
 
   /* __SECTION_MARK__ */

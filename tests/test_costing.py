@@ -67,11 +67,60 @@ def test_vat_and_risk_loading():
     assert est.price_with_vat_usd == pytest.approx(est.price_usd * 1.15)
     labels = [row[0] for row in est.summary_rows()]
     assert any("VAT" in label for label in labels)
-    # no water no pay at 75 percent success carries a third more
+    # no water no pay at 75 percent success carries a third of a dry attempt
     loaded = est.price_per_successful_well_usd(75)
-    assert loaded == pytest.approx(est.price_with_vat_usd / 0.75)
+    assert loaded == pytest.approx(est.price_with_vat_usd + est.dry_attempt_price_usd / 3)
+    assert est.dry_attempt_price_usd == pytest.approx(est.dry_attempt_direct_usd * 1.15 * 1.2 * 1.15)
     with pytest.raises(ValueError):
         est.price_per_successful_well_usd(0)
+
+
+def test_no_water_no_pay_carries_dry_attempts_not_whole_boreholes():
+    """Each expected failure was charged the whole completed price, casing,
+    screen, test pumping and handpump included: 10,272 for a 60 m hole at
+    80 percent against the programme estimate's own 9,232. A dry attempt
+    pays for siting, set-up and drilling, without the journey, as the
+    programme estimate and the cost distribution count it."""
+    from dataclasses import replace
+
+    from groundwater.costing import estimate_programme_cost, sample_cost
+    from groundwater.costing.model import _JOURNEY
+
+    est = estimate_borehole_cost(CostingInputs(total_depth_m=60))
+    assert est.dry_attempt_direct_usd == pytest.approx(2940.0)
+    assert round(est.price_per_successful_well_usd(80)) == 9232
+    assert round(est.price_per_successful_well_usd(50)) == 12275
+    assert est.price_per_successful_well_usd(100) == est.price_with_vat_usd
+    for rate in (80.0, 50.0, 25.0):
+        programme = estimate_programme_cost(CostingInputs(total_depth_m=60), 20,
+                                            success_rate_percent=rate,
+                                            inter_site_distance_km=0.0)
+        assert programme.n_attempted * rate == 2000.0  # whole attempts
+        assert est.price_per_successful_well_usd(rate) == pytest.approx(
+            programme.price_per_successful_well_usd, rel=1e-12)
+    # what a failure costs is the contract's: priced as a whole borehole, it
+    # is the old figure, the price over the success rate
+    assert est.price_per_successful_well_usd(80, est.price_with_vat_usd) == pytest.approx(
+        est.price_with_vat_usd / 0.8, rel=1e-12)
+    for bad in (-1.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            est.price_per_successful_well_usd(80, bad)
+
+    # the journey from the base is paid once, not by each dry attempt
+    far = estimate_borehole_cost(CostingInputs(total_depth_m=60, mobilisation_distance_km=40),
+                                 vat_percent=15.0)
+    journey = [i for i in far.items if i.quantity_basis == _JOURNEY]
+    assert journey and journey[0].amount_usd == 200.0
+    assert far.dry_attempt_direct_usd == est.dry_attempt_direct_usd
+    # and at the likely rates the cost distribution's expected cost per
+    # working borehole is the same figure
+    flat = [replace(r, min_usd=r.unit_cost_usd, max_usd=r.unit_cost_usd) for r in load_rates()]
+    inputs = CostingInputs(total_depth_m=45.0, mobilisation_distance_km=80.0)
+    d = sample_cost(inputs, flat, vat_percent=15.0, success_probability=0.4,
+                    odds_source="VES 1", samples=50)
+    assert d.expected_per_working == pytest.approx(
+        estimate_borehole_cost(inputs, flat, vat_percent=15.0).price_per_successful_well_usd(40),
+        rel=1e-12)
 
 
 def test_zero_quantity_items_dropped_and_flagged_inputs():

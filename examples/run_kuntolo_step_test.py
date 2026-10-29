@@ -25,6 +25,8 @@ from groundwater.ingestion import read_pumping_workbook
 from groundwater.models import SiteMetadata
 from groundwater.readiness import assess_readiness
 from groundwater.reporting.pumping import PumpingReportInputs, build_pumping_report
+from groundwater.text import phrase_table
+from groundwater.verification import Issue, evidence_entry
 
 HERE = Path(__file__).parent
 TEST_FILE = HERE / "data" / "kuntolo" / "kuntolo_step_test.xlsx"
@@ -71,6 +73,10 @@ def main(out_root: Path | None = None) -> None:
         ),
         project.report_path("Kuntolo_Pumping_Test_Report.docx"),
         project.config,
+        # the manifest lists the sheet by its SHA-256 (PLAN.md step 8.1); a
+        # worked example is issued on no day
+        issue=Issue(evidence=(evidence_entry(phrase_table("verification.evidence_kinds")["pumping"],
+                                             TEST_FILE.name, TEST_FILE.read_bytes()),)),
     )
     print(f"\nreport written to {report}")
 

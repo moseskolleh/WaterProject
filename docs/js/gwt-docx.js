@@ -36,11 +36,26 @@
 
   /* ---------------------------------------------------------------- builder */
 
+  /* Every document is sealed when it is built (PLAN.md step 8.1): it carries
+   * a manifest of what it is and of every part's hash (C.sealPackage), its
+   * code in every page's footer and, on a document with a cover, a QR symbol
+   * of the code at the foot of the cover. options.kind is what the manifest
+   * calls it; options.issue is {issued_on, evidence, calibration}: the day it
+   * is issued on, the evidence files it is issued from (C.evidenceEntry) and
+   * the calibration set in force, which the Python builder takes from its
+   * configuration. */
   function ReportBuilder(options) {
     var opts = options || {};
     var style = opts.style || C.defaultConfig().style;
     this.style = style;
     this.title = opts.title || 'Report';
+    this.kind = opts.kind || '';
+    this.issue = opts.issue || {};
+    /* the readiness the document was gated on, for its manifest */
+    this.gate = null;
+    this.hasCover = false;
+    /* the issue record, once the document is built */
+    this.record = null;
     this.body = [];
     this.images = [];
     this.figureNo = 0;
@@ -148,8 +163,11 @@
       '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
   };
 
+  /* The document's code and its QR symbol go at the foot of the cover when
+   * the document is built. */
   ReportBuilder.prototype.cover = function (titleLines, subtitleLines, details) {
     var self = this;
+    this.hasCover = true;
     if (this.style.organisation) {
       this.paragraph(this.style.organisation,
         { bold: true, size: 13, align: 'center', color: this.accent });
@@ -193,6 +211,7 @@
    * gets this, naming what is outstanding or what was overridden and by
    * whom, in the document itself rather than in a toast nobody keeps. */
   ReportBuilder.prototype.provisionalStamp = function (readiness) {
+    this.recordReadiness(readiness);
     if (!readiness || readiness.is_certifiable) return this;
     var self = this;
     /* remembered for the executive summary, which is two pages on and used
@@ -220,6 +239,13 @@
     });
     if (lines.length) self.bullets(lines);
     this.pageBreak();
+    return this;
+  };
+
+  /* Keep the readiness the document was gated on for its manifest; called by
+   * provisionalStamp, and by a document gated but not stamped (the plate). */
+  ReportBuilder.prototype.recordReadiness = function (readiness) {
+    this.gate = readiness || null;
     return this;
   };
 
@@ -476,11 +502,15 @@
   /* --- packaging ------------------------------------------------------------ */
 
   ReportBuilder.prototype.documentXml = function () {
+    /* a document with a cover has a footer of its own on the first page,
+     * which carries the QR symbol of the code (titlePg) */
     var sectPr = '<w:sectPr>' +
       '<w:footerReference w:type="default" r:id="rIdFooter"/>' +
+      (this.hasCover ? '<w:footerReference w:type="first" r:id="rIdFooterFirst"/>' : '') +
       '<w:pgSz w:w="11906" w:h="16838"/>' +
       '<w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" ' +
       'w:header="708" w:footer="708" w:gutter="0"/>' +
+      (this.hasCover ? '<w:titlePg/>' : '') +
       '</w:sectPr>';
     var body = this.body.slice();
     if (this.tocIndex !== null) body[this.tocIndex] = this.tocXml();
@@ -540,8 +570,11 @@
       '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
   }
 
-  function footerXml() {
+  /* Every page's footer: the document's code and the page number. */
+  function footerXml(code) {
     return XML_HEAD + '<w:ftr ' + W_NS + '><w:p><w:pPr><w:jc w:val="center"/></w:pPr>' +
+      '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' +
+      esc(C.phrase('verification.footer', { code: code }) + ' ') + '</w:t></w:r>' +
       '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r>' +
       '<w:r><w:rPr><w:sz w:val="18"/></w:rPr>' +
       '<w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
@@ -551,12 +584,45 @@
       '</w:p></w:ftr>';
   }
 
+  /* The QR symbol on the cover: level H, since a cover is photocopied,
+   * stamped and filed, and 2.6 cm across (docx_utils._QR_ECC, _QR_WIDTH_CM). */
+  var CODE_QR_PART = 'word/media/document-code.png';
+  var CODE_QR_EMU = Math.round(2.6 * EMU_PER_CM);
+
+  /* The foot of the cover, on the first page only: the QR symbol of the
+   * code, the code and what it is for. */
+  function coverFooterXml(code) {
+    var drawing = '<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
+      '<wp:extent cx="' + CODE_QR_EMU + '" cy="' + CODE_QR_EMU + '"/>' +
+      '<wp:docPr id="9000" name="Document code" descr="' +
+      esc(C.phrase('verification.qr', { code: code })) + '"/>' +
+      '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+      '<pic:pic><pic:nvPicPr><pic:cNvPr id="9000" name="Document code"/><pic:cNvPicPr/></pic:nvPicPr>' +
+      '<pic:blipFill><a:blip r:embed="rIdCodeQr"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+      '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + CODE_QR_EMU + '" cy="' + CODE_QR_EMU +
+      '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>' +
+      '</a:graphicData></a:graphic></wp:inline></w:drawing>';
+    var centre = '<w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr>';
+    return XML_HEAD + '<w:ftr ' + W_NS + '>' +
+      '<w:p>' + centre + '<w:r>' + drawing + '</w:r></w:p>' +
+      '<w:p>' + centre + '<w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">' +
+      esc(C.phrase('verification.cover_code', { code: code })) + '</w:t></w:r></w:p>' +
+      '<w:p>' + centre + '<w:r><w:rPr><w:i/><w:sz w:val="15"/></w:rPr><w:t xml:space="preserve">' +
+      esc(C.phrase('verification.cover_note')) + '</w:t></w:r></w:p></w:ftr>';
+  }
+
+  /* The package, sealed (C.sealPackage): every part but the ones that print
+   * the code is written and hashed, the code worked out from them, and then
+   * the footers and the cover's symbol written with it. this.record is the
+   * issue record. Resolves to the .docx bytes. */
   ReportBuilder.prototype.build = function () {
     var withToc = this.tocIndex !== null;
+    var cover = this.hasCover;
     var imageTypes = {};
     this.images.forEach(function (img) {
       imageTypes[/jpe?g/i.test(img.mime) ? 'jpeg' : 'png'] = img.mime;
     });
+    if (cover) imageTypes.png = 'image/png';
 
     var contentTypes = XML_HEAD +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
@@ -569,6 +635,7 @@
       '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
       '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
       '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' +
+      (cover ? '<Override PartName="/word/footer2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : '') +
       (withToc ? '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' : '') +
       '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
       '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
@@ -586,6 +653,7 @@
       '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
       '<Relationship Id="rIdNumbering" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
       '<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' +
+      (cover ? '<Relationship Id="rIdFooterFirst" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer2.xml"/>' : '') +
       (withToc ? '<Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' : '') +
       this.images.map(function (img, i) {
         return '<Relationship Id="rIdImg' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' +
@@ -606,7 +674,9 @@
       ' xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
       '<Application>Groundwater Toolkit</Application></Properties>';
 
-    var entries = [
+    /* the parts in the order the package lists them, those that print the
+     * code included; [Content_Types].xml first and stored, as Word expects */
+    var order = [
       { name: '[Content_Types].xml', data: contentTypes, store: true },
       { name: '_rels/.rels', data: rootRels },
       { name: 'docProps/core.xml', data: core },
@@ -615,13 +685,42 @@
       { name: 'word/_rels/document.xml.rels', data: docRels },
       { name: 'word/styles.xml', data: this.stylesXml() },
       { name: 'word/numbering.xml', data: numberingXml() },
-      { name: 'word/footer1.xml', data: footerXml() },
+      { name: 'word/footer1.xml', data: null },
     ].concat(withToc ? [{ name: 'word/settings.xml', data: this.settingsXml() }] : [],
+      cover ? [
+        { name: 'word/footer2.xml', data: null },
+        { name: 'word/_rels/footer2.xml.rels', data: XML_HEAD +
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+          '<Relationship Id="rIdCodeQr" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/document-code.png"/>' +
+          '</Relationships>' },
+        { name: CODE_QR_PART, data: null },
+      ] : [],
       this.images.map(function (img) {
         return { name: 'word/media/' + img.name, data: img.bytes, store: true };
       }));
+    var entries = {};
+    order.forEach(function (entry) {
+      if (entry.data !== null) entries[entry.name] = entry.data;
+    });
 
-    return S.zip(entries);
+    var issue = this.issue || {};
+    var facts = C.manifestFacts(this.kind, this.title, issue.issued_on || '',
+      [C.DOCUMENT_ENGINE, (GWT.data && GWT.data.version) || ''], C.calibrationFacts(issue.calibration || null),
+      C.readinessFacts(this.gate), issue.evidence || []);
+    var sealed = C.sealPackage(entries, facts, function (code) {
+      /** @type {Object<string, Uint8Array|string>} */
+      var out = { 'word/footer1.xml': footerXml(code) };
+      if (cover) {
+        out['word/footer2.xml'] = coverFooterXml(code);
+        out[CODE_QR_PART] = C.qrPng(C.qrEncode(C.phrase('verification.qr', { code: code }), { ecc: 'H' }));
+      }
+      return out;
+    });
+    this.record = sealed.record;
+    var parts = sealed.entries;
+    return S.zip(order.map(function (entry) {
+      return { name: entry.name, data: parts[entry.name], store: !!entry.store };
+    }).concat([{ name: C.MANIFEST_PART, data: parts[C.MANIFEST_PART], store: false }]));
   };
 
   ReportBuilder.prototype.save = async function (filename) {
@@ -849,7 +948,8 @@
   }
 
   async function geophysicalReport(context) {
-    var b = new ReportBuilder({ style: context.style, title: 'Geophysical Survey Report' });
+    var b = new ReportBuilder({ style: context.style, title: 'Geophysical Survey Report',
+      kind: 'geophysical', issue: context.issue });
     var site = context.site || {};
     var interpretations = context.interpretations || [];
     var figures = context.figures || [];
@@ -1354,7 +1454,8 @@
   }
 
   async function completionReport(context) {
-    var b = new ReportBuilder({ style: context.style, title: 'Borehole Completion Report' });
+    var b = new ReportBuilder({ style: context.style, title: 'Borehole Completion Report',
+      kind: 'completion', issue: context.issue });
     var site = context.site || {}, log = context.log || {}, design = context.design;
     var figures = context.figures || [];
     var summaryRec = context.analysis ? context.analysis.yield_recommendation : null;
@@ -1695,7 +1796,8 @@
   }
 
   async function pumpingReport(context) {
-    var b = new ReportBuilder({ style: context.style, title: 'Pumping Test Report' });
+    var b = new ReportBuilder({ style: context.style, title: 'Pumping Test Report',
+      kind: 'pumping', issue: context.issue });
     var pumpingConfig = completionPumpingConfig(context);
     var analysis = context.analysis, test = analysis.test, site = test.site || {};
     var rec = analysis.yield_recommendation;
@@ -1832,8 +1934,9 @@
       var casingSource = analysis.transmissivity_source;
       var adoptedInside = casingSource && Object.prototype.hasOwnProperty.call(
         analysis.disqualified || {}, casingSource);
+      /* the casing the analysis took: the sheet's, where it records one */
       b.paragraph('Casing storage: with a ' +
-        C.formatG((context.config && context.config.pumping
+        C.formatG(analysis.casing_diameter_in || (context.config && context.config.pumping
           ? context.config.pumping : C.defaultConfig().pumping).casing_diameter_in) +
         ' inch casing and the specific capacity at the end of the first step, the ' +
         'water standing in the casing supplies the pump for about the first ' +
@@ -2145,7 +2248,8 @@
   }
 
   async function qualityReport(context) {
-    var b = new ReportBuilder({ style: context.style, title: 'Water Quality Report' });
+    var b = new ReportBuilder({ style: context.style, title: 'Water Quality Report',
+      kind: 'quality', issue: context.issue });
     var assessment = context.assessment, sample = assessment.sample;
     var site = sample.site || {};
     var figures = context.figures || [];
@@ -2279,7 +2383,8 @@
   /* --- 5. cost estimate ------------------------------------------------------ */
 
   async function costingReport(context) {
-    var b = new ReportBuilder({ style: context.style, title: 'Borehole Cost Estimate' });
+    var b = new ReportBuilder({ style: context.style, title: 'Borehole Cost Estimate',
+      kind: 'costing', issue: context.issue });
     var estimate = context.estimate, site = context.site || {};
     var figures = context.figures || [];
 
@@ -2444,7 +2549,8 @@
   /* --- 6. supervision record ------------------------------------------------- */
 
   async function supervisionReport(context) {
-    var b = new ReportBuilder({ style: context.style, title: 'Supervision Checklist Record' });
+    var b = new ReportBuilder({ style: context.style, title: 'Supervision Checklist Record',
+      kind: 'supervision', issue: context.issue });
     var evaluation = context.evaluation, items = context.items || [];
     var responses = context.responses || {};
     var site = context.site || {};
@@ -2663,7 +2769,8 @@
   }
 
   async function handoverReport(context) {
-    var b = new ReportBuilder({ style: context.style, title: 'Project Handover Report' });
+    var b = new ReportBuilder({ style: context.style, title: 'Project Handover Report',
+      kind: 'handover', issue: context.issue });
     var site = context.site || {}, log = context.log || {}, design = context.design;
     var analysis = context.analysis, assessment = context.assessment;
     var figures = context.figures || [];
@@ -2867,26 +2974,27 @@
    * that history says the borehole's condition is today.
    * ---------------------------------------------------------------------- */
 
+  /* The plate has no cover, so its code is in its footer and no second
+   * symbol goes beside the one a technician scans. */
   async function assetPlacard(context) {
     var asset = context.asset;
     var b = new ReportBuilder({ style: context.style,
-      title: 'Borehole ' + asset.asset_id });
+      title: 'Borehole ' + asset.asset_id, kind: 'placard', issue: context.issue });
+    b.recordReadiness(context.readiness);
     var state = context.state || C.assetState(asset, context.today);
 
     b.paragraph('BOREHOLE IDENTIFICATION PLATE', { bold: true, align: 'center' });
     b.paragraph(asset.asset_id, { bold: true, size: 26, align: 'center' });
     b.paragraph(C.assetLabel(asset), { size: 13, align: 'center' });
     if (context.symbol) {
-      b.figure(context.symbol, 'Scan for this borehole’s identifier and ' +
-        'position. The symbol carries the details themselves, so it reads with ' +
-        'no network and no application installed.', 7.0);
+      /* with a report address set (PLAN.md step 7.1) the symbol is a link to
+       * the borehole's report page; the app drew it from the same address */
+      b.figure(context.symbol, C.phrase(C.reportLink(asset.asset_id, context.reportUrl)
+        ? 'fault_reports.placard_caption_link' : 'fault_reports.placard_caption_text'), 7.0);
     }
     b.table(C.placardLines(asset, state), {
       header: ['', ''], caption: 'Borehole details.', colWidthsCm: [5.0, 10.0] });
-    b.paragraph('Report a breakdown or a change to this borehole against the ' +
-      'identifier above. Quote it in full, including the last character — ' +
-      'it is a check character, and it is what stops a repair being recorded ' +
-      "against a different village's borehole.", { italic: true });
+    b.paragraph(C.phrase('fault_reports.placard_quote'), { italic: true });
     return b;
   }
 
@@ -2895,7 +3003,7 @@
     var state = context.state || C.assetState(asset, context.today);
     var today = context.today || new Date().toISOString().slice(0, 10);
     var b = new ReportBuilder({ style: context.style,
-      title: 'Asset record - ' + C.assetLabel(asset) });
+      title: 'Asset record - ' + C.assetLabel(asset), kind: 'asset', issue: context.issue });
 
     b.cover(['Borehole Asset Record'], [C.assetLabel(asset), asset.asset_id],
       [['Status', state.label], ['As at', today]]);
@@ -2991,7 +3099,7 @@
   async function roundSheet(context) {
     var rounds = context.rounds;
     var b = new ReportBuilder({ style: context.style,
-      title: 'Service rounds - ' + rounds.as_of });
+      title: 'Service rounds - ' + rounds.as_of, kind: 'rounds', issue: context.issue });
     var words = C.roundsText(rounds);
     if (!rounds.rounds.length) {
       b.paragraph(C.phrase('rounds.sheet_title'), { bold: true, align: 'center', size: 16 });
@@ -3036,7 +3144,8 @@
   async function paymentCertificate(context) {
     var contract = context.contract, certificate = context.certificate;
     var b = new ReportBuilder({ style: context.style,
-      title: 'Interim Payment Certificate ' + certificate.number });
+      title: 'Interim Payment Certificate ' + certificate.number, kind: 'procurement',
+      issue: context.issue });
 
     b.cover(['Interim Payment Certificate No. ' + certificate.number],
       [contract.ref, contract.contractor || ''],
@@ -3146,7 +3255,8 @@
 
   function fieldKit(context) {
     var content = context.content;
-    var b = new ReportBuilder({ style: context.style, title: content.title });
+    var b = new ReportBuilder({ style: context.style, title: content.title, kind: 'field_kit',
+      issue: context.issue });
     var table = function (t, widths) {
       b.table(t.rows, { header: t.header.length ? t.header : null, caption: t.caption,
         colWidthsCm: widths, fontSize: 10 });
@@ -3201,7 +3311,8 @@
 
   function deskStudyReport(context) {
     var content = context.content;
-    var b = new ReportBuilder({ style: context.style, title: content.title });
+    var b = new ReportBuilder({ style: context.style, title: content.title, kind: 'desk_study',
+      issue: context.issue });
     b.cover([content.title], [content.subtitle], content.site_rows);
     b.preFieldStamp(content.stamp.title, content.stamp.lead);
     b.tableOfContents();
@@ -3244,7 +3355,8 @@
 
   function calibrationReport(context) {
     var content = context.content;
-    var b = new ReportBuilder({ style: context.style, title: content.title });
+    var b = new ReportBuilder({ style: context.style, title: content.title, kind: 'calibration',
+      issue: context.issue });
     b.cover([content.title], [content.subtitle], content.rows);
     b.tableOfContents();
     b.executiveSummary(content.summary);
@@ -3265,11 +3377,47 @@
     return b;
   }
 
+  /* --- the contractor scorecards -------------------------------------------
+   * reporting/scorecards.py (PLAN.md step 6.3): C.scorecardContent laid out
+   * over the project files on the Portfolio page as the calibration report
+   * is laid out: the cover with what the files hold, the summary, then each
+   * section with its paragraphs, tables and bullets, and the references.
+   * ---------------------------------------------------------------------- */
+
+  /* each section's tables, by its key, with their columns' printed widths
+   * (reporting/scorecards.py _WIDTHS) */
+  var SCORECARD_WIDTHS = {
+    cards: [[2.4, 1.3, 2.4, 2.0, 2.1, 2.0, 2.6, 1.2]],
+    checks: [[3.0, 2.6, 8.4, 2.0]],
+    dry: [[3.2, 1.6, 1.2, 1.6, 2.0, 1.8, 1.8, 2.8]],
+  };
+
+  function scorecardReport(context) {
+    var content = context.content;
+    var b = new ReportBuilder({ style: context.style, title: content.title, kind: 'scorecards',
+      issue: context.issue });
+    b.cover([content.title], [content.subtitle], content.rows);
+    b.tableOfContents();
+    b.executiveSummary(content.summary);
+    content.sections.forEach(function (section) {
+      b.heading(section.heading, 1);
+      section.paragraphs.forEach(function (text) { b.paragraph(text, { align: 'justify' }); });
+      var widths = SCORECARD_WIDTHS[section.key] || [];
+      section.tables.forEach(function (t, k) {
+        b.table(t.rows, { header: t.header, caption: t.caption, colWidthsCm: widths[k], fontSize: 8 });
+      });
+      if (section.bullets.length) b.bullets(section.bullets);
+    });
+    b.references(content.references);
+    return b;
+  }
+
   GWT.docx = {
     ReportBuilder: ReportBuilder,
     fieldKit: fieldKit,
     deskStudyReport: deskStudyReport,
     calibrationReport: calibrationReport,
+    scorecardReport: scorecardReport,
     geophysicalReport: geophysicalReport,
     completionReport: completionReport,
     pumpingReport: pumpingReport,

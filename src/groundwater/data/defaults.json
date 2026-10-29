@@ -46,8 +46,9 @@
     "pump_submergence_min_m": 3.0,
     "seasonal_allowance_m": 2.0,
     "cooper_jacob_u_max": 0.05,
-    "cooper_jacob_min_slope_m": 0.02,
     "cooper_jacob_min_r2": 0.8,
+    "stabilised_span_log10": 0.5,
+    "stabilised_slope_ratio": 0.5,
     "min_fit_r_squared": 0.8,
     "min_constant_test_min": 240.0,
     "min_step_length_min": 60.0,
@@ -105,11 +106,18 @@
     "reliability_bins": 5,
     "fit_min_boreholes": 5,
     "fit_weights_min_each": 10,
-    "set_licence": "CC BY 4.0"
+    "set_licence": "CC BY 4.0",
+    "scorecard_min_boreholes": 5,
+    "scorecard_stages": ["mobilisation", "drilling", "design", "development", "demobilisation"]
   },
   "cost_range": {
     "seed": 1,
     "samples": 20000
+  },
+  "allocation": {
+    "people_per_borehole": 500,
+    "exact_max_items": 40,
+    "ground_grid": 16
   },
   "terrain": {
     "analysis_radius_km": 10.0,
@@ -150,7 +158,8 @@
   "service": {
     "sanitary_inspection_months": 6,
     "water_sample_months": 12,
-    "grace_days": 30
+    "grace_days": 30,
+    "report_url": ""
   },
   "survival": {
     "min_at_risk": 5,

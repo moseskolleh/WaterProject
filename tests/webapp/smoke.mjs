@@ -14,10 +14,229 @@ function check(name, ok, detail) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok || !detail ? '' : '\n     ' + detail}`);
 }
 
-const PAGES = ['overview', 'guided', 'site', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
+const PAGES = ['overview', 'guided', 'site', 'verify', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
   'pumping', 'pumpcopilot', 'quality', 'costing', 'procurement', 'supervision', 'handover',
   'templates', 'extract',
-  'waterpoints', 'coverage', 'portfolio', 'registry', 'settings', 'about'];
+  'waterpoints', 'coverage', 'portfolio', 'registry', 'report', 'settings', 'about'];
+
+/* Keyboard walkthroughs (PLAN.md step 9.4): the app driven by the keys
+ * alone, on a page freshly loaded with an empty project so that the first
+ * Tab starts from the top of the document. tests/webapp/a11y.mjs runs
+ * axe-core over the same pages. */
+async function keyboardWalkthroughs(page) {
+  const focused = () => page.evaluate(() => {
+    const a = document.activeElement;
+    return {
+      id: a.id, skip: a.classList.contains('skip-link'),
+      text: a.textContent.trim(), label: a.getAttribute('aria-label') || '',
+      nav: !!a.closest('#app-nav'), dialog: !!a.closest('[role="dialog"]'),
+      top: !!a.closest('#top-actions'), shown: a.getBoundingClientRect().width > 8,
+    };
+  });
+  const where = () => page.evaluate(() => ({
+    hash: location.hash, nav: window.GWT.app.store.get('nav'),
+    current: (document.querySelector('#app-nav [aria-current="page"]') || {}).textContent || '',
+  }));
+  await page.evaluate(() => window.GWT.app.goto('site'));
+  await page.reload({ waitUntil: 'load' });
+  /* Site & maps is drawn twice, the second time when its maps have loaded */
+  await page.waitForFunction(() => window.GWT && window.GWT.app &&
+    document.querySelector('#page-host .page-head') &&
+    !document.querySelector('#page-host').textContent.includes('Loading the maps and figures'));
+
+  // Toasts are announced from two live regions that are in the page before
+  // the first toast is: an error interrupts, anything else waits its turn.
+  const regions = await page.evaluate(() => {
+    const host = document.querySelector('.toast-host');
+    const polite = host && host.querySelector('[role="status"][aria-live="polite"]');
+    const alert = host && host.querySelector('[role="alert"][aria-live="assertive"]');
+    const before = { polite: !!polite, alert: !!alert, empty: !document.querySelector('.toast') };
+    const S = window.GWT.support;
+    const ok = S.toast('Saved.', 'ok'), bad = S.toast('Could not read it.', 'error');
+    const out = { before, ok: !!polite && polite.contains(ok), error: !!alert && alert.contains(bad),
+      atomic: [polite, alert].map((r) => r && r.getAttribute('aria-atomic')) };
+    ok.remove(); bad.remove();
+    return out;
+  });
+  check('keyboard: toasts land in live regions that were there first, an error in the alert one',
+    regions.before.polite && regions.before.alert && regions.before.empty && regions.ok &&
+    regions.error && regions.atomic.join() === 'false,false', JSON.stringify(regions));
+
+  // From the top: Tab reaches the skip link, shown when focused; then the
+  // top bar's three buttons and every navigation item, in the order the
+  // navigation lists them.
+  await page.keyboard.press('Tab');
+  const skip = await focused();
+  const items = await page.evaluate(() => Array.from(document.querySelectorAll('#app-nav .nav-item'))
+    .map((b) => b.textContent.trim()));
+  const walked = [];
+  for (let i = 0; i < 3 + items.length; i += 1) {
+    await page.keyboard.press('Tab');
+    walked.push(await focused());
+  }
+  check('keyboard: Tab goes from the skip link through the top bar and every navigation item in order',
+    skip.skip && skip.shown && items.length === PAGES.length &&
+    JSON.stringify(walked.slice(0, 2).map((f) => f.text)) === '["Save project","Open project"]' &&
+    JSON.stringify(walked.slice(3).map((f) => f.text)) === JSON.stringify(items) &&
+    walked.slice(3).every((f) => f.nav), JSON.stringify({ skip, walked: walked.map((f) => f.text) }));
+
+  // The navigation is drawn again with every page; the keyboard on one of
+  // its items stays on that item, where it used to be dropped mid-Tab.
+  await page.evaluate(() => window.GWT.app.render());
+  const kept = await focused();
+  check('keyboard: the navigation drawn again keeps the keyboard on its item',
+    kept.nav && kept.text === 'About & method', JSON.stringify(kept));
+
+  // Enter on a navigation item opens its page and puts the keyboard on it.
+  await page.keyboard.press('Enter');
+  const opened = { at: await where(), focus: await focused() };
+  check('keyboard: Enter on a navigation item opens its page, marks it current and focuses the page',
+    opened.at.hash === '#/about' && opened.at.nav === 'about' && opened.at.current === 'About & method' &&
+    opened.focus.id === 'main', JSON.stringify(opened));
+
+  // Shift+Tab walks back to the skip link, and Enter on it moves the
+  // keyboard to the page without leaving it: the link names #main, which
+  // the router used to read as an unknown address and answer with the
+  // Overview.
+  let back = 0;
+  for (; back < 40 && !(await focused()).skip; back += 1) await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  const skipped = { back, at: await where(), focus: await focused() };
+  check('keyboard: the skip link puts the keyboard on the page and leaves the page and address alone',
+    back === 3 + items.length + 1 && skipped.focus.id === 'main' && skipped.at.hash === '#/about' &&
+    skipped.at.nav === 'about', JSON.stringify(skipped));
+
+  // The theme button, pressed three times with Enter, goes round the three
+  // themes and keeps the keyboard; its name says which theme is on.
+  await page.focus('#top-actions button[title="Switch theme"]');
+  const themes = [];
+  for (let i = 0; i < 3; i += 1) {
+    await page.keyboard.press('Enter');
+    themes.push({ theme: await page.evaluate(() => window.GWT.app.store.get('theme')), focus: await focused() });
+  }
+  check('keyboard: the theme button goes round the themes, says which is on and keeps the keyboard',
+    JSON.stringify(themes.map((t) => t.theme)) === '["auto","light","dark"]' &&
+    JSON.stringify(themes.map((t) => t.focus.label)) === JSON.stringify(['Switch theme, now as the device is set',
+      'Switch theme, now light', 'Switch theme, now dark']) && themes.every((t) => t.focus.top),
+    JSON.stringify(themes));
+
+  // A dialog: Enter on "Reset everything" opens it as a dialog named by its
+  // title, with the keyboard on its close button; Tab and Shift+Tab go round
+  // inside it; a dialog opened over it takes the keyboard, and Escape closes
+  // that one alone; Escape again closes the first and the keyboard is back
+  // on the button that opened it, with nothing reset.
+  await page.evaluate(() => window.GWT.app.store.set('site.community', 'Kychom'));
+  await page.evaluate(() => window.GWT.app.goto('settings'));
+  await page.evaluate(() => Array.from(document.querySelectorAll('#page-host button'))
+    .find((b) => b.textContent === 'Reset everything').focus());
+  await page.keyboard.press('Enter');
+  const dialog = await page.evaluate(() => {
+    const box = document.querySelector('.modal-overlay .modal');
+    if (!box) return null;
+    const title = document.getElementById(box.getAttribute('aria-labelledby') || '');
+    return { role: box.getAttribute('role'), modal: box.getAttribute('aria-modal'),
+      title: title ? title.textContent : null };
+  });
+  const first = await focused();
+  const round = [];
+  for (let i = 0; i < 4; i += 1) {
+    await page.keyboard.press('Tab');
+    round.push(await focused());
+  }
+  await page.keyboard.press('Shift+Tab');
+  const backRound = await focused();
+  check('keyboard: a dialog is a dialog named by its title, takes the keyboard, and Tab and Shift+Tab ' +
+    'stay inside it',
+    !!dialog && dialog.role === 'dialog' && dialog.modal === 'true' && dialog.title === 'Reset the workspace?' &&
+    first.dialog && first.label === 'Close' && first.text === '×' &&
+    JSON.stringify(round.map((f) => f.text)) === '["Reset","Close","×","Reset"]' &&
+    round.every((f) => f.dialog) && backRound.text === '×' && backRound.dialog,
+    JSON.stringify({ dialog, first, round, backRound }));
+
+  await page.evaluate(() => {
+    const S = window.GWT.support;
+    S.modal('Second', S.el('p', 'Over the first.'));
+  });
+  const second = await focused();
+  await page.keyboard.press('Escape');
+  const afterOne = { open: await page.evaluate(() => document.querySelectorAll('.modal-overlay').length),
+    focus: await focused() };
+  await page.keyboard.press('Escape');
+  const afterTwo = { open: await page.evaluate(() => document.querySelectorAll('.modal-overlay').length),
+    focus: await focused(), community: await page.evaluate(() => window.GWT.app.store.get('site.community')) };
+  check('keyboard: Escape closes the top dialog alone, then the first, and the keyboard goes back to ' +
+    'what opened each, with nothing done',
+    second.dialog && afterOne.open === 1 && afterOne.focus.dialog && afterOne.focus.text === '×' &&
+    afterTwo.open === 0 && afterTwo.focus.text === 'Reset everything' && afterTwo.community === 'Kychom',
+    JSON.stringify({ second, afterOne, afterTwo }));
+
+  // Confirming it: the dialog closes itself, the keyboard goes to the page
+  // (the button that opened it has been drawn again), and the toast is in
+  // the polite region.
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !document.querySelector('.modal-overlay') &&
+    window.GWT.app.store.get('site.community') === '');
+  const confirmed = await page.evaluate(() => ({
+    focus: document.activeElement.id,
+    toast: Array.from(document.querySelectorAll('.toast-host [role="status"] .toast'))
+      .map((t) => t.textContent),
+  }));
+  check('keyboard: confirming the dialog closes it and puts the keyboard on the page',
+    confirmed.focus === 'main' && confirmed.toast.includes('Workspace reset.'), JSON.stringify(confirmed));
+
+  // The navigation drawer on a phone: the toggle says whether it is open,
+  // opening it puts the keyboard on the page it shows, Escape closes it and
+  // goes back to the toggle, choosing a page closes it, and the keyboard
+  // leaving it for the page it covers closes it too.
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.evaluate(() => window.GWT.app.goto('quality'));
+  /* the drawer's visibility follows its slide, 0.22 s */
+  await page.waitForTimeout(300);
+  const drawer = () => page.evaluate(() => ({
+    expanded: document.querySelector('#nav-toggle').getAttribute('aria-expanded'),
+    controls: document.querySelector('#nav-toggle').getAttribute('aria-controls'),
+    visible: getComputedStyle(document.querySelector('#app-nav')).visibility === 'visible',
+  }));
+  await page.focus('#nav-toggle');
+  const shut = await drawer();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const open = { state: await drawer(), focus: await focused() };
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  const escaped = { state: await drawer(), focus: await focused() };
+  check('keyboard: the drawer toggle says whether it is open; opening puts the keyboard on the current ' +
+    'page, Escape closes it and returns to the toggle',
+    shut.expanded === 'false' && shut.controls === 'app-nav' && !shut.visible &&
+    open.state.expanded === 'true' && open.state.visible && open.focus.nav && open.focus.text === 'Water quality' &&
+    escaped.state.expanded === 'false' && !escaped.state.visible && escaped.focus.id === 'nav-toggle',
+    JSON.stringify({ shut, open, escaped }));
+
+  // Shift+Tab from Water quality is the Pumping co-pilot, the item above it.
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const chosen = { state: await drawer(), at: await where(), focus: await focused() };
+  await page.focus('#nav-toggle');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const above = items.indexOf('Pumping co-pilot');
+  for (let i = 0; i <= above; i += 1) await page.keyboard.press('Shift+Tab');
+  await page.waitForTimeout(300);
+  const left = { state: await drawer(), focus: await focused() };
+  check('keyboard: choosing a page from the drawer closes it and focuses the page; the keyboard leaving ' +
+    'the drawer for the top bar closes it',
+    chosen.state.expanded === 'false' && !chosen.state.visible && chosen.at.nav === 'pumpcopilot' &&
+    chosen.focus.id === 'main' && above > 0 &&
+    left.state.expanded === 'false' && !left.state.visible && !left.focus.nav && left.focus.top,
+    JSON.stringify({ chosen, left }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => window.GWT.app.goto('overview'));
+}
 
 await withPage(async (page, base, consoleErrors) => {
   const downloads = [];
@@ -26,6 +245,8 @@ await withPage(async (page, base, consoleErrors) => {
   await page.goto(base + '/index.html', { waitUntil: 'load' });
   await page.waitForFunction(() => window.GWT && window.GWT.app);
   check('app boots', true);
+
+  await keyboardWalkthroughs(page);
 
   // Long Tasks from here on. The inversion and the pumping analysis run in
   // the engine worker, and the checks below hold the page's own thread to it:
@@ -1656,12 +1877,12 @@ await withPage(async (page, base, consoleErrors) => {
       S.toast = toast;
     }
   });
-  check('ledger: the project file carries it at its top level, at schema 2, and opens with it',
-    ledgerTrip.schema === 2 && ledgerTrip.version === undefined && !ledgerTrip.inState &&
+  check('ledger: the project file carries it at its top level, at schema 3, and opens with it',
+    ledgerTrip.schema === 3 && ledgerTrip.version === undefined && !ledgerTrip.inState &&
     ledgerTrip.top && ledgerTrip.back && ledgerTrip.entries === 1, JSON.stringify(ledgerTrip).slice(0, 600));
   check('ledger: a file of schema 1 opens with an empty one, and a later schema says so',
     ledgerTrip.old.entries.length === 0 && ledgerTrip.later[1] === 'warn' &&
-    /format 3; this app reads format 2/.test(ledgerTrip.later[0]), JSON.stringify(ledgerTrip.later));
+    /format 4; this app reads format 3/.test(ledgerTrip.later[0]), JSON.stringify(ledgerTrip.later));
   await page.evaluate(async (saved) => {
     window.GWT.app.store.replace(JSON.parse(saved));
     await window.GWT.app.recompute();
@@ -2517,6 +2738,283 @@ await withPage(async (page, base, consoleErrors) => {
   check('registry: the record names the days the community went without',
     registry.doc.includes('Not working') && registry.doc.includes('426 days') &&
     registry.doc.includes('rising main parted'));
+
+  // --- reports from the plate and by SMS (PLAN.md step 7.1) ----------------
+  // The route a plate's QR code opens refuses a mistyped identifier, offers
+  // the four choices and queues a report on this phone; the Asset registry
+  // page merges the queue into the borehole it names as it opens and keeps
+  // the rest; SMS messages are imported with each refusal shown; the queue
+  // is exported as a file the engine reads back, belongs to this browser
+  // rather than to a project file, and a report address the registry
+  // refuses keeps the plate from being printed.
+  const plateReports = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const support = window.GWT.support;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone];
+    const toast = support.toast, download = support.download, pickFile = support.pickFile;
+    const validate = C.validateAssetId;
+    const toasts = [], got = [];
+    support.toast = (message, tone) => { toasts.push([message, tone]); };
+    support.download = (name, data) => { got.push({ name, data }); };
+    const host = () => document.querySelector('#page-host');
+    const press = (label) => {
+      const btn = Array.from(host().querySelectorAll('button')).find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const fill = (attr, value) => {
+      const input = host().querySelector('input[data-report="' + attr + '"]');
+      if (!input) return false;
+      input.value = value;
+      input.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const out = {};
+    try {
+      app.store.set('asset', null);
+      app.store.set('reports', { queue: [], held: [] });
+      d.registry = [];
+      site.easting = 694912; site.northing = 938150; site.utm_zone = 28;
+      const id = C.mintAssetId(site);
+      out.id = id;
+      const other = C.mintAssetId({ district: 'Bo', easting: 790500, northing: 875300, utm_zone: 28 });
+      /* neither its check character nor, where the registry still reads
+       * one, the character it was minted with before ISO 7064 was followed */
+      const body = id.slice(0, id.lastIndexOf('-'));
+      const taken = [id.slice(-1), C.legacyCheckCharacter ? C.legacyCheckCharacter(body) : ''];
+      const mistyped = body + '-' + 'ZYXW'.split('').find((c) => taken.indexOf(c) < 0);
+
+      // the address a plate's QR code carries, opened
+      await app.goto('report', mistyped);
+      out.refused = {
+        hash: location.hash,
+        text: (host().querySelector('.callout-bad') || {}).textContent || '',
+        choices: host().querySelectorAll('[data-choice]').length,
+        missing: !!host().querySelector('.item-missing'),
+      };
+      await app.goto('report', id);
+      out.page = {
+        hash: location.hash,
+        choices: Array.from(host().querySelectorAll('[data-choice]')).map((b) => b.textContent),
+        photoSlot: !!host().querySelector('.img-slot'),
+        browserOnly: host().textContent.includes(C.phrase('fault_reports.browser_only')),
+        missing: !!host().querySelector('.item-missing'),
+        placeholder: (host().querySelector('input[data-report="identifier"]') || {}).placeholder,
+      };
+      // with no choice made the report is refused, and nothing is queued
+      press('Save the report');
+      out.noChoice = [toasts[toasts.length - 1], app.store.get('reports.queue').length];
+      host().querySelector('[data-choice="broken"]').click();
+      fill('when', '2026-05-01');
+      fill('by', 'Aminata');
+      fill('note', 'handle snapped');
+      press('Save the report');
+      out.queued = app.store.get('reports.queue').map((r) => [r.asset_id, r.kind, r.when, r.note, r.by]);
+      // a report on another borehole, made on its own page
+      await app.goto('report', other);
+      host().querySelector('[data-choice="working"]').click();
+      fill('when', '2026-05-02');
+      press('Save the report');
+      out.waiting = host().textContent.includes('Reports waiting on this phone') &&
+        host().querySelectorAll('table tbody tr').length;
+
+      // the queue belongs to this browser: no project file carries it, and
+      // opening one keeps it
+      out.notSaved = !('reports' in app.projectPayload().state);
+      const payload = app.projectPayload();
+      payload.state.reports = { queue: [], held: [] };
+      await app.loadProject(JSON.stringify(payload));
+      out.keptOverLoad = app.store.get('reports.queue').length;
+      // the load replaced the site; put the position back
+      const site2 = app.store.get('site');
+      site2.easting = 694912; site2.northing = 938150; site2.utm_zone = 28;
+
+      // the registry page merges the reports for its borehole as it opens
+      await app.goto('registry');
+      const asset = app.store.get('asset') || { events: [] };
+      out.merged = {
+        events: asset.events.map((e) => [e.kind, e.when, e.note, e.by]),
+        state: C.assetState(C.assetFromDict(asset), '2026-06-01').function,
+        queue: app.store.get('reports.queue').map((r) => r.asset_id),
+        said: (host().querySelector('.reports-merged') || {}).textContent || '',
+        waiting: (host().querySelector('.reports-waiting') || {}).textContent || '',
+      };
+      // opened again, nothing more is added
+      app.render();
+      out.again = (app.store.get('asset') || { events: [] }).events.length;
+
+      // SMS messages, one a line, imported with each refusal shown; the
+      // registry's check stands in for one that reads the other borehole's
+      // identifier with a note (as it reads one minted with the older check
+      // character), so its report is held for a person
+      app.store.set('reports.receivedOn', '');
+      const realValidate = C.validateAssetId;
+      C.validateAssetId = (t) => {
+        const v = realValidate(t);
+        return v.ok && v.assetId === other ? Object.assign({}, v, { reason: 'Compare it with the plate.' }) : v;
+      };
+      const sms = [
+        '2026-05-03 07:30 +23276123456 BH ' + id + ' BROKEN still broken',
+        'BH ' + id + ' SLOW',
+        '2026-05-03 BH ' + mistyped + ' WORKING',
+        'hello',
+        '2026-05-03 +232 BH ' + other + ' TASTE salty',
+      ].join('\n');
+      support.pickFile = async () => [new File([sms], 'sms.txt', { type: 'text/plain' })];
+      press('Import SMS messages or a file of reports');
+      for (let t = 0; t < 200 && !d.reportImport; t++) await new Promise((r) => setTimeout(r, 25));
+      C.validateAssetId = realValidate;
+      const rows = Array.from(host().querySelectorAll('table')).find((tb) =>
+        (tb.querySelector('thead') || {}).textContent === C.reportHeader().join(''));
+      out.sms = {
+        summary: (host().querySelector('.reports-summary') || {}).textContent || '',
+        rows: rows ? Array.from(rows.querySelectorAll('tbody tr')).map((tr) =>
+          Array.from(tr.querySelectorAll('td')).map((td) => td.textContent)) : [],
+        events: (app.store.get('asset') || { events: [] }).events.map((e) => [e.kind, e.when, e.by]),
+        queue: app.store.get('reports.queue').map((r) => r.asset_id),
+        held: Array.from(host().querySelectorAll('.report-held')).map((n) => n.textContent),
+      };
+      // a person confirms the held report: it joins the reports waiting
+      press(C.phrase('fault_reports.confirm'));
+      out.confirmed = { held: app.store.get('reports.held').length,
+        queue: app.store.get('reports.queue').map((r) => [r.asset_id, r.kind]) };
+
+      // the queue as a file, which the engine reads back
+      press('Export the reports waiting (.json)');
+      const file = got.find((g) => g.name === 'borehole-reports.json');
+      out.exported = file ? C.readReportsFile(JSON.parse(file.data)).map((r) => [r.status, r.asset_id, r.kind]) : null;
+
+      // a reset says it deletes the reports waiting, which no project file
+      // carries; closed, it deletes nothing
+      await app.goto('settings');
+      press('Reset everything');
+      const modal = document.querySelector('.modal-overlay');
+      out.reset = (modal && modal.querySelector('.reset-reports') || {}).textContent || '';
+      if (modal) Array.from(modal.querySelectorAll('button')).find((b) => b.textContent === 'Close').click();
+      await app.goto('registry');
+      out.reset_kept = app.store.get('reports.queue').length;
+
+      // a report address the registry refuses stops the plate and the round
+      // sheets, which say what a scan of each plate begins with; the asset
+      // record, which carries no symbol, is still built
+      app.store.set('config.service.report_url', 'http://water.example.org/');
+      app.render();
+      const named = (label) => Array.from(host().querySelectorAll('button'))
+        .find((b) => b.textContent === label);
+      const plate = named('Identification plate (.docx)');
+      const sheets = named('Round sheets (.docx)');
+      out.badAddress = { said: !!host().querySelector('.report-address'), disabled: !!(plate && plate.disabled),
+        rounds: !!host().querySelector('.rounds-address'), sheets: !!(sheets && sheets.disabled) };
+      press('Asset record (.docx)');
+      let record = null;
+      for (let t = 0; t < 400 && !record; t++) {
+        record = got.find((g) => /^asset_.*\.docx$/.test(g.name));
+        if (!record) await new Promise((r) => setTimeout(r, 25));
+      }
+      out.badAddress.record = !!record &&
+        !toasts.some((m) => m[1] === 'error' && /document/.test(m[0]));
+      app.store.set('config.service.report_url', 'https://water.example.org/toolkit/');
+      app.render();
+      const plate2 = Array.from(host().querySelectorAll('button'))
+        .find((b) => b.textContent === 'Identification plate (.docx)');
+      out.goodAddress = { said: !!host().querySelector('.report-address'),
+        disabled: !!(plate2 && plate2.disabled), rounds: !!host().querySelector('.rounds-address'),
+        link: C.qrPayload(C.assetFromDict(app.store.get('asset')), app.store.get('config.service.report_url')) };
+      // the plate built from the page carries the link and says so
+      press('Identification plate (.docx)');
+      let built = null;
+      for (let t = 0; t < 400 && !built; t++) {
+        built = got.find((g) => /^placard_.*\.docx$/.test(g.name));
+        if (!built) await new Promise((r) => setTimeout(r, 25));
+      }
+      const placard = built ? await window.__docText(built.data) : '';
+      out.placard = placard.includes(C.phrase('fault_reports.placard_caption_link')) &&
+        !placard.includes(C.phrase('fault_reports.placard_caption_text'));
+
+      // the reports waiting cleared by a person, asked first
+      press('Clear the reports waiting');
+      const ask = document.querySelector('.modal-overlay');
+      out.cleared = { asked: !!ask, before: app.store.get('reports.queue').length };
+      if (ask) Array.from(ask.querySelectorAll('button')).find((b) => b.textContent === 'Clear').click();
+      out.cleared.after = app.store.get('reports.queue').length;
+      out.cleared.button = !!named('Clear the reports waiting');
+    } finally {
+      C.validateAssetId = validate;
+      support.toast = toast;
+      support.download = download;
+      support.pickFile = pickFile;
+      app.store.set('config.service.report_url', '');
+      app.store.set('reports', { queue: [], held: [] });
+      app.store.set('reports.receivedOn', '');
+      app.store.set('asset', null);
+      d.reportImport = null;
+      d.reportsMerged = null;
+      const site3 = app.store.get('site');
+      site3.easting = saved[0]; site3.northing = saved[1]; site3.utm_zone = saved[2];
+      await app.goto('registry');
+    }
+    return out;
+  });
+  check('fault reports: the address a plate links to refuses a mistyped identifier and offers no form',
+    plateReports.refused.hash.startsWith('#/report/') && plateReports.refused.choices === 0 &&
+    plateReports.refused.text.includes('check character') && !plateReports.refused.missing,
+    JSON.stringify(plateReports.refused));
+  check('fault reports: the report page offers the four choices and a photograph, and says it is ' +
+    'the browser app\'s alone',
+    JSON.stringify(plateReports.page.choices) ===
+      '["Working","Broken","Slow","Bad taste or colour"]' &&
+    plateReports.page.photoSlot && plateReports.page.browserOnly && !plateReports.page.missing &&
+    /^SL-WAR-8FEEVKQ-[0-9A-Z]$/.test(plateReports.page.placeholder) &&
+    plateReports.page.hash === '#/report/' + plateReports.id, JSON.stringify(plateReports.page));
+  check('fault reports: a report with no choice is refused; one made is queued on this phone',
+    plateReports.noChoice[1] === 0 && plateReports.noChoice[0][1] === 'warn' &&
+    JSON.stringify(plateReports.queued) ===
+      JSON.stringify([[plateReports.id, 'failure', '2026-05-01', 'handle snapped', 'Aminata']]) &&
+    plateReports.waiting === 2, JSON.stringify([plateReports.noChoice, plateReports.queued, plateReports.waiting]));
+  check('fault reports: the queue belongs to this browser: no project file carries it, and opening one keeps it',
+    plateReports.notSaved && plateReports.keptOverLoad === 2, JSON.stringify(plateReports));
+  check('fault reports: the Asset registry page merges the reports for its borehole as it opens, once, ' +
+    'and keeps the rest waiting',
+    JSON.stringify(plateReports.merged.events) ===
+      JSON.stringify([['failure', '2026-05-01', 'handle snapped', 'Aminata']]) &&
+    plateReports.merged.state === 'non_functional' && plateReports.merged.said.includes('1 report') &&
+    plateReports.merged.queue.length === 1 && plateReports.merged.queue[0] !== plateReports.id &&
+    plateReports.merged.waiting.includes('1 report') && plateReports.again === 1,
+    JSON.stringify(plateReports.merged));
+  check('fault reports: SMS messages are imported with each refusal shown, and a message with no day ' +
+    'is refused rather than dated today',
+    plateReports.sms.summary === '5 read: 1 accepted, 1 held for a person to confirm, 3 refused.' &&
+    plateReports.sms.rows.length === 5 &&
+    plateReports.sms.rows[1][5] === 'Refused' && plateReports.sms.rows[2][6].includes('check character') &&
+    plateReports.sms.rows[3][6].startsWith('Not a report') &&
+    JSON.stringify(plateReports.sms.events.map((e) => e[2])) ===
+      JSON.stringify(['Aminata', 'SMS from +23276123456']) &&
+    plateReports.sms.queue.length === 1, JSON.stringify(plateReports.sms));
+  check('fault reports: an SMS the registry reads only with a note is held, merged nowhere, until a ' +
+    'person confirms it',
+    plateReports.sms.rows[4][5] === 'Held for a person to confirm' &&
+    plateReports.sms.held.length === 1 && plateReports.sms.held[0].includes('Compare it with the plate.') &&
+    plateReports.confirmed.held === 0 &&
+    JSON.stringify(plateReports.confirmed.queue.map((r) => r[1])) ===
+      '["reported_working","quality_complaint"]', JSON.stringify([plateReports.sms, plateReports.confirmed]));
+  check('fault reports: the reports waiting are exported as a file the engine reads back',
+    JSON.stringify(plateReports.exported && plateReports.exported.map((r) => r[0])) ===
+      '["accepted","accepted"]', JSON.stringify(plateReports.exported));
+  check('fault reports: a reset says it deletes the reports waiting, which no project file carries',
+    plateReports.reset.includes('2 reports') && plateReports.reset_kept === 2,
+    JSON.stringify([plateReports.reset, plateReports.reset_kept]));
+  check('fault reports: a report address the registry refuses keeps the plate and the round sheets ' +
+    'from being printed, not the asset record; with one it takes, the plate\'s symbol is the link and ' +
+    'its caption says so',
+    plateReports.badAddress.said && plateReports.badAddress.disabled &&
+    plateReports.badAddress.rounds && plateReports.badAddress.sheets && plateReports.badAddress.record &&
+    !plateReports.goodAddress.said && !plateReports.goodAddress.disabled && !plateReports.goodAddress.rounds &&
+    plateReports.goodAddress.link === 'https://water.example.org/toolkit/#/report/' + plateReports.id &&
+    plateReports.placard, JSON.stringify([plateReports.badAddress, plateReports.goodAddress, plateReports.placard]));
+  check('fault reports: the reports waiting are cleared only when a person says so',
+    plateReports.cleared.asked && plateReports.cleared.before === 2 && plateReports.cleared.after === 0 &&
+    !plateReports.cleared.button, JSON.stringify(plateReports.cleared));
 
   // --- the sanitary inspection (PLAN.md step 7.5) -------------------------
   // The form records an inspection in the borehole's history, a question
@@ -5603,8 +6101,10 @@ await withPage(async (page, base, consoleErrors) => {
         'application/xml');
       const text = Array.from(xml.getElementsByTagName('w:p')).map((para) =>
         Array.from(para.getElementsByTagName('w:t')).map((t) => t.textContent).join('')).join('\n');
+      /* the figures, not the symbol of the document's code on its cover (PLAN.md step 8.1) */
       return { name: got[0].name, text: text,
-        media: Object.keys(files).filter((n) => n.startsWith('word/media/')).length };
+        media: Object.keys(files).filter((n) => n.startsWith('word/media/') &&
+          n !== 'word/media/document-code.png').length };
     };
     window.__placeSite(8.475, -11.5);
     const here = await build();
@@ -6087,7 +6587,9 @@ await withPage(async (page, base, consoleErrors) => {
         shown: cal.querySelectorAll('svg').length,
         headings: ['calibration.depth_heading', 'calibration.odds_heading', 'calibration.hits_heading',
           'calibration.limits_heading'].every((id) => text.includes(C.phrase(id))),
-        media: Object.keys(files).filter((n) => n.startsWith('word/media/')).length,
+        /* the figures, not the symbol of the document's code on its cover (PLAN.md step 8.1) */
+        media: Object.keys(files).filter((n) => n.startsWith('word/media/') &&
+          n !== 'word/media/document-code.png').length,
         named: content.sections.reduce((n, sec) => n + sec.figures.length, 0) };
     };
     out.rokelReport = await calibrate();
@@ -6328,6 +6830,354 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(pooling.adopted) ===
       '[1,"C. Conteh","Salone Water Forum","forum@example.org",["Kono Wells","Rural Water Trust"]]' &&
     pooling.shown && pooling.dropped, JSON.stringify(pooling));
+
+  // Contractor scorecards (PLAN.md step 6.3): Dr Timbo's borehole with an
+  // item of the supervision checklist failed, the drilled metres reconciled,
+  // its estimate awarded as the contract, a variation order signed and a
+  // completion date due typed on the Procurement page (one written in
+  // figures refused). The project file carries the works record, and the
+  // Portfolio page sets the borehole out on the scorecards and saves
+  // Contractor_Scorecards.docx.
+  await page.evaluate(() => window.GWT.app.loadSample('dr_timbo'));
+  await page.waitForFunction(() => {
+    const app = window.GWT.app;
+    return !!app.derived.log && !!app.derived.estimate;
+  }, null, { timeout: 120000 });
+  const scorecards = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const named = (title) => [...document.querySelectorAll('#page-host .card')]
+      .find((c) => (c.querySelector('.card-title') || {}).textContent === title);
+    const press = (title, label) => [...named(title).querySelectorAll('button')]
+      .find((b) => b.textContent === label).click();
+    const out = {};
+    app.store.set('site.contractor', '');
+    app.store.set('supervision.responses.drl-daily-drilling-log',
+      { item_id: 'drl-daily-drilling-log', status: 'no', remark: 'unsigned on day 2' });
+    app.store.set('supervision.responses.dev-plumb-test-passed',
+      { item_id: 'dev-plumb-test-passed', status: 'yes', remark: '' });
+    app.store.set('supervision.checks.loggedM', 70);
+    app.store.set('supervision.checks.claimedM', 75);
+    out.before = app.currentWorks().contract;
+    await app.goto('procurement');
+    press('Award the contract', 'Award this estimate as the contract');
+    const due = () => named('Contract').querySelector('[data-procurement="due"]');
+    out.field = !!due();
+    due().value = '10/05/2018';
+    due().dispatchEvent(new Event('change'));
+    out.refused = named('Contract').textContent.includes(C.phrase('scorecards.page_due_unread'));
+    due().value = ' 2018-05-10 ';
+    due().dispatchEvent(new Event('change'));
+    out.accepted = !named('Contract').textContent.includes(C.phrase('scorecards.page_due_unread'));
+    const line = app.store.get('procurement').contract.lines[0];
+    app.store.set('procurement.variations', [
+      { ref: 'VO-1', date: '2018-05-12', code: line.code, quantity_delta: 2, rate_usd: null,
+        reason: 'Deeper', authorised_by: 'A. Kamara' },
+      { ref: 'VO-2', date: '2018-05-12', code: line.code, quantity_delta: 1, rate_usd: null,
+        reason: '', authorised_by: '' }]);
+    const works = app.projectPayload().works;
+    out.works = works && [works.contractor, works.drilled, works.completion_date, works.completion_due,
+      works.logged_m, works.claimed_m, JSON.stringify(works.checklist), works.contract, works.variations_signed,
+      works.variations_unsigned, works.variation_usd > 0];
+    await app.goto('portfolio');
+    press('Saved projects', 'Start from the open project');
+    const card = named(C.phrase('scorecards.page_heading'));
+    const text = card ? card.textContent : '';
+    out.card = ['1 borehole drilled by 1 contractor, from 1 project file.',
+      '+5 m on 1 borehole (75 m claimed, 70 m logged); 1 claimed more than 3 m over the logs',
+      '1 failed on 1 of 1 borehole checked', '1 signed, +$', '1 unsigned, not valued',
+      '1 of 1 finished late, 3 days in all, at most 3', 'Not ranked: 0 forecast, 5 needed',
+      'Daily drilling log signed by the rig operator and the supervisor at the end of every day']
+      .map((piece) => text.includes(piece));
+    const got = [];
+    const download = support.download;
+    support.download = (name, data) => { got.push({ name, data }); };
+    try {
+      const files = app.derived.portfolio.map((s, i) => [C.portfolioSiteLabel(s), app.derived.portfolioWorks[i],
+        app.derived.portfolioLedgers[i]]);
+      await app.buildScorecards(files, [...card.querySelectorAll('button')]
+        .find((b) => b.textContent === C.phrase('scorecards.page_build')));
+    } finally {
+      support.download = download;
+    }
+    if (got.length) {
+      const files = await support.unzip(new Uint8Array(await got[0].data.arrayBuffer()));
+      const xml = new DOMParser().parseFromString(new TextDecoder().decode(files['word/document.xml']),
+        'application/xml');
+      const words = Array.from(xml.getElementsByTagName('w:t')).map((t) => t.textContent).join(' ');
+      out.report = [got[0].name, ['scorecards.cards_heading', 'scorecards.checks_heading', 'scorecards.dry_heading',
+        'scorecards.method_heading'].every((id) => words.includes(C.phrase(id)))];
+    }
+    app.derived.portfolio = null;
+    app.derived.portfolioLedgers = null;
+    app.derived.portfolioWorks = null;
+    return out;
+  });
+  check('scorecards: the Procurement page takes the contract\'s completion date and refuses one written in ' +
+    'figures; the project file carries the works record of the checklist, the metres, the contract, its ' +
+    'variation orders and the log', scorecards.before === false && scorecards.field && scorecards.refused &&
+    scorecards.accepted && JSON.stringify(scorecards.works) === JSON.stringify(['WiNGiN Heavy Duty Machines Co. Ltd',
+      true, '13th May, 2018', '2018-05-10', 70, 75,
+      '{"development":{"answered":1,"failed":[]},"drilling":{"answered":1,"failed":["drl-daily-drilling-log"]}}',
+      true, 1, 1, true]), JSON.stringify(scorecards));
+  check('scorecards: the Portfolio page sets the borehole out on its contractor\'s scorecard, with the check ' +
+    'that failed, and saves Contractor_Scorecards.docx with its four sections',
+    scorecards.card.every(Boolean) && JSON.stringify(scorecards.report) === '["Contractor_Scorecards.docx",true]',
+    JSON.stringify(scorecards));
+
+  // --- Verify a document (PLAN.md step 8.1) ---------------------------------
+  // A handover report built here, chosen on the page: with no issue record it
+  // is unchanged but not confirmed; with the project file holding its record
+  // added, verified; with one digit changed, changed, naming the part; and
+  // its code, typed in lower case, is found in the records.
+  const verifying = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const d = app.derived;
+    const builder = await window.GWT.docx.handoverReport({
+      style: app.config().style, site: app.store.get('site'), log: d.log, design: d.design,
+      analysis: d.analysis, assessment: d.assessment, interpretations: d.interpretations,
+      committee: [], figures: [], readiness: app.reportReadiness('handover'), issue: app.issueFor('handover'),
+    });
+    const bytes = await builder.build();
+    const record = builder.record;
+    const parts = C.readPackage(bytes);
+    const xml = new TextDecoder().decode(parts['word/document.xml']);
+    const at = xml.search(/<w:t(?: [^>]*)?>[^<]*[0-9]/);
+    const digit = xml.indexOf(xml.slice(at).match(/[0-9]/)[0], at);
+    const changed = await support.zip(Object.keys(parts).map((name) => ({ name,
+      data: name === 'word/document.xml'
+        ? new TextEncoder().encode(xml.slice(0, digit) + (xml[digit] === '9' ? '8' : '9') + xml.slice(digit + 1))
+        : parts[name] })));
+    const verdicts = C.phraseTable('verification.verdicts');
+    const pickFile = support.pickFile;
+    const held = app.store.get('issued');
+    const session = app.verifySession;
+    const text = () => document.querySelector('#page-host').textContent;
+    const pause = () => new Promise((r) => setTimeout(r, 60));
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button')).find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const until = async (done) => {
+      for (let t = 0; t < 200 && !done(); t++) await new Promise((r) => setTimeout(r, 25));
+      await pause();
+    };
+    const out = {};
+    try {
+      app.store.set('issued', []);
+      session.files = [];
+      session.bytes = null;
+      session.typed = '';
+      app.goto('verify');
+      await pause();
+      out.noRecords = text().includes(C.phrase('verification.page_no_records'));
+      support.pickFile = async () => new File([bytes], 'handover.docx');
+      press('Choose a document (.docx)');
+      await until(() => session.bytes);
+      out.unconfirmed = text().includes(verdicts.unconfirmed) &&
+        Object.values(C.phraseTable('verification.questions')).every((q) => text().includes(q));
+      const file = JSON.stringify({ format: 'groundwater-toolkit-project', schema: 3, issued: [record], state: {} });
+      support.pickFile = async () => [new File([file], 'issued.gwt.json')];
+      press('Add project files');
+      await until(() => session.files.length);
+      out.verified = text().includes(verdicts.verified) && text().includes(record.code) &&
+        text().includes(C.phrase('verification.page_records', { n: 1 }));
+      support.pickFile = async () => new File([changed], 'changed.docx');
+      session.bytes = null;
+      press('Choose a document (.docx)');
+      await until(() => session.bytes);
+      out.changed = text().includes(verdicts.changed) &&
+        text().includes('word/document.xml (the text of the document)');
+      const input = Array.from(document.querySelectorAll('#page-host input'))
+        .find((i) => i.getAttribute('placeholder') === '0A1B-2C3D-5');
+      input.value = 'document ' + record.code.toLowerCase();
+      input.dispatchEvent(new Event('change'));
+      await pause();
+      out.lookup = text().includes(C.lookupCode(record.code, [record]).lines[0]);
+    } finally {
+      support.pickFile = pickFile;
+      app.store.set('issued', held || []);
+      session.files = [];
+      session.bytes = null;
+      session.typed = '';
+    }
+    return out;
+  });
+  check('verify: a document chosen on the page is unchanged but not confirmed with no record, verified ' +
+    'with the project file holding its record, changed with one digit changed, and its code is found',
+  verifying.noRecords && verifying.unconfirmed && verifying.verified && verifying.changed && verifying.lookup,
+  JSON.stringify(verifying));
+
+  // --- One evidence bundle for each borehole (PLAN.md step 8.3) -------------
+  // A handover report issued here is listed on the Handover page's Evidence
+  // bundle card; a file that is not a sealed document, added there, is
+  // refused in the catalogue's words; the bundle downloaded, chosen on the
+  // Verify a document page, is verified against the project's issue record,
+  // and unconfirmed with none held.
+  const bundling = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const d = app.derived;
+    const builder = await window.GWT.docx.handoverReport({
+      style: app.config().style, site: app.store.get('site'), log: d.log, design: d.design,
+      analysis: d.analysis, assessment: d.assessment, interpretations: d.interpretations,
+      committee: [], figures: [], readiness: app.reportReadiness('handover'), issue: app.issueFor('handover'),
+    });
+    const docBytes = await builder.build();
+    const held = app.store.get('issued');
+    const pickFile = support.pickFile, download = support.download, toast = support.toast;
+    const text = () => document.querySelector('#page-host').textContent;
+    const pause = () => new Promise((r) => setTimeout(r, 60));
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button')).find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const until = async (done) => {
+      for (let t = 0; t < 200 && !done(); t++) await new Promise((r) => setTimeout(r, 25));
+      await pause();
+    };
+    const out = {};
+    const toasts = [];
+    let saved = null;
+    try {
+      app.store.set('issued', []);
+      app.recordIssue(builder.record, 'handover_for_bundle.docx', docBytes);
+      support.toast = (message, tone) => { toasts.push([message, tone]); };
+      support.download = (name, blob) => { saved = { name, blob }; };
+      app.goto('handover');
+      await until(() => text().includes(C.phrase('bundle.page_lead')));
+      out.card = text().includes(C.phrase('bundle.page_documents')) && text().includes('handover_for_bundle.docx');
+      support.pickFile = async () => [new File([new TextEncoder().encode('not a document')], 'notes.docx')];
+      press('Add documents issued earlier (.docx)');
+      await until(() => app.bundleSession.added.length);
+      press('Download evidence bundle');
+      await pause();
+      out.refused = !saved && toasts.some((t) => t[1] === 'error' &&
+        t[0].startsWith('notes.docx cannot go into an evidence bundle'));
+      press('Clear the added documents');
+      await pause();
+      press('Download evidence bundle');
+      await until(() => saved);
+      const bytes = new Uint8Array(await saved.blob.arrayBuffer());
+      out.name = saved.name;
+      out.facts = C.verifyEvidenceBundle(bytes, null).facts;
+      app.goto('verify');
+      await pause();
+      support.pickFile = async () => new File([bytes], saved.name);
+      press('Choose a bundle (.zip)');
+      await until(() => app.verifySession.bundle);
+      const verdicts = C.phraseTable('bundle.verdicts');
+      out.verified = text().includes(verdicts.verified) && text().includes('reports/handover_for_bundle.docx');
+      app.store.set('issued', []);
+      app.render();
+      await pause();
+      out.unconfirmed = text().includes(verdicts.unconfirmed) && text().includes(C.phrase('bundle.confirm_no_records'));
+    } finally {
+      support.pickFile = pickFile;
+      support.download = download;
+      support.toast = toast;
+      app.store.set('issued', held || []);
+      app.bundleSession.added = [];
+      app.verifySession.bundle = null;
+      app.verifySession.bundleName = '';
+    }
+    return out;
+  });
+  check('bundle: the Handover page lists the document issued, refuses a file that is not one, and downloads ' +
+    'a bundle that the Verify a document page verifies against the project\'s record, and not with none',
+  bundling.card && bundling.refused && /^Evidence_Bundle_.*\.zip$/.test(bundling.name || '') &&
+    bundling.facts && bundling.facts.documents.length === 1 && bundling.verified && bundling.unconfirmed,
+  JSON.stringify(Object.assign({}, bundling, { facts: bundling.facts && bundling.facts.documents })));
+
+  // Where to drill next, within a budget (PLAN.md step 6.1): on the Coverage
+  // gap page, with Dr Timbo's borehole priced on the Costing page and three
+  // water points loaded. Nothing is chosen before an estimate or a budget;
+  // then the sentences and the table, an access cost typed for the first
+  // area chosen raising its cost, and the CSV the page saves is the engine's
+  // for the page's own ranking.
+  const allocation = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const heading = C.phrase('allocation.heading');
+    const named = () => [...document.querySelectorAll('#page-host .card')]
+      .find((c) => (c.querySelector('.card-title') || {}).textContent === heading);
+    const out = {};
+    app.derived.waterPoints = C.parseWpdxRecords([
+      { lat_deg: '7.8767', lon_deg: '-11.1875', status_clean: 'Functional', water_source_clean: 'Borehole' },
+      { lat_deg: '8.8817', lon_deg: '-12.0442', status_clean: 'Functional', water_source_clean: 'Borehole' },
+      { lat_deg: '7.5260', lon_deg: '-12.5050', status_clean: 'Functional', water_source_clean: 'Borehole' }]);
+    app.store.set('coverage.level', 'district');
+    app.store.set('coverage.budget', null);
+    app.store.set('coverage.access_district', {});
+    const estimate = app.derived.estimate;
+    app.derived.estimate = null;
+    await app.goto('coverage');
+    out.noEstimate = !!named() && named().textContent.includes(C.phrase('allocation.no_estimate'));
+    app.derived.estimate = estimate;
+    app.render();
+    out.noBudget = named().textContent.includes(C.phrase('allocation.no_budget'));
+    const budget = named().querySelector('input[type="number"]');
+    budget.value = '200000';
+    budget.dispatchEvent(new Event('change'));
+    const card = named();
+    const callout = card.querySelector('.callout');
+    out.headline = callout ? callout.textContent : '';
+    out.words = [C.phrase('allocation.coarse'), C.phrase('allocation.access_none')]
+      .map((t) => card.textContent.includes(t));
+    const rows = [...card.querySelectorAll('table.data tbody tr')];
+    out.rows = rows.length;
+    const chosen = rows.find((r) => r.classList.contains('row-ok'));
+    const cells = (r) => [...r.querySelectorAll('td')].map((td) => td.textContent);
+    const first = chosen ? cells(chosen) : [];
+    out.first = first.slice(0, 1);
+    // the page's own ranking, as the page builds it, and its borehole
+    const costing = app.store.get('costing');
+    const cfg = app.config();
+    const cost = C.sampleCost(app.derived.costInputs, app.derived.costRates, {
+      overheadsPercent: costing.overheads, marginPercent: costing.margin,
+      contingencyPercent: costing.contingency, vatPercent: costing.vat, config: cfg });
+    const year = Math.max(app.store.get('coverage.year', new Date().getFullYear()), C.CENSUS_YEAR);
+    const rate = app.store.get('coverage.rate', Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100) / 100;
+    const ranked = () => C.coverageRows(C.projectPopulation(C.loadDistrictPopulation(), year, { rate }).projected,
+      C.countPointsByDistrict(app.derived.waterPoints, C.loadPolygons(), C.loadChiefdomDistrict()).counts);
+    const got = [];
+    const download = support.download;
+    support.download = (name, data) => { got.push({ name, data }); };
+    try {
+      [...card.querySelectorAll('button')].find((b) => b.textContent === C.phrase('allocation.download')).click();
+    } finally {
+      support.download = download;
+    }
+    const want = C.allocationCsv(C.allocate(ranked(), 200000, cost, { level: 'district', config: cfg }));
+    out.csv = got.length === 1 && got[0].name === C.phrase('allocation.csv_name') && got[0].data === want;
+    // an access cost for the first area chosen
+    if (chosen) {
+      const input = chosen.querySelector('td:last-child input');
+      input.value = '5000';
+      input.dispatchEvent(new Event('change'));
+      const again = named();
+      const row = [...again.querySelectorAll('table.data tbody tr')]
+        .find((r) => cells(r)[0] === first[0]);
+      const costCol = C.allocationHeader({ level: 'district' }).indexOf(C.phrase('allocation.col_cost'));
+      out.dearer = Number(cells(row)[costCol].replace(/,/g, '')) > Number(first[costCol].replace(/,/g, ''));
+      out.access = again.textContent.includes(C.phrase('allocation.access_some', { n: 1 }));
+      out.kept = JSON.stringify(app.store.get('coverage.access_district'));
+    }
+    app.store.set('coverage.budget', null);
+    app.store.set('coverage.access_district', {});
+    app.derived.waterPoints = null;
+    return out;
+  });
+  check('allocation: the Coverage gap page asks for an estimate and a budget before it chooses',
+    allocation.noEstimate && allocation.noBudget, JSON.stringify(allocation));
+  check('allocation: the page says what the budget buys, that chiefdom populations are too coarse for ' +
+    'access distances and that access is not modelled, and lists every district',
+    allocation.headline.startsWith('Within US$ 200,000, ') && allocation.words.every(Boolean) &&
+    allocation.rows === 16, JSON.stringify(allocation));
+  check('allocation: the CSV the page saves is the engine\'s choice for the page\'s own ranking',
+    allocation.csv, JSON.stringify(allocation));
+  check('allocation: an access cost typed for an area raises its cost and is kept',
+    allocation.dearer && allocation.access &&
+    allocation.kept === JSON.stringify({ [allocation.first[0]]: 5000 }), JSON.stringify(allocation));
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
