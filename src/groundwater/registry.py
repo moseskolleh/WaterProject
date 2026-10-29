@@ -626,6 +626,11 @@ class Asset:
     #: ``chemistry``. None where the record carries none, and then the
     #: routine inspection is due at the schedule's shorter interval.
     rising_main: dict | None = None
+    #: The issue records of the documents issued about this borehole
+    #: (PLAN.md step 8.1), as :func:`groundwater.verification.
+    #: clean_issue_records` keeps them, so a copy of one can be checked
+    #: against the register.
+    documents: list[dict] = field(default_factory=list)
 
     @property
     def latlon(self) -> tuple[float, float] | None:
@@ -651,13 +656,16 @@ class Asset:
 
     def as_dict(self) -> dict:
         payload = {k: v for k, v in self.__dict__.items()
-                   if k not in ("events", "area_mechanic", "rising_main")}
+                   if k not in ("events", "area_mechanic", "rising_main", "documents")}
         # only a record that has them carries them, so a project file with
-        # no mechanic named and no rising main is written as it was before
+        # no mechanic named, no rising main and no document issued is
+        # written as it was before
         if self.area_mechanic:
             payload["area_mechanic"] = self.area_mechanic
         if self.rising_main is not None:
             payload["rising_main"] = dict(self.rising_main)
+        if self.documents:
+            payload["documents"] = [dict(record) for record in self.documents]
         payload["events"] = [e.identified_for(self.asset_id).as_dict()
                              for e in self.events]
         return payload
@@ -734,14 +742,17 @@ def asset_from_dict(payload: dict) -> Asset | None:
     asset_id = parse_asset_id(payload.get("asset_id"))
     if not asset_id:
         return None
+    from .verification import clean_issue_records
+
     known = {f for f in Asset.__dataclass_fields__
-             if f not in ("events", "area_mechanic", "rising_main")}
+             if f not in ("events", "area_mechanic", "rising_main", "documents")}
     fields = {k: v for k, v in payload.items() if k in known}
     fields["asset_id"] = asset_id
     asset = Asset(**fields)
     asset.area_mechanic = _text_field(payload.get("area_mechanic"))
     asset.rising_main = clean_rising_main(payload.get("rising_main"))
     asset.events = merge_events(asset_id, payload.get("events") or [])
+    asset.documents = clean_issue_records(payload.get("documents"))
     return asset
 
 
@@ -751,8 +762,12 @@ def asset_from_project(state: dict) -> Asset | None:
     Nothing is invented: the commissioning event is not written here, because
     a borehole is commissioned by somebody deciding it is, on a day, and that
     decision is a record with a name on it rather than a side effect of
-    opening a page.
+    opening a page. The draft carries the issue records of the documents
+    issued about the borehole from the project (its ``issued``), so a record
+    first stored after they were issued holds them (PLAN.md step 8.1).
     """
+    from .verification import borehole_records
+
     site = _project_site(state)
     if site is None:
         return None
@@ -777,6 +792,7 @@ def asset_from_project(state: dict) -> Asset | None:
         total_depth_m=depth,
         safe_yield_m3_per_h=getattr(recommendation, "safe_yield_m3_per_h", None),
         installed_by=getattr(site, "contractor", "") or "",
+        documents=borehole_records(state.get("issued")),
     )
 
 

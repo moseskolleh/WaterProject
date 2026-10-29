@@ -20,7 +20,8 @@ from shared import (
     app_config,
     choose_input,
     figure,
-    offer_download,
+    issue_for,
+    offer_document,
     parse_source,
     report_gate,
     show_flags,
@@ -111,8 +112,9 @@ def render() -> None:
                                     readiness=_quality_gate),
                 workdir() / "Water_Quality_Report.docx",
                 app_config(),
+                issue=issue_for("quality"),
             )
-          offer_download(report_path, "Download water quality report (.docx)")
+          offer_document(report_path, "Download water quality report (.docx)")
 
 
 @st.cache_data(show_spinner=False, max_entries=16)

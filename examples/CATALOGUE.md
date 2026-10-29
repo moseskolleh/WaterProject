@@ -54,8 +54,12 @@ Drilling log to borehole design and drawing, constant discharge test, water qual
 
 ## Packs
 
-`python examples/build_catalogue.py` writes one zip per case into
-`examples/packs/`, holding the input workbooks, the reports, the
-figures and any derived tables. They are built rather than committed:
-every file in them is already in the repository, and they are
-byte-reproducible, so a second copy would only go stale.
+`python examples/build_catalogue.py` writes one evidence bundle per
+case into `examples/packs/`: the input workbooks in `raw/`, any
+derived tables in `tables/`, the figures in `figures/` and the reports
+in `reports/`, with a `manifest.json` of every file's SHA-256 and a
+`README.txt` saying how to check it (`groundwater verify
+examples/packs/dr_timbo.zip`). A worked example is not issued, so a
+pack checks as unchanged but not confirmed. They are built rather than
+committed: every file in them is already in the repository, and they
+are byte-reproducible, so a second copy would only go stale.

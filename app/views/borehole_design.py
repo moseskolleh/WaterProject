@@ -16,6 +16,8 @@ from shared import (
     app_config,
     choose_input,
     figure,
+    issue_for,
+    offer_document,
     offer_download,
     page_design,
     parse_source,
@@ -145,6 +147,7 @@ def render() -> None:
                 ),
                 workdir() / "Borehole_Completion_Report.docx",
                 app_config(),
+                issue=issue_for("completion"),
             )
-          offer_download(report_path,
+          offer_document(report_path,
                          "Download borehole completion report (.docx)")

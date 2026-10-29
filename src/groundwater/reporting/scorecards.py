@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from ..config import Config
 from ..scorecards import scorecard_content
+from ..verification import Issue
 from .docx_utils import ReportBuilder
 
 __all__ = ["build_scorecard_report"]
@@ -25,13 +26,18 @@ _WIDTHS = {
 }
 
 
-def build_scorecard_report(files, out_path, issued_on: str = "", config: Config | None = None):
+def build_scorecard_report(files, out_path, issued_on: str = "", config: Config | None = None,
+                           issue: Issue | None = None):
     """Write the contractor scorecards over ``files`` ((project label, works
     record, ledger) for each project file) to ``out_path`` and return its
-    path."""
+    path. ``issue`` names the evidence (the project files on the page, PLAN.md
+    step 8.1); its day is ``issued_on`` where it gives none."""
     config = config or Config()
     content = scorecard_content(files, issued_on, config)
-    rb = ReportBuilder(config.style, title=content["title"])
+    issue = issue or Issue()
+    if not issue.issued_on:
+        issue = Issue(issued_on=issued_on, evidence=issue.evidence)
+    rb = ReportBuilder(config.style, title=content["title"], kind="scorecards", issue=issue, config=config)
     rb.cover([content["title"]], [content["subtitle"]], [(label, value) for label, value in content["rows"]])
     rb.table_of_contents()
     rb.executive_summary(content["summary"])

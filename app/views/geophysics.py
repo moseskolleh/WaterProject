@@ -47,7 +47,8 @@ from shared import (
     current_ledger,
     figure,
     _next_step,
-    offer_download,
+    issue_for,
+    offer_document,
     _offer_raster,
     parse_source,
     record_survey_predictions,
@@ -375,10 +376,11 @@ def render() -> None:
                 ),
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),
+                issue=issue_for("geophysical"),
             )
             # what the report predicts goes into the ledger as it is issued
             record_survey_predictions(soundings, interps, ranges, odds)
-          offer_download(report_path, "Download geophysical survey report (.docx)")
+          offer_document(report_path, "Download geophysical survey report (.docx)")
 
     _next_step("Cost this borehole →", "Costing & BoQ",
                "Siting done. Price the borehole at the recommended depth.")

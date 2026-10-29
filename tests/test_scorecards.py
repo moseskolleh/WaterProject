@@ -378,6 +378,28 @@ def test_the_report_is_written_as_a_word_document(tmp_path, timbo):
     assert Path(path).read_bytes() == Path(again).read_bytes()
 
 
+def test_the_report_is_issued_from_the_project_files(tmp_path, timbo):
+    """The scorecards came after documents were given manifests (PLAN.md step
+    8.1) on a branch of their own; merged, the report is a document of its
+    own kind, dated from the issue, listing the project files it was built
+    from, and verified against its issue record."""
+    pytest.importorskip("docx")
+    from groundwater import verification as V
+    from groundwater.reporting.scorecards import build_scorecard_report
+
+    record = SC.works_record(_site(), timbo, None, None, {}, None, CONTRACT)
+    evidence = V.evidence_entry(phrase_table("verification.evidence_kinds")["project"], "timbo.yaml", b"saved")
+    issue = V.Issue(issued_on="2026-10-29", evidence=(evidence,))
+    path = build_scorecard_report([("Dr Timbo", record, None)], tmp_path / "Contractor_Scorecards.docx",
+                                  "", issue=issue)
+    data = Path(path).read_bytes()
+    issued = V.document_record(data)
+    assert (issued["kind"], issued["issued_on"]) == ("scorecards", "2026-10-29")
+    facts = V.read_manifest(V.read_package(data)[V.MANIFEST_PART].decode())["facts"]
+    assert [e["name"] for e in facts["evidence"]] == ["timbo.yaml"]
+    assert V.verify_document(data, [issued])["verdict"] == "verified"
+
+
 # ----------------------------------------------------- the project file
 
 def test_the_works_record_and_the_contract_ride_in_the_project_file(timbo):

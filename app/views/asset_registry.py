@@ -71,9 +71,11 @@ from groundwater.text import phrase, phrase_table
 from shared import (
     app_config,
     figure,
+    issue_for,
     kept_upload,
-    offer_download,
+    offer_document,
     _project_state,
+    project_file_evidence,
     report_gate,
     workdir,
 )
@@ -182,6 +184,15 @@ def render() -> None:
                   "Note": e.note, "Recorded by": e.by} for e in _live.events],
                 hide_index=True, width="stretch",
             )
+        # the documents issued about the borehole, which its record keeps
+        # (PLAN.md step 8.1)
+        if _live.documents:
+            st.subheader("Documents issued")
+            st.caption(phrase("verification.registry_documents"))
+            _words = phrase_table("verification.readiness_words")
+            st.dataframe([{"Code": r["code"], "Document": r["title"], "Issued on": r["issued_on"],
+                           "Readiness": _words[r["readiness"]]} for r in _live.documents],
+                         hide_index=True, width="stretch")
 
         # the report address a plate's symbol links to (PLAN.md step 7.1),
         # saved with the project by its org_ prefix
@@ -196,20 +207,20 @@ def render() -> None:
                       disabled=bool(_refused)):
             _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
                                         readiness=report_gate("placard"))
-            offer_download(
+            offer_document(
                 build_asset_placard(_inputs,
                                     workdir() / f"placard_{_live.asset_id}.docx",
-                                    app_config()),
+                                    app_config(), issue=issue_for("placard")),
                 "Borehole identification plate")
         if _r2.button("Build asset record (.docx)", key="asset_record_report"):
             _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
                                         readiness=report_gate("asset"),
                                         schedule=Schedule.from_config(app_config()),
                                         quality=st.session_state.get("wq_assessment"))
-            offer_download(
+            offer_document(
                 build_asset_record(_inputs,
                                    workdir() / f"asset_{_live.asset_id}.docx",
-                                   app_config()),
+                                   app_config(), issue=issue_for("asset")),
                 "Borehole asset record")
 
     st.divider()
@@ -228,6 +239,9 @@ def render() -> None:
         "Saved project files (.yaml)", "registry_upload", type=["yaml", "yml"],
         accept_multiple_files=True)
     _assets, _dropped = [], 0
+    # the files, by their hashes, a round sheet drawn from the register is
+    # issued from (PLAN.md step 8.1)
+    _evidence = []
     for _uploaded in _files or []:
         try:
             _updates = deserialize_project(_uploaded.getvalue())
@@ -239,6 +253,7 @@ def render() -> None:
             _dropped += 1
             continue
         _assets.append(_record)
+        _evidence.append(project_file_evidence(_uploaded.name, _uploaded.getvalue()))
     # the reports imported above, shown in the histories of the boreholes
     # they name; the project files themselves are not changed
     _shown = merge_reports(_assets, _reports)
@@ -298,7 +313,7 @@ def render() -> None:
             file_name="borehole-reports.json", key="reports_elsewhere")
 
     st.divider()
-    _service_rounds(_live, _assets)
+    _service_rounds(_live, _assets, _evidence)
 
     st.divider()
     _survival(_live, _assets)
@@ -405,11 +420,12 @@ def _survival(asset, register) -> None:
             st.markdown(f"- {_ref}")
 
 
-def _service_rounds(asset, register) -> None:
+def _service_rounds(asset, register, evidence=()) -> None:
     """What is due on a day at this borehole and at every borehole in the
     register, by area mechanic and in order, with the round sheets to print
     (PLAN.md step 7.3). The day is the page's input, today unless another is
-    chosen; the engine never reads the clock."""
+    chosen; the engine never reads the clock. ``evidence`` is the register's
+    project files, which the sheets are issued from."""
     st.subheader("Service rounds")
     st.caption(
         "What is due on the day below, at this borehole and at every borehole "
@@ -455,9 +471,9 @@ def _service_rounds(asset, register) -> None:
         st.caption(_words["intervals"])
     if st.button("Build round sheets (.docx)", key="rounds_sheet",
                  disabled=not _result["n_boreholes"] or bool(_refused)):
-        offer_download(
+        offer_document(
             build_round_sheet(_result, workdir() / f"rounds_{_result['as_of']}.docx",
-                              app_config()),
+                              app_config(), issue=issue_for("rounds", files=evidence)),
             "Round sheets")
 
 

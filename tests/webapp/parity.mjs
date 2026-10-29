@@ -5179,6 +5179,276 @@ await withPage(async (page, base, consoleErrors) => {
       'report for no borehole held', reached, 'not reached: ' + missing.join('; '));
   }
 
+  // --- Documents that can be verified (PLAN.md step 8.1) ---
+  // The twins of groundwater/verification.py on make_reference.py's cases:
+  // codes from digests and from what is typed, the facts a manifest records,
+  // the manifest written, read and sealed into a package, packages read rule
+  // by rule (a python-docx report and the field kit Chromium wrote among
+  // them) with the four answers given of each, issue records kept, read out
+  // of either app's project file and looked up, and the documents an asset
+  // record keeps, all held whole.
+  {
+    const VR = R.verification;
+    const vrJs = await page.evaluate(({ VR }) => {
+      const C = GWT.core, S = GWT.support;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.message || e) }; }
+      };
+      const facts = (a) => C.manifestFacts(a.kind, a.title, a.issued_on, a.engine, a.calibration,
+        a.readiness, a.evidence);
+      const bytes = (b64) => S.base64ToBytes(b64);
+      const sealed = attempt(() => {
+        const out = C.sealPackage(VR.seal.entries, VR.seal.facts,
+          (code) => ({ 'word/footer1.xml': 'Document ' + code + ' - page' }));
+        const parts = {};
+        Object.keys(out.entries).forEach((name) => { parts[name] = new TextDecoder().decode(out.entries[name]); });
+        return { code: out.code, sha256: out.sha256, manifest: out.manifest, record: out.record, parts };
+      });
+      return {
+        codes: VR.codes.map((c) => C.documentCode(c[0])),
+        qrPng: VR.qr_png.map((c) => C.sha256Hex(C.qrPng(C.qrEncode(c[0], { ecc: 'H' })))),
+        parse: VR.parse.map((c) => C.parseDocumentCode(c[0])),
+        readiness: VR.readiness.map((c) => C.readinessFacts(c[0])),
+        calibration: C.calibrationFacts(null),
+        manifests: VR.manifests.map((m) => attempt(() => {
+          const f = facts(m.args);
+          const digest = C.codeDigest(f, VR.parts);
+          const code = C.documentCode(digest);
+          return { facts: f, digest, code, xml: C.manifestXml(f, code, VR.parts, VR.carriers) };
+        })),
+        refusals: VR.refusals.map((r) => attempt(() => facts(r.args))),
+        read: VR.read.map((c) => C.readManifest(c[0])),
+        seal: sealed,
+        sealXml: attempt(() => C.sealPackage(Object.assign({}, VR.seal.entries, {
+          '[Content_Types].xml': '<Types xmlns="t"><Default Extension="xml" ContentType="application/xml"/></Types>',
+        }), VR.seal.facts).manifest),
+        packages: VR.packages.map((p) => attempt(() => {
+          const data = bytes(p.b64);
+          const read = C.readPackage(data);
+          let parts = null;
+          if (read) {
+            parts = {};
+            Object.keys(read).forEach((name) => { parts[name] = C.sha256Hex(read[name]); });
+          }
+          const reports = {};
+          Object.keys(p.reports).forEach((key) => {
+            reports[key] = { records: p.reports[key].records,
+              report: C.verifyDocument(data, p.reports[key].records) };
+          });
+          return { parts, record: C.documentRecord(data), reports };
+        })),
+        records: { clean: C.cleanIssueRecords(VR.records.raw), borehole: C.boreholeRecords(VR.records.raw),
+          not_a_list: C.cleanIssueRecords({ a: 1 }) },
+        payloads: VR.payloads.map((c) => C.issueRecordsOf(c[0])),
+        lookups: VR.lookups.map((c) => C.lookupCode(c.text, c.records)),
+        assets: {
+          stored: VR.assets.stored.map((c) => (C.assetFromDict(c[0]) || {}).documents || []),
+          draft: (C.assetFromProject({ site: VR.assets.draft.site, issued: VR.assets.draft.issued }) || {})
+            .documents || [],
+        },
+      };
+    }, { VR });
+    const same = (label, got, want) => {
+      const found = firstDifference(got, want, label);
+      check(`verification: ${label}`, !found, found);
+    };
+    same('codes from digests', vrJs.codes, VR.codes.map((c) => c[1]));
+    same('the cover\'s symbol, the same PNG byte for byte', vrJs.qrPng, VR.qr_png.map((c) => c[1]));
+    same('codes read from what is typed', vrJs.parse, VR.parse.map((c) => c[1]));
+    same('the readiness a manifest records', vrJs.readiness, VR.readiness.map((c) => c[1]));
+    same('the calibration set in force, named', vrJs.calibration, VR.calibration);
+    same('facts, code digest, code and manifest', vrJs.manifests,
+      VR.manifests.map((m) => ({ ok: { facts: m.facts, digest: m.digest, code: m.code, xml: m.xml } })));
+    same('facts refused, with the same sentence', vrJs.refusals, VR.refusals.map((r) => ({ threw: r.error })));
+    same('manifests read back, or refused', vrJs.read, VR.read.map((c) => c[1]));
+    same('a package sealed', vrJs.seal, { ok: { code: VR.seal.code, sha256: VR.seal.sha256,
+      manifest: VR.seal.manifest, record: VR.seal.record, parts: VR.seal.parts } });
+    same('a package that types .xml already, sealed', vrJs.sealXml, { ok: VR.seal_xml });
+    VR.packages.forEach((p, i) => {
+      same(`the package "${p.name}": read, recorded and answered`, vrJs.packages[i],
+        { ok: { parts: p.parts, record: p.record, reports: p.reports } });
+    });
+    const verdicts = new Set(VR.packages.flatMap((p) => Object.values(p.reports).map((r) => r.report.verdict)));
+    check('verification: the packages reach every verdict', [
+      'verified', 'unconfirmed', 'changed', 'not_issued', 'altered_manifest', 'damaged_manifest',
+      'no_manifest', 'unreadable'].every((v) => verdicts.has(v)), JSON.stringify([...verdicts]));
+    same('issue records kept', vrJs.records, { clean: VR.records.clean, borehole: VR.records.borehole,
+      not_a_list: VR.records.not_a_list });
+    same('issue records read from either app\'s project file', vrJs.payloads, VR.payloads.map((c) => c[1]));
+    same('codes looked up', vrJs.lookups, VR.lookups.map((c) => c.result));
+    same('the documents an asset record keeps, stored and drafted', vrJs.assets,
+      { stored: VR.assets.stored.map((c) => c[1]), draft: VR.assets.draft.documents });
+  }
+
+  // --- One evidence bundle for each borehole (PLAN.md step 8.3) ---
+  // The twins of groundwater/bundle.py on make_reference.py's cases: names
+  // as a bundle holds them, the readiness of documents taken together, the
+  // notes and the README; bundles built byte for byte, and refused; the
+  // figures taken out of a document; manifest.json read back or refused; and
+  // a bundle changed in each way that matters (changed here as the reference
+  // changed it, with C.storedZip) checked with and without issue records.
+  {
+    const BD = R.bundle;
+    const fixtures = {};
+    R.verification.packages.forEach((p) => {
+      if (p.name === 'python-docx' || p.name === "the browser's") fixtures[p.name] = p.b64;
+    });
+    const bdJs = await page.evaluate(({ BD, fixtures }) => {
+      const C = GWT.core, S = GWT.support;
+      const attempt = (fn) => {
+        try { return { ok: fn() }; } catch (e) { return { threw: String(e && e.message || e) }; }
+      };
+      const resolve = (spec) => S.base64ToBytes(spec.doc !== undefined ? BD.documents[spec.doc]
+        : spec.fixture !== undefined ? fixtures[spec.fixture] : spec.b64);
+      const filesOf = (list) => list.flatMap((f) => (f.figures_of
+        ? C.documentFigures(f.figures_of.name, resolve(f.figures_of))
+        : [{ folder: f.folder, name: f.name, data: resolve(f), what: f.what || '' }]));
+      const build = (kase) => C.buildEvidenceBundle(kase.title, filesOf(kase.files), {
+        borehole: kase.options.borehole || '', madeOn: kase.options.made_on, engine: kase.options.engine,
+        calibration: kase.options.calibration, records: kase.options.records });
+      const clone = (v) => JSON.parse(JSON.stringify(v));
+      // make_reference.py's _bd_edited, _bd_manifest_text and _bd_apply
+      const edited = (facts, edits) => {
+        const out = clone(facts);
+        edits.forEach((edit) => {
+          const path = edit[1];
+          let holder = out;
+          path.slice(0, -1).forEach((key) => { holder = holder[key]; });
+          const last = path[path.length - 1];
+          if (edit[0] === 'set') holder[last] = clone(edit[2]);
+          else if (edit[0] === 'append') holder[last].push(clone(edit[2]));
+          else if (edit[0] === 'insert') holder[last].splice(edit[2], 0, clone(edit[3]));
+          else if (edit[0] === 'reverse') holder[last].reverse();
+          else if (edit[0] === 'drop') holder[last] = holder[last].filter((x) => x.path.indexOf(edit[2]) !== 0);
+          else throw new Error(edit[0]);
+        });
+        return out;
+      };
+      const manifestText = (text, facts, recipe) => {
+        if ('text' in recipe) return recipe.text;
+        if ('nest' in recipe) return '['.repeat(recipe.nest) + ']'.repeat(recipe.nest);
+        if ('edits' in recipe || 'dump' in recipe) {
+          let e = edited(facts, recipe.edits || []);
+          const dump = recipe.dump || {};
+          if (dump.order) {
+            const ordered = {};
+            dump.order.forEach((key) => { ordered[key] = e[key]; });
+            e = ordered;
+          }
+          text = JSON.stringify(e, null, dump.indent === undefined ? 2 : dump.indent) + '\n';
+          if (dump.ascii) {
+            text = text.replace(/[\u0080-￿]/g, (ch) => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
+          }
+        }
+        if (recipe.replace) {
+          const at = text.indexOf(recipe.replace[0]);
+          text = text.slice(0, at) + recipe.replace[1] + text.slice(at + recipe.replace[0].length);
+        }
+        if (recipe.cut) text = text.slice(0, -recipe.cut);
+        if (recipe.wrap) text = recipe.wrap[0] + text + recipe.wrap[1];
+        if (recipe.crlf) text = text.split('\n').join('\r\n');
+        return text;
+      };
+      const byCodePoint = (a, b) => {
+        const x = Array.from(a, (ch) => ch.codePointAt(0)), y = Array.from(b, (ch) => ch.codePointAt(0));
+        for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i];
+        return x.length - y.length;
+      };
+      const apply = (base, recipe) => {
+        if (recipe.raw !== undefined && recipe.raw !== null) return S.base64ToBytes(recipe.raw);
+        const parts = Object.assign(Object.create(null), C.readPackage(base));
+        let text = new TextDecoder().decode(parts['manifest.json']);
+        const facts = C.readBundleManifest(text);
+        (recipe.drop || []).forEach((path) => { delete parts[path]; });
+        Object.keys(recipe.set || {}).forEach((path) => {
+          const value = recipe.set[path];
+          parts[path] = S.base64ToBytes(typeof value === 'string' ? value : BD.documents[value.doc]);
+        });
+        if (recipe.manifest) {
+          if (recipe.manifest.in_line) {
+            const changed = clone(facts);
+            changed.files.forEach((entry) => {
+              if (recipe.manifest.in_line.indexOf(entry.path) >= 0) {
+                entry.sha256 = C.sha256Hex(parts[entry.path]);
+                entry.bytes = parts[entry.path].length;
+              }
+            });
+            text = manifestText(text, changed, { edits: recipe.manifest.edits });
+          } else {
+            text = manifestText(text, facts, recipe.manifest);
+          }
+          parts['manifest.json'] = new TextEncoder().encode(text);
+        }
+        return C.storedZip(Object.keys(parts).sort(byCodePoint).map((name) => [name, parts[name]]));
+      };
+      const answered = (report, records) => {
+        const rest = Object.assign({}, report);
+        delete rest.facts;
+        return { records, facts: report.facts !== null, report: rest };
+      };
+      const smallFacts = C.readBundleManifest(BD.read_base);
+      const base = build(BD.builds[0]).bytes;
+      const fixtureBundle = build(BD.builds[BD.builds.length - 1]).bytes;
+      const fixtureRecords = BD.builds[BD.builds.length - 1].options.records;
+      return {
+        names: BD.names.map((c) => C.bundleName(c[0])),
+        readiness: BD.readiness.map((c) => C.bundleReadiness(c[0])),
+        notes: Object.fromEntries(C.BUNDLE_FOLDERS.map((folder) => [folder, C.bundleNote(folder)])),
+        readmes: [C.bundleReadme(smallFacts), attempt(() => C.bundleReadme(build(BD.builds[2]).facts)).ok],
+        figures: BD.figures.map((f) => C.documentFigures(f.name, resolve(f.spec)).map((x) => ({
+          folder: x.folder, name: x.name, sha256: C.sha256Hex(x.data), what: x.what }))),
+        builds: BD.builds.map((kase) => attempt(() => {
+          const out = build(kase);
+          return { sha256: out.sha256, manifest: out.manifest, bytes_sha256: C.sha256Hex(out.bytes),
+            size: out.bytes.length };
+        })),
+        refusals: BD.refusals.map((kase) => attempt(() => build(kase).sha256)),
+        read: BD.read.map((c) => C.readBundleManifest(manifestText(BD.read_base, smallFacts, c[0]))),
+        checks: BD.checks.map((kase) => attempt(() => {
+          const data = kase.recipe.doc !== undefined ? S.base64ToBytes(BD.documents[kase.recipe.doc])
+            : apply(base, kase.recipe);
+          const reports = {};
+          Object.keys(kase.reports).forEach((key) => {
+            reports[key] = answered(C.verifyEvidenceBundle(data, kase.reports[key].records),
+              kase.reports[key].records);
+          });
+          return { sha256: C.sha256Hex(data), reports };
+        })),
+        fixtureCheck: {
+          none: answered(C.verifyEvidenceBundle(fixtureBundle, null), null).report,
+          theirs: answered(C.verifyEvidenceBundle(fixtureBundle, fixtureRecords), null).report,
+        },
+      };
+    }, { BD, fixtures });
+    const same = (label, got, want) => {
+      const found = firstDifference(got, want, label);
+      check(`bundle: ${label}`, !found, found);
+    };
+    same('names as a bundle holds them', bdJs.names, BD.names.map((c) => c[1]));
+    same('the readiness of documents taken together', bdJs.readiness, BD.readiness.map((c) => c[1]));
+    same('the notes an empty folder carries', bdJs.notes, BD.notes);
+    same('the README, with a title and with none', bdJs.readmes, BD.readmes);
+    same('figures taken out of a document', bdJs.figures, BD.figures.map((f) => f.figures));
+    BD.builds.forEach((kase, i) => {
+      same(`the bundle "${kase.name}", byte for byte`, bdJs.builds[i], { ok: kase.result });
+    });
+    same('bundles refused, with the same sentence', bdJs.refusals, BD.refusals.map((r) => ({ threw: r.error })));
+    same('manifest.json read back, or refused', bdJs.read, BD.read.map((c) => c[1]));
+    BD.checks.forEach((kase, i) => {
+      same(`the bundle "${kase.recipe.name}": changed alike and answered`, bdJs.checks[i],
+        { ok: { sha256: kase.sha256, reports: kase.reports } });
+    });
+    same('the bundle of the committed documents, answered', bdJs.fixtureCheck, BD.fixture_check);
+    const verdicts = new Set(BD.checks.flatMap((c) => Object.values(c.reports).map((r) => r.report.verdict))
+      .concat(Object.values(BD.fixture_check).map((r) => r.verdict)));
+    check('bundle: the cases reach every verdict', ['verified', 'unconfirmed', 'changed', 'not_issued',
+      'damaged_manifest', 'no_manifest', 'unreadable'].every((v) => verdicts.has(v)), JSON.stringify([...verdicts]));
+    const confirmations = new Set(BD.checks.concat([{ reports: { x: { report: BD.fixture_check.theirs } } }])
+      .flatMap((c) => Object.values(c.reports).flatMap((r) => r.report.files.map((f) => f.confirmed))));
+    check('bundle: the cases reach every confirmation', ['issue_record', 'document', 'toolkit', 'none']
+      .every((v) => confirmations.has(v)), JSON.stringify([...confirmations]));
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, { overlay: FIXTURES });
 

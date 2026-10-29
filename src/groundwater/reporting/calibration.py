@@ -16,6 +16,7 @@ from pathlib import Path
 from ..calibration import calibration_content, depth_scores, odds_scores
 from ..calibration_plots import plot_depth_calibration, plot_reliability
 from ..config import Config
+from ..verification import Issue
 from .context import _figures_dir
 from .docx_utils import ReportBuilder
 
@@ -51,16 +52,20 @@ def figure_keys(content: dict) -> list[str]:
 
 
 def build_calibration_report(pooled: list[dict], out_path, issued_on: str = "", config: Config | None = None,
-                             figures_dir: Path | None = None) -> Path:
+                             figures_dir: Path | None = None, issue: Issue | None = None) -> Path:
     """Write the calibration report over ``pooled`` (the entries of
     :func:`groundwater.ledger.pool_ledgers`) to ``out_path`` and return its
     path. The figures the content names are drawn beside the document,
-    unless a directory is named."""
+    unless a directory is named. ``issue`` names the evidence (the project
+    files pooled); its day is ``issued_on`` where it gives none."""
     config = config or Config()
     content = calibration_content(pooled, issued_on, config)
     keys = figure_keys(content)
     figures = calibration_figures(pooled, keys, _figures_dir(figures_dir, out_path), config) if keys else {}
-    rb = ReportBuilder(config.style, title=content["title"])
+    issue = issue or Issue()
+    if not issue.issued_on:
+        issue = Issue(issued_on=issued_on, evidence=issue.evidence)
+    rb = ReportBuilder(config.style, title=content["title"], kind="calibration", issue=issue, config=config)
     rb.cover([content["title"]], [content["subtitle"]], [(label, value) for label, value in content["rows"]])
     rb.table_of_contents()
     rb.executive_summary(content["summary"])

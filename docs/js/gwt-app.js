@@ -65,6 +65,7 @@
       ['overview', 'Overview'],
       ['guided', 'Guided start'],
       ['site', 'Site & maps'],
+      ['verify', 'Verify a document'],
     ]],
     ['Investigation', [
       ['ves', 'Geophysics (VES)'],
@@ -153,6 +154,10 @@
        * top level, as the Python app's file does, so either app's portfolio
        * can pool it. */
       ledger: { drilled: null, entries: [] },
+      /* the issue record of every document issued from the project (PLAN.md
+       * step 8.1), C.cleanIssueRecords's shape, likewise at the top of the
+       * project file */
+      issued: [],
     };
   }
 
@@ -936,6 +941,9 @@
      * project now holds it: a corrected log corrects it */
     var ledger = currentLedger();
     delete state.ledger;
+    /* the issue records likewise (PLAN.md step 8.1) */
+    var issued = C.cleanIssueRecords(state.issued);
+    delete state.issued;
     /* the calibration set in force belongs to this browser, not the project,
      * and so do the reports waiting on it */
     delete state.calibration;
@@ -947,6 +955,7 @@
       saved: new Date().toISOString(),
       summary: projectSummary(),
       ledger: ledger,
+      issued: issued,
     };
     /* what the project records of its contractor's work, for the Portfolio
      * page's contractor scorecards (PLAN.md step 6.3), at the top of the
@@ -1024,6 +1033,8 @@
     var newer = schema > C.PROJECT_SCHEMA;
     /* the ledger is at the file's top level; a bare state carries its own */
     state.ledger = C.cleanLedger(payload.state ? C.migratePayload(payload).ledger : state.ledger);
+    /* and so are the issue records (PLAN.md step 8.1) */
+    state.issued = C.cleanIssueRecords(payload.state ? C.migratePayload(payload).issued : state.issued);
     /* A hand-edited or old-build project file can carry a key; it must
      * never be adopted into this session's storage. The key held for this
      * tab is untouched - it belongs to this browser, not to the file. */
@@ -5061,6 +5072,7 @@
     nodes.push(el('div.btn-row', [
       button('Interim payment certificate (.docx)', async function (event) {
         var host = event.target.closest('.card');
+        var issued = null;
         charts.usePrintPalette(true);
         try {
           await S.withBusy(host, 'Building the certificate…', async function () {
@@ -5071,11 +5083,14 @@
                * held back by the costing gate's design requirements */
               readiness: reportReadiness('procurement'),
               areaNote: areaNote(), areaMaps: await areaFigures(false),
+              issue: issueFor('procurement'),
             });
-            S.download('IPC_' + certificate.number + '.docx',
-              await builder.build());
+            var name = 'IPC_' + certificate.number + '.docx';
+            var bytes = await builder.build();
+            S.download(name, bytes);
+            issued = recordIssue(builder.record, name, bytes);
           });
-          S.toast('Certificate ready.', 'ok');
+          S.toast('Certificate ready.' + codeWords(issued), 'ok');
         } catch (err) {
           S.toast('Could not build the certificate: ' + err.message, 'error');
         } finally {
@@ -5699,8 +5714,105 @@
     nodes.push(reportCard('Project handover report', 'handover',
       'Project summary, works completed, the borehole data sheet, water quality, ' +
       'operation and maintenance guidance, the committee and the signature block.'));
+    nodes.push(bundleCard());
     return nodes;
   };
+
+  /* --- the evidence bundle (PLAN.md step 8.3) ------------------------------
+   * One archive for the borehole (C.buildEvidenceBundle): the sheets the
+   * project holds, as they were uploaded; the documents built in this
+   * session, the latest of each, and any issued earlier that are added
+   * here; the figures each document embeds; the issue records; and a
+   * manifest.json of every file's SHA-256, with a README saying how to check
+   * it. Made on this device's day, with the calibration set in force. The
+   * Streamlit Handover page has the same section. */
+  var bundleSession = { added: /** @type {Array<{name: string, bytes: Uint8Array}>} */ ([]) };
+
+  function projectRecords() {
+    return C.issueRecordsOf({ issued: store.get('issued') || [], asset: store.get('asset') });
+  }
+
+  /* the documents built in this session that a borehole's bundle carries:
+   * those whose issue record the project holds (so a document built before
+   * another project was opened stays out), not the calibration report or
+   * the round sheets, which are about many boreholes
+   * (shared.session_documents is the twin) */
+  function bundleDocuments() {
+    var held = Object.create(null);
+    projectRecords().forEach(function (r) { held[r.sha256] = true; });
+    return Object.keys(issuedThisSession).sort().map(function (name) { return issuedThisSession[name]; })
+      .filter(function (doc) { return C.PROGRAMME_KINDS.indexOf(doc.kind) < 0 && held[doc.sha256] === true; });
+  }
+
+  function evidenceBundle() {
+    var kinds = C.phraseTable('verification.evidence_kinds');
+    var sources = store.get('sources') || {};
+    /** @type {Array<*>} */
+    var files = [];
+    SOURCE_ROLES.forEach(function (role) {
+      var source = sources[role];
+      if (source && source.b64) {
+        files.push({ folder: 'raw', name: source.name || role, data: S.base64ToBytes(source.b64), what: kinds[role] });
+      }
+    });
+    /** @type {Array<{name: string, bytes: Uint8Array}>} */
+    var documents = [];
+    documents = documents.concat(bundleDocuments(), bundleSession.added);
+    documents.forEach(function (doc) {
+      files.push({ folder: 'reports', name: doc.name, data: doc.bytes });
+      files = files.concat(C.documentFigures(doc.name, doc.bytes));
+    });
+    var site = store.get('site') || {};
+    var stored = store.get('asset');
+    var asset = stored ? C.assetFromDict(stored) : null;
+    return C.buildEvidenceBundle(site.community || site.project || '', files, {
+      borehole: asset ? asset.asset_id : '', madeOn: issueToday(),
+      calibration: C.calibrationFacts(config().calibration || null), records: projectRecords() });
+  }
+
+  function bundleCard() {
+    var held = bundleDocuments();
+    var rows = held.map(function (doc) { return [doc.name, 'built in this session']; })
+      .concat(bundleSession.added.map(function (doc) { return [doc.name, 'added here']; }));
+    return card('Evidence bundle', [
+      el('p.muted', C.phrase('bundle.page_lead')),
+      el('p.muted', held.length ? C.phrase('bundle.page_documents') : C.phrase('bundle.page_no_documents')),
+      rows.length ? S.table(['Document', 'From'], rows) : null,
+      el('div.btn-row', [
+        button('Add documents issued earlier (.docx)', async function () {
+          var list = await S.pickFile('.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            true);
+          if (!list || !list.length) return;
+          for (var i = 0; i < list.length; i++) {
+            try {
+              bundleSession.added.push({ name: list[i].name,
+                bytes: new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(list[i]))) });
+            } catch (e) {
+              S.toast('Could not read ' + list[i].name + ': ' + e.message, 'error');
+            }
+          }
+          render();
+        }, { variant: 'ghost' }),
+        bundleSession.added.length ? button('Clear the added documents', function () {
+          bundleSession.added = [];
+          render();
+        }, { variant: 'ghost' }) : null,
+        button('Download evidence bundle', function () {
+          var built;
+          try {
+            built = evidenceBundle();
+          } catch (e) {
+            S.toast(String(e && e.message || e), 'error');
+            return;
+          }
+          var name = 'Evidence_Bundle_' + S.slug(siteLabel()) + '.zip';
+          S.download(name, new Blob([built.bytes], { type: 'application/zip' }));
+          S.toast('Saved ' + name + '. ' + C.phrase('bundle.built', { files: built.facts.files.length,
+            documents: built.facts.documents.length, sha256: built.sha256 }), 'ok');
+        }),
+      ]),
+    ]);
+  }
 
   /* --- pumping test co-pilot ------------------------------------------------ */
 
@@ -5891,6 +6003,7 @@
 
   async function buildFieldKit(boreholes, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     try {
       await S.withBusy(host, 'Building the field kit…', async function () {
         await need(REPORT_BUNDLES);
@@ -5904,11 +6017,14 @@
           symbols: content.sheets.map(function (sheet) {
             return qrDataUrl(sheet.payload, { ecc: 'H', scale: 8 });
           }),
+          issue: issueFor('field_kit'),
         });
         var bytes = await builder.build();
-        S.download('field_kit_' + S.slug(content.project || siteLabel()) + '.docx', bytes);
+        var name = 'field_kit_' + S.slug(content.project || siteLabel()) + '.docx';
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
-      S.toast('Field kit ready.', 'ok');
+      S.toast('Field kit ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the field kit: ' + err.message, 'error');
     }
@@ -6932,6 +7048,18 @@
         ]));
       }
 
+      /* the documents issued about the borehole, which its record keeps
+       * (PLAN.md step 8.1) */
+      if ((asset.documents || []).length) {
+        var readinessWords = C.phraseTable('verification.readiness_words');
+        nodes.push(card('Documents issued', [
+          el('p.muted', C.phrase('verification.registry_documents')),
+          S.table(['Code', 'Document', 'Issued on', 'Readiness'], asset.documents.map(function (r) {
+            return [r.code, r.title, r.issued_on, readinessWords[r.readiness]];
+          })),
+        ]));
+      }
+
       var address = String(config().service.report_url || '');
       var refused = C.checkReportUrl(address);
       nodes.push(card('For the headworks', [
@@ -7166,13 +7294,18 @@
 
   async function buildRoundSheet(result, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     try {
       await S.withBusy(host, 'Building the round sheets…', async function () {
         await need(REPORT_BUNDLES);
-        var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result });
-        S.download('rounds_' + result.as_of + '.docx', await builder.build());
+        var builder = await GWT.docx.roundSheet({ style: config().style, rounds: result,
+          issue: issueFor('rounds', { files: derived.registryFiles || [] }) });
+        var name = 'rounds_' + result.as_of + '.docx';
+        var bytes = await builder.build();
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
-      S.toast('Document ready.', 'ok');
+      S.toast('Document ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the document: ' + err.message, 'error');
     }
@@ -7263,15 +7396,24 @@
           var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
           if (!list || !list.length) return;
           var loaded = (derived.registry || []).slice();
+          /* the files, by their hashes, which a round sheet drawn from the
+           * register is issued from (PLAN.md step 8.1) */
+          var files = (derived.registryFiles || []).slice();
           var skipped = 0;
           for (var i = 0; i < list.length; i++) {
             try {
               var text = await S.readFile(list[i], 'text');
               var record = assetFromProjectFile(list[i].name, text);
-              if (record) loaded.push(record); else skipped += 1;
+              if (record) {
+                loaded.push(record);
+                files.push(projectFileEvidence(list[i].name, text));
+              } else {
+                skipped += 1;
+              }
             } catch (e) { skipped += 1; }
           }
           derived.registry = loaded;
+          derived.registryFiles = files;
           S.toast(loaded.length + ' ' + S.plural(loaded.length, 'borehole') +
             ' in the register' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
           skipped ? 'warn' : 'ok');
@@ -7279,6 +7421,7 @@
         }),
         assets.length ? button('Clear', function () {
           derived.registry = [];
+          derived.registryFiles = [];
           render();
         }, { variant: 'ghost' }) : null,
       ].filter(Boolean)),
@@ -7647,6 +7790,7 @@
 
   async function buildAssetDoc(kind, asset, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
     charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the document…', async function () {
@@ -7673,14 +7817,16 @@
           /* the sample whose E. coli count the sanitary risk reads */
           context.assessment = derived.assessment || null;
         }
+        context.issue = issueFor(kind === 'placard' ? 'placard' : 'asset');
         var builder = kind === 'placard'
           ? await GWT.docx.assetPlacard(context)
           : await GWT.docx.assetRecordReport(context);
         var bytes = await builder.build();
-        S.download((kind === 'placard' ? 'placard_' : 'asset_') +
-          asset.asset_id + '.docx', bytes);
+        var name = (kind === 'placard' ? 'placard_' : 'asset_') + asset.asset_id + '.docx';
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
       });
-      S.toast('Document ready.', 'ok');
+      S.toast('Document ready.' + codeWords(issued), 'ok');
     } catch (err) {
       S.toast('Could not build the document: ' + err.message, 'error');
     } finally {
@@ -7708,6 +7854,9 @@
             var loaded = derived.portfolio ? derived.portfolio.slice() : [];
             var ledgers = portfolioLedgers().slice();
             var works = portfolioWorks().slice();
+            /* the files, by their hashes, which a calibration report over the
+             * pooled ledgers is issued from (PLAN.md step 8.1) */
+            var files = (derived.portfolioFiles || []).slice();
             var skipped = 0;
             for (var i = 0; i < list.length; i++) {
               try {
@@ -7716,11 +7865,13 @@
                 loaded.push(entry.summary);
                 ledgers.push(entry.ledger);
                 works.push(entry.works);
+                files.push(projectFileEvidence(list[i].name, text));
               } catch (e) { skipped += 1; }
             }
             derived.portfolio = loaded;
             derived.portfolioLedgers = ledgers;
             derived.portfolioWorks = works;
+            derived.portfolioFiles = files;
             S.toast(loaded.length + ' ' + S.plural(loaded.length, 'project') +
               ' loaded' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
             skipped ? 'warn' : 'ok');
@@ -7734,6 +7885,7 @@
           }, { variant: 'ghost' }) : null,
           summaries.length ? button('Clear', function () {
             derived.portfolio = null; derived.portfolioLedgers = null; derived.portfolioWorks = null;
+            derived.portfolioFiles = null;
             render();
           }, { variant: 'ghost' }) : null,
         ]),
@@ -8080,14 +8232,18 @@
     try {
       await S.withBusy(host, 'Building the calibration report…', async function () {
         var cfg = config();
-        var content = C.calibrationContent(pooled, localDate(), cfg);
+        var issue = issueFor('calibration', { files: derived.portfolioFiles || [] });
+        var content = C.calibrationContent(pooled, issue.issued_on, cfg);
         var figures = {};
         var list = calibrationFigureList(pooled, content, cfg);
         /* one at a time, so that no more than one figure's canvas is held */
         for (var i = 0; i < list.length; i++) figures[list[i].key] = await charts.toPng(list[i].draw());
-        await GWT.docx.calibrationReport({ style: cfg.style, content: content, figures: figures })
-          .save('Calibration_Report.docx');
-        S.toast('Saved Calibration_Report.docx', 'ok');
+        var builder = GWT.docx.calibrationReport({ style: cfg.style, content: content, figures: figures,
+          issue: issue });
+        /* saved first: the builder has no record until it has built the document */
+        var calibrationBytes = await builder.save('Calibration_Report.docx');
+        recordIssue(builder.record, 'Calibration_Report.docx', calibrationBytes);
+        S.toast(savedWords('Calibration_Report.docx', builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the calibration report: ' + e.message, 'error');
@@ -8155,9 +8311,14 @@
     try {
       await S.withBusy(host, 'Building the contractor scorecards…', async function () {
         var cfg = config();
-        await GWT.docx.scorecardReport({ style: cfg.style,
-          content: C.scorecardContent(files, localDate(), cfg) }).save('Contractor_Scorecards.docx');
-        S.toast('Saved Contractor_Scorecards.docx', 'ok');
+        /* issued from the project files on the page (PLAN.md step 8.1) */
+        var issue = issueFor('scorecards', { files: derived.portfolioFiles || [] });
+        var builder = GWT.docx.scorecardReport({ style: cfg.style,
+          content: C.scorecardContent(files, issue.issued_on, cfg), issue: issue });
+        /* saved first: the builder has no record until it has built the document */
+        var scorecardBytes = await builder.save('Contractor_Scorecards.docx');
+        recordIssue(builder.record, 'Contractor_Scorecards.docx', scorecardBytes);
+        S.toast(savedWords('Contractor_Scorecards.docx', builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the contractor scorecards: ' + e.message, 'error');
@@ -8592,7 +8753,115 @@
         responses: store.get('supervision.responses') || {},
         evidence: store.get('supervision.evidence') || {},
       },
+      /* the documents issued from the project, which the draft asset record
+       * carries (PLAN.md step 8.1) */
+      issued: store.get('issued') || [],
     };
+  }
+
+  /* --- documents issued (PLAN.md step 8.1) ---------------------------------
+   * Every document this app writes is sealed (gwt-docx.js). It is issued on
+   * this device's day, as an input: the engine never reads the clock. A
+   * document about the borehole is issued from every file the project holds
+   * and the photographs it embeds, each listed by its SHA-256; the others
+   * from the files they are drawn from (the project files pooled or in the
+   * register), or from none. Its issue record goes into the project, which
+   * saves it at the top of the project file, and, for a document about the
+   * borehole, into its asset record where one is stored; a record stored
+   * later starts from the project's, as the draft carries them. */
+  function issueToday() {
+    return localDate();
+  }
+
+  /* a photograph by the SHA-256 of the file as it arrived, which its
+   * provenance record holds; one attached before records existed, by the
+   * bytes the project keeps */
+  function photoEvidence(photo) {
+    var what = C.phraseTable('verification.evidence_kinds').photo;
+    var name = photo.name || photo.caption || photo.label || '';
+    var held = photo.provenance && photo.provenance.sha256;
+    if (typeof held === 'string' && /^[0-9a-f]{64}$/.test(held)) {
+      return { what: what, name: name, sha256: held };
+    }
+    return C.evidenceEntry(what, name, S.base64ToBytes(photo.dataUrl));
+  }
+
+  /* a project file pooled on the Portfolio page or read into the register */
+  function projectFileEvidence(name, text) {
+    return C.evidenceEntry(C.phraseTable('verification.evidence_kinds').project, name,
+      new TextEncoder().encode(text));
+  }
+
+  /* What a document of this kind is issued on and from: options.photos are
+   * the photographs it embeds, options.files more evidence entries. */
+  function issueFor(kind, options) {
+    var opts = options || {};
+    var kinds = C.phraseTable('verification.evidence_kinds');
+    var evidence = [];
+    if (C.BOREHOLE_KINDS.indexOf(kind) >= 0) {
+      var sources = store.get('sources') || {};
+      SOURCE_ROLES.forEach(function (role) {
+        var source = sources[role];
+        if (source && source.b64) {
+          evidence.push(C.evidenceEntry(kinds[role], source.name || role, S.base64ToBytes(source.b64)));
+        }
+      });
+    }
+    (opts.photos || []).forEach(function (photo) {
+      if (photo && photo.dataUrl) evidence.push(photoEvidence(photo));
+    });
+    return { issued_on: issueToday(), evidence: evidence.concat(opts.files || []),
+      calibration: config().calibration || null };
+  }
+
+  /* the photographs a report of this kind embeds, as buildReport embeds
+   * them: on the supervision record, those attached to the checklist's
+   * items, then the page's photo plate */
+  function reportPhotos(kind) {
+    /** @type {Array<*>} */
+    var photos = [];
+    if (kind === 'supervision') {
+      var evidence = store.get('supervision.evidence') || {};
+      C.loadChecklists().forEach(function (item) {
+        var photo = evidence[item.item_id];
+        if (photo && photo.dataUrl) photos.push(photo);
+      });
+    }
+    return photos.concat(GWT.imageSlot ? GWT.imageSlot.collect(store.get('photos.' + kind), kind) : []);
+  }
+
+  /* what a toast says of a document built: its code */
+  function codeWords(record) {
+    return record ? ' ' + C.phrase('verification.cover_code', { code: record.code }) + '.' : '';
+  }
+
+  function savedWords(filename, record) {
+    return 'Saved ' + filename + '.' + codeWords(record);
+  }
+
+  /* The documents built in this session, the latest under each file name,
+   * for the evidence bundle (PLAN.md step 8.3). Held in memory only: a
+   * project file does not carry them, so after a reload the documents
+   * issued earlier are added on the Handover page. */
+  /** @type {Object<string, {name: string, bytes: Uint8Array, kind: string, sha256: string}>} */
+  var issuedThisSession = Object.create(null);
+
+  /* the issue record of a document just built, kept, with the document
+   * itself for this session's bundle; returns the record */
+  function recordIssue(record, name, bytes) {
+    if (!record) return null;
+    if (name && bytes) {
+      issuedThisSession[name] = { name: name, bytes: new Uint8Array(bytes), kind: record.kind,
+        sha256: record.sha256 };
+    }
+    store.set('issued', C.cleanIssueRecords((store.get('issued') || []).concat([record])));
+    var stored = store.get('asset');
+    var asset = stored && C.BOREHOLE_KINDS.indexOf(record.kind) >= 0 ? C.assetFromDict(stored) : null;
+    if (asset) {
+      asset.documents = C.cleanIssueRecords((asset.documents || []).concat([record]));
+      store.set('asset', asset);
+    }
+    return record;
   }
 
   function reportReadiness(kind) {
@@ -8945,6 +9214,7 @@
           style: cfg.style, site: store.get('site'),
           signOff: signOffFor(kind),
           readiness: reportReadiness(kind),
+          issue: issueFor(kind, { photos: reportPhotos(kind) }),
         };
         /* every report opens on where it is; the three reports that argue
          * from the ground carry the aquifer and geology setting too */
@@ -9270,10 +9540,12 @@
         }
 
         var filename = S.slug(siteLabel()) + '_' + kind + '_report.docx';
-        await builder.save(filename);
+        /* saved first: the builder has no record until it has built the document */
+        var reportBytes = await builder.save(filename);
+        recordIssue(builder.record, filename, reportBytes);
         /* what the report predicts goes into the ledger as it is issued */
         if (kind === 'geophysical') recordSurveyPredictions();
-        S.toast('Saved ' + filename, 'ok');
+        S.toast(savedWords(filename, builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the report: ' + e.message, 'error');
@@ -9354,9 +9626,13 @@
             config: config(),
           });
         var context = { style: config().style, content: content, areaNote: areaNote(),
-          areaMaps: await areaFigures(true), figures: await deskStudyFigures(session) };
-        await GWT.docx.deskStudyReport(context).save('Desk_Study.docx');
-        S.toast('Saved Desk_Study.docx', 'ok');
+          areaMaps: await areaFigures(true), figures: await deskStudyFigures(session),
+          issue: issueFor('desk_study') };
+        var builder = GWT.docx.deskStudyReport(context);
+        /* saved first: the builder has no record until it has built the document */
+        var deskBytes = await builder.save('Desk_Study.docx');
+        recordIssue(builder.record, 'Desk_Study.docx', deskBytes);
+        S.toast(savedWords('Desk_Study.docx', builder.record), 'ok');
       });
     } catch (e) {
       S.toast('Could not build the desk study: ' + e.message, 'error');
@@ -9365,6 +9641,167 @@
       charts.usePrintPalette(false);
     }
   }
+
+  /* --- verify a document (PLAN.md step 8.1) --------------------------------
+   * Whether the toolkit issued a .docx, whether it has changed since, whether
+   * it was certifiable or provisional, and which evidence it was issued from
+   * (C.verifyDocument), worked out here with no network. It is checked
+   * against the issue records of the project open here and of any project
+   * files added, either app's; with none, it says it cannot confirm the
+   * document was issued. Nothing on the page is saved with the project. */
+  var verifySession = { name: '', bytes: null, files: [], typed: '', bundleName: '',
+    bundle: /** @type {Uint8Array|null} */ (null) };
+
+  function verifyRecords() {
+    var held = C.issueRecordsOf({ issued: store.get('issued') || [], asset: store.get('asset') });
+    verifySession.files.forEach(function (file) { held = held.concat(file.records); });
+    var records = C.cleanIssueRecords(held);
+    /* none held and no file added: nothing was given to check against */
+    return records.length || verifySession.files.length ? records : null;
+  }
+
+  function verifyResultCard(report) {
+    var questions = C.phraseTable('verification.questions');
+    var tone = report.verdict === 'verified' ? 'ok' : (report.verdict === 'unconfirmed' ? 'warn' : 'bad');
+    var nodes = [el('div.callout.callout-' + tone, [
+      el('p', el('strong', report.lines[0])),
+      verifySession.name ? el('p.muted', verifySession.name) : null,
+    ])];
+    ['issued', 'changed', 'readiness', 'evidence'].forEach(function (key) {
+      if (!report.answers[key]) return;
+      nodes.push(el('h3', questions[key]));
+      nodes.push(el('p', report.answers[key]));
+    });
+    if (report.facts) {
+      nodes.push(el('p.muted', report.lines[report.lines.length - 1]));
+      if (report.facts.evidence.length) {
+        nodes.push(S.table(['Evidence file', 'What it is', 'SHA-256'],
+          report.facts.evidence.map(function (f) { return [f.name, f.what, el('code', f.sha256)]; })));
+      }
+    }
+    if (report.code) {
+      nodes.push(S.table(['', ' '], [['Document code', report.code],
+        ['Hash of its manifest (SHA-256)', el('code', report.sha256)]]));
+    }
+    return card('What can be said of it', nodes);
+  }
+
+  /* what can be said of an evidence bundle (PLAN.md step 8.3), file by file */
+  function bundleResultCard(report) {
+    var tone = report.verdict === 'verified' ? 'ok' : (report.verdict === 'unconfirmed' ? 'warn' : 'bad');
+    var states = C.phraseTable('bundle.file_states'), confirmed = C.phraseTable('bundle.confirmed_words');
+    var nodes = [el('div.callout.callout-' + tone, [
+      el('p', el('strong', report.lines[0])),
+      verifySession.bundleName ? el('p.muted', verifySession.bundleName) : null,
+    ])];
+    report.lines.slice(1).forEach(function (line) { nodes.push(el('p', line)); });
+    if (report.files.length) {
+      nodes.push(S.table(['File', 'What it is', 'State', 'What confirms it', 'Listed by'],
+        report.files.map(function (f) {
+          return [f.path, f.what, states[f.state], confirmed[f.confirmed], f.listed_by.join('; ')];
+        })));
+    }
+    if (report.sha256) nodes.push(el('p.muted', C.phrase('bundle.hash_line', { sha256: report.sha256 })));
+    return card('What can be said of the bundle', nodes);
+  }
+
+  PAGES.verify = function () {
+    var records = verifyRecords();
+    var nodes = [pageHead('Verify a document', C.phrase('verification.page_lead'))];
+    nodes.push(card('The document', [
+      el('p.muted', C.phrase('verification.document_lead')),
+      el('div.btn-row', [
+        button('Choose a document (.docx)', async function () {
+          var file = await S.pickFile('.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          if (!file) return;
+          try {
+            verifySession.bytes = new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(file)));
+            verifySession.name = file.name;
+          } catch (e) {
+            S.toast('Could not read the file: ' + e.message, 'error');
+            return;
+          }
+          render();
+        }),
+        verifySession.bytes ? button('Clear', function () {
+          verifySession.bytes = null;
+          verifySession.name = '';
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+    ]));
+    if (verifySession.bytes) nodes.push(verifyResultCard(C.verifyDocument(verifySession.bytes, records)));
+
+    nodes.push(card('Verify a bundle', [
+      el('p.muted', C.phrase('bundle.verify_lead')),
+      el('div.btn-row', [
+        button('Choose a bundle (.zip)', async function () {
+          var file = await S.pickFile('.zip,application/zip');
+          if (!file) return;
+          try {
+            verifySession.bundle = new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(file)));
+            verifySession.bundleName = file.name;
+          } catch (e) {
+            S.toast('Could not read the file: ' + e.message, 'error');
+            return;
+          }
+          render();
+        }),
+        verifySession.bundle ? button('Clear', function () {
+          verifySession.bundle = null;
+          verifySession.bundleName = '';
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+    ]));
+    if (verifySession.bundle) nodes.push(bundleResultCard(C.verifyEvidenceBundle(verifySession.bundle, records)));
+
+    var issued = C.cleanIssueRecords(store.get('issued') || []);
+    var readinessWords = C.phraseTable('verification.readiness_words');
+    nodes.push(card('Issue records', [
+      el('p', records ? C.phrase('verification.page_records', { n: records.length })
+        : C.phrase('verification.page_no_records')),
+      el('div.btn-row', [
+        button('Add project files', async function () {
+          var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
+          if (!list || !list.length) return;
+          var skipped = 0;
+          for (var i = 0; i < list.length; i++) {
+            try {
+              var text = await S.readFile(list[i], 'text');
+              var payload = /\.ya?ml$/i.test(list[i].name) ? S.parseYaml(text) : JSON.parse(text);
+              if (!payload || typeof payload !== 'object') throw new Error('not a project file');
+              verifySession.files.push({ name: list[i].name, records: C.issueRecordsOf(payload) });
+            } catch (e) { skipped += 1; }
+          }
+          if (skipped) S.toast(skipped + ' ' + S.plural(skipped, 'file') + ' could not be read.', 'warn');
+          render();
+        }),
+        verifySession.files.length ? button('Clear the files', function () {
+          verifySession.files = [];
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+      verifySession.files.length ? S.table(['Project file', 'Issue records'],
+        verifySession.files.map(function (f) { return [f.name, String(f.records.length)]; })) : null,
+      el('h3', 'Issued from this project'),
+      S.table(['Code', 'Document', 'Issued on', 'Readiness', 'SHA-256'], issued.map(function (r) {
+        return [r.code, r.title, r.issued_on, readinessWords[r.readiness], el('code', r.sha256.slice(0, 16) + '…')];
+      }), { emptyText: C.phrase('verification.none_issued') }),
+    ]));
+
+    var lookup = verifySession.typed ? C.lookupCode(verifySession.typed, records || []) : null;
+    nodes.push(card('Look up a code', [
+      el('p.muted', C.phrase('verification.lookup_lead')),
+      field('Document code', S.textInput(verifySession.typed, function (v) {
+        verifySession.typed = String(v).trim();
+        render();
+      }, { placeholder: '0A1B-2C3D-5' }), ''),
+      lookup ? el('div.callout.callout-' + (lookup.records.length ? 'ok' : 'warn'),
+        lookup.lines.map(function (line) { return el('p', line); })) : null,
+    ]));
+    return nodes;
+  };
 
   /* ------------------------------------------------------------------ render */
 
@@ -9378,7 +9815,7 @@
    * its status column, so the page and the report cannot word a result
    * differently. */
   var FIRST_SCREEN = { overview: true, guided: true, templates: true,
-    extract: true, settings: true, about: true };
+    extract: true, settings: true, about: true, verify: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
   /* A page that is a module of its own, fetched with what it draws with: the
    * pumping and VES co-pilots each draw one figure and no map, and the
@@ -9684,6 +10121,10 @@
     hashFor: hashFor, routeFrom: routeFrom,
     sampleRanges: sampleRanges, rangeFor: rangeFor, surveyOdds: surveyOdds,
     costSpreads: costSpreads, surveyMeasurements: surveyMeasurements,
+    /* documents issued and verified (PLAN.md step 8.1) */
+    issueFor: issueFor, recordIssue: recordIssue, verifySession: verifySession,
+    /* the evidence bundle (PLAN.md step 8.3) */
+    bundleSession: bundleSession, bundleDocuments: bundleDocuments, evidenceBundle: evidenceBundle,
     /* the Topography and terrain card's files, read and analysis */
     terrainSession: function () { return terrainSession; },
   };

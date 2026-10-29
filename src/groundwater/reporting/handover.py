@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
+from ..verification import Issue
 from ..decisions import pump_decision, yield_decision
 from ..design.designer import BoreholeDesign
 from ..design.drawing import draw_borehole_design
@@ -161,6 +162,7 @@ def build_handover_report(
     inputs: HandoverReportInputs,
     out_path: str | Path,
     config: Config | None = None,
+    issue: Issue | None = None,
 ) -> Path:
     config = config or Config()
     site = inputs.site
@@ -172,7 +174,8 @@ def build_handover_report(
     # the first site's figures.
     slug = safe_slug(site.community, "site")
 
-    rb = ReportBuilder(config.style, title=f"Handover Report - {site.community}")
+    rb = ReportBuilder(config.style, title=f"Handover Report - {site.community}",
+                       kind="handover", issue=issue, config=config)
     rb.cover(
         title_lines=["PROJECT HANDOVER REPORT"],
         subtitle_lines=[

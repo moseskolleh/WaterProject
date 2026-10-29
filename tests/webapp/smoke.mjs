@@ -14,7 +14,7 @@ function check(name, ok, detail) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok || !detail ? '' : '\n     ' + detail}`);
 }
 
-const PAGES = ['overview', 'guided', 'site', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
+const PAGES = ['overview', 'guided', 'site', 'verify', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
   'pumping', 'pumpcopilot', 'quality', 'costing', 'procurement', 'supervision', 'handover',
   'templates', 'extract',
   'waterpoints', 'coverage', 'portfolio', 'registry', 'report', 'settings', 'about'];
@@ -1656,12 +1656,12 @@ await withPage(async (page, base, consoleErrors) => {
       S.toast = toast;
     }
   });
-  check('ledger: the project file carries it at its top level, at schema 2, and opens with it',
-    ledgerTrip.schema === 2 && ledgerTrip.version === undefined && !ledgerTrip.inState &&
+  check('ledger: the project file carries it at its top level, at schema 3, and opens with it',
+    ledgerTrip.schema === 3 && ledgerTrip.version === undefined && !ledgerTrip.inState &&
     ledgerTrip.top && ledgerTrip.back && ledgerTrip.entries === 1, JSON.stringify(ledgerTrip).slice(0, 600));
   check('ledger: a file of schema 1 opens with an empty one, and a later schema says so',
     ledgerTrip.old.entries.length === 0 && ledgerTrip.later[1] === 'warn' &&
-    /format 3; this app reads format 2/.test(ledgerTrip.later[0]), JSON.stringify(ledgerTrip.later));
+    /format 4; this app reads format 3/.test(ledgerTrip.later[0]), JSON.stringify(ledgerTrip.later));
   await page.evaluate(async (saved) => {
     window.GWT.app.store.replace(JSON.parse(saved));
     await window.GWT.app.recompute();
@@ -5880,8 +5880,10 @@ await withPage(async (page, base, consoleErrors) => {
         'application/xml');
       const text = Array.from(xml.getElementsByTagName('w:p')).map((para) =>
         Array.from(para.getElementsByTagName('w:t')).map((t) => t.textContent).join('')).join('\n');
+      /* the figures, not the symbol of the document's code on its cover (PLAN.md step 8.1) */
       return { name: got[0].name, text: text,
-        media: Object.keys(files).filter((n) => n.startsWith('word/media/')).length };
+        media: Object.keys(files).filter((n) => n.startsWith('word/media/') &&
+          n !== 'word/media/document-code.png').length };
     };
     window.__placeSite(8.475, -11.5);
     const here = await build();
@@ -6364,7 +6366,9 @@ await withPage(async (page, base, consoleErrors) => {
         shown: cal.querySelectorAll('svg').length,
         headings: ['calibration.depth_heading', 'calibration.odds_heading', 'calibration.hits_heading',
           'calibration.limits_heading'].every((id) => text.includes(C.phrase(id))),
-        media: Object.keys(files).filter((n) => n.startsWith('word/media/')).length,
+        /* the figures, not the symbol of the document's code on its cover (PLAN.md step 8.1) */
+        media: Object.keys(files).filter((n) => n.startsWith('word/media/') &&
+          n !== 'word/media/document-code.png').length,
         named: content.sections.reduce((n, sec) => n + sec.figures.length, 0) };
     };
     out.rokelReport = await calibrate();
@@ -6698,6 +6702,171 @@ await withPage(async (page, base, consoleErrors) => {
     'that failed, and saves Contractor_Scorecards.docx with its four sections',
     scorecards.card.every(Boolean) && JSON.stringify(scorecards.report) === '["Contractor_Scorecards.docx",true]',
     JSON.stringify(scorecards));
+
+  // --- Verify a document (PLAN.md step 8.1) ---------------------------------
+  // A handover report built here, chosen on the page: with no issue record it
+  // is unchanged but not confirmed; with the project file holding its record
+  // added, verified; with one digit changed, changed, naming the part; and
+  // its code, typed in lower case, is found in the records.
+  const verifying = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const d = app.derived;
+    const builder = await window.GWT.docx.handoverReport({
+      style: app.config().style, site: app.store.get('site'), log: d.log, design: d.design,
+      analysis: d.analysis, assessment: d.assessment, interpretations: d.interpretations,
+      committee: [], figures: [], readiness: app.reportReadiness('handover'), issue: app.issueFor('handover'),
+    });
+    const bytes = await builder.build();
+    const record = builder.record;
+    const parts = C.readPackage(bytes);
+    const xml = new TextDecoder().decode(parts['word/document.xml']);
+    const at = xml.search(/<w:t(?: [^>]*)?>[^<]*[0-9]/);
+    const digit = xml.indexOf(xml.slice(at).match(/[0-9]/)[0], at);
+    const changed = await support.zip(Object.keys(parts).map((name) => ({ name,
+      data: name === 'word/document.xml'
+        ? new TextEncoder().encode(xml.slice(0, digit) + (xml[digit] === '9' ? '8' : '9') + xml.slice(digit + 1))
+        : parts[name] })));
+    const verdicts = C.phraseTable('verification.verdicts');
+    const pickFile = support.pickFile;
+    const held = app.store.get('issued');
+    const session = app.verifySession;
+    const text = () => document.querySelector('#page-host').textContent;
+    const pause = () => new Promise((r) => setTimeout(r, 60));
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button')).find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const until = async (done) => {
+      for (let t = 0; t < 200 && !done(); t++) await new Promise((r) => setTimeout(r, 25));
+      await pause();
+    };
+    const out = {};
+    try {
+      app.store.set('issued', []);
+      session.files = [];
+      session.bytes = null;
+      session.typed = '';
+      app.goto('verify');
+      await pause();
+      out.noRecords = text().includes(C.phrase('verification.page_no_records'));
+      support.pickFile = async () => new File([bytes], 'handover.docx');
+      press('Choose a document (.docx)');
+      await until(() => session.bytes);
+      out.unconfirmed = text().includes(verdicts.unconfirmed) &&
+        Object.values(C.phraseTable('verification.questions')).every((q) => text().includes(q));
+      const file = JSON.stringify({ format: 'groundwater-toolkit-project', schema: 3, issued: [record], state: {} });
+      support.pickFile = async () => [new File([file], 'issued.gwt.json')];
+      press('Add project files');
+      await until(() => session.files.length);
+      out.verified = text().includes(verdicts.verified) && text().includes(record.code) &&
+        text().includes(C.phrase('verification.page_records', { n: 1 }));
+      support.pickFile = async () => new File([changed], 'changed.docx');
+      session.bytes = null;
+      press('Choose a document (.docx)');
+      await until(() => session.bytes);
+      out.changed = text().includes(verdicts.changed) &&
+        text().includes('word/document.xml (the text of the document)');
+      const input = Array.from(document.querySelectorAll('#page-host input'))
+        .find((i) => i.getAttribute('placeholder') === '0A1B-2C3D-5');
+      input.value = 'document ' + record.code.toLowerCase();
+      input.dispatchEvent(new Event('change'));
+      await pause();
+      out.lookup = text().includes(C.lookupCode(record.code, [record]).lines[0]);
+    } finally {
+      support.pickFile = pickFile;
+      app.store.set('issued', held || []);
+      session.files = [];
+      session.bytes = null;
+      session.typed = '';
+    }
+    return out;
+  });
+  check('verify: a document chosen on the page is unchanged but not confirmed with no record, verified ' +
+    'with the project file holding its record, changed with one digit changed, and its code is found',
+  verifying.noRecords && verifying.unconfirmed && verifying.verified && verifying.changed && verifying.lookup,
+  JSON.stringify(verifying));
+
+  // --- One evidence bundle for each borehole (PLAN.md step 8.3) -------------
+  // A handover report issued here is listed on the Handover page's Evidence
+  // bundle card; a file that is not a sealed document, added there, is
+  // refused in the catalogue's words; the bundle downloaded, chosen on the
+  // Verify a document page, is verified against the project's issue record,
+  // and unconfirmed with none held.
+  const bundling = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, support = window.GWT.support;
+    const d = app.derived;
+    const builder = await window.GWT.docx.handoverReport({
+      style: app.config().style, site: app.store.get('site'), log: d.log, design: d.design,
+      analysis: d.analysis, assessment: d.assessment, interpretations: d.interpretations,
+      committee: [], figures: [], readiness: app.reportReadiness('handover'), issue: app.issueFor('handover'),
+    });
+    const docBytes = await builder.build();
+    const held = app.store.get('issued');
+    const pickFile = support.pickFile, download = support.download, toast = support.toast;
+    const text = () => document.querySelector('#page-host').textContent;
+    const pause = () => new Promise((r) => setTimeout(r, 60));
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button')).find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const until = async (done) => {
+      for (let t = 0; t < 200 && !done(); t++) await new Promise((r) => setTimeout(r, 25));
+      await pause();
+    };
+    const out = {};
+    const toasts = [];
+    let saved = null;
+    try {
+      app.store.set('issued', []);
+      app.recordIssue(builder.record, 'handover_for_bundle.docx', docBytes);
+      support.toast = (message, tone) => { toasts.push([message, tone]); };
+      support.download = (name, blob) => { saved = { name, blob }; };
+      app.goto('handover');
+      await until(() => text().includes(C.phrase('bundle.page_lead')));
+      out.card = text().includes(C.phrase('bundle.page_documents')) && text().includes('handover_for_bundle.docx');
+      support.pickFile = async () => [new File([new TextEncoder().encode('not a document')], 'notes.docx')];
+      press('Add documents issued earlier (.docx)');
+      await until(() => app.bundleSession.added.length);
+      press('Download evidence bundle');
+      await pause();
+      out.refused = !saved && toasts.some((t) => t[1] === 'error' &&
+        t[0].startsWith('notes.docx cannot go into an evidence bundle'));
+      press('Clear the added documents');
+      await pause();
+      press('Download evidence bundle');
+      await until(() => saved);
+      const bytes = new Uint8Array(await saved.blob.arrayBuffer());
+      out.name = saved.name;
+      out.facts = C.verifyEvidenceBundle(bytes, null).facts;
+      app.goto('verify');
+      await pause();
+      support.pickFile = async () => new File([bytes], saved.name);
+      press('Choose a bundle (.zip)');
+      await until(() => app.verifySession.bundle);
+      const verdicts = C.phraseTable('bundle.verdicts');
+      out.verified = text().includes(verdicts.verified) && text().includes('reports/handover_for_bundle.docx');
+      app.store.set('issued', []);
+      app.render();
+      await pause();
+      out.unconfirmed = text().includes(verdicts.unconfirmed) && text().includes(C.phrase('bundle.confirm_no_records'));
+    } finally {
+      support.pickFile = pickFile;
+      support.download = download;
+      support.toast = toast;
+      app.store.set('issued', held || []);
+      app.bundleSession.added = [];
+      app.verifySession.bundle = null;
+      app.verifySession.bundleName = '';
+    }
+    return out;
+  });
+  check('bundle: the Handover page lists the document issued, refuses a file that is not one, and downloads ' +
+    'a bundle that the Verify a document page verifies against the project\'s record, and not with none',
+  bundling.card && bundling.refused && /^Evidence_Bundle_.*\.zip$/.test(bundling.name || '') &&
+    bundling.facts && bundling.facts.documents.length === 1 && bundling.verified && bundling.unconfirmed,
+  JSON.stringify(Object.assign({}, bundling, { facts: bundling.facts && bundling.facts.documents })));
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

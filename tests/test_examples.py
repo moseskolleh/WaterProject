@@ -43,21 +43,29 @@ def test_the_catalogue_matches_the_published_examples():
 
 
 def test_a_pack_holds_the_whole_case_and_is_reproducible(tmp_path):
-    """One file that carries the inputs, the reports, the figures and the tables.
+    """One evidence bundle that carries the inputs, the reports, the figures
+    and the tables (PLAN.md step 8.3), and checks itself.
 
     Fixed timestamps, because a pack that differs from itself run to run
     cannot be compared, only rebuilt.
     """
+    from groundwater.bundle import verify_evidence_bundle
+
     catalogue = _load_catalogue()
     catalogue.PACKS = tmp_path
     entry = catalogue.survey(catalogue.CASES[-1])   # the full drilling-to-handover case
     first = catalogue.pack(entry)
     names = zipfile.ZipFile(first).namelist()
-    assert "project.yaml" in names
-    assert any(n.startswith("data/") for n in names)
-    assert any(n.endswith(".docx") for n in names)
-    assert any(n.endswith(".png") for n in names)
+    assert {"README.txt", "manifest.json", "signatures/README.txt", "tables/README.txt"} <= set(names)
+    assert {f"raw/{path.name}" for _, path, _ in entry["inputs"]} <= set(names)
+    assert {f"reports/{path.name}" for path, _, _ in entry["reports"]} <= set(names)
+    assert {f"figures/{path.name}" for path in entry["figures"]} <= set(names)
     assert names == sorted(names), "a pack lists its members in a stable order"
+    report = verify_evidence_bundle(first.read_bytes())
+    # a worked example is not issued: unchanged, and not confirmed
+    assert report["verdict"] == "unconfirmed"
+    assert all(f["state"] == "ok" for f in report["files"])
+    assert all(d["verdict"] == "unconfirmed" for d in report["documents"])
 
     before = first.read_bytes()
     catalogue.pack(entry)

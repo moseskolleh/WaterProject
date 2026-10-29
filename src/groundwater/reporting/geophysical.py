@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Config, VESConfig
+from ..verification import Issue
 from ..mapping import (
     apparent_resistivity_pseudosection,
     aquifer_thickness_map,
@@ -218,6 +219,7 @@ def build_geophysical_report(
     inputs: GeophysicalReportInputs,
     out_path: str | Path,
     config: Config | None = None,
+    issue: Issue | None = None,
 ) -> Path:
     """Write the geophysical survey report to ``out_path`` (.docx)."""
     config = config or Config()
@@ -229,7 +231,8 @@ def build_geophysical_report(
     district = site.district or ""
     client = site.client or "the client"
 
-    rb = ReportBuilder(config.style, title=f"Geophysical Survey Report - {community}")
+    rb = ReportBuilder(config.style, title=f"Geophysical Survey Report - {community}",
+                       kind="geophysical", issue=issue, config=config)
 
     # One ranking for the whole document, assigned before anything reads it:
     # the executive summary, the preference table, the suitability section

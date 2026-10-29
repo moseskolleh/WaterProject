@@ -930,7 +930,9 @@ committee members (add rows as needed), any extra works or
 recommendations, and the three signatories. Results already produced
 on the other pages - the borehole design, the pumping test and the
 water quality verdict - attach to the report automatically; the page
-shows what is attached before you build it.
+shows what is attached before you build it. At the foot of the page,
+*Evidence bundle* puts the borehole's sheets, documents and figures in
+one file for an auditor (section 9d).
 
 The Asset registry page ([`#/registry`](index.html#/registry)) gives
 the borehole its identifier and prints its headworks plate. The
@@ -1269,6 +1271,157 @@ the same file again adds nothing. In both, the reports for boreholes in
 *Many boreholes* are shown in their histories there, without changing
 their files, and the Streamlit app offers the rest as a file of reports
 (*Reports for other boreholes (.json)*), which either app imports.
+
+## 9c. Documents anyone can check
+
+In the browser app: [`#/verify`](index.html#/verify), *Verify a
+document* under *Project*. In the Streamlit app: the *Verify a document*
+page. On the command line: `groundwater verify`.
+
+**What every document carries.** Each document either app writes (the
+reports, the plate, the asset record, the certificate, the field kit, the
+desk study, the calibration report and the round sheets) carries a
+manifest inside the .docx file, which Word does not show. It records the
+day the document was issued (the day it was built, from the device's
+clock; a worked example built by a script gives none), which app and
+version wrote it, the calibration set in force, whether it was
+certifiable, issued on override or provisional and what was outstanding
+or overridden, every evidence file it was issued from with its SHA-256
+fingerprint, and the fingerprint of every part of the document itself.
+The evidence of a document about the borehole is every sheet the project
+holds and the photographs the document embeds, by the fingerprint of the
+file as it arrived; a calibration report's is the project files pooled,
+a round sheet's those of the register; the field kit and the desk study
+list none.
+
+**The code.** Every page's footer reads *Document 0A1B-2C3D-5 - page n*,
+except a cover's: a document with a cover carries the code and its QR
+symbol at the foot of the cover instead. The code is eight letters and digits and a check
+character, as the borehole identifier has. It is worked out from what the
+document says and records, so a copy whose text has been changed and its
+manifest brought into line no longer gives its own code.
+
+**Where the record is kept.** Building a document keeps its issue record
+(its code and fingerprint, kind, title, day and readiness) in the
+project, which saves it in the project file, and, for a document about
+the borehole, in the borehole's asset record, which the Asset registry
+page lists under *Documents issued*; a record stored after the document
+was issued takes its issue records from the project. The app says the
+code when it saves the document.
+
+**Checking a copy.** Open the page and choose the .docx. It is read on
+the device and sent nowhere; in the browser app the page works with no
+network. The page answers four questions:
+
+1. *Did the toolkit issue it?* Its manifest's fingerprint against the
+   issue records held: those of the project open in the app, and of any
+   project files added on the page (either app's, or the files of an
+   asset register). With none, the page says it cannot confirm the
+   document was issued.
+2. *Has it changed since?* Each part of the document against the
+   fingerprint its manifest recorded. A changed, removed or added part is
+   named: change one digit in the text and the page names
+   `word/document.xml (the text of the document)`. A document opened and
+   saved again in Word is a changed document, because Word rewrites its
+   parts.
+3. *Was it certifiable or provisional?* As the manifest records the
+   certification gate when the document was issued.
+4. *Which evidence was it issued from?* Each file by name and SHA-256,
+   so a copy of a workbook or a photograph can be checked against it.
+
+A code read off a paper copy, or off its QR symbol with a phone, can be
+typed into *Look up a code*, which says what was issued under it, when,
+and how ready.
+
+**What it cannot catch yet.** Until documents are signed (PLAN.md step
+8.2), someone who rewrites a document throughout - its text, its
+manifest, its code and its symbol - makes a copy that agrees with
+itself. Only the issue record catches that, which is why a copy checked
+with no record is *unconfirmed*, never *verified*. Keep the project file,
+or the register's files, where a forger cannot reach them.
+
+On the command line, `groundwater verify report.docx --project
+project.yaml` prints the same answers and exits 0 for a verified copy,
+2 for one unchanged but not confirmed, and 1 otherwise; `--code` looks a
+code up.
+
+## 9d. One evidence bundle for the borehole
+
+In the browser app: the *Evidence bundle* card at the foot of
+[`#/handover`](index.html#/handover). In the Streamlit app: the
+*Evidence bundle* section at the foot of the Handover page. On the
+command line: `groundwater bundle`.
+
+**What it holds.** One .zip file with what an auditor asks for about one
+borehole:
+
+- `raw/` - every sheet the project holds, as it was uploaded, under the
+  name it was uploaded with (less anything a folder cannot hold, such as
+  `:` or `?`) and listed with what it is (VES field sheet, drilling log,
+  pumping test sheet, water quality sheet);
+- `reports/` - the documents this project issued in the session, the
+  latest of each, and any issued earlier that you add on the card; each
+  carries its own manifest (section 9c). The calibration report and the
+  round sheets are about many boreholes and go in only if you add them;
+- `figures/` - the figures each document embeds, taken out of it as it
+  embeds them, named after the document;
+- `tables/` - processed tables; neither app writes any yet, so the
+  folder carries a note saying so;
+- `signatures/` - signatures over sign-offs; nothing the toolkit writes
+  is signed yet, so the folder carries a note saying so;
+- `manifest.json` - the size and SHA-256 of every other file, the app
+  and version that made the bundle, the day it was made (the device's
+  day), the calibration set in force, each document's code, hash and
+  readiness, how ready the documents are taken together (the least ready
+  of those that had a certification gate) and the issue records the
+  project held; its own SHA-256 is the bundle's hash;
+- `README.txt` - what the bundle is and how to check it, by hand or with
+  the toolkit.
+
+The photographs are not in `raw/`: the apps keep a smaller copy of each,
+not the file as it arrived, and the documents list each by the
+fingerprint of the file as it arrived. A file you add that is not a
+document the toolkit wrote, or one changed since, is refused rather
+than put in, and the card says why. Both apps write a bundle by the same
+rules, entry for entry, so the same files on the same day give the same
+bundle in either, but for the app and version it names as its maker.
+
+**Checking one.** On the Verify a document page, under *Verify a bundle*,
+choose the .zip. It is checked against the same issue records as a
+document: those of the project open in the app and of any project files
+added on the page. The page says:
+
+1. whether every file matches the size and SHA-256 `manifest.json`
+   lists for it, naming each file changed, missing or added;
+2. what each document's own check says (section 9c);
+3. what confirms each file from outside the bundle: a document by its
+   issue record; a field sheet or a figure by a confirmed document that
+   lists its SHA-256; the README and the folders' notes as the toolkit's
+   own text. A processed table rests on `manifest.json` alone;
+4. which evidence files the documents list that the bundle does not
+   carry (the photographs, usually);
+5. how ready its documents are taken together, and who made it, when.
+
+A bundle is *verified* only when every file in it is confirmed from
+outside it. Someone who rewrites a sheet and `manifest.json` to match
+makes a bundle that agrees with itself, but the document that lists the
+sheet still lists the old fingerprint, so the sheet is no longer
+confirmed; a bundle checked with no issue record at all is
+*unconfirmed*, as a document is.
+
+**On the command line.** `groundwater bundle bh1.zip --folder ./bh1`
+packs a project folder laid out as the worked examples are (its `raw/`,
+`processed/` tables, `figures/` and `reports/`); `--raw pumping
+test.xlsx` adds a sheet with what it is, `--report`, `--table`,
+`--figure` and `--signature` add files, `--project` keeps the issue
+records of a saved project file, and `--date` dates it (without it the
+bundle gives no date). Without `--folder` the figures are taken out of
+the documents, as the apps take them. `groundwater verify bh1.zip
+--project project.yaml` prints the same answers and every file with what
+confirms it, and exits 0 for a verified bundle, 2 for one unchanged but
+not confirmed, and 1 otherwise. The worked examples' packs,
+`examples/packs/*.zip`, are evidence bundles; a worked example is not
+issued, so they check as unconfirmed.
 
 ## 10. Site maps
 
@@ -2112,6 +2265,12 @@ a file saved before that with an empty ledger, and a file of a later
 schema than the app knows still opens, with a warning that what the app
 does not recognise is not restored. Loading another project replaces
 the ledger with that project's own.
+
+A project file also carries the **issue record of every document built
+from it** (section 9c), and went to schema 3 to carry them, for the same
+reason: an older version of either app warns that it does not restore
+everything in the file rather than dropping the records on its next
+save. A file saved before that opens with none.
 
 ## 12. Scanned sheets
 

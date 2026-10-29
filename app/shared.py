@@ -56,9 +56,20 @@ from groundwater.project_io import (
     stale_on_load,
 )
 from groundwater.readiness import assess_readiness
+from groundwater.registry import asset_from_dict
 from groundwater.seasonal import month_of, seasonal_yield
 from groundwater.supervision import load_checklists, load_separation_distances
-from groundwater.text import phrase_table
+from groundwater.text import phrase, phrase_table
+from groundwater.bundle import PROGRAMME_KINDS, build_evidence_bundle, document_figures
+from groundwater.verification import (
+    BOREHOLE_KINDS,
+    Issue,
+    calibration_facts,
+    clean_issue_records,
+    document_record,
+    evidence_entry,
+    issue_records_of,
+)
 from groundwater.ves.cache import cache_entry, inversion_key
 from groundwater.ves.interpret import rank_interpretations
 
@@ -788,7 +799,8 @@ def _loaded_sources() -> dict:
 
 
 def _project_state() -> dict:
-    """The session, keyed as groundwater.readiness expects it."""
+    """The session, keyed as groundwater.readiness expects it, with the
+    documents issued from it, which the draft asset record carries."""
     return {
         "site": site_from_state(),
         "sources": _loaded_sources(),
@@ -802,7 +814,158 @@ def _project_state() -> dict:
             "responses": supervision_answers(),
             "evidence": st.session_state.get("sup_evidence") or {},
         },
+        "issued": st.session_state.get("issued_documents") or [],
     }
+
+
+# ---------------------------------------------------------------------------
+# Documents issued (PLAN.md step 8.1)
+# ---------------------------------------------------------------------------
+
+#: The upload keys the session keeps its files under, by the role a
+#: manifest names each by (the browser app's roles).
+_EVIDENCE_ROLES = {"ves": "ves", "wiz_ves": "ves", "log": "drilling", "pump": "pumping",
+                   "wq": "quality"}
+
+
+def _source_bytes(source) -> tuple[str, bytes] | None:
+    """A kept source's file name and bytes; a bundled sample's are read
+    from its file. None where there are none to read."""
+    if not isinstance(source, dict):
+        return None
+    if source.get("bytes") is not None:
+        return str(source.get("name") or "data"), bytes(source["bytes"])
+    root = sample_data_dir()
+    if source.get("sample") and root is not None:
+        path = root / str(source["sample"])
+        if path.is_file():
+            return path.name, path.read_bytes()
+    return None
+
+
+def photo_evidence(photo: dict) -> dict:
+    """A photograph as a manifest lists it: by the SHA-256 of the file as it
+    arrived, which its provenance record holds, or by the bytes kept where
+    it was attached before records existed."""
+    import base64
+
+    what = phrase_table("verification.evidence_kinds")["photo"]
+    held = (photo.get("provenance") or {}).get("sha256")
+    if isinstance(held, str) and _re.fullmatch(r"[0-9a-f]{64}", held):
+        return {"what": what, "name": str(photo.get("name") or ""), "sha256": held}
+    return evidence_entry(what, str(photo.get("name") or ""),
+                          base64.b64decode(str(photo.get("b64") or "")))
+
+
+def project_file_evidence(name: str, data: bytes) -> dict:
+    """A saved project file pooled or read into the register, as a manifest
+    lists it."""
+    return evidence_entry(phrase_table("verification.evidence_kinds")["project"], name, data)
+
+
+def issue_for(kind: str, photos=(), files=()) -> Issue:
+    """What the app knows of a document it is about to issue: the day, which
+    is today unless a page names another (the engine never reads the
+    clock), and the evidence it is issued from. A document about the
+    borehole is issued from every file the session holds and the
+    photographs it embeds; the others from the ``files`` they are drawn
+    from, or from none. The browser app's ``issueFor`` is the twin."""
+    import datetime
+
+    kinds = phrase_table("verification.evidence_kinds")
+    evidence = []
+    if kind in BOREHOLE_KINDS:
+        for key, role in _EVIDENCE_ROLES.items():
+            held = _source_bytes(st.session_state.get(f"src_{key}"))
+            if held is not None:
+                evidence.append(evidence_entry(kinds[role], held[0], held[1]))
+    evidence += [photo_evidence(photo) for photo in photos]
+    evidence += list(files)
+    return Issue(issued_on=datetime.date.today().isoformat(), evidence=tuple(evidence))
+
+
+def record_issue(path) -> dict | None:
+    """Keep the issue record of the document just written at ``path``: in the
+    session's ``issued_documents``, which the project file saves, and for a
+    document about the borehole in its stored asset record. A record stored
+    later starts from the session's, as the draft carries them."""
+    record = document_record(Path(path).read_bytes())
+    if record is None:
+        return None
+    st.session_state["issued_documents"] = clean_issue_records(
+        [*(st.session_state.get("issued_documents") or []), record])
+    held = st.session_state.get("asset_record")
+    asset = asset_from_dict(held) if held and record["kind"] in BOREHOLE_KINDS else None
+    if asset is not None:
+        asset.documents = clean_issue_records([*asset.documents, record])
+        st.session_state["asset_record"] = asset.as_dict()
+    return record
+
+
+def offer_document(path: Path, label: str, keep: bool = True) -> dict | None:
+    """Keep the issue record of a document just written and offer it for
+    download, with its code beside the button."""
+    record = record_issue(path)
+    offer_download(path, label, keep=keep)
+    if record is not None:
+        st.caption(phrase("verification.cover_code", code=record["code"]))
+    return record
+
+
+# ---------------------------------------------------------------------------
+# The evidence bundle (PLAN.md step 8.3)
+# ---------------------------------------------------------------------------
+
+def _project_records() -> list[dict]:
+    """The issue records the project holds: its own and its asset record's."""
+    return issue_records_of({"issued": st.session_state.get("issued_documents") or [],
+                             "asset": st.session_state.get("asset_record")})
+
+
+def session_documents() -> list[tuple[str, bytes]]:
+    """The documents built in this session that a borehole's bundle carries:
+    the latest of each on the Deliverables list whose issue record the
+    project holds (so a document built before another project was opened
+    stays out), leaving out the calibration report and the round sheets,
+    which are about many boreholes. The browser app's ``bundleDocuments`` is
+    the twin."""
+    held = {r["sha256"] for r in _project_records()}
+    out: dict[str, bytes] = {}
+    for _, path in _deliverables():
+        if path.suffix.lower() != ".docx" or str(path) in out:
+            continue
+        data = path.read_bytes()
+        record = document_record(data)
+        if record is not None and record["kind"] not in PROGRAMME_KINDS and record["sha256"] in held:
+            out[str(path)] = data
+    return sorted((Path(p).name, d) for p, d in out.items())
+
+
+def evidence_bundle(added=()) -> dict:
+    """This borehole's evidence bundle: every sheet the session holds, as it
+    was uploaded, the documents built in this session and those ``added``
+    (``(name, bytes)`` pairs), the figures each document embeds, and the
+    issue records the project file and the asset record keep; made on the
+    device's day, with the calibration set in force. Raises ValueError, in
+    the catalogue's words, for a document that cannot go in."""
+    import datetime
+
+    kinds = phrase_table("verification.evidence_kinds")
+    files: list[dict] = []
+    for key, role in _EVIDENCE_ROLES.items():
+        held = _source_bytes(st.session_state.get(f"src_{key}"))
+        if held is not None:
+            files.append({"folder": "raw", "name": held[0], "data": held[1], "what": kinds[role]})
+    for name, data in [*session_documents(), *added]:
+        files.append({"folder": "reports", "name": name, "data": data})
+        files += document_figures(name, data)
+    site = site_from_state()
+    stored = st.session_state.get("asset_record")
+    asset = asset_from_dict(stored) if stored else None
+    return build_evidence_bundle(
+        site.community or site.project, files, borehole=asset.asset_id if asset is not None else "",
+        made_on=datetime.date.today().isoformat(), calibration=calibration_facts(app_config().calibration),
+        records=_project_records())
 
 
 #: The supervision page's radio labels, as the checklist's answer codes.
@@ -1217,7 +1380,7 @@ def _load_project() -> None:
 # ---------------------------------------------------------------------------
 
 NAV_GROUPS: list[tuple[str, list[str]]] = [
-    ("Project", ["Overview", "Guided start", "Site maps"]),
+    ("Project", ["Overview", "Guided start", "Site maps", "Verify a document"]),
     ("Investigation", ["Geophysics (VES)", "Borehole design", "Depth Spine",
                        "Scanned sheets"]),
     ("Testing", ["Pumping test", "Water quality"]),
@@ -1711,7 +1874,6 @@ def show_measurements(values, nested: bool = False) -> None:
         measurement_readings_caption,
         measurement_text,
     )
-    from groundwater.text import phrase
 
     if nested:
         st.markdown(f"**{phrase('measurement.heading')}**")

@@ -27,7 +27,8 @@ from shared import (
     cached_checklists,
     cached_separation_distances,
     _next_step,
-    offer_download,
+    issue_for,
+    offer_document,
     report_gate,
     site_from_state,
     workdir,
@@ -319,8 +320,14 @@ def render() -> None:
                 ),
                 workdir() / "Supervision_Checklist_Report.docx",
                 app_config(),
+                # the photographs the report embeds: those attached to the
+                # checklist's items, in its order (PLAN.md step 8.1)
+                issue=issue_for("supervision", photos=[
+                    photo for photo in ((st.session_state.get("sup_evidence") or {}).get(item.item_id)
+                                        for item in checklist_items)
+                    if isinstance(photo, dict) and photo.get("b64")]),
             )
-            offer_download(report_path, "Download supervision report (.docx)")
+            offer_document(report_path, "Download supervision report (.docx)")
 
     _next_step("Build the handover →", "Handover",
                "Quality assessed. Close the project out with the community.")

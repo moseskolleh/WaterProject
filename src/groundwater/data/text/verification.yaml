@@ -1,0 +1,198 @@
+# Documents that can be verified (PLAN.md step 8.1): the code an issued
+# document carries on its cover and in its footer, and the four answers the
+# Verify a document page, `groundwater verify` and the Streamlit page give
+# about a .docx. Written by groundwater/verification.py and
+# reporting/docx_utils.py, and by their twins in gwt-core.js and
+# gwt-docx.js. Every entry is read by its quoted id in both engines. The
+# template rules are in src/groundwater/text.py; CONTRIBUTING.md says how to
+# add an entry.
+
+# On the cover, beside the QR symbol, and in every other page's footer.
+cover_code: >-
+  Document code {code}
+cover_note: >-
+  This code names the document as it was issued. The Verify a document page
+  of the Groundwater Toolkit, or the command groundwater verify, checks a
+  copy against it and needs no network.
+footer: >-
+  Document {code} - page
+# The text the QR symbol on the cover carries: the code, plainly, so a
+# phone shows it with nothing to load.
+qr: >-
+  DOCUMENT {code}
+
+# What each kind of evidence file is called in a manifest, by the role each
+# app keeps it under.
+evidence_kinds:
+  ves: VES field sheet
+  drilling: drilling log
+  pumping: pumping test sheet
+  quality: water quality sheet
+  photo: photograph
+  project: project file
+  ipi2win: IPI2Win model sheet
+
+# An issue date that is not a day, refused rather than written.
+bad_date: >-
+  The issue date "{date}" is not a day written as YYYY-MM-DD.
+# An evidence file whose hash is not a SHA-256, refused likewise.
+bad_hash: >-
+  The evidence file "{name}" has no SHA-256 to list it by.
+bad_calibration: >-
+  A calibration set has to be named with the SHA-256 of its file.
+
+# The verdict, one line above the four answers.
+verdicts:
+  verified: Verified - issued by the toolkit and unchanged since.
+  unconfirmed: Unchanged since it was written, but not confirmed as issued.
+  changed: Changed since it was issued.
+  not_issued: Not confirmed - no issue record given matches this document.
+  altered_manifest: The manifest has been altered, so nothing it records can be relied on.
+  damaged_manifest: The manifest cannot be read, so nothing it records can be relied on.
+  no_manifest: Not a document the toolkit issued with a manifest.
+  unreadable: Not a Word document the toolkit can read.
+
+# 1. Whether the toolkit issued it.
+issued_matched: >-
+  Issued by the toolkit: the issue record for document {code} holds the
+  hash of this copy's manifest.
+issued_not_checked: >-
+  Not confirmed as issued: no issue record was given to check it against.
+  Until documents are signed, a copy whose parts, manifest and code were
+  all rewritten passes the other checks; the issue record in the project
+  file or the asset record is what catches it.
+issued_no_record: >-
+  Not confirmed as issued: none of the {n:num} issue {n:plural:record|records}
+  given is for document {code}.
+issued_record_differs: >-
+  Not as issued: the issue record for document {code} holds a different
+  hash, so this copy is not the one issued under that code.
+issued_no_manifest: >-
+  Not issued by the toolkit with a manifest: the file carries none. It was
+  written by something else, or before documents carried one.
+issued_damaged: >-
+  Not confirmed as issued: the manifest is not as the toolkit writes one.
+issued_altered: >-
+  Not confirmed as issued: what the manifest records no longer gives the
+  code {code} it carries, so it was edited after the document was written.
+issued_unreadable: >-
+  The file cannot be read as a Word document (.docx): it is not a ZIP
+  package, or it is damaged.
+
+# 2. Whether it has changed since.
+unchanged: >-
+  Unchanged: every part of the document matches the hash its manifest
+  recorded when it was written.
+changed_parts: >-
+  Changed: {parts} no longer {n:plural:matches|match} the hash its manifest
+  recorded.
+missing_parts: >-
+  Removed since it was written: {parts}.
+added_parts: >-
+  Added since it was written: {parts}.
+changed_unknown: >-
+  Whether it has changed cannot be told: there is no manifest that can be
+  relied on to compare it with.
+# A part named in those sentences, and what each part of a .docx holds.
+part_label: >-
+  {name} ({what})
+part_names:
+  word/document.xml: the text of the document
+  word/footer1.xml: a page footer
+  word/footer2.xml: a page footer
+  word/styles.xml: the styles
+  word/numbering.xml: the list numbering
+  word/settings.xml: the document settings
+  word/_rels/document.xml.rels: the links between the parts
+  _rels/.rels: the package's links
+  "[Content_Types].xml": the package's list of part types
+  docProps/core.xml: the document properties
+  docProps/app.xml: the application properties
+  word/media: an image
+
+# 3. Whether it was certifiable or provisional, as its manifest records.
+readiness_ready: >-
+  Certifiable: its manifest records every certification requirement as met
+  when it was issued.
+readiness_overrides: >-
+  Issued on override, not a certification: its manifest records {titles}
+  as overridden.
+overridden_by: >-
+  {title} (by {by})
+readiness_not_ready: >-
+  Provisional, not a certification: its manifest records {titles} as
+  outstanding.
+readiness_also_overridden: >-
+  It also records {titles} as overridden.
+readiness_not_assessed: >-
+  Not a certification: no certification gate was run for it when it was
+  written.
+
+# 4. Which evidence it was issued from.
+evidence_some: >-
+  It was issued from {n:num} evidence {n:plural:file|files}, listed in its
+  manifest {n:plural:with its|each with its} SHA-256: {files}.
+evidence_file: >-
+  {name} ({what}, SHA-256 {short}...)
+evidence_file_bare: >-
+  {name} (SHA-256 {short}...)
+evidence_none: >-
+  Its manifest lists no evidence files: it was written without saying which
+  files it was issued from.
+
+# Who wrote it, under the four answers.
+engine_line: >-
+  Written by {engine} {version}, {when}. The calibration set in force was
+  {calibration}.
+calibration_unstated: >-
+  not stated
+on_day: >-
+  issued on {date}
+on_no_day: >-
+  with no issue date given
+
+# The Verify a document page, in both apps.
+page_lead: >-
+  Whether the toolkit issued a document, whether it has changed since,
+  whether it was certifiable or provisional, and which evidence it was
+  issued from. The file is read on this device and sent nowhere.
+page_records: >-
+  Checked against {n:num} issue {n:plural:record|records}: those of the
+  project open here and of the project files added.
+page_no_records: >-
+  No issue record is held: the check says whether a document has changed
+  since it was written, but cannot confirm it was issued. Add the project
+  file it was issued from, or the files of the asset register.
+document_lead: >-
+  A Word document (.docx) this toolkit wrote, in either app. A copy opened
+  and saved again in Word is a changed document: the check names what
+  changed.
+none_issued: >-
+  No document has been issued from this project yet.
+lookup_lead: >-
+  The code on a paper copy's cover and in its footer, or what a phone reads
+  off the QR symbol. It is looked up in the issue records above.
+registry_documents: >-
+  The issue record of each document issued about this borehole is kept with
+  its record, so a copy can be checked against the register on the Verify a
+  document page.
+questions:
+  issued: Did the toolkit issue it?
+  changed: Has it changed since?
+  readiness: Was it certifiable or provisional?
+  evidence: Which evidence was it issued from?
+
+# A code typed in, or read off the QR symbol on a paper copy.
+code_unreadable: >-
+  "{code}" is not a document code: a code is eight letters and digits and a
+  check character, such as 0A1B-2C3D-5.
+code_found: >-
+  Document {code} was {when} as {title}, {readiness}. Its hash is {sha256}.
+code_not_found: >-
+  None of the {n:num} issue {n:plural:record|records} given is for document
+  {code}.
+readiness_words:
+  ready: certifiable
+  ready_with_overrides: on override, not a certification
+  not_ready: provisional, not a certification
+  not_assessed: with no certification gate run

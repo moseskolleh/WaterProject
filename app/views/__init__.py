@@ -21,6 +21,7 @@ MODULES = (
     ("Overview", "overview", "overview"),
     ("Guided start", "guided-start", "guided_start"),
     ("Site maps", "site-maps", "site_maps"),
+    ("Verify a document", "verify", "verify"),
     ("Geophysics (VES)", "geophysics", "geophysics"),
     ("Borehole design", "borehole-design", "borehole_design"),
     ("Depth Spine", "depth-spine", "depth_spine"),

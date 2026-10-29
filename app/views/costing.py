@@ -35,6 +35,8 @@ from shared import (
     first_point_survey,
     _manual_costing_rules,
     _next_step,
+    issue_for,
+    offer_document,
     offer_download,
     report_gate,
     show_flags,
@@ -359,8 +361,9 @@ def render() -> None:
                     ),
                     workdir() / "Cost_Estimate_Report.docx",
                     app_config(),
+                    issue=issue_for("costing"),
                 )
-                offer_download(report_path, "Download cost estimate report (.docx)")
+                offer_document(report_path, "Download cost estimate report (.docx)")
 
     st.divider()
     with st.expander("📦 Programme: a package of boreholes"):

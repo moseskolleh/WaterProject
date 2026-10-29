@@ -36,6 +36,7 @@ import math
 import yaml
 
 from .ledger import clean_ledger
+from .verification import clean_issue_records
 
 # session-state key prefixes that hold saveable manual inputs. "q_" holds
 # pumping-test step discharges and "design_" the borehole-design static water
@@ -79,6 +80,7 @@ RESET_ON_LOAD_PREFIXES = (
 # outgoing survey's record; the incoming file brings its own.
 RESET_ON_LOAD_KEYS = (
     "design_swl", "asset_record", "inversion_cache", "sup_evidence", "prediction_ledger",
+    "issued_documents",
     "ledger_drilled_pick",
     "topo_path", "topo_source", "topo_report", "topo_inputs", "terrain_result", "profile_path",
     "map_paths", "subsurface_paths", "section_path", "pseudosection_path",
@@ -172,7 +174,11 @@ PROJECT_FORMAT = "groundwater-toolkit-project"
 #: the ledger is a record rather than a cache: an older toolkit that loads a
 #: file of schema 2 says it does not restore everything in it, rather than
 #: dropping the record on its next save without a word.
-PROJECT_SCHEMA = 2
+#: 3 from PLAN.md step 8.1: the file carries the issue records of the
+#: documents issued from it (``issued``), raised for the same reason - a
+#: record an older toolkit dropped on its next save is a document nobody
+#: can confirm was issued.
+PROJECT_SCHEMA = 3
 
 
 def _schema_1_to_2(payload: dict) -> dict:
@@ -182,8 +188,13 @@ def _schema_1_to_2(payload: dict) -> dict:
     return dict(payload, schema=2, ledger=empty_ledger())
 
 
+def _schema_2_to_3(payload: dict) -> dict:
+    """Schema 2 had no issue records: a file of it loads with none."""
+    return dict(payload, schema=3, issued=[])
+
+
 #: The step from each schema to the next, applied in turn on load.
-_MIGRATIONS = {1: _schema_1_to_2}
+_MIGRATIONS = {1: _schema_1_to_2, 2: _schema_2_to_3}
 
 
 def payload_schema(payload: dict) -> int:
@@ -260,6 +271,9 @@ def serialize_project(session: dict, version: str) -> bytes:
         # step 5.1), written even when empty so the schema it belongs to
         # always shows it
         "ledger": clean_ledger(session.get("prediction_ledger")),
+        # the issue record of every document issued from the project
+        # (PLAN.md step 8.1), likewise
+        "issued": clean_issue_records(session.get("issued_documents")),
         "state": state,
     }
     cache = _inversion_cache(session.get("inversion_cache"))
@@ -465,6 +479,8 @@ def _updates_from_payload(payload: dict) -> dict:
     # always, so a loaded project never keeps the outgoing one's ledger; a
     # hand-edited entry is dropped or blanked, not raised
     updates["prediction_ledger"] = clean_ledger(payload.get("ledger"))
+    # likewise its issue records; one that is not one is dropped
+    updates["issued_documents"] = clean_issue_records(payload.get("issued"))
 
     asset = payload.get("asset")
     if isinstance(asset, dict) and asset.get("asset_id"):

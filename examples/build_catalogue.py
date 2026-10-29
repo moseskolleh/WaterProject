@@ -14,11 +14,13 @@ written on it and the Dr Timbo sheets carry no GPS fix, which is what
 field data is like; an index that quietly rounded those up to
 "complete" would be advertising something the toolkit does not do.
 
-Each case is also packed into a single zip - inputs, reports, figures
-and derived tables - so a case can be handed over in one file. The
-packs are built rather than committed: every file in them is already in
-the repository, and they are byte-reproducible, so there is nothing to
-be gained by storing a second copy.
+Each case is also packed into a single evidence bundle (PLAN.md step
+8.3) - inputs, reports, figures and derived tables, with a manifest of
+every file's SHA-256 - so a case can be handed over in one file and
+checked with ``groundwater verify``. The packs are built rather than
+committed: every file in them is already in the repository, and they are
+byte-reproducible, so there is nothing to be gained by storing a second
+copy.
 
 Run from the repository root, after the three run scripts:
 
@@ -47,6 +49,7 @@ REPO = HERE.parent
 sys.path.insert(0, str(REPO / "src"))
 
 from groundwater import Project  # noqa: E402
+from groundwater.bundle import build_evidence_bundle  # noqa: E402
 from groundwater.ingestion import (  # noqa: E402
     read_drilling_workbook,
     read_pumping_workbook,
@@ -54,6 +57,8 @@ from groundwater.ingestion import (  # noqa: E402
     read_ves_workbook,
 )
 from groundwater.readiness import REQUIREMENTS  # noqa: E402
+from groundwater.text import phrase_table  # noqa: E402
+from groundwater.verification import calibration_facts  # noqa: E402
 from groundwater.ves import read_ipi2win_models  # noqa: E402
 
 CATALOGUE = HERE / "CATALOGUE.md"
@@ -194,30 +199,32 @@ def survey(case: dict) -> dict:
 
 
 def pack(entry: dict) -> Path:
-    """One zip per case: what went in, and everything that came out.
+    """One evidence bundle per case (PLAN.md step 8.3): what went in, and
+    everything that came out.
 
-    Fixed timestamps and sorted entries, the same trick the .docx writer
-    uses, so the same inputs always produce the same bytes and a pack can be
-    compared rather than merely rebuilt.
+    The input workbooks go in ``raw/``, the derived tables in ``tables/``,
+    the figures in ``figures/`` and the reports in ``reports/``, with a
+    ``manifest.json`` of every file's SHA-256 and a README saying how to
+    check it (``groundwater verify examples/packs/<case>.zip``). The bundle
+    is written entry by entry with one fixed timestamp, so the same inputs
+    always produce the same bytes and a pack can be compared rather than
+    merely rebuilt. No date is given, as the reports give none, and no issue
+    record: a worked example is not issued, so its pack checks as unchanged
+    but not confirmed.
     """
     PACKS.mkdir(parents=True, exist_ok=True)
     out = PACKS / f"{entry['case']['key']}.zip"
-    root = HERE / "projects" / entry["case"]["key"]
-    members: list[tuple[str, Path]] = [("project.yaml", root / "project.yaml")]
-    for _, path, _ in entry["inputs"]:
-        members.append((f"data/{path.name}", path))
-    for path, _, _ in entry["reports"]:
-        members.append((f"reports/{path.name}", path))
-    for path in entry["figures"]:
-        members.append((f"figures/{path.name}", path))
-    for path in entry["tables"]:
-        members.append((f"processed/{path.name}", path))
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, path in sorted(members):
-            info = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_DEFLATED
-            info.external_attr = 0o600 << 16
-            archive.writestr(info, path.read_bytes())
+    project = Project.open(HERE / "projects" / entry["case"]["key"])
+    kinds = phrase_table("verification.evidence_kinds")
+    files = [{"folder": "raw", "name": path.name, "data": path.read_bytes(), "what": kinds[role]}
+             for role, path, _ in entry["inputs"]]
+    files += [{"folder": "reports", "name": path.name, "data": path.read_bytes()}
+              for path, _, _ in entry["reports"]]
+    files += [{"folder": "figures", "name": path.name, "data": path.read_bytes()} for path in entry["figures"]]
+    files += [{"folder": "tables", "name": path.name, "data": path.read_bytes()} for path in entry["tables"]]
+    built = build_evidence_bundle(entry["case"]["title"], files,
+                                  calibration=calibration_facts(project.config.calibration))
+    out.write_bytes(built["bytes"])
     return out
 
 
@@ -291,11 +298,15 @@ def render(entries: list[dict]) -> str:
     lines += [
         "## Packs",
         "",
-        "`python examples/build_catalogue.py` writes one zip per case into",
-        "`examples/packs/`, holding the input workbooks, the reports, the",
-        "figures and any derived tables. They are built rather than committed:",
-        "every file in them is already in the repository, and they are",
-        "byte-reproducible, so a second copy would only go stale.",
+        "`python examples/build_catalogue.py` writes one evidence bundle per",
+        "case into `examples/packs/`: the input workbooks in `raw/`, any",
+        "derived tables in `tables/`, the figures in `figures/` and the reports",
+        "in `reports/`, with a `manifest.json` of every file's SHA-256 and a",
+        "`README.txt` saying how to check it (`groundwater verify",
+        "examples/packs/dr_timbo.zip`). A worked example is not issued, so a",
+        "pack checks as unchanged but not confirmed. They are built rather than",
+        "committed: every file in them is already in the repository, and they",
+        "are byte-reproducible, so a second copy would only go stale.",
         "",
     ]
     return "\n".join(lines)

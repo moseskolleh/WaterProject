@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Config
+from ..verification import Issue
 from ..models import SiteMetadata
 from ..photos import describe_provenance
 from ..supervision.checklists import (
@@ -116,6 +117,7 @@ def build_supervision_report(
     inputs: SupervisionReportInputs,
     out_path: str | Path,
     config: Config | None = None,
+    issue: Issue | None = None,
 ) -> Path:
     config = config or Config()
     site = inputs.site
@@ -124,6 +126,7 @@ def build_supervision_report(
     rb = ReportBuilder(
         config.style,
         title=f"Supervision Checklist - {site.community or 'Borehole'}",
+        kind="supervision", issue=issue, config=config,
     )
     rb.cover(
         title_lines=["DRILLING SUPERVISION", "CHECKLIST RECORD"],

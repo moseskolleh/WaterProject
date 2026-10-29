@@ -385,7 +385,7 @@
         out.push({
           key: slot.key, label: slot.label,
           caption: v.caption || slot.label,
-          dataUrl: v.dataUrl, mime: v.mime || 'image/jpeg',
+          dataUrl: v.dataUrl, mime: v.mime || 'image/jpeg', name: v.name || '',
           width: v.width, height: v.height, provenance: v.provenance || null,
         });
       }
@@ -396,6 +396,7 @@
           key: 'extra_' + i, label: extra.label || 'Additional photo',
           caption: extra.image.caption || extra.label || 'Additional photo',
           dataUrl: extra.image.dataUrl, mime: extra.image.mime || 'image/jpeg',
+          name: extra.image.name || '',
           width: extra.image.width, height: extra.image.height,
           provenance: extra.image.provenance || null,
         });

@@ -424,3 +424,62 @@ need real project inputs or decisions to finish calibrating it.
    stages on the contractor. (e) A log's completion date written in
    figures alone is not read, even where only one reading is possible,
    so that the dates read are not only those late in their month.
+
+26. **What a document's manifest lists, and how it is marked (added with
+   PLAN.md step 8.1).** Every document either app writes carries a
+   manifest, a code in its footers and, under a cover, a QR symbol of the
+   code. Each of these is a choice made here, not a standard, and wants the
+   programme's confirmation: (a) the code is the first 40 bits of a
+   SHA-256 in eight Crockford base-32 characters and an ISO 7064 MOD 37,36
+   check character, as the asset identifier has; 40 bits names one issue
+   among the few a programme makes, and the full hash behind it is what is
+   checked, but two different documents can share a code once in about a
+   million million; (b) the QR symbol is at error-correction level H and
+   2.6 cm across, at the foot of the cover, and the plate carries none, so
+   that the one symbol on the headworks is the borehole's; (c) a document
+   about the borehole lists as its evidence every sheet the project holds
+   (not only the ones that report reads) and the photographs it embeds, a
+   calibration report the project files pooled, a round sheet those of the
+   register, and the field kit and the desk study none; a photograph is
+   listed by the hash its provenance record took of the file as it
+   arrived, not of the copy the project keeps; (d) the day a document is
+   issued is the day it is built, from the device's clock, and a worked
+   example built by a script gives none; (e) a copy is checked against
+   the issue records of the project files given, and until documents are
+   signed (step 8.2) a copy rewritten throughout is caught by nothing
+   else. Say whether a document should also be issued on a day the user
+   names, whether its evidence should be narrowed to the sheets it reads,
+   and where the programme keeps the issue records it checks against.
+
+27. **What an evidence bundle carries, and what counts as confirming it
+   (added with PLAN.md step 8.3).** The Handover page of either app, and
+   `groundwater bundle`, put one borehole's evidence into one .zip. Each of
+   these is a choice made here, not a standard, and wants the programme's
+   confirmation: (a) `raw/` holds the sheets the project holds as they
+   were uploaded, and not the photographs, because the apps keep a smaller
+   copy of each rather than the file as it arrived (the documents list
+   each photograph by the hash of the file as it arrived, and the check
+   names them as evidence the bundle does not carry); (b) `reports/` holds
+   the documents the project issued in the session, the latest under each
+   file name, and those the user adds, and leaves out the calibration
+   report and the round sheets unless added, since they are about many
+   boreholes; `figures/` holds what the documents embed, taken out of
+   them; neither app writes `tables/` yet; (c) the documents taken
+   together are as ready as the least ready of those that had a
+   certification gate, so one provisional report makes the bundle
+   provisional; (d) a file counts as confirmed from outside the bundle
+   when an issue record given holds a document's hash, when a confirmed
+   document lists a file's SHA-256 (a sheet as evidence, a figure as a
+   part), or when it is the README or a folder's note exactly as the
+   toolkit writes it, and a bundle is "verified" only when every file is
+   confirmed, so a bundle with a processed table in it never is; (e) the
+   bundle's own hash is printed but kept nowhere, so a check confirms its
+   contents, not that the project made this bundle; (f) every entry is
+   stored, not compressed, and dated 1980-01-01, so that both engines
+   write the same bytes; a file's name keeps the last part of its path,
+   with what a folder cannot hold made an underscore, and a second file
+   under a name already taken is numbered, as `sheet (2).xlsx`. Say
+   whether the photographs as the project keeps them, the calibration
+   set's own file or the project file should go in, whether a processed
+   table should be allowed to rest on the bundle's manifest alone, and
+   where the programme keeps a bundle's hash.
