@@ -6,6 +6,12 @@ that entry, kept as it was written.
 
 ## Unreleased
 
+### Fitted transmissivities in the pumping prose print to three figures
+
+The yield's pending reason, the `transmissivity_low_confidence` flag and the `recovery_intercept` flag printed a fitted transmissivity to two decimal places: eight significant figures of a number the two engines are held to agree on to 1e-4. The nightly fuzz run drew a constant test whose Theis fit gave 102942.16 m2/day in Python and 102942.17 in the browser, and the two pending reasons differed in their last digit (tests/fuzz/regressions/pumping-analysis-pending-reason-f92f56b2.json). Both engines now print those transmissivities with `fmt_num` and `fmtNum`, to three significant figures as the rest of the report prints one: "Cooper-Jacob 0.536 m2/day", "Theis curve fit 103,000 m2/day". The yield envelope's sentence still prints to one decimal place and its open regression stands.
+
+The Streamlit suite's test of degrees typed into the UTM boxes converts them to a position in Freetown, and the sidebar then fills the district, its province and the chiefdom from it. The test put the position back but not those three, so the province left behind narrowed the district options to Western Area's two and a later test's "Port Loko" was not among them, and the district gave the study area map somewhere to centre on where a test expected none. On Python 3.10, which Streamlit 1.66 no longer supports, Streamlit 1.65's AppTest keeps a value a test puts into session state for a widget's key and the nine tests after it failed every night; the 1.66 AppTest the other versions run drops it, which is why they passed. The test now clears the three through their widgets.
+
 ### Links that go to a page, and less before the first paint (PLAN.md steps 1.4 and 1.5)
 
 Every page of the browser app now has an address, `#/<page>`. The Geophysics, Pumping test and Asset registry pages can also name one item, as in `#/ves/VES-3`, `#/pumping/KTL-01` and `#/registry/<asset id>`. The back and forward buttons move between pages, the user guide links to them, and a QR code on a field sheet can open one. An address wins over the page a saved session was left on. An address the app doesn't know opens the Overview, and an item the open project doesn't hold is flagged across the top of the page. The Streamlit app has no such addresses; step 1.1 is where its pages get their own.

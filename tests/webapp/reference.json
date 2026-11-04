@@ -180730,7 +180730,7 @@
     [
      "warning",
      "transmissivity_low_confidence",
-     "No method fitted to standard (Theis recovery 1.43 m2/day, the recovery line meets t/t' = 1 at 20.0 m of residual drawdown, 60% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.54 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.47 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.54 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+     "No method fitted to standard (Theis recovery 1.43 m2/day, the recovery line meets t/t' = 1 at 20.0 m of residual drawdown, 60% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.536 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.469 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.536 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
     ]
    ],
    "step_length": null,
@@ -180775,7 +180775,7 @@
    "pump_depth": null,
    "confidence": "established",
    "confidence_reasons": [],
-   "pending_reason": "no fitted transmissivity can be adopted (Theis recovery 0.59 m2/day, the recovery line meets t/t' = 1 at 22.0 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero)",
+   "pending_reason": "no fitted transmissivity can be adopted (Theis recovery 0.594 m2/day, the recovery line meets t/t' = 1 at 22.0 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero)",
    "pump_depth_basis": "",
    "envelope_basis": "",
    "rec_pumping_time": 3.0,
@@ -180799,7 +180799,7 @@
     [
      "warning",
      "recovery_intercept",
-     "The recovery line does not pass through the origin: it meets t/t' = 1 at 22.0 m of residual drawdown (66% of the 33.4 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 0.59 m2/day is reported but not adopted."
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at 22.0 m of residual drawdown (66% of the 33.4 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 0.594 m2/day is reported but not adopted."
     ]
    ],
    "step_length": null,
@@ -180871,7 +180871,7 @@
     [
      "warning",
      "recovery_intercept",
-     "The recovery line does not pass through the origin: it meets t/t' = 1 at -8.0 m of residual drawdown (37% of the 21.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 0.64 m2/day is reported but not adopted."
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at -8.0 m of residual drawdown (37% of the 21.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 0.644 m2/day is reported but not adopted."
     ],
     [
      "warning",
@@ -180886,7 +180886,7 @@
     [
      "warning",
      "transmissivity_low_confidence",
-     "No method fitted to standard (Theis recovery 0.64 m2/day, the recovery line meets t/t' = 1 at -8.0 m of residual drawdown, 37% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.54 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.47 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.54 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+     "No method fitted to standard (Theis recovery 0.644 m2/day, the recovery line meets t/t' = 1 at -8.0 m of residual drawdown, 37% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.536 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.469 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.536 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
     ]
    ],
    "step_length": null,
@@ -180958,7 +180958,7 @@
     [
      "warning",
      "recovery_intercept",
-     "The recovery line does not pass through the origin: it meets t/t' = 1 at 21.7 m of residual drawdown (66% of the 32.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 1.40 m2/day is reported but not adopted."
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at 21.7 m of residual drawdown (66% of the 32.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 1.4 m2/day is reported but not adopted."
     ],
     [
      "warning",
@@ -180973,7 +180973,7 @@
     [
      "warning",
      "transmissivity_low_confidence",
-     "No method fitted to standard (Theis recovery 1.40 m2/day, the recovery line meets t/t' = 1 at 21.7 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.54 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.47 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.54 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+     "No method fitted to standard (Theis recovery 1.4 m2/day, the recovery line meets t/t' = 1 at 21.7 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.536 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.469 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.536 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
     ]
    ],
    "step_length": null,
@@ -181039,7 +181039,7 @@
     [
      "warning",
      "recovery_intercept",
-     "The recovery line does not pass through the origin: it meets t/t' = 1 at 21.7 m of residual drawdown (66% of the 32.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 1.40 m2/day is reported but not adopted."
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at 21.7 m of residual drawdown (66% of the 32.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 1.4 m2/day is reported but not adopted."
     ],
     [
      "warning",
@@ -181054,7 +181054,7 @@
     [
      "warning",
      "transmissivity_low_confidence",
-     "No method fitted to standard (Theis recovery 1.40 m2/day, the recovery line meets t/t' = 1 at 21.7 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.54 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.47 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.54 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+     "No method fitted to standard (Theis recovery 1.4 m2/day, the recovery line meets t/t' = 1 at 21.7 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.536 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.469 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.536 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
     ]
    ],
    "step_length": null,
@@ -181212,7 +181212,7 @@
     [
      "warning",
      "transmissivity_low_confidence",
-     "No method fitted to standard (Theis recovery 0.50 m2/day, R squared 0.671 is below the 0.8 standard). The Theis recovery value of 0.50 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+     "No method fitted to standard (Theis recovery 0.505 m2/day, R squared 0.671 is below the 0.8 standard). The Theis recovery value of 0.505 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
     ]
    ],
    "step_length": 60.0,
@@ -181299,7 +181299,7 @@
     [
      "warning",
      "transmissivity_low_confidence",
-     "No method fitted to standard (Cooper-Jacob 2.50 m2/day, its fitted window 5-50 minutes lies inside the 80-minute casing-storage period; Theis curve fit 2.50 m2/day, each 50-minute step lies inside the 80-minute casing-storage period). The Cooper-Jacob value of 2.50 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+     "No method fitted to standard (Cooper-Jacob 2.5 m2/day, its fitted window 5-50 minutes lies inside the 80-minute casing-storage period; Theis curve fit 2.5 m2/day, each 50-minute step lies inside the 80-minute casing-storage period). The Cooper-Jacob value of 2.5 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
     ]
    ],
    "step_length": 50.0,
@@ -182359,7 +182359,7 @@
     [
      "warning",
      "transmissivity_low_confidence",
-     "No method fitted to standard (Cooper-Jacob 0.20 m2/day, its fitted window 25-240 minutes lies inside the 893-minute casing-storage period; Theis curve fit 0.20 m2/day, the whole 240-minute test lies inside the 893-minute casing-storage period). The Cooper-Jacob value of 0.20 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+     "No method fitted to standard (Cooper-Jacob 0.2 m2/day, its fitted window 25-240 minutes lies inside the 893-minute casing-storage period; Theis curve fit 0.2 m2/day, the whole 240-minute test lies inside the 893-minute casing-storage period). The Cooper-Jacob value of 0.2 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
     ]
    ],
    "step_length": null,

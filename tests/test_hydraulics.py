@@ -515,7 +515,7 @@ def test_a_rejected_recovery_is_not_adopted_over_a_casing_storage_fallback(sampl
     assert fit.transmissivity_m2_per_day == pytest.approx(0.536, abs=0.001)
     assert 0.3 < analysis.yield_recommendation.safe_yield_m3_per_h < 0.5
     low = next(f for f in analysis.flags if f.code == "transmissivity_low_confidence")
-    assert "The Cooper-Jacob value of 0.54 m2/day is adopted" in low.message
+    assert "The Cooper-Jacob value of 0.536 m2/day is adopted" in low.message
     # the casing-storage flag is worded from the adoption, not against it
     casing = next(f for f in analysis.flags if f.code == "casing_storage")
     assert "the Cooper-Jacob value is adopted only as the best available" in casing.message

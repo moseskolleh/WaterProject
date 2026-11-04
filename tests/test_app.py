@@ -526,8 +526,15 @@ def test_degrees_typed_into_the_utm_boxes_are_refused_until_converted(app):
     and converting them is the operator's own button."""
     from groundwater.geo import degrees_in_utm_boxes
 
+    # The conversion lands the site in Freetown, and the sidebar then fills
+    # the district, its province and the chiefdom from the position. All of
+    # it is put back: the district options are filtered by the province, so
+    # a province left behind narrowed the options to Western Area's two
+    # and a later test's "Port Loko" was not among them, and a district
+    # left behind gave the study area map somewhere to centre on.
     saved = {key: app.session_state.get(key, None)
-             for key in ("meta_easting", "meta_northing", "meta_zone")}
+             for key in ("meta_easting", "meta_northing", "meta_zone",
+                         "meta_province", "meta_district", "meta_chiefdom")}
     try:
         goto(app, "Asset registry")
         app.number_input(key="meta_easting").set_value(13.2294)
@@ -552,9 +559,18 @@ def test_degrees_typed_into_the_utm_boxes_are_refused_until_converted(app):
         for key in ("meta_easting", "meta_northing"):
             app.number_input(key=key).set_value(saved[key] or 0.0)
         app.selectbox(key="meta_zone").select(saved["meta_zone"] or "29N")
+        # through the widgets, as the operator would clear them: a value put
+        # straight into session state for a widget's key is not kept by
+        # every Streamlit the suite runs on
+        app.selectbox(key="meta_province").select(saved["meta_province"] or "")
+        app.selectbox(key="meta_district").select(saved["meta_district"] or "")
+        app.text_input(key="meta_chiefdom").set_value(saved["meta_chiefdom"] or "")
         app.text_input(key="latlon_paste").set_value("")
         app.session_state["latlon_assumed"] = ""
         app.run()
+        assert not app.exception, app.exception
+        for key in ("meta_province", "meta_district", "meta_chiefdom"):
+            assert (app.session_state.get(key) or "") == (saved[key] or "")
 
 
 def test_supervision_photo_evidence_holds_the_record_until_attached(app):
