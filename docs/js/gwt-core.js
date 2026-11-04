@@ -10748,7 +10748,7 @@
             'The residual drawdown is dominated by something the method does ' +
             'not model (casing storage, a changing static level or a wrong ' +
             'pumping time), so its transmissivity of ' +
-            pyFixed(recFit.transmissivity_m2_per_day, 2) + ' m2/day is reported ' +
+            fmtNum(recFit.transmissivity_m2_per_day) + ' m2/day is reported ' +
             'but not adopted.',
         });
       }
@@ -10954,20 +10954,20 @@
     if (!adopted.result && fittedMethods(analysis).length) {
       rejected = 'no fitted transmissivity can be adopted (' +
         fittedMethods(analysis).map(function (f) {
-          return METHOD_LABELS[f[0]] + ' ' + pyFixed(f[1].transmissivity_m2_per_day, 2) +
+          return METHOD_LABELS[f[0]] + ' ' + fmtNum(f[1].transmissivity_m2_per_day) +
             ' m2/day, ' + (analysis.invalid_fits[f[0]] || whyNotAdopted(analysis, f[0]));
         }).join('; ') + ')';
     }
     if (adopted.result && !adopted.qualifies) {
       var scored = fittedMethods(analysis).map(function (f) {
-        return METHOD_LABELS[f[0]] + ' ' + pyFixed(f[1].transmissivity_m2_per_day, 2) +
+        return METHOD_LABELS[f[0]] + ' ' + fmtNum(f[1].transmissivity_m2_per_day) +
           ' m2/day, ' + (whyNotAdopted(analysis, f[0]) || 'usable');
       }).join('; ');
       flags.push({
         level: 'warning', code: 'transmissivity_low_confidence',
         message: 'No method fitted to standard (' + scored + '). The ' +
           METHOD_LABELS[adopted.method] + ' value of ' +
-          pyFixed(adopted.result.transmissivity_m2_per_day, 2) + ' m2/day is ' +
+          fmtNum(adopted.result.transmissivity_m2_per_day) + ' m2/day is ' +
           'adopted as the best available, so the yield rests on a fit that ' +
           'does not meet it.',
       });

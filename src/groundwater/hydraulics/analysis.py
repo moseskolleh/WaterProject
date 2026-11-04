@@ -34,7 +34,7 @@ from scipy.special import exp1
 from ..config import PumpingConfig
 from ..models import DataFlag, PumpingTest, step_durations_min, step_offsets_min
 from ..text import phrase
-from ..utils import plural, sum_in_order
+from ..utils import fmt_num, plural, sum_in_order
 from .spread import (
     Diagnostic,
     PapadopulosCooperResult,
@@ -1667,7 +1667,7 @@ def analyse_pumping_test(
                     "zero. The residual drawdown is dominated by something the "
                     "method does not model (casing storage, a changing static "
                     "level or a wrong pumping time), so its transmissivity of "
-                    f"{rec.transmissivity_m2_per_day:.2f} m2/day is reported but "
+                    f"{fmt_num(rec.transmissivity_m2_per_day)} m2/day is reported but "
                     "not adopted.",
                 )
             )
@@ -1864,13 +1864,13 @@ def analyse_pumping_test(
     rejected = ""
     if fit is None and analysis.fits():
         rejected = "no fitted transmissivity can be adopted (" + "; ".join(
-            f"{METHOD_LABELS[name]} {result.transmissivity_m2_per_day:.2f} m2/day, "
+            f"{METHOD_LABELS[name]} {fmt_num(result.transmissivity_m2_per_day)} m2/day, "
             + (analysis.invalid_fits.get(name) or analysis.why_not_adopted(name))
             for name, result in analysis.fits()
         ) + ")"
     if fit is not None and not qualifies:
         scored = "; ".join(
-            f"{METHOD_LABELS[name]} {result.transmissivity_m2_per_day:.2f} m2/day, "
+            f"{METHOD_LABELS[name]} {fmt_num(result.transmissivity_m2_per_day)} m2/day, "
             + (analysis.why_not_adopted(name) or "usable")
             for name, result in analysis.fits()
         )
@@ -1880,7 +1880,7 @@ def analyse_pumping_test(
                 "transmissivity_low_confidence",
                 f"No method fitted to standard ({scored}). The "
                 f"{METHOD_LABELS[method]} value of "
-                f"{fit.transmissivity_m2_per_day:.2f} m2/day is adopted as the "
+                f"{fmt_num(fit.transmissivity_m2_per_day)} m2/day is adopted as the "
                 "best available, so the yield rests on a fit that does not "
                 "meet it.",
             )
