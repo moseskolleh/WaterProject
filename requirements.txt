@@ -3,7 +3,7 @@
 streamlit>=1.57,<2
 # pyarrow 25.0.0 segfaults in some sandboxed Linux environments when
 # streamlit serializes tables; 24.x is verified working
-pyarrow<25
+pyarrow<26
 numpy>=1.24,<3
 scipy>=1.10
 matplotlib>=3.7
