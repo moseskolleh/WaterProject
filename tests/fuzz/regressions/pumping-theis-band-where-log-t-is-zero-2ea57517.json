@@ -1,0 +1,41 @@
+{
+ "note": "Found by the nightly fuzz run on 2026-11-06, at 6000 generated pumping cases. A step test in an aquifer of 1 m2/day, the lowest transmissivity the generator draws, with tens of metres of drawdown: the Theis fit returns T = 1.000000 m2/day, so log10 T, the parameter it is fitted in, is within 1e-7 of zero. Python kept the covariance scipy's curve_fit returns, which MINPACK takes from a forward-difference Jacobian whose step is 1.5e-8 of the parameter: about 1e-16 here, below the rounding of the curve itself, so the column for T was noise. The P10 to P90 band from it came out at 0.99930 to 1.00070 m2/day where the browser, with a central-difference Jacobian, gave 0.99917 to 1.00083. Python was the engine in the wrong, and its fit with it: scipy stopped about 1e-6 short of the minimum in T on these sheets for the same reason. theis_fit no longer calls curve_fit. It takes the browser's search step for step, and the covariance with covariance_log2, central differences a fixed 1e-5 wide, as the browser does and as the large-diameter fit always did.",
+ "first_divergence": ["analysis.spread.theis_band[0]", 0.9991718439114949, 0.9993036976882794],
+ "kind": "pumping",
+ "options": {},
+ "sheets": [
+  {"name": "Pumping Test", "rows": [
+   ["PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)", null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+   ["Community", "Rokel", null, "Date", null, null, null, null, null, null, null, null, null, null, null],
+   ["Client", null, null, "Length of each step (min)", 45.0, null, null, null, null, null, null, null, null, null, null],
+   ["Test conducted by", "WiNGiN", null, "Start time", null, null, null, null, null, null, null, null, null, null, null],
+   ["Borehole Ref. No.", "KTL-01", null, "Depth of Borehole (m)", null, null, null, null, null, null, null, null, null, null, null],
+   ["Static water level (m)", 1.78, null, "Pump setting (m)", null, null, null, null, null, null, null, null, null, null, null],
+   ["Test type (step or constant)", "step", null, "District", "Port Loko", null, null, null, null, null, null, null, null, null, null],
+   [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+   ["Discharge per step (m3/h)", "Step 1 Q", 1.67, null, "Step 2 Q", 2.5, null, "Step 3 Q", 3.34, null, "Step 4 Q", 4.17, null, null, null],
+   ["Constant discharge 0-45 min", null, null, "Constant discharge 46-90 min", null, null, "Constant discharge 91-135 min", null, null, "Constant discharge 136-180 min", null, null, "Recovery", null, null],
+   ["Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Recovery (m)"],
+   [1.0, 25.62, 0, 46.0, 50.87, 0, 91.0, 73.12, 0, 136.0, 96.26, 0, null, null, null],
+   [2.0, 27.83, 2.21, 47.0, 52.03, 1.16, 92.0, 74.3, 1.18, 137.0, 97.43, 1.17, null, null, null],
+   [3.0, 29.11, 1.28, 48.0, 52.74, 0.71, 93.0, 75.02, 0.72, 138.0, 98.15, 0.72, null, null, null],
+   [4.0, 30.04, 0.93, 49.0, 53.26, 0.52, 94.0, 75.54, 0.52, 139.0, 98.68, 0.53, null, null, null],
+   [5.0, 30.75, 0.71, 50.0, 53.68, 0.42, 95.0, 75.97, 0.43, 140.0, 99.1, 0.42, null, null, null],
+   [6.0, 31.35, 0.6, 51.0, 54.04, 0.36, 96.0, 76.33, 0.36, 141.0, 99.46, 0.36, null, null, null],
+   [7.0, 31.82, 0.47, 52.0, 54.34, 0.3, 97.0, 76.64, 0.31, 142.0, 99.78, 0.32, null, null, null],
+   [8.0, 32.25, 0.43, 53.0, 54.61, 0.27, 98.0, 76.91, 0.27, 143.0, 100.06, 0.28, null, null, null],
+   [9.0, 32.62, 0.37, 54.0, 54.86, 0.25, 99.0, 77.16, 0.25, 144.0, 100.32, 0.26, null, null, null],
+   [10.0, 32.96, 0.34, 55.0, 55.09, 0.23, 100.0, 77.39, 0.23, 145.0, 100.55, 0.23, null, null, null],
+   ["12.0 (approx)", 33.54, 0.58, 57.0, 55.49, 0.4, 102.0, 77.81, 0.42, 147.0, 100.97, 0.42, null, null, null],
+   [14.0, 34.03, 0.49, 59.0, 55.84, 0.35, 104.0, 78.17, 0.36, 149.0, 101.34, 0.37, null, null, null],
+   [16.0, 34.46, 0.43, 61.0, 56.16, 0.32, 106.0, 78.5, 0.33, 151.0, 101.68, 0.34, null, null, null],
+   [18.0, 34.83, 0.37, 63.0, 56.45, 0.29, 108.0, 78.8, 0.3, 153.0, 101.99, 0.31, null, null, null],
+   [20.0, 35.17, 0.34, 65.0, 56.72, 0.27, 110.0, 79.08, 0.28, 155.0, 102.28, 0.29, null, null, null],
+   [25.0, 35.91, 0.74, 70.0, 57.31, 0.59, 115.0, 79.69, 0.61, 160.0, 102.92, 0.64, null, null, null],
+   [30.0, 36.46, 0.55, 75.0, 57.82, 0.51, 120.0, 80.23, 0.54, 165.0, 103.49, 0.57, null, null, null],
+   [35.0, 36.95, 0.49, 80.0, 58.27, 0.45, 125.0, 80.71, 0.48, 170.0, 104.0, 0.51, null, null, null],
+   [40.0, 37.39, 0.44, 85.0, 58.67, 0.4, 130.0, 81.15, 0.44, 175.0, 104.46, 0.46, null, null, null],
+   [45.0, 37.75, 0.36, 90.0, 59.04, 0.37, 135.0, 81.55, 0.4, 180.0, 104.89, 0.43, null, null, null]
+  ]}
+ ]
+}

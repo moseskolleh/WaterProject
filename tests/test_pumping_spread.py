@@ -36,11 +36,13 @@ from groundwater.hydraulics.spread import (
     papadopulos_cooper_fit,
     pc_model,
     pc_well_function,
+    polish_log2,
     quantile,
     resample_blocks,
     spread_paragraphs,
     stehfest_weights,
     sustainable_sentence,
+    theis_derivatives,
     theis_model,
 )
 from groundwater.ingestion import read_pumping_workbook
@@ -145,7 +147,144 @@ def test_papadopulos_cooper_fit_recovers_known_t_and_s():
 
 # ------------------------------------------------------- the Theis covariance
 
-def test_theis_keeps_the_covariance_curve_fit_returns():
+def _read_with_errors(true_t, true_s, seed, sd=0.02):
+    """A Theis drawdown at TIMES with independent reading errors of ``sd``."""
+    rng = np.random.default_rng(seed)
+    s = theis_model(Q * 24, 0.1)(TIMES / 1440, math.log10(true_t), math.log10(true_s))
+    return s + rng.normal(0, sd, len(s))
+
+
+def _misfit(model, x, y, p):
+    return float(np.sum((model(x, p[0], p[1]) - y) ** 2))
+
+
+# ------------------------------------------ the Theis fit: its search, its finish
+
+@pytest.mark.parametrize("true_t, true_s", [(5.0, 1e-3), (0.8, 3e-4), (120.0, 1e-2),
+                                            (40.0, 1e-5)])
+def test_theis_fit_stops_at_the_minimum_curve_fit_finds(true_t, true_s):
+    """The package's own search took over from scipy's curve_fit so that both
+    engines take the same steps. scipy stays here as the witness: the two
+    reach the same minimum, and the package's misfit is never the higher."""
+    x = TIMES / 1440
+    y = _read_with_errors(true_t, true_s, seed=11)
+    result = theis_fit(TIMES, y, Q)
+    model = theis_model(Q * 24, 0.1)
+    p = [math.log10(result.transmissivity_m2_per_day), math.log10(result.storativity)]
+    popt, _ = curve_fit(model, x, y, p0=(math.log10(true_t) + 0.3, -3.0),
+                        maxfev=20000, ftol=1e-12, xtol=1e-12)
+    assert result.transmissivity_m2_per_day == pytest.approx(10 ** popt[0], rel=1e-6)
+    assert result.storativity == pytest.approx(10 ** popt[1], rel=1e-5)
+    assert _misfit(model, x, y, p) <= _misfit(model, x, y, popt) * (1 + 1e-12)
+    assert result.rmse_m == pytest.approx(math.sqrt(_misfit(model, x, y, p) / len(x)))
+
+
+@pytest.mark.parametrize("true_t, true_s", [(5.0, 1e-3), (0.8, 3e-4), (120.0, 1e-2),
+                                            (1.0, 1e-4)])
+def test_theis_fit_ends_where_the_gradient_is_zero(true_t, true_s):
+    """A search that watches the misfit stops within 1e-8 of the minimum; the
+    finish goes on to where the gradient vanishes, which is the minimum to
+    the rounding. Held as the gradient against its own scale."""
+    x = TIMES / 1440
+    y = _read_with_errors(true_t, true_s, seed=5)
+    result = theis_fit(TIMES, y, Q)
+    p = [math.log10(result.transmissivity_m2_per_day), math.log10(result.storativity)]
+    calc, j0, j1 = theis_derivatives(Q * 24, 0.1)(x, p[0], p[1])
+    res = calc - y
+    for column in (j0, j1):
+        scale = np.linalg.norm(column) * np.linalg.norm(res)
+        assert abs(float(column @ res)) <= 1e-11 * scale
+
+
+def test_theis_derivatives_are_the_curves_slopes():
+    x = TIMES / 1440
+    model = theis_model(Q * 24, 0.1)
+    for log_t, log_s in [(0.7, -3.0), (2.4, -9.0), (-0.2, -1.5), (2.5, -200.0)]:
+        calc, j0, j1 = theis_derivatives(Q * 24, 0.1)(x, log_t, log_s)
+        assert np.array_equal(calc, model(x, log_t, log_s))
+        h = 1e-6
+        d0 = (model(x, log_t + h, log_s) - model(x, log_t - h, log_s)) / (2 * h)
+        d1 = (model(x, log_t, log_s + h) - model(x, log_t, log_s - h)) / (2 * h)
+        assert np.allclose(j0, d0, rtol=1e-7, atol=1e-12)
+        assert np.allclose(j1, d1, rtol=1e-7, atol=1e-12)
+
+
+def test_the_finish_returns_to_the_minimum_from_beside_it():
+    x = TIMES / 1440
+    y = _read_with_errors(5.0, 1e-3, seed=3)
+    result = theis_fit(TIMES, y, Q)
+    p = [math.log10(result.transmissivity_m2_per_day), math.log10(result.storativity)]
+    model = theis_model(Q * 24, 0.1)
+    derivatives = theis_derivatives(Q * 24, 0.1)
+    for nudge in [(1e-5, 0.0), (0.0, -1e-5), (3e-6, 2e-6), (-1e-3, 1e-3)]:
+        start = [p[0] + nudge[0], p[1] + nudge[1]]
+        q, cost = polish_log2(derivatives, x, y, start, _misfit(model, x, y, start))
+        assert q == pytest.approx(p, rel=1e-11, abs=1e-11)
+        assert cost == pytest.approx(_misfit(model, x, y, p), rel=1e-12)
+
+
+def test_the_finish_keeps_the_searchs_answer_where_it_cannot_better_it():
+    x = TIMES / 1440
+    y = _read_with_errors(5.0, 1e-3, seed=3)
+    model = theis_model(Q * 24, 0.1)
+    derivatives = theis_derivatives(Q * 24, 0.1)
+    start = [math.log10(5.0) + 1e-3, -3.0]
+    cost = _misfit(model, x, y, start)
+
+    def flat(x, a, b):  # a curve the parameters do not move: no step to take
+        return np.ones_like(x), np.zeros_like(x), np.zeros_like(x)
+
+    def uphill(x, a, b):  # the slopes with their sign turned: every step climbs
+        calc, j0, j1 = derivatives(x, a, b)
+        return calc, -j0, -j1
+
+    def broken(x, a, b):
+        return np.full_like(x, np.nan), np.full_like(x, np.nan), np.full_like(x, np.nan)
+
+    for curve in (flat, uphill, broken):
+        assert polish_log2(curve, x, y, start, cost) == (start, cost)
+
+
+def test_theis_fit_on_a_long_valley_is_the_line_through_the_readings():
+    """Twelve metres of drawdown in the first minute and 5 cm a log cycle
+    after it (tests/fuzz/regressions/pumping-theis-long-valley.json): the
+    Theis curve absorbs the offset into a storativity near 1e-240, where it
+    is a straight line in log time to every digit. The fit is then the least
+    squares line, which has a closed form to hold it to. A search alone stops
+    short along such a valley floor; this is the finish's hardest case."""
+    s = 12.0 + 0.05 * np.log10(TIMES) + np.random.default_rng(8).normal(0, 0.005, len(TIMES))
+    result = theis_fit(TIMES, s, Q)
+    slope = np.polyfit(np.log(TIMES / 1440), s, 1)[0]  # metres per ln cycle
+    assert result.transmissivity_m2_per_day == pytest.approx(
+        Q * 24 / (4 * math.pi * slope), rel=1e-9)
+    assert 1e-280 < result.storativity < 1e-200
+
+
+def test_theis_band_where_log_t_is_zero():
+    """A transmissivity of 1 m2/day is a fitted parameter of zero, log10 T.
+    scipy's curve_fit takes its Jacobian by a step of 1.5e-8 of the
+    parameter, which is then no step at all, and the covariance it returned
+    was rounding noise: a band a quarter as wide as the readings give on one
+    generated sheet and none on another (the regressions named
+    pumping-theis-band-where-log-t-is-zero). The band is held here to the
+    covariance the closed-form derivatives give."""
+    x = TIMES / 1440
+    y = np.round(theis_model(Q * 24, 0.1)(x, 0.0, -4.0), 2)  # read to the centimetre
+    result = theis_fit(TIMES, y, Q)
+    assert result.transmissivity_m2_per_day == pytest.approx(1.0, rel=1e-3)
+    p = [math.log10(result.transmissivity_m2_per_day), math.log10(result.storativity)]
+    calc, j0, j1 = theis_derivatives(Q * 24, 0.1)(x, p[0], p[1])
+    normal = np.array([[j0 @ j0, j0 @ j1], [j0 @ j1, j1 @ j1]])
+    expected = np.linalg.inv(normal) * float(np.sum((calc - y) ** 2)) / (len(x) - 2)
+    assert np.allclose(result.log_covariance, expected, rtol=1e-6)
+    sigma = math.sqrt(expected[0][0])
+    assert result.transmissivity_low_m2_per_day == pytest.approx(
+        10 ** (p[0] - 1.2815515655446004 * sigma), rel=1e-7)
+    assert result.transmissivity_high_m2_per_day == pytest.approx(
+        10 ** (p[0] + 1.2815515655446004 * sigma), rel=1e-7)
+
+
+def test_theis_covariance_is_the_one_curve_fit_returns():
     true_t, true_s = 5.0, 1e-3
     rng = np.random.default_rng(3)
     s = theis_model(Q * 24, 0.1)(TIMES / 1440, math.log10(true_t), math.log10(true_s))
@@ -153,9 +292,10 @@ def test_theis_keeps_the_covariance_curve_fit_returns():
     result = theis_fit(TIMES, y, Q)
     assert result.log_covariance is not None
     p = [math.log10(result.transmissivity_m2_per_day), math.log10(result.storativity)]
-    # what the browser computes from the Jacobian, which has no curve_fit
+    # the fit keeps what both engines compute from the Jacobian
     mine = covariance_log2(theis_model(Q * 24, 0.1), TIMES / 1440, y, p)
-    assert np.allclose(mine, result.log_covariance, rtol=1e-4)
+    assert np.allclose(mine, result.log_covariance, rtol=1e-12)
+    # and where curve_fit's own Jacobian is sound, that is curve_fit's
     _, pcov = curve_fit(theis_model(Q * 24, 0.1), TIMES / 1440, y, p0=p)
     assert np.allclose(pcov, result.log_covariance, rtol=1e-4)
     sigma = math.sqrt(result.log_covariance[0][0])

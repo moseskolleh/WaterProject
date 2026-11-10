@@ -9319,12 +9319,16 @@
     };
   }
 
-  /* analysis.py theis_fit's curve_fit(maxfev=20000) */
+  /* analysis.py THEIS_MAXFEV: the model evaluations a Theis fit may take */
   var THEIS_MAXFEV = 20000;
 
   /** Least squares fit of the Theis well function s = Q/(4 pi T) W(u),
    * u = r^2 S / (4 T t), in log parameter space so T and S stay positive.
-   * Levenberg-Marquardt stands in for scipy's curve_fit.
+   * The search is a Levenberg-Marquardt that analysis.py _theis_search takes
+   * step for step, and polishLog2 finishes it: the two engines used to
+   * search each in its own way (scipy's curve_fit there) and agreed to one
+   * part in 1e7 or 1e9, which is not close enough for a figure printed
+   * beside a rounding or a replicate beside a threshold.
    *
    * A drawdown that does not grow with log time is refused: on a flat
    * record the least squares has no minimum, T runs off towards infinity and
@@ -9398,8 +9402,8 @@
     }
     var lam = 1e-3, cost = costOf(p);
     /* Until no step lowers the misfit, within the budget of model
-     * evaluations the Python package gives curve_fit (maxfev = 20000) and
-     * with its refusal when the budget runs out. A cap of 200 iterations
+     * evaluations scipy's curve_fit had for this fit in the Python package
+     * (maxfev = 20000) and with its refusal when the budget runs out. A cap of 200 iterations
      * used to stop this fit partway down a long valley - a Theis fit of
      * 412 m2/day where scipy reached 430, the Cooper-Jacob value - wherever
      * a large constant offset pushes S towards zero. */
@@ -9444,6 +9448,8 @@
       }
       if (!stepped) break;
     }
+    /* to the minimum itself, not to where the misfit's rounding hid it */
+    p = polishLog2(theisDerivatives(qDay, radiusM), t, s, p, cost)[0];
 
     var Tfit = Math.pow(10, p[0]), Sfit = Math.pow(10, p[1]);
     if (!(Sfit >= THEIS_STORATIVITY_FLOOR)) {
@@ -9459,8 +9465,8 @@
       var e2 = fitted[k2] - s[k2];
       ss += e2 * e2;
     }
-    /* The covariance the Python keeps from curve_fit (analysis.py
-     * TheisResult), as curve_fit scales it, and P10 and P90 of T from it. */
+    /* The covariance analysis.py TheisResult keeps, scaled as curve_fit
+     * scales it, and P10 and P90 of T from it. */
     var covariance = covarianceLog2(theisModel(qDay, radiusM), t, s, p);
     var band = logBand(p[0], covariance ? covariance[0][0] : null);
     return {
@@ -11062,6 +11068,9 @@
   var STEHFEST_TERMS = 12;
   var LM_MAX_ITERATIONS = 200;
   var LM_RELATIVE_TOLERANCE = 1e-12;
+  /* spread.py POLISH_MAX_STEPS and POLISH_MISFIT_SLACK */
+  var POLISH_MAX_STEPS = 12;
+  var POLISH_MISFIT_SLACK = 1e-9;
   var BOOTSTRAP_MIN_READINGS = 5;
 
   /** mulberry32: a float in [0, 1) with 32 random bits per call, the same
@@ -11176,6 +11185,49 @@
     return [p, cost];
   }
 
+  /** [params, misfit]: a fit finished by Newton steps on its normal
+   * equations, from the p and cost a search stopped at (spread.py
+   * polish_log2, step for step). A search that stops when no step lowers the
+   * misfit stops where the misfit's rounding hides the next step, good to
+   * eight figures in the parameters; the gradient is linear in the distance
+   * left, so solving J^T J step = -J^T r undamped, with the derivatives in
+   * closed form, reaches the minimum to about one part in 1e12. It stops when
+   * the step stops shrinking, and is kept only if its misfit is no more than
+   * POLISH_MISFIT_SLACK above the search's.
+   * @param {function(ArrayLike<number>, number, number): number[][]} derivatives
+   *   the curve and its two partial derivatives
+   * @param {ArrayLike<number>} x
+   * @param {ArrayLike<number>} y
+   * @param {number[]} p
+   * @param {number} cost
+   * @returns {[number[], number]}
+   */
+  function polishLog2(derivatives, x, y, p, cost) {
+    var q = [p[0], p[1]], before = Infinity;
+    for (var it = 0; it < POLISH_MAX_STEPS; it++) {
+      var d = derivatives(x, q[0], q[1]), res = [];
+      for (var k = 0; k < y.length; k++) res.push(d[0][k] - y[k]);
+      var a00 = dot(d[1], d[1]), a01 = dot(d[1], d[2]), a11 = dot(d[2], d[2]);
+      var g0 = dot(d[1], res), g1 = dot(d[2], res);
+      var det = a00 * a11 - a01 * a01;
+      if (!(isFinite(det) && det !== 0)) break;
+      var step0 = (-g0 * a11 + g1 * a01) / det;
+      var step1 = (-g1 * a00 + g0 * a01) / det;
+      if (!(isFinite(step0) && isFinite(step1))) break;
+      var size = Math.max(Math.abs(step0) / Math.max(Math.abs(q[0]), 1.0),
+        Math.abs(step1) / Math.max(Math.abs(q[1]), 1.0));
+      if (!(size < before)) break;
+      q = [q[0] + step0, q[1] + step1];
+      before = size;
+    }
+    if (q[0] === p[0] && q[1] === p[1]) return [q, cost];
+    var finished = sumSquares(derivatives(x, q[0], q[1])[0], y);
+    if (isFinite(finished) && finished <= cost * (1.0 + POLISH_MISFIT_SLACK)) {
+      return [q, finished];
+    }
+    return [[p[0], p[1]], cost];
+  }
+
   /** The 2 x 2 covariance of the parameters as curve_fit scales it, with the
    * Jacobian by central differences; null when singular.
    * @param {function(ArrayLike<number>, number, number): ArrayLike<number>} model
@@ -11230,6 +11282,28 @@
         out.push(qDay / (4.0 * Math.PI * T) * exp1(u));
       }
       return out;
+    };
+  }
+
+  /** [s, ds/d log10 T, ds/d log10 S] of the Theis curve, in closed form
+   * (spread.py theis_derivatives): with A = Q / (4 pi T),
+   * ds/d ln T = A (exp(-u) - W(u)) and ds/d ln S = -A exp(-u).
+   * @param {number} qDay
+   * @param {number} radiusM
+   * @returns {function(ArrayLike<number>, number, number): number[][]}
+   */
+  function theisDerivatives(qDay, radiusM) {
+    return function (tDay, logT, logS) {
+      var T = Math.pow(10, logT), S = Math.pow(10, logS);
+      var scale = qDay / (4.0 * Math.PI * T), s = [], dT = [], dS = [];
+      for (var k = 0; k < tDay.length; k++) {
+        var u = radiusM * radiusM * S / (4.0 * T * tDay[k]);
+        var well = exp1(u), decay = Math.exp(-u);
+        s.push(scale * well);
+        dT.push(Math.LN10 * scale * (decay - well));
+        dS.push(-Math.LN10 * scale * decay);
+      }
+      return [s, dT, dS];
     };
   }
 
@@ -11511,9 +11585,13 @@
     };
   }
 
-  function curveRefit(model, x, start) {
+  /* derivatives: the curve's closed-form partial derivatives, where it has
+   * them; the refit is then finished with polishLog2, as the fit it
+   * resamples was (spread.py _curve_refit) */
+  function curveRefit(model, x, start, derivatives) {
     return function (y) {
-      var p = lmLog2(model, x, y, start)[0];
+      var found = lmLog2(model, x, y, start), p = found[0];
+      if (derivatives) p = polishLog2(derivatives, x, y, p, found[1])[0];
       var T = Math.pow(10, p[0]);
       if (!(isFinite(T) && Math.pow(10, p[1]) >= THEIS_STORATIVITY_FLOOR)) return null;
       return T;
@@ -11560,9 +11638,10 @@
     var qDay = result.discharge_m3_per_h * 24.0;
     var model = method === 'theis' ? theisModel(qDay, result.radius_m)
       : pcModel(qDay, result.radius_m, result.casing_radius_m);
+    var derivatives = method === 'theis' ? theisDerivatives(qDay, result.radius_m) : null;
     var start = [Math.log10(result.transmissivity_m2_per_day), Math.log10(result.storativity)];
     fitted = model(x, start[0], start[1]);
-    return { x: x, y: y, fitted: fitted, refit: curveRefit(model, x, start) };
+    return { x: x, y: y, fitted: fitted, refit: curveRefit(model, x, start, derivatives) };
   }
 
   /** The P10, P50 and P90 of a method's transmissivity under residuals
@@ -11906,7 +11985,8 @@
 
   Object.assign(C, {
     mulberry32: mulberry32, quantileOf: quantileOf, blockLength: blockLength,
-    lmLog2: lmLog2, covarianceLog2: covarianceLog2, theisModel: theisModel,
+    lmLog2: lmLog2, polishLog2: polishLog2, covarianceLog2: covarianceLog2,
+    theisModel: theisModel, theisDerivatives: theisDerivatives,
     stehfestWeights: stehfestWeights, besselK0e: besselK0e, besselK1e: besselK1e,
     pcWellFunction: pcWellFunction, pcModel: pcModel, casingRadiusM: casingRadiusM,
     papadopulosCooperFit: papadopulosCooperFit, bootstrapFit: bootstrapFit,
