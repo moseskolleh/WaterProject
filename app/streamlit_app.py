@@ -20,7 +20,6 @@ they share is described in ``app/state.py``. Only the page on screen runs
 
 from __future__ import annotations
 
-import contextlib
 import html as _html
 import sys
 from pathlib import Path
@@ -56,14 +55,15 @@ from groundwater.registry import asset_from_dict, asset_from_project, asset_with
 from groundwater.recompute import recompute_results
 
 import state
+import style
 from views import page_functions
 from shared import (
     _BRAND_DIR,
     _ICON,
-    _LOGO,
     DEFAULT_PAGE,
     IN_BROWSER,
     NAV_GROUPS,
+    NAV_STEPS,
     _apply_degree_boxes,
     _apply_latlon,
     _group_key,
@@ -73,6 +73,7 @@ from shared import (
     _project_state,
     _project_summary,
     _status_chip,
+    active_theme,
     app_config,
     cached_districts,
     fill_defaults,
@@ -80,6 +81,8 @@ from shared import (
     refresh_derived,
     sample_data_dir,
     site_from_state,
+    steps_done,
+    theme_sync,
     workdir,
 )
 
@@ -97,335 +100,30 @@ st.set_page_config(
     },
 )
 
-# Design language: the sustaintheworld style. A near-black ground with
-# cards one step lighter, one neon green accent, Space Grotesk for headings
-# and controls, Inter for text and IBM Plex Mono for the small uppercase
-# labels. The printed reports keep their own house style (config.HouseStyle).
-# The colours the pages draw with are named in shared.py.
+# Design language: quiet neutral surfaces with the brand green as an accent
+# only, sentence case, Space Grotesk for titles, Inter for text and IBM Plex
+# Mono for numbers and identifiers. The stylesheet, its colours and the
+# theme it follows are in style.py; .streamlit/config.toml carries the same
+# colours for Streamlit's own widgets. The printed reports keep their own
+# house style (config.HouseStyle).
 
 
 @st.cache_resource(show_spinner=False)
 def _font_faces() -> str:
-    """The three faces as @font-face rules with the files inlined.
-
-    They ship as package data (Latin subsets, SIL Open Font License, see
-    THIRD_PARTY_NOTICES.md), so the app sets its type without a request
-    to a font service - it works offline and in the browser demo alike.
-    A missing file falls through to the system stack in the rules below.
-    """
-    import base64
-
-    faces = (
-        ("Space Grotesk", "400 700", "space-grotesk-latin.woff2"),
-        ("Inter", "400 600", "inter-latin.woff2"),
-        ("IBM Plex Mono", "400", "ibm-plex-mono-latin-400.woff2"),
-        ("IBM Plex Mono", "500", "ibm-plex-mono-latin-500.woff2"),
-    )
-    rules = []
-    for family, weight, name in faces:
-        path = _BRAND_DIR / "fonts" / name
-        if not path.exists():
-            continue
-        data = base64.b64encode(path.read_bytes()).decode("ascii")
-        rules.append(
-            f"@font-face{{font-family:'{family}';font-style:normal;"
-            f"font-weight:{weight};font-display:swap;"
-            f"src:url(data:font/woff2;base64,{data}) format('woff2');}}"
-        )
-    return "".join(rules)
+    """The bundled faces as @font-face rules, read and encoded once."""
+    return style.font_faces(_BRAND_DIR)
 
 
-st.markdown(
-    "<style>" + _font_faces() + "</style>",
-    unsafe_allow_html=True,
-)
+@st.cache_resource(show_spinner=False)
+def _brand_icon() -> str:
+    return style.brand_icon(_BRAND_DIR)
 
-st.markdown(
-    """
-    <style>
-      html, body, [data-testid="stAppViewContainer"], .stMarkdown,
-      button, input, textarea, select {
-        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-      }
-      h1, h2, h3, h4,
-      [data-testid="stMetricValue"] {
-        font-family: 'Space Grotesk', 'Segoe UI', sans-serif !important;
-        font-weight: 700; line-height: 1.15; letter-spacing: 0.01em;
-        color: #ffffff;
-      }
-      code, pre, kbd { font-family: 'IBM Plex Mono', monospace; }
-      a { color: #7CFC00; transition: all 0.3s ease; }
-      a:hover { color: #9FFF4D; }
 
-      .block-container { padding-top: 2.4rem; }
-      [data-testid="stAppViewContainer"] h1 {
-        font-size: 1.75rem; text-transform: uppercase; margin-bottom: 0.1rem;
-      }
-      [data-testid="stAppViewContainer"] h2 { font-size: 1.3rem; }
-      [data-testid="stAppViewContainer"] h3 { font-size: 1.05rem; font-weight: 600; }
-
-      /* Pill buttons: the primary is the green one, the rest are bordered */
-      .stButton > button, .stDownloadButton > button,
-      [data-testid="stFormSubmitButton"] > button {
-        font-family: 'Space Grotesk', sans-serif; font-weight: 600;
-        font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase;
-        border-radius: 999px; padding: 0.45rem 1.1rem;
-        transition: all 0.3s ease;
-      }
-      .stButton > button:hover, .stDownloadButton > button:hover,
-      [data-testid="stFormSubmitButton"] > button:hover {
-        transform: translateY(-3px);
-      }
-      .stButton > button[kind="primary"],
-      [data-testid="stFormSubmitButton"] > button[kind="primary"] {
-        color: #051000;
-      }
-      .stButton > button[kind="primary"]:hover {
-        box-shadow: 0 10px 30px rgba(124, 252, 0, 0.3);
-      }
-
-      /* Inputs on the darker card surface with the green focus ring */
-      [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
-      [data-testid="stTextArea"] textarea,
-      [data-baseweb="select"] > div, [data-baseweb="input"] {
-        background: #141414 !important; border-radius: 8px;
-      }
-      [data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within,
-      [data-baseweb="textarea"]:focus-within {
-        box-shadow: 0 0 0 3px rgba(124, 252, 0, 0.12);
-      }
-
-      /* Result cards: one step lighter than the ground, hairline in green */
-      div[data-testid="stMetric"] {
-        background: #1a1a1a;
-        border: 1px solid rgba(124, 252, 0, 0.08);
-        border-radius: 12px;
-        padding: 0.75rem 0.95rem;
-        box-shadow: 0 8px 30px rgba(124, 252, 0, 0.1);
-        transition: all 0.3s ease;
-      }
-      div[data-testid="stMetric"]:hover { border-color: rgba(124, 252, 0, 0.18); }
-      div[data-testid="stMetric"] label p {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.68rem; font-weight: 500;
-        text-transform: uppercase; letter-spacing: 0.08em;
-        color: #b0b0b0;
-      }
-      div[data-testid="stSidebarUserContent"] .stCaption p { line-height: 1.35; }
-
-      /* Expanders, tabs and tables pick up the same hairline and label */
-      [data-testid="stExpander"] details {
-        border: 1px solid rgba(124, 252, 0, 0.08); border-radius: 12px;
-        background: #1a1a1a;
-      }
-      [data-testid="stExpander"] summary p {
-        font-family: 'Space Grotesk', sans-serif; font-weight: 600;
-        letter-spacing: 0.02em;
-      }
-      .stTabs [data-baseweb="tab"] {
-        font-family: 'Space Grotesk', sans-serif; font-size: 0.78rem;
-        font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
-      }
-      .stTabs [data-baseweb="tab-highlight"] { background-color: #7CFC00; }
-      [data-testid="stDataFrame"], [data-testid="stTable"] {
-        border-radius: 12px; overflow: hidden;
-      }
-
-      /* Sidebar: brand, active-project card and grouped navigation */
-      section[data-testid="stSidebar"] {
-        border-right: 1px solid rgba(124, 252, 0, 0.08);
-      }
-      section[data-testid="stSidebar"] div[data-testid="stSidebarUserContent"] {
-        padding-top: 1.1rem;
-      }
-      /* Group label above each navigation radio */
-      section[data-testid="stSidebar"] .stRadio
-        [data-testid="stWidgetLabel"] p {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.62rem; font-weight: 500;
-        text-transform: uppercase; letter-spacing: 0.11em;
-        color: #8c8c8c;
-      }
-      /* Navigation items. Two selector sets: react-aria markup
-         (stRadioOption, Streamlit >= 1.59) and baseweb markup
-         (label[data-baseweb=radio], Streamlit <= 1.58 / stlite).
-         The baseweb active-state rules use :has() and are kept in
-         separate rules so a browser without :has() only loses that
-         branch, not the react-aria one. */
-      section[data-testid="stSidebar"] label[data-testid="stRadioOption"],
-      section[data-testid="stSidebar"] div[role="radiogroup"]
-        label[data-baseweb="radio"] {
-        display: flex; align-items: center;
-        width: 100%; margin: 0 0 2px; padding: 7px 10px;
-        border-radius: 8px; cursor: pointer;
-        border-left: 2px solid transparent;
-        transition: all 0.3s ease;
-      }
-      section[data-testid="stSidebar"] label[data-testid="stRadioOption"]:hover,
-      section[data-testid="stSidebar"] div[role="radiogroup"]
-        label[data-baseweb="radio"]:hover {
-        transform: translateX(4px);
-      }
-      section[data-testid="stSidebar"] label[data-testid="stRadioOption"]
-        > div > div > div:first-child,
-      section[data-testid="stSidebar"] div[role="radiogroup"]
-        label[data-baseweb="radio"] > div:first-of-type {
-        width: 6px; height: 6px; min-width: 6px; min-height: 6px;
-        margin-right: 10px; border-width: 0; border-radius: 50%;
-        background: rgba(124, 252, 0, 0.18);
-      }
-      section[data-testid="stSidebar"] label[data-testid="stRadioOption"]
-        > div > div > div:first-child > div,
-      section[data-testid="stSidebar"] div[role="radiogroup"]
-        label[data-baseweb="radio"] > div:first-of-type > div {
-        display: none;
-      }
-      section[data-testid="stSidebar"] label[data-testid="stRadioOption"] p,
-      section[data-testid="stSidebar"] div[role="radiogroup"]
-        label[data-baseweb="radio"] div[data-testid="stMarkdownContainer"] p {
-        font-family: 'Space Grotesk', sans-serif;
-        font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em;
-        text-transform: uppercase; color: #b0b0b0;
-      }
-      section[data-testid="stSidebar"]
-        label[data-testid="stRadioOption"][data-selected="true"] {
-        background: rgba(124, 252, 0, 0.1); border-left-color: #7CFC00;
-      }
-      section[data-testid="stSidebar"]
-        label[data-testid="stRadioOption"][data-selected="true"]
-        > div > div > div:first-child {
-        background: #7CFC00;
-      }
-      section[data-testid="stSidebar"]
-        label[data-testid="stRadioOption"][data-selected="true"] p {
-        font-weight: 600; color: #7CFC00;
-      }
-      section[data-testid="stSidebar"] div[role="radiogroup"]
-        label[data-baseweb="radio"]:has(input:checked) {
-        background: rgba(124, 252, 0, 0.1); border-left-color: #7CFC00;
-      }
-      section[data-testid="stSidebar"] div[role="radiogroup"]
-        label[data-baseweb="radio"]:has(input:checked) > div:first-of-type {
-        background: #7CFC00;
-      }
-      section[data-testid="stSidebar"] div[role="radiogroup"]
-        label[data-baseweb="radio"]:has(input:checked)
-        div[data-testid="stMarkdownContainer"] p {
-        font-weight: 600; color: #7CFC00;
-      }
-      section[data-testid="stSidebar"] .stRadio { margin-bottom: 0.35rem; }
-
-      /* Shared design pieces (overview dashboard, callouts, chips) */
-      .gw-brand { display: flex; align-items: center; gap: 10px; }
-      .gw-brand-mark {
-        width: 30px; height: 30px; border-radius: 8px; background: #7CFC00;
-        display: flex; align-items: center; justify-content: center;
-        color: #051000; font: 700 15px 'Space Grotesk', sans-serif;
-      }
-      .gw-brand-name {
-        font: 700 14px 'Space Grotesk', sans-serif; color: #ffffff;
-        letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.15;
-      }
-      .gw-brand-sub {
-        font: 400 9.5px 'IBM Plex Mono', monospace;
-        color: #8c8c8c; letter-spacing: 0.08em;
-      }
-      .gw-project-card {
-        background: #1a1a1a; border: 1px solid rgba(124, 252, 0, 0.08);
-        border-radius: 12px; padding: 10px 12px; margin: 4px 0 6px;
-      }
-      .gw-cap {
-        font: 500 10px 'IBM Plex Mono', monospace;
-        text-transform: uppercase; letter-spacing: 0.08em;
-        color: #b0b0b0;
-      }
-      .gw-chip {
-        display: inline-block; font: 500 10px 'IBM Plex Mono', monospace;
-        text-transform: uppercase; letter-spacing: 0.06em;
-        border-radius: 999px; padding: 3px 10px; vertical-align: middle;
-      }
-      .gw-chip-green { color: #7CFC00; background: rgba(124, 252, 0, 0.12); }
-      .gw-chip-amber { color: #f2b705; background: rgba(242, 183, 5, 0.14); }
-      .gw-chip-red { color: #e07a5f; background: rgba(224, 122, 95, 0.16); }
-      .gw-chip-grey { color: #b0b0b0; background: rgba(255, 255, 255, 0.08); }
-      .gw-chip-blue { color: #2ea3e0; background: rgba(46, 163, 224, 0.14); }
-      .gw-card {
-        background: #1a1a1a; border: 1px solid rgba(124, 252, 0, 0.08);
-        border-radius: 12px; padding: 15px 16px;
-        box-shadow: 0 8px 30px rgba(124, 252, 0, 0.1);
-        margin-bottom: 14px; transition: all 0.3s ease;
-      }
-      .gw-card:hover { border-color: rgba(124, 252, 0, 0.18); }
-      .gw-card .gw-cap { display: block; margin-bottom: 8px; }
-      .gw-big {
-        font: 700 26px 'Space Grotesk', sans-serif; color: #ffffff;
-        line-height: 1.1;
-      }
-      .gw-big small {
-        font: 500 12px 'IBM Plex Mono', monospace; color: #b0b0b0;
-      }
-      .gw-row {
-        display: flex; justify-content: space-between; gap: 10px;
-        font-size: 0.78rem; color: #b0b0b0; padding: 2.5px 0;
-      }
-      .gw-row b { color: #ffffff; font-weight: 500;
-        font-family: 'IBM Plex Mono', monospace; }
-      .gw-callout {
-        background: #7CFC00; border-radius: 12px; padding: 15px 17px;
-        color: #051000; margin: 4px 0 12px;
-        box-shadow: 0 8px 30px rgba(124, 252, 0, 0.2);
-      }
-      .gw-callout .gw-cap { color: rgba(5, 16, 0, 0.7); }
-      .gw-callout .gw-big { color: #051000; }
-      .gw-callout .gw-big small { color: rgba(5, 16, 0, 0.65); }
-      .gw-callout p {
-        margin: 4px 0 0; font-size: 0.75rem; line-height: 1.4;
-        color: rgba(5, 16, 0, 0.82);
-      }
-      .gw-steps { display: flex; align-items: flex-start; margin: 6px 0 4px; }
-      .gw-step { display: flex; flex-direction: column; align-items: center;
-        gap: 5px; flex: none; min-width: 58px; }
-      .gw-step-dot {
-        width: 26px; height: 26px; border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        font: 500 12px 'IBM Plex Mono', monospace;
-      }
-      .gw-step-done .gw-step-dot { background: #7CFC00; color: #051000; }
-      .gw-step-todo .gw-step-dot {
-        background: #141414; border: 2px dashed rgba(124, 252, 0, 0.45);
-        color: #7CFC00; font-size: 11px;
-      }
-      .gw-step-label { font-size: 0.68rem; font-weight: 600; color: #ffffff;
-        font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.04em;
-        text-transform: uppercase; }
-      .gw-step-todo .gw-step-label { color: #8c8c8c; }
-      .gw-step-line { flex: 1; height: 2px; background: #7CFC00;
-        margin: 12px 6px 0; }
-      .gw-step-line-todo {
-        background: repeating-linear-gradient(90deg, rgba(124, 252, 0, 0.3) 0 4px,
-          transparent 4px 8px);
-      }
-      .gw-bar { display: flex; height: 9px; border-radius: 5px;
-        overflow: hidden; margin: 8px 0; background: #141414; }
-      .gw-legend { display: flex; flex-wrap: wrap; gap: 3px 12px;
-        font-size: 0.66rem; color: #b0b0b0; }
-      .gw-legend i { display: inline-block; width: 8px; height: 8px;
-        border-radius: 2px; margin-right: 4px; }
-      .gw-report-row {
-        display: flex; justify-content: space-between; align-items: center;
-        font-size: 0.78rem; color: #b0b0b0; padding: 4px 0;
-        border-bottom: 1px solid rgba(124, 252, 0, 0.08);
-      }
-      .gw-report-row:last-child { border-bottom: none; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-if _LOGO:
-    # a missing logo is cosmetic, not a result
-    with contextlib.suppress(Exception):
-        st.logo(_LOGO, icon_image=_ICON)
+# in a container the stylesheet gives no room, so that the page starts at
+# its first line and not two empty rows down
+with st.container(key="gw_style"):
+    st.markdown("<style>" + _font_faces() + "</style>", unsafe_allow_html=True)
+    st.markdown(style.stylesheet(active_theme()), unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -544,21 +242,14 @@ for _issue in _diagnostics.get("issues", []):
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
+    # The one brand mark: the droplet and the product's name, in the row
+    # the sidebar's close button sits in.
+    _icon = _brand_icon()
     st.markdown(
-        """
-        <div class="gw-brand">
-          <div class="gw-brand-mark">G</div>
-          <div>
-            <div class="gw-brand-name">Groundwater Toolkit</div>
-            <div class="gw-brand-sub">FIELD DATA → REPORTS</div>
-          </div>
-        </div>
-        """,
+        '<div class="gw-brand">'
+        + (f'<img src="{_icon}" alt="">' if _icon else "")
+        + '<span class="gw-brand-name">Groundwater Toolkit</span></div>',
         unsafe_allow_html=True,
-    )
-    st.caption(
-        "Field data in, client-ready reports out - for rural water "
-        "supply borehole projects in Sierra Leone."
     )
     # detect the district from the coordinates entered on the previous
     # run, so the dropdown can pre-fill before the widgets render
@@ -601,28 +292,20 @@ with st.sidebar:
             _proj_name += f" — {_html.escape(_probe.district)}"
     else:
         _proj_name = "New project"
+    # the project in hand, on one line; the same line heads the page on a
+    # phone, where the sidebar is a drawer (see the header below)
+    _project_line = (
+        f'<span class="gw-project-name">{_proj_name}</span>'
+        f'<span class="gw-chip {_chip_css}">{_chip_label}</span>'
+    )
     st.markdown(
-        f"""
-        <div class="gw-project-card">
-          <div class="gw-cap">Active project</div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px">
-            <span style="font-weight:600;font-size:0.82rem">{_proj_name}</span>
-            <span class="gw-chip {_chip_css}">{_chip_label}</span>
-          </div>
-        </div>
-        """,
+        f'<div class="gw-project" title="Active project">{_project_line}</div>',
         unsafe_allow_html=True,
     )
-    if not (_probe.community and _probe.latlon is not None):
-        st.caption(
-            "📍 Set the site details below - community, area and GPS - "
-            "or load a saved project file. Every page, map and report "
-            "uses them."
-        )
 
-    # Grouped navigation: one radio per lifecycle group, kept consistent
-    # with the single active page before the widgets render. The page itself
-    # was settled by resolve_page above; the radios only show and change it.
+    # Grouped navigation: one radio per group, kept consistent with the
+    # single active page before the widgets render. The page itself was
+    # settled by resolve_page above; the radios only show and change it.
     _nav_current = st.session_state[state.NAV]
     for _group, _pages in NAV_GROUPS:
         _gkey = _group_key(_group)
@@ -635,10 +318,22 @@ with st.sidebar:
             on_change=_nav_changed,
             args=(_gkey,),
         )
-    st.divider()
+    # the steps of the Borehole group that are done carry a tick in place of
+    # their number; which they are is written as rules for the stylesheet
+    _done = steps_done()
+    _done_css = style.nav_done_css([_done[page] for page in dict(NAV_GROUPS)[NAV_STEPS]])
+    if _done_css:
+        st.markdown(_done_css, unsafe_allow_html=True)
 
-    with st.expander("📍 Site details (used by all pages)",
-                     expanded=not _probe.community):
+    # Below the navigation, each closed until asked for: the site's details,
+    # the name the reports go out under, and the project file.
+    if not (_probe.community and _probe.latlon is not None):
+        st.caption(
+            "Set the site details below - community, area and GPS - "
+            "or load a saved project file. Every page, map and report "
+            "uses them."
+        )
+    with st.expander("Site details", expanded=False):
         st.text_input("Community / town", key="meta_community")
         province_options = [""] + provinces
         if st.session_state.get("meta_province") not in province_options:
@@ -731,18 +426,7 @@ with st.sidebar:
                     "These coordinates fall outside every district - "
                     "check the values and the UTM zone."
                 )
-    with st.expander("🧭 Suggested workflow", expanded=False):
-        st.markdown(
-            "1. **Geophysics (VES)** - siting and drilling depth\n"
-            "2. **Costing & BoQ** - budget and bill of quantities\n"
-            "3. **Supervision** - checklists while drilling\n"
-            "4. **Borehole design** - from the drilling log\n"
-            "5. **Pumping test** - safe yield and pump depth\n"
-            "6. **Water quality** - WHO/national verdict\n\n"
-            "Every page offers bundled sample data, so you can try "
-            "each step without your own files."
-        )
-    with st.expander("📄 Report branding"):
+    with st.expander("Report branding"):
         st.text_input(
             "Organisation name",
             key="org_name",
@@ -755,12 +439,13 @@ with st.sidebar:
     # slot now and fill it at the end of the script, once the page has run:
     # otherwise "Save project" straight after an analysis wrote a file with no
     # results in it, and the Portfolio page then showed the site as unstarted.
-    _project_panel = st.expander("💾 Project file")
+    _project_panel = st.expander("Project file")
     st.caption(
         "Methods follow RWSN/UNICEF professional drilling guidance "
         "and WHO water quality guidelines. "
         f"Toolkit version {groundwater.__version__}."
     )
+    theme_sync()
 
 
 
@@ -768,12 +453,13 @@ with st.sidebar:
 # Header
 # ---------------------------------------------------------------------------
 
-st.title("Groundwater Investigation Toolkit")
-st.caption(
-    "Vertical electrical soundings, pumping tests, water quality, "
-    "borehole design, costing and drilling supervision for rural water "
-    "supply projects in Sierra Leone."
-)
+# The product's name stays the page's first heading, set as a small line
+# above the page's own header, which is the title the eye lands on. On a
+# phone the project's name heads the page in a bar that stays put.
+with st.container(key="gw_eyebrow"):
+    st.markdown(f'<div class="gw-topbar">{_project_line}</div>',
+                unsafe_allow_html=True)
+    st.title("Groundwater Investigation Toolkit")
 if IN_BROWSER:
     st.info(
         "This demo runs entirely in your browser; nothing is uploaded to any "
