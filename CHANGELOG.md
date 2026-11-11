@@ -6,6 +6,19 @@ that entry, kept as it was written.
 
 ## Unreleased
 
+### Clean house: the stranded pull requests closed, the dependencies brought level
+
+Step 0.1's test was that no pull request older than thirty days stays open. Fourteen were. Three were the stranded ones the step is named for, #17, #52 and #54: each had been carried onto `main` by hand in September and released in 0.3.0, as the entries below say, but none was ever closed. They are closed now, each with a note saying which commits hold its work and what was deliberately not taken. The other eleven were Dependabot's, and nine of those are applied here so that they close themselves when this merges.
+
+- **The five GitHub Actions** move to the releases that run on Node 24: `checkout` 7.0.1, `setup-python` 7.0.0, `setup-node` 7.0.0, `cache` 6.1.0 and `upload-artifact` 7.0.2, each pinned by the commit its tag names. Every job's log had been warning that the old ones target Node 20 and were being forced onto 24. None of the breaking changes in those majors touches an input the workflows pass.
+- **ruff 0.17.3 and Hypothesis 6.168.5.** The new ruff finds nothing. The Hypothesis internals `tests/fuzz/fuzz_parity.py` reaches into are still there, and the pull request profile draws its fixed sample with the new version.
+- **The Depth Spine's packages** (React 19.3, Vite 8.3, oxlint 1.91 and the rest of Dependabot's group, and `@types/node` 26). Dependabot's own pull request failed CI for the reason `dependabot.yml` predicts: the committed build under `src/groundwater/depth_spine/` has to be rebuilt with the new React, and was not. It is rebuilt here, 29 KB larger. The new oxlint flagged `useMemo(readBakedPayload, [])` in `App.tsx`, which now passes an arrow function.
+- **pandas** in `requirements.txt` asks for 2.3.3, the last of the 2.x line and what the resolver already chose.
+
+Two are held, each for a reason in the repository. **TypeScript 7** passes on the Depth Spine but not on the browser app: `nox -s js` uses the same compiler, and version 7 no longer reads the Closure-style function types in `docs/js` (`function(number): number`), 155 errors in `gwt-core.js` alone. Those comments need rewriting first. **pyarrow below 26** would lift a pin that exists because 25.0.0 crashed Streamlit's table serialisation; 25.0.1 passes the app's tests here, but CI installs `pyarrow<25` by hand and the hosted deployment cannot be tried from a sandbox, so that one is the owner's to lift.
+
+`README.md` said `ROADMAP.md` lists defects "in the order they are being fixed". Every item on it has been closed since September, and it now says so.
+
 ### The Theis fit is one search in both engines, finished at the minimum
 
 The nightly run of the two engines against each other failed on five of six nights from 5 to 10 November, each time on a new pumping sheet (the sixth night's failure was GitHub timing out on a Python download). The five sheets showed three faults, and two of the three had one cause.
@@ -752,7 +765,7 @@ The continuous survey surfaces (iso-resistivity, depth to bedrock, aquifer thick
 
 ### PR #17's wizard fix, ported (step 0.1)
 
-A sounding that will not invert no longer crashes the Streamlit app or costs a loaded project its costing values. Before, the siting step dropped the wizard's load grace before inverting anything and had no guard around the inversion. A workbook whose readings parsed but would not invert therefore ended the run with a stack trace and stored no result. The loaded project's adjusted costing depth was then reset on the next visit to the costing step: in the test case, 85 m came back as the 72 m prefill. Now the failure appears as an error naming the sounding, and the run's progress bar is cleared. Nothing from the failed run is stored. The last successful siting result stays in place, and when there is one the error says that the results shown come from it. The grace is dropped only once a new result has been stored. This is the fix from pull request #17, ported by hand because that branch shares no history with main. The browser app already limited a failure to its own sounding and needed no change. It keeps the other soundings and names the one that failed, whereas the Streamlit app rejects the whole run.
+A sounding that will not invert no longer crashes the Streamlit app or costs a loaded project its costing values. Before, the siting step dropped the wizard's load grace before inverting anything and had no guard around the inversion. A workbook whose readings parsed but would not invert therefore ended the run with a stack trace and stored no result. The loaded project's adjusted costing depth was then reset on the next visit to the costing step: in the test case, 85 m came back as the 72 m prefill. Now the failure appears as an error naming the sounding, and the run's progress bar is cleared. Nothing from the failed run is stored. The last successful siting result stays in place, and when there is one the error says that the results shown come from it. The grace is dropped only once a new result has been stored. This is the fix from pull request #17, ported by hand because that branch conflicts with main in every file it touches. (An earlier version of this entry said the branch shared no history with main. It does, from c018d03; a shallow clone hid it.) The browser app already limited a failure to its own sounding and needed no change. It keeps the other soundings and names the one that failed, whereas the Streamlit app rejects the whole run.
 
 ### One command for the checks, and a CI that checks more (steps 0.2 and 0.6)
 
