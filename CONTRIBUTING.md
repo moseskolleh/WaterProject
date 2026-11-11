@@ -36,7 +36,9 @@ from what is committed under `src/groundwater/depth_spine/`. Those
 comparisons, like CI's, are against the git index, so stage a file you
 regenerated before checking it. The same install serves `js`, which
 type-checks and lints the browser app in `docs/js` with the TypeScript and
-`oxlint` the Depth Spine pins; the app itself has no build, and its types
+`oxlint` the Depth Spine pins; the app is served as it is written, with
+nothing compiled, minified or rewritten (its three largest scripts are joined
+from parts, as below, and that is all), and its types
 are JSDoc comments it ignores. `gwt-core.js` is held to TypeScript's strict
 mode and every function on `GWT.core` carries a type for each parameter;
 the other scripts are checked loosely (`web/jscheck/` says what each level
@@ -58,9 +60,11 @@ python -m pyright         # likewise pinned; basic mode, see pyproject.toml
 python -m pytest -q --cov=groundwater --cov-report=term
 # check: bundles - the bundled data must match the source tables
 python web/build_boundary_review.py --check
+python web/build_js.py --check    # the three large scripts are the join of their parts
 python web/build_webapp_data.py
 python web/build_offline.py
-git diff --exit-code -- docs/js/gwt-data.js docs/js/gwt-geo.js \
+git diff --exit-code -- docs/js/gwt-core.js docs/js/gwt-app.js \
+    docs/js/gwt-charts.js docs/js/gwt-data.js docs/js/gwt-geo.js \
     docs/js/gwt-samples.js docs/sw.js
 # check: parity, browser
 python tests/webapp/make_reference.py --check
@@ -87,6 +91,7 @@ npm --prefix ui/depth-spine exec -- oxlint -c web/jscheck/oxlintrc.json \
 # build: every generated file, in dependency order
 (cd ui/depth-spine && npm ci && npm run build:all)
 python web/build_boundary_review.py
+python web/build_js.py
 python web/build_webapp_data.py
 python web/build_demo.py
 python web/build_offline.py
@@ -96,13 +101,36 @@ Regenerate the browser bundles in that order after Python or data changes.
 The Depth Spine goes first because `build_demo.py` inlines the Python
 package, and the package carries the Depth Spine build; any change under
 `src/` or `app/` changes `docs/wasm/index.html`, which the test suite holds
-to a fresh build. `build_offline.py` goes last: it hashes the whole app
+to a fresh build. `build_js.py` goes before `build_webapp_data.py`, which
+hashes `gwt-core.js` into `gwt-data.js` as the engine's digest.
+`build_offline.py` goes last: it hashes the whole app
 shell, `gwt-data.js` and its bundles included, so running it before the bundle it is meant
 to describe produces a release identifier for a shell that no longer
-exists. Both `build_offline.py` and `build_boundary_review.py` take
+exists. `build_js.py`, `build_offline.py` and `build_boundary_review.py` take
 `--check`. `tests/webapp/reference.json` is not in `build`: it moves only
 when numbers are meant to, so run `python tests/webapp/make_reference.py`
 by hand when they are.
+
+Three scripts of the browser app are too long to read, or to review a change
+in, as one file each: `gwt-core.js` is forty thousand lines, `gwt-app.js` ten
+thousand and `gwt-charts.js` seven thousand. Each is one closure whose
+sections call each other by bare name, so it cannot become several scripts,
+but it can be written as several files. Its parts are in `web/src/<name>/`,
+one for each banner section - a Python module's port in the engine, a page in
+the app, a family of figures in the charts - named `NNN-name.js`, and
+`python web/build_js.py` joins them in the order of their numbers into
+`docs/js/<name>.js`. Edit the part, run it, and commit the part and the joined
+file together. `docs/js` is still what Pages serves and what every test, `tsc`
+and `oxlint` read, so they report lines of the joined file;
+`python web/build_js.py --where docs/js/gwt-core.js:12345` gives the part and
+the line in it. An edit made to one of the three in `docs/js` is overwritten
+by the next join, and before that `nox -s bundles` and
+`tests/test_web_build.py` fail on it, naming the line and the part it belongs
+in. The join is a concatenation: nothing is added between two parts and
+nothing is transformed or minified, so the browser still runs exactly
+the text a person wrote. Every other script in `docs/js` is edited where it
+is. The numbers go up in tens so that a new part can take one between its
+neighbours'; nothing else may sit in a parts folder.
 
 A release is all of its files or none of them. A precache that cannot complete
 fails the install and leaves the device on the release it already had; an open

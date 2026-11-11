@@ -60,9 +60,14 @@ SPINE_OUTPUT = [
     "src/groundwater/depth_spine/static/workspace.html",
 ]
 
-# The bundles CI rebuilds and compares. build_offline.py is last because it
-# hashes the whole app shell, gwt-data.js and the bundles beside it included.
-BUNDLES = ["docs/js/gwt-data.js", "docs/js/gwt-geo.js", "docs/js/gwt-samples.js",
+# The generated files CI holds to their sources. The three scripts
+# web/build_js.py joins from their parts under web/src come first, and are
+# checked rather than rejoined (a rejoin would overwrite a hand edit before
+# reporting it); gwt-data.js follows because it carries a hash of gwt-core.js;
+# build_offline.py is last because it hashes the whole app shell, gwt-data.js
+# and the bundles beside it included.
+BUNDLES = ["docs/js/gwt-core.js", "docs/js/gwt-app.js", "docs/js/gwt-charts.js",
+           "docs/js/gwt-data.js", "docs/js/gwt-geo.js", "docs/js/gwt-samples.js",
            "docs/sw.js"]
 
 EXAMPLES = [
@@ -263,8 +268,17 @@ def bundles(session: nox.Session) -> None:
     The chiefdom layer is checked before the bundle is built from it, so a
     withheld boundary fragment that never made it back into the committed
     data is reported as itself rather than as a puzzling bundle diff.
+
+    The three large scripts are held to their parts under web/src before
+    gwt-data.js is built, because its engine digest is a hash of
+    gwt-core.js. They are checked and not joined again: an edit made to
+    docs/js by hand is the mistake this is here to catch, and a check that
+    joined the parts over it would delete the edit before saying so.
+    build_js.py --check names the first line that differs and the part it
+    comes from, where the comparison below could only say the file changed.
     """
     _python(session, "web/build_boundary_review.py", "--check")
+    _python(session, "web/build_js.py", "--check")
     _python(session, "web/build_webapp_data.py")
     _python(session, "web/build_offline.py")
     _unchanged(session, BUNDLES, "nox -s build")
@@ -331,7 +345,7 @@ def depth_spine(session: nox.Session) -> None:
 
 @nox.session
 def js(session: nox.Session) -> None:
-    """Type-check and lint the browser app in docs/js, which has no build.
+    """Type-check and lint the browser app in docs/js, as it is served.
 
     The TypeScript and oxlint are ui/depth-spine's, at the versions its
     lockfile pins, rather than a second package.json pinning the same two
@@ -339,6 +353,15 @@ def js(session: nox.Session) -> None:
     rewrites docs/: the app is served as it is written, and the types are
     JSDoc comments it ignores. gwt-core.js is checked strictly, the other
     scripts loosely; web/jscheck/tsconfig*.json say what each level means.
+
+    Three of the scripts, gwt-core.js, gwt-app.js and gwt-charts.js, are
+    joined from parts under web/src by web/build_js.py, which the build
+    session runs and the bundles session checks; this one does neither. The
+    join is a concatenation, so the joined file is still the text a person
+    wrote and is what is checked here: a part is a stretch of one closure
+    and would not parse alone. Both tools therefore give lines of the
+    joined file, and python web/build_js.py --where docs/js/gwt-core.js:12345
+    gives the part and the line in it.
     """
     session.chdir(SPINE)
     session.run("npm", "ci", "--no-audit", "--no-fund")
@@ -369,8 +392,10 @@ def build(session: nox.Session) -> None:
     """Regenerate every generated file, in the order each depends on the last.
 
     The Depth Spine goes first because build_demo.py inlines the package,
-    and the package carries the Depth Spine build. build_offline.py goes
-    last because it hashes the shell everything before it wrote into.
+    and the package carries the Depth Spine build. build_js.py joins the
+    three large scripts before build_webapp_data.py hashes one of them,
+    gwt-core.js, into gwt-data.js. build_offline.py goes last because it
+    hashes the shell everything before it wrote into.
     tests/webapp/reference.json is not here: it moves only when numbers are
     meant to, so regenerate it by hand with tests/webapp/make_reference.py.
     """
@@ -379,6 +404,7 @@ def build(session: nox.Session) -> None:
     session.run("npm", "run", "build:all")
     session.chdir(REPO)
     _python(session, "web/build_boundary_review.py")
+    _python(session, "web/build_js.py")
     _python(session, "web/build_webapp_data.py")
     _python(session, "web/build_demo.py")
     _python(session, "web/build_offline.py")
