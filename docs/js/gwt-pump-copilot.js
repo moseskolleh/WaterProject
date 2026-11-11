@@ -1512,8 +1512,7 @@
     return [
       card(pumping ? 'Pumping' : 'Recovery', [
         el('p', { 'data-cp': 'elapsed' }, elapsedText(s, sched)),
-        el('p', { style: { fontSize: '2.2rem', fontWeight: '600', margin: '0.2rem 0' },
-          'data-cp': 'countdown' },
+        el('p.readout', { 'data-cp': 'countdown' },
           sched.due !== null ? 'Read now: the ' + minuteText(sched.due) + '-minute reading'
             : countdownText(sched.seconds)),
         el('p.muted', { 'data-cp': 'next' }, nextText(sched)),

@@ -32,6 +32,28 @@
     return (value || '').trim() || fallback;
   }
 
+  /* The palette a map of boundaries is drawn with.
+   *
+   * Such a map is read against paper: its land, its sea and its unit
+   * colours are light fills, the same on screen as in the report, and they
+   * do not change with the theme. Drawn with the dark theme's ink and
+   * surface round them, it was a light slab cut into a dark card, with its
+   * place names in pale ink and a dark halo on a pale ground. So in the
+   * dark theme the whole map is painted as the report paints it, with the
+   * print palette, and the page lays it on the card as a sheet of paper
+   * (svg.sheet-paper in gwt.css). In the light theme, and in a report, it
+   * is the palette every other figure has. */
+  function paperPalette() {
+    var live = palette();
+    if (printDepth > 0 || !(relativeLuminance(live.surface) < 0.5)) return live;
+    printDepth += 1;
+    try {
+      return palette();
+    } finally {
+      printDepth -= 1;
+    }
+  }
+
   var CAT_FALLBACK = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100',
     '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
   var SEQ_FALLBACK = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5',

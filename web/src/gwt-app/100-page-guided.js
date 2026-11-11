@@ -46,16 +46,16 @@
         el('div.progress-track', el('div.progress-fill', {
           style: { width: (100 * doneCount / steps.length).toFixed(0) + '%' },
         })),
-        el('p.muted', { style: { marginTop: '0.5rem' } },
+        el('p.muted.mt-s',
           doneCount + ' of ' + steps.length + ' steps complete'),
       ]),
       el('div', steps.map(function (step, i) {
         return card(null, [
-          el('div', { style: { display: 'flex', gap: '0.9rem', alignItems: 'flex-start' } }, [
+          el('div.guided-step', [
             el('div.wizard-step' + (step.done ? '.done' : ''), [
               el('span.n', String(i + 1)),
             ]),
-            el('div', { style: { flex: '1', minWidth: '0' } }, [
+            el('div.guided-step-body', [
               el('h3', step.label),
               el('p.muted', step.note),
             ]),

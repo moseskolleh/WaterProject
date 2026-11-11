@@ -40,9 +40,11 @@
       e.preventDefault(); zone.classList.remove('over');
       take((e.dataTransfer.files || [])[0]);
     });
-    return el('div', [
+    /* loaded, the file is one row: its name, the way to replace it (the
+     * zone itself) and Remove beside it */
+    return el('div.upload' + (loaded ? '.upload-loaded' : ''), [
       zone,
-      loaded ? el('div.btn-row', { style: { marginTop: '0.5rem' } }, [
+      loaded ? el('div.btn-row.upload-actions', [
         button('Remove', async function () {
           store.remove('sources.' + role);
           await recompute();

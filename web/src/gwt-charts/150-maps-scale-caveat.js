@@ -82,7 +82,7 @@
   /* Lays out title, map frame, legend and credit, and hands back the frame so
    * the caller only has to draw its own layer into it. */
   function mapCanvas(spec, legendItems, extentFeatures) {
-    var p = palette();
+    var p = paperPalette();
     var width = spec.width || 620;
     var height = spec.height || 520;
     var titleH = spec.title ? 26 : 8;
@@ -118,6 +118,8 @@
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
       'font-family': FONT, role: 'img', 'aria-label': spec.title || 'map',
+      /* for the page only: the export takes it off again */
+      'class': SHEET_CLASS,
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
     if (spec.title) {

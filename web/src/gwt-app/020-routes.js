@@ -32,6 +32,13 @@
     return { key: key, item: item };
   }
 
+  /* Whether the device has been asked for less motion: nothing scrolls
+   * smoothly then, here or in the stylesheet. */
+  function lessMotion() {
+    return !!(global.matchMedia &&
+      global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
   /* Draw a page, as goto and the address both ask for it. */
   function show(key, item) {
     store.set('nav', key);
@@ -43,8 +50,9 @@
     if (!route.item) {
       /* the main pane is the scroll container on a wide screen and the page
        * is on a narrow one, so both are sent back to the top */
-      $('#main').scrollTo({ top: 0, behavior: 'smooth' });
-      global.scrollTo({ top: 0, behavior: 'smooth' });
+      var how = /** @type {ScrollBehavior} */ (lessMotion() ? 'auto' : 'smooth');
+      $('#main').scrollTo({ top: 0, behavior: how });
+      global.scrollTo({ top: 0, behavior: how });
     }
     return drawn;
   }

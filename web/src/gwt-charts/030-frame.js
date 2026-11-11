@@ -1,7 +1,12 @@
 
   /* --------------------------------------------------------------- frame */
 
-  var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  /* On the page a figure is set in the app's own face, the stylesheet's
+   * --font. A figure rasterised for a report, or saved as a file, is a
+   * document of its own that the app's fonts do not reach, and it goes out
+   * in the face it always has (EXPORT_FONT, put back by the export). */
+  var FONT = '"Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
+  var EXPORT_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
   /* A frame's title, and how much wider it is than textWidth() thinks.
    *

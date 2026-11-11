@@ -55,6 +55,28 @@
     return (value || '').trim() || fallback;
   }
 
+  /* The palette a map of boundaries is drawn with.
+   *
+   * Such a map is read against paper: its land, its sea and its unit
+   * colours are light fills, the same on screen as in the report, and they
+   * do not change with the theme. Drawn with the dark theme's ink and
+   * surface round them, it was a light slab cut into a dark card, with its
+   * place names in pale ink and a dark halo on a pale ground. So in the
+   * dark theme the whole map is painted as the report paints it, with the
+   * print palette, and the page lays it on the card as a sheet of paper
+   * (svg.sheet-paper in gwt.css). In the light theme, and in a report, it
+   * is the palette every other figure has. */
+  function paperPalette() {
+    var live = palette();
+    if (printDepth > 0 || !(relativeLuminance(live.surface) < 0.5)) return live;
+    printDepth += 1;
+    try {
+      return palette();
+    } finally {
+      printDepth -= 1;
+    }
+  }
+
   var CAT_FALLBACK = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100',
     '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
   var SEQ_FALLBACK = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5',
@@ -184,7 +206,12 @@
 
   /* --------------------------------------------------------------- frame */
 
-  var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  /* On the page a figure is set in the app's own face, the stylesheet's
+   * --font. A figure rasterised for a report, or saved as a file, is a
+   * document of its own that the app's fonts do not reach, and it goes out
+   * in the face it always has (EXPORT_FONT, put back by the export). */
+  var FONT = '"Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
+  var EXPORT_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
   /* A frame's title, and how much wider it is than textWidth() thinks.
    *
@@ -2814,8 +2841,8 @@
   }
 
   function unitColour(props, spec) {
-    if (spec && spec.sourceColours) return props.color || palette().neutral;
-    return GEOLOGY_COLOURS[props.glg] || props.color || palette().neutral;
+    if (spec && spec.sourceColours) return props.color || paperPalette().neutral;
+    return GEOLOGY_COLOURS[props.glg] || props.color || paperPalette().neutral;
   }
 
   /* Youngest first, oldest last, and the things that are not rocks after
@@ -3623,7 +3650,7 @@
   /* Lays out title, map frame, legend and credit, and hands back the frame so
    * the caller only has to draw its own layer into it. */
   function mapCanvas(spec, legendItems, extentFeatures) {
-    var p = palette();
+    var p = paperPalette();
     var width = spec.width || 620;
     var height = spec.height || 520;
     var titleH = spec.title ? 26 : 8;
@@ -3659,6 +3686,8 @@
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
       'font-family': FONT, role: 'img', 'aria-label': spec.title || 'map',
+      /* for the page only: the export takes it off again */
+      'class': SHEET_CLASS,
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
     if (spec.title) {
@@ -3733,7 +3762,7 @@
     });
     var breaks = spec.breaks || (fixed ? fixedBreaks(fixed)
       : quantileBreaks(values, 5));
-    var pal = palette();
+    var pal = paperPalette();
     /* One colour per class, sampled across the whole ramp. Slicing a fixed
      * window off it gave fewer colours than classes as soon as the breaks
      * were supplied rather than computed, and the top classes then shared a
@@ -4026,7 +4055,7 @@
         if (!point.label) return;
         items.push({
           label: point.legend || point.label, kind: point.kind || 'diamond',
-          colour: point.colour || palette().secondary,
+          colour: point.colour || paperPalette().secondary,
         });
       });
       return items;
@@ -4127,7 +4156,7 @@
       points.forEach(function (point) {
         legendItems.push({
           label: point.legend || point.label || 'Site',
-          colour: point.colour || palette().secondary,
+          colour: point.colour || paperPalette().secondary,
           kind: point.kind || 'diamond',
         });
       });
@@ -6976,14 +7005,28 @@
 
   /* ============================================================ export */
 
+  /* The class that marks a map drawn as a sheet of paper, for the page. */
+  var SHEET_CLASS = 'sheet-paper';
+
+  /* A figure as it leaves the page, for a report or as a file: without the
+   * hover layer, and without what is there for the page alone - the app's
+   * face, which a file or a rasterised image cannot load, and the class the
+   * stylesheet frames a map by. What goes out is what always went out. */
+  function exportCopy(svg) {
+    var clone = svg.cloneNode(true);
+    Array.prototype.slice.call(clone.querySelectorAll('[data-export="skip"]'))
+      .forEach(function (node) { node.parentNode.removeChild(node); });
+    if (clone.getAttribute('font-family') === FONT) clone.setAttribute('font-family', EXPORT_FONT);
+    if (clone.getAttribute('class') === SHEET_CLASS) clone.removeAttribute('class');
+    return clone;
+  }
+
   /* Rasterise an SVG to a PNG data URL for embedding in the .docx reports.
    * Elements marked data-export="skip" (the hover layer) are dropped first. */
   function toPng(svg, options) {
     var opts = options || {};
     var scale = opts.scale || 2;
-    var clone = svg.cloneNode(true);
-    Array.prototype.slice.call(clone.querySelectorAll('[data-export="skip"]'))
-      .forEach(function (node) { node.parentNode.removeChild(node); });
+    var clone = exportCopy(svg);
     var viewBox = (clone.getAttribute('viewBox') || '0 0 720 420').split(/\s+/).map(Number);
     var w = viewBox[2], h = viewBox[3];
     clone.setAttribute('width', w);
@@ -7014,9 +7057,7 @@
   }
 
   function download(svg, filename) {
-    var clone = svg.cloneNode(true);
-    Array.prototype.slice.call(clone.querySelectorAll('[data-export="skip"]'))
-      .forEach(function (node) { node.parentNode.removeChild(node); });
+    var clone = exportCopy(svg);
     clone.setAttribute('xmlns', NS);
     S.download(filename, new XMLSerializer().serializeToString(clone),
       'image/svg+xml;charset=utf-8');
@@ -7058,7 +7099,7 @@
   }
 
   GWT.charts = {
-    palette: palette, frame: frame, marker: marker, legend: legend,
+    palette: palette, mapPalette: paperPalette, frame: frame, marker: marker, legend: legend,
     polyline: polyline, padDomain: padDomain, freeCorner: freeCorner, linTicks: linTicks, logTicks: logTicks,
     vesCurve: vesCurve, layeredModel: layeredModel,
     /* The survey's own figures. Each takes what gwt-core.js mirrored out of

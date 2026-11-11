@@ -143,7 +143,7 @@
             function (value) {
               store.set('costing.rateOverrides.' + rate.code, value);
               rebuildCosting(); render();
-            }, { step: 'any', class: 'input cell', style: { maxWidth: '7rem' },
+            }, { step: 'any', class: 'input cell cell-narrow',
               'aria-label': 'Rate (US$), ' + rate.code + ' ' + rate.item }),
         };
       })),

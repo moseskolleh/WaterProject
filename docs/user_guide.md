@@ -7,7 +7,7 @@ web interface. No programming is needed.
 ## 1. Getting the templates
 
 Ask the analyst for the current template pack, or generate it from the
-**Templates** page of the web interface (sidebar, under *Delivery*;
+**Templates** page of the web interface (sidebar, under *Field tools*;
 in the browser app its address is [`#/templates`](index.html#/templates)).
 There are five templates:
 
@@ -115,7 +115,7 @@ below the conductive ground.
 ## 2a. VES co-pilot (browser app, at the peg)
 
 The browser app has a page that checks a Schlumberger sounding as it is
-taken: **VES co-pilot**, under *Investigation*, at
+taken: **VES co-pilot**, under *Field tools*, at
 [`#/vescopilot`](index.html#/vescopilot). It is in the browser app only;
 the Streamlit app's Geophysics page says so, and reads the workbook the
 co-pilot writes like any other. It works with no network once the app is
@@ -265,7 +265,7 @@ straight-line fits:
 
 The browser app can sit with the crew while the test runs and fill in
 the pumping test sheet for them. Open **Pumping co-pilot** (sidebar,
-under *Testing*; address [`#/pumpcopilot`](index.html#/pumpcopilot)).
+under *Field tools*; address [`#/pumpcopilot`](index.html#/pumpcopilot)).
 It exists only in the browser app; the Streamlit app says so on its
 Pumping test page. Install the app on the phone and open the page once
 with a network: after that it works with none.
@@ -401,7 +401,7 @@ and a warning, `gravel_pack_short`, says why.
 ## 4a. Drilling log co-pilot (browser app, at the rig)
 
 The browser app keeps the drilling log as the hole is drilled: **Drilling
-co-pilot**, under *Investigation*, at
+co-pilot**, under *Field tools*, at
 [`#/drillcopilot`](index.html#/drillcopilot). It is in the browser app
 only; the Streamlit app's Borehole design page says so, and reads the
 drilling log it writes like any other. It works with no network once the
@@ -569,15 +569,20 @@ main's inspection at this interval, as the routine inspection (9b).
 The web interface is one workspace with a sidebar. The sidebar holds
 the **site details** (community, area, GPS - filled in once, used by
 every page and every report), the **project file** panel for saving
-and loading, and the page list grouped by where you are in the job:
+and loading, and the page list in five groups, the same groups in the
+same order in both apps:
 
 | Group | Pages |
 |---|---|
-| Project | Overview, Guided start, Site maps |
-| Investigation | Geophysics (VES), VES co-pilot (browser app only), Borehole design, Drilling co-pilot (browser app only), Depth Spine, Scanned sheets |
-| Testing | Pumping test, Pumping co-pilot (browser app only), Water quality |
-| Delivery | Costing & BoQ, Supervision, Handover, Templates |
-| Area analysis | Water points, Coverage gap, Portfolio |
+| Start | Overview, Guided start |
+| Borehole | Site maps, Geophysics (VES), Borehole design, Pumping test, Water quality, Costing & BoQ, Procurement, Supervision, Handover |
+| Field tools | VES co-pilot, Drilling co-pilot and Pumping co-pilot (browser app only), Depth Spine, Scanned sheets, Templates |
+| Programme | Water points, Coverage gap, Portfolio, Asset registry, Report on a borehole (browser app only) |
+| Reference | Verify a document, Settings and About & method (browser app only) |
+
+The *Borehole* group is the work itself, in the order it is done: its
+pages are numbered as steps, and a step is ticked once it is done. The
+other groups are what is used along the way and what is looked up.
 
 The same pages are in the standalone browser app, which needs no
 install and no Python; it keeps the project in the browser and saves it
@@ -1340,7 +1345,7 @@ their files, and the Streamlit app offers the rest as a file of reports
 ## 9c. Documents anyone can check
 
 In the browser app: [`#/verify`](index.html#/verify), *Verify a
-document* under *Project*. In the Streamlit app: the *Verify a document*
+document* under *Reference*. In the Streamlit app: the *Verify a document*
 page. On the command line: `groundwater verify`.
 
 **What every document carries.** Each document either app writes (the

@@ -13,7 +13,7 @@
       points.forEach(function (point) {
         legendItems.push({
           label: point.legend || point.label || 'Site',
-          colour: point.colour || palette().secondary,
+          colour: point.colour || paperPalette().secondary,
           kind: point.kind || 'diamond',
         });
       });

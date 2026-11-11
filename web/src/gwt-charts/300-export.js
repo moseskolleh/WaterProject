@@ -1,14 +1,28 @@
 
   /* ============================================================ export */
 
+  /* The class that marks a map drawn as a sheet of paper, for the page. */
+  var SHEET_CLASS = 'sheet-paper';
+
+  /* A figure as it leaves the page, for a report or as a file: without the
+   * hover layer, and without what is there for the page alone - the app's
+   * face, which a file or a rasterised image cannot load, and the class the
+   * stylesheet frames a map by. What goes out is what always went out. */
+  function exportCopy(svg) {
+    var clone = svg.cloneNode(true);
+    Array.prototype.slice.call(clone.querySelectorAll('[data-export="skip"]'))
+      .forEach(function (node) { node.parentNode.removeChild(node); });
+    if (clone.getAttribute('font-family') === FONT) clone.setAttribute('font-family', EXPORT_FONT);
+    if (clone.getAttribute('class') === SHEET_CLASS) clone.removeAttribute('class');
+    return clone;
+  }
+
   /* Rasterise an SVG to a PNG data URL for embedding in the .docx reports.
    * Elements marked data-export="skip" (the hover layer) are dropped first. */
   function toPng(svg, options) {
     var opts = options || {};
     var scale = opts.scale || 2;
-    var clone = svg.cloneNode(true);
-    Array.prototype.slice.call(clone.querySelectorAll('[data-export="skip"]'))
-      .forEach(function (node) { node.parentNode.removeChild(node); });
+    var clone = exportCopy(svg);
     var viewBox = (clone.getAttribute('viewBox') || '0 0 720 420').split(/\s+/).map(Number);
     var w = viewBox[2], h = viewBox[3];
     clone.setAttribute('width', w);
@@ -39,9 +53,7 @@
   }
 
   function download(svg, filename) {
-    var clone = svg.cloneNode(true);
-    Array.prototype.slice.call(clone.querySelectorAll('[data-export="skip"]'))
-      .forEach(function (node) { node.parentNode.removeChild(node); });
+    var clone = exportCopy(svg);
     clone.setAttribute('xmlns', NS);
     S.download(filename, new XMLSerializer().serializeToString(clone),
       'image/svg+xml;charset=utf-8');
@@ -83,7 +95,7 @@
   }
 
   GWT.charts = {
-    palette: palette, frame: frame, marker: marker, legend: legend,
+    palette: palette, mapPalette: paperPalette, frame: frame, marker: marker, legend: legend,
     polyline: polyline, padDomain: padDomain, freeCorner: freeCorner, linTicks: linTicks, logTicks: logTicks,
     vesCurve: vesCurve, layeredModel: layeredModel,
     /* The survey's own figures. Each takes what gwt-core.js mirrored out of

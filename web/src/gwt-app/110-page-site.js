@@ -95,7 +95,7 @@
       var legendItems = [];
       if (latlon) {
         legendItems.push({ label: 'Project site', kind: 'diamond',
-          colour: charts.palette().secondary });
+          colour: charts.mapPalette().secondary });
       }
       if (home.legend) legendItems.push(home.legend);
       legendItems.push({ label: 'other districts', colour: OTHER_FILL });
@@ -111,7 +111,7 @@
         highlightLabel: home.highlight.length ? home.name : '',
         points: latlon ? [{
           lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
-          colour: charts.palette().secondary, size: 6.5,
+          colour: charts.mapPalette().secondary, size: 6.5,
         }] : [],
         title: 'Site location',
         legendItems: legendItems,

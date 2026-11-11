@@ -66,8 +66,8 @@
   }
 
   function unitColour(props, spec) {
-    if (spec && spec.sourceColours) return props.color || palette().neutral;
-    return GEOLOGY_COLOURS[props.glg] || props.color || palette().neutral;
+    if (spec && spec.sourceColours) return props.color || paperPalette().neutral;
+    return GEOLOGY_COLOURS[props.glg] || props.color || paperPalette().neutral;
   }
 
   /* Youngest first, oldest last, and the things that are not rocks after

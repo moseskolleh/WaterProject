@@ -189,7 +189,7 @@
     }
     var fresh = blankState();
     fresh.nav = store.get('nav');
-    fresh.theme = store.get('theme', 'dark');
+    fresh.theme = store.get('theme', 'auto');
     Object.keys(sample.site || {}).forEach(function (k) {
       fresh.site[k] = sample.site[k];
     });

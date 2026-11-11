@@ -2,6 +2,22 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### The browser app redesigned: quiet colour, sentence case, the borehole's steps first
+
+The browser app was neon green on black, upper case almost everywhere, every card outlined and glowing in the brand colour, over a contour-line texture, with 25 equal upper-case rows of navigation in which the borehole's own steps sat between the tools. It is redesigned to one brief, shared with the Streamlit app: quiet, legible, ordered. No calculation, report or result wording changed: the engine's parts under `web/src/gwt-core/` are untouched and parity still passes 4,329 of 4,329.
+
+**Colour and type.** The green stays as an accent only: the primary button, the current page, links, the focus ring and the done tick. Borders, dividers and shadows are neutral, and the glow and the contour texture are gone. The dark theme is near-black neutral surfaces (`#0d0f0e` page, `#151817` raised) with the green softened from `#7CFC00` to `#8ae06c`; the light theme is a warm white page (`#f6f7f5`) with white cards and the green at `#1b7a2e`. "OK" is no longer the accent's green (`#4cc9a4` dark, `#0b6b5a` light). Each theme's values are now written once in `docs/css/gwt.css`, where the light set used to be written twice. All thirteen `text-transform: uppercase` rules are removed: titles, navigation, buttons, badges and table headers are sentence case, and the mono face is kept for numbers, units and identifiers. axe-core still finds no serious or critical violation on any page in either theme.
+
+**Navigation.** Five groups in place of six: Start (Overview, Guided start); Borehole, the lifecycle in order from Site & maps to Handover, drawn as numbered steps that turn to a tick when done; Field tools (the three co-pilots, Depth Spine, Scanned sheets, Templates); Programme; and Reference. The Borehole group is full size and the others are quieter, but every one of the 25 pages is still a button in the list, in tab order, and the whole list fits a 1366 by 850 window where it used to run 360 px past it. Labels and addresses are unchanged.
+
+**The theme follows the device** until one is chosen; the button still goes round light, dark and the device's own.
+
+**Pages.** A loaded file is one row (name, "click to replace", Remove) where it was a tall panel. A headline tile's value is a number and a unit, with its range on a smaller line beneath: "Safe yield" used to carry the whole sentence at display size. Figures use the app's own typeface on screen, and a light map sits on the dark page as a sheet of paper.
+
+**Phone.** One sticky top bar (menu, project name, the three actions) in place of three stacked rows that scrolled away; the drawer has a scrim behind it and rows 44 px tall.
+
+The suites that walk the navigation by neighbour and assert the default theme were updated to the new order and default, and prove what they did before: every page reachable by keyboard in list order, the drawer closing when focus leaves it, the theme button's three states. `docs/user_guide.md` names the new groups.
+
 ### The three largest browser scripts are written as parts and joined
 
 The three largest scripts of the browser app are now written as parts and joined. `docs/js/gwt-core.js` (40,604 lines), `gwt-app.js` (10,305) and `gwt-charts.js` (7,112) are each one closure whose sections call each other by bare name, so they could not become separate scripts, but a file that size could not be read and a change to it could not be reviewed. Their source is now 60, 46 and 31 files under `web/src/gwt-core/`, `web/src/gwt-app/` and `web/src/gwt-charts/`, one for each banner section: a Python module's port in the engine, a page in the app, a family of figures in the charts. `web/build_js.py` joins them in the order of their `NNN-name.js` numbers into the file that is served. The join is a concatenation. Nothing is added between two parts and nothing is transformed, minified or bundled, and the three joined files are byte for byte what they were before the split, so no behaviour changes and every test, `tsc`, `oxlint`, the service worker and the engine digest read the same files as before. Every other script in `docs/js` is still edited in place.

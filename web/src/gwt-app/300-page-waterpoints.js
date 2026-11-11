@@ -214,21 +214,21 @@
           points: decision.nearby.slice(0, 200).map(function (p) {
             return {
               lon: p.lon, lat: p.lat,
-              colour: p.functional === true ? charts.palette().good
-                : (p.functional === false ? charts.palette().critical
-                  : charts.palette().muted),
+              colour: p.functional === true ? charts.mapPalette().good
+                : (p.functional === false ? charts.mapPalette().critical
+                  : charts.mapPalette().muted),
               size: 3.5,
             };
           }).concat([{
             lon: latlon.lon, lat: latlon.lat, kind: 'diamond',
-            colour: charts.palette().accent, size: 7, label: 'Proposed site',
+            colour: charts.mapPalette().accent, size: 7, label: 'Proposed site',
           }]),
           title: 'Water points near the site',
           legendItems: [
-            { label: 'Functional', colour: charts.palette().good },
-            { label: 'Non-functional', colour: charts.palette().critical },
-            { label: 'Unknown', colour: charts.palette().muted },
-            { label: 'Proposed site', colour: charts.palette().accent, kind: 'diamond' },
+            { label: 'Functional', colour: charts.mapPalette().good },
+            { label: 'Non-functional', colour: charts.mapPalette().critical },
+            { label: 'Unknown', colour: charts.mapPalette().muted },
+            { label: 'Proposed site', colour: charts.mapPalette().accent, kind: 'diamond' },
           ],
           width: 640, height: 520,
         }), 'Mapped water points around the proposed site',

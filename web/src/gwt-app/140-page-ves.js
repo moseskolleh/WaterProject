@@ -261,18 +261,18 @@
           return {
             lon: ll.lon, lat: ll.lat, label: s.sounding_id,
             size: 4 + s.suitability / 25,
-            colour: s.suitability >= 75 ? charts.palette().good
-              : (s.suitability >= 55 ? charts.palette().cat[2]
-                : (s.suitability >= 35 ? charts.palette().warning
-                  : charts.palette().critical)),
+            colour: s.suitability >= 75 ? charts.mapPalette().good
+              : (s.suitability >= 55 ? charts.mapPalette().cat[2]
+                : (s.suitability >= 35 ? charts.mapPalette().warning
+                  : charts.mapPalette().critical)),
           };
         }).filter(Boolean),
         title: 'Drill-target suitability',
         legendItems: [
-          { label: 'Very good', colour: charts.palette().good },
-          { label: 'Good', colour: charts.palette().cat[2] },
-          { label: 'Moderate', colour: charts.palette().warning },
-          { label: 'Poor', colour: charts.palette().critical },
+          { label: 'Very good', colour: charts.mapPalette().good },
+          { label: 'Good', colour: charts.mapPalette().cat[2] },
+          { label: 'Moderate', colour: charts.mapPalette().warning },
+          { label: 'Poor', colour: charts.mapPalette().critical },
         ],
         width: 640, height: 520,
       }), 'Candidate points scored for drilling', { filename: 'suitability_map' })

@@ -59,46 +59,51 @@
    * once by gwt-store.js, moved across and removed */
   var STORE_KEY = 'gwt.project.v1';
 
+  /* The navigation, in the order it is drawn: where to start, the borehole's
+   * own steps in the order the work is done, the tools used in the field
+   * along the way, the programme the borehole belongs to, and what is looked
+   * up. The Streamlit app lists its pages in the same groups and order; a
+   * page only one app has simply appears there. */
   /** @type {Array<[string, string[][]]>} */
   var NAV_GROUPS = [
-    ['Project', [
+    ['Start', [
       ['overview', 'Overview'],
       ['guided', 'Guided start'],
+    ]],
+    ['Borehole', [
       ['site', 'Site & maps'],
-      ['verify', 'Verify a document'],
-    ]],
-    ['Investigation', [
       ['ves', 'Geophysics (VES)'],
-      ['vescopilot', 'VES co-pilot'],
       ['design', 'Borehole design'],
-      ['drillcopilot', 'Drilling co-pilot'],
-      ['spine', 'Depth Spine'],
-      ['extract', 'Scanned sheets'],
-    ]],
-    ['Testing', [
       ['pumping', 'Pumping test'],
-      ['pumpcopilot', 'Pumping co-pilot'],
       ['quality', 'Water quality'],
-    ]],
-    ['Delivery', [
       ['costing', 'Costing & BoQ'],
       ['procurement', 'Procurement'],
       ['supervision', 'Supervision'],
       ['handover', 'Handover'],
+    ]],
+    ['Field tools', [
+      ['vescopilot', 'VES co-pilot'],
+      ['drillcopilot', 'Drilling co-pilot'],
+      ['pumpcopilot', 'Pumping co-pilot'],
+      ['spine', 'Depth Spine'],
+      ['extract', 'Scanned sheets'],
       ['templates', 'Templates'],
     ]],
-    ['Area analysis', [
+    ['Programme', [
       ['waterpoints', 'Water points'],
       ['coverage', 'Coverage gap'],
       ['portfolio', 'Portfolio'],
       ['registry', 'Asset registry'],
       ['report', 'Report on a borehole'],
     ]],
-    ['', [
+    ['Reference', [
+      ['verify', 'Verify a document'],
       ['settings', 'Settings'],
       ['about', 'About & method'],
     ]],
   ];
+  /* the group whose pages are the steps of the work, numbered and ticked */
+  var NAV_STEPS = 'Borehole';
 
   function blankState() {
     return {
@@ -143,7 +148,9 @@
       /* due: the contract's completion date, for the contractor scorecards */
       procurement: { contract: null, measured: {}, variations: [],
         number: 1, date: '', previous: 0, due: '' },
-      theme: 'dark',
+      /* 'auto' follows the device's light or dark setting; the theme button
+       * goes round auto, light, dark */
+      theme: 'auto',
       /* the soundings' inversions, keyed by what they were computed from
        * (C.inversionCacheKey), so reopening a survey does not invert it
        * again. A cache the app may use and may throw away, never a result:

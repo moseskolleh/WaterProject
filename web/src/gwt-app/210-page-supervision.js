@@ -99,7 +99,7 @@
               function (value) {
                 update({ status: value });
                 render();
-              }, { class: 'input cell', style: { maxWidth: '6rem' },
+              }, { class: 'input cell cell-narrow',
                 'aria-label': 'Answer: ' + item.text }),
             remark: S.textInput(response.remark || '', function (value) {
               update({ remark: value });

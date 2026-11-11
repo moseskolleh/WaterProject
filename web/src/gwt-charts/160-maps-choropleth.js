@@ -15,7 +15,7 @@
     });
     var breaks = spec.breaks || (fixed ? fixedBreaks(fixed)
       : quantileBreaks(values, 5));
-    var pal = palette();
+    var pal = paperPalette();
     /* One colour per class, sampled across the whole ramp. Slicing a fixed
      * window off it gave fewer colours than classes as soon as the breaks
      * were supplied rather than computed, and the top classes then shared a

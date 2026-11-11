@@ -480,7 +480,7 @@
   /* What the read found, sentence by sentence, as both apps say it under
    * the file list. */
   function terrainReadNodes(read) {
-    return el('div.terrain-read', { style: { overflowWrap: 'anywhere' } },
+    return el('div.terrain-read.wrap-anywhere',
       read.notes.map(function (note) { return el('p', note); }));
   }
 
@@ -617,9 +617,8 @@
       terrainDropZone(),
       /* a tile's name is one long word, which a phone has to break, in the
        * list and in the sentences that name it */
-      session.files.length ? el('div.terrain-files', {
-        style: { margin: '0.6rem 0 0.9rem', overflowWrap: 'anywhere' },
-      }, session.files.map(function (file) { return terrainFileNode(session, file); })) : null,
+      session.files.length ? el('div.terrain-files.wrap-anywhere.mt-s.mb-m',
+        session.files.map(function (file) { return terrainFileNode(session, file); })) : null,
       el('div.field-row', [
         field('Source of the elevation model', S.selectInput(session.declared, TERRAIN_SOURCES,
           function (value) {
@@ -650,7 +649,7 @@
         'A drainage line starts where more than this drains to a cell. A new threshold ' +
           'redraws the lines without analysing the ground again.'),
       ]),
-      el('div.btn-row', { style: { marginBottom: '0.9rem' } }, [
+      el('div.btn-row.mb-m', [
         button('Analyse the terrain', function () { runTerrain(false); }, {
           variant: 'primary',
           disabled: !session.files.length || waiting || refused || session.running,
@@ -665,7 +664,7 @@
       !session.running && engine.mode() === 'page'
         ? el('p.muted.terrain-page-only', 'This copy of the app has no background worker (' +
           engine.unavailable() + '), so the analysis will hold the page until it finishes.') : null,
-      session.refusal ? el('div.callout.callout-bad', { style: { overflowWrap: 'anywhere' } },
+      session.refusal ? el('div.callout.callout-bad.wrap-anywhere',
         el('p', session.refusal)) : null,
       session.read ? terrainReadNodes(session.read) : null,
       session.result ? terrainFigureNodes(session) : null,

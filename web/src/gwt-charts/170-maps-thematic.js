@@ -165,7 +165,7 @@
         if (!point.label) return;
         items.push({
           label: point.legend || point.label, kind: point.kind || 'diamond',
-          colour: point.colour || palette().secondary,
+          colour: point.colour || paperPalette().secondary,
         });
       });
       return items;

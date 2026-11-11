@@ -58,8 +58,8 @@
 
       card('Progress', [
         el('div.grid.grid-3', stages.map(function (stage) {
-          return el('button.stat', {
-            type: 'button', style: { cursor: 'pointer', textAlign: 'left' },
+          return el('button.stat.stat-link', {
+            type: 'button',
             onclick: function () { goto(stage[1]); },
           }, [
             el('span.stat-label', [stage[0], ' ',
@@ -99,7 +99,7 @@
           uploadZone('quality', 'Water quality results (.xlsx)',
             'Parameter · value · unit from the laboratory'),
         ]),
-        el('p.muted', { style: { marginTop: '0.8rem' } },
+        el('p.muted.mt-m',
           'Not sure of the layout? The Templates page has a blank workbook for ' +
           'each of these.'),
       ]),

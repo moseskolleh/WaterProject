@@ -537,7 +537,7 @@
     schedulePreview(session);
     return [
       el('div.page-head', [
-        el('div.crumb', 'Investigation'),
+        el('div.crumb', 'Field tools'),
         el('h1', 'VES co-pilot'),
         el('p.lead', 'A Schlumberger sounding checked at the peg, reading by ' +
           'reading, while the crew can still re-measure. It writes the ' +

@@ -63,7 +63,7 @@
           q: S.numberInput(step.discharge_m3_per_h, function (value) {
             store.set('pumping.manualDischarges.' + step.step_number, value);
             recompute().then(refresh);
-          }, { step: 'any', class: 'input cell', style: { maxWidth: '9rem' },
+          }, { step: 'any', class: 'input cell cell-narrow',
             'aria-label': 'Discharge (m³/h), ' + step.label }),
         };
       })),
