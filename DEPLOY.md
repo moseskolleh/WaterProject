@@ -10,8 +10,9 @@ login).
 `docs/` is the published site. It holds two things:
 
 - **`docs/index.html` — the standalone web app.** Plain HTML, CSS and
-  JavaScript: no Python runtime, no build step, no dependencies fetched
-  at visit time. It starts in well under a second, works offline once
+  JavaScript: no Python runtime, nothing compiled, minified or rewritten,
+  no dependencies fetched at visit time.
+  It starts in well under a second, works offline once
   loaded, and does the whole job — reading the field workbooks,
   inverting the soundings, analysing the pumping tests, assessing the
   water quality, designing the borehole, costing the works, running the
@@ -50,11 +51,22 @@ Python sources are not published alongside the site.
 ### Rebuilding what `docs/` contains
 
 The standalone app is hand-written source, not generated — edit
-`docs/index.html`, `docs/css/gwt.css` and `docs/js/*.js` directly. Three
-parts of it are generated and must be regenerated, in this order, when
-their sources change:
+`docs/index.html`, `docs/css/gwt.css` and `docs/js/*.js` directly, with
+one exception. The three largest scripts, `gwt-core.js`, `gwt-app.js` and
+`gwt-charts.js`, are too long to read or review as one file each, so each
+is written as parts under `web/src/<name>/` and `web/build_js.py` joins
+them into `docs/js`: edit the part, run it, and commit both. An edit made
+to one of those three in `docs/js` is overwritten by the next join. The
+join is a concatenation — nothing is transformed or minified,
+and the browser still runs exactly the text a person wrote. Three other
+parts of the app are generated. All of it must be regenerated, in this
+order, when its sources change:
 
 ```bash
+python web/build_js.py            # docs/js/gwt-core.js, gwt-app.js and
+                                  # gwt-charts.js, joined from their parts
+                                  # in web/src. FIRST: gwt-data.js carries
+                                  # a hash of gwt-core.js
 python web/build_webapp_data.py   # docs/js/gwt-data.js: the guideline
                                   # table, rate catalogue and checklists;
                                   # gwt-geo.js and gwt-samples.js: the map
@@ -66,8 +78,9 @@ python web/build_offline.py       # docs/sw.js: the service worker and the
                                   # whole app shell, the data included
 ```
 
-CI fails if any of the three is out of date with the sources it is built
-from, so they can never drift apart. `build_offline.py` going last
+CI fails if any of these is out of date with the sources it is built
+from, a joined script that is not the join of its parts included, so they
+can never drift apart. `build_offline.py` going last
 matters: run it before the bundle it is meant to describe and the
 release identifier names a shell that no longer exists.
 

@@ -1401,8 +1401,16 @@
     ]);
   }
 
+  /* A number or a date is a short field: on a phone two of them share a
+   * row, where a name or a place takes the whole of it. */
+  function shortControl(control) {
+    var type = control && control.tagName === 'INPUT'
+      ? String(control.getAttribute('type') || '') : '';
+    return type === 'number' || type === 'date';
+  }
+
   function field(label, control, hint) {
-    return el('label.field', [
+    return el('label.field' + (shortControl(control) ? '.field-short' : ''), [
       el('span.field-label', label),
       control,
       hint ? el('span.field-hint', hint) : null,
@@ -1746,10 +1754,25 @@
     }));
   }
 
+  /* A headline tile: a label, a value and a note.
+   *
+   * The value is a number and its unit, and it is set large, so it must not
+   * run into a paragraph. A value that carries a qualifier in brackets after
+   * it - "0.39 m3/h (range over the assumptions, 0.22 to 0.71)" - is drawn
+   * with the bracket as a smaller line of its own beneath; the text is the
+   * same text, in the same order, only wrapped in an element. A value with
+   * no figure in it ("Very poor", "pending") is words, and is set as words. */
   function stat(label, value, note) {
+    var parts = [value], words = false;
+    if (typeof value === 'string') {
+      var m = /^(.*?\S)(\s+\(.+\))$/.exec(value);
+      var head = m ? m[1] : value;
+      if (m) parts = [head, el('span.stat-qualifier', m[2])];
+      words = !/\d/.test(head) || head.length > 18;
+    }
     return el('div.stat', [
       el('span.stat-label', label),
-      el('span.stat-value', value),
+      el('span.stat-value' + (words ? '.is-text' : ''), parts),
       note ? el('span.stat-note', note) : null,
     ]);
   }

@@ -2,7 +2,7 @@
 Overview dashboard.
 
 The redesign replaced the flat tab bar with grouped sidebar navigation
-(one radio per lifecycle group). The pages all rendered on every run and
+(one radio per group: Start, Borehole, Field tools, Programme, Reference). The pages all rendered on every run and
 only their visibility changed with the selection, until PLAN.md step 1.1
 made the selection pick the one page that runs. These tests pin down the
 navigation contract: a single active page, group radios kept mutually
@@ -105,26 +105,35 @@ def test_overview_is_the_default_page(sample_data):
     at.run()
     assert not at.exception
     assert at.session_state["nav"] == "Overview"
-    assert at.radio(key="nav_project").value == "Overview"
+    assert at.radio(key="nav_start").value == "Overview"
     # the other groups carry no selection
-    for group in ("nav_investigation", "nav_testing", "nav_delivery",
-                  "nav_area_analysis"):
+    for group in ("nav_borehole", "nav_field_tools", "nav_programme",
+                  "nav_reference"):
         assert at.radio(key=group).value is None
 
 
 def test_group_radio_switches_the_active_page(at):
-    at.radio(key="nav_testing").set_value("Pumping test")
+    at.radio(key="nav_borehole").set_value("Pumping test")
     at.run()
     assert not at.exception
     assert at.session_state["nav"] == "Pumping test"
     # the previously selected group resets, keeping one active page
-    assert at.radio(key="nav_project").value is None
-    assert at.radio(key="nav_testing").value == "Pumping test"
+    assert at.radio(key="nav_start").value is None
+    assert at.radio(key="nav_borehole").value == "Pumping test"
 
-    at.radio(key="nav_delivery").set_value("Costing & BoQ")
+    # a page of another group: the group left behind resets in its turn
+    at.radio(key="nav_programme").set_value("Portfolio")
+    at.run()
+    assert at.session_state["nav"] == "Portfolio"
+    assert at.radio(key="nav_borehole").value is None
+    assert at.radio(key="nav_programme").value == "Portfolio"
+
+    # and a second page of one group replaces the first in the same radio
+    at.radio(key="nav_borehole").set_value("Costing & BoQ")
     at.run()
     assert at.session_state["nav"] == "Costing & BoQ"
-    assert at.radio(key="nav_testing").value is None
+    assert at.radio(key="nav_programme").value is None
+    assert at.radio(key="nav_borehole").value == "Costing & BoQ"
 
 
 def test_only_the_page_on_screen_runs(sample_data, monkeypatch):
@@ -201,7 +210,7 @@ def test_overview_quick_actions_navigate(sample_data):
     at.run()
     assert not at.exception
     assert at.session_state["nav"] == "Guided start"
-    assert at.radio(key="nav_project").value == "Guided start"
+    assert at.radio(key="nav_start").value == "Guided start"
 
 
 def test_overview_dashboard_after_analyses(sample_data):

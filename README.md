@@ -578,7 +578,8 @@ methods recover synthetic aquifer parameters exactly. See
 `QUESTIONS.md` for open items that need project data or decisions.
 `ROADMAP.md` lists the defects an audit of the worked examples found in
 the maps, the designs, the interpretations and the reports, in the order
-they are being fixed.
+they were fixed; every item on it is closed, and `PLAN.md` is what comes
+next.
 
 ## Licence and attribution
 

@@ -59,46 +59,51 @@
    * once by gwt-store.js, moved across and removed */
   var STORE_KEY = 'gwt.project.v1';
 
+  /* The navigation, in the order it is drawn: where to start, the borehole's
+   * own steps in the order the work is done, the tools used in the field
+   * along the way, the programme the borehole belongs to, and what is looked
+   * up. The Streamlit app lists its pages in the same groups and order; a
+   * page only one app has simply appears there. */
   /** @type {Array<[string, string[][]]>} */
   var NAV_GROUPS = [
-    ['Project', [
+    ['Start', [
       ['overview', 'Overview'],
       ['guided', 'Guided start'],
+    ]],
+    ['Borehole', [
       ['site', 'Site & maps'],
-      ['verify', 'Verify a document'],
-    ]],
-    ['Investigation', [
       ['ves', 'Geophysics (VES)'],
-      ['vescopilot', 'VES co-pilot'],
       ['design', 'Borehole design'],
-      ['drillcopilot', 'Drilling co-pilot'],
-      ['spine', 'Depth Spine'],
-      ['extract', 'Scanned sheets'],
-    ]],
-    ['Testing', [
       ['pumping', 'Pumping test'],
-      ['pumpcopilot', 'Pumping co-pilot'],
       ['quality', 'Water quality'],
-    ]],
-    ['Delivery', [
       ['costing', 'Costing & BoQ'],
       ['procurement', 'Procurement'],
       ['supervision', 'Supervision'],
       ['handover', 'Handover'],
+    ]],
+    ['Field tools', [
+      ['vescopilot', 'VES co-pilot'],
+      ['drillcopilot', 'Drilling co-pilot'],
+      ['pumpcopilot', 'Pumping co-pilot'],
+      ['spine', 'Depth Spine'],
+      ['extract', 'Scanned sheets'],
       ['templates', 'Templates'],
     ]],
-    ['Area analysis', [
+    ['Programme', [
       ['waterpoints', 'Water points'],
       ['coverage', 'Coverage gap'],
       ['portfolio', 'Portfolio'],
       ['registry', 'Asset registry'],
       ['report', 'Report on a borehole'],
     ]],
-    ['', [
+    ['Reference', [
+      ['verify', 'Verify a document'],
       ['settings', 'Settings'],
       ['about', 'About & method'],
     ]],
   ];
+  /* the group whose pages are the steps of the work, numbered and ticked */
+  var NAV_STEPS = 'Borehole';
 
   function blankState() {
     return {
@@ -143,7 +148,9 @@
       /* due: the contract's completion date, for the contractor scorecards */
       procurement: { contract: null, measured: {}, variations: [],
         number: 1, date: '', previous: 0, due: '' },
-      theme: 'dark',
+      /* 'auto' follows the device's light or dark setting; the theme button
+       * goes round auto, light, dark */
+      theme: 'auto',
       /* the soundings' inversions, keyed by what they were computed from
        * (C.inversionCacheKey), so reopening a survey does not invert it
        * again. A cache the app may use and may throw away, never a result:
@@ -356,45 +363,68 @@
     var held = Array.prototype.indexOf.call(actions.children, document.activeElement);
     S.clear(actions);
     var theme = button(themeIcon(), toggleTheme, { variant: 'ghost', title: 'Switch theme' });
+    theme.classList.add('btn-icon');
     /* the moon, sun or half circle is not a name a screen reader can say */
     theme.setAttribute('aria-label', 'Switch theme, now ' + themeName());
+    /* On a phone the bar is one row, and the two buttons are their verbs:
+     * the word "project" is still in each, for a screen reader and for
+     * anything that reads the button's text, and the stylesheet takes it
+     * off the screen where there is no room for it. */
     S.append(actions, [
-      button('Save project', saveProject, { variant: 'ghost',
+      button(['Save', el('span.btn-more', ' project')], saveProject, { variant: 'ghost',
         title: 'Download the whole working session as a .gwt file' }),
-      button('Open project', openProject, { variant: 'ghost' }),
+      button(['Open', el('span.btn-more', ' project')], openProject, { variant: 'ghost' }),
       theme,
     ]);
     if (held >= 0 && actions.children[held]) actions.children[held].focus();
     renderNav();
   }
 
+  /* The theme is the device's own until the user chooses one: 'auto' leaves
+   * the choice to the stylesheet's prefers-color-scheme rule. */
+  function themeChoice() {
+    var theme = store.get('theme', 'auto');
+    return theme === 'dark' || theme === 'light' ? theme : 'auto';
+  }
+
   function themeIcon() {
-    var theme = store.get('theme', 'dark');
+    var theme = themeChoice();
     return theme === 'dark' ? '☾' : (theme === 'light' ? '☀' : '◐');
   }
 
   function themeName() {
-    var theme = store.get('theme', 'dark');
-    return theme === 'dark' ? 'dark' : (theme === 'light' ? 'light' : 'as the device is set');
+    var theme = themeChoice();
+    return theme === 'auto' ? 'as the device is set' : theme;
   }
 
   function toggleTheme() {
     var order = ['auto', 'light', 'dark'];
-    var next = order[(order.indexOf(store.get('theme', 'dark')) + 1) % order.length];
+    var next = order[(order.indexOf(themeChoice()) + 1) % order.length];
     store.set('theme', next);
     applyTheme();
     renderChrome();
     render();
   }
 
+  /* The colour a phone paints its own bars with (index.html's two
+   * theme-color lines, one for each setting of the device) follows a theme
+   * chosen here, and goes back to the device's when the choice is auto. */
+  var THEME_COLOURS = { light: '#f6f7f5', dark: '#0d0f0e' };
+
   function applyTheme() {
-    var theme = store.get('theme', 'dark');
+    var theme = themeChoice();
     if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', theme);
+    Array.prototype.forEach.call(document.querySelectorAll('meta[name="theme-color"]'),
+      function (meta) {
+        var own = meta.getAttribute('data-scheme');
+        if (own) meta.setAttribute('content', THEME_COLOURS[theme === 'auto' ? own : theme]);
+      });
   }
 
-  /* A dot per page shows what is done, so the next thing to do is visible from
-   * anywhere in the workspace. */
+  /* What is done shows in the navigation, as a tick in place of the step's
+   * number, so the next thing to do is visible from anywhere in the
+   * workspace. */
   function pageDone(key) {
     switch (key) {
       case 'site': return !!store.get('site.community');
@@ -409,29 +439,53 @@
     }
   }
 
-  /* Drawn again with every page, so that its dots and its current page
+  /* Drawn again with every page, so that its ticks and its current page
    * are right; the keyboard on one of its items is put back on the same
-   * item, where it used to be dropped on the page body mid-Tab. */
+   * item, where it used to be dropped on the page body mid-Tab.
+   *
+   * Every page is a button, in the order the groups list them, and a
+   * button's text is its page's name and nothing else. A step of the
+   * Borehole group also carries its number, or a tick once it is done:
+   * both are drawn by the stylesheet in an empty element hidden from a
+   * screen reader, which is told the same thing in words beside the button
+   * ("Step 4 of 9, done"), as the button's description. */
   function renderNav() {
     var nav = $('#app-nav');
     var held = nav.contains(document.activeElement)
       ? document.activeElement.getAttribute('data-page') : null;
     S.clear(nav);
+    /* the brand, which on a narrow screen is at the head of the drawer
+     * rather than above the page */
+    var brand = $('.app > .app-brand');
+    if (brand) S.append(nav, brand.cloneNode(true));
     var current = store.get('nav');
-    NAV_GROUPS.forEach(function (group) {
-      var items = group[1].map(function (page) {
-        var key = page[0];
-        return el('button.nav-item' + (key === current ? '.active' : '') +
-          (pageDone(key) ? '.done' : ''), {
-          type: 'button',
-          onclick: function () { goto(key); },
-          'aria-current': key === current ? 'page' : null,
-          dataset: { page: key },
-        }, [el('span.nav-dot'), el('span', page[1])]);
+    NAV_GROUPS.forEach(function (group, g) {
+      var steps = group[0] === NAV_STEPS;
+      var titleId = 'nav-group-' + g;
+      var items = group[1].map(function (page, i) {
+        var key = page[0], done = pageDone(key);
+        var stateId = 'nav-state-' + key;
+        return el('li', [
+          el('button.nav-item' + (key === current ? '.active' : '') +
+            (done ? '.done' : ''), {
+            type: 'button',
+            onclick: function () { goto(key); },
+            'aria-current': key === current ? 'page' : null,
+            'aria-describedby': steps ? stateId : null,
+            dataset: { page: key },
+          }, [
+            steps ? el('span.nav-step', { 'aria-hidden': 'true' }) : null,
+            el('span.nav-label', page[1]),
+          ]),
+          steps ? el('span.sr-only', { id: stateId }, 'Step ' + (i + 1) + ' of ' +
+            group[1].length + (done ? ', done' : '')) : null,
+        ]);
       });
-      S.append(nav, el('div.nav-group', [
-        group[0] ? el('div.nav-group-title', group[0]) : null,
-        el('div', items),
+      S.append(nav, el('div.nav-group' + (steps ? '.nav-group-primary' : ''), {
+        role: 'group', 'aria-labelledby': titleId,
+      }, [
+        el('div.nav-group-title', { id: titleId }, group[0]),
+        el((steps ? 'ol' : 'ul') + '.nav-list', items),
       ]));
     });
     var again = held && nav.querySelector('.nav-item[data-page="' + held + '"]');
@@ -439,13 +493,16 @@
   }
 
   /* The navigation is a drawer on a narrow screen, behind the toggle in the
-   * top bar. The toggle says whether it is open (aria-expanded); opening it
-   * puts the keyboard on the page it shows, and Escape, or the keyboard
-   * leaving it for the page it covers, closes it. `refocus` sends the
+   * top bar, with a scrim over the page beside it. The toggle says whether it
+   * is open (aria-expanded); opening it puts the keyboard on the page it
+   * shows, and Escape, a tap on the scrim, or the keyboard leaving it for the
+   * page it covers, closes it. `refocus` sends the
    * keyboard back to the toggle as it closes. */
   function setNavOpen(open, refocus) {
     var nav = $('#app-nav'), toggle = $('#nav-toggle');
     nav.classList.toggle('open', open);
+    var scrim = $('#nav-scrim');
+    if (scrim) scrim.classList.toggle('open', open);
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) {
       var here = nav.querySelector('.nav-item[aria-current="page"]') ||
@@ -461,6 +518,9 @@
     toggle.addEventListener('click', function () {
       setNavOpen(!nav.classList.contains('open'));
     });
+    /* the scrim is the page behind the drawer: a tap on it shuts the drawer */
+    var scrim = $('#nav-scrim');
+    if (scrim) scrim.addEventListener('click', function () { setNavOpen(false, true); });
     /* an Escape a dialog has already answered is not this one's */
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !e.defaultPrevented && nav.classList.contains('open')) {
@@ -519,6 +579,13 @@
     return { key: key, item: item };
   }
 
+  /* Whether the device has been asked for less motion: nothing scrolls
+   * smoothly then, here or in the stylesheet. */
+  function lessMotion() {
+    return !!(global.matchMedia &&
+      global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
   /* Draw a page, as goto and the address both ask for it. */
   function show(key, item) {
     store.set('nav', key);
@@ -530,8 +597,9 @@
     if (!route.item) {
       /* the main pane is the scroll container on a wide screen and the page
        * is on a narrow one, so both are sent back to the top */
-      $('#main').scrollTo({ top: 0, behavior: 'smooth' });
-      global.scrollTo({ top: 0, behavior: 'smooth' });
+      var how = /** @type {ScrollBehavior} */ (lessMotion() ? 'auto' : 'smooth');
+      $('#main').scrollTo({ top: 0, behavior: how });
+      global.scrollTo({ top: 0, behavior: how });
     }
     return drawn;
   }
@@ -1137,7 +1205,7 @@
     }
     var fresh = blankState();
     fresh.nav = store.get('nav');
-    fresh.theme = store.get('theme', 'dark');
+    fresh.theme = store.get('theme', 'auto');
     Object.keys(sample.site || {}).forEach(function (k) {
       fresh.site[k] = sample.site[k];
     });
@@ -1206,9 +1274,11 @@
       e.preventDefault(); zone.classList.remove('over');
       take((e.dataTransfer.files || [])[0]);
     });
-    return el('div', [
+    /* loaded, the file is one row: its name, the way to replace it (the
+     * zone itself) and Remove beside it */
+    return el('div.upload' + (loaded ? '.upload-loaded' : ''), [
       zone,
-      loaded ? el('div.btn-row', { style: { marginTop: '0.5rem' } }, [
+      loaded ? el('div.btn-row.upload-actions', [
         button('Remove', async function () {
           store.remove('sources.' + role);
           await recompute();
@@ -1961,8 +2031,8 @@
 
       card('Progress', [
         el('div.grid.grid-3', stages.map(function (stage) {
-          return el('button.stat', {
-            type: 'button', style: { cursor: 'pointer', textAlign: 'left' },
+          return el('button.stat.stat-link', {
+            type: 'button',
             onclick: function () { goto(stage[1]); },
           }, [
             el('span.stat-label', [stage[0], ' ',
@@ -2002,7 +2072,7 @@
           uploadZone('quality', 'Water quality results (.xlsx)',
             'Parameter · value · unit from the laboratory'),
         ]),
-        el('p.muted', { style: { marginTop: '0.8rem' } },
+        el('p.muted.mt-m',
           'Not sure of the layout? The Templates page has a blank workbook for ' +
           'each of these.'),
       ]),
@@ -2061,16 +2131,16 @@
         el('div.progress-track', el('div.progress-fill', {
           style: { width: (100 * doneCount / steps.length).toFixed(0) + '%' },
         })),
-        el('p.muted', { style: { marginTop: '0.5rem' } },
+        el('p.muted.mt-s',
           doneCount + ' of ' + steps.length + ' steps complete'),
       ]),
       el('div', steps.map(function (step, i) {
         return card(null, [
-          el('div', { style: { display: 'flex', gap: '0.9rem', alignItems: 'flex-start' } }, [
+          el('div.guided-step', [
             el('div.wizard-step' + (step.done ? '.done' : ''), [
               el('span.n', String(i + 1)),
             ]),
-            el('div', { style: { flex: '1', minWidth: '0' } }, [
+            el('div.guided-step-body', [
               el('h3', step.label),
               el('p.muted', step.note),
             ]),
@@ -2178,7 +2248,7 @@
       var legendItems = [];
       if (latlon) {
         legendItems.push({ label: 'Project site', kind: 'diamond',
-          colour: charts.palette().secondary });
+          colour: charts.mapPalette().secondary });
       }
       if (home.legend) legendItems.push(home.legend);
       legendItems.push({ label: 'other districts', colour: OTHER_FILL });
@@ -2194,7 +2264,7 @@
         highlightLabel: home.highlight.length ? home.name : '',
         points: latlon ? [{
           lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
-          colour: charts.palette().secondary, size: 6.5,
+          colour: charts.mapPalette().secondary, size: 6.5,
         }] : [],
         title: 'Site location',
         legendItems: legendItems,
@@ -2940,7 +3010,7 @@
   /* What the read found, sentence by sentence, as both apps say it under
    * the file list. */
   function terrainReadNodes(read) {
-    return el('div.terrain-read', { style: { overflowWrap: 'anywhere' } },
+    return el('div.terrain-read.wrap-anywhere',
       read.notes.map(function (note) { return el('p', note); }));
   }
 
@@ -3077,9 +3147,8 @@
       terrainDropZone(),
       /* a tile's name is one long word, which a phone has to break, in the
        * list and in the sentences that name it */
-      session.files.length ? el('div.terrain-files', {
-        style: { margin: '0.6rem 0 0.9rem', overflowWrap: 'anywhere' },
-      }, session.files.map(function (file) { return terrainFileNode(session, file); })) : null,
+      session.files.length ? el('div.terrain-files.wrap-anywhere.mt-s.mb-m',
+        session.files.map(function (file) { return terrainFileNode(session, file); })) : null,
       el('div.field-row', [
         field('Source of the elevation model', S.selectInput(session.declared, TERRAIN_SOURCES,
           function (value) {
@@ -3110,7 +3179,7 @@
         'A drainage line starts where more than this drains to a cell. A new threshold ' +
           'redraws the lines without analysing the ground again.'),
       ]),
-      el('div.btn-row', { style: { marginBottom: '0.9rem' } }, [
+      el('div.btn-row.mb-m', [
         button('Analyse the terrain', function () { runTerrain(false); }, {
           variant: 'primary',
           disabled: !session.files.length || waiting || refused || session.running,
@@ -3125,7 +3194,7 @@
       !session.running && engine.mode() === 'page'
         ? el('p.muted.terrain-page-only', 'This copy of the app has no background worker (' +
           engine.unavailable() + '), so the analysis will hold the page until it finishes.') : null,
-      session.refusal ? el('div.callout.callout-bad', { style: { overflowWrap: 'anywhere' } },
+      session.refusal ? el('div.callout.callout-bad.wrap-anywhere',
         el('p', session.refusal)) : null,
       session.read ? terrainReadNodes(session.read) : null,
       session.result ? terrainFigureNodes(session) : null,
@@ -3295,7 +3364,7 @@
     var legendItems = [];
     if (latlon) {
       legendItems.push({ label: 'Project site', kind: 'diamond',
-        colour: charts.palette().secondary });
+        colour: charts.mapPalette().secondary });
     }
     if (home.legend) legendItems.push(home.legend);
     legendItems.push({ label: 'other districts', colour: OTHER_FILL });
@@ -3307,7 +3376,7 @@
       highlight: home.highlight, highlightFill: HOME_FILL,
       points: latlon ? [{
         lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
-        colour: charts.palette().secondary, size: 6.5,
+        colour: charts.mapPalette().secondary, size: 6.5,
       }] : [],
       title: 'Location of ' + window_.label,
       legendItems: legendItems,
@@ -3759,18 +3828,18 @@
           return {
             lon: ll.lon, lat: ll.lat, label: s.sounding_id,
             size: 4 + s.suitability / 25,
-            colour: s.suitability >= 75 ? charts.palette().good
-              : (s.suitability >= 55 ? charts.palette().cat[2]
-                : (s.suitability >= 35 ? charts.palette().warning
-                  : charts.palette().critical)),
+            colour: s.suitability >= 75 ? charts.mapPalette().good
+              : (s.suitability >= 55 ? charts.mapPalette().cat[2]
+                : (s.suitability >= 35 ? charts.mapPalette().warning
+                  : charts.mapPalette().critical)),
           };
         }).filter(Boolean),
         title: 'Drill-target suitability',
         legendItems: [
-          { label: 'Very good', colour: charts.palette().good },
-          { label: 'Good', colour: charts.palette().cat[2] },
-          { label: 'Moderate', colour: charts.palette().warning },
-          { label: 'Poor', colour: charts.palette().critical },
+          { label: 'Very good', colour: charts.mapPalette().good },
+          { label: 'Good', colour: charts.mapPalette().cat[2] },
+          { label: 'Moderate', colour: charts.mapPalette().warning },
+          { label: 'Poor', colour: charts.mapPalette().critical },
         ],
         width: 640, height: 520,
       }), 'Candidate points scored for drilling', { filename: 'suitability_map' })
@@ -4644,7 +4713,7 @@
           q: S.numberInput(step.discharge_m3_per_h, function (value) {
             store.set('pumping.manualDischarges.' + step.step_number, value);
             recompute().then(refresh);
-          }, { step: 'any', class: 'input cell', style: { maxWidth: '9rem' },
+          }, { step: 'any', class: 'input cell cell-narrow',
             'aria-label': 'Discharge (m³/h), ' + step.label }),
         };
       })),
@@ -5448,7 +5517,7 @@
             function (value) {
               store.set('costing.rateOverrides.' + rate.code, value);
               rebuildCosting(); render();
-            }, { step: 'any', class: 'input cell', style: { maxWidth: '7rem' },
+            }, { step: 'any', class: 'input cell cell-narrow',
               'aria-label': 'Rate (US$), ' + rate.code + ' ' + rate.item }),
         };
       })),
@@ -5614,7 +5683,7 @@
               function (value) {
                 update({ status: value });
                 render();
-              }, { class: 'input cell', style: { maxWidth: '6rem' },
+              }, { class: 'input cell cell-narrow',
                 'aria-label': 'Answer: ' + item.text }),
             remark: S.textInput(response.remark || '', function (value) {
               update({ remark: value });
@@ -6514,21 +6583,21 @@
           points: decision.nearby.slice(0, 200).map(function (p) {
             return {
               lon: p.lon, lat: p.lat,
-              colour: p.functional === true ? charts.palette().good
-                : (p.functional === false ? charts.palette().critical
-                  : charts.palette().muted),
+              colour: p.functional === true ? charts.mapPalette().good
+                : (p.functional === false ? charts.mapPalette().critical
+                  : charts.mapPalette().muted),
               size: 3.5,
             };
           }).concat([{
             lon: latlon.lon, lat: latlon.lat, kind: 'diamond',
-            colour: charts.palette().accent, size: 7, label: 'Proposed site',
+            colour: charts.mapPalette().accent, size: 7, label: 'Proposed site',
           }]),
           title: 'Water points near the site',
           legendItems: [
-            { label: 'Functional', colour: charts.palette().good },
-            { label: 'Non-functional', colour: charts.palette().critical },
-            { label: 'Unknown', colour: charts.palette().muted },
-            { label: 'Proposed site', colour: charts.palette().accent, kind: 'diamond' },
+            { label: 'Functional', colour: charts.mapPalette().good },
+            { label: 'Non-functional', colour: charts.mapPalette().critical },
+            { label: 'Unknown', colour: charts.mapPalette().muted },
+            { label: 'Proposed site', colour: charts.mapPalette().accent, kind: 'diamond' },
           ],
           width: 640, height: 520,
         }), 'Mapped water points around the proposed site',

@@ -265,10 +265,10 @@ def render() -> None:
                 for t, b in _best_interp.water_zones
             )
             st.markdown(
-                "<div class='gw-callout'>"
+                "<div class='gw-callout'><div>"
                 "<span class='gw-cap'>Recommended drilling depth — "
                 f"{_html.escape(_best_interp.sounding_id)}</span>"
-                f"<div class='gw-big'>{_html.escape(drilling_depth_text(_best_interp))}</div>"
+                f"<div class='gw-big'>{_html.escape(drilling_depth_text(_best_interp))}</div></div>"
                 + (f"<p>Water bearing zones at {_html.escape(_zones)}.</p>"
                    if _zones else "")
                 + "</div>",

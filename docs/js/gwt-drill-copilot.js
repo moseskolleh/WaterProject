@@ -816,7 +816,7 @@
     draw();
     return [
       el('div.page-head', [
-        el('div.crumb', 'Investigation'),
+        el('div.crumb', 'Field tools'),
         el('h1', 'Drilling log co-pilot'),
         el('p.lead', 'The drilling log kept at the rig, interval by interval: ' +
           'the formation from the toolkit\'s own classes, the rate from the ' +

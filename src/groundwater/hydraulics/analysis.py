@@ -28,8 +28,6 @@ import math
 from dataclasses import dataclass, field, replace
 
 import numpy as np
-from scipy.optimize import curve_fit
-from scipy.special import exp1
 
 from ..config import PumpingConfig
 from ..models import DataFlag, PumpingTest, step_durations_min, step_offsets_min
@@ -39,12 +37,16 @@ from .spread import (
     Diagnostic,
     PapadopulosCooperResult,
     PumpingSpread,
-    Z_P90,
     attach_spread,
     casing_radius_m,
+    covariance_log2,
     diagnose,
+    log_band,
     papadopulos_cooper_fit,
+    polish_log2,
     pow10,
+    theis_derivatives,
+    theis_model,
 )
 
 MIN_PER_DAY = 1440.0
@@ -124,9 +126,10 @@ class TheisResult:
     rmse_m: float
     discharge_m3_per_h: float
     radius_m: float
-    # P10 and P90 of T from the covariance curve_fit returns, which used to be
-    # discarded, and that covariance of (log10 T, log10 S). It assumes every
-    # reading's error is independent; the bootstrap in spread.py does not.
+    # P10 and P90 of T from the fit's covariance, and that covariance of
+    # (log10 T, log10 S), as spread.covariance_log2 takes it at the optimum.
+    # It assumes every reading's error is independent; the bootstrap in
+    # spread.py does not.
     transmissivity_low_m2_per_day: float | None = None
     transmissivity_high_m2_per_day: float | None = None
     log_covariance: list[list[float]] | None = None
@@ -411,6 +414,11 @@ READING_RESOLUTION_M = 0.01
 #: floor reached (regressions/pumping-theis-long-valley.json).
 THEIS_STORATIVITY_FLOOR = 1e-280
 
+#: Model evaluations a Theis fit may take before it is refused, the budget
+#: scipy's curve_fit was given while it did this fit (maxfev). The browser's
+#: THEIS_MAXFEV.
+THEIS_MAXFEV = 20000
+
 
 def _line_fit(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     """Least squares line with r^2."""
@@ -561,6 +569,103 @@ def cooper_jacob(
     )
 
 
+def _solve_2x2(a00: float, a01: float, a10: float, a11: float,
+               b0: float, b1: float) -> tuple[float, float] | None:
+    """``A x = b`` for a 2 x 2 system, as the browser's ``solveLinear`` solves
+    it: Gaussian elimination, the larger first-column entry as the pivot, and
+    None for a pivot below 1e-14."""
+    top, bottom = (a00, a01, b0), (a10, a11, b1)
+    if abs(bottom[0]) > abs(top[0]):
+        top, bottom = bottom, top
+    if abs(top[0]) < 1e-14:
+        return None
+    factor = bottom[0] / top[0]
+    if factor != 0:
+        bottom = (bottom[0] - factor * top[0], bottom[1] - factor * top[1],
+                  bottom[2] - factor * top[2])
+    if abs(bottom[1]) < 1e-14:
+        return None
+    x1 = bottom[2] / bottom[1]
+    return (top[2] - top[1] * x1) / top[0], x1
+
+
+def _theis_search(model, t: np.ndarray, s: np.ndarray,
+                  p0: tuple[float, float]) -> tuple[list[float], float]:
+    """``(params, misfit)``: the Levenberg-Marquardt search of the browser's
+    ``theisFit``, step for step.
+
+    The package used to hand this fit to scipy's ``curve_fit`` while the
+    browser, which has no scipy, ran its own search. Each reached the minimum
+    to within its own stopping rule, so the two transmissivities agreed to
+    one part in 1e7 or 1e9 and no closer, and that last difference kept
+    landing on something that turns on it: a figure printed either side of a
+    rounding (regressions/pumping-envelope-prints-fitted-digits.json), a
+    bootstrap replicate either side of the storativity floor
+    (pumping-bootstrap-replicate-at-the-floor.json). Taking the same steps
+    from the same start, and finished the same way (``polish_log2``), they
+    agree to about one part in 1e12.
+
+    A forward-difference Jacobian with a step of 1e-6, Marquardt's scaling of
+    the diagonal, the damping divided by ten on a step that lowers the misfit
+    and multiplied by ten on one that does not, every sum taken left to right
+    as a loop takes it. It runs until no step lowers the misfit, within
+    THEIS_MAXFEV model evaluations, and refuses in ``curve_fit``'s words when
+    they run out.
+    """
+    calls = 0
+
+    def run(log_t: float, log_s: float) -> np.ndarray:
+        nonlocal calls
+        calls += 1
+        return model(t, log_t, log_s)
+
+    def misfit(calc: np.ndarray) -> float:
+        total = 0.0
+        for e in (calc - s).tolist():
+            total += e * e
+        return total
+
+    p = [float(p0[0]), float(p0[1])]
+    lam = 1e-3
+    cost = misfit(run(p[0], p[1]))
+    while True:
+        if calls >= THEIS_MAXFEV:
+            raise RuntimeError(
+                "Optimal parameters not found: Number of calls to function "
+                f"has reached maxfev = {THEIS_MAXFEV}."
+            )
+        base = run(p[0], p[1])
+        h0 = 1e-6 * max(abs(p[0]), 1.0)
+        h1 = 1e-6 * max(abs(p[1]), 1.0)
+        j0 = ((run(p[0] + h0, p[1]) - base) / h0).tolist()
+        j1 = ((run(p[0], p[1] + h1) - base) / h1).tolist()
+        a00 = a01 = a11 = g0 = g1 = 0.0
+        for u, v, r in zip(j0, j1, (base - s).tolist(), strict=True):
+            g0 += u * r
+            g1 += v * r
+            a00 += u * u
+            a01 += u * v
+            a11 += v * v
+        stepped = False
+        for _attempt in range(20):
+            step = _solve_2x2(a00 * (1 + lam), a01, a01, a11 * (1 + lam), -g0, -g1)
+            if step is None:
+                lam *= 10
+                continue
+            trial = [p[0] + step[0], p[1] + step[1]]
+            trial_cost = misfit(run(trial[0], trial[1]))
+            if math.isfinite(trial_cost) and trial_cost < cost:
+                p, cost = trial, trial_cost
+                lam = max(lam / 10, 1e-12)
+                stepped = True
+                break
+            lam *= 10
+            if lam > 1e12:
+                break
+        if not stepped:
+            return p, cost
+
+
 def theis_fit(
     time_min: np.ndarray,
     drawdown_m: np.ndarray,
@@ -606,41 +711,34 @@ def theis_fit(
             "recharge holds the level"
         )
     q_day = discharge_m3_per_h * 24.0
+    model = theis_model(q_day, radius_m)
 
-    def model(tt, logT, logS):
-        T = 10.0**logT
-        S = 10.0**logS
-        u = radius_m**2 * S / (4.0 * T * tt)
-        return q_day / (4.0 * math.pi * T) * exp1(u)
-
-    # start from a Cooper-Jacob style estimate
-    slope0 = max((s[-1] - s[len(s) // 2]) / max(np.log10(t[-1] / t[len(s) // 2]), 0.3), 0.1)
+    # start from a Cooper-Jacob style estimate, in the browser's own
+    # expressions: the search below is the browser's, and a start one bit
+    # apart is a different walk
+    half = len(s) // 2
+    slope0 = max(
+        float(s[-1] - s[half])
+        / max(math.log(float(t[-1] / t[half])) / math.log(10.0), 0.3), 0.1)
     T0 = 2.303 * q_day / (4.0 * math.pi * slope0)
-    p0 = (math.log10(max(T0, 1e-2)), -3.0)
-    # To the bottom of the valley rather than curve_fit's default 1.5e-8
-    # relative change in the misfit. Where the misfit is flat along the
-    # valley floor that default stopped a sheet's fit 1.1e-4 short of its
-    # minimum in T (9.7877 m2/day for 9.7866), and the browser, which runs
-    # until no step helps, reported the minimum itself.
-    popt, pcov = curve_fit(model, t, s, p0=p0, maxfev=20000, ftol=1e-12, xtol=1e-12)
-    T = 10.0 ** popt[0]
-    S = 10.0 ** popt[1]
+    p0 = (math.log(max(T0, 1e-2)) / math.log(10.0), -3.0)
+    popt, cost = _theis_search(model, t, s, p0)
+    # to the minimum itself, not to where the misfit's rounding hid it
+    popt, cost = polish_log2(theis_derivatives(q_day, radius_m), t, s, popt, cost)
+    T = pow10(popt[0])
+    S = pow10(popt[1])
     if not S >= THEIS_STORATIVITY_FLOOR:
-        # S is not printed either: it is wherever each optimiser stopped on
-        # its way to underflow, 9e-320 here and another number in the browser.
+        # S is not printed either: it is wherever the search stopped on its
+        # way to underflow.
         raise ValueError(
             f"The Theis fit drives the storativity below {THEIS_STORATIVITY_FLOOR:g}: "
             "the drawdown is nearly all an offset the Theis curve does not "
             "model, such as well loss, so T and S cannot be fitted to it"
         )
-    rmse = float(np.sqrt(np.mean((model(t, *popt) - s) ** 2)))
-    # curve_fit returns inf where the Jacobian is singular; no band then
-    covariance = pcov.tolist() if np.all(np.isfinite(pcov)) else None
-    low = high = None
-    if covariance is not None and covariance[0][0] >= 0:
-        sigma = math.sqrt(covariance[0][0])
-        low = pow10(popt[0] - Z_P90 * sigma)
-        high = pow10(popt[0] + Z_P90 * sigma)
+    rmse = math.sqrt(cost / len(t))
+    # None where the Jacobian is singular; no band then
+    covariance = covariance_log2(model, t, s, popt)
+    low, high = log_band(popt[0], covariance[0][0] if covariance else None)
     return TheisResult(
         transmissivity_m2_per_day=T,
         storativity=S,

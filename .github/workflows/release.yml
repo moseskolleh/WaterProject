@@ -32,10 +32,10 @@ jobs:
       MPLBACKEND: Agg
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -47,7 +47,19 @@ jobs:
           pip install -e ".[dev,extract]"
 
       # The tag, the package and the changelog have to agree before anything
-      # is built. The notes are the changelog's own section for the version.
+      # is built. CHANGELOG.md is the index: its section for the version lists
+      # the entries by their headings, and changelog/<version>.md holds their
+      # text. The notes are that list and then a link to the text at the tag,
+      # because GitHub refuses a release body over 125,000 characters and one
+      # version's text has run to 357,000. The section's own link is left out:
+      # it is relative, which resolves in the repository and not from a
+      # release page. A tag whose changelog/<version>.md does not exist is
+      # refused, so a release cannot be cut with its text still in
+      # changelog/unreleased.md, and so is a section that does not begin with
+      # the link to that file: a link left behind when the section was renamed
+      # would not be recognised as the section's own, and would be published
+      # as the first line of the notes. tests/test_changelog.py runs this
+      # script, as it is written here, against the committed changelog.
       - name: The tag names the version pyproject.toml declares
         run: |
           VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
@@ -55,16 +67,34 @@ jobs:
             echo "::error::tag $TAG does not match pyproject.toml version $VERSION (expected v$VERSION)"
             exit 1
           fi
-          python - "$VERSION" <<'EOF'
-          import re, sys
-          version = sys.argv[1]
+          python - "$VERSION" "$TAG" "$GITHUB_REPOSITORY" <<'EOF'
+          import os, re, sys
+          version, tag, repository = sys.argv[1:]
           text = open("CHANGELOG.md", encoding="utf-8").read()
           match = re.search(
               rf"^## {re.escape(version)}\b.*?$(.*?)(?=^## |\Z)", text, re.S | re.M
           )
           if not match or not match.group(1).strip():
               sys.exit(f"CHANGELOG.md has no section headed '## {version}'")
-          open("release-notes.md", "w", encoding="utf-8").write(match.group(1).strip() + "\n")
+          detail = f"changelog/{version}.md"
+          if not os.path.isfile(detail):
+              sys.exit(
+                  f"{detail} does not exist: the entries listed under '## {version}' "
+                  "have no text to link to (rename changelog/unreleased.md to it)"
+              )
+          link, _, listed = match.group(1).strip().partition("\n")
+          if link != f"Full text: [{detail}]({detail})":
+              sys.exit(
+                  f"the section '## {version}' of CHANGELOG.md does not begin with "
+                  f"'Full text: [{detail}]({detail})' but with '{link}': its link "
+                  "was not renamed with it"
+              )
+          listed = listed.strip()
+          if not listed:
+              sys.exit(f"CHANGELOG.md lists no entries under '## {version}'")
+          url = f"https://github.com/{repository}/blob/{tag}/{detail}"
+          with open("release-notes.md", "w", encoding="utf-8") as notes:
+              notes.write(f"{listed}\n\nThe full text of each entry: [{detail}]({url})\n")
           EOF
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 

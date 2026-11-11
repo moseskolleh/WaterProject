@@ -130,8 +130,7 @@ def render() -> None:
         yr = analysis.yield_recommendation
         if yr is not None and yr.safe_yield_m3_per_h:
             st.markdown(
-                "<div class='gw-callout' style='display:flex;gap:26px;"
-                "align-items:center'>"
+                "<div class='gw-callout'>"
                 "<div><span class='gw-cap'>Recommended safe yield</span>"
                 f"<div class='gw-big'>{fmt_num(yr.safe_yield_m3_per_h)} "
                 "<small>m³/h</small></div></div>"

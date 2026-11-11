@@ -1,0 +1,12 @@
+# docs/js/gwt-core.js, gwt-app.js and gwt-charts.js are joined by
+# web/build_js.py from the parts under web/src, and are committed all the
+# same because docs/ is what GitHub Pages serves. Every change to one of
+# them is therefore in a pull request twice: once in the part, where it was
+# made, and once in the join. Marking the joins as generated makes GitHub
+# collapse them in the diff, so that the review is of the part, and leaves
+# them out of the language statistics, where the parts now count for them.
+# It changes nothing about how git stores, compares or checks out the
+# files, and no tool in this repository reads this file.
+docs/js/gwt-core.js   linguist-generated=true
+docs/js/gwt-app.js    linguist-generated=true
+docs/js/gwt-charts.js linguist-generated=true
