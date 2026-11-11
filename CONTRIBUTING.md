@@ -168,6 +168,29 @@ reworded sentence is not a different inversion.
 Document-level assertions - what reaches the `.docx` a user downloads - belong
 in `tests/webapp/review.mjs`, not in parity.
 
+## The changelog
+
+`CHANGELOG.md` is an index and `changelog/` holds the text: one file per
+version, and `changelog/unreleased.md` for what has not been released. Write
+an entry at the top of `changelog/unreleased.md` under a `### ` heading, then
+add that heading, character for character, as the first bullet under
+"Unreleased" in `CHANGELOG.md`. The heading is the only summary the index
+gives and the only line of the entry a release's notes carry, so make it a
+sentence a reader can use without the text. Below it, say what changed and
+why in plain declarative sentences, with the exact names and numbers.
+`tests/test_changelog.py` fails if the bullets and the headings differ, in
+wording or in order.
+
+To cut a release, rename `changelog/unreleased.md` to
+`changelog/<version>.md`, change its title and the sentence under it to name
+the version, rename the "Unreleased" section and its link in `CHANGELOG.md`
+to match, and start a new `changelog/unreleased.md` under a new "Unreleased"
+section. The release workflow refuses a tag whose `changelog/<version>.md`
+does not exist, or whose section does not begin with the link to that file.
+The notes it publishes are the section's list of headings and a link to the
+file at the tag, because GitHub refuses a release body over 125,000
+characters and one version's text has run to 357,000.
+
 ## Data corrections
 
 Give the source URL, release date, licence, affected identifiers and a small
@@ -210,7 +233,8 @@ sixteen current districts through the chiefdom polygons and
 `sl_chiefdom_district.csv`. Do not try to derive sixteen district polygons by
 dissolving the chiefdoms - the rings are simplified independently, so
 neighbouring chiefdoms no longer share vertices and their common boundary does
-not cancel; CHANGELOG.md records the measurements. A correct dissolve needs a
+not cancel; `changelog/0.3.0.md` records the measurements, under "A note on
+the sixteen districts". A correct dissolve needs a
 geometric union over the raw geoBoundaries download, which is not committed.
 
 ## Examples and reports
