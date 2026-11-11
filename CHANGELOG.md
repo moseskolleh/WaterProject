@@ -21,6 +21,7 @@ tests/test_changelog.py holds each list to its file, and
 Full text: [changelog/unreleased.md](changelog/unreleased.md)
 
 - The three largest browser scripts are written as parts and joined
+- make_reference.py is an entry file over a package, a module for each section
 - The changelog is an index, with each version's text in a file of its own
 - Clean house: the stranded pull requests closed, the dependencies brought level
 - The Theis fit is one search in both engines, finished at the minimum

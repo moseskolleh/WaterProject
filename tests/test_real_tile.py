@@ -533,7 +533,7 @@ def _lines(lines) -> list:
 
 def _lines_digest(lines) -> str:
     """SHA-256 of the links or parts as one line of JSON, each length by
-    its float64 bits: make_reference.py's _ta_lines_digest, which
+    its float64 bits: reference/terrain.py's _ta_lines_digest, which
     parity.mjs takes again in the browser."""
     text = json.dumps([{**dataclasses.asdict(line), "length_m": struct.pack(">d", line.length_m).hex()}
                        for line in lines], separators=(",", ":"))
