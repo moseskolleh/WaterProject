@@ -176,16 +176,18 @@
     await inversionsSettled();
   }
 
+  /* Resolves to whether the sample was loaded, so that a caller that goes
+   * on to open one of its pages does not open that page of something else. */
   async function loadSample(key) {
     var sample = (GWT.data.samples || {})[key];
-    if (!sample) return;
+    if (!sample) return false;
     /* the workbooks themselves are a bundle of their own, fetched the first
      * time a sample is opened */
     try {
       if (!GWT.hasBundle('samples')) await GWT.load('samples');
     } catch (e) {
       S.toast('Could not open the sample: ' + e.message, 'error');
-      return;
+      return false;
     }
     var fresh = blankState();
     fresh.nav = store.get('nav');
@@ -215,4 +217,5 @@
     render();
     S.toast('Loaded ' + sample.label + '.', 'ok');
     await inversionsSettled();
+    return true;
   }

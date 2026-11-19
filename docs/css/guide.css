@@ -99,6 +99,11 @@ a:hover { color: var(--brand-strong); }
 /* on a phone the bar holds the name and the way back; the page's own
  * heading says which page this is */
 @media (max-width: 479px) { .here { display: none; } }
+/* the narrowest phones: the name and the way back still fit on one line */
+@media (max-width: 359px) {
+  .top { padding: 6px 8px; gap: 8px; }
+  .open-app { padding: 8px 10px; }
+}
 .here::before { content: "/"; margin-right: 12px; color: var(--line-strong); }
 .open-app {
   margin-left: auto; padding: 8px 14px; min-height: 40px;

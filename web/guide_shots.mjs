@@ -25,14 +25,19 @@
  * on CI's, whose browser is another version, and a fitted value can differ
  * in its last printed digit the same way. So every number is read as "a
  * number here": one that moved fails nothing, one that appeared or went
- * does. The record keeps the numbers as they were seen, so that it reads as
- * the page did.
+ * does. The page's text is taken one piece at a time for that, each cell of
+ * a table by itself, or numbers standing side by side would run together
+ * and read as one; the ticks along a figure's axes are left out, because
+ * how many there are follows from a fitted range. The record keeps the
+ * numbers as they were seen, so that it reads as the page did.
  *
  * A number that moved, like a change only to how a page looks, is what
- * --release is for: web/guide/shots.json records a hash of the app's files
- * when every shot was last retaken, and a release whose app is not that app
- * is refused until they are retaken. --release reads files and starts no
- * browser.
+ * --release is for: web/guide/shots.json records a hash of the app's files,
+ * its fonts and this script when every shot was last retaken, and a release
+ * for which that hash no longer holds is refused until they are retaken.
+ * --release reads files and starts no browser. It runs when a tag is
+ * pushed, and the site is published from main: between releases a picture
+ * can show a number or a look that has since moved, though never a word.
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -100,10 +105,18 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-/* The app, as one hash: the page, its stylesheet and every script. The
- * guide's own files are not in it, so retaking the pictures does not move it. */
+/* What a picture is a picture of, as one hash: the app's page, its
+ * stylesheet, the fonts it is set in and every script, and this file, whose
+ * SHOTS and DEVICES say which window of which page each picture is. The
+ * guide's own files are not in it, so retaking the pictures does not move
+ * it. The app's version is in it (docs/js/gwt-data.js carries it), so the
+ * pictures are retaken after the version is changed for a release, not
+ * before. */
 async function appDigest() {
   const files = ['index.html', 'css/gwt.css'];
+  for (const name of (await readdir(DOCS + 'fonts')).sort()) {
+    if (name.endsWith('.woff2')) files.push('fonts/' + name);
+  }
   for (const name of (await readdir(DOCS + 'js')).sort()) {
     if (name.endsWith('.js')) files.push('js/' + name);
   }
@@ -111,6 +124,7 @@ async function appDigest() {
   for (const file of files) {
     whole.update(file + '\0' + sha256(await readFile(DOCS + file)) + '\n');
   }
+  whole.update('web/guide_shots.mjs\0' + sha256(await readFile(REPO + 'web/guide_shots.mjs')) + '\n');
   return whole.digest('hex');
 }
 
@@ -211,13 +225,19 @@ async function visit(browser, base, device, shots, take) {
    * has the page, a moment after it loads: waited for, so that every
    * picture is of the app as it is once that has happened. */
   const kept = await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
+    /* a worker that cannot install never becomes ready, so that is not
+     * waited for without end either */
+    await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(r, 30000))]);
     for (let i = 0; i < 150 && !navigator.serviceWorker.controller; i += 1) {
       await new Promise((r) => setTimeout(r, 100));
     }
     return !!navigator.serviceWorker.controller;
   });
-  if (!kept) throw new Error('the service worker did not take the page; the Overview would not say what it says on a device');
+  if (!kept) {
+    throw new Error('the service worker did not take the page, so the Overview would not say what ' +
+      'it says on a device. If docs/sw.js lists a file that is no longer in docs/ (a picture or ' +
+      'a script removed since it was built), run python web/build_offline.py first.');
+  }
   const seen = {};
   let loaded = null;
   /* the pages shown with nothing loaded go first, while nothing is */
@@ -266,7 +286,20 @@ async function visit(browser, base, device, shots, take) {
     const words = await page.evaluate(() => {
       const copy = document.body.cloneNode(true);
       copy.querySelectorAll('script, style, noscript, template').forEach((n) => n.remove());
-      return copy.textContent;
+      /* Piece by piece, with a space between: the cells of a table have
+       * none of their own, and their numbers would run together. The ticks
+       * of a figure's axes are left out: how many there are follows from
+       * the range of what is plotted, which is a fitted number like any
+       * other and may sit either side of a round value on another machine.
+       * A figure's words (its title, its axes' names, its key) stay in. */
+      const walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+      const pieces = [];
+      while (walker.nextNode()) {
+        const node = walker.currentNode, text = node.nodeValue.trim();
+        const tick = /^[-−+]?[\d.,]+%?$/.test(text) && node.parentElement.closest('svg');
+        if (text && !tick) pieces.push(text);
+      }
+      return pieces.join(' ');
     });
     seen[shot.name] = asLines(words);
     if (take(shot, seen[shot.name])) await page.screenshot({ path: PICTURES + shot.name + '.png' });
@@ -322,12 +355,19 @@ async function main() {
         if (mode === '--all' || changed) { taken.push(shot.name); return true; }
         return false;
       });
+      /* A screenshot of this app is a few dozen flat colours: repacked in
+       * a palette it is a third the size, and these go on the device with
+       * the app. Done before the record is written, so that a run that
+       * fails later leaves no picture recorded as taken and not repacked. */
+      const mine = shots.map((shot) => shot.name).filter((name) => taken.includes(name));
+      if (mine.length) {
+        execFileSync('python', [REPO + 'web/build_guide.py', '--shrink',
+          ...mine.map((name) => PICTURES + name + '.png')], { stdio: ['ignore', 'ignore', 'inherit'] });
+      }
       /* A record is written with its picture and only then: a page whose
        * words stand keeps the record of the machine that took the picture,
        * so that a number that differs here does not show as a change. */
-      for (const shot of shots) {
-        if (taken.includes(shot.name)) await writeFile(RECORD + shot.name + '.txt', seen[shot.name]);
-      }
+      for (const name of mine) await writeFile(RECORD + name + '.txt', seen[name]);
     }
   } finally {
     await browser.close();
@@ -350,13 +390,6 @@ async function main() {
     }
     console.log(`ok   the guide's ${names.length} screenshots show the pages as they read now`);
     return;
-  }
-
-  /* A screenshot of this app is a few dozen flat colours: repacked in a
-   * palette it is a third the size, and these go on the device with the app. */
-  if (taken.length) {
-    execFileSync('python', [REPO + 'web/build_guide.py', '--shrink',
-      ...taken.map((name) => PICTURES + name + '.png')], { stdio: ['ignore', 'ignore', 'inherit'] });
   }
 
   /* a picture or a record whose shot is gone from the list goes with it */

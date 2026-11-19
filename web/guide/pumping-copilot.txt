@@ -1,25 +1,26 @@
-Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled projectLoad a sample or
-upload a field sheet to begin Save projectOpen project◐ Groundwater Toolkit Rural water supply
-boreholes StartOverviewGuided startTrainingBoreholeSite & mapsStep 1 of 9Geophysics (VES)Step 2 of
-9Borehole designStep 3 of 9Pumping testStep 4 of 9Water qualityStep 5 of 9Costing & BoQStep 6 of
-9ProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES co-pilotDrilling
-co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater pointsCoverage
-gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout & method
-Pumping test co-pilotPlans the test before the pump starts, keeps the reading schedule, warns while
-the test can still be put right, and writes the standard pumping test workbook.The pumping test
-co-pilot runs in the browser app only, installed on a phone or tablet and working offline. It times
-the readings, warns while the test can still be put right, and writes the standard pumping test
-workbook, which both apps read like any other field sheet.The boreholeCommunityBorehole
-ref.ClientDistrictTest conducted byTest typeConstant dischargeStep drawdownCasing diameter (in)Riser
-diameter (in)Hole depth (m)Pump setting (m)Static water level (m)Read it before the pump
-startsPlanned rate (m3/h)Planned length (min)Transmissivity, low end (m2/day)Transmissivity, high
-end (m2/day)Minutes the pump has already runOnly if it started before this page did; leave empty
-otherwiseBefore pumpingSchafer's rule puts the end of casing storage at 0.6 (dc² − dp²) divided by
-the specific capacity. Before any drawdown is read, the specific capacity comes from the
-transmissivity range above through Logan's T ≈ 1.22 Q/s. Over that range, storage lasts 30.7 min to
-5 h 07 min. The low end sets the time. Once the level is being read, the drawdown gives a period of
-its own; that one only grows while the level is falling, so it takes over from the cautious figure
-when the readings have passed it.If the pump starts now, do not stop before 15:37.The shortest test
-that can give a transmissivity here is 5 h 07 min, set by the casing-storage period.The test as
-planned, 4 h 00 min, is shorter than that. Plan to pump until 15:37 at least.Record GPS
-positionEnter the static water level.Enter the pump setting.Enter the planned rate.Start the pump
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled project Load a sample or
+upload a field sheet to begin Save project Open project ◐ Groundwater Toolkit Rural water supply
+boreholes Start Overview Guided start Training Borehole Site & maps Step 1 of 9 Geophysics (VES)
+Step 2 of 9 Borehole design Step 3 of 9 Pumping test Step 4 of 9 Water quality Step 5 of 9 Costing &
+BoQ Step 6 of 9 Procurement Step 7 of 9 Supervision Step 8 of 9 Handover Step 9 of 9 Field tools VES
+co-pilot Drilling co-pilot Pumping co-pilot Depth Spine Scanned sheets Templates Programme Water
+points Coverage gap Portfolio Asset registry Report on a borehole Reference Verify a document
+Settings About & method Pumping test co-pilot Plans the test before the pump starts, keeps the
+reading schedule, warns while the test can still be put right, and writes the standard pumping test
+workbook. The pumping test co-pilot runs in the browser app only, installed on a phone or tablet and
+working offline. It times the readings, warns while the test can still be put right, and writes the
+standard pumping test workbook, which both apps read like any other field sheet. The borehole
+Community Borehole ref. Client District Test conducted by Test type Constant discharge Step drawdown
+Casing diameter (in) Riser diameter (in) Hole depth (m) Pump setting (m) Static water level (m) Read
+it before the pump starts Planned rate (m3/h) Planned length (min) Transmissivity, low end (m2/day)
+Transmissivity, high end (m2/day) Minutes the pump has already run Only if it started before this
+page did; leave empty otherwise Before pumping Schafer's rule puts the end of casing storage at 0.6
+(dc² − dp²) divided by the specific capacity. Before any drawdown is read, the specific capacity
+comes from the transmissivity range above through Logan's T ≈ 1.22 Q/s. Over that range, storage
+lasts 30.7 min to 5 h 07 min. The low end sets the time. Once the level is being read, the drawdown
+gives a period of its own; that one only grows while the level is falling, so it takes over from the
+cautious figure when the readings have passed it. If the pump starts now, do not stop before 15:37.
+The shortest test that can give a transmissivity here is 5 h 07 min, set by the casing-storage
+period. The test as planned, 4 h 00 min, is shorter than that. Plan to pump until 15:37 at least.
+Record GPS position Enter the static water level. Enter the pump setting. Enter the planned rate.
+Start the pump

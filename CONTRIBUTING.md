@@ -148,8 +148,12 @@ in the separate runtime cache instead.
 
 `docs/user_guide.md` is the field team's guide, and `web/build_guide.py`
 builds the page that is published, `docs/user_guide.html`, from it. Edit
-the Markdown, run the script, commit both; `nox -s bundles` fails on a page
-that is not what the guide builds to.
+the Markdown, run `python web/build_guide.py` and then
+`python web/build_offline.py` (`nox -s build` runs both), and commit the
+guide, the page and `docs/sw.js`: the service worker's release is a hash of
+the files it carries, and the page is one of them. `nox -s bundles` fails
+on a page that is not what the guide builds to, and on a worker that is not
+current.
 
 A picture in the guide is a line in `SHOTS` in `web/guide_shots.mjs`: a
 page of the browser app, a worked example to load, a laptop or a phone.
@@ -164,7 +168,11 @@ that `.txt` file is what the page now says differently. Numbers are not
 compared, only that there is one: an inversion's count of iterations and
 the last digit of a fitted value differ from one browser version to the
 next. The release workflow covers those, by asking that every picture
-was retaken since the app last changed. Commit
+was retaken since the app, its fonts or the script last changed. That
+check runs at a tag, and the site is published from `main`, so between
+releases a picture can show a number or a look that has since moved,
+though never a word; run `nox -s guide -- --all` in a change where that
+matters. Commit
 `docs/guide`, `web/guide`, the page and `docs/sw.js` together.
 
 ## Two engines, one answer
@@ -236,7 +244,13 @@ To cut a release, rename `changelog/unreleased.md` to
 `changelog/<version>.md`, change its title and the sentence under it to name
 the version, rename the "Unreleased" section and its link in `CHANGELOG.md`
 to match, and start a new `changelog/unreleased.md` under a new "Unreleased"
-section. The release workflow refuses a tag whose `changelog/<version>.md`
+section. Change the version in `pyproject.toml` first, run `nox -s build`,
+and only then `nox -s guide -- --all`, and commit `docs/guide`, `web/guide`,
+`docs/user_guide.html` and `docs/sw.js` before tagging: the version is
+written into `docs/js/gwt-data.js`, one of the files the release workflow's
+check of the guide's pictures hashes, so pictures retaken before the version
+changed are refused at the tag. `node web/guide_shots.mjs --release` says
+beforehand whether the tag will pass. The release workflow refuses a tag whose `changelog/<version>.md`
 does not exist, or whose section does not begin with the link to that file.
 The notes it publishes are the section's list of headings and a link to the
 file at the tag, because GitHub refuses a release body over 125,000

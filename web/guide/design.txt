@@ -1,88 +1,89 @@
-Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Dr. Timbo's ResidenceWestern Area
-Rural · Dr. Timbo Save projectOpen project◐ Groundwater Toolkit Rural water supply boreholes
-StartOverviewGuided startTrainingBoreholeSite & mapsStep 1 of 9, doneGeophysics (VES)Step 2 of
-9Borehole designStep 3 of 9, donePumping testStep 4 of 9, doneWater qualityStep 5 of 9, doneCosting
-& BoQStep 6 of 9, doneProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9, doneField
-toolsVES co-pilotDrilling co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater
-pointsCoverage gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout
-& method Borehole designScreens against the aquifer and below the static level, plain casing, a
-sump, gravel pack, backfill and a cement sanitary seal — assembled by the rules in Settings and
-drawn to scale. When the log records the screens installed, the drawing is an as-built record
-instead of a design.Design inputsTotal depth (m)from the drilling logStatic water level (m)from the
-pumping test sheetPump intake (m)from the yield recommendation unless
-overriddendr_timbo_drilling_log.xlsxLoaded — click to replaceRemoveConstructionTotal depth70
-mScreen19 m3 sections, slot 0.75 mmCasing5" uPVCin a 6.5" hole as loggedAnnular fill23–70 mno gravel
-pack: the 19 mm annulus is too thin to place onePump intake54 mbelow the top of the casingCheckA 5
-inch casing in a 6.5 inch hole leaves 19 mm of annulus per side, under the 50 mm needed to place
-gravel without bridging (70 mm for a true filter pack), so no gravel pack is drawn or priced and the
-screen slot must suit the formation; use a larger bit or smaller casing to fit
-one.thin_annulusNoteThe pump intake of 52 m from the yield recommendation sits inside the 48-53 m
-screen; it is set at 54 m, 1 m below that screen in plain casing, so the inflow is not drawn across
-the pump.pump_intake_movedBorehole construction designConstruction: 6.5" hole, 5" uPVC · Drawing:
-design generated from the logDEPTH (m)FORMATIONCONSTRUCTION0102030405060700–5 m: Reddish brown
-lateritic topsoilReddish brown lateritictopsoil5–10 m: Light yellow clayey lateritesLight yellow
-clayey laterites10–15 m: Light yellow clayey laterites, wet from 12 mLight yellow clayey
-laterites,wet from 12 m15–20 m: Clayey saprolite with weathered granite fragmentsClayey saprolite
-withweathered granite fragments20–25 m: Saprolite, decreasing clay contentSaprolite, decreasing
-claycontent25–30 m: Weathered light colour granite, fracturedWeathered light colourgranite,
-fractured30–35 m: Light colour granite, slightly weathered, fracturedLight colour granite,
-slightlyweathered, fractured35–40 m: Light colour granite, slightly weatheredLight colour granite,
-slightlyweathered40–45 m: Light colour graniteLight colour granite45–50 m: Light colour granite,
-fracture zone 49-52 mLight colour granite, fracturezone 49-52 m50–55 m: Light colour graniteLight
-colour granite55–60 m: Light colour granite, fracture zone 60-62 mLight colour granite, fracturezone
-60-62 m60–65 m: Light colour graniteLight colour granite65–70 m: Light colour granite, freshLight
-colour granite, freshSWL 9.44 mwater strike 12 mwater strike 30 mstick-up 0.5 mcement grout 0-20
-mplain casing 0-25 mbackfill 20-23 mscreen 25-35 m, 0.75 mm slotplain casing 35-48 mno gravel pack
-(formation) 23-70 mscreen 48-53 m, 0.75 mm slotpump intake 54 m (recommended)plain casing 53-59
-mscreen 59-63 m, 0.75 mm slotplain casing 63-68 msump (sediment trap) 68-70 m,bottom plug at 70 mno
-gravel pack (formation)backfillcement sanitary sealplain casingscreensumpwater in the
-casingtopsoillateritesaprolitefracture zoneweathered rockbasement rockBorehole construction
-designPNGSVGConstruction generated from the drilling log by the design rules. The log records no
-casing string, so this is a design, not an as-built record.ItemDetailTotal depth70 mDrilled
-diameter6.5"Casing5" uPVC, stick-up 0.5 mScreens25-35 m; 48-53 m; 59-63 m (slot 0.75 mm)Annular
-fill23-70 m: no gravel pack: the 19 mm annulus is too thin to place oneBackfill20-23 mSanitary
-seal0-20 m cement groutStatic water level9.44 mWater strikes12 m, 30 mRecommended pump intake54
-mDesign basisscreens positioned against the water strikes recorded in the drilling log (30 m)screens
-positioned against the fracture zones the log names (49-52 m, 60-62 m), with 1 m of screen either
-sidescreens positioned against the fractured or water-bearing intervals logged at 25-30 m, 30-35
-mthe 12 m strike is not screened: it is in light yellow clayey laterites, wet from 12 m, a seepage
-horizon that is cased and grouted off rather than screened and it lies within the 20 m grouted
-interval5 inch uPVC casing in a 6.5 inch hole as loggedno gravel pack: the 19 mm annulus between the
-5 inch casing and the 6.5 inch hole is too thin to place one, so the annulus below the seal is left
-to the formationcement grout from surface to 20 m as recorded on the drilling log (the rule's
-minimum is 6 m), with concrete apron with drainage channel and soakawayscreens kept at least 5 m
-below the static water levelpump intake at 54 m, in plain casing 1 m below the 48-53 m screen rather
-than the 52 m the yield recommendation asked forRising mainRising mainstainless steelin place of the
-galvanised iron one the handpump line includesRising main inspectionevery 6 monthsThe water sample
-WQ-BH1-01 of 20th May, 2018 is chemically aggressive: Ryznar index 11.37, Langelier index -2.74 and
-aggressive index 9.11, rated strongly corrosive by the toolkit's corrosivity classification, which
-counts water as aggressive when the Ryznar index is above 7.0, the Langelier index below -0.5 or the
-aggressive index below 10. The design specifies a stainless steel rising main in place of the
-galvanised iron one the handpump line includes, and it is inspected every 6 months, against 12 in
-water that is not aggressive. The toolkit's materials advice for this water is stainless steel
-(grade 304 or 316) or uPVC; which of the two the design specifies is set in the design rules.The
-Costing page prices it as a line extra over the handpump, over the pump intake depth (over the whole
-depth where no intake is known). Load or change the sample on the Water quality page and the design
-follows it.Screen placementScreens are placed automatically against the water strikes in the
-drilling log, the aquifer intervals in the lithology, or the low resistivity zones of the VES
-interpretation. Override them here when the driller's judgement on site differs; an analyst-placed
-screen is validated by exactly the same checks.Top (m)Bottom (m)Remove×××+ Add screen intervalReset
-to automatic placementBorehole completion reportIntroduction, methodology, drilling record, the
-borehole log table and the borehole construction design generated from the drilling log.Not ready to
-certify - outstanding: Field data, Site position, Yield established.ErrorField data — Readings that
-were never measured are in this project: dr_timbo_water_quality.xlsx. The values in that file were
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Dr. Timbo's Residence Western
+Area Rural · Dr. Timbo Save project Open project ◐ Groundwater Toolkit Rural water supply boreholes
+Start Overview Guided start Training Borehole Site & maps Step 1 of 9, done Geophysics (VES) Step 2
+of 9 Borehole design Step 3 of 9, done Pumping test Step 4 of 9, done Water quality Step 5 of 9,
+done Costing & BoQ Step 6 of 9, done Procurement Step 7 of 9 Supervision Step 8 of 9 Handover Step 9
+of 9, done Field tools VES co-pilot Drilling co-pilot Pumping co-pilot Depth Spine Scanned sheets
+Templates Programme Water points Coverage gap Portfolio Asset registry Report on a borehole
+Reference Verify a document Settings About & method Borehole design Screens against the aquifer and
+below the static level, plain casing, a sump, gravel pack, backfill and a cement sanitary seal —
+assembled by the rules in Settings and drawn to scale. When the log records the screens installed,
+the drawing is an as-built record instead of a design. Design inputs Total depth (m) from the
+drilling log Static water level (m) from the pumping test sheet Pump intake (m) from the yield
+recommendation unless overridden dr_timbo_drilling_log.xlsx Loaded — click to replace Remove
+Construction Total depth 70 m Screen 19 m 3 sections, slot 0.75 mm Casing 5" uPVC in a 6.5" hole as
+logged Annular fill 23–70 m no gravel pack: the 19 mm annulus is too thin to place one Pump intake
+54 m below the top of the casing Check A 5 inch casing in a 6.5 inch hole leaves 19 mm of annulus
+per side, under the 50 mm needed to place gravel without bridging (70 mm for a true filter pack), so
+no gravel pack is drawn or priced and the screen slot must suit the formation; use a larger bit or
+smaller casing to fit one. thin_annulus Note The pump intake of 52 m from the yield recommendation
+sits inside the 48-53 m screen; it is set at 54 m, 1 m below that screen in plain casing, so the
+inflow is not drawn across the pump. pump_intake_moved Borehole construction design Construction:
+6.5" hole, 5" uPVC · Drawing: design generated from the log DEPTH (m) FORMATION CONSTRUCTION 0–5 m:
+Reddish brown lateritic topsoil Reddish brown lateritic topsoil 5–10 m: Light yellow clayey
+laterites Light yellow clayey laterites 10–15 m: Light yellow clayey laterites, wet from 12 m Light
+yellow clayey laterites, wet from 12 m 15–20 m: Clayey saprolite with weathered granite fragments
+Clayey saprolite with weathered granite fragments 20–25 m: Saprolite, decreasing clay content
+Saprolite, decreasing clay content 25–30 m: Weathered light colour granite, fractured Weathered
+light colour granite, fractured 30–35 m: Light colour granite, slightly weathered, fractured Light
+colour granite, slightly weathered, fractured 35–40 m: Light colour granite, slightly weathered
+Light colour granite, slightly weathered 40–45 m: Light colour granite Light colour granite 45–50 m:
+Light colour granite, fracture zone 49-52 m Light colour granite, fracture zone 49-52 m 50–55 m:
+Light colour granite Light colour granite 55–60 m: Light colour granite, fracture zone 60-62 m Light
+colour granite, fracture zone 60-62 m 60–65 m: Light colour granite Light colour granite 65–70 m:
+Light colour granite, fresh Light colour granite, fresh SWL 9.44 m water strike 12 m water strike 30
+m stick-up 0.5 m cement grout 0-20 m plain casing 0-25 m backfill 20-23 m screen 25-35 m, 0.75 mm
+slot plain casing 35-48 m no gravel pack (formation) 23-70 m screen 48-53 m, 0.75 mm slot pump
+intake 54 m (recommended) plain casing 53-59 m screen 59-63 m, 0.75 mm slot plain casing 63-68 m
+sump (sediment trap) 68-70 m, bottom plug at 70 m no gravel pack (formation) backfill cement
+sanitary seal plain casing screen sump water in the casing topsoil laterite saprolite fracture zone
+weathered rock basement rock Borehole construction design PNG SVG Construction generated from the
+drilling log by the design rules. The log records no casing string, so this is a design, not an
+as-built record. Item Detail Total depth 70 m Drilled diameter 6.5" Casing 5" uPVC, stick-up 0.5 m
+Screens 25-35 m; 48-53 m; 59-63 m (slot 0.75 mm) Annular fill 23-70 m: no gravel pack: the 19 mm
+annulus is too thin to place one Backfill 20-23 m Sanitary seal 0-20 m cement grout Static water
+level 9.44 m Water strikes 12 m, 30 m Recommended pump intake 54 m Design basis screens positioned
+against the water strikes recorded in the drilling log (30 m) screens positioned against the
+fracture zones the log names (49-52 m, 60-62 m), with 1 m of screen either side screens positioned
+against the fractured or water-bearing intervals logged at 25-30 m, 30-35 m the 12 m strike is not
+screened: it is in light yellow clayey laterites, wet from 12 m, a seepage horizon that is cased and
+grouted off rather than screened and it lies within the 20 m grouted interval 5 inch uPVC casing in
+a 6.5 inch hole as logged no gravel pack: the 19 mm annulus between the 5 inch casing and the 6.5
+inch hole is too thin to place one, so the annulus below the seal is left to the formation cement
+grout from surface to 20 m as recorded on the drilling log (the rule's minimum is 6 m), with
+concrete apron with drainage channel and soakaway screens kept at least 5 m below the static water
+level pump intake at 54 m, in plain casing 1 m below the 48-53 m screen rather than the 52 m the
+yield recommendation asked for Rising main Rising main stainless steel in place of the galvanised
+iron one the handpump line includes Rising main inspection every 6 months The water sample WQ-BH1-01
+of 20th May, 2018 is chemically aggressive: Ryznar index 11.37, Langelier index -2.74 and aggressive
+index 9.11, rated strongly corrosive by the toolkit's corrosivity classification, which counts water
+as aggressive when the Ryznar index is above 7.0, the Langelier index below -0.5 or the aggressive
+index below 10. The design specifies a stainless steel rising main in place of the galvanised iron
+one the handpump line includes, and it is inspected every 6 months, against 12 in water that is not
+aggressive. The toolkit's materials advice for this water is stainless steel (grade 304 or 316) or
+uPVC; which of the two the design specifies is set in the design rules. The Costing page prices it
+as a line extra over the handpump, over the pump intake depth (over the whole depth where no intake
+is known). Load or change the sample on the Water quality page and the design follows it. Screen
+placement Screens are placed automatically against the water strikes in the drilling log, the
+aquifer intervals in the lithology, or the low resistivity zones of the VES interpretation. Override
+them here when the driller's judgement on site differs; an analyst-placed screen is validated by
+exactly the same checks. Top (m) Bottom (m) Remove × × × + Add screen interval Reset to automatic
+placement Borehole completion report Introduction, methodology, drilling record, the borehole log
+table and the borehole construction design generated from the drilling log. Not ready to certify -
+outstanding: Field data, Site position, Yield established. Error Field data — Readings that were
+never measured are in this project: dr_timbo_water_quality.xlsx. The values in that file were
 invented to demonstrate the toolkit, so no result derived from them describes anything that was
-sampled.ErrorSite position — No GPS position is recorded on any sheet in this project. A borehole
-that cannot be found again on the ground cannot be certified, revisited or maintained.ErrorYield
+sampled. Error Site position — No GPS position is recorded on any sheet in this project. A borehole
+that cannot be found again on the ground cannot be certified, revisited or maintained. Error Yield
 established — The safe yield of 0.39 m3/h (range over the assumptions, 0.22 to 0.71) is indicative,
 not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so
 the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute
 casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding;
 no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best
-available.The report will still be produced, stamped PROVISIONAL and listing these items. To issue
-it as an interim document instead, record who is issuing it and why.Issued byReasonRecord
-overrideAssumptions carried into this report: dr_timbo_drilling_log.xlsx: Intervals, times,
+available. The report will still be produced, stamped PROVISIONAL and listing these items. To issue
+it as an interim document instead, record who is issuing it and why. Issued by Reason Record
+override Assumptions carried into this report: dr_timbo_drilling_log.xlsx: Intervals, times,
 penetration rates, water strikes, grouting depth and dates are transcribed from the WiNGiN
 completion report. The lithology descriptions are illustrative reconstructions guided by the
-borehole diagram annotations - the original log leaves the sample description column empty.Build
-Borehole completion report (.docx)Next, analyse the pumping test to get a yield.Pumping test →
+borehole diagram annotations - the original log leaves the sample description column empty. Build
+Borehole completion report (.docx) Next, analyse the pumping test to get a yield. Pumping test →

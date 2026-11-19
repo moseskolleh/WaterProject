@@ -111,10 +111,16 @@ nox -s guide -- --all   # retake every picture: before a release
 
 and commit `docs/guide`, `web/guide`, `docs/user_guide.html` and
 `docs/sw.js`. A change that only moves a number or how a page looks
-changes no words and fails nothing in CI, so the release workflow asks for
-more: it refuses
-a tag unless every picture was retaken (`--all`) since the app's files last
-changed. Run that before tagging a release.
+changes no words and fails nothing in CI. The release workflow refuses a
+tag unless every picture was retaken (`--all`) since the app's files, its
+fonts or the script last changed; but Pages publishes `main`, not the tag,
+so between releases the published guide can show a picture whose numbers
+or looks are older than the page, though never its words. Run
+`nox -s guide -- --all` in any change where that matters, and always for a
+release: after the version is changed in `pyproject.toml` and `nox -s
+build` has run (the version is in one of the hashed files), and before
+tagging. `node web/guide_shots.mjs --release` says whether the tag will
+pass.
 
 The icon is not edited in `docs/` either: `web/make_brand_assets.py` writes
 `docs/icon.svg` from the same drawing as the package's own icon, and a test

@@ -162,13 +162,64 @@ await withPage(async (page, base, consoleErrors) => {
     open: Array.from(document.querySelectorAll('#page-host .training-options'))
       .map((g) => g.querySelectorAll('button:not(:disabled)').length).join(),
     stored: localStorage.getItem('gwt.training.v1'),
+    focus: document.activeElement.id,
   }));
-  check('training: Start again puts the three exercises back as they were',
-    again.progress === '0 of 3 faults found' && again.open === '4,4,4' && again.stored === null,
-    JSON.stringify(again));
+  check('training: Start again puts the three exercises back as they were, and the keyboard on the count',
+    again.progress === '0 of 3 faults found' && again.open === '4,4,4' && again.stored === null &&
+    again.focus === 'training-progress', JSON.stringify(again));
+
+  /* --- another tab ------------------------------------------------------- */
+  /* What one tab finds, the other shows, and does not undo at its next
+   * answer: the record is the browser's, not the tab's. */
+  const other = await page.context().newPage();
+  await other.goto(base + '/index.html#/training', { waitUntil: 'load' });
+  await other.waitForFunction(() => window.GWT && window.GWT.app &&
+    document.querySelector('#page-host .training-option'));
+  await card(other, '2. The aquifer 80 m deep').locator('.training-option').nth(1).click();
+  await page.waitForFunction(() =>
+    document.querySelector('.training-progress').textContent === '1 of 3 faults found');
+  await card(page, '1. The 30-minute test').locator('.training-option').nth(2).click();
+  await other.waitForFunction(() => !!document.getElementById('training-storage-said'));
+  const tabs = await page.evaluate(() => JSON.parse(localStorage.getItem('gwt.training.v1')));
+  const seenThere = await other.evaluate(() => ({
+    progress: document.querySelector('.training-progress').textContent,
+    said: document.getElementById('training-storage-said').textContent,
+  }));
+  check('training: an answer given in another tab is shown here, and neither tab undoes the other',
+    tabs.halfspace.found === true && tabs.storage.wrong.join() === 'c' && tabs.storage.found === false &&
+    seenThere.progress === '1 of 3 faults found' && seenThere.said.startsWith('Not the fault.'),
+    JSON.stringify({ tabs, seenThere }));
+  await other.close();
+
+  /* --- Reset everything -------------------------------------------------- */
+  await page.evaluate(() => window.GWT.app.goto('settings'));
+  await page.getByRole('button', { name: 'Reset everything' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Reset', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
+  await page.evaluate(() => window.GWT.app.goto('training'));
+  const reset = await page.evaluate(() => ({
+    progress: document.querySelector('.training-progress').textContent,
+    stored: localStorage.getItem('gwt.training.v1'),
+  }));
+  check('training: Reset everything on the Settings page clears what was found',
+    reset.progress === '0 of 3 faults found' && reset.stored === null, JSON.stringify(reset));
+
+  /* --- an example that does not load ------------------------------------- */
+  await card(page, '1. The 30-minute test').locator('.training-option').nth(1).click();
+  const stayed = await page.evaluate(async () => {
+    const samples = window.GWT.data.samples, kept = samples.dr_timbo;
+    delete samples.dr_timbo;
+    Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Load the example and open its pumping test').click();
+    await new Promise((r) => setTimeout(r, 300));
+    samples.dr_timbo = kept;
+    return { hash: location.hash, project: window.GWT.app.store.get('site.community') || '' };
+  });
+  check('training: when the example cannot be loaded the button opens nothing in its place',
+    stayed.hash === '#/training' && stayed.project === '', JSON.stringify(stayed));
 
   /* --- each fix is what the toolkit does --------------------------------- */
-  await card(page, '1. The 30-minute test').locator('.training-option').nth(1).click();
+  /* the first fault was found again just above */
   await page.getByRole('button', { name: 'Load the example and open its pumping test' }).click();
   await page.waitForFunction(() => location.hash === '#/pumping' &&
     document.querySelector('#page-host').textContent.includes('Yield recommendation'));
@@ -178,6 +229,7 @@ await withPage(async (page, base, consoleErrors) => {
     'a specific capacity of 0.089 m3/h per m', 'With a 5 inch casing',
     'The Theis fit returns a storativity of 0.18', 'at 21.7 m of residual drawdown',
     'Safe yield0.39 m3/h', 'Indicative, not established', 'below the 240 minutes needed',
+    'so the Cooper-Jacob value is adopted only as the best available',
     '2.93 m3/h over 32.8 m of drawdown after 30 minutes'];
   check('training, the 30-minute test: the pumping page says what the exercise says it says',
     PUMPING.every((p) => pumping.includes(p)), PUMPING.filter((p) => !pumping.includes(p)).join(' | '));
@@ -198,25 +250,69 @@ await withPage(async (page, base, consoleErrors) => {
     spacing.length === 2 && spacing.every((m) => m === 80), JSON.stringify(spacing));
 
   await page.evaluate(() => window.GWT.app.goto('training'));
-  await card(page, '3. The site 250 km away').locator('.training-option').nth(1).click();
+  await card(page, '3. The site 270 km away').locator('.training-option').nth(1).click();
   await page.getByRole('button', { name: 'Open Site & maps and try it' }).click();
   await page.waitForFunction(() => location.hash === '#/site');
-  const read = await page.evaluate(() => ({
-    typed: window.GWT.core.readLatLon('8.4657, 13.2317'),
-    far: window.GWT.core.readLatLon('8.4657, 33.2317'),
-    minutes: window.GWT.core.readLatLon('8 27.942, -13 13.902'),
-  }));
-  check('training, the site 250 km away: an unsigned longitude is read as western, with a note saying so',
-    read.typed.lon === -13.2317 && read.typed.lat === 8.4657 &&
-    read.typed.code === 'longitude_west_assumed' && read.typed.message.includes('2,900 km'),
-    JSON.stringify(read.typed));
-  check('training, the site 250 km away: degrees and minutes are read as what they are',
-    Math.abs(read.minutes.lat - 8.4657) < 1e-4 && Math.abs(read.minutes.lon + 13.2317) < 1e-4,
-    JSON.stringify(read.minutes));
+  /* the note under the button says what trying it does to the open project */
+  const toasts = () => page.evaluate(() => {
+    const said = Array.from(document.querySelectorAll('.toast')).map((t) => t.textContent);
+    document.querySelectorAll('.toast').forEach((t) => t.remove());
+    return said.join(' | ');
+  });
+  const paste = async (text) => {
+    await page.fill('#page-host input[placeholder="8.4657, -13.2317"]', text);
+    await page.getByRole('button', { name: 'Convert to UTM' }).click();
+  };
+  await toasts();
+  const blank = await page.evaluate(() => window.GWT.app.store.get('site.easting'));
+  await paste('8.4657, 33.2317');
+  const refused = { said: await toasts(),
+    easting: await page.evaluate(() => window.GWT.app.store.get('site.easting')) };
+  check('training, the site 270 km away: a position outside the two zones is refused and nothing is stored',
+    refused.said.includes("outside Sierra Leone's 28N and 29N") && refused.easting === blank,
+    JSON.stringify(refused));
+  await paste('8.4657, 13.2317');
+  const taken = { said: await toasts(), site: await page.evaluate(() => {
+    const site = window.GWT.app.store.get('site');
+    return { zone: site.utm_zone, easting: site.easting };
+  }) };
+  check('training, the site 270 km away: an unsigned longitude is read as western, with a note saying so',
+    taken.said.includes('was read as 13.2317 W') && taken.said.includes('2,900 km') &&
+    Number(taken.site.zone) === 28 && Math.abs(taken.site.easting - 694508) < 600,
+    JSON.stringify(taken));
+  const minutes = await page.evaluate(() => window.GWT.core.readLatLon('8 27.942, -13 13.902'));
+  check('training, the site 270 km away: degrees and minutes are read as what they are',
+    Math.abs(minutes.lat - 8.4657) < 1e-4 && Math.abs(minutes.lon + 13.2317) < 1e-4,
+    JSON.stringify(minutes));
 
   await page.evaluate(() => window.GWT.app.goto('training'));
   const all = await page.evaluate(() => document.querySelector('.training-progress').textContent);
   check('training: three faults found is three of three', all === '3 of 3 faults found', all);
+
+  /* --- a browser that will not keep it ----------------------------------- */
+  const refusing = await page.context().browser().newContext();
+  const tab = await refusing.newPage();
+  await tab.addInitScript(() => {
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'gwt.training.v1') throw new DOMException('refused', 'QuotaExceededError');
+      return set.call(this, key, value);
+    };
+  });
+  await tab.goto(base + '/index.html#/training', { waitUntil: 'load' });
+  await tab.waitForFunction(() => window.GWT && window.GWT.app &&
+    document.querySelector('#page-host .training-option'));
+  const saidKept = await tab.evaluate(() => document.querySelector('#page-host').textContent);
+  await card(tab, '1. The 30-minute test').locator('.training-option').nth(1).click();
+  const unkept = await tab.evaluate(() => ({
+    words: document.querySelector('#page-host').textContent,
+    progress: document.querySelector('.training-progress').textContent,
+  }));
+  check('training: where the browser will not keep the progress, the page counts it and says it is this tab\'s only',
+    saidKept.includes('Kept in this browser') && unkept.progress === '1 of 3 faults found' &&
+    unkept.words.includes('This browser will not keep it') && !unkept.words.includes('Kept in this browser'),
+    unkept.progress);
+  await refusing.close();
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n'));
 });

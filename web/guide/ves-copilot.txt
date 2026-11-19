@@ -1,27 +1,28 @@
-Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled projectLoad a sample or
-upload a field sheet to begin Save projectOpen project◐ Groundwater Toolkit Rural water supply
-boreholes StartOverviewGuided startTrainingBoreholeSite & mapsStep 1 of 9Geophysics (VES)Step 2 of
-9Borehole designStep 3 of 9Pumping testStep 4 of 9Water qualityStep 5 of 9Costing & BoQStep 6 of
-9ProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES co-pilotDrilling
-co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater pointsCoverage
-gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout & method Field
-toolsVES co-pilotA Schlumberger sounding checked at the peg, reading by reading, while the crew can
-still re-measure. It writes the standard VES workbook, which the Geophysics page reads.The VES
-co-pilot, which checks each reading at the peg while the crew can still re-measure, is in the
-browser app only. The Streamlit app reads the workbook it writes like any other VES template.Before
-the surveyEnter the depth the sounding has to see. A Schlumberger sounding resolves to about 0.5 of
-its largest AB/2 (the rule the interpretation uses), so the line is set long enough before any cable
-is unrolled.Target depth (m)Sounding numberPropose the spacingsAB/2 and MN (m), one pair a line; an
-AB/2 written twice is an MN changeEdit the plan to suit the ground; the checks follow it.Use this
-planAt the pegAB/2 (m)MN (m), full spacingPotential V (mV)Current I (mA)Or, where the instrument
-shows it, the apparent resistivity itself:Apparent resistivity (ohm-m)Add the
-readingInstrumentSmallest potential it reads reliably (mV)Default 1 mV: below about a millivolt,
-self-potential drift and telluric noise are a large part of a single reading. Set it from the
-instrument manual.InstrumentSounding curveThe curve starts with the first reading.Preview inversionA
-preview, not the survey's result: a fit of the readings so far, run again after each reading, so the
-team can see whether basement is in view while the line can still be extended. The Geophysics page
-interprets the finished workbook.The preview starts at 8 readings (0 so far).ReadingsNo.AB/2 (m)MN
-(m)V (mV)I (mA)ohm-mAt the pegRe-measure or deleteNo readings yet.The workbookThe standard VES
-template, with the device clock and, if you allow it, the device GPS position in the header. Upload
-it on the Geophysics page, or keep it with the field sheets.No position taken yet. Stand at the
-centre peg to take it.Take the GPS positionDownload the workbookStart a new sounding
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled project Load a sample or
+upload a field sheet to begin Save project Open project ◐ Groundwater Toolkit Rural water supply
+boreholes Start Overview Guided start Training Borehole Site & maps Step 1 of 9 Geophysics (VES)
+Step 2 of 9 Borehole design Step 3 of 9 Pumping test Step 4 of 9 Water quality Step 5 of 9 Costing &
+BoQ Step 6 of 9 Procurement Step 7 of 9 Supervision Step 8 of 9 Handover Step 9 of 9 Field tools VES
+co-pilot Drilling co-pilot Pumping co-pilot Depth Spine Scanned sheets Templates Programme Water
+points Coverage gap Portfolio Asset registry Report on a borehole Reference Verify a document
+Settings About & method Field tools VES co-pilot A Schlumberger sounding checked at the peg, reading
+by reading, while the crew can still re-measure. It writes the standard VES workbook, which the
+Geophysics page reads. The VES co-pilot, which checks each reading at the peg while the crew can
+still re-measure, is in the browser app only. The Streamlit app reads the workbook it writes like
+any other VES template. Before the survey Enter the depth the sounding has to see. A Schlumberger
+sounding resolves to about 0.5 of its largest AB/2 (the rule the interpretation uses), so the line
+is set long enough before any cable is unrolled. Target depth (m) Sounding number Propose the
+spacings AB/2 and MN (m), one pair a line; an AB/2 written twice is an MN change Edit the plan to
+suit the ground; the checks follow it. Use this plan At the peg AB/2 (m) MN (m), full spacing
+Potential V (mV) Current I (mA) Or, where the instrument shows it, the apparent resistivity itself:
+Apparent resistivity (ohm-m) Add the reading Instrument Smallest potential it reads reliably (mV)
+Default 1 mV: below about a millivolt, self-potential drift and telluric noise are a large part of a
+single reading. Set it from the instrument manual. Instrument Sounding curve The curve starts with
+the first reading. Preview inversion A preview, not the survey's result: a fit of the readings so
+far, run again after each reading, so the team can see whether basement is in view while the line
+can still be extended. The Geophysics page interprets the finished workbook. The preview starts at 8
+readings (0 so far). Readings No. AB/2 (m) MN (m) V (mV) I (mA) ohm-m At the peg Re-measure or
+delete No readings yet. The workbook The standard VES template, with the device clock and, if you
+allow it, the device GPS position in the header. Upload it on the Geophysics page, or keep it with
+the field sheets. No position taken yet. Stand at the centre peg to take it. Take the GPS position
+Download the workbook Start a new sounding

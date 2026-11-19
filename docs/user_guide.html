@@ -61,8 +61,8 @@
 <p>This guide covers how to record data in the standard templates, what
 the automatic checks look for, and how to run the analysis through the
 web interface. No programming is needed.</p>
-<p>The pictures in this guide are of the browser app with one of its
-worked examples loaded. They are taken from the app itself by a script
+<p>The pictures in this guide are of the browser app, most with one of
+its worked examples loaded and the rest with nothing loaded. They are taken from the app itself by a script
 and checked against it with every change, so a picture shows the page
 as it reads now; if the guide and the app ever disagree, trust the app
 and tell the analyst. When something goes wrong, start at
@@ -607,7 +607,7 @@ the <strong>site details</strong> (community, area, GPS - filled in once, used b
 every page and every report), the <strong>project file</strong> panel for saving
 and loading, and the page list in five groups, the same groups in the
 same order in both apps:</p>
-<figure class="shot wide"><img src="guide/overview.png" alt="The Overview page of the browser app with the Rokel example loaded. The page list is on the left in five groups; the pages of the Borehole group are numbered, and those done carry a tick." width="1120" height="760" loading="lazy" decoding="async"><figcaption>The browser app with the Rokel worked example loaded. The Borehole group is the work in order: a tick is a step done, a number a step still to do.</figcaption></figure>
+<figure class="shot wide"><img src="guide/overview.png" alt="The Overview page of the browser app with the Rokel example loaded. The page list is on the left, four of its five groups in view; the pages of the Borehole group are numbered, and those done carry a tick." width="1120" height="760" loading="lazy" decoding="async"><figcaption>The browser app with the Rokel worked example loaded. The Borehole group is the work in order: a tick is a step done, a number a step still to do.</figcaption></figure>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -716,9 +716,10 @@ further and name one thing on them:</p>
 </tr>
 </tbody>
 </table></div>
-<p>The other pages follow the same pattern (<code>#/guided</code>, <code>#/spine</code>,
-<code>#/extract</code>, <code>#/procurement</code>, <code>#/waterpoints</code>, <code>#/coverage</code>,
-<code>#/portfolio</code>, <code>#/settings</code>, <code>#/about</code>). An address opens the page in
+<p>The other pages follow the same pattern (<code>#/guided</code>, <code>#/training</code>,
+<code>#/pumpcopilot</code>, <code>#/drillcopilot</code>, <code>#/spine</code>, <code>#/extract</code>,
+<code>#/procurement</code>, <code>#/waterpoints</code>, <code>#/coverage</code>, <code>#/portfolio</code>,
+<code>#/verify</code>, <code>#/settings</code>, <code>#/about</code>). An address opens the page in
 whatever project the browser has open; it does not carry the project
 with it. If it names a sounding or a borehole the open project does not
 hold, the page says so across the top rather than showing another one
@@ -864,23 +865,27 @@ drilling.</p>
 <h2 id="5c-training-find-the-fault-browser-app">5c. Training: find the fault (browser app)</h2>
 <p>In the browser app: <a href="index.html#/training"><code>#/training</code></a>, under <em>Start</em>.
 It is in the browser app only; the Streamlit app says so on its Guided
-start page. It needs no network and changes no project.</p>
+start page. It needs no network. Answering changes no project; the
+buttons that open a worked example replace the project that is open.</p>
 <p>The page sets three exercises. Each is a result this toolkit once got
-wrong on one of its own worked examples, shown as the report gave it:</p>
+wrong, shown as the report gave it: the first two on its own worked
+examples, the third on a position typed into any project:</p>
 <ol>
 <li><strong>The 30-minute test.</strong> A pumping test that recommended a yield.</li>
 <li><strong>The aquifer 80 m deep.</strong> A geophysical report that said how deep
 to drill.</li>
-<li><strong>The site 250 km away.</strong> A GPS position typed into the site details.</li>
+<li><strong>The site 270 km away.</strong> A GPS position typed into the site details.</li>
 </ol>
 <p>Under each is a question and four answers. Choose the one that names
 what is wrong. A wrong answer is greyed and the page says why it is not
 the fault, without saying what is; choose again. When the fault is
 found the page shows <strong>the finding</strong> (what was wrong, with the numbers)
 and <strong>what the toolkit does now</strong> about it, and a button that opens the
-worked example on the page where that can be seen. Loading an example
-replaces the project that is open, so save yours first.</p>
-<figure class="shot wide"><img src="guide/training.png" alt="The Training page: a count of the faults found, then the first exercise, The 30-minute test, with what the report said and four answers to choose from." width="1120" height="760" loading="lazy" decoding="async"><figcaption>Training. Nothing about the fault is on the page until the right answer is chosen.</figcaption></figure>
+page where that can be seen. For the first two it loads the worked
+example, which replaces the project that is open, so save yours first.
+The third opens Site &amp; maps in the project you have, and a position
+converted there becomes that project's site position.</p>
+<figure class="shot wide"><img src="guide/training.png" alt="The Training page: a count of the faults found, then the first exercise, The 30-minute test, with what the report said and the question it asks; the four answers are below." width="1120" height="760" loading="lazy" decoding="async"><figcaption>Training. Nothing about the fault is on the page until the right answer is chosen.</figcaption></figure>
 <p><em>Progress</em> counts the faults found. It is kept in the browser, not in
 the project, so it goes with no project file; <strong>Start again</strong> clears
 it, and so does <em>Reset everything</em> on the Settings page.</p>
@@ -905,9 +910,9 @@ for step discharges).</li>
 <li>Download the figures and the report.</li>
 </ol>
 <figure class="shot wide"><img src="guide/ves.png" alt="The Geophysics page with the Rokel soundings loaded: the file row, then two amber checks about readings that disagree at a change of MN." width="1120" height="760" loading="lazy" decoding="async"><figcaption>The Geophysics page, read from the top: the file that was loaded, then the checks. Amber needs review; these two say the readings either side of an MN change disagree.</figcaption></figure>
-<figure class="shot wide"><img src="guide/ves-sounding.png" alt="Further down the same page: tiles for the fit error, aquifer thickness and maximum drilling depth of sounding A, then its sounding curve and layered model." width="1120" height="760" loading="lazy" decoding="async"><figcaption>Further down, each sounding has its headline numbers, the measured curve against the model, and the layered model. Every figure downloads as PNG or SVG, and Table shows its numbers.</figcaption></figure>
+<figure class="shot wide"><img src="guide/ves-sounding.png" alt="Further down the same page: tiles for the fit error, aquifer thickness and maximum drilling depth of sounding A, then its sounding curve and layered model." width="1120" height="760" loading="lazy" decoding="async"><figcaption>Further down, each sounding has its headline numbers, the measured curve against the model, and the layered model. Every figure downloads as PNG or SVG, and where there is a Table link it shows the figure&#x27;s numbers.</figcaption></figure>
 <figure class="shot wide"><img src="guide/pumping.png" alt="The Pumping test page with the Kuntoloh step test loaded: the file row and a table of the three steps with an empty discharge column." width="1120" height="760" loading="lazy" decoding="async"><figcaption>The Pumping test page asking for what the sheet left out: the discharge of each step.</figcaption></figure>
-<figure class="shot wide"><img src="guide/pumping-analysis.png" alt="The analysis card of the Pumping test page: a diagnostic plot, a Cooper-Jacob straight line fit and a Theis recovery plot." width="1120" height="760" loading="lazy" decoding="async"><figcaption>With the discharge known, the analysis: the diagnostic plot, the Cooper-Jacob line and the recovery, each with the transmissivity it gives and whether it is adopted.</figcaption></figure>
+<figure class="shot wide"><img src="guide/pumping-analysis.png" alt="The analysis card of the Pumping test page: a diagnostic plot, a Cooper-Jacob straight line fit and a Theis recovery plot." width="1120" height="760" loading="lazy" decoding="async"><figcaption>The analysis of a test whose discharge is known (Dr. Timbo&#x27;s Residence): the diagnostic plot, the Cooper-Jacob line and the recovery. The table under them gives each method&#x27;s transmissivity and whether it is adopted.</figcaption></figure>
 <figure class="shot wide"><img src="guide/design.png" alt="The Borehole design page: tiles for total depth, screen, casing, annular fill and pump intake, two messages, and the construction drawing beside its table." width="1120" height="760" loading="lazy" decoding="async"><figcaption>Borehole design from the drilling log: the headline numbers, what the checks found, and the construction drawing to scale.</figcaption></figure>
 <figure class="shot wide"><img src="guide/quality.png" alt="The Water quality page: a red verdict, Treat before use, naming manganese, above tiles for the water quality index, hazard index, ionic balance and corrosivity." width="1120" height="760" loading="lazy" decoding="async"><figcaption>Water quality: the verdict first, in words, then the numbers behind it.</figcaption></figure>
 <h2 id="7-costing-boq">7. Costing &amp; BoQ</h2>
@@ -2511,9 +2516,13 @@ holds its session in memory, so a refresh loses it; it saves a
 to the browser's IndexedDB storage as you go, so a refresh or a closed
 tab comes back where you left it, and it warns you in red if that
 mirror ever stops being written; it saves a <code>.gwt.json</code> project file,
-the same file as before the mirror moved to IndexedDB. Either
-app reads the other's file, so a project started in the field on a
-phone can be finished at a desk.</p>
+the same file as before the mirror moved to IndexedDB. Each app
+opens only its own file as a project to work on. The other app's file
+can be added on the Portfolio page, and on the Asset registry and
+Verify a document pages where they ask for project files; those read
+its summary, its ledger and its records, not its working state. A
+project started in the browser app on a phone is therefore finished in
+the browser app, on any device its <code>.gwt.json</code> file is carried to.</p>
 <p>A project file saved after the soundings were inverted carries their
 inversions, so reopening it shows the models at once instead of
 inverting the survey again. Each one is stored under a fingerprint of
@@ -2620,7 +2629,7 @@ anywhere.</p>
 <p>A <strong>photograph or an image-only scan</strong> has no text to read, and goes
 to the AI extractor instead. Photograph or scan the paper sheet
 squarely under good light. In the browser app this needs an Anthropic
-API key, set once on the Settings page; in the Streamlit app the
+API key, typed on the Settings page and held for that tab only; in the Streamlit app the
 analyst configures it in the app's secrets.</p>
 <p>Either way the extractor transcribes the header and the tables and
 highlights every value it is not sure about in amber in the review
@@ -2734,6 +2743,10 @@ says more, it is named.</p>
 </tr>
 <tr>
 <td>Amber: the district does not match the GPS coordinates</td>
+<td>The message names the chiefdom and district the position falls in. Most often the district on the sheet is the wrong one, copied from another sheet; otherwise a digit of the easting or northing is wrong, or the two are swapped. It is not the UTM zone: a wrong zone puts the position outside the country, which is the red message in the next line. Check against the field notes, correct the sheet and upload it again (section 1).</td>
+</tr>
+<tr>
+<td>Red: the coordinates convert to a position <em>outside Sierra Leone</em></td>
 <td>Most often the UTM zone: 28N in the west including Freetown and Port Loko, 29N in the east. Otherwise the easting and northing are swapped or a digit is wrong. Correct the sheet and upload it again (section 1).</td>
 </tr>
 <tr>
@@ -2758,7 +2771,7 @@ says more, it is named.</p>
 </tr>
 <tr>
 <td>The AI extraction asks for a key</td>
-<td>In the browser app it needs an Anthropic API key, set once on the Settings page; in the Streamlit app the analyst sets it. It also needs a connection.</td>
+<td>In the browser app it needs an Anthropic API key, typed on the Settings page each time the app is opened: the key is held for the tab only and is never saved with the project (tick <em>Keep it for this tab</em>, or a reload asks again). In the Streamlit app the analyst sets it. It also needs a connection.</td>
 </tr>
 <tr>
 <td>The page says the transcription was cut off</td>
@@ -2777,11 +2790,11 @@ says more, it is named.</p>
 <tbody>
 <tr>
 <td>The yield is marked <em>indicative</em> and the test called too short</td>
-<td>The test did not run long enough to see how the aquifer behaves late on, so the yield is a long extrapolation. Run a longer constant rate test if the borehole matters; the page gives the minutes needed.</td>
+<td>The test did not run long enough to see how the aquifer behaves late on, so the yield is a long extrapolation. Run a longer constant discharge test if the borehole matters; the page gives the minutes needed.</td>
 </tr>
 <tr>
-<td><em>Casing storage controls the drawdown</em>; no fit is adopted</td>
-<td>In a tight borehole the pump first empties the casing, and the early readings measure the casing, not the aquifer. Pump for longer than the time the page states. The pumping co-pilot and the field kit give that time before the test starts (sections 1a and 3a).</td>
+<td><em>Casing storage controls the drawdown</em>; a fit is adopted <em>only as the best available</em>, or reported but not adopted</td>
+<td>In a tight borehole the pump first empties the casing, and the early readings measure the casing, not the aquifer. A yield shown beside this message rests on those readings and is indicative only. Pump for longer than the time the page states. The pumping co-pilot and the field kit give that time before the test starts (sections 1a and 3a).</td>
 </tr>
 <tr>
 <td>The recovery transmissivity is <em>reported but not adopted</em></td>
@@ -2800,8 +2813,12 @@ says more, it is named.</p>
 <td>The bundled unit rates are indicative. Open the unit rate catalogue and type current local prices, and check the depth and the one way distance (section 7).</td>
 </tr>
 <tr>
+<td>A photograph's position reads <em>Not recorded</em></td>
+<td>The photograph carries no position and the device gave none. The photograph is still kept; note the position by hand.</td>
+</tr>
+<tr>
 <td>A photograph's position reads <em>Could not be read</em></td>
-<td>The file holds no usable latitude and longitude. The photograph is still kept; note the position by hand.</td>
+<td>The position saved for it in the project file is not a latitude and a longitude in range, as a file edited by hand can hold (section 11). The photograph is still kept; attach it again or note the position by hand, and tell the analyst.</td>
 </tr>
 </tbody>
 </table></div>
@@ -2855,8 +2872,8 @@ carries everything needed to see the problem again.</p>
 <td>A page of the browser app used while the work is being done: it checks each reading as it is taken and writes the standard workbook (sections 2a, 3a and 4a).</td>
 </tr>
 <tr>
-<td>Constant rate test</td>
-<td>Pumping at one steady rate for hours, to find the <em>transmissivity</em> and the yield.</td>
+<td>Constant discharge test</td>
+<td>Also called a constant rate test. Pumping at one steady rate for hours, to find the <em>transmissivity</em> and the yield.</td>
 </tr>
 <tr>
 <td>Cooper-Jacob</td>
@@ -2892,15 +2909,15 @@ carries everything needed to see the problem again.</p>
 </tr>
 <tr>
 <td>P10, P50, P90</td>
-<td>A range instead of one number. P50 is the middle; the value is below P10 one time in ten and above P90 one time in ten.</td>
+<td>A range instead of one number. P50 is the middle of what was sampled; a tenth of the sampled values fall below P10 and a tenth above P90. The true value falls outside the band more often than those names suggest: read the band as the least the spread can be (section 3).</td>
 </tr>
 <tr>
-<td>Plate code</td>
-<td>The identifier on the borehole's headworks plate, also printed as a QR symbol that opens the report page for that borehole (section 9d).</td>
+<td>Plate symbol</td>
+<td>The QR symbol printed beside the identifier on the borehole's headworks plate. Where the programme has set a <em>Report address</em> it opens the report page for that borehole; otherwise it carries the identifier, the place and the position as plain text (section 9d).</td>
 </tr>
 <tr>
 <td>Project file</td>
-<td>The whole working state saved as one file: <code>.gwt.json</code> from the browser app, <code>.yaml</code> from the Streamlit app. Either app reads both (section 11).</td>
+<td>The whole working state saved as one file: <code>.gwt.json</code> from the browser app, <code>.yaml</code> from the Streamlit app. Each app opens only its own; the other app's file can be added on the Portfolio page, where its summary and ledger are read (sections 5a and 11).</td>
 </tr>
 <tr>
 <td>Recovery</td>

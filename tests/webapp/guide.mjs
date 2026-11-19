@@ -184,6 +184,16 @@ try {
   }));
   check('guide, phone: choosing a section closes the contents and shows the section',
     chosen.closed && chosen.head >= 0 && chosen.head < 400, JSON.stringify(chosen));
+  /* the narrowest phones still in use: the bar's name and its way back
+   * have to fit on one line, or the whole page scrolls sideways */
+  const small = await open({ viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true });
+  const fits = await small.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth, screen: document.documentElement.clientWidth,
+    button: Math.round(document.querySelector('.open-app').getBoundingClientRect().right),
+  }));
+  check('guide, a 320 px phone: the bar fits and the page does not scroll sideways',
+    fits.scroll <= fits.screen && fits.button <= fits.screen, JSON.stringify(fits));
+  await small.context().close();
   const phoneAxe = await axe(phone);
   check('guide, phone: axe-core finds nothing serious', !phoneAxe.length, phoneAxe.join('\n     '));
   await phone.context().close();

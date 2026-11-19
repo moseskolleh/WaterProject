@@ -6,5 +6,6 @@
 # so in both).
 browser_only: >-
   Training, three exercises in finding what a report got wrong, on the worked
-  examples, is in the browser app only, under Start. It needs no network and
-  changes no project.
+  examples, is in the browser app only, under Start. It needs no network.
+  Answering changes no project; opening a worked example from it replaces the
+  project that is open.

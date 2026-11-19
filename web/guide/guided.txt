@@ -1,18 +1,19 @@
-Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled projectLoad a sample or
-upload a field sheet to begin Save projectOpen project◐ Groundwater Toolkit Rural water supply
-boreholes StartOverviewGuided startTrainingBoreholeSite & mapsStep 1 of 9Geophysics (VES)Step 2 of
-9Borehole designStep 3 of 9Pumping testStep 4 of 9Water qualityStep 5 of 9Costing & BoQStep 6 of
-9ProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES co-pilotDrilling
-co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater pointsCoverage
-gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout & method
-Guided startEight steps, in the order the work actually happens. Each one is a page you can also
-reach directly from the sidebar; this page just keeps the thread.Progress0 of 8 steps
-complete1Record the siteClient, community, chiefdom, district and GPS. Every report header and every
-map comes from this.Go2Site the boreholeUpload the VES sheet. The app inverts each sounding,
-interprets the layers and ranks the drilling targets.Go3Design the boreholeScreens against the
-aquifer, casing, gravel pack and sanitary seal, drawn to scale.Go4Test the boreholeCooper-Jacob,
-Theis and recovery, then a safe yield and a pump setting depth.Go5Check the waterWHO and national
-limits, ionic balance, corrosivity and the Piper and Stiff diagrams.Go6Cost the worksA bill of
-quantities on the RWSN model, with cost and price kept apart.Go7Supervise constructionStage
-checklists and the numeric acceptance checks a supervisor applies on site.Go8Hand overThe handover
-report, the data sheet and the operation and maintenance guidance for the community.Go
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled project Load a sample or
+upload a field sheet to begin Save project Open project ◐ Groundwater Toolkit Rural water supply
+boreholes Start Overview Guided start Training Borehole Site & maps Step 1 of 9 Geophysics (VES)
+Step 2 of 9 Borehole design Step 3 of 9 Pumping test Step 4 of 9 Water quality Step 5 of 9 Costing &
+BoQ Step 6 of 9 Procurement Step 7 of 9 Supervision Step 8 of 9 Handover Step 9 of 9 Field tools VES
+co-pilot Drilling co-pilot Pumping co-pilot Depth Spine Scanned sheets Templates Programme Water
+points Coverage gap Portfolio Asset registry Report on a borehole Reference Verify a document
+Settings About & method Guided start Eight steps, in the order the work actually happens. Each one
+is a page you can also reach directly from the sidebar; this page just keeps the thread. Progress 0
+of 8 steps complete 1 Record the site Client, community, chiefdom, district and GPS. Every report
+header and every map comes from this. Go 2 Site the borehole Upload the VES sheet. The app inverts
+each sounding, interprets the layers and ranks the drilling targets. Go 3 Design the borehole
+Screens against the aquifer, casing, gravel pack and sanitary seal, drawn to scale. Go 4 Test the
+borehole Cooper-Jacob, Theis and recovery, then a safe yield and a pump setting depth. Go 5 Check
+the water WHO and national limits, ionic balance, corrosivity and the Piper and Stiff diagrams. Go 6
+Cost the works A bill of quantities on the RWSN model, with cost and price kept apart. Go 7
+Supervise construction Stage checklists and the numeric acceptance checks a supervisor applies on
+site. Go 8 Hand over The handover report, the data sheet and the operation and maintenance guidance
+for the community. Go

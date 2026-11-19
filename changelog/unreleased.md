@@ -2,6 +2,40 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### Steps 9.5 and 9.3 reviewed by others, and 39 things put right
+
+The user guide page and the training page were each written by one hand. Four reviewers then went through them (the guide's new text, the exercises' facts, the screenshot tooling, the training page's code), and a second reader tried to refute every finding. 39 of 41 stood. What they changed:
+
+**Wrong in the guide.**
+
+- **"Either app reads the other's project file."** Neither does, as a project to work on: the Streamlit app's loader takes `.yaml` only and the browser app's takes its own JSON. The other app's file is read on the Portfolio, Asset registry and Verify pages, for its summary, ledger and records. The sentence was in section 11 before this work and the new glossary repeated it; both now say what is so, and no longer say a project started on a phone can be finished in the Streamlit app.
+- **The amber "district does not match" message was blamed on the UTM zone.** A wrong zone moves a position six degrees and always out of the country, which is the red message, raised before the district is looked at. The amber one is a wrong district name, a wrong digit or a swap. Both have a line now.
+- **"Could not be read"** beside a photograph is a damaged project record, not a photograph with no position (which reads "Not recorded"). **Casing storage** does not mean no fit is adopted: one is, "only as the best available". The **API key** is not set once: it is held for the tab. Each line now says so.
+- Smaller: the glossary's P10 to P90 reading claimed more than the app's own bands do; "plate code" and "constant rate test" were not the app's words; the list of page addresses left out four; four pictures' descriptions said more than the pictures show.
+
+**Wrong in the exercises.**
+
+- The first exercise said the toolkit "adopts no fit made inside" the casing-storage time and then quoted a yield that rests on exactly such a fit. It now says what happens: no such fit meets the standard, and where every fit fails the best is used and called only the best available. It also said the time comes from "the first drawdown"; it is the specific capacity at the end of the first step.
+- "No borehole enters into the interpretation of a sounding" is false in general and of this toolkit, whose calibration sets are fitted to drilling logs. The sentence now speaks of the report in the exercise.
+- The site was "250 km away" by the record's rounding and 271 km by the engine's arithmetic: the exercise says 270. The relabelling was the Streamlit app's, and the exercise now names it.
+- Training was said to change no project. Answering does not; opening a worked example replaces the open one, and trying the third exercise on Site & maps stores a site position. The page, the Streamlit caption and the guide now say so, and the third exercise carries its own note.
+
+**The training page.** The button that loads an example no longer opens that page of some other project when the example fails to load, nor pulls a trainee back who has gone elsewhere while the soundings were inverted. Another tab's answers are shown and no longer overwritten. *Start again* puts the keyboard on the count. Where the browser refuses to keep the progress the page says it is this tab's only. The page no longer fetches 1.1 MB of map and chart scripts it does not draw with.
+
+**The screenshot tool.**
+
+- It waited without end, saying nothing, when the service worker could not install (a file listed in `docs/sw.js` and since removed). It now stops and says what to run.
+- The hash the release check compares now covers the fonts and the script itself, so a shot moved to another card or another device is no longer invisible to it.
+- A page's text is taken piece by piece, so that numbers side by side in a table are counted one by one instead of running together as one.
+- A run that fails part way no longer leaves pictures recorded as taken but not repacked.
+- The guide's bar ran 6 px past a 320 px screen. It fits, and the suite checks it.
+
+**Said plainly in the docs.** The release check runs at a tag and the site is published from `main`, so between releases a picture can show a number or a look that has moved (never a word). The pictures must be retaken after the version is changed for a release, not before, because the version is in a hashed file. A change to the guide also changes `docs/sw.js`.
+
+**Checks.** `tests/webapp/training.mjs` goes from 19 checks to 24 (the Site page's refusal and its note, read off the page; another tab; Reset everything; an example that cannot load; a browser that will not keep the progress), and `tests/webapp/guide.mjs` from 16 to 17.
+
+**Left as it is.** `ROADMAP.md` and `PLAN.md` still say 250 km: they are the record as it was written.
+
 ### Training mode: three exercises in finding the fault (PLAN.md step 9.3)
 
 The roadmap records what the toolkit once got wrong on its own worked examples. Three of those records are now exercises, on a **Training** page of the browser app, under Start.
@@ -10,19 +44,19 @@ The roadmap records what the toolkit once got wrong on its own worked examples. 
 
 - **The 30-minute test** (Dr. Timbo's Residence): a constant test of 30 minutes in a 5 inch casing, from which a transmissivity of 1.4 m2/day was adopted and a safe yield of 0.97 m3/h recommended. The fault is casing storage: the pump was still emptying the casing when it stopped (ROADMAP hydraulics-1 and hydraulics-2).
 - **The aquifer 80 m deep** (Rokel): two soundings whose last layer has no base, reported as a water bearing zone from 8 m to 80 m and "drill to 80 m". The 80 m is the largest AB/2, not a depth anything was found at (ves-1).
-- **The site 250 km away**: a position typed as "8.4657, 13.2317", drawn inside Sierra Leone 250 km from the village. The longitude has lost its minus sign (data-ingestion-3).
+- **The site 270 km away**: a position typed as "8.4657, 13.2317", drawn inside Sierra Leone 270 km from the village (the record rounds it to 250; the engine's own arithmetic gives 271). The longitude has lost its minus sign (data-ingestion-3).
 
 **Finding the fault comes first.** Under each is a question and four answers, each a button. A wrong answer is greyed, stays in its place and cannot be given again, and the page says why it is not the fault, in a sentence that does not say what is. The finding, and what the toolkit does now about it, are not on the page at all until the right answer is chosen; then they are, with how many answers it took and a button that loads the worked example and opens the page where the fix can be seen at work. The keyboard, and with it a screen reader, is put on what each answer brought.
 
 **Progress** (faults found, of three) is the trainee's and not the project's: it is kept in the browser, in no project file, read back after a reload, cleared by *Start again* and by *Reset everything* on the Settings page. A record in the browser that is not as the page writes it (an answer that is not one of the exercise's, an exercise that does not exist) is read no further than it can be.
 
-**The fixes are held to the app.** What "the report said" is the old report's, which exists nowhere else, so it is written on the page. What each exercise says the toolkit does now is read off the app in `tests/webapp/training.mjs` (19 checks): the pumping page of the Dr. Timbo example has to say "casing storage controls the drawdown for the first 117 minutes", a storativity of 0.18, a safe yield of 0.39 m3/h and "indicative"; the soundings page of the Rokel example "at least 40 m", "a minimum: the zone continues below the depth of investigation" and a depth to bedrock "not resolved", with both soundings laid out to an AB/2 of 80 m; and the position reader has to read 13.2317 as western, with its note. A fix the engine words differently one day fails there. The suite also runs axe-core on the page after a wrong answer and after a right one.
+**The fixes are held to the app.** What "the report said" is the old report's, which exists nowhere else, so it is written on the page. What each exercise says the toolkit does now is read off the app in `tests/webapp/training.mjs` (24 checks): the pumping page of the Dr. Timbo example has to say "casing storage controls the drawdown for the first 117 minutes", a storativity of 0.18, a safe yield of 0.39 m3/h and "indicative"; the soundings page of the Rokel example "at least 40 m", "a minimum: the zone continues below the depth of investigation" and a depth to bedrock "not resolved", with both soundings laid out to an AB/2 of 80 m; and the position reader has to read 13.2317 as western, with its note. A fix the engine words differently one day fails there. The suite also runs axe-core on the page after a wrong answer and after a right one.
 
 **In the browser app only**, and both apps say so (PLAN.md rule 1): the Training page in the words of a new catalogue entry, `training.browser_only`, and the Streamlit app's Guided start as a caption in the same words.
 
-**The guide** has a section on it (5c), with a picture. Because a page was added to the navigation, every laptop picture in the guide showed a page list that was one line short: the check that step 9.5 added named all of them, and `nox -s guide` retook them.
+**The guide** has a section on it (5c), with a picture, the guide's 19th: 15 on a laptop and 4 on a phone, 0.92 MB together, and the release a device keeps is now 5.6 MB. Because a page was added to the navigation, every laptop picture in the guide showed a page list that was one line short: the check that step 9.5 added named all of them, and `nox -s guide` retook them.
 
-**Not changed.** No calculation and no report. The exercises load the worked examples as the Overview does and change nothing in a project.
+**Not changed.** No calculation and no report. Answering changes nothing in a project. The buttons that open a worked example load it as the Overview does, which replaces the project that is open, and the page says so.
 
 ### The user guide is a web page, with pictures taken from the app, troubleshooting and a glossary (PLAN.md step 9.5)
 
@@ -30,7 +64,7 @@ The field team's guide was 2,500 lines of Markdown with no picture in it, and it
 
 **A page.** `web/build_guide.py` builds `docs/user_guide.html` from `docs/user_guide.md`, which stays the one place the guide is written. The page has a list of contents (beside the guide on a laptop, folded above it on a phone), tables that scroll sideways in their own box so the page never does, light and dark to follow the device, and a print sheet that leaves the bar and the contents off and never cuts a picture across two pages. Markdown is read by markdown-it-py, added to the dev extra at one version, as CommonMark with tables and no raw HTML; the page carries no date and no version, so the committed page is a fresh build byte for byte, which `nox -s bundles` checks. About & method links the guide, and the guide's bar leads back to the app.
 
-**Pictures that cannot go stale unnoticed.** The guide now shows 18 pictures of the browser app: 14 on a laptop and 4 on a phone, with the worked examples loaded. None is taken by hand. Each is a line in `web/guide_shots.mjs`, which opens the app at a fixed size, clock and theme and takes it; `nox -s guide` runs it and rebuilds the page. Two machines do not draw the same pixels, so the pictures are not compared. Beside each is kept the text of the page it shows (`web/guide/<name>.txt`), and `nox -s browser` opens every page again and compares the words: a heading renamed, a button added or a sentence reworded fails CI, naming the picture and the first words that differ, until the picture is retaken. The words, and not the numbers among them: the first run of the check in CI failed on a page nobody had changed, because an inversion that takes 16 iterations in one version of the browser takes 18 in CI's, and the page says how many. Every number is therefore read as "a number here", so that one that moved fails nothing and one that appeared or went does. A number that moved, like a change only to how a page looks, is left to the release workflow, which asks more: it refuses a tag unless every picture was retaken (`nox -s guide -- --all`) since the app's files last changed. That check hashes files and starts no browser.
+**Pictures that cannot go stale unnoticed.** The guide now shows 18 pictures of the browser app: 14 on a laptop and 4 on a phone, with the worked examples loaded. None is taken by hand. Each is a line in `web/guide_shots.mjs`, which opens the app at a fixed size, clock and theme and takes it; `nox -s guide` runs it and rebuilds the page. Two machines do not draw the same pixels, so the pictures are not compared. Beside each is kept the text of the page it shows (`web/guide/<name>.txt`), and `nox -s browser` opens every page again and compares the words: a heading renamed, a button added or a sentence reworded fails CI, naming the picture and the first words that differ, until the picture is retaken. The words, and not the numbers among them: the first run of the check in CI failed on a page nobody had changed, because an inversion that takes 16 iterations in one version of the browser takes 18 in CI's, and the page says how many. Every number is therefore read as "a number here", so that one that moved fails nothing and one that appeared or went does; the ticks along a figure's axes are left out, since how many there are follows from a fitted range. A number that moved, like a change only to how a page looks, is left to the release workflow, which asks more: it refuses a tag unless every picture was retaken (`nox -s guide -- --all`) since the app's files last changed. That check hashes files and starts no browser.
 
 **On the device.** The service worker's release carries the page, its stylesheet and the pictures in place of the Markdown, so a device that opened the app once in town reads the whole guide with no network. To keep that cheap each screenshot is repacked in a palette of 128 colours, a third of its true-colour size: the 18 come to 0.86 MB, and the release a device keeps goes from 4.6 MB to 5.5 MB.
 

@@ -13,9 +13,9 @@
    * The numbers in "what the report said" are the old report's, which no
    * longer exists anywhere else, so they are written here. The numbers in
    * the finding and the fix are what the engine gives for the same sample
-   * today, and tests/webapp/smoke.mjs holds each to the page it sends the
-   * trainee to: a fix reworded in the engine fails there, not in front of a
-   * class.
+   * today, and tests/webapp/training.mjs holds each to the page it sends
+   * the trainee to: a fix reworded in the engine fails there, not in front
+   * of a class.
    *
    *   right    the option that names the fault
    *   options  [letter, the answer, why it is not the fault]
@@ -52,13 +52,16 @@
         'casing storage controls the drawdown for about the first 117 minutes ' +
         '(Schafer\'s rule). The test pumped for 30, entirely inside that time, so its ' +
         'curve is the casing being emptied: a Theis fit to it returns a storativity of ' +
-        '0.18, more than any aquifer stores. The 1.4 m²/day that was adopted came from ' +
+        '0.18, where no aquifer stores more than about 0.1 of its volume. The 1.4 m²/day that was adopted came from ' +
         'a recovery line that missed the origin by 21.7 m.',
-      fix: 'The toolkit now works out the casing-storage time from the casing and the ' +
-        'first drawdown and adopts no fit made inside it, flags a storativity above ' +
-        '0.1, and checks that a recovery line passes through the origin. The same ' +
-        'sheet now gives 0.39 m³/h, marked indicative, and says how long the test ' +
-        'needed to run. The pumping co-pilot and the field kit give the time the pump ' +
+      fix: 'The toolkit now works out the casing-storage time from the casing and ' +
+        'riser diameters and the specific capacity (the pumping rate over the ' +
+        'drawdown at the end of the first step), and holds that no fit made inside ' +
+        'that time meets the standard. It flags a storativity above 0.1, and checks ' +
+        'that a recovery line passes through the origin. Where every fit fails, as ' +
+        'here, the best of them is used and said to be only the best available: the ' +
+        'same sheet now gives 0.39 m³/h, marked indicative, and says how long the ' +
+        'test needed to run. The pumping co-pilot and the field kit give the time the pump ' +
         'must outlast before the test starts.',
       sample: 'dr_timbo', page: 'pumping',
       open: 'Load the example and open its pumping test',
@@ -83,7 +86,7 @@
         ['b', 'From the electrodes: 80 m is the largest AB/2 the crew laid out, not a ' +
           'depth at which anything was found.', ''],
         ['c', 'From the depth of a borehole nearby, used as a guide.',
-          'No borehole enters into the interpretation of a sounding.'],
+          'No borehole is in this report: the two soundings are all it rests on.'],
         ['d', 'From the resistivity: ground of 47 to 50 ohm-m is water bearing to ' +
           '80 m.',
           'A resistivity says what the ground may be. It does not say how deep it ' +
@@ -103,12 +106,13 @@
       open: 'Load the example and open its soundings',
     },
     {
-      key: 'longitude', title: 'The site 250 km away',
+      key: 'longitude', title: 'The site 270 km away',
       about: 'Site details, any project',
       said: [
         'A position was read off a phone and typed into the site details as ' +
           '8.4657, 13.2317.',
-        'The app took it. The site was drawn inside Sierra Leone, about 250 km from ' +
+        'The Streamlit app took it. The site was drawn inside Sierra Leone, about ' +
+          '270 km from ' +
           'the village, and every map and report used that position.',
       ],
       question: 'What was wrong with what was typed?',
@@ -123,11 +127,12 @@
           'These are decimal degrees. A reading in degrees and minutes carries two ' +
           'numbers for each coordinate.'],
         ['d', 'The phone\'s GPS was too inaccurate to use.',
-          'A phone is good to a few metres. An error of 250 km is not a poor fix; it ' +
+          'A phone is good to a few metres. An error of 270 km is not a poor fix; it ' +
           'is a different place.'],
       ],
       finding: 'Typed without its sign, 13.2317 is a longitude east of Greenwich, in ' +
-        'UTM zone 33 and some 2,900 km from Sierra Leone. The app then relabelled the ' +
+        'UTM zone 33 and some 2,900 km from Sierra Leone. The Streamlit app then ' +
+        'relabelled the ' +
         'zone as one of Sierra Leone\'s two, which put the point back inside the ' +
         'country, though not where the village is, and said nothing.',
       fix: 'A longitude typed without its western sign is now read as western, with a ' +
@@ -145,6 +150,8 @@
    * in this tab alone where the browser will not keep it. */
   var TRAINING_KEY = 'gwt.training.v1';
   var trainingState = null;
+  /* whether the browser keeps it: the page says which of the two it is */
+  var trainingKept = true;
 
   function trainingProgress() {
     if (trainingState) return trainingState;
@@ -162,20 +169,38 @@
           found: was.found === true,
         };
       });
-    } catch (e) { /* no storage, or not ours: start from nothing */ }
+    } catch (e) {
+      /* a record that is not ours starts from nothing and is written over;
+       * storage that cannot be read at all is not being kept either */
+      if (!(e instanceof SyntaxError)) trainingKept = false;
+    }
     return trainingState;
   }
 
   function keepTraining() {
     try {
       localStorage.setItem(TRAINING_KEY, JSON.stringify(trainingState || {}));
-    } catch (e) { /* kept for this tab only */ }
+      trainingKept = true;
+    } catch (e) {
+      trainingKept = false;   /* kept for this tab only, and the page says so */
+    }
   }
 
   function forgetTraining() {
     trainingState = {};
     try { localStorage.removeItem(TRAINING_KEY); } catch (e) { /* nothing to remove */ }
   }
+
+  /* Another tab of this browser answered, started again or reset: what this
+   * tab holds is no longer the record, and writing it back at the next
+   * answer would undo what the other tab did. The record is read afresh,
+   * and the page drawn again if it is the one showing. The event is only
+   * ever another tab's, so an answer given here does not come back round. */
+  global.addEventListener('storage', function (event) {
+    if (event.key !== null && event.key !== TRAINING_KEY) return;
+    trainingState = null;
+    if (store.get('nav') === 'training') render();
+  });
 
   function trainingAnswer(exercise, letter) {
     var progress = trainingProgress();
@@ -229,12 +254,18 @@
         el('h4', 'What the toolkit does now'), el('p', exercise.fix),
         el('div.btn-row', [
           button(exercise.open, async function () {
-            if (exercise.sample) await loadSample(exercise.sample);
-            goto(exercise.page);
+            /* an example that did not load has said so itself; its page in
+             * whatever project is open is not what the button promised */
+            if (exercise.sample && !(await loadSample(exercise.sample))) return;
+            /* loading waits for the soundings to be inverted: a trainee who
+             * has gone elsewhere meanwhile is left where they went */
+            if (store.get('nav') === 'training') goto(exercise.page);
           }, { variant: 'ghost' }),
         ]),
-        exercise.sample ? el('p.muted', 'Loading an example replaces the project ' +
-          'that is open. Save yours first if you want to keep it.') : null,
+        el('p.muted', exercise.sample ? 'Loading an example replaces the project ' +
+          'that is open. Save yours first if you want to keep it.'
+          : 'A position converted on Site & maps becomes the site position of the ' +
+          'project that is open. Try it in a project you do not mean to keep.'),
       ]));
     } else if (last) {
       var why = exercise.options.filter(function (o) { return o[0] === last; })[0][2];
@@ -260,13 +291,20 @@
         'shown once you have.'),
       el('div.callout.callout-info', el('p', C.phrase('training.browser_only'))),
       card('Progress', [
-        el('p.training-progress', found + ' of ' + TRAINING.length + ' faults found'),
-        el('p.muted', 'Kept in this browser, not in the project: it is yours, and ' +
-          'goes with no project file.'),
+        el('p.training-progress', { id: 'training-progress', tabindex: '-1' },
+          found + ' of ' + TRAINING.length + ' faults found'),
+        el('p.muted', trainingKept ? 'Kept in this browser, not in the project: it ' +
+          'is yours, and goes with no project file.'
+          : 'This browser will not keep it: it lasts until this tab is closed or ' +
+          'reloaded, and goes with no project file.'),
         begun ? el('div.btn-row', [
           button('Start again', function () {
             forgetTraining();
             render();
+            /* the button is gone with the progress it cleared: the keyboard
+             * goes to the count, which is what changed */
+            var count = document.getElementById('training-progress');
+            if (count) count.focus();
             S.toast('The three exercises are as they were at the start.', 'ok');
           }, { variant: 'ghost' }),
         ]) : null,

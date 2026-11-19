@@ -1,28 +1,28 @@
-Skip to content Groundwater Toolkit Rural water supply boreholes ☰ RokelWestern Area Rural · Living
-Water International Save projectOpen project◐ Groundwater Toolkit Rural water supply boreholes
-StartOverviewGuided startTrainingBoreholeSite & mapsStep 1 of 9, doneGeophysics (VES)Step 2 of 9,
-doneBorehole designStep 3 of 9, donePumping testStep 4 of 9Water qualityStep 5 of 9Costing & BoQStep
-6 of 9, doneProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES
-co-pilotDrilling co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater
-pointsCoverage gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout
-& method OverviewThe whole borehole lifecycle in one workspace: site the well, design it, test it,
-sample it, cost it and hand it over. Everything runs in this browser — no data is uploaded
-anywhere.Headline resultsTotal depth40 m1 screened sectionCost per metreUS$ 152total cost
-basisProgressClick a stage to go there.Site doneProject and location recordedGeophysics done2
-soundings interpretedDesign done24 m of screenPumping test to doNo test loadedWater quality to doNo
-analysis loadedCost doneUS$ 6,071 total costStart from a sample projectEach sample is a real dataset
-transcribed from a field report, and loads as the original template workbook, so it exercises
-exactly the same reader an uploaded file does.Rokel - geophysical surveySix Schlumberger VES points
-from a Living Water International siting survey; drives the VES, maps and geophysical report
-pages.Load RokelKuntoloh - step drawdown testA four-step test whose discharges were never written on
-the sheet; shows the pending-yield path and the manual entry that resolves it.Load KuntolohDr Timbo
-- drilling to handoverA complete borehole: drilling log, constant discharge test and water quality
-analysis, enough for the completion, pumping test, quality and handover reports.Load Dr TimboOr
-start from your own datarokel_ves.xlsxLoaded — click to replaceRemoveDrilling log (.xlsx)Depth
-intervals with lithology and water strikesPumping test (.xlsx or .docx)Step or constant discharge
-with recoveryWater quality results (.xlsx)Parameter · value · unit from the laboratoryNot sure of
-the layout? The Templates page has a blank workbook for each of these.Field use without a
-networkThis app is saved on the deviceIt will open and work with no network at all. Sample projects,
-the standards tables and every calculation are already here; only the live water point lookup needs
-a connection.New to the toolkit? The guided start walks through one borehole from field sheet to
-signed report.Guided start →
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Rokel Western Area Rural · Living
+Water International Save project Open project ◐ Groundwater Toolkit Rural water supply boreholes
+Start Overview Guided start Training Borehole Site & maps Step 1 of 9, done Geophysics (VES) Step 2
+of 9, done Borehole design Step 3 of 9, done Pumping test Step 4 of 9 Water quality Step 5 of 9
+Costing & BoQ Step 6 of 9, done Procurement Step 7 of 9 Supervision Step 8 of 9 Handover Step 9 of 9
+Field tools VES co-pilot Drilling co-pilot Pumping co-pilot Depth Spine Scanned sheets Templates
+Programme Water points Coverage gap Portfolio Asset registry Report on a borehole Reference Verify a
+document Settings About & method Overview The whole borehole lifecycle in one workspace: site the
+well, design it, test it, sample it, cost it and hand it over. Everything runs in this browser — no
+data is uploaded anywhere. Headline results Total depth 40 m 1 screened section Cost per metre US$
+152 total cost basis Progress Click a stage to go there. Site done Project and location recorded
+Geophysics done 2 soundings interpreted Design done 24 m of screen Pumping test to do No test loaded
+Water quality to do No analysis loaded Cost done US$ 6,071 total cost Start from a sample project
+Each sample is a real dataset transcribed from a field report, and loads as the original template
+workbook, so it exercises exactly the same reader an uploaded file does. Rokel - geophysical survey
+Six Schlumberger VES points from a Living Water International siting survey; drives the VES, maps
+and geophysical report pages. Load Rokel Kuntoloh - step drawdown test A four-step test whose
+discharges were never written on the sheet; shows the pending-yield path and the manual entry that
+resolves it. Load Kuntoloh Dr Timbo - drilling to handover A complete borehole: drilling log,
+constant discharge test and water quality analysis, enough for the completion, pumping test, quality
+and handover reports. Load Dr Timbo Or start from your own data rokel_ves.xlsx Loaded — click to
+replace Remove Drilling log (.xlsx) Depth intervals with lithology and water strikes Pumping test
+(.xlsx or .docx) Step or constant discharge with recovery Water quality results (.xlsx) Parameter ·
+value · unit from the laboratory Not sure of the layout? The Templates page has a blank workbook for
+each of these. Field use without a network This app is saved on the device It will open and work
+with no network at all. Sample projects, the standards tables and every calculation are already
+here; only the live water point lookup needs a connection. New to the toolkit? The guided start
+walks through one borehole from field sheet to signed report. Guided start →

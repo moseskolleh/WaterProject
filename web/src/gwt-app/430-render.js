@@ -10,7 +10,7 @@
    * procurement labels its certificate lines with them, and water quality
    * its status column, so the page and the report cannot word a result
    * differently. */
-  var FIRST_SCREEN = { overview: true, guided: true, templates: true,
+  var FIRST_SCREEN = { overview: true, guided: true, training: true, templates: true,
     extract: true, settings: true, about: true, verify: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
   /* A page that is a module of its own, fetched with what it draws with: the
