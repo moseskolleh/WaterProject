@@ -68,6 +68,7 @@ from .design import (
     GATE_SET_ASIDE_LOG,
     rising_main_reference,
 )
+from .community_sheet import community_sheet_reference
 from .desk_study import desk_study_reference
 from .elevation import elevation_window_reference
 from .extraction import extraction_reference, pdf_sheet_reference
@@ -618,6 +619,7 @@ def build() -> dict:
     out["photo_evidence"] = photo_evidence_reference()
     out["too_large"] = too_large_reference()
     out["field_kit"] = field_kit_reference()
+    out["community_sheet"] = community_sheet_reference()
     out["airlift"] = airlift_reference()
     out["pumping_spread"] = pumping_spread_reference()
     out["ves_forward"] = ves_forward_reference()

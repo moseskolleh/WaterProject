@@ -1254,6 +1254,40 @@ await withPage(async (page, base, consoleErrors) => {
     const d = parted(kit[key], R.field_kit[key], key);
     check(`field kit: ${key}`, d === null, d);
   }
+  // --- the community handover sheet (PLAN.md step 9.1): every word and number
+  // the page says, for nothing loaded, for the whole of it, and for each thing
+  // that changes what it says; an address the registry refuses stops both ---
+  const sheet = await page.evaluate((ref) => {
+    const C = GWT.core;
+    return {
+      results: ref.cases.map((c) => {
+        try {
+          return C.communitySheetContent(c.site, {
+            analysis: c.analysis || null, quality: c.quality || null,
+            committee: c.committee || null, assetId: c.asset_id || '',
+            hoursPerDay: c.hours_per_day === undefined ? null : c.hours_per_day,
+            config: C.withConfig({ service: { report_url: c.report_url || '' } }),
+          });
+        } catch (e) {
+          return { error: e.message };
+        }
+      }),
+      rounded: ref.amounts.map((x) => C.roundDown(x)),
+    };
+  }, R.community_sheet);
+  R.community_sheet.results.forEach((ref, i) => {
+    for (const key of Object.keys(ref)) {
+      const d = parted(sheet.results[i][key], ref[key], key);
+      check(`community sheet case ${i + 1}: ${key}`, d === null, d);
+    }
+    const extra = Object.keys(sheet.results[i]).filter((key) => !(key in ref));
+    check(`community sheet case ${i + 1}: nothing the reference lacks`, extra.length === 0,
+      extra.join(', '));
+  });
+  {
+    const d = parted(sheet.rounded, R.community_sheet.rounded, 'rounded');
+    check('community sheet: amounts rounded down to two figures', d === null, d);
+  }
   // --- the drilling co-pilot's airlift yield (PLAN.md step 2.3): the figure,
   // the sentence the sheets print for its basis, and its warnings; a reading
   // that gives no yield is refused by both ---
