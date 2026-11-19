@@ -160,7 +160,11 @@ screenshot by hand, and nobody has to remember to retake one: `nox -s
 browser` opens each page a picture shows and compares its words with the
 words the picture was taken of (`web/guide/<name>.txt`), so a change that
 rewords a page fails until `nox -s guide` has been run, and the diff of
-that `.txt` file is what the page now says differently. Commit
+that `.txt` file is what the page now says differently. Numbers are not
+compared, only that there is one: an inversion's count of iterations and
+the last digit of a fitted value differ from one browser version to the
+next. The release workflow covers those, by asking that every picture
+was retaken since the app last changed. Commit
 `docs/guide`, `web/guide`, the page and `docs/sw.js` together.
 
 ## Two engines, one answer

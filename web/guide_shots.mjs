@@ -16,12 +16,23 @@
  * What "changed" means. Two machines do not draw the same pixels, so the
  * pictures are not compared. Beside each picture is kept the text of the
  * page it shows, in web/guide/<name>.txt, and --check opens every page again
- * and compares the words: a heading renamed, a button added or a number that
- * moved fails it and names the shot and the first words that differ. A
- * change only to how a page looks changes no words, which is what --release
- * is for: web/guide/shots.json records a hash of the app's files when every
- * shot was last retaken, and a release whose app is not that app is refused
- * until they are retaken. --release reads files and starts no browser.
+ * and compares the words: a heading renamed, a button added or a sentence
+ * reworded fails it and names the shot and the first words that differ.
+ *
+ * The words, and not the numbers among them. The first run of this check in
+ * CI failed on a page that had not changed: the Geophysics page said an
+ * inversion took 16 iterations on the machine that took the picture and 18
+ * on CI's, whose browser is another version, and a fitted value can differ
+ * in its last printed digit the same way. So every number is read as "a
+ * number here": one that moved fails nothing, one that appeared or went
+ * does. The record keeps the numbers as they were seen, so that it reads as
+ * the page did.
+ *
+ * A number that moved, like a change only to how a page looks, is what
+ * --release is for: web/guide/shots.json records a hash of the app's files
+ * when every shot was last retaken, and a release whose app is not that app
+ * is refused until they are retaken. --release reads files and starts no
+ * browser.
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -137,11 +148,24 @@ function asLines(words) {
   return lines.join('\n') + '\n';
 }
 
-/* where two texts first differ, with a few words either side */
+/* A page's words with every number read as "a number here" (the header
+ * says why), and the line breaks of the record, which fall where the
+ * lengths of the numbers put them, read as spaces. */
+function wordsOf(text) {
+  return text.replace(/\d[\d.,]*\d|\d/g, '#').replace(/\s+/g, ' ').trim();
+}
+
+/* whether a page reads as it did when its picture was taken */
+function sameWords(was, now) {
+  return was !== null && wordsOf(was) === wordsOf(now);
+}
+
+/* where two texts first differ in their words, with a few either side,
+ * quoted with their numbers as each was seen */
 function firstDifference(was, now) {
-  const a = was.split(/\s+/), b = now.split(/\s+/);
+  const a = was.trim().split(/\s+/), b = now.trim().split(/\s+/);
   let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+  while (i < a.length && i < b.length && wordsOf(a[i]) === wordsOf(b[i])) i += 1;
   const from = Math.max(0, i - 6);
   return {
     was: a.slice(from, i + 8).join(' ') || '(nothing)',
@@ -290,7 +314,7 @@ async function main() {
       const have = {};
       for (const shot of shots) have[shot.name] = (await readText(PICTURES + shot.name + '.png')) !== null;
       const seen = await visit(browser, base, device, shots, (shot, words) => {
-        const changed = was[shot.name] !== words || !have[shot.name];
+        const changed = !sameWords(was[shot.name], words) || !have[shot.name];
         if (mode === '--check') {
           if (changed) stale.push({ name: shot.name, was: was[shot.name], now: words, have: have[shot.name] });
           return false;
@@ -298,8 +322,11 @@ async function main() {
         if (mode === '--all' || changed) { taken.push(shot.name); return true; }
         return false;
       });
-      if (mode !== '--check') {
-        for (const shot of shots) await writeFile(RECORD + shot.name + '.txt', seen[shot.name]);
+      /* A record is written with its picture and only then: a page whose
+       * words stand keeps the record of the machine that took the picture,
+       * so that a number that differs here does not show as a change. */
+      for (const shot of shots) {
+        if (taken.includes(shot.name)) await writeFile(RECORD + shot.name + '.txt', seen[shot.name]);
       }
     }
   } finally {

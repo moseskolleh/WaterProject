@@ -110,8 +110,9 @@ nox -s guide -- --all   # retake every picture: before a release
 ```
 
 and commit `docs/guide`, `web/guide`, `docs/user_guide.html` and
-`docs/sw.js`. A change that only moves how a page looks changes no words
-and fails nothing in CI, so the release workflow asks for more: it refuses
+`docs/sw.js`. A change that only moves a number or how a page looks
+changes no words and fails nothing in CI, so the release workflow asks for
+more: it refuses
 a tag unless every picture was retaken (`--all`) since the app's files last
 changed. Run that before tagging a release.
 
