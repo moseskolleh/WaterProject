@@ -8779,6 +8779,12 @@
          * package and the Streamlit app report */
         el('p.about-version', 'Version ' + (GWT.data.version || 'not recorded') +
           ' of the Groundwater Investigation Toolkit.'),
+        /* the guide is a page beside the app, precached with it (PLAN.md
+         * step 9.5); it opens in this tab, and its own bar leads back */
+        el('p', ['How to record each field sheet, what each page is for, what to do ' +
+          'when something goes wrong and what the words mean are in the ',
+          el('a', { href: 'user_guide.html' }, 'User guide'),
+          ', which is kept on the device with the app.']),
         el('p', 'A standalone version of the Groundwater Investigation Toolkit ' +
           'for rural water supply boreholes in Sierra Leone. It covers the whole ' +
           'project lifecycle — geophysical siting, borehole design, drilling ' +

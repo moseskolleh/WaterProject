@@ -1,0 +1,226 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ RokelWestern Area Rural · Living
+Water International Save projectOpen project◐ Groundwater Toolkit Rural water supply boreholes
+StartOverviewGuided startBoreholeSite & mapsStep 1 of 9, doneGeophysics (VES)Step 2 of 9,
+doneBorehole designStep 3 of 9, donePumping testStep 4 of 9Water qualityStep 5 of 9Costing & BoQStep
+6 of 9, doneProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES
+co-pilotDrilling co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater
+pointsCoverage gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout
+& method Geophysics (VES)Vertical electrical soundings inverted to layered earth models, interpreted
+for the crystalline basement, and ranked into a drilling preference table.Sounding dataRe-run
+inversionSample the range of modelsrokel_ves.xlsxLoaded — click to replaceRemove2 soundings read: A
+(1), B (2)Data checksCheckAt an MN change the two readings at one AB/2 should agree within a few
+percent; these differ by more than 20 percent: AB/2 10 m: 1392 and 961 ohm-m (ratio 1.45); AB/2 40
+m: 156.1 and 78.7 ohm-m (ratio 1.98). That is a field problem (potential-electrode contact, lateral
+inhomogeneity at the new MN) or a transcription slip, and the inversion merges the pair by geometric
+mean, so part of the model misfit is made by the splice. Check the sheet before relying on the deep
+branch.A (1)CheckAt an MN change the two readings at one AB/2 should agree within a few percent;
+these differ by more than 20 percent: AB/2 10 m: 1307 and 891.8 ohm-m (ratio 1.47); AB/2 40 m: 147.9
+and 96.3 ohm-m (ratio 1.54); AB/2 70 m: 90.3 and 55.2 ohm-m (ratio 1.64). That is a field problem
+(potential-electrode contact, lateral inhomogeneity at the new MN) or a transcription slip, and the
+inversion merges the pair by geometric mean, so part of the model misfit is made by the splice.
+Check the sheet before relying on the deep branch.B (2)Note4 AB/2 value(s) repeated with different
+MN (segment changes); both readings kept.A (1)Note4 AB/2 value(s) repeated with different MN
+(segment changes); both readings kept.B (2)A (1) — type KFit error13.3%3 layers, 16 iterationsDepth
+to bedrocknot resolvedAquifer thickness32 m1 zoneMax drilling depthat least 40 ma minimum: the zone
+continues below the depth of investigationProtective capacitypoorS = 0.00525
+S125102050100501002005001000Sounding curve - A (1)AB/2 (m)Apparent resistivity (ohm-m)MeasuredModel
+responsefit error 13.3% · 3 layersSounding curve for A
+(1)TablePNGSVG50100200500100020000510152025303540Layered modelResistivity (Ω·m)Depth (m)1,100
+Ω·m1,640 Ω·m47.3 Ω·mLayered model for A (1)PNGSVGLayerResistivity (Ω·m)Thickness (m)Top (m)Bottom
+(m)Interpretation11,105 ×/÷ 1.31.0201.02dry lateritic topsoil / duricrust21,637 ×/÷
+1.27.081.028.1compact or dry weathered rock (regolith)347.28 ×/÷ 1.1—8.1—weathered or fractured
+zone, potentially water bearing when saturated; its base is not resolved within the depth of
+investigationThe data at A (1) are fitted with a 3 layer model (type K; a resistive layer between
+two more conductive layers, often dry laterite or duricrust over a conductive saprolite), though the
+boundary at 1.02 m is poorly resolved, so the layer count is uncertain. Layer 1 from 0 m to 1.02 m
+(1.02 m thick) has a resistivity of about 1,105 ohm-m and is interpreted as dry lateritic topsoil /
+duricrust. Layer 2 from 1.02 m to 8.1 m (7.08 m thick) has a resistivity of about 1,637 ohm-m and is
+interpreted as compact or dry weathered rock (regolith). Layer 3 below 8.1 m has a resistivity of
+about 47.28 ohm-m and is interpreted as weathered or fractured zone, potentially water bearing when
+saturated; its base is not resolved within the depth of investigation. The unusually low resistivity
+within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly
+groundwater. The possible water zones are 8 m to at least 40 m. The base of the deepest zone is not
+resolved: the sounding sees to about 40 m, and the conductive ground continues below that. The model
+reproduces the readings to 13.3 percent (ERR), above the target, so the layer depths are
+approximate. The Dar-Zarrouk longitudinal conductance of the section is 0.00525 siemens and the
+transverse resistance is 12,700 ohm m2. The cover overlying the water bearing zone has a
+longitudinal conductance of 0.00525 siemens, indicating a poor protective capacity against surface
+contamination.The ×/÷ figures are the one-sigma multiplicative uncertainty on each resistivity: a
+factor near 1 is well resolved, a large one marks the equivalence that makes resistivity models
+non-unique.B (2) — a two layer response with resistivity decreasing at depth, consistent with
+weathered or fractured, possibly water bearing rock beneath a resistive surface layerFit error26.8%2
+layers, 21 iterationsDepth to bedrocknot resolvedAquifer thickness32 m1 zoneMax drilling depthat
+least 40 ma minimum: the zone continues below the depth of investigationProtective capacitypoorS =
+0.00694 S125102050100501002005001000Sounding curve - B (2)AB/2 (m)Apparent resistivity
+(ohm-m)MeasuredModel responsefit error 26.8% · 2 layersSounding curve for B
+(2)TablePNGSVG5010020050010000510152025303540Layered modelResistivity (Ω·m)Depth (m)1,190 Ω·m50
+Ω·mLayered model for B (2)PNGSVGLayerResistivity (Ω·m)Thickness (m)Top (m)Bottom
+(m)Interpretation11,193 ×/÷ 1.18.2808.28dry lateritic topsoil / duricrust249.97 ×/÷
+1.2—8.28—weathered or fractured zone, potentially water bearing when saturated; its base is not
+resolved within the depth of investigationThe data at B (2) resolves a 2 layer subsurface (a two
+layer response with resistivity decreasing at depth, consistent with weathered or fractured,
+possibly water bearing rock beneath a resistive surface layer). Layer 1 from 0 m to 8.28 m (8.28 m
+thick) has a resistivity of about 1,193 ohm-m and is interpreted as dry lateritic topsoil /
+duricrust. Layer 2 below 8.28 m has a resistivity of about 49.97 ohm-m and is interpreted as
+weathered or fractured zone, potentially water bearing when saturated; its base is not resolved
+within the depth of investigation. The unusually low resistivity within the interpreted fractured or
+weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water
+zones are 8 m to at least 40 m. The base of the deepest zone is not resolved: the sounding sees to
+about 40 m, and the conductive ground continues below that. The model reproduces the readings to
+26.8 percent (ERR), well above the target: it does not describe the curve closely, and the layer
+depths are indicative only. The Dar-Zarrouk longitudinal conductance of the section is 0.00694
+siemens and the transverse resistance is 9,880 ohm m2. The cover overlying the water bearing zone
+has a longitudinal conductance of 0.00694 siemens, indicating a poor protective capacity against
+surface contamination.The ×/÷ figures are the one-sigma multiplicative uncertainty on each
+resistivity: a factor near 1 is well resolved, a large one marks the equivalence that makes
+resistivity models non-unique.Drilling preferenceNo.VES pointPossible water zones (m)Max
+depthRanking1A (1)8-40+at least 40 m1st2B (2)8-40+at least 40 m2ndRanking follows the suitability
+score: thickness of the interpreted water bearing zones, weighted towards resistivities in the
+productive window. Where sites score close together the choice is a professional judgment call — set
+the order explicitly below.Preferred order (most preferred first, comma separated)Drill-target
+suitabilityA transparent 0-100 score per point, combining the interpreted aquifer thickness, how
+central the water-zone resistivity sits in the productive window, the weathered profile and any
+fracture at the basement contact. The weights are a defensible default, not a calibrated model: as
+real drilling outcomes accumulate they can be replaced by a fitted one.Recommended drill target: A
+(1) (68/100, Good)Driven by at least 32 m of interpreted water-bearing thickness, the base of the
+zone being below the depth the sounding resolves (thick); resistivities near the edge of the
+productive window. Confidence 0.71: a model fit of 13.3 percent (ERR) and a basement the sounding
+did not reach discount the score before ranking.RankPointSuitabilityChance of a working
+boreholeGradeWhy1A (1)68/10096 percent (90 to over 99)GoodDriven by at least 32 m of interpreted
+water-bearing thickness, the base of the zone being below the depth the sounding resolves (thick);
+resistivities near the edge of the productive window. Confidence 0.71: a model fit of 13.3 percent
+(ERR) and a basement the sounding did not reach discount the score before ranking.2B (2)68/10097
+percent (90 to over 99)GoodDriven by at least 32 m of interpreted water-bearing thickness, the base
+of the zone being below the depth the sounding resolves (thick); resistivities near the edge of the
+productive window. Confidence 0.42: a model fit of 26.8 percent (ERR) and a basement the sounding
+did not reach discount the score before ranking.Chance of a working boreholeBeside the suitability
+score, each point is given the chance that a borehole there yields enough for a handpump through the
+dry season: a prior for the ground under it, from published yields, multiplied by a factor for each
+thing the survey found. The table under each point shows how far each factor moved it. Every figure
+here is provisional. Success means a yield of at least 1 m3/h (0.28 L/s) at the dry-season water
+level, the handpump design rate in the configuration. Basis: the prior from success_prior.csv and
+the likelihood ratios from success_evidence.yaml; calibration: the toolkit's provisional default
+from PLAN.md step 3.3, adopted by no named person and not calibrated against drilled outcomes. The
+band is the 10th to 90th percentile of a Beta prior with the table's effective sample size, carried
+through the same factors; the factors themselves are provisional choices. The suitability score is
+kept beside these odds for comparison.A (1): About 96 percent (between 90 and over 99) that a
+borehole here yields enough for a handpump through the dry season. Provisional prior. The prior is
+97 percent (between 90 and over 99), for the BGS class U-M/H on the USGS unit Qe: BGS Moderate to
+High productivity, the span 2 to 20 L/s (O Dochartaigh 2021, Tables 3 and 4). No cited source
+separates the Holocene unit within the class, so the class's yields apply. The yields say nothing of
+salinity near the coast. Read as the quartiles of a lognormal spread, 2 and 20 L/s put 97 percent of
+boreholes at or above 0.28 L/s. It is held as firmly as 10 boreholes would hold it, and has not been
+calibrated against boreholes drilled here. The range of models has not been sampled at A (1), so the
+depth to basement and whether it was resolved are left out (a factor of 1 each); sample the range to
+use them.EvidenceWhat the survey foundFactor on the oddsChance after (percent)Priorthe BGS class
+U-M/H on the USGS unit Qe–97Depth to basement (P50)range not sampled1.0097Basement resolvedrange not
+sampled1.0097Water-zone resistivity47 ohm-m: clayey0.9096Confidence of the fit13.3 percent: poor,
+the survey evidence weighted 0.61.0496How the survey moved the chance of a working borehole at point
+A (1). Each factor multiplies the odds; together they multiply the prior odds to the odds the
+headline gives.B (2): About 97 percent (between 90 and over 99) that a borehole here yields enough
+for a handpump through the dry season. Provisional prior. The prior is 97 percent (between 90 and
+over 99), for the BGS class U-M/H on the USGS unit Qe: BGS Moderate to High productivity, the span 2
+to 20 L/s (O Dochartaigh 2021, Tables 3 and 4). No cited source separates the Holocene unit within
+the class, so the class's yields apply. The yields say nothing of salinity near the coast. Read as
+the quartiles of a lognormal spread, 2 and 20 L/s put 97 percent of boreholes at or above 0.28 L/s.
+It is held as firmly as 10 boreholes would hold it, and has not been calibrated against boreholes
+drilled here. The range of models has not been sampled at B (2), so the depth to basement and
+whether it was resolved are left out (a factor of 1 each); sample the range to use them.EvidenceWhat
+the survey foundFactor on the oddsChance after (percent)Priorthe BGS class U-M/H on the USGS unit
+Qe–97Depth to basement (P50)range not sampled1.0097Basement resolvedrange not
+sampled1.0097Water-zone resistivity50 ohm-m: clayey0.9096Confidence of the fit26.8 percent:
+unreliable, the survey evidence weighted 0.31.0897How the survey moved the chance of a working
+borehole at point B (2). Each factor multiplies the odds; together they multiply the prior odds to
+the odds the headline gives.The value of one more measurementBefore the rig is called, one more
+sounding beside the first-ranked point, or a profiling line through it, can change where to drill.
+Each is worth what it is expected to save that decision, over everything it might read: the expected
+cost of the best choice now, less the expected cost of the best choice once its reading is known.A
+second sounding beside A (1) is worth up to US$ 11 to this decision and costs about US$ 100. It
+costs more than it is worth to this decision.Without it, going to point B (2) is the cheaper choice:
+the chance of a working borehole there is about 97 percent, against 96 at A (1). Going there
+straight away is expected to cost US$ 7,790 for a working borehole; drilling at A (1) first, and
+going to point B (2) if it is dry, US$ 7,794. The choice changes, to drilling at A (1), on the
+readings whose factors multiply to more than 1.03, which the measurement reads with a chance of
+about 56 percent. Taking the cheaper choice on each reading, the expected cost falls from US$ 7,790
+to US$ 7,779. Knowing for certain whether a borehole at A (1) would work would be worth US$ 121 to
+this decision; no measurement can be worth more. The range of models has not been sampled at A (1),
+so a second sounding is read, as this one was, for its water-zone resistivity alone, and is worth
+what a profiling line is; sample the range to count its depth to basement too.Chance (percent)Chance
+at A (1) after (percent)ChoiceExpected cost of a working borehole (US$)Without the measurement–96Go
+to point B (2)7,790Readings that keep the choice4496Go to point B (2)7,790Readings that change
+it5697Drill at A (1)7,771With the measurement, on average–––7,779Value of the measurement (the
+difference)–––11Value of knowing for certain–––121The choice without the measurement and with it.
+The chances of the readings that keep the choice and of those that change it add to 100 percent,
+their expected costs weighted by those chances add to the cost with the measurement, and the value
+is what that saves on the cost without it.A profiling line through A (1) is worth up to US$ 11 to
+this decision and costs about US$ 150. It costs more than it is worth to this decision.Without it,
+going to point B (2) is the cheaper choice: the chance of a working borehole there is about 97
+percent, against 96 at A (1). Going there straight away is expected to cost US$ 7,790 for a working
+borehole; drilling at A (1) first, and going to point B (2) if it is dry, US$ 7,794. The choice
+changes, to drilling at A (1), on the readings whose factors multiply to more than 1.03, which the
+measurement reads with a chance of about 56 percent. Taking the cheaper choice on each reading, the
+expected cost falls from US$ 7,790 to US$ 7,779. Knowing for certain whether a borehole at A (1)
+would work would be worth US$ 121 to this decision; no measurement can be worth more.Chance
+(percent)Chance at A (1) after (percent)ChoiceExpected cost of a working borehole (US$)Without the
+measurement–96Go to point B (2)7,790Readings that keep the choice4496Go to point B (2)7,790Readings
+that change it5697Drill at A (1)7,771With the measurement, on average–––7,779Value of the
+measurement (the difference)–––11Value of knowing for certain–––121The choice without the
+measurement and with it. The chances of the readings that keep the choice and of those that change
+it add to 100 percent, their expected costs weighted by those chances add to the cost with the
+measurement, and the value is what that saves on the cost without it.What the measurement could read
+at A (1): each band's factor on the odds there, how often it is taken to be seen among working and
+among dry boreholes, and the chance of reading it there now.EvidenceWhat it could readFactor on the
+oddsAmong working boreholes (percent)Among dry holes (percent)Chance of reading it here
+(percent)Water-zone resistivityno water-bearing zone in reach0.49242Water-zone resistivityunder 20
+ohm-m: clay-rich or saline0.747107Water-zone resistivity20 to 50 ohm-m: clayey0.94171817Water-zone
+resistivity50 to 300 ohm-m: productive weathered zone1.22564656Water-zone resistivity300 to 800
+ohm-m: resistive0.87131513Water-zone resistivityover 800 ohm-m: little-weathered rock0.66575Basis: a
+working borehole is needed, so the choice is where to drill, not whether. The alternative is the
+other surveyed point with the best odds, or on a survey of one point an unsurveyed site on the same
+ground at the prior. Going to it is taken to cost its expected cost per working borehole, from the
+cost distribution's mean completed borehole (US$ 7,664) and mean dry attempt (US$ 3,505); drilling
+at the point first costs the completed borehole if it works, and the dry attempt and then the
+alternative if it does not. Both places are taken to cost the same to drill. What a measurement
+could read are the bands of success_evidence.yaml, its likelihood ratios raised to the weight of the
+point's fit (0.6). The ratios do not say how often each band is seen, so the bands are spread among
+dry boreholes as evenly as the ratios allow, and among working ones by the ratios; other spreads the
+ratios allow give other values, larger or smaller, so the even spread is a choice and not a bound.
+The readings are taken as independent of each other and of the readings already made, given whether
+a borehole at the point would work; a sounding beside the first reads much of the same ground, so
+this overstates what it adds. The cost of each measurement is a provisional figure in field.yaml
+with no recorded source, and the likelihood ratios are provisional too.Drill-target
+suitabilityBonthe UrbanYork RuralYoniYaweiYawbekoYakemu KpukumuWondeWest IIIWest IIWest IWaterloo
+RuralWara Wara YagalWara Wara BafodWandorValuniaUpper BantaUpper BambaraTunkiaTonko
+LimbaToliTMSTimdaleTikonkoTankoroTaneTambakhaSulimaSowaSoro GbemaSogbeniSoaSmall
+BoSittiaSimbaruSengbeSella LimbaSelengaSandorSanda TendaranSanda MagbolontSanda
+LokoSamuSambayaSafroko LimbaRibbiPenguiaPejeh(Futa pejePanga krimPanga KabondePaki
+MasabongNongowaNongoba BullomNomoNjaluahunNimiyamaNimikoroNieniNiawa LengaNiawaNeyaMountain
+RuralMono SakrimMongoMasungbalaMasimeraMarampaManduMamboloMalenMalemaMalegohunMalal
+MaraMakpeleMakeni TownMakari GbantiMagbemaMagbaimba NdorhMaforkiMafindorLugbuLuawaLower BantaLower
+BambaraLokomasamaLibeisaygahunLeiLangramaKwamebai KrimKunike BarinaKunikeKpeje WestKpeje
+BongreKpanda KemoKpakaKoya RuralKoyaKoya (Port Loko)KowaKoriKongboraKomboyaKoidu TownKissi
+TongiKissi TengKissi KamaKholifa RowalaKholifa MabangKenema TownKasunkoKandu
+LeppiamaKamaraKamajeiKalansogoiaKakuaKaiyambaKagboroKaffu BullomKafe SimiriaJongJawieJaiama
+BongorImperriGorama MendeGorama KonoGbonkolenkenGboGbinle DixingGbenseGbendembu NgowaGbanti
+KamarankGbane KandorGbaneGauraGalliness PerriFolosaba DembelFiamaFakunyaEast IIIEast IIEast
+IDodoDibiaDiangDembelia - SinkDemaDeaDasseDamaCentral IICentral IBuya RomendeBureh Kasseh
+MaBumpehBumpe NgaoBumBramaiaBombali SeboraBoamaBo
+TownBiriwaBendu-ChaBarriBagruwaBagbwe(Bagbe)BagboBadjiaA (1)B
+(2)13°30′W13°W12°30′W12°W11°30′W11°W10°30′W10°W7°N7°30′N8°N8°30′N9°N9°30′N0100 kmNVery
+goodGoodModeratePoorCandidate points scored for drillingPNGSVGPredictions and outcomesWhat the
+survey predicts at each point, written down now, so it can be set beside what the borehole finds and
+the method can learn from the holes drilled with it. A prediction recorded before drilling is kept
+as it was made once the borehole is drilled. One recorded once a drilling log or a pumping test is
+loaded, once the point drilled is chosen, or once the ledger holds the borehole's outcome, is marked
+as recorded after drilling, and stays so when it is recorded again. Building the geophysical report
+records its predictions too. The ledger is saved in the project file, and the Portfolio page pools
+it across projects.Record the survey's predictionsNo prediction is recorded yet.Geophysical survey
+reportIntroduction, geology, field work, per-sounding interpretation, the ranked preference table,
+conclusions and the limitations of the method.Not ready to certify - outstanding: Field data,
+Decision bands.ErrorField data — This project is built on the bundled example data (rokel_ves.xlsx),
+which was recorded at another site. The analysis is of that example, not of the borehole named on
+this report.ErrorDecision bands — Drilling depth at A (1) has no band: the range of models has not
+been sampled at A (1).The report will still be produced, stamped PROVISIONAL and listing these
+items. To issue it as an interim document instead, record who is issuing it and why.Issued
+byReasonRecord overrideBuild Geophysical survey report (.docx)With a target chosen, set out the
+borehole construction.Borehole design →

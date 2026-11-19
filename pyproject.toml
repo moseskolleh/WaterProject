@@ -53,6 +53,10 @@ dev = [
     "pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "rasterio>=1.3",
     "ruff==0.17.3", "nox>=2024.4.15", "build>=1.0", "hypothesis==6.168.5",
     "pyright==1.1.414", "pytest-cov>=5",
+    # web/build_guide.py turns docs/user_guide.md into docs/user_guide.html,
+    # and CI holds the committed page to a fresh build, byte for byte: held
+    # to one version so that a reader that moves does not fail that check
+    "markdown-it-py==4.0.0",
 ]
 
 [project.scripts]

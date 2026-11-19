@@ -1,0 +1,53 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ KuntolohPort Loko · ACF Save
+projectOpen project◐ Groundwater Toolkit Rural water supply boreholes StartOverviewGuided
+startBoreholeSite & mapsStep 1 of 9, doneGeophysics (VES)Step 2 of 9Borehole designStep 3 of
+9Pumping testStep 4 of 9, doneWater qualityStep 5 of 9Costing & BoQStep 6 of 9ProcurementStep 7 of
+9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES co-pilotDrilling co-pilotPumping
+co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater pointsCoverage gapPortfolioAsset
+registryReport on a boreholeReferenceVerify a documentSettingsAbout & method Pumping
+testCooper-Jacob, Theis and recovery on the same readings, a step drawdown analysis where the test
+has steps, and a safe yield reported as a range over the assumptions it rests on.Test
+datakuntolo_step_test.xlsxLoaded — click to replaceRemoveDischarge per stepParsed step drawdown test
+with recovery with 3 pumping series and a recovery record.Discharge is often left off the field
+sheet. Enter the bucket-and-stopwatch figures here and every pending result is computed immediately
+— the value belongs to the project, not to the file, so it survives a re-upload.StepReadingsDuration
+(min)Discharge (m³/h)Step 13460Step 234120Step 324158Data checksCheckDischarge not recorded for
+step(s) 1, 2, 3. Drawdown and recovery curves are produced, but transmissivity and yield results are
+pending until discharge values are supplied.CheckSome pumping and recovery water levels are above
+the stated static water level, giving negative drawdown. Check the static level and the measuring
+datum on the sheet.CheckRecorded water level 78.45 m exceeds the stated borehole depth 70 m; check
+the sheet.CheckRecorded water level 78.45 m is below the pump intake at 60 m. A pump cannot draw the
+level below its own intake, so the pump setting, the levels or the datum on the sheet is wrong; the
+drawdown figures are as recorded and not to be relied on.CheckStep test analysis pending: discharge
+per step is missing.Field data0501001502002501020304050607080Pumping test overviewTime since start
+(min)Water level below datum (m)static water level 19.28 mtest pump intake 60 mborehole bottom 70
+mStep 1 (Q pending)Step 2 (Q pending)Step 3 (Q pending)RecoveryWater level through the pumping and
+recovery phasesPNGSVGYield recommendationYield recommendation pending: discharge is missing on the
+field sheet.Yield recommendation pending: discharge is missing on the field sheet.Through the yearA
+pumping test measures one day. The borehole has to supply the village on the worst day, and those
+are months apart: the water table is highest at the end of the rains and lowest in April or May, so
+when the test was run changes what it proves.Month the test was runnot
+knownJanuaryFebruaryMarchAprilMayJuneJulyAugustSeptemberOctoberNovemberDecemberRead from the field
+sheet where it can beAnnual water-table swing (m)Wet-season high to dry-season low. A single test
+cannot measure itdischarge is missing on the field sheetPumping test photographsPhotos stay on this
+machine and travel inside the project file.Test set-up＋Drop a photo, click to choose, or pastePump,
+dip meter, discharge measurement and stopwatchDischarge measurement＋Drop a photo, click to choose,
+or pasteDischarge disposal away from the borehole＋Drop a photo, click to choose, or paste+ Another
+photoNo photos yet — the report prints without a photo plateAsk this device for its position when a
+photograph carries noneEach photograph keeps its capture time, its position and the SHA-256 of the
+file as attached, with where each came from.Pumping test reportTest details, the full field data
+tables, each analysis method with its figure, the results summary and the yield recommendation.Not
+ready to certify - outstanding: Field data, Site position, Pumping test measured, Yield
+established.ErrorField data — This project is built on the bundled example data
+(kuntolo_step_test.xlsx), which was recorded at another site. The analysis is of that example, not
+of the borehole named on this report.ErrorSite position — No GPS position is recorded on any sheet
+in this project. A borehole that cannot be found again on the ground cannot be certified, revisited
+or maintained.ErrorPumping test measured — No discharge is recorded for the test, so transmissivity
+and yield stay pending.ErrorYield established — discharge is missing on the field sheetThe report
+will still be produced, stamped PROVISIONAL and listing these items. To issue it as an interim
+document instead, record who is issuing it and why.Issued byReasonRecord overrideBuild Pumping test
+report (.docx)Field kitPrintable sheets for a crew without a phone or tablet: a pumping test sheet
+for each borehole, pre-filled with the site, the reading schedule and the casing-storage time, and
+three quick cards to laminate, for the pumping schedule, the VES spacings and the chlorine doses.
+Each sheet carries a QR code naming the project and the borehole, so a photographed sheet can be
+matched to its project.BoreholesField kit (.docx)Next, assess the water quality.Water quality →

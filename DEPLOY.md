@@ -73,6 +73,8 @@ python web/build_webapp_data.py   # docs/js/gwt-data.js: the guideline
                                   # layers and sample workbooks, which the
                                   # app loads when first wanted
 python web/build_demo.py          # docs/wasm/index.html: the stlite build
+python web/build_guide.py         # docs/user_guide.html: the user guide
+                                  # as a page, from docs/user_guide.md
 python web/build_offline.py       # docs/sw.js: the service worker and the
                                   # release identifier. LAST: it hashes the
                                   # whole app shell, the data included
@@ -92,6 +94,26 @@ pages are committed inside the package. Rebuild those first when
 ```bash
 cd ui/depth-spine && npm ci && npm run build:all
 ```
+
+The user guide is written in `docs/user_guide.md` and published as the
+page `docs/user_guide.html`, which `web/build_guide.py` builds; the page is
+never edited. The pictures in it, under `docs/guide/`, are never taken by
+hand either: `web/guide_shots.mjs` takes each from the app with a worked
+example loaded, and keeps beside it, in `web/guide/`, the words of the page
+it shows. CI opens every one of those pages again and fails when the words
+have changed, naming the picture; retake what is stale with
+
+```bash
+nox -s guide            # retake the pictures whose page changed, rebuild
+                        # the page and the service worker
+nox -s guide -- --all   # retake every picture: before a release
+```
+
+and commit `docs/guide`, `web/guide`, `docs/user_guide.html` and
+`docs/sw.js`. A change that only moves how a page looks changes no words
+and fails nothing in CI, so the release workflow asks for more: it refuses
+a tag unless every picture was retaken (`--all`) since the app's files last
+changed. Run that before tagging a release.
 
 The icon is not edited in `docs/` either: `web/make_brand_assets.py` writes
 `docs/icon.svg` from the same drawing as the package's own icon, and a test

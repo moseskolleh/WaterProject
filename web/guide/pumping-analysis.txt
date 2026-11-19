@@ -1,0 +1,157 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Dr. Timbo's ResidenceWestern Area
+Rural · Dr. Timbo Save projectOpen project◐ Groundwater Toolkit Rural water supply boreholes
+StartOverviewGuided startBoreholeSite & mapsStep 1 of 9, doneGeophysics (VES)Step 2 of 9Borehole
+designStep 3 of 9, donePumping testStep 4 of 9, doneWater qualityStep 5 of 9, doneCosting & BoQStep
+6 of 9, doneProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9, doneField toolsVES
+co-pilotDrilling co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater
+pointsCoverage gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout
+& method Pumping testCooper-Jacob, Theis and recovery on the same readings, a step drawdown analysis
+where the test has steps, and a safe yield reported as a range over the assumptions it rests on.Test
+datadr_timbo_constant_test.xlsxLoaded — click to replaceRemoveDischarge per stepParsed constant
+discharge test with recovery with 1 pumping series and a recovery record.Discharge is often left off
+the field sheet. Enter the bucket-and-stopwatch figures here and every pending result is computed
+immediately — the value belongs to the project, not to the file, so it survives a
+re-upload.StepReadingsDuration (min)Discharge (m³/h)Pumping phase1130Data checksCheckThe test pumped
+for 30 minutes, below the 240 minutes needed to see late-time behaviour; the yield is extrapolated
+4.2 log cycles of time to the 365-day design period and should be treated as indicative.CheckThe
+recovery line does not pass through the origin: it meets t/t' = 1 at 21.7 m of residual drawdown
+(66% of the 32.8 m the recovery started from), where Theis recovery requires zero. The residual
+drawdown is dominated by something the method does not model (casing storage, a changing static
+level or a wrong pumping time), so its transmissivity of 1.4 m2/day is reported but not
+adopted.CheckWith a 5 inch casing and a specific capacity of 0.089 m3/h per m, casing storage
+controls the drawdown for the first 117 minutes (Schafer's rule); this test pumped for 30 minutes,
+entirely inside it. The Cooper-Jacob and Theis fits see the borehole emptying rather than the
+aquifer. No fit outside that period can be adopted, so the Cooper-Jacob value is adopted only as the
+best available and the Theis value is reported but not adopted.CheckThe Theis fit returns a
+storativity of 0.18; no aquifer stores more than about 0.1 of its volume, and a value this size is
+the casing being emptied, not the aquifer draining. The fit is not adopted.CheckNo method fitted to
+standard (Theis recovery 1.4 m2/day, the recovery line meets t/t' = 1 at 21.7 m of residual
+drawdown, 66% of the drawdown the recovery started from, where the method requires zero;
+Cooper-Jacob 0.536 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage
+period; Theis curve fit 0.469 m2/day, the whole 30-minute test lies inside the 117-minute
+casing-storage period). The Cooper-Jacob value of 0.536 m2/day is adopted as the best available, so
+the yield rests on a fit that does not meet it.Field data02040608010203040506070Pumping test
+overviewTime since start (min)Water level below datum (m)static water level 9.44 mtest pump intake
+67 mborehole bottom 70 mPumping phase (2.93 m3/h)RecoveryWater level through the pumping and
+recovery phasesPNGSVGAnalysis125102051020Diagnostic plot (Bourdet derivative)Time since pumping
+started (min, log scale)Drawdown and derivative (m)Drawdown sDerivative ds/d ln t (L = 0.2 log
+cycle)Slopes 1 and 1/2Diagnostic plot (Bourdet derivative)PNGSVG125102005101520253035Cooper-Jacob
+straight line fitTime since pumping started (min, log scale)Drawdown (m)DrawdownFitted straight
+lineT = 0.536 m²/day · Δs = 24.05 m/cycle · r² = 0.968Cooper-Jacob straight line
+fitPNGSVG125102005101520253035Theis recoveryt / t' (log scale)Residual drawdown s' (m)Residual
+drawdownFitted lineintercept 21.7 m (theory: 0)T = 1.40 m²/day · r² = 0.885Theis recovery
+analysisPNGSVGMethodTransmissivity (m²/day)NoteTheis recovery1.402r² = 0.885 — not adopted: the
+recovery line meets t/t' = 1 at 21.7 m of residual drawdown, 66% of the drawdown the recovery
+started from, where the method requires zeroCooper-Jacob0.5359u = 2.24e-03 at the start of the
+fitted window, below the 0.05 criterion. In the pumped well itself this is a distance criterion met
+from the first minute; it does not test the fit — adopted as the best available; its fitted window
+3-30 minutes lies inside the 117-minute casing-storage periodTheis type curve0.4690S = 0.18 — not
+resolvable from a single pumped well — not adopted: the whole 30-minute test lies inside the
+117-minute casing-storage periodPapadopulos-Cooper0.2140its storativity of 0.53 is above 0.1, which
+no aquifer hasThe Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at
+least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing
+storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise
+after the plateau a boundary. On this test no run of three derivative points holds one slope over
+enough of a log cycle to name a regime.The derivative's log-log slope names a regime as follows:
+0.75 to 1.25 casing storage, 0.35 to 0.65 linear flow, within 0.15 of zero radial flow, and -0.25 or
+less a falling derivative; a run must hold for three points and 0.3 of a log cycle. These limits are
+judgements, set in the configuration. A derivative is a difference of readings and carries their
+scatter: on synthetic radial-flow tests with 1 to 2 cm reading errors, a boundary was named in about
+one test in a hundred, and where the derivative was under about 0.1 m some regime other than radial
+flow was named in up to half. A named regime is a reason to look at the plot, not a finding on its
+own.The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the
+first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted
+by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given:
+in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit
+the readings barely constrain it. It is not adopted: its storativity of 0.53 is above 0.1, which no
+aquifer has.Not adopted for the yield: Theis recovery (the recovery line meets t/t' = 1 at 21.7 m of
+residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero);
+Cooper-Jacob (its fitted window 3-30 minutes lies inside the 117-minute casing-storage period);
+Theis curve fit (the whole 30-minute test lies inside the 117-minute casing-storage period).Yield
+recommendationSafe yield0.39 m3/h (range over the assumptions, 0.22 to 0.71)range over the
+assumptions it rests onLong term yield0.59 m³/hbefore the 1.5× safety factorSpecific capacity0.089
+m³/h per m2.93 m3/h over 32.8 m of drawdown after 30 minutesPump intake52 mbelow the top of the
+casing, which also covers the drought-year low in the seasonal projectionIndicative, not
+establishedThe yield is indicative, not established: the test pumped for 30 minutes, below the 240
+needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole
+test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying
+rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob
+value is adopted as the best available. Confirm it by a longer test or by monitoring the pumping
+level in service before it is relied on.Projected from a 30-minute test (4.2 log cycles to 365
+days); treat as indicative. Transmissivity 0.5 m2/day from the Cooper-Jacob fit; drawdown projected
+to 365 days with storativity assumed 0.001 and effective radius 0.1 m; usable drawdown taken as 70%
+of the available drawdown 54.6 m (static level to pump intake less 3 m submergence), after reserving
+a 2 m dry-season water-table decline. A safety factor of 1.5 is applied to the long term yield.Range
+over transmissivity 0.4-0.8 m2/day, storativity 0.0001-0.01, effective radius 0.075-0.15 m and a
+dry-season decline of 1-4 m. Design to the lower figure where the supply must not fail in a dry
+year.Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8
+readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to
+P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm
+reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and
+in 48 when consecutive errors ran together. Read it as the least the spread can be.With the static
+level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield
+between 0.354 and 0.443 m3/h.At the low end of the band the long-term yield is 0.53 m3/h, which
+still covers the recommended 0.391 m3/h: the safety factor absorbs the spread in the data at the
+dry-season level.The pump intake moves between 51 and 52 m below the top of the casing over a
+dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the
+drawdown available, not by the rate.The Theis fit's own covariance puts its transmissivity between
+0.417 and 0.527 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in
+67 tests in a hundred). That band assumes every reading's error is independent of the next, which
+the bootstrap does not.Pump intake at 52 m: the static level 9.4 m plus the 2 m dry-season reserve,
+the 36.8 m of drawdown the long-term yield is projected to use and 3 m of submergence; the test
+itself drew the level to 42.3 m at 2.93 m3/h. The safety factor is kept on the rate, not spent on
+raising the pump.The pump intake of 52 m from the yield recommendation sits inside the 48-53 m
+screen; it is set at 54 m, 1 m below that screen in plain casing, so the inflow is not drawn across
+the pump.The borehole design and the completion and handover reports print the intake at 54 m.At 20
+litres per person per day over an eight hour pumping day, the safe yield serves about 156 people —
+use the lower end of the range where the supply must not fail in a dry year.Through the yearA
+pumping test measures one day. The borehole has to supply the village on the worst day, and those
+are months apart: the water table is highest at the end of the rains and lowest in April or May, so
+when the test was run changes what it proves.Month the test was runnot
+knownJanuaryFebruaryMarchAprilMayJuneJulyAugustSeptemberOctoberNovemberDecemberRead from the field
+sheet where it can beAnnual water-table swing (m)Wet-season high to dry-season low. A single test
+cannot measure itThe date '10/05/2018' could be read either way round: May or October. Those are
+different ends of the year and give different answers, so the season is treated as unknown. Record
+the month by name, or pick it below.Sized on the end of the dry season: 0.39 m3/h, falling to 0.38
+m3/h in a drought year.ScenarioFurther decline (m)Static level (m)Available drawdown (m)Safe yield
+(m3/h)Pump intake (m)As tested0.09.4454.60.40651End of dry season2.011.452.60.39152Drought
+year3.012.451.60.38452By the end of the dry season this borehole yields about 4% less than it did on
+the day of the test. Size the supply on the dry-season figure.Set the pump intake at 52 m below the
+top of the casing, which also covers the drought-year low in the seasonal projection. The pump is
+fitted once, and one that draws air in a bad year loses the village its borehole in the year it is
+needed most.NoteAs tested — The level on the day of the test. Not a design figure: unless the test
+was run at the end of the dry season the borehole will be lower than this for part of every
+year.NoteEnd of dry season — The normal annual low, which the borehole reaches every year. This is
+the figure a design should be sized on.NoteDrought year — A low deeper than a normal year's, for a
+run of poor rains. The pump has to still be under water here, or the village loses the borehole in
+exactly the year it is needed most.The annual range used is 2.0 m — the configured dry-season
+allowance, not a measurement. It is the one number here a single test cannot measure, and every
+figure in the table moves with it.Pumping test photographsPhotos stay on this machine and travel
+inside the project file.Test set-up＋Drop a photo, click to choose, or pastePump, dip meter,
+discharge measurement and stopwatchDischarge measurement＋Drop a photo, click to choose, or
+pasteDischarge disposal away from the borehole＋Drop a photo, click to choose, or paste+ Another
+photoNo photos yet — the report prints without a photo plateAsk this device for its position when a
+photograph carries noneEach photograph keeps its capture time, its position and the SHA-256 of the
+file as attached, with where each came from.Pumping test reportTest details, the full field data
+tables, each analysis method with its figure, the results summary and the yield recommendation.Not
+ready to certify - outstanding: Field data, Site position, Yield established.ErrorField data —
+Readings that were never measured are in this project: dr_timbo_water_quality.xlsx. The values in
+that file were invented to demonstrate the toolkit, so no result derived from them describes
+anything that was sampled.ErrorSite position — No GPS position is recorded on any sheet in this
+project. A borehole that cannot be found again on the ground cannot be certified, revisited or
+maintained.ErrorYield established — The safe yield of 0.39 m3/h (range over the assumptions, 0.22 to
+0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see
+late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside
+the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the
+aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is
+adopted as the best available.The report will still be produced, stamped PROVISIONAL and listing
+these items. To issue it as an interim document instead, record who is issuing it and why.Issued
+byReasonRecord overrideAssumptions carried into this report: dr_timbo_drilling_log.xlsx: Intervals,
+times, penetration rates, water strikes, grouting depth and dates are transcribed from the WiNGiN
+completion report. The lithology descriptions are illustrative reconstructions guided by the
+borehole diagram annotations - the original log leaves the sample description column empty.Build
+Pumping test report (.docx)Field kitPrintable sheets for a crew without a phone or tablet: a pumping
+test sheet for each borehole, pre-filled with the site, the reading schedule and the casing-storage
+time, and three quick cards to laminate, for the pumping schedule, the VES spacings and the chlorine
+doses. Each sheet carries a QR code naming the project and the borehole, so a photographed sheet can
+be matched to its project.BoreholesField kit (.docx)Next, assess the water quality.Water quality →

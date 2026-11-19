@@ -1,0 +1,95 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ RokelWestern Area Rural · Living
+Water International Save projectOpen project◐ Groundwater Toolkit Rural water supply boreholes
+StartOverviewGuided startBoreholeSite & mapsStep 1 of 9, doneGeophysics (VES)Step 2 of 9,
+doneBorehole designStep 3 of 9, donePumping testStep 4 of 9Water qualityStep 5 of 9Costing & BoQStep
+6 of 9, doneProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES
+co-pilotDrilling co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater
+pointsCoverage gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout
+& method Site & mapsThe header block every report carries, and where the site sits in the
+country.Project and locationClientProjectProject referenceCommunity / villageDistrict— select
+—Western Area UrbanWestern Area RuralPort
+LokoKambiaKareneBombaliFalabaKoinaduguTonkoliliKonoKenemaKailahunBoBontheMoyambaPujehunChiefdom—
+select —Koya RuralMountain RuralWaterloo RuralYork RuralField supervisorDrilling contractorGPS
+easting (UTM m)GPS northing (UTM m)UTM zoneinfer from the easting28N29NElevation (m)Dateor paste
+"lat, lon" from a phone or handheld GPSConvert to UTMInterpreted position: 8.37587° N, 13.10237° W
+(converted from UTM zone 28) — inside Waterloo Rural chiefdom, Western Area Rural districtWhere the
+site sitsSite locationRepublic of Sierra LeonePujehunPort
+LokoBontheBoKambiaKailahunKoinaduguBombaliMoyambaKenemaTonkoliliKonoWestern Area RuralWestern Area
+UrbanRepublic of Sierra LeonePort
+LokoBoKambiaKailahunKoinaduguBombaliMoyambaKenemaTonkoliliKonoRokel13°30′W13°W12°30′W12°W11°30′W11°W10°30′W10°W7°N7°30′N8°N8°30′N9°N9°30′N0100
+kmNProject siteWestern Area Rural districtother districtsDistrict boundaries: geoBoundaries (CC BY
+4.0).Project location within Sierra LeonePNGSVGPopulation: 2015 Population and Housing Census,
+Statistics Sierra Leone. Boundaries: geoBoundaries, CC BY 4.0.Study areaThe study area at a scale
+where the distances can be read off the scale bar: the chiefdom boundaries around the site, the
+survey points and any water points already found, with a thumbnail of the country showing where in
+it this is. It is the map the geophysical survey and handover reports open on.Study area — RokelYork
+RuralWest IIIWest IIWest IWaterloo RuralRibbiMountain RuralMaforkiLokomasamaKoya RuralKoya (Port
+Loko)Kaffu BullomEast IIIEast IIEast ICentral IICentral IBumpehKoya (Port Loko)LokomasamaMaforkiYork
+RuralKaffu BullomWaterloo RuralKoya RuralEast IIIMountain RuralEast IIA (1)B (2)Sierra
+Leone13°18′W13°12′W13°06′W13°W12°54′W8°12′N8°18′N8°24′N8°30′N8°36′N020 kmNON THE MAPrecommended
+pointVES pointBoundaries: geoBoundaries, CC BY 4.0 (predates the 2017 Karene and Falaba
+districts).Study area with its location in Sierra Leone inset. Boundaries from geoBoundaries (CC BY
+4.0).PNGSVGGeology and aquifersReport-ready context from freely licensed datasets: geology from the
+USGS Geologic Map of Africa, and aquifer type and productivity from the BGS Africa Groundwater
+Atlas. These are the same layers the geophysical survey and handover reports carry.Local map window
+(km around the site)Aquifer productivity around the siteConsolidated sedimentary aquifer, fracture
+flow - low to moderate productivityUnconsolidated intergranular aquifer - moderate to high
+productivityBasement aquifer - low productivityUnconsolidated intergranular aquifer - moderate to
+high productivityIgneous intrusive aquifer - low productivityIgneous intrusive aquifer - low
+productivityUnconsolidated intergranular aquifer - moderate to high productivityBasement aquifer -
+low productivityRokel13°24′W13°12′W13°W12°48′W8°12′N8°24′N8°36′N020 kmNAQUIFER TYPE AND
+PRODUCTIVITYBasement aquifer - low productivityIgneous intrusive aquifer - low
+productivityUnconsolidated intergranular aquifer - moderate to high productivityNot mapped at this
+scaleRokelBGS Africa Groundwater Atlas, CC BY-SA 4.0. The not-mapped tint is land inside Sierra
+Leone that the source layer draws nopolygon for; at this scale its coastal units stop short of the
+shore. Drawn from a 1:5,000,000 dataset: a boundary on this map isplaced to roughly 2.5 km, which is
+3% of this 80 km window. Read the contacts as regional context, not as mapped ground. Itspublisher
+states these maps are "not suitable for providing detailed information on geology and hydrogeology
+at a sub-national (e.g.catchment) scale".Aquifer type and productivity (BGS Africa Groundwater
+Atlas, CC BY-SA 4.0)PNGSVGGeology around the sitePrecambrianHoloceneHolocenePaleozoic
+IgneousPrecambrianRokel13°24′W13°12′W13°W12°48′W8°12′N8°24′N8°36′N020 kmNGEOLOGICAL UNITBullom Group
+(Q, Tb; USGS Qe)Freetown Layered Complex (Jf; USGS Pi)Precambrian basement, chiefly Leonean granite
+(LG, Lg, PLg, LM, Er, Lkm, Lkt; USGS pCm)Not mapped at this scaleRokelUSGS Geologic Map of Africa.
+Lithology: Geology of Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000). The sourcelayer
+dates this polygon as Paleozoic Igneous; it is the Freetown Layered Complex, Jurassic (about 193
+Ma). The boundary is the1:5,000,000 one either way. The not-mapped tint is land inside Sierra Leone
+that the source layer draws no polygon for; at thisscale its coastal units stop short of the shore.
+Drawn from a 1:5,000,000 dataset: a boundary on this map is placed to roughly 2.5km, which is 3% of
+this 80 km window. Read the contacts as regional context, not as mapped ground.Geology (USGS
+Geologic Map of Africa)PNGSVGTopography and terrainNo elevation model is bundled with this app and
+none is downloaded, so the terrain is worked out from tiles you supply: GeoTIFF tiles (.tif) in
+longitude and latitude, as Copernicus GLO-30 and USGS EarthExplorer SRTM tiles are published and as
+QGIS saves a clip, and SRTM-format tiles (.hgt), several tiles joined into one model. Keep the names
+the tiles came with: an .hgt tile is placed by its name alone. Copernicus GLO-30 tiles can be
+downloaded by hand from the copernicus-dem-30m bucket of the Registry of Open Data on AWS, and NASA
+SRTM and NASADEM tiles from NASA Earthdata or USGS EarthExplorer. The tiles on viewfinderpanoramas
+are void-filled compilations of several sources: declare them as Another source. The files are read
+in this browser, only the parts the window needs, and nothing is uploaded.The browser app reads
+GeoTIFF and .hgt elevation models; ESRI ASCII and XYZ grids, the topographic map over the wider map
+radius and the ground profile on the Site maps page are in the Python app.The relief, the lineament
+candidates and the survey plan go into the desk study; the topographic map and the terrain figures
+are not carried into the other reports yet.Elevation model tilesClick or drop GeoTIFF (.tif) or
+SRTM-format (.hgt) tiles hereSource of the elevation modelDetect from the file namesCopernicus
+GLO-30SRTMAnother sourceDetected, a tile is credited as Copernicus GLO-30 or SRTM only when its name
+and its georeferencing agree; a source stated here wins.Radius of the square shown (km)Drainage
+threshold (km²)A drainage line starts where more than this drains to a cell. A new threshold redraws
+the lines without analysing the ground again.Analyse the terrainInteractive mapThe maps above are
+pictures, which is what a report needs. This writes the same survey as a GeoLibre project file — an
+open, plain-JSON map format — so it can be panned, zoomed, clicked and put over satellite imagery
+instead. GeoLibre is free and open source, and the file opens in its web app, its desktop app, its
+phone apps and in a Jupyter notebook. Nothing is uploaded: the project is assembled in this page and
+saved to this machine. With a GPS fix it also draws the separation distances as rings round the
+wellhead: the ground a latrine, a burial ground or another well has to stay out of. The Python app
+also keeps each continuous surface clipped to the surveyed ground, and the drill-target score, as a
+GeoTIFF for a GIS; this page draws the surfaces only as pictures.Save GeoLibre projectOpen
+GeoLibreOpen GeoLibre and use Project → Open on the saved file, or drag it onto the map. A file on
+this machine has no address, so there is no link that can carry it; publish the project somewhere
+and it opens directly from a link.The project opens on a blank background rather than a basemap:
+switching one on is the first request it makes to the network, and that is your decision rather than
+this app's. Layer attributions travel inside the file — the aquifer layer is CC BY-SA 4.0, so a
+project carrying it inherits ShareAlike.Desk studyThe eleventh document, put together before anyone
+goes to the site: the geology and aquifer class under it, the terrain, its lineament candidates and
+the survey plan from the terrain analysis above, the water points the Water points page holds, the
+earlier projects the Portfolio page holds within 5 km, and the odds of a working borehole from the
+ground alone. Every copy is stamped as a pre-field document.Build the desk study (.docx)With the
+site recorded, upload the geophysical survey to choose the drilling point.Geophysics →

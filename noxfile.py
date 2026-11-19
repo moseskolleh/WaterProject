@@ -7,6 +7,7 @@
     nox -s fuzz            the two engines on generated field sheets
     nox -s types           Pyright on the package
     nox -s js              tsc and oxlint over the browser app in docs/js
+    nox -s guide           retake the user guide's screenshots and rebuild it
     nox -s coverage        the tests, with a line coverage report
     nox -s examples        rerun the worked examples and their index
     nox -s release         the wheel, the sdist and the example packs in dist/
@@ -83,6 +84,7 @@ BROWSER_SUITES = [
     "tests/webapp/copilot.mjs",
     "tests/webapp/fieldkit.mjs",
     "tests/webapp/a11y.mjs",
+    "tests/webapp/guide.mjs",
 ]
 
 # The one install line for the browser suites' npm packages, both at once:
@@ -280,6 +282,10 @@ def bundles(session: nox.Session) -> None:
     _python(session, "web/build_boundary_review.py", "--check")
     _python(session, "web/build_js.py", "--check")
     _python(session, "web/build_webapp_data.py")
+    # The guide's page is checked, like the three scripts, and not rebuilt:
+    # the check also says when the guide and its pictures have come apart.
+    # It comes before the worker, which carries the page and the pictures.
+    _python(session, "web/build_guide.py", "--check")
     _python(session, "web/build_offline.py")
     _unchanged(session, BUNDLES, "nox -s build")
 
@@ -317,13 +323,34 @@ def fuzz(session: nox.Session) -> None:
 def browser(session: nox.Session) -> None:
     """Drive the standalone app end to end in headless Chromium.
 
-    The last suite runs axe-core over every page, so this needs axe-core
-    beside Playwright, at the version CI installs.
+    The last two suites run axe-core, over every page of the app and over
+    the user guide, so this needs axe-core beside Playwright, at the version
+    CI installs. After them the guide's screenshots are held to the app: each
+    page a picture shows is opened and its words compared with the words
+    the picture was taken of (web/guide_shots.mjs says why the words and not
+    the pixels). A picture that has gone stale is retaken with nox -s guide.
     """
     _need_playwright(session)
     _need_axe(session)
     for suite in BROWSER_SUITES:
         session.run("node", suite)
+    session.run("node", "web/guide_shots.mjs", "--check")
+
+
+@nox.session
+def guide(session: nox.Session) -> None:
+    """Retake the user guide's screenshots from the app and rebuild its page.
+
+    Only the pictures whose page has changed are retaken; -- --all retakes
+    every one, which a release needs if the app has changed at all since
+    the last time (the release workflow refuses the tag otherwise). The
+    page is rebuilt for the new pictures' sizes, and the service worker
+    after it, since the release it puts on a device carries both.
+    """
+    _need_playwright(session)
+    session.run("node", "web/guide_shots.mjs", *session.posargs)
+    _python(session, "web/build_guide.py")
+    _python(session, "web/build_offline.py")
 
 
 @nox.session
@@ -394,8 +421,10 @@ def build(session: nox.Session) -> None:
     The Depth Spine goes first because build_demo.py inlines the package,
     and the package carries the Depth Spine build. build_js.py joins the
     three large scripts before build_webapp_data.py hashes one of them,
-    gwt-core.js, into gwt-data.js. build_offline.py goes last because it
-    hashes the shell everything before it wrote into.
+    gwt-core.js, into gwt-data.js. build_guide.py turns the user guide into
+    its page from the pictures already taken (nox -s guide takes them).
+    build_offline.py goes last because it hashes the shell everything
+    before it wrote into, the guide's page and pictures included.
     tests/webapp/reference.json is not here: it moves only when numbers are
     meant to, so regenerate it by hand with tests/webapp/make_reference.py.
     """
@@ -407,6 +436,7 @@ def build(session: nox.Session) -> None:
     _python(session, "web/build_js.py")
     _python(session, "web/build_webapp_data.py")
     _python(session, "web/build_demo.py")
+    _python(session, "web/build_guide.py")
     _python(session, "web/build_offline.py")
 
 

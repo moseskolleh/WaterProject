@@ -144,6 +144,25 @@ identifier, with no install having succeeded - which is the exact failure the
 `addAll` is there to refuse. Anything in scope the release does not carry goes
 in the separate runtime cache instead.
 
+### The user guide and its pictures
+
+`docs/user_guide.md` is the field team's guide, and `web/build_guide.py`
+builds the page that is published, `docs/user_guide.html`, from it. Edit
+the Markdown, run the script, commit both; `nox -s bundles` fails on a page
+that is not what the guide builds to.
+
+A picture in the guide is a line in `SHOTS` in `web/guide_shots.mjs`: a
+page of the browser app, a worked example to load, a laptop or a phone.
+To add one, add the line, show it in the guide as
+`![what is on the page, for a reader who cannot see it](guide/<name>.png "the caption")`
+in a paragraph of its own, and run `nox -s guide`. Nobody takes a
+screenshot by hand, and nobody has to remember to retake one: `nox -s
+browser` opens each page a picture shows and compares its words with the
+words the picture was taken of (`web/guide/<name>.txt`), so a change that
+rewords a page fails until `nox -s guide` has been run, and the diff of
+that `.txt` file is what the page now says differently. Commit
+`docs/guide`, `web/guide`, the page and `docs/sw.js` together.
+
 ## Two engines, one answer
 
 `src/groundwater/` and `docs/js/gwt-core.js` compute the same results, and

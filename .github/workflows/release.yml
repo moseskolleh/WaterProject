@@ -103,6 +103,15 @@ jobs:
       - name: The committed service worker is current
         run: python web/build_offline.py --check
 
+      # The user guide's screenshots are the app's own pages, and CI holds
+      # each to the words of the page it shows. A change only to how a page
+      # looks moves no words, so a release asks more: that every screenshot
+      # was retaken ("nox -s guide -- --all") since the app last changed at
+      # all. It compares a hash of the app's files with the one recorded
+      # then, and starts no browser.
+      - name: The user guide's screenshots are of this app
+        run: node web/guide_shots.mjs --release
+
       - name: Build the wheel, the sdist and the example packs
         run: nox -s release
 

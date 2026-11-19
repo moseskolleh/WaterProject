@@ -1,0 +1,109 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Dr. Timbo's ResidenceWestern Area
+Rural · Dr. Timbo Save projectOpen project◐ Groundwater Toolkit Rural water supply boreholes
+StartOverviewGuided startBoreholeSite & mapsStep 1 of 9, doneGeophysics (VES)Step 2 of 9Borehole
+designStep 3 of 9, donePumping testStep 4 of 9, doneWater qualityStep 5 of 9, doneCosting & BoQStep
+6 of 9, doneProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9, doneField toolsVES
+co-pilotDrilling co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater
+pointsCoverage gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout
+& method Costing & bill of quantitiesThe RWSN Borehole Costing Model: every line carries a
+construction stage and a resource category, and the contractor's cost is kept distinct from the
+client's price.InputsTotal depth (m)from the borehole designMobilisation, one way (km)Water quality
+samplesHandpumpsset 0 when the pump is a separate contractOverheads (%)Margin (%)Contingency (%)VAT
+/ GST (%)Exchange rate (SLE per US$)Cost summaryDirect worksUS$ 7,344Total costUS$ 8,446including
+15% overheadsCost per metreUS$ 121Contract priceUS$ 10,135with 20% marginPlanning budgetUS$
+11,148with 10% contingencyDirect cost by construction stageSitingUS$ 400 (5%)MobilisationUS$ 1,550
+(21%)DrillingUS$ 1,125 (15%)CasingUS$ 1,090 (15%)DevelopmentUS$ 144 (2%)Test pumpingUS$ 480
+(7%)Water qualityUS$ 145 (2%)WellheadUS$ 2,410 (33%)Direct cost by construction stagePNGSVGDirect
+cost by resource categoryEquipmentUS$ 3,783 (52%)LabourUS$ 941 (13%)ConsumablesUS$ 2,110
+(29%)FuelUS$ 510 (7%)Direct cost by resource categoryPNGSVGAssumptions where a figure was not
+suppliedCrew time assumed 7 days on site (drilling at 25 m per day plus four days for moving, set
+up, development, testing and completion).NoteMobilisation distance is zero; transport costs are not
+included. Enter the one way distance from the contractor's base to the site.The cost as a
+distributionThe bill of quantities is the contract document: it prices one borehole at the likely
+rate of every item, and it is what a contractor prices and is paid against. The distribution is the
+planning figure: what a borehole is likely to cost once the spread of every rate, the drilling depth
+and the chance of a dry hole are allowed for. Budget from the planning figure; contract on the bill
+of quantities.A completed borehole costs US$ 10,642 at P50 and US$ 10,959 at P80, over 20,000
+sampled boreholes. The bill of quantities prices it at US$ 10,135, at or above the cost of 6 percent
+of them.Each figure is the contract price with any VAT, before contingency, worked out from the
+direct cost with the same overheads (15 percent) and margin (20 percent) as the bill of quantities;
+the spread takes the place of the contingency. With its 10 percent contingency the planning budget,
+US$ 11,148, covers 91 percent of the sampled boreholes.No survey has been interpreted, so no dry
+hole is drawn, and the expected cost per working borehole is the mean, US$ 10,657; interpret the
+survey to allow for dry holes at its odds.The range of models has not been sampled, so the depth is
+held at 70 m and its spread is left out; sample the range of models to draw the depth from it.Basis:
+each unit rate is drawn from a triangle between its minimum, likely and maximum in
+borehole_cost_items.csv. The rates in one group of borehole_cost_spread.yaml share a cause and are
+drawn together; the groups are drawn independently, so a cause shared across groups, such as the
+exchange rate, is spread less than it should be. The minimum and maximum are provisional choices,
+each with its reason in borehole_cost_spread.yaml, and none has a recorded source. Seed 1.Planning
+figureUS$Sampled at or under itCompleted borehole, P5010,64250Completed borehole,
+P8010,95980Completed borehole, mean10,65752Expected per working borehole10,657–Bill of quantities
+(contract price with any VAT)10,1356Planning budget, with
+contingency11,14891950010,00010,50011,00011,50012,000020406080100Cost of a completed boreholeUS$
+(contract price with any VAT)Sampled at or under (%)P50 10,642P80 10,959Bill of quantities
+10,135Planning budget 11,148The share of sampled boreholes at or under each cost, with the bill of
+quantities and the planning budget marked and the P10 to P90 of the sample shaded.PNGSVGThe value of
+one more measurementBefore the rig is called, one more sounding beside the first-ranked point, or a
+profiling line through it, can change where to drill. Each is worth what it is expected to save that
+decision, over everything it might read: the expected cost of the best choice now, less the expected
+cost of the best choice once its reading is known.No survey has been interpreted, so there are no
+odds for one more measurement to improve.Bill of quantitiesCodeStageItemUnitQtyRate (US$)Amount
+(US$)SIT1SitingGeophysical siting survey and site selection reportlump
+sum1.00400.00400.00MOB2MobilisationRig depreciation chargecrew
+day7.00135.00945.00MOB3MobilisationDrilling crew wagescrew day7.0065.00455.00MOB4MobilisationSite
+establishment and camplump sum1.00150.00150.00DRL1DrillingFuel and lubricants for overburden
+drillingm65.007.00455.00DRL2DrillingFuel and lubricants for hard rock
+drillingm5.0011.0055.00DRL3DrillingBits and hammers and drilling
+consumablesm70.006.00420.00DRL4DrillingDrilling fluid and foam and
+additivesm65.003.00195.00CAS1CasinguPVC plain casing supplied and
+installedm51.5012.00618.00CAS2CasinguPVC screen supplied and
+installedm19.0020.00380.00CAS4CasingCement and sand for the sanitary seal and
+groutbag4.0013.0052.00CAS5CasingBottom cap and centralisers and fittingslump
+sum1.0040.0040.00DEV1DevelopmentCompressor time for airlift
+developmenthour6.0018.00108.00DEV2DevelopmentCrew time during developmenthour6.006.0036.00TST1Test
+pumpingTest pump and generator and dipper hirehour30.0010.00300.00TST2Test pumpingTest crew and
+measurementshour30.006.00180.00WQL1Water qualityLaboratory analysis physico chemical and
+bacteriologicalsample1.00120.00120.00WQL2Water qualityDisinfection by chlorine shock dosinglump
+sum1.0025.0025.00PMP1WellheadHandpump supplied and
+installedunit1.00950.00950.00RSM1WellheadStainless steel rising main and pump rods (grade 304 or
+316) extra over PMP1m54.0020.001,080.00WHD1WellheadApron and drainage channel and soakaway
+materialslump sum1.00260.00260.00WHD2WellheadMason and wellhead construction labourlump
+sum1.00120.00120.00Download BoQ (.xlsx)Unit ratesThe bundled rates are indicative and must be
+confirmed against current local prices before the estimate is used in a tender. Edit any rate here;
+blank restores the catalogue value. The minimum and maximum are what the cost distribution draws the
+rate between, and move in proportion with an edited rate.CodeStageItemUnitRate (US$)Min (US$)Max
+(US$)SIT1SitingGeophysical siting survey and site selection reportlump
+sum300.00500.00MOB1MobilisationRig and equipment mobilisation and
+demobilisationkm2.254.00MOB2MobilisationRig depreciation chargecrew
+day121.50148.50MOB3MobilisationDrilling crew wagescrew day58.5081.25MOB4MobilisationSite
+establishment and camplump sum120.00300.00DRL1DrillingFuel and lubricants for overburden
+drillingm5.959.80DRL2DrillingFuel and lubricants for hard rock drillingm9.3515.40DRL3DrillingBits
+and hammers and drilling consumablesm4.809.60DRL4DrillingDrilling fluid and foam and
+additivesm2.404.80CAS1CasinguPVC plain casing supplied and installedm10.8014.40CAS2CasinguPVC screen
+supplied and installedm18.0024.00CAS3CasingGravel pack 2-4 mm well sorted
+siliceousm340.0075.00CAS4CasingCement and sand for the sanitary seal and
+groutbag11.7015.60CAS5CasingBottom cap and centralisers and fittingslump
+sum36.0048.00DEV1DevelopmentCompressor time for airlift developmenthour14.4036.00DEV2DevelopmentCrew
+time during developmenthour4.8012.00TST1Test pumpingTest pump and generator and dipper
+hirehour9.0012.50TST2Test pumpingTest crew and measurementshour5.407.50WQL1Water qualityLaboratory
+analysis physico chemical and bacteriologicalsample108.00150.00WQL2Water qualityDisinfection by
+chlorine shock dosinglump sum22.5031.25WHD1WellheadApron and drainage channel and soakaway
+materialslump sum221.00338.00WHD2WellheadMason and wellhead construction labourlump
+sum102.00156.00PMP1WellheadHandpump supplied and installedunit855.001,140.00RSM1WellheadStainless
+steel rising main and pump rods (grade 304 or 316) extra over PMP1m18.0024.00Programme of
+worksSuccessful boreholes requiredSiting success rate (%)the rest are budgeted as dry
+attemptsAverage move between sites (km)Set more than one borehole to see the package estimate.Cost
+estimate reportMethod, the basis of the estimate, the full bill of quantities, the cost and price
+summary and the exclusions.Not ready to certify - outstanding: Field data, Site position.ErrorField
+data — Readings that were never measured are in this project: dr_timbo_water_quality.xlsx. The
+values in that file were invented to demonstrate the toolkit, so no result derived from them
+describes anything that was sampled.ErrorSite position — No GPS position is recorded on any sheet in
+this project. A borehole that cannot be found again on the ground cannot be certified, revisited or
+maintained.The report will still be produced, stamped PROVISIONAL and listing these items. To issue
+it as an interim document instead, record who is issuing it and why.Issued byReasonRecord
+overrideAssumptions carried into this report: dr_timbo_drilling_log.xlsx: Intervals, times,
+penetration rates, water strikes, grouting depth and dates are transcribed from the WiNGiN
+completion report. The lithology descriptions are illustrative reconstructions guided by the
+borehole diagram annotations - the original log leaves the sample description column empty.Build
+Cost estimate report (.docx)Next, the supervision checklists.Supervision →

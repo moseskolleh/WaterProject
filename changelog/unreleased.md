@@ -2,6 +2,32 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### The user guide is a web page, with pictures taken from the app, troubleshooting and a glossary (PLAN.md step 9.5)
+
+The field team's guide was 2,500 lines of Markdown with no picture in it, and it was published as it is written: a reader who opened it beside the app, or from the copy the app keeps on the device, was handed the Markdown source.
+
+**A page.** `web/build_guide.py` builds `docs/user_guide.html` from `docs/user_guide.md`, which stays the one place the guide is written. The page has a list of contents (beside the guide on a laptop, folded above it on a phone), tables that scroll sideways in their own box so the page never does, light and dark to follow the device, and a print sheet that leaves the bar and the contents off and never cuts a picture across two pages. Markdown is read by markdown-it-py, added to the dev extra at one version, as CommonMark with tables and no raw HTML; the page carries no date and no version, so the committed page is a fresh build byte for byte, which `nox -s bundles` checks. About & method links the guide, and the guide's bar leads back to the app.
+
+**Pictures that cannot go stale unnoticed.** The guide now shows 18 pictures of the browser app: 14 on a laptop and 4 on a phone, with the worked examples loaded. None is taken by hand. Each is a line in `web/guide_shots.mjs`, which opens the app at a fixed size, clock and theme and takes it; `nox -s guide` runs it and rebuilds the page. Two machines do not draw the same pixels, so the pictures are not compared. Beside each is kept the text of the page it shows (`web/guide/<name>.txt`), and `nox -s browser` opens every page again and compares the words: a heading renamed, a button added or a number that moved fails CI, naming the picture and the first words that differ, until the picture is retaken. A change only to how a page looks changes no words, so the release workflow asks more: it refuses a tag unless every picture was retaken (`nox -s guide -- --all`) since the app's files last changed. That check hashes files and starts no browser.
+
+**On the device.** The service worker's release carries the page, its stylesheet and the pictures in place of the Markdown, so a device that opened the app once in town reads the whole guide with no network. To keep that cheap each screenshot is repacked in a palette of 128 colours, a third of its true-colour size: the 18 come to 0.86 MB, and the release a device keeps goes from 4.6 MB to 5.5 MB.
+
+**What the guide gained.**
+
+- **Troubleshooting** (section 14): 26 lines in three tables (the app itself, field sheets that will not read, results that look wrong), each what is seen, why, and what to do. Every line is something the app says or the guide already described; none is new behaviour.
+- **A glossary** (section 15): 36 of the app's words in plain terms, from AB/2 to worked example.
+- **Quick cards and printing** (section 16): where the field kit's three laminated cards are printed from, and how the guide prints.
+
+**Three things the guide had wrong, found while the pictures were placed.**
+
+- Sections 9c and 9d each existed twice, so "see section 9c" named two sections. *Documents anyone can check* is now 9e and *One evidence bundle for the borehole* 9f, and the four references to them follow. A test now refuses a repeated number, and a reference to a section that does not exist.
+- Guided start was described as three steps. That is the Streamlit app's; the browser app's lists the eight steps of the work, and the guide now says which is which.
+- Nothing checked the addresses the guide gives for the app's pages. Each is now held to the app's own list of pages.
+
+**Checks.** `tests/test_guide_build.py` (22 tests) holds the page to the guide, and the guide, the pictures and the list in the script to one another, without a browser. `tests/webapp/guide.mjs` (16 checks) opens the page on a laptop and a phone, in both themes, on paper and with the network taken away, and runs axe-core over it; its one finding, that a table scrolling sideways could not be reached from the keyboard, is fixed: the boxes that scroll, and only those, take a place in the Tab order.
+
+**Not changed.** No calculation, no report and no page of either app other than the one sentence on About & method. The Streamlit app does not link the guide yet.
+
 ### Two more nightly failures on main: an offset beyond the storativity floor, and a check that asked too soon
 
 While the Theis fix waited to be merged, the nightly run on `main` failed twice more, on 11 and 16 November. Three things failed, and the fix already covered one of them.

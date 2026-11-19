@@ -20,6 +20,7 @@ tests/test_changelog.py holds each list to its file, and
 
 Full text: [changelog/unreleased.md](changelog/unreleased.md)
 
+- The user guide is a web page, with pictures taken from the app, troubleshooting and a glossary (PLAN.md step 9.5)
 - Two more nightly failures on main: an offset beyond the storativity floor, and a check that asked too soon
 - The browser app redesigned: quiet colour, sentence case, the borehole's steps first
 - The Streamlit app redesigned to the same brief, with a light theme

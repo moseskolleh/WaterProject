@@ -10,3 +10,7 @@
 docs/js/gwt-core.js   linguist-generated=true
 docs/js/gwt-app.js    linguist-generated=true
 docs/js/gwt-charts.js linguist-generated=true
+# The user guide's page is built from docs/user_guide.md by
+# web/build_guide.py, and is collapsed in a diff for the same reason: the
+# review is of the guide.
+docs/user_guide.html  linguist-generated=true

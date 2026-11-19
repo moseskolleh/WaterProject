@@ -1,0 +1,23 @@
+{
+  "app": "2f35230ea2fcb31cc5de902c5da08f7819a92fb44a2f47688285f19d0e59dfc6",
+  "shots": [
+    "overview",
+    "navigation-phone",
+    "templates",
+    "ves",
+    "ves-sounding",
+    "ves-copilot",
+    "design",
+    "pumping",
+    "pumping-analysis",
+    "pumping-copilot",
+    "drilling-copilot",
+    "quality",
+    "guided",
+    "costing",
+    "supervision",
+    "handover",
+    "site",
+    "site-map"
+  ]
+}

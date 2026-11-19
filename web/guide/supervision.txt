@@ -1,0 +1,183 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Dr. Timbo's ResidenceWestern Area
+Rural · Dr. Timbo Save projectOpen project◐ Groundwater Toolkit Rural water supply boreholes
+StartOverviewGuided startBoreholeSite & mapsStep 1 of 9, doneGeophysics (VES)Step 2 of 9Borehole
+designStep 3 of 9, donePumping testStep 4 of 9, doneWater qualityStep 5 of 9, doneCosting & BoQStep
+6 of 9, doneProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9, doneField toolsVES
+co-pilotDrilling co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater
+pointsCoverage gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout
+& method SupervisionThe stage checklists from the RWSN and UNICEF supervision guidance, plus the
+numeric acceptance checks a supervisor applies on site.Progress38 critical item(s) still open;
+complete them before sign off.Answered0 / 800% completeCritical failures0stop acceptance until
+resolvedCritical still open38Procurement and contract —
+0/9SectionRequirementCriticalAnswerRemarkPrequalificationContractor registered in country with a
+current drilling licencecritical—YesNoN/APrequalificationContractor has completed at least 5 similar
+projects in the last 3 years, with referees contacted–—YesNoN/APrequalificationContractor owns or
+has secured the rig, compressor and support equipment the job needs, and key staff CVs are on
+file–—YesNoN/APrequalificationContractor financial capacity and litigation history
+reviewed–—YesNoN/AContractContract uses a bill of quantities and payment is for actual verified
+quantities, not an estimated lump sumcritical—YesNoN/AContractDry hole and low yield payment policy
+clearly defined, with 'dry' defined by a yield thresholdcritical—YesNoN/AContractBill of quantities
+checked for front loading (mobilisation and siting items priced far above their share of the
+works)–—YesNoN/AContractPerformance bond of 5 to 10 percent of the contract value in place before
+signature–—YesNoN/ASupervisionIndependent supervision arranged and paid for, with the supervisor's
+transport independent of the drillercritical—YesNoN/APre-contract inspection —
+0/11SectionRequirementCriticalAnswerRemarkEquipmentDrilling rig inspected: mast raised and rig run
+for an hour without problems (record year of manufacture, manufacturer and lifting
+capacity)critical—YesNoN/AEquipmentCompressor run for an hour without problems (record year and
+manufacturer)critical—YesNoN/AEquipmentMud pump and generator ratings checked against the estimated
+borehole depths and tested–—YesNoN/AEquipmentWater tanker checked for
+leaks–—YesNoN/AEquipmentSupport trucks available and in working order–—YesNoN/AEquipmentDrill pipes
+adequate to reach the deepest planned boreholecritical—YesNoN/AEquipmentDrill bits and hammer of the
+correct diameter and right type for the expected ground, in good
+conditioncritical—YesNoN/AEquipmentGeophysical survey equipment working and the personnel competent
+in its use–—YesNoN/APersonnelDrilling manager and hydrogeologist qualifications and experience
+recorded and adequate–—YesNoN/APersonnelRig operator, driver, mechanic and rig assistants
+experienced (record years of experience)–—YesNoN/APersonnelRecord Taker designated by the driller to
+remain on site at all times and complete all formscritical—YesNoN/ASiting —
+0/8SectionRequirementCriticalAnswerRemarkWater usersSite convenient to the point of use with
+equitable access for all water users, especially women and the most disadvantaged–—YesNoN/AWater
+usersLand ownership and access rights for users and maintenance teams established and confirmed in
+writingcritical—YesNoN/AHydrogeologyExpected yield, renewable resources and water quality sufficient
+for the intended purpose–—YesNoN/AHydrogeologyInterference with other groundwater sources and
+natural groundwater flows avoided–—YesNoN/AHydrogeologyChance of success rated (high, medium or low)
+and accepted by the client–—YesNoN/AContaminationNo potential pollution source within the minimum
+separation distances (see the separation distance table)critical—YesNoN/ALogisticsAccess allowed and
+physically possible for the drilling team, equipment and vehicles–—YesNoN/ALogisticsSiting report
+submitted by the driller and approved by the supervisorcritical—YesNoN/AMobilisation —
+0/8SectionRequirementCriticalAnswerRemarkContractContract signed and the pre-mobilisation meeting
+held with design, materials and procedures discussedcritical—YesNoN/AContractProgramme of works
+submitted and approved–—YesNoN/ACommunityCommunity briefed: process explained, roles and
+contributions agreed, contact persons exchanged, driller's representative
+introduced–—YesNoN/AEquipmentEquipment on site matches what was inspected and is in working
+condition (drill rods adequate, hammer, bit and temporary casing diameters
+measured)critical—YesNoN/AMaterialsMaterial samples approved against the specification: drilling
+fluid, casing and screen (length, diameter and wall thickness measured), filter pack and
+gravelcritical—YesNoN/ARecordsData collection forms agreed (RWSN Code of Practice Annex E
+formats)–—YesNoN/ARecordsProject filing system set up: a duplicate hard copy file per site with the
+checklists printed inside the folder flap–—YesNoN/ACampDrill camp layout approved: inflammables away
+from heat, contaminants away from water and cooking areas, PVC casing and screens shaded from direct
+sunlight–—YesNoN/ADrilling — 0/11SectionRequirementCriticalAnswerRemarkSafetyHealth and safety in
+place: rig away from traffic and power lines, not on a steep slope, public barrier tape up, crew
+wearing PPE, inflammables stored in marked containers, mast never raised in a thunderstorm, first
+aid kit and emergency procedure readycritical—YesNoN/ASet upRig positioned exactly over the pegged
+site, mast vertical (checked with a spirit level) and the ground stable–—YesNoN/ARecordsDepth
+measured with marked drill pipes and logged every metrecritical—YesNoN/ARecordsPenetration rate
+recorded every metre–—YesNoN/AFluidsDrilling fluid type recorded and viscosity checked with a Marsh
+funnel; biodegradable polymer used instead of bentonite where required–—YesNoN/AFluidsCirculation
+pits hold at least three times the borehole volume and are kept clean (mud
+drilling)–—YesNoN/ASamplesCutting samples taken at the agreed interval (1 m default), washed as
+appropriate, bagged, labelled, photographed and stored in a sample boxcritical—YesNoN/ASamplesStrata
+log prepared from the samples–—YesNoN/AWaterWater strikes recorded (depth and time) and airlift
+yield measured with a V plate or a timed bucket–—YesNoN/ADecisionFinal drilling depth instructed by
+the supervisor, not decided by the drillercritical—YesNoN/ARecordsDaily drilling log signed by the
+rig operator and the supervisor at the end of every daycritical—YesNoN/ADesign and installation —
+0/8SectionRequirementCriticalAnswerRemarkPreparationCasing and screen assemblage sketched, laid out
+on the ground, measured piece by piece, totalled against the sketch and photographed before
+installationcritical—YesNoN/AMaterialsCasing and screens new and to specification, with diameter and
+wall thickness checked with callipers mid pipe–—YesNoN/AInstallationJoints clean and watertight;
+solvent cement setting time observed before lowering–—YesNoN/AInstallationInstalled casing and
+screen depth reconciled with the drilled depth; any discrepancy over 3 m resolved by removing,
+cleaning and reinstallingcritical—YesNoN/AScreensScreens placed against the aquifer horizon with a
+slot size that retains the formationcritical—YesNoN/AScreensScreen open area sufficient for the
+design yield (open area of at least Q/30 square metres keeps the entrance velocity below 0.03
+m/s)–—YesNoN/AAnnulusGravel pack placed as designed and free of mica, clay and
+lateritecritical—YesNoN/AAnnulusBackfill placed to 6 m below ground and the sanitary seal in the top
+6 m (cement slurry at 25 litres of water per 50 kg bag, or bentonite)critical—YesNoN/ADevelopment
+and completion — 0/9SectionRequirementCriticalAnswerRemarkDevelopmentDevelopment continued until the
+water runs clear and sand free, checked by letting samples settle in a clear
+containercritical—YesNoN/ATestingPumping test carried out to specification with rate and water level
+measured simultaneously against timecritical—YesNoN/AAcceptanceSand content at the end of the test
+no more than 0.2 cubic centimetres in each of three 20 litre samples (10 ppm by
+volume)critical—YesNoN/AAcceptanceTurbidity within the stipulated limit–—YesNoN/AAcceptancePlumb
+test passed: the plumb moves freely and deviation does not exceed two thirds of the casing inner
+diameter per 30 m of depthcritical—YesNoN/AQualityWater sampled correctly (1 litre bottle rinsed and
+labelled; pH, conductivity, iron and bacteriology tested at or near the site) and sent to an
+approved laboratorycritical—YesNoN/AQualityBorehole disinfected with chlorine at 20 mg per litre (1
+litre of 0.2 percent solution per 100 litres of well volume) and left for at least 4
+hourscritical—YesNoN/APlatformPlatform cast correctly: shuttering anchored, 1:2:4 mix, 1:50 drainage
+slope, surface trowelled smooth, borehole number and completion data embedded, kept moist for 72
+hours–—YesNoN/ADecisionFinal decision recorded: borehole successful or
+abortivecritical—YesNoN/ADemobilisation — 0/5SectionRequirementCriticalAnswerRemarkCompletionAll
+installation work complete and approved by the supervisor–—YesNoN/ACompletionAll testing complete
+and the documentation and data handed to the supervisorcritical—YesNoN/ASiteSite cleared: waste
+removed responsibly, circulation pits backfilled and compacted, barrier tape removed, site restored
+to its former state–—YesNoN/ASiteUnused materials handled according to the contract and the borehole
+securely capped–—YesNoN/ACertificateWork completion certificate issued by the
+supervisorcritical—YesNoN/ADocumentation and handover —
+0/5SectionRequirementCriticalAnswerRemarkReportingDrilling report completed with copies to the
+client, the community and the government regulatorcritical—YesNoN/AHandoverHandover date agreed and
+the certificate signed by the supervisor, the driller and a community
+representativecritical—YesNoN/AFollow upDefect liability monitoring schedule agreed and site visits
+planned–—YesNoN/AFollow upProblems found during the defect liability period reported to the client
+and repairs mobilised according to the contract–—YesNoN/APaymentSupervision invoice submitted and
+final payment to the driller approved at the end of the defect liability
+period–—YesNoN/APost-construction monitoring — 0/6SectionRequirementCriticalAnswerRemarkWater
+safetyGroundwater pH tested before handpump installation; corrosion resistant riser pipes and rods
+(stainless steel 304/316 or uPVC) used where pH is below 6.5critical—YesNoN/AWater safetySanitary
+inspection of the completed water point carried out (WHO sanitary inspection
+format)–—YesNoN/AMonitoringWater users have a way to report technical problems during the first one
+to two years–—YesNoN/AMonitoringThird party inspection of the works arranged within 6 months of
+construction–—YesNoN/AMonitoringPost construction monitoring visit one to two years after
+construction, including a repeat water quality test–—YesNoN/ARecordsDrilling log, pumping test and
+water quality records submitted to the authority for successful and unsuccessful boreholes, and the
+water quality results shared with the communitycritical—YesNoN/AField acceptance checksSand
+contentSample 1 (cm³)Sample 2 (cm³)Sample 3 (cm³)VerticalityDeviation (mm)Depth (m)Casing inner
+diameter (mm)Screen and packDesign yield (L/s)Screen open area (m²)Casing outer diameter (mm)Filter
+packPack D50 (mm)Aquifer D50 (mm)Drilled metresLogged (m)Invoiced (m)DisinfectionWater column
+(m)Enter the water column and the casing inner diameter for the dose.CheckMeasuredAcceptance
+limitResultNoteSpecific capacity0.09 m3/h per m>= 1 m3/h per m for a handpumpfailBelow the handpump
+rule of thumb; review the test data and the pump setting before acceptance.Handpump corrosion riskpH
+5.9>= 6.5 for galvanised iron componentsfailCorrosive water: specify stainless steel (grade 304/316)
+or uPVC riser pipes and rods; galvanised iron can fail within months and taint the water with
+iron.Minimum separation distancesStructureMinimum distance (m)NoteWater supply borehole50Existing
+drilled water supply sourcesHand dug well20–Other existing water wells10–Septic tank or
+soakaway20Includes pit latrines and soakage pitsStreams and canals and irrigation
+ditches20–Buildings3–Solid waste dump or burial ground1000Approved dumps and
+cemeteriesCoastline1000Not normally within this distance (saline intrusion)Site notes and
+instructionsWhat was said on site: an instruction to the driller, a deviation agreed, a delay and
+its reason. Each line is printed in the supervision record under its own heading, which is the only
+place the written instruction survives the job.NoteRemove+ Add a notePhotographs the checklist
+requiresPhotos stay on this machine and travel inside the project file.The supervision record is
+held back until each of these items has a photograph, or is answered N/A. Only presence is checked:
+whether the photograph shows the work done well is for the supervisor to judge.Design and
+installation: Preparation＋Drop a photo, click to choose, or pasteCasing and screen assemblage
+sketched, laid out on the ground, measured piece by piece, totalled against the sketch and
+photographed before installationDesign and installation: Annulus＋Drop a photo, click to choose, or
+pasteBackfill placed to 6 m below ground and the sanitary seal in the top 6 m (cement slurry at 25
+litres of water per 50 kg bag, or bentonite)Development and completion: Quality＋Drop a photo, click
+to choose, or pasteBorehole disinfected with chlorine at 20 mg per litre (1 litre of 0.2 percent
+solution per 100 litres of well volume) and left for at least 4 hoursAsk this device for its
+position when a photograph carries noneEach photograph keeps its capture time, its position and the
+SHA-256 of the file as attached, with where each came from.Supervision photographsPhotos stay on
+this machine and travel inside the project file.Materials on site＋Drop a photo, click to choose, or
+pasteCasing, screen and gravel as delivered, before installationCasing and screen installation＋Drop
+a photo, click to choose, or pasteSanitary seal being placed＋Drop a photo, click to choose, or
+pasteAny non-conformance observed＋Drop a photo, click to choose, or paste+ Another photoNo photos
+yet — the report prints without a photo plateAsk this device for its position when a photograph
+carries noneEach photograph keeps its capture time, its position and the SHA-256 of the file as
+attached, with where each came from.Supervision recordThe summary, the full checklist record stage
+by stage, the field acceptance checks and the sign-off block.Not ready to certify - outstanding:
+Field data, Site position, Critical items answered, Photo evidence.ErrorField data — Readings that
+were never measured are in this project: dr_timbo_water_quality.xlsx. The values in that file were
+invented to demonstrate the toolkit, so no result derived from them describes anything that was
+sampled.ErrorSite position — No GPS position is recorded on any sheet in this project. A borehole
+that cannot be found again on the ground cannot be certified, revisited or maintained.ErrorCritical
+items answered — No answer is recorded for 38 critical checklist items (4 in Procurement and
+contract, 5 in Pre-contract inspection, 3 in Siting, 3 in Mobilisation, 5 in Drilling, 5 in Design
+and installation, 7 in Development and completion, 2 in Demobilisation, 2 in Documentation and
+handover and 2 in Post-construction monitoring). A record cannot vouch for a critical step left
+blank; an answer of No is an answer, and stays in the record as a failure.ErrorPhoto evidence —
+Design and installation: "Casing and screen assemblage sketched, laid out on the ground, measured
+piece by piece, totalled against the sketch and photographed before installation" needs a photograph
+and has none. Design and installation: "Backfill placed to 6 m below ground and the sanitary seal in
+the top 6 m (cement slurry at 25 litres of water per 50 kg bag, or bentonite)" needs a photograph
+and has none. Development and completion: "Borehole disinfected with chlorine at 20 mg per litre (1
+litre of 0.2 percent solution per 100 litres of well volume) and left for at least 4 hours" needs a
+photograph and has none. The gate checks that a photograph is attached, not whether it shows the
+work done well; that judgement stays with the supervisor.The report will still be produced, stamped
+PROVISIONAL and listing these items. To issue it as an interim document instead, record who is
+issuing it and why.Issued byReasonRecord overrideAssumptions carried into this report:
+dr_timbo_drilling_log.xlsx: Intervals, times, penetration rates, water strikes, grouting depth and
+dates are transcribed from the WiNGiN completion report. The lithology descriptions are illustrative
+reconstructions guided by the borehole diagram annotations - the original log leaves the sample
+description column empty.Build Supervision record (.docx)Finally, hand the borehole over.Handover →

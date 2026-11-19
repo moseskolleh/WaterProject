@@ -1,0 +1,25 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled projectLoad a sample or
+upload a field sheet to begin Save projectOpen project◐ Groundwater Toolkit Rural water supply
+boreholes StartOverviewGuided startBoreholeSite & mapsStep 1 of 9Geophysics (VES)Step 2 of 9Borehole
+designStep 3 of 9Pumping testStep 4 of 9Water qualityStep 5 of 9Costing & BoQStep 6 of
+9ProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES co-pilotDrilling
+co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater pointsCoverage
+gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout & method
+TemplatesBlank workbooks in exactly the layout the readers expect. Fill one in the field, upload it,
+and every analysis follows.VES field dataOne worksheet per sounding. Repeat an AB/2 with the new MN
+at a segment change — both readings are kept.Download ves_template.xlsxDrilling logFormat the depth
+column as Text before typing "5-10", or Excel converts it to a date and the row is skipped. Fill
+"Screens installed" as ranges ("25-35; 48-53") once the string is set: the drawing is then an
+as-built record rather than a design.Download drilling_log_template.xlsxDriller's daily reportThe
+daily record the supervision guidance expects, and what invoiced metres are checked against. One row
+per drilled interval or activity, and both signatures every day.Download
+daily_log_template.xlsxPumping testThe Drawdown and Recovery columns are the increment between
+readings; the toolkit never uses them — true drawdown is recomputed from water level minus static
+level.Download pumping_test_template.xlsxWater quality resultsWrite "<0.01" for a below-detection
+result; the value is then treated as unknown rather than as a concentration equal to the
+limit.Download water_quality_template.xlsxAll of them at onceDownload every template (5)Field
+kitPrintable sheets for a crew without a phone or tablet: a pumping test sheet for each borehole,
+pre-filled with the site, the reading schedule and the casing-storage time, and three quick cards to
+laminate, for the pumping schedule, the VES spacings and the chlorine doses. Each sheet carries a QR
+code naming the project and the borehole, so a photographed sheet can be matched to its
+project.BoreholesField kit (.docx)
