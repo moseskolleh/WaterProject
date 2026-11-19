@@ -1,0 +1,33 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled projectLoad a sample or
+upload a field sheet to begin Save projectOpen project◐ Groundwater Toolkit Rural water supply
+boreholes StartOverviewGuided startTrainingBoreholeSite & mapsStep 1 of 9Geophysics (VES)Step 2 of
+9Borehole designStep 3 of 9Pumping testStep 4 of 9Water qualityStep 5 of 9Costing & BoQStep 6 of
+9ProcurementStep 7 of 9SupervisionStep 8 of 9HandoverStep 9 of 9Field toolsVES co-pilotDrilling
+co-pilotPumping co-pilotDepth SpineScanned sheetsTemplatesProgrammeWater pointsCoverage
+gapPortfolioAsset registryReport on a boreholeReferenceVerify a documentSettingsAbout & method
+Training: find the faultThree results this toolkit once got wrong, on its own worked examples. Each
+is shown as the report gave it. Find what is wrong with it; the finding and what was done about it
+are shown once you have.Training, three exercises in finding what a report got wrong, on the worked
+examples, is in the browser app only, under Start. It needs no network and changes no
+project.Progress0 of 3 faults foundKept in this browser, not in the project: it is yours, and goes
+with no project file.1. The 30-minute testDr. Timbo's Residence, pumping testWhat the report saidA
+constant discharge test at 2.93 m³/h, in a borehole cased at 5 inches.The pump ran for 30 minutes.
+When it stopped the water level had fallen 32.8 m and was still falling.The report adopted a
+transmissivity of 1.4 m²/day and recommended a safe yield of 0.97 m³/h.What should have stopped that
+yield being recommended?AThe pumping rate was too low to stress the aquifer.BThe test ended while
+the pump was still emptying the casing, so the readings describe the borehole and not the
+aquifer.CThe static water level was not measured before pumping.DA constant discharge test cannot
+give a transmissivity; only a step test can.2. The aquifer 80 m deepRokel, geophysicsWhat the report
+saidTwo Schlumberger soundings, each laid out to an AB/2 of 80 m.Both models end in a layer of 47 to
+50 ohm-m that starts about 8 m down, with nothing found beneath it.The report said: water bearing
+zone from 8 m to 80 m, aquifer thickness 72 m, drill to 80 m.Where did the 80 m come from?AFrom the
+bottom of the water bearing layer, which the model placed at 80 m.BFrom the electrodes: 80 m is the
+largest AB/2 the crew laid out, not a depth at which anything was found.CFrom the depth of a
+borehole nearby, used as a guide.DFrom the resistivity: ground of 47 to 50 ohm-m is water bearing to
+80 m.3. The site 250 km awaySite details, any projectWhat the report saidA position was read off a
+phone and typed into the site details as 8.4657, 13.2317.The app took it. The site was drawn inside
+Sierra Leone, about 250 km from the village, and every map and report used that position.What was
+wrong with what was typed?AThe latitude and the longitude were typed the wrong way round.BThe
+longitude has lost its minus sign: Sierra Leone is west of Greenwich, so its longitudes are
+negative.CThe position was in degrees and minutes, not decimal degrees.DThe phone's GPS was too
+inaccurate to use.

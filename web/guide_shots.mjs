@@ -77,6 +77,7 @@ const SHOTS = [
   { name: 'drilling-copilot', device: 'phone', sample: null, route: 'drillcopilot' },
   { name: 'quality', device: 'laptop', sample: 'dr_timbo', route: 'quality' },
   { name: 'guided', device: 'laptop', sample: null, route: 'guided' },
+  { name: 'training', device: 'laptop', sample: null, route: 'training' },
   { name: 'costing', device: 'laptop', sample: 'dr_timbo', route: 'costing' },
   { name: 'supervision', device: 'laptop', sample: 'dr_timbo', route: 'supervision' },
   { name: 'handover', device: 'laptop', sample: 'dr_timbo', route: 'handover' },

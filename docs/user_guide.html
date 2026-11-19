@@ -33,6 +33,7 @@
 <li><a href="#5-water-quality-sheet">5. Water quality sheet</a></li>
 <li><a href="#5a-finding-your-way-around">5a. Finding your way around</a></li>
 <li><a href="#5b-guided-start-new-projects">5b. Guided start (new projects)</a></li>
+<li><a href="#5c-training-find-the-fault-browser-app">5c. Training: find the fault (browser app)</a></li>
 <li><a href="#6-running-the-analysis-web-interface">6. Running the analysis (web interface)</a></li>
 <li><a href="#7-costing-boq">7. Costing &amp; BoQ</a></li>
 <li><a href="#8-supervision">8. Supervision</a></li>
@@ -617,7 +618,7 @@ same order in both apps:</p>
 <tbody>
 <tr>
 <td>Start</td>
-<td>Overview, Guided start</td>
+<td>Overview, Guided start, Training (browser app only)</td>
 </tr>
 <tr>
 <td>Borehole</td>
@@ -860,6 +861,33 @@ planned depth can be entered directly), and produce the first cost
 estimate from that depth. Every result carries over to the full pages
 for fine tuning, and the final step lists what to do during and after
 drilling.</p>
+<h2 id="5c-training-find-the-fault-browser-app">5c. Training: find the fault (browser app)</h2>
+<p>In the browser app: <a href="index.html#/training"><code>#/training</code></a>, under <em>Start</em>.
+It is in the browser app only; the Streamlit app says so on its Guided
+start page. It needs no network and changes no project.</p>
+<p>The page sets three exercises. Each is a result this toolkit once got
+wrong on one of its own worked examples, shown as the report gave it:</p>
+<ol>
+<li><strong>The 30-minute test.</strong> A pumping test that recommended a yield.</li>
+<li><strong>The aquifer 80 m deep.</strong> A geophysical report that said how deep
+to drill.</li>
+<li><strong>The site 250 km away.</strong> A GPS position typed into the site details.</li>
+</ol>
+<p>Under each is a question and four answers. Choose the one that names
+what is wrong. A wrong answer is greyed and the page says why it is not
+the fault, without saying what is; choose again. When the fault is
+found the page shows <strong>the finding</strong> (what was wrong, with the numbers)
+and <strong>what the toolkit does now</strong> about it, and a button that opens the
+worked example on the page where that can be seen. Loading an example
+replaces the project that is open, so save yours first.</p>
+<figure class="shot wide"><img src="guide/training.png" alt="The Training page: a count of the faults found, then the first exercise, The 30-minute test, with what the report said and four answers to choose from." width="1120" height="760" loading="lazy" decoding="async"><figcaption>Training. Nothing about the fault is on the page until the right answer is chosen.</figcaption></figure>
+<p><em>Progress</em> counts the faults found. It is kept in the browser, not in
+the project, so it goes with no project file; <strong>Start again</strong> clears
+it, and so does <em>Reset everything</em> on the Settings page.</p>
+<p>For a trainer: let each trainee answer alone before the group talks,
+and ask of every wrong answer why it was tempting. The three faults
+are the ones recorded in <code>ROADMAP.md</code> as hydraulics-1 and hydraulics-2,
+ves-1 and data-ingestion-3, where the full account of each is.</p>
 <h2 id="6-running-the-analysis-web-interface">6. Running the analysis (web interface)</h2>
 <ol>
 <li>Open the toolkit in the browser (the analyst provides the address,

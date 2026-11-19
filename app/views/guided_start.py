@@ -5,6 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from groundwater.costing import CostingInputs
+from groundwater.text import phrase
 from groundwater.ves.interpret import drilling_depth_text
 
 from shared import (
@@ -29,6 +30,9 @@ def render() -> None:
         "Three short steps to a sited, costed borehole project. Every "
         "result carries over to the full pages, where you can fine tune."
     )
+    # the find-the-fault exercises are a page of the browser app (PLAN.md
+    # step 9.3), and a feature one app has says so in both (rule 1)
+    st.caption(phrase("training.browser_only"))
     st.progress(
         wiz_step / (len(_WIZ_STEPS) - 1),
         text=f"Step {min(wiz_step, 2) + 1} of 3: {_WIZ_STEPS[wiz_step]}"

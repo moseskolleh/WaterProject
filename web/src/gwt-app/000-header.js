@@ -69,6 +69,7 @@
     ['Start', [
       ['overview', 'Overview'],
       ['guided', 'Guided start'],
+      ['training', 'Training'],
     ]],
     ['Borehole', [
       ['site', 'Site & maps'],

@@ -656,6 +656,30 @@ button.stat-link:hover { border-color: var(--line-control); background: var(--ho
 .callout-bad { border-left-color: var(--bad); background: var(--bad-bg); }
 /* Neither a pass nor a failure: the toolkit saying it cannot tell yet. */
 .callout-info { border-left-color: var(--info); background: var(--info-bg); }
+
+/* Training (PLAN.md step 9.3): the answers to an exercise, one to a row, each
+ * a button the full width of the card and tall enough for a thumb. One that
+ * was given and was not the fault stays in its place, greyed, so the choice
+ * narrows; the one that was the fault is marked when it is found. */
+.training-options { display: grid; gap: 0.5rem; margin-bottom: 0.9rem; }
+.training-option {
+  display: flex; align-items: flex-start; gap: 0.7rem; width: 100%; min-height: 44px;
+  padding: 0.65rem 0.8rem; text-align: left; font: inherit; color: var(--ink);
+  background: var(--bg-raised); border: 1px solid var(--line-control);
+  border-radius: var(--radius-sm); cursor: pointer;
+}
+.training-option:hover:not(:disabled) { background: var(--hover); border-color: var(--brand); }
+.training-option:disabled { cursor: default; }
+.training-option.is-wrong { color: var(--ink-soft); background: var(--bg-sunken); border-color: var(--line); }
+.training-option.is-right { border-color: var(--ok); background: var(--ok-bg); }
+.training-option .badge { margin-left: auto; flex: none; }
+.training-letter {
+  flex: none; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line-control); font-size: 0.75rem; font-weight: 600;
+}
+.training-progress { font-family: var(--font-display); font-size: 1.25rem; margin: 0 0 0.3rem; }
+.callout h4 { margin: 0.7rem 0 0.2rem; font-size: 0.875rem; }
 .callout p:last-child { margin-bottom: 0; }
 
 /* --------------------------------------------------------------- figures */

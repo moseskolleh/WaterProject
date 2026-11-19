@@ -1454,6 +1454,16 @@ def test_project_state_tracked(app):
     assert app.session_state["rates_overrides"], "working rates not tracked"
 
 
+def test_guided_start_says_training_is_in_the_browser_app(app):
+    """The find-the-fault exercises are a page of the browser app only, and a
+    feature one app has says so in both (PLAN.md rule 1, step 9.3)."""
+    from groundwater.text import phrase
+
+    goto(app, "Guided start")
+    assert not app.exception
+    assert phrase("training.browser_only") in [c.value for c in app.caption]
+
+
 def test_guided_wizard_flow(app):
     """Walk the wizard: site details -> siting -> costing -> done."""
     goto(app, "Guided start")

@@ -14,7 +14,7 @@ function check(name, ok, detail) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok || !detail ? '' : '\n     ' + detail}`);
 }
 
-const PAGES = ['overview', 'guided', 'site', 'verify', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
+const PAGES = ['overview', 'guided', 'training', 'site', 'verify', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
   'pumping', 'pumpcopilot', 'quality', 'costing', 'procurement', 'supervision', 'handover',
   'templates', 'extract',
   'waterpoints', 'coverage', 'portfolio', 'registry', 'report', 'settings', 'about'];

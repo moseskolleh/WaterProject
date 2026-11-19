@@ -140,6 +140,8 @@
               button('Reset', async function () {
                 await store.forget();
                 forgetApiKey();
+                /* how far a trainee has got is in no project either */
+                forgetTraining();
                 store.replace(blankState());
                 Object.keys(derived).forEach(function (k) { derived[k] = null; });
                 forgetTerrain();

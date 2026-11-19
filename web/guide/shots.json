@@ -1,5 +1,5 @@
 {
-  "app": "2f35230ea2fcb31cc5de902c5da08f7819a92fb44a2f47688285f19d0e59dfc6",
+  "app": "9290b43bf9546767a37009f330cde9609308070e6fa880b8d030944cff5c663a",
   "shots": [
     "overview",
     "navigation-phone",
@@ -14,6 +14,7 @@
     "drilling-copilot",
     "quality",
     "guided",
+    "training",
     "costing",
     "supervision",
     "handover",

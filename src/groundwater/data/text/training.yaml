@@ -1,0 +1,10 @@
+# Training mode: find the fault (PLAN.md step 9.3). The exercises are a page
+# of the browser app; this is the one sentence both apps say about it.
+
+# Shown on the Training page of the browser app and, as a caption, on the
+# Streamlit app's Guided start (PLAN.md rule 1: a feature one app has says
+# so in both).
+browser_only: >-
+  Training, three exercises in finding what a report got wrong, on the worked
+  examples, is in the browser app only, under Start. It needs no network and
+  changes no project.

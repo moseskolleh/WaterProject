@@ -2,6 +2,28 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### Training mode: three exercises in finding the fault (PLAN.md step 9.3)
+
+The roadmap records what the toolkit once got wrong on its own worked examples. Three of those records are now exercises, on a **Training** page of the browser app, under Start.
+
+**The exercises.** Each shows what the report said, as it was said, and asks what is wrong with it:
+
+- **The 30-minute test** (Dr. Timbo's Residence): a constant test of 30 minutes in a 5 inch casing, from which a transmissivity of 1.4 m2/day was adopted and a safe yield of 0.97 m3/h recommended. The fault is casing storage: the pump was still emptying the casing when it stopped (ROADMAP hydraulics-1 and hydraulics-2).
+- **The aquifer 80 m deep** (Rokel): two soundings whose last layer has no base, reported as a water bearing zone from 8 m to 80 m and "drill to 80 m". The 80 m is the largest AB/2, not a depth anything was found at (ves-1).
+- **The site 250 km away**: a position typed as "8.4657, 13.2317", drawn inside Sierra Leone 250 km from the village. The longitude has lost its minus sign (data-ingestion-3).
+
+**Finding the fault comes first.** Under each is a question and four answers, each a button. A wrong answer is greyed, stays in its place and cannot be given again, and the page says why it is not the fault, in a sentence that does not say what is. The finding, and what the toolkit does now about it, are not on the page at all until the right answer is chosen; then they are, with how many answers it took and a button that loads the worked example and opens the page where the fix can be seen at work. The keyboard, and with it a screen reader, is put on what each answer brought.
+
+**Progress** (faults found, of three) is the trainee's and not the project's: it is kept in the browser, in no project file, read back after a reload, cleared by *Start again* and by *Reset everything* on the Settings page. A record in the browser that is not as the page writes it (an answer that is not one of the exercise's, an exercise that does not exist) is read no further than it can be.
+
+**The fixes are held to the app.** What "the report said" is the old report's, which exists nowhere else, so it is written on the page. What each exercise says the toolkit does now is read off the app in `tests/webapp/training.mjs` (19 checks): the pumping page of the Dr. Timbo example has to say "casing storage controls the drawdown for the first 117 minutes", a storativity of 0.18, a safe yield of 0.39 m3/h and "indicative"; the soundings page of the Rokel example "at least 40 m", "a minimum: the zone continues below the depth of investigation" and a depth to bedrock "not resolved", with both soundings laid out to an AB/2 of 80 m; and the position reader has to read 13.2317 as western, with its note. A fix the engine words differently one day fails there. The suite also runs axe-core on the page after a wrong answer and after a right one.
+
+**In the browser app only**, and both apps say so (PLAN.md rule 1): the Training page in the words of a new catalogue entry, `training.browser_only`, and the Streamlit app's Guided start as a caption in the same words.
+
+**The guide** has a section on it (5c), with a picture. Because a page was added to the navigation, every laptop picture in the guide showed a page list that was one line short: the check that step 9.5 added named all of them, and `nox -s guide` retook them.
+
+**Not changed.** No calculation and no report. The exercises load the worked examples as the Overview does and change nothing in a project.
+
 ### The user guide is a web page, with pictures taken from the app, troubleshooting and a glossary (PLAN.md step 9.5)
 
 The field team's guide was 2,500 lines of Markdown with no picture in it, and it was published as it is written: a reader who opened it beside the app, or from the copy the app keeps on the device, was handed the Markdown source.

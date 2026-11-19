@@ -28,7 +28,7 @@
  * any byte of the shell and this changes with it, so the browser fetches the
  * new worker and drops the old cache; forget to change it and a device keeps
  * serving last month's app with nothing to show that it is doing so. */
-var VERSION = 'gwt-v6768a3c47e40';
+var VERSION = 'gwt-ve78ffcba57d7';
 /* The release: exactly what install put on disk, and nothing else. Only the
  * install handler ever writes to it. */
 var CACHE = VERSION + '-app';
@@ -79,6 +79,7 @@ var PRECACHE = [
   'guide/overview.png',
   'guide/navigation-phone.png',
   'guide/guided.png',
+  'guide/training.png',
   'guide/ves.png',
   'guide/ves-sounding.png',
   'guide/pumping.png',

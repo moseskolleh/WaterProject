@@ -83,6 +83,7 @@ BROWSER_SUITES = [
     "tests/webapp/smoke.mjs",
     "tests/webapp/copilot.mjs",
     "tests/webapp/fieldkit.mjs",
+    "tests/webapp/training.mjs",
     "tests/webapp/a11y.mjs",
     "tests/webapp/guide.mjs",
 ]
@@ -323,9 +324,10 @@ def fuzz(session: nox.Session) -> None:
 def browser(session: nox.Session) -> None:
     """Drive the standalone app end to end in headless Chromium.
 
-    The last two suites run axe-core, over every page of the app and over
-    the user guide, so this needs axe-core beside Playwright, at the version
-    CI installs. After them the guide's screenshots are held to the app: each
+    The last three suites run axe-core, over the training page as it is
+    answered, over every page of the app and over the user guide, so this
+    needs axe-core beside Playwright, at the version CI installs. After them
+    the guide's screenshots are held to the app: each
     page a picture shows is opened and its words compared with the words
     the picture was taken of (web/guide_shots.mjs says why the words and not
     the pixels). A picture that has gone stale is retaken with nox -s guide.

@@ -592,7 +592,7 @@ same order in both apps:
 
 | Group | Pages |
 |---|---|
-| Start | Overview, Guided start |
+| Start | Overview, Guided start, Training (browser app only) |
 | Borehole | Site maps, Geophysics (VES), Borehole design, Pumping test, Water quality, Costing & BoQ, Procurement, Supervision, Handover |
 | Field tools | VES co-pilot, Drilling co-pilot and Pumping co-pilot (browser app only), Depth Spine, Scanned sheets, Templates |
 | Programme | Water points, Coverage gap, Portfolio, Asset registry, Report on a borehole (browser app only) |
@@ -792,6 +792,39 @@ planned depth can be entered directly), and produce the first cost
 estimate from that depth. Every result carries over to the full pages
 for fine tuning, and the final step lists what to do during and after
 drilling.
+
+## 5c. Training: find the fault (browser app)
+
+In the browser app: [`#/training`](index.html#/training), under *Start*.
+It is in the browser app only; the Streamlit app says so on its Guided
+start page. It needs no network and changes no project.
+
+The page sets three exercises. Each is a result this toolkit once got
+wrong on one of its own worked examples, shown as the report gave it:
+
+1. **The 30-minute test.** A pumping test that recommended a yield.
+2. **The aquifer 80 m deep.** A geophysical report that said how deep
+   to drill.
+3. **The site 250 km away.** A GPS position typed into the site details.
+
+Under each is a question and four answers. Choose the one that names
+what is wrong. A wrong answer is greyed and the page says why it is not
+the fault, without saying what is; choose again. When the fault is
+found the page shows **the finding** (what was wrong, with the numbers)
+and **what the toolkit does now** about it, and a button that opens the
+worked example on the page where that can be seen. Loading an example
+replaces the project that is open, so save yours first.
+
+![The Training page: a count of the faults found, then the first exercise, The 30-minute test, with what the report said and four answers to choose from.](guide/training.png "Training. Nothing about the fault is on the page until the right answer is chosen.")
+
+*Progress* counts the faults found. It is kept in the browser, not in
+the project, so it goes with no project file; **Start again** clears
+it, and so does *Reset everything* on the Settings page.
+
+For a trainer: let each trainee answer alone before the group talks,
+and ask of every wrong answer why it was tempting. The three faults
+are the ones recorded in `ROADMAP.md` as hydraulics-1 and hydraulics-2,
+ves-1 and data-ingestion-3, where the full account of each is.
 
 ## 6. Running the analysis (web interface)
 
