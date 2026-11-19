@@ -36,7 +36,9 @@ from what is committed under `src/groundwater/depth_spine/`. Those
 comparisons, like CI's, are against the git index, so stage a file you
 regenerated before checking it. The same install serves `js`, which
 type-checks and lints the browser app in `docs/js` with the TypeScript and
-`oxlint` the Depth Spine pins; the app itself has no build, and its types
+`oxlint` the Depth Spine pins; the app is served as it is written, with
+nothing compiled, minified or rewritten (its three largest scripts are joined
+from parts, as below, and that is all), and its types
 are JSDoc comments it ignores. `gwt-core.js` is held to TypeScript's strict
 mode and every function on `GWT.core` carries a type for each parameter;
 the other scripts are checked loosely (`web/jscheck/` says what each level
@@ -58,9 +60,11 @@ python -m pyright         # likewise pinned; basic mode, see pyproject.toml
 python -m pytest -q --cov=groundwater --cov-report=term
 # check: bundles - the bundled data must match the source tables
 python web/build_boundary_review.py --check
+python web/build_js.py --check    # the three large scripts are the join of their parts
 python web/build_webapp_data.py
 python web/build_offline.py
-git diff --exit-code -- docs/js/gwt-data.js docs/js/gwt-geo.js \
+git diff --exit-code -- docs/js/gwt-core.js docs/js/gwt-app.js \
+    docs/js/gwt-charts.js docs/js/gwt-data.js docs/js/gwt-geo.js \
     docs/js/gwt-samples.js docs/sw.js
 # check: parity, browser
 python tests/webapp/make_reference.py --check
@@ -87,6 +91,7 @@ npm --prefix ui/depth-spine exec -- oxlint -c web/jscheck/oxlintrc.json \
 # build: every generated file, in dependency order
 (cd ui/depth-spine && npm ci && npm run build:all)
 python web/build_boundary_review.py
+python web/build_js.py
 python web/build_webapp_data.py
 python web/build_demo.py
 python web/build_offline.py
@@ -96,13 +101,36 @@ Regenerate the browser bundles in that order after Python or data changes.
 The Depth Spine goes first because `build_demo.py` inlines the Python
 package, and the package carries the Depth Spine build; any change under
 `src/` or `app/` changes `docs/wasm/index.html`, which the test suite holds
-to a fresh build. `build_offline.py` goes last: it hashes the whole app
+to a fresh build. `build_js.py` goes before `build_webapp_data.py`, which
+hashes `gwt-core.js` into `gwt-data.js` as the engine's digest.
+`build_offline.py` goes last: it hashes the whole app
 shell, `gwt-data.js` and its bundles included, so running it before the bundle it is meant
 to describe produces a release identifier for a shell that no longer
-exists. Both `build_offline.py` and `build_boundary_review.py` take
+exists. `build_js.py`, `build_offline.py` and `build_boundary_review.py` take
 `--check`. `tests/webapp/reference.json` is not in `build`: it moves only
 when numbers are meant to, so run `python tests/webapp/make_reference.py`
 by hand when they are.
+
+Three scripts of the browser app are too long to read, or to review a change
+in, as one file each: `gwt-core.js` is forty thousand lines, `gwt-app.js` ten
+thousand and `gwt-charts.js` seven thousand. Each is one closure whose
+sections call each other by bare name, so it cannot become several scripts,
+but it can be written as several files. Its parts are in `web/src/<name>/`,
+one for each banner section - a Python module's port in the engine, a page in
+the app, a family of figures in the charts - named `NNN-name.js`, and
+`python web/build_js.py` joins them in the order of their numbers into
+`docs/js/<name>.js`. Edit the part, run it, and commit the part and the joined
+file together. `docs/js` is still what Pages serves and what every test, `tsc`
+and `oxlint` read, so they report lines of the joined file;
+`python web/build_js.py --where docs/js/gwt-core.js:12345` gives the part and
+the line in it. An edit made to one of the three in `docs/js` is overwritten
+by the next join, and before that `nox -s bundles` and
+`tests/test_web_build.py` fail on it, naming the line and the part it belongs
+in. The join is a concatenation: nothing is added between two parts and
+nothing is transformed or minified, so the browser still runs exactly
+the text a person wrote. Every other script in `docs/js` is edited where it
+is. The numbers go up in tens so that a new part can take one between its
+neighbours'; nothing else may sit in a parts folder.
 
 A release is all of its files or none of them. A precache that cannot complete
 fails the install and leaves the device on the release it already had; an open
@@ -115,6 +143,37 @@ half-uploaded deploy become the app a file at a time, under the old release's
 identifier, with no install having succeeded - which is the exact failure the
 `addAll` is there to refuse. Anything in scope the release does not carry goes
 in the separate runtime cache instead.
+
+### The user guide and its pictures
+
+`docs/user_guide.md` is the field team's guide, and `web/build_guide.py`
+builds the page that is published, `docs/user_guide.html`, from it. Edit
+the Markdown, run `python web/build_guide.py` and then
+`python web/build_offline.py` (`nox -s build` runs both), and commit the
+guide, the page and `docs/sw.js`: the service worker's release is a hash of
+the files it carries, and the page is one of them. `nox -s bundles` fails
+on a page that is not what the guide builds to, and on a worker that is not
+current.
+
+A picture in the guide is a line in `SHOTS` in `web/guide_shots.mjs`: a
+page of the browser app, a worked example to load, a laptop or a phone.
+To add one, add the line, show it in the guide as
+`![what is on the page, for a reader who cannot see it](guide/<name>.png "the caption")`
+in a paragraph of its own, and run `nox -s guide`. Nobody takes a
+screenshot by hand, and nobody has to remember to retake one: `nox -s
+browser` opens each page a picture shows and compares its words with the
+words the picture was taken of (`web/guide/<name>.txt`), so a change that
+rewords a page fails until `nox -s guide` has been run, and the diff of
+that `.txt` file is what the page now says differently. Numbers are not
+compared, only that there is one: an inversion's count of iterations and
+the last digit of a fitted value differ from one browser version to the
+next. The release workflow covers those, by asking that every picture
+was retaken since the app, its fonts or the script last changed. That
+check runs at a tag, and the site is published from `main`, so between
+releases a picture can show a number or a look that has since moved,
+though never a word; run `nox -s guide -- --all` in a change where that
+matters. Commit
+`docs/guide`, `web/guide`, the page and `docs/sw.js` together.
 
 ## Two engines, one answer
 
@@ -168,6 +227,35 @@ reworded sentence is not a different inversion.
 Document-level assertions - what reaches the `.docx` a user downloads - belong
 in `tests/webapp/review.mjs`, not in parity.
 
+## The changelog
+
+`CHANGELOG.md` is an index and `changelog/` holds the text: one file per
+version, and `changelog/unreleased.md` for what has not been released. Write
+an entry at the top of `changelog/unreleased.md` under a `### ` heading, then
+add that heading, character for character, as the first bullet under
+"Unreleased" in `CHANGELOG.md`. The heading is the only summary the index
+gives and the only line of the entry a release's notes carry, so make it a
+sentence a reader can use without the text. Below it, say what changed and
+why in plain declarative sentences, with the exact names and numbers.
+`tests/test_changelog.py` fails if the bullets and the headings differ, in
+wording or in order.
+
+To cut a release, rename `changelog/unreleased.md` to
+`changelog/<version>.md`, change its title and the sentence under it to name
+the version, rename the "Unreleased" section and its link in `CHANGELOG.md`
+to match, and start a new `changelog/unreleased.md` under a new "Unreleased"
+section. Change the version in `pyproject.toml` first, run `nox -s build`,
+and only then `nox -s guide -- --all`, and commit `docs/guide`, `web/guide`,
+`docs/user_guide.html` and `docs/sw.js` before tagging: the version is
+written into `docs/js/gwt-data.js`, one of the files the release workflow's
+check of the guide's pictures hashes, so pictures retaken before the version
+changed are refused at the tag. `node web/guide_shots.mjs --release` says
+beforehand whether the tag will pass. The release workflow refuses a tag whose `changelog/<version>.md`
+does not exist, or whose section does not begin with the link to that file.
+The notes it publishes are the section's list of headings and a link to the
+file at the tag, because GitHub refuses a release body over 125,000
+characters and one version's text has run to 357,000.
+
 ## Data corrections
 
 Give the source URL, release date, licence, affected identifiers and a small
@@ -210,7 +298,8 @@ sixteen current districts through the chiefdom polygons and
 `sl_chiefdom_district.csv`. Do not try to derive sixteen district polygons by
 dissolving the chiefdoms - the rings are simplified independently, so
 neighbouring chiefdoms no longer share vertices and their common boundary does
-not cancel; CHANGELOG.md records the measurements. A correct dissolve needs a
+not cancel; `changelog/0.3.0.md` records the measurements, under "A note on
+the sixteen districts". A correct dissolve needs a
 geometric union over the raw geoBoundaries download, which is not committed.
 
 ## Examples and reports

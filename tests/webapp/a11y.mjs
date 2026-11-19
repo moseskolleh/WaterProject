@@ -1,7 +1,8 @@
 /* axe-core on every page of the browser app (PLAN.md step 9.4).
  *
- * Every page is checked with an empty project, with each of the three
- * samples loaded, and in the light theme with each sample again; then the
+ * Every page is checked in the dark theme with an empty project and with
+ * each of the three samples loaded, and in the light theme with each sample
+ * again; then the
  * states that are not a page of their own: a dialog open over a page, and
  * the navigation drawer open on a phone-sized screen. A serious or critical
  * violation fails the run unless ALLOWED below names it, with the reason it
@@ -140,6 +141,9 @@ await withPage(async (page, base, consoleErrors) => {
     PAGES.length > 20 && JSON.stringify([...PAGES].sort()) === JSON.stringify(defined),
     JSON.stringify({ PAGES, defined }));
 
+  /* the theme is the device's until one is chosen, and the device here asks
+   * for light: dark is chosen, so that both themes are checked */
+  await setTheme(page, 'dark');
   await everyPage(page, 'empty project');
   for (const sample of SAMPLES) {
     await loadSample(page, sample);

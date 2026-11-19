@@ -73,6 +73,8 @@ from groundwater.verification import (
 from groundwater.ves.cache import cache_entry, inversion_key
 from groundwater.ves.interpret import rank_interpretations
 
+from style import CATEGORICAL, THEME_SYNC
+
 
 # The Depth Spine workspace renders two ways. The custom component is
 # interactive but needs a server to serve its frontend, so the in-browser
@@ -120,27 +122,12 @@ def _brand(name: str) -> str | None:
 
 
 _ICON = _brand("icon.png")
-_LOGO = _brand("logo.png")
 
-# Design language: the sustaintheworld style. A near-black ground with
-# cards one step lighter, one neon green accent, Space Grotesk for headings
-# and controls, Inter for text and IBM Plex Mono for the small uppercase
-# labels. The printed reports keep their own house style (config.HouseStyle).
-_GREEN = "#7CFC00"        # primary green
-_GREEN_HOVER = "#9FFF4D"
-_ON_GREEN = "#051000"     # ink on a green surface
-_BG = "#0a0a0a"
-_CARD = "#1a1a1a"
-_CARD_ALT = "#141414"
-_TEXT = "#ffffff"
-_TEXT_SOFT = "#b0b0b0"
-_LINE = "rgba(124, 252, 0, 0.18)"
-_LINE_SOFT = "rgba(124, 252, 0, 0.08)"
-_AMBER = "#f2b705"
-_BLUE = "#2ea3e0"
-_SALMON = "#e07a5f"
-_EMERALD = "#3ad07a"
-_BAR_COLORS = [_GREEN, _EMERALD, _BLUE, _AMBER, _SALMON, "#8c8c8c"]
+# The interface's colours are the tokens of the stylesheet (app/style.py),
+# named as in the browser app's docs/css/gwt.css; a page that draws in a
+# colour names a token, so that it follows the theme. The printed reports
+# keep their own house style (config.HouseStyle).
+_BAR_COLORS = CATEGORICAL
 
 CONFIG = Config()
 IN_BROWSER = sys.platform == "emscripten"  # running under Pyodide (GitHub Pages demo)
@@ -1392,16 +1379,24 @@ def _load_project() -> None:
 # Navigation: one workspace, pages grouped by lifecycle stage
 # ---------------------------------------------------------------------------
 
+#: The navigation, in the order it is drawn: where to start, the borehole's
+#: own steps in the order the work is done, the tools used in the field
+#: along the way, the programme the borehole belongs to, and what is looked
+#: up. The browser app lists its pages in the same groups and order; a page
+#: only one app has simply appears there.
 NAV_GROUPS: list[tuple[str, list[str]]] = [
-    ("Project", ["Overview", "Guided start", "Site maps", "Verify a document"]),
-    ("Investigation", ["Geophysics (VES)", "Borehole design", "Depth Spine",
-                       "Scanned sheets"]),
-    ("Testing", ["Pumping test", "Water quality"]),
-    ("Delivery", ["Costing & BoQ", "Procurement", "Supervision", "Handover",
-                  "Templates"]),
-    ("Area analysis", ["Water points", "Coverage gap", "Portfolio",
-                       "Asset registry"]),
+    ("Start", ["Overview", "Guided start"]),
+    ("Borehole", ["Site maps", "Geophysics (VES)", "Borehole design",
+                  "Pumping test", "Water quality", "Costing & BoQ",
+                  "Procurement", "Supervision", "Handover"]),
+    ("Field tools", ["Depth Spine", "Scanned sheets", "Templates"]),
+    ("Programme", ["Water points", "Coverage gap", "Portfolio",
+                   "Asset registry"]),
+    ("Reference", ["Verify a document"]),
 ]
+#: The group whose pages are the steps of the work, numbered in the sidebar
+#: and ticked there once done.
+NAV_STEPS = "Borehole"
 _ALL_PAGES = [p for _, pages in NAV_GROUPS for p in pages]
 DEFAULT_PAGE = "Overview"
 
@@ -1412,6 +1407,34 @@ def _page_key(name: str) -> str:
 
 def _group_key(group: str) -> str:
     return "nav_" + "".join(c if c.isalnum() else "_" for c in group.lower())
+
+
+def steps_done() -> dict[str, bool]:
+    """Which steps of the Borehole group have been done, by page title.
+
+    A step is done when its result is in the session, as the Overview's
+    stepper and its report list read it: the site once it has a name, the
+    survey once inverted, the design once made, the test once analysed, the
+    water once assessed, the borehole once costed, the supervision once a
+    checklist item is answered, the handover once built. Procurement has no
+    such result and is never ticked.
+    """
+    session = st.session_state
+    done = {
+        "Site maps": bool(site_from_state().community),
+        "Geophysics (VES)": session.get("ves_results") is not None,
+        "Borehole design": session.get("borehole_design") is not None,
+        "Pumping test": session.get("pump_analysis") is not None,
+        "Water quality": session.get("wq_assessment") is not None,
+        "Costing & BoQ": session.get("cost_estimate") is not None,
+        "Supervision": any(
+            str(value) in ("Yes", "No", "N/A")
+            for key, value in session.items() if str(key).startswith("chk_")
+        ),
+        "Handover": bool(session.get("handover_built")),
+    }
+    pages = dict(NAV_GROUPS)[NAV_STEPS]
+    return {page: done.get(page, False) for page in pages}
 
 
 def _nav_changed(group_key: str) -> None:
@@ -1440,6 +1463,27 @@ def _next_step(label: str, page: str, note: str = "", key: str = "") -> None:
     col_a.caption(note or f"Next: {page}")
     col_b.button(label, key=key or f"next_{_page_key(page)}", width="stretch",
                  on_click=_goto, args=(page,))
+
+
+def active_theme() -> str:
+    """"light" or "dark": the theme Streamlit says the page is drawn in.
+
+    Dark where it does not say (a test, a runtime without the context)."""
+    try:
+        kind = st.context.theme.type
+    except Exception:  # noqa: BLE001 - no context is not an error here
+        kind = None
+    return "light" if kind == "light" else "dark"
+
+
+def theme_sync() -> None:
+    """Draw the frame whose script mirrors the theme on the page's root
+    (style.THEME_SYNC), in a container the stylesheet gives no size."""
+    with st.container(key="gw_theme_sync"):
+        if hasattr(st, "iframe"):
+            st.iframe(THEME_SYNC, height=1)
+        else:  # pragma: no cover - older runtimes
+            components.html(THEME_SYNC, height=0)
 
 
 def _spine_iframe(html: str, height: int) -> None:

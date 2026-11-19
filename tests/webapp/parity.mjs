@@ -4073,7 +4073,7 @@ await withPage(async (page, base, consoleErrors) => {
     const DIGITS = ['cls', 'flag', 'raised', 'flatRouted', 'stream'];
     const whole = (name, values) => Array.prototype.join.call(values, DIGITS.includes(name) ? '' : ',');
     /* links or parts as one line of JSON with each length by its bits, the
-     * text make_reference.py's _ta_lines_digest hashes */
+     * text reference/terrain.py's _ta_lines_digest hashes */
     const linesText = (list) => JSON.stringify(list.map((line) => ({ ...line, length_m: hex(line.length_m) })));
     const linesDigest = (list) => C.sha256Hex(linesText(list));
     const valuesOf = (list) => list.map((line) => Object.values(line));
@@ -4088,7 +4088,7 @@ await withPage(async (page, base, consoleErrors) => {
         tangential: a.tangential, dx: core.dx, dy: core.dy, dg: core.dg });
       return { ints, floats };
     };
-    /* the window as make_reference.py's _ta_analysis builds it */
+    /* the window as reference/terrain.py's _ta_analysis builds it */
     const analyse = (kase, z) => {
       const lons = Float64Array.from({ length: kase.cols }, (_, j) => kase.lon0 + j * kase.step);
       const lats = Float64Array.from({ length: kase.rows }, (_, j) => kase.lat0 + j * kase.step);
@@ -4106,7 +4106,7 @@ await withPage(async (page, base, consoleErrors) => {
         (fraction, label) => heard.push([fraction, label]), 'float64', kase.shown);
       return { a, heard, lons, lats };
     };
-    /* the GeoJSON, told what make_reference.py's _ta_geojson tells it */
+    /* the GeoJSON, told what reference/terrain.py's _ta_geojson tells it */
     const geojsonOf = (kase, run) => {
       const plan = kase.read ? kase.read.plan : null, a = run.a;
       let seaCells = 0;
@@ -4169,7 +4169,7 @@ await withPage(async (page, base, consoleErrors) => {
         geojson: kase.held === 'digests' ? [short(geojson), geojson.length] : geojson };
     };
 
-    /* T4: the heights drawn as make_reference.py's _ta_generated_heights
+    /* T4: the heights drawn as reference/terrain.py's _ta_generated_heights
      * draws them, from the range-of-models generator */
     const generated = (kase) => {
       const rows = kase.rows, cols = kase.cols, draw = C.rangeStream(kase.seed, kase.stream);
@@ -4411,7 +4411,7 @@ await withPage(async (page, base, consoleErrors) => {
     };
     const spots = (values, n = 3) =>
       Array.from({ length: n }, (_, k) => number(values[Math.floor(k * (values.length - 1) / (n - 1))]));
-    /* the window as make_reference.py's _ta_analysis builds it */
+    /* the window as reference/terrain.py's _ta_analysis builds it */
     const analyse = (kase, z) => {
       const lons = Float64Array.from({ length: kase.cols }, (_, j) => kase.lon0 + j * kase.step);
       const lats = Float64Array.from({ length: kase.rows }, (_, j) => kase.lat0 + j * kase.step);
@@ -4426,7 +4426,7 @@ await withPage(async (page, base, consoleErrors) => {
         seaClean: kase.seaClean, label: kase.label };
       return { a: C.analyseTerrain(grid, { terrain: kase.settings }, null, 'float64', kase.shown), lons, lats };
     };
-    /* make_reference.py's _ln_answer */
+    /* reference/lineaments.py's _ln_answer */
     const answer = (kase, run, settings) => {
       const heard = [];
       let result;
@@ -4513,7 +4513,7 @@ await withPage(async (page, base, consoleErrors) => {
       const window = { ...g, assumed: null };
       const run = analyse(window, z);
       /* the survey plans laid on it (PLAN.md step 4.3), as
-       * make_reference.py's _sp_answer lays them */
+       * reference/survey_plan.py's _sp_answer lays them */
       const lin = C.lineamentCandidates(run.a, null, null);
       const at = (p) => [g.lon0 + p[0] * g.step, g.lat0 + p[1] * g.step];
       const pair = (p) => p.map(number);
@@ -5589,7 +5589,7 @@ await withPage(async (page, base, consoleErrors) => {
         borehole: kase.options.borehole || '', madeOn: kase.options.made_on, engine: kase.options.engine,
         calibration: kase.options.calibration, records: kase.options.records });
       const clone = (v) => JSON.parse(JSON.stringify(v));
-      // make_reference.py's _bd_edited, _bd_manifest_text and _bd_apply
+      // reference/bundle.py's _bd_edited, _bd_manifest_text and _bd_apply
       const edited = (facts, edits) => {
         const out = clone(facts);
         edits.forEach((edit) => {

@@ -10,8 +10,9 @@ login).
 `docs/` is the published site. It holds two things:
 
 - **`docs/index.html` — the standalone web app.** Plain HTML, CSS and
-  JavaScript: no Python runtime, no build step, no dependencies fetched
-  at visit time. It starts in well under a second, works offline once
+  JavaScript: no Python runtime, nothing compiled, minified or rewritten,
+  no dependencies fetched at visit time.
+  It starts in well under a second, works offline once
   loaded, and does the whole job — reading the field workbooks,
   inverting the soundings, analysing the pumping tests, assessing the
   water quality, designing the borehole, costing the works, running the
@@ -50,24 +51,38 @@ Python sources are not published alongside the site.
 ### Rebuilding what `docs/` contains
 
 The standalone app is hand-written source, not generated — edit
-`docs/index.html`, `docs/css/gwt.css` and `docs/js/*.js` directly. Three
-parts of it are generated and must be regenerated, in this order, when
-their sources change:
+`docs/index.html`, `docs/css/gwt.css` and `docs/js/*.js` directly, with
+one exception. The three largest scripts, `gwt-core.js`, `gwt-app.js` and
+`gwt-charts.js`, are too long to read or review as one file each, so each
+is written as parts under `web/src/<name>/` and `web/build_js.py` joins
+them into `docs/js`: edit the part, run it, and commit both. An edit made
+to one of those three in `docs/js` is overwritten by the next join. The
+join is a concatenation — nothing is transformed or minified,
+and the browser still runs exactly the text a person wrote. Three other
+parts of the app are generated. All of it must be regenerated, in this
+order, when its sources change:
 
 ```bash
+python web/build_js.py            # docs/js/gwt-core.js, gwt-app.js and
+                                  # gwt-charts.js, joined from their parts
+                                  # in web/src. FIRST: gwt-data.js carries
+                                  # a hash of gwt-core.js
 python web/build_webapp_data.py   # docs/js/gwt-data.js: the guideline
                                   # table, rate catalogue and checklists;
                                   # gwt-geo.js and gwt-samples.js: the map
                                   # layers and sample workbooks, which the
                                   # app loads when first wanted
 python web/build_demo.py          # docs/wasm/index.html: the stlite build
+python web/build_guide.py         # docs/user_guide.html: the user guide
+                                  # as a page, from docs/user_guide.md
 python web/build_offline.py       # docs/sw.js: the service worker and the
                                   # release identifier. LAST: it hashes the
                                   # whole app shell, the data included
 ```
 
-CI fails if any of the three is out of date with the sources it is built
-from, so they can never drift apart. `build_offline.py` going last
+CI fails if any of these is out of date with the sources it is built
+from, a joined script that is not the join of its parts included, so they
+can never drift apart. `build_offline.py` going last
 matters: run it before the bundle it is meant to describe and the
 release identifier names a shell that no longer exists.
 
@@ -79,6 +94,33 @@ pages are committed inside the package. Rebuild those first when
 ```bash
 cd ui/depth-spine && npm ci && npm run build:all
 ```
+
+The user guide is written in `docs/user_guide.md` and published as the
+page `docs/user_guide.html`, which `web/build_guide.py` builds; the page is
+never edited. The pictures in it, under `docs/guide/`, are never taken by
+hand either: `web/guide_shots.mjs` takes each from the app with a worked
+example loaded, and keeps beside it, in `web/guide/`, the words of the page
+it shows. CI opens every one of those pages again and fails when the words
+have changed, naming the picture; retake what is stale with
+
+```bash
+nox -s guide            # retake the pictures whose page changed, rebuild
+                        # the page and the service worker
+nox -s guide -- --all   # retake every picture: before a release
+```
+
+and commit `docs/guide`, `web/guide`, `docs/user_guide.html` and
+`docs/sw.js`. A change that only moves a number or how a page looks
+changes no words and fails nothing in CI. The release workflow refuses a
+tag unless every picture was retaken (`--all`) since the app's files, its
+fonts or the script last changed; but Pages publishes `main`, not the tag,
+so between releases the published guide can show a picture whose numbers
+or looks are older than the page, though never its words. Run
+`nox -s guide -- --all` in any change where that matters, and always for a
+release: after the version is changed in `pyproject.toml` and `nox -s
+build` has run (the version is in one of the hashed files), and before
+tagging. `node web/guide_shots.mjs --release` says whether the tag will
+pass.
 
 The icon is not edited in `docs/` either: `web/make_brand_assets.py` writes
 `docs/icon.svg` from the same drawing as the package's own icon, and a test

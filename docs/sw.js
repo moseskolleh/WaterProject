@@ -28,7 +28,7 @@
  * any byte of the shell and this changes with it, so the browser fetches the
  * new worker and drops the old cache; forget to change it and a device keeps
  * serving last month's app with nothing to show that it is doing so. */
-var VERSION = 'gwt-v1271022b46a1';
+var VERSION = 'gwt-vbc60cdb5d800';
 /* The release: exactly what install put on disk, and nothing else. Only the
  * install handler ever writes to it. */
 var CACHE = VERSION + '-app';
@@ -70,7 +70,27 @@ var PRECACHE = [
   'js/gwt-pump-copilot.js',
   'js/gwt-ves-copilot.js',
   'js/gwt-drill-copilot.js',
-  'user_guide.md',
+  'user_guide.html',
+  'css/guide.css',
+  'guide/templates.png',
+  'guide/ves-copilot.png',
+  'guide/pumping-copilot.png',
+  'guide/drilling-copilot.png',
+  'guide/overview.png',
+  'guide/navigation-phone.png',
+  'guide/guided.png',
+  'guide/training.png',
+  'guide/ves.png',
+  'guide/ves-sounding.png',
+  'guide/pumping.png',
+  'guide/pumping-analysis.png',
+  'guide/design.png',
+  'guide/quality.png',
+  'guide/costing.png',
+  'guide/supervision.png',
+  'guide/handover.png',
+  'guide/site.png',
+  'guide/site-map.png',
   'depth-spine.md',
 ];
 

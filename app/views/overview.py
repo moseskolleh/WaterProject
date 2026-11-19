@@ -37,7 +37,7 @@ def render() -> None:
     _head_l, _head_r = st.columns([3, 1])
     with _head_l:
         st.markdown(
-            f"<h2 style='margin:0 0 2px'>{_ov_title} "
+            f"<h2 class='gw-title'>{_ov_title} "
             f"<span class='gw-chip {_chip_css}'>{_chip_label}</span></h2>",
             unsafe_allow_html=True,
         )
@@ -74,7 +74,7 @@ def render() -> None:
     if not _has_results:
         st.markdown(
             "<div class='gw-card'><span class='gw-cap'>Getting started</span>"
-            "<div style='font-size:0.86rem;color:#b0b0b0;line-height:1.5'>"
+            "<div class='gw-lead'>"
             "Nothing has been analysed yet. Work through the guided start, "
             "or open any page from the sidebar - every page offers bundled "
             "sample data (Rokel, Dr Timbo, Kuntolo) so you can try the whole "
@@ -199,8 +199,7 @@ def render() -> None:
                                "discharge pending")
                     _pump_head = (
                         "<span class='gw-chip gw-chip-amber'>Pending</span>"
-                        f"<div style='font-size:0.75rem;color:#8c8c8c;"
-                        f"margin-top:6px'>{_html.escape(_reason)}</div>"
+                        f"<div class='gw-note'>{_html.escape(_reason)}</div>"
                     )
                 _pump_rows = []
                 _t = _ov_pump.transmissivity_m2_per_day
@@ -242,8 +241,7 @@ def render() -> None:
                     "<div class='gw-card'><span class='gw-cap'>Water quality"
                     " — WHO</span>"
                     f"<span class='gw-chip {_wq_chip[0]}'>{_wq_chip[1]}</span>"
-                    f"<div style='font-size:0.75rem;color:#8c8c8c;"
-                    f"margin-top:6px'>{_html.escape(_wq_note)}</div>"
+                    f"<div class='gw-note'>{_html.escape(_wq_note)}</div>"
                     + _rows_html([
                         ("Parameters assessed", str(len(_ov_wq.rows))),
                     ])
@@ -272,8 +270,7 @@ def render() -> None:
                     "</span>"
                     f"<div class='gw-big'>US$ {_ov_cost.price_usd:,.0f} "
                     "<small>price</small></div>"
-                    f"<div style='font:400 10px \"IBM Plex Mono\",monospace;"
-                    f"color:#b0b0b0'>RWSN model · "
+                    "<div class='gw-unit'>RWSN model · "
                     f"US$ {_ov_cost.cost_per_meter_usd:,.0f}/m</div>"
                     f"<div class='gw-bar'>{_bar}</div>"
                     f"<div class='gw-legend'>{_legend}</div></div>",

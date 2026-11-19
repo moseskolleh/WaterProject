@@ -497,6 +497,217 @@ def test_the_worker_is_written_in_one_step(tmp_path):
     assert not list(tmp_path.glob("*.tmp")), "the staging file was left behind"
 
 
+def _load_js_builder():
+    spec = importlib.util.spec_from_file_location(
+        "build_js", REPO / "web" / "build_js.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_each_large_script_is_the_join_of_its_parts():
+    """docs/js/gwt-core.js, gwt-app.js and gwt-charts.js are joined, not edited.
+
+    Each is written as parts under web/src, and web/build_js.py joins them
+    byte for byte into the file the site serves, which is also the file
+    every other test here reads. A served file that is not the join is one
+    of two mistakes: a part was edited and the join not run, or docs/js
+    was edited directly, where the next join would quietly undo the edit.
+    The failure is the builder's own account of it, which names the first
+    line that differs and the part that line belongs in.
+    """
+    builder = _load_js_builder()
+    assert set(builder.BUNDLES) == {"gwt-core.js", "gwt-app.js", "gwt-charts.js"}
+    for bundle in builder.BUNDLES:
+        joined = builder.join(bundle)
+        committed = (REPO / "docs" / "js" / bundle).read_bytes()
+        # Not `assert committed == joined`: pytest would set about explaining
+        # the difference between two megabytes of script.
+        if committed != joined:
+            raise AssertionError(builder.explain(bundle, joined, committed))
+
+
+def test_the_parts_of_a_script_are_numbered_in_one_order_and_none_is_empty():
+    """The order of the parts is the script, so there can only be one order.
+
+    The join sorts the parts by file name, and a name is three digits and
+    then words, so sorting the names as text is sorting the numbers and
+    gives the same script on every machine. That holds only while every
+    name keeps the pattern and no two share a number. A part with nothing
+    in it is a section somebody emptied and forgot, and one that does not
+    end with a newline would run its last line into the next part's first,
+    so that a line of the joined file no longer came from one part.
+    """
+    builder = _load_js_builder()
+    for bundle in builder.BUNDLES:
+        folder = REPO / "web" / "src" / bundle[: -len(".js")]
+        # a file whose name begins with a dot is the operating system's, not
+        # the script's, and the builder passes over it for the same reason
+        names = sorted(p.name for p in folder.iterdir() if not p.name.startswith("."))
+        assert len(names) > 1, f"{bundle} is not in parts"
+        for name in names:
+            assert re.fullmatch(r"\d{3}-[a-z0-9]+(-[a-z0-9]+)*\.js", name), (
+                f"web/src/{folder.name}/{name} is not named NNN-name.js"
+            )
+        numbers = [int(name[:3]) for name in names]
+        assert numbers == sorted(set(numbers)), f"two parts of {bundle} share a number"
+        pieces = builder.parts(bundle)
+        assert [p.name for p in pieces] == names
+        assert pieces == builder.parts(bundle), "the order changed between two calls"
+        for path in pieces:
+            data = path.read_bytes()
+            assert data.strip(), f"web/src/{folder.name}/{path.name} is empty"
+            assert data.endswith(b"\n"), f"web/src/{folder.name}/{path.name} has no final newline"
+        # every byte of the script is in exactly one part
+        assert sum(p.stat().st_size for p in pieces) == (
+            REPO / "docs" / "js" / bundle).stat().st_size
+
+
+def _refused(builder, bundle: str, src: Path) -> str:
+    """What the builder says when it will not join a folder of parts."""
+    try:
+        builder.parts(bundle, src)
+    except builder.PartsError as exc:
+        return str(exc)
+    raise AssertionError("a parts folder that cannot be joined was not refused")
+
+
+def test_a_parts_folder_holds_parts_and_nothing_else(tmp_path):
+    """A file beside the parts is either joined by mistake or left out by mistake.
+
+    "15-fix.js" sorts after "140-page-ves.js"; "010-chrome.js.orig" and
+    "notes.md" are in the folder and not in the script. Each is refused by
+    name rather than joined in the wrong place or silently dropped.
+    """
+    builder = _load_js_builder()
+    folder = tmp_path / "gwt-app"
+    folder.mkdir()
+    (folder / "000-header.js").write_bytes(b"(function () {\n")
+    (folder / "010-boot.js").write_bytes(b"}());\n")
+    assert builder.join("gwt-app.js", tmp_path) == b"(function () {\n}());\n"
+
+    for stray in ("15-fix.js", "010-boot.js.orig", "notes.md", "020_page.js", "020-Page.js"):
+        (folder / stray).write_bytes(b"// stray\n")
+        assert stray in _refused(builder, "gwt-app.js", tmp_path)
+        (folder / stray).unlink()
+
+    (folder / "010-other.js").write_bytes(b"// a second 010\n")
+    assert "share the number 010" in _refused(builder, "gwt-app.js", tmp_path)
+    (folder / "010-other.js").unlink()
+
+    (folder / "005-empty.js").write_bytes(b"")
+    assert "005-empty.js is empty" in _refused(builder, "gwt-app.js", tmp_path)
+    (folder / "005-empty.js").write_bytes(b"var cut = 1;")
+    assert "does not end with a newline" in _refused(builder, "gwt-app.js", tmp_path)
+    (folder / "005-empty.js").unlink()
+
+    # what Finder leaves behind is not a part and is not mistaken for one
+    (folder / ".DS_Store").write_bytes(b"\x00")
+    assert builder.join("gwt-app.js", tmp_path) == b"(function () {\n}());\n"
+    assert "no parts to join" in _refused(builder, "gwt-core.js", tmp_path)
+
+
+def test_where_names_the_part_a_line_of_a_joined_script_comes_from(capsys):
+    """tsc, oxlint and a stack trace give a line of the joined file.
+
+    They were handed docs/js/gwt-core.js, so line 9169 is all they can
+    say; --where is how that becomes a part somebody can open. Held at the
+    two ends of a part, where an off-by-one would send the reader into its
+    neighbour, and through the command line in each form the tools print.
+    """
+    builder = _load_js_builder()
+    bundle = "gwt-core.js"
+    pieces = builder.parts(bundle)
+    index = next(i for i, p in enumerate(pieces)
+                 if p.name.endswith("-hydraulics-analysis.js"))
+    part = pieces[index]
+    before = sum(p.read_bytes().count(b"\n") for p in pieces[:index])
+    length = part.read_bytes().count(b"\n")
+    served = (REPO / "docs" / "js" / bundle).read_bytes().split(b"\n")
+    own = part.read_bytes().split(b"\n")
+    # the blank line above a banner opens the part, so no part ends in one
+    assert own[0] == b"" and b"groundwater/hydraulics/analysis.py" in own[2]
+
+    for within in (1, length):
+        assert builder.locate(bundle, before + within) == (part, within)
+        assert served[before + within - 1] == own[within - 1]
+    # one line either side is the neighbour's
+    previous = pieces[index - 1]
+    assert builder.locate(bundle, before) == (
+        previous, previous.read_bytes().count(b"\n"))
+    assert builder.locate(bundle, before + length + 1) == (pieces[index + 1], 1)
+    # and the script's own first and last lines
+    last = len(served) - 1                  # the file ends with a newline
+    assert builder.locate(bundle, 1) == (pieces[0], 1)
+    assert builder.locate(bundle, last) == (
+        pieces[-1], pieces[-1].read_bytes().count(b"\n"))
+
+    name = part.relative_to(REPO).as_posix()
+    assert builder.main(["--where", f"docs/js/{bundle}:{before + 1}",
+                         f"{bundle}:{before + length}:7",
+                         f"docs/js/{bundle}({before + 1},7)"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"{name}:1", f"{name}:{length}:7", f"{name}:1:7"]
+
+    # a line the script does not have, and a script that has no parts
+    assert builder.main(["--where", f"{bundle}:{last + 1}"]) == 1
+    assert f"no line {last + 1}" in capsys.readouterr().err
+    assert builder.main(["--where", "docs/js/gwt-docx.js:12"]) == 1
+    assert "not joined from parts" in capsys.readouterr().err
+
+
+def test_a_script_that_is_not_its_join_is_reported_by_line_and_part(tmp_path, capsys):
+    """--check has to say where, not only that.
+
+    "gwt-core.js differs" over forty thousand lines sends nobody anywhere.
+    One byte of one part is changed in a copy of the parts, and the check
+    has to fail, name the line of the served file and the part and line it
+    comes from, and leave the other two scripts passing. Joined into an
+    empty folder, the same copy writes all three whole and leaves no
+    staging file, and a second run finds nothing to write.
+    """
+    import shutil
+
+    builder = _load_js_builder()
+    src = tmp_path / "src"
+    shutil.copytree(REPO / "web" / "src", src,
+                    ignore=shutil.ignore_patterns(".*"))
+    assert builder.main(["--check", "--src", str(src)]) == 0
+    capsys.readouterr()
+
+    part = next((src / "gwt-core").glob("*-hydraulics-spread.js"))
+    data = part.read_bytes()
+    constant = b"var Z_P90 = 1.2815515655446004;"
+    assert data.count(constant) == 1
+    within = data[: data.index(constant)].count(b"\n") + 1
+    part.write_bytes(data.replace(constant, constant.replace(b"4;", b"5;")))
+    line = builder.first_difference(
+        builder.join("gwt-core.js", src), builder.join("gwt-core.js"))
+    assert builder.locate("gwt-core.js", line, src) == (part, within)
+
+    assert builder.main(["--check", "--src", str(src)]) == 1
+    said = capsys.readouterr().out
+    assert f"docs/js/gwt-core.js is not the join of its parts. The first difference is at line {line}," in said
+    assert f"which is line {within} of {part}" in said
+    assert "parts:       var Z_P90 = 1.2815515655446005;" in said
+    assert "committed:   var Z_P90 = 1.2815515655446004;" in said
+    assert "docs/js/gwt-app.js is the join of its parts" in said
+    assert "docs/js/gwt-charts.js is the join of its parts" in said
+
+    out = tmp_path / "out"
+    part.write_bytes(data)
+    assert builder.main(["--src", str(src), "--out", str(out)]) == 0
+    assert capsys.readouterr().out.count("wrote ") == 3
+    for bundle in builder.BUNDLES:
+        assert (out / bundle).read_bytes() == (REPO / "docs" / "js" / bundle).read_bytes()
+    assert not list(out.glob("*.tmp")), "a staging file was left behind"
+    stamps = {bundle: (out / bundle).stat().st_mtime_ns for bundle in builder.BUNDLES}
+    assert builder.main(["--src", str(src), "--out", str(out)]) == 0
+    assert capsys.readouterr().out.count("wrote ") == 0
+    assert stamps == {bundle: (out / bundle).stat().st_mtime_ns for bundle in builder.BUNDLES}
+
+
 def test_the_build_groups_a_shape_s_rings_into_one_polygon_with_its_holes():
     """Every ring used to be a filled polygon carrying the parent's code.
 

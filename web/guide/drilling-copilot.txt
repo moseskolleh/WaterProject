@@ -1,0 +1,21 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Untitled project Load a sample or
+upload a field sheet to begin Save project Open project ◐ Groundwater Toolkit Rural water supply
+boreholes Start Overview Guided start Training Borehole Site & maps Step 1 of 9 Geophysics (VES)
+Step 2 of 9 Borehole design Step 3 of 9 Pumping test Step 4 of 9 Water quality Step 5 of 9 Costing &
+BoQ Step 6 of 9 Procurement Step 7 of 9 Supervision Step 8 of 9 Handover Step 9 of 9 Field tools VES
+co-pilot Drilling co-pilot Pumping co-pilot Depth Spine Scanned sheets Templates Programme Water
+points Coverage gap Portfolio Asset registry Report on a borehole Reference Verify a document
+Settings About & method Field tools Drilling log co-pilot The drilling log kept at the rig, interval
+by interval: the formation from the toolkit's own classes, the rate from the clock, each water
+strike with its airlift yield, a photograph of the cuttings, and the supervisor's countersign each
+day. The drilling log co-pilot, which logs each interval against the lithology classes with its
+times, water strikes, airlift yield and cuttings photo, and takes the supervisor's countersign each
+day, is in the browser app only. The Streamlit app reads the drilling log it writes like any other
+drilling log template. The borehole Community Borehole Ref. No. Client Contractor District Drilling
+method Drill rig Driller (record taker) Bit diameter (in) Drilling starts at (m) At the rig The bit
+is not turning. Start the interval when it touches 0 m: the rate is timed from then. Start drilling
+The log No interval logged yet. Countersign each day Each day is countersigned once something is
+logged on it. The sheets The standard drilling log workbook, which the Borehole design page and both
+apps' readers take like any other, and the driller's daily report in its template's layout, a sheet
+a day. No position taken yet. Stand at the borehole to take it. Take the GPS position Download the
+drilling log Download the daily reports Use it as this project's drilling log Start a new borehole

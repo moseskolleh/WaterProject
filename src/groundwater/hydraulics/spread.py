@@ -5,7 +5,7 @@ pump setting follow from it. This module puts a spread on each of them and
 names the flow regime the readings show, so a report can say how wide the
 answer is and which model it should have come from.
 
-Four things live here, each mirrored rule for rule in ``docs/js/gwt-core.js``
+Five things live here, each mirrored rule for rule in ``docs/js/gwt-core.js``
 (the section headed "pumping spread"), and held to it by the parity suite:
 
 * **A block bootstrap of the adopted fit's residuals.** The fitted curve
@@ -41,10 +41,21 @@ Four things live here, each mirrored rule for rule in ``docs/js/gwt-core.js``
   the few degrees of freedom recovers under one point, so none is applied:
   the reports print these rates beside the band instead, and the band is to
   be read as the least the spread can be.
-* **The Theis fit's own covariance**, which ``curve_fit`` returns and the
-  analysis used to throw away. It is the band the fit gives when every
-  reading's error is independent; the bootstrap does not assume that, and
-  the report prints both.
+* **The Theis fit's own covariance**, ``inv(J^T J)`` times the residual
+  variance, taken at the optimum by ``covariance_log2``. It is the band the
+  fit gives when every reading's error is independent; the bootstrap does
+  not assume that, and the report prints both. It used to be the one scipy's
+  ``curve_fit`` returned, from a forward-difference Jacobian whose step is
+  1.5e-8 of the parameter: where log10 T came out near zero, a
+  transmissivity near 1 m2/day, that step was 1e-16 and the covariance was
+  rounding noise, a band a quarter as wide as the readings give on one sheet
+  and none at all on another (the three sheets named
+  pumping-theis-band-where-log-t-is-zero in tests/fuzz/regressions).
+* **A finish for each curve fit**, ``polish_log2``: Newton steps on the
+  normal equations with the Theis derivatives in closed form, from where the
+  search stops to the minimum itself. Both engines take the same search and
+  the same finish, and agree on a fitted transmissivity to about one part in
+  1e12, as they do on a straight line's.
 * **The Bourdet derivative** (Bourdet, Ayoub and Pirard 1989), ds/d ln t by
   the weighted central difference over neighbours at least L apart in log
   time, and a reading of the flow regime from the slope of the derivative on
@@ -99,6 +110,16 @@ LM_MAX_ITERATIONS = 200
 #: A refit stops when an iteration lowers the misfit by less than this
 #: fraction of it.
 LM_RELATIVE_TOLERANCE = 1e-12
+
+#: Newton steps a fit may be finished with (``polish_log2``). From where a
+#: search stops, two or three reach the point the rounding allows; the cap is
+#: for a search that stopped short on a long valley floor.
+POLISH_MAX_STEPS = 12
+
+#: A finished fit may sit this fraction above the misfit the search reached,
+#: no more. At the minimum the two differ by rounding, a few parts in 1e16;
+#: a finish that climbed further has left the valley and is not kept.
+POLISH_MISFIT_SLACK = 1e-9
 
 #: Fewer readings than this give no band: a block bootstrap of four
 #: readings in blocks of two has six distinct resamples.
@@ -277,6 +298,60 @@ def covariance_log2(model, x, y, p) -> list[list[float]] | None:
             [-a01 / det * scale, a00 / det * scale]]
 
 
+def polish_log2(derivatives, x, y, p, cost: float):
+    """``(params, misfit)``: a fit finished by Newton steps on its normal
+    equations, from the ``p`` and ``cost`` a search stopped at.
+
+    A search that stops when no step lowers the misfit stops where the
+    misfit's own rounding hides the next step: near the minimum the misfit
+    changes by the square of the distance left, so a fit good to sixteen
+    figures in the misfit is good to eight in the parameters, and which eight
+    is the luck of the last bit. Two engines taking the same steps ended one
+    part in 1e9 apart on a flat valley floor, and that difference decided a
+    printed digit one night and a bootstrap replicate another (the note in
+    tests/fuzz/regressions/pumping-bootstrap-replicate-at-the-floor.json).
+
+    The gradient does not have that blind spot: it is linear in the distance
+    left. So the finish solves ``J^T J step = -J^T r`` undamped, with the
+    derivatives in closed form (``derivatives(x, p0, p1)`` returns the curve
+    and its two partial derivatives), until the step stops shrinking, which
+    is where rounding takes over. What it reaches is the minimum itself, to
+    about one part in 1e12, in either engine.
+
+    The finish is kept only if its misfit is no more than POLISH_MISFIT_SLACK
+    above the search's: from a search that stopped far short, an undamped
+    step can leave the valley, and the search's own answer then stands.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    q = [float(p[0]), float(p[1])]
+    before = math.inf
+    for _ in range(POLISH_MAX_STEPS):
+        calc, j0, j1 = derivatives(x, q[0], q[1])
+        res = calc - y
+        a00, a01, a11 = _dot(j0, j0), _dot(j0, j1), _dot(j1, j1)
+        g0, g1 = _dot(j0, res), _dot(j1, res)
+        det = a00 * a11 - a01 * a01
+        if not (math.isfinite(det) and det != 0.0):
+            break
+        step0 = (-g0 * a11 + g1 * a01) / det
+        step1 = (-g1 * a00 + g0 * a01) / det
+        if not (math.isfinite(step0) and math.isfinite(step1)):
+            break
+        size = max(abs(step0) / max(abs(q[0]), 1.0), abs(step1) / max(abs(q[1]), 1.0))
+        if not size < before:
+            break
+        q = [q[0] + step0, q[1] + step1]
+        before = size
+    if q == [float(p[0]), float(p[1])]:
+        return q, cost
+    calc = derivatives(x, q[0], q[1])[0]
+    finished = _dot(calc - y, calc - y)
+    if math.isfinite(finished) and finished <= cost * (1.0 + POLISH_MISFIT_SLACK):
+        return q, finished
+    return [float(p[0]), float(p[1])], cost
+
+
 def pow10(x: float) -> float:
     """``10 ** x`` as the browser's ``Math.pow`` gives it: inf past the largest
     float, where Python's ``**`` raises. A fit can wander that far on a sheet
@@ -310,6 +385,30 @@ def theis_model(q_day: float, radius_m: float):
             return q_day / (4.0 * math.pi * transmissivity) * exp1(u)
 
     return model
+
+
+def theis_derivatives(q_day: float, radius_m: float):
+    """``(s, ds/d log10 T, ds/d log10 S)`` of the Theis curve at ``t_day``.
+
+    In closed form: with ``A = Q / (4 pi T)`` and ``dW/du = -exp(-u) / u``,
+    ``ds/d ln T = A (exp(-u) - W(u))`` and ``ds/d ln S = -A exp(-u)``. A
+    finite difference of the curve is good to five or eleven figures; these
+    are good to sixteen, which is what lets ``polish_log2`` find the minimum
+    to twelve.
+    """
+    ln10 = math.log(10.0)
+
+    def derivatives(t_day, log_t, log_s):
+        with np.errstate(all="ignore"):
+            transmissivity = np.power(10.0, np.float64(log_t))
+            storativity = np.power(10.0, np.float64(log_s))
+            u = radius_m**2 * storativity / (4.0 * transmissivity * t_day)
+            scale = q_day / (4.0 * math.pi * transmissivity)
+            well = exp1(u)
+            decay = np.exp(-u)
+            return (scale * well, ln10 * scale * (decay - well), -ln10 * scale * decay)
+
+    return derivatives
 
 
 def stehfest_weights(n: int = STEHFEST_TERMS) -> list[float]:
@@ -535,13 +634,15 @@ def fit_series(analysis, method: str):
     y = s[keep]
     result = analysis.theis if method == "theis" else analysis.papadopulos_cooper
     q_day = result.discharge_m3_per_h * 24.0
+    derivatives = None
     if method == "theis":
         model = theis_model(q_day, result.radius_m)
+        derivatives = theis_derivatives(q_day, result.radius_m)
     else:
         model = pc_model(q_day, result.radius_m, result.casing_radius_m)
     start = (math.log10(result.transmissivity_m2_per_day), math.log10(result.storativity))
     fitted = model(x, *start)
-    return x, y, fitted, _curve_refit(model, x, start)
+    return x, y, fitted, _curve_refit(model, x, start, derivatives)
 
 
 def _line(x, y) -> tuple[float, float]:
@@ -564,9 +665,16 @@ def _line_refit(x, q_day):
     return refit
 
 
-def _curve_refit(model, x, start):
+def _curve_refit(model, x, start, derivatives=None):
+    """``derivatives``: the curve's closed-form partial derivatives, where it
+    has them. The refit is then finished with ``polish_log2``, as the fit it
+    resamples was: a refit that stopped short on a valley floor used to be
+    counted or thrown out by where it stopped, 10^-279.4 against a minimum at
+    10^-280.2 on the sheet that showed it, either side of the floor."""
     def refit(y):
-        p, _ = lm_log2(model, x, y, start)
+        p, cost = lm_log2(model, x, y, start)
+        if derivatives is not None:
+            p, _ = polish_log2(derivatives, x, y, p, cost)
         transmissivity = pow10(p[0])
         if not (math.isfinite(transmissivity) and pow10(p[1]) >= STORATIVITY_FLOOR):
             return None

@@ -1,16 +1,56 @@
-[theme]
-base = "dark"
-primaryColor = "#7CFC00"
-backgroundColor = "#0a0a0a"
-secondaryBackgroundColor = "#1a1a1a"
-textColor = "#ffffff"
-linkColor = "#9FFF4D"
-borderColor = "#253A10"
-baseRadius = "12px"
+# The interface's colours, for Streamlit's own widgets. The same values are
+# the tokens of the app's stylesheet (app/style.py) and of the browser app
+# (docs/css/gwt.css), and are repeated in web/build_demo.py for the browser
+# demo: change them in all four places together.
+#
+# No base theme is named, so the app follows the device's light or dark
+# setting, and Streamlit's menu offers System, Light and Dark.
 
-[theme.sidebar]
-backgroundColor = "#000000"
-secondaryBackgroundColor = "#141414"
+[theme]
+font = "Inter, 'Segoe UI', system-ui, sans-serif"
+headingFont = "'Space Grotesk', 'Segoe UI', system-ui, sans-serif"
+codeFont = "'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace"
+baseRadius = "10px"
+buttonRadius = "6px"
+showWidgetBorder = true
+showSidebarBorder = true
+
+[theme.dark]
+primaryColor = "#8ae06c"
+backgroundColor = "#0d0f0e"
+secondaryBackgroundColor = "#151817"
+textColor = "#ebedec"
+linkColor = "#8ae06c"
+borderColor = "#3a3d3c"
+greenColor = "#4cc9a4"
+yellowColor = "#e6b23c"
+redColor = "#f08d74"
+blueColor = "#6cb4f0"
+
+[theme.dark.sidebar]
+backgroundColor = "#0a0c0b"
+secondaryBackgroundColor = "#151817"
+
+[theme.light]
+primaryColor = "#1b7a2e"
+backgroundColor = "#f6f7f5"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#161a17"
+linkColor = "#1b7a2e"
+borderColor = "#c4c7c3"
+greenColor = "#0b6b5a"
+yellowColor = "#7d5600"
+redColor = "#ad3f28"
+blueColor = "#1b639e"
+
+[theme.light.sidebar]
+backgroundColor = "#eff1ee"
+secondaryBackgroundColor = "#ffffff"
+
+[client]
+# no Deploy button or developer menu in front of a field user; the menu
+# keeps the theme choice and Print
+toolbarMode = "viewer"
 
 [browser]
 gatherUsageStats = false

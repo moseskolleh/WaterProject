@@ -14,7 +14,7 @@ function check(name, ok, detail) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok || !detail ? '' : '\n     ' + detail}`);
 }
 
-const PAGES = ['overview', 'guided', 'site', 'verify', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
+const PAGES = ['overview', 'guided', 'training', 'site', 'verify', 'ves', 'vescopilot', 'design', 'drillcopilot', 'spine',
   'pumping', 'pumpcopilot', 'quality', 'costing', 'procurement', 'supervision', 'handover',
   'templates', 'extract',
   'waterpoints', 'coverage', 'portfolio', 'registry', 'report', 'settings', 'about'];
@@ -106,8 +106,12 @@ async function keyboardWalkthroughs(page) {
     back === 3 + items.length + 1 && skipped.focus.id === 'main' && skipped.at.hash === '#/about' &&
     skipped.at.nav === 'about', JSON.stringify(skipped));
 
-  // The theme button, pressed three times with Enter, goes round the three
-  // themes and keeps the keyboard; its name says which theme is on.
+  // The theme is the device's own until one is chosen ("auto"). The theme
+  // button, pressed three times with Enter, goes round the three themes -
+  // light, dark and back to auto - and keeps the keyboard; its name says
+  // which theme is on.
+  const themeAtFirst = await page.evaluate(() => ({ theme: window.GWT.app.store.get('theme'),
+    attr: document.documentElement.getAttribute('data-theme') }));
   await page.focus('#top-actions button[title="Switch theme"]');
   const themes = [];
   for (let i = 0; i < 3; i += 1) {
@@ -115,10 +119,11 @@ async function keyboardWalkthroughs(page) {
     themes.push({ theme: await page.evaluate(() => window.GWT.app.store.get('theme')), focus: await focused() });
   }
   check('keyboard: the theme button goes round the themes, says which is on and keeps the keyboard',
-    JSON.stringify(themes.map((t) => t.theme)) === '["auto","light","dark"]' &&
-    JSON.stringify(themes.map((t) => t.focus.label)) === JSON.stringify(['Switch theme, now as the device is set',
-      'Switch theme, now light', 'Switch theme, now dark']) && themes.every((t) => t.focus.top),
-    JSON.stringify(themes));
+    themeAtFirst.theme === 'auto' && themeAtFirst.attr === null &&
+    JSON.stringify(themes.map((t) => t.theme)) === '["light","dark","auto"]' &&
+    JSON.stringify(themes.map((t) => t.focus.label)) === JSON.stringify(['Switch theme, now light',
+      'Switch theme, now dark', 'Switch theme, now as the device is set']) && themes.every((t) => t.focus.top),
+    JSON.stringify({ themeAtFirst, themes }));
 
   // A dialog: Enter on "Reset everything" opens it as a dialog named by its
   // title, with the keyboard on its close button; Tab and Shift+Tab go round
@@ -214,7 +219,7 @@ async function keyboardWalkthroughs(page) {
     escaped.state.expanded === 'false' && !escaped.state.visible && escaped.focus.id === 'nav-toggle',
     JSON.stringify({ shut, open, escaped }));
 
-  // Shift+Tab from Water quality is the Pumping co-pilot, the item above it.
+  // Shift+Tab from Water quality is the Pumping test, the step above it.
   await page.keyboard.press('Enter');
   await page.waitForTimeout(300);
   await page.keyboard.press('Shift+Tab');
@@ -224,13 +229,13 @@ async function keyboardWalkthroughs(page) {
   await page.focus('#nav-toggle');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(300);
-  const above = items.indexOf('Pumping co-pilot');
+  const above = items.indexOf('Pumping test');
   for (let i = 0; i <= above; i += 1) await page.keyboard.press('Shift+Tab');
   await page.waitForTimeout(300);
   const left = { state: await drawer(), focus: await focused() };
   check('keyboard: choosing a page from the drawer closes it and focuses the page; the keyboard leaving ' +
     'the drawer for the top bar closes it',
-    chosen.state.expanded === 'false' && !chosen.state.visible && chosen.at.nav === 'pumpcopilot' &&
+    chosen.state.expanded === 'false' && !chosen.state.visible && chosen.at.nav === 'pumping' &&
     chosen.focus.id === 'main' && above > 0 &&
     left.state.expanded === 'false' && !left.state.visible && !left.focus.nav && left.focus.top,
     JSON.stringify({ chosen, left }));
@@ -4229,6 +4234,13 @@ await withPage(async (page, base, consoleErrors) => {
   // 127.0.0.1 is a secure context, so the real worker registers here.
   const worker = await page.evaluate(async () => {
     const reg = await navigator.serviceWorker.ready;
+    /* ready resolves on an active worker; claiming the page that registered
+     * it is a separate step, as offline.mjs says where it waits the same
+     * way. Asked in between, the page is not yet controlled: the nightly
+     * run of 16 November failed on that and on nothing else. */
+    for (let i = 0; i < 60 && !navigator.serviceWorker.controller; i += 1) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
     return { scope: reg.scope, controlled: !!navigator.serviceWorker.controller };
   }).catch((e) => ({ error: String(e) }));
   check('offline: the service worker registers and takes control',
@@ -5885,10 +5897,11 @@ await withPage(async (page, base, consoleErrors) => {
     'serves, so the survey plan crosses the strike through the site and proposes no sounding',
     drawn.plan.join() === 'strike,1,0' && drawn.table, JSON.stringify([drawn.plan, drawn.table]));
 
-  /* the theme changed to light and back: the figures are drawn again in
-   * the page's new colours each time, as every other figure is */
+  /* the theme changed from dark to light and back: the figures are drawn
+   * again in the page's new colours each time, as every other figure is.
+   * The theme is the device's until one is chosen, so dark is chosen first. */
   const themed = await page.evaluate(() => {
-    const app = window.GWT.app, s = app.terrainSession(), was = app.store.get('theme', 'dark');
+    const app = window.GWT.app, s = app.terrainSession(), was = app.store.get('theme', 'auto');
     const svgs = () => Array.from(document.querySelectorAll('[data-item="terrain"] figure.figure > svg'));
     const grounds = () => svgs().map((svg) => svg.querySelector('rect').getAttribute('fill')).join();
     const toggle = (to) => {
@@ -5896,21 +5909,24 @@ await withPage(async (page, base, consoleErrors) => {
         document.querySelector('button[title="Switch theme"]').click();
       }
     };
+    toggle('dark');
     const dark = { svgs: svgs(), grounds: grounds() };
     toggle('light');
     const light = { svgs: svgs(), grounds: grounds(), surface: window.GWT.charts.palette().surface };
-    toggle(was);
+    toggle('dark');
     const back = { svgs: svgs(), grounds: grounds() };
     const kept = (shown) => shown.map((svg) => Object.keys(s.figures || {}).find((key) => s.figures[key] === svg))
       .join();
+    const keptBack = kept(back.svgs);
+    toggle(was);
     return { was, light: light.grounds, dark: dark.grounds, back: back.grounds,
       redrawn: [light.svgs.length, light.svgs.filter((svg, i) => svg !== dark.svgs[i]).length,
-        back.svgs.filter((svg, i) => svg !== light.svgs[i]).length].join(), kept: kept(back.svgs),
+        back.svgs.filter((svg, i) => svg !== light.svgs[i]).length].join(), kept: keptBack,
       painted: light.grounds === Array(7).fill(light.surface).join() && light.grounds !== dark.grounds &&
         back.grounds === dark.grounds };
   });
   check('terrain figures on the card: a new theme draws them again in its colours',
-    themed.was === 'dark' && themed.redrawn === '7,7,7' &&
+    themed.was === 'auto' && themed.redrawn === '7,7,7' &&
     themed.kept === 'relief,wetness,curvature,directions,lineaments,rose,plan' && themed.painted,
     JSON.stringify(themed));
 

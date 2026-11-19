@@ -7,6 +7,7 @@
     nox -s fuzz            the two engines on generated field sheets
     nox -s types           Pyright on the package
     nox -s js              tsc and oxlint over the browser app in docs/js
+    nox -s guide           retake the user guide's screenshots and rebuild it
     nox -s coverage        the tests, with a line coverage report
     nox -s examples        rerun the worked examples and their index
     nox -s release         the wheel, the sdist and the example packs in dist/
@@ -60,9 +61,14 @@ SPINE_OUTPUT = [
     "src/groundwater/depth_spine/static/workspace.html",
 ]
 
-# The bundles CI rebuilds and compares. build_offline.py is last because it
-# hashes the whole app shell, gwt-data.js and the bundles beside it included.
-BUNDLES = ["docs/js/gwt-data.js", "docs/js/gwt-geo.js", "docs/js/gwt-samples.js",
+# The generated files CI holds to their sources. The three scripts
+# web/build_js.py joins from their parts under web/src come first, and are
+# checked rather than rejoined (a rejoin would overwrite a hand edit before
+# reporting it); gwt-data.js follows because it carries a hash of gwt-core.js;
+# build_offline.py is last because it hashes the whole app shell, gwt-data.js
+# and the bundles beside it included.
+BUNDLES = ["docs/js/gwt-core.js", "docs/js/gwt-app.js", "docs/js/gwt-charts.js",
+           "docs/js/gwt-data.js", "docs/js/gwt-geo.js", "docs/js/gwt-samples.js",
            "docs/sw.js"]
 
 EXAMPLES = [
@@ -77,7 +83,9 @@ BROWSER_SUITES = [
     "tests/webapp/smoke.mjs",
     "tests/webapp/copilot.mjs",
     "tests/webapp/fieldkit.mjs",
+    "tests/webapp/training.mjs",
     "tests/webapp/a11y.mjs",
+    "tests/webapp/guide.mjs",
 ]
 
 # The one install line for the browser suites' npm packages, both at once:
@@ -263,9 +271,22 @@ def bundles(session: nox.Session) -> None:
     The chiefdom layer is checked before the bundle is built from it, so a
     withheld boundary fragment that never made it back into the committed
     data is reported as itself rather than as a puzzling bundle diff.
+
+    The three large scripts are held to their parts under web/src before
+    gwt-data.js is built, because its engine digest is a hash of
+    gwt-core.js. They are checked and not joined again: an edit made to
+    docs/js by hand is the mistake this is here to catch, and a check that
+    joined the parts over it would delete the edit before saying so.
+    build_js.py --check names the first line that differs and the part it
+    comes from, where the comparison below could only say the file changed.
     """
     _python(session, "web/build_boundary_review.py", "--check")
+    _python(session, "web/build_js.py", "--check")
     _python(session, "web/build_webapp_data.py")
+    # The guide's page is checked, like the three scripts, and not rebuilt:
+    # the check also says when the guide and its pictures have come apart.
+    # It comes before the worker, which carries the page and the pictures.
+    _python(session, "web/build_guide.py", "--check")
     _python(session, "web/build_offline.py")
     _unchanged(session, BUNDLES, "nox -s build")
 
@@ -303,13 +324,35 @@ def fuzz(session: nox.Session) -> None:
 def browser(session: nox.Session) -> None:
     """Drive the standalone app end to end in headless Chromium.
 
-    The last suite runs axe-core over every page, so this needs axe-core
-    beside Playwright, at the version CI installs.
+    The last three suites run axe-core, over the training page as it is
+    answered, over every page of the app and over the user guide, so this
+    needs axe-core beside Playwright, at the version CI installs. After them
+    the guide's screenshots are held to the app: each
+    page a picture shows is opened and its words compared with the words
+    the picture was taken of (web/guide_shots.mjs says why the words and not
+    the pixels). A picture that has gone stale is retaken with nox -s guide.
     """
     _need_playwright(session)
     _need_axe(session)
     for suite in BROWSER_SUITES:
         session.run("node", suite)
+    session.run("node", "web/guide_shots.mjs", "--check")
+
+
+@nox.session
+def guide(session: nox.Session) -> None:
+    """Retake the user guide's screenshots from the app and rebuild its page.
+
+    Only the pictures whose page has changed are retaken; -- --all retakes
+    every one, which a release needs if the app has changed at all since
+    the last time (the release workflow refuses the tag otherwise). The
+    page is rebuilt for the new pictures' sizes, and the service worker
+    after it, since the release it puts on a device carries both.
+    """
+    _need_playwright(session)
+    session.run("node", "web/guide_shots.mjs", *session.posargs)
+    _python(session, "web/build_guide.py")
+    _python(session, "web/build_offline.py")
 
 
 @nox.session
@@ -331,7 +374,7 @@ def depth_spine(session: nox.Session) -> None:
 
 @nox.session
 def js(session: nox.Session) -> None:
-    """Type-check and lint the browser app in docs/js, which has no build.
+    """Type-check and lint the browser app in docs/js, as it is served.
 
     The TypeScript and oxlint are ui/depth-spine's, at the versions its
     lockfile pins, rather than a second package.json pinning the same two
@@ -339,6 +382,15 @@ def js(session: nox.Session) -> None:
     rewrites docs/: the app is served as it is written, and the types are
     JSDoc comments it ignores. gwt-core.js is checked strictly, the other
     scripts loosely; web/jscheck/tsconfig*.json say what each level means.
+
+    Three of the scripts, gwt-core.js, gwt-app.js and gwt-charts.js, are
+    joined from parts under web/src by web/build_js.py, which the build
+    session runs and the bundles session checks; this one does neither. The
+    join is a concatenation, so the joined file is still the text a person
+    wrote and is what is checked here: a part is a stretch of one closure
+    and would not parse alone. Both tools therefore give lines of the
+    joined file, and python web/build_js.py --where docs/js/gwt-core.js:12345
+    gives the part and the line in it.
     """
     session.chdir(SPINE)
     session.run("npm", "ci", "--no-audit", "--no-fund")
@@ -369,8 +421,12 @@ def build(session: nox.Session) -> None:
     """Regenerate every generated file, in the order each depends on the last.
 
     The Depth Spine goes first because build_demo.py inlines the package,
-    and the package carries the Depth Spine build. build_offline.py goes
-    last because it hashes the shell everything before it wrote into.
+    and the package carries the Depth Spine build. build_js.py joins the
+    three large scripts before build_webapp_data.py hashes one of them,
+    gwt-core.js, into gwt-data.js. build_guide.py turns the user guide into
+    its page from the pictures already taken (nox -s guide takes them).
+    build_offline.py goes last because it hashes the shell everything
+    before it wrote into, the guide's page and pictures included.
     tests/webapp/reference.json is not here: it moves only when numbers are
     meant to, so regenerate it by hand with tests/webapp/make_reference.py.
     """
@@ -379,8 +435,10 @@ def build(session: nox.Session) -> None:
     session.run("npm", "run", "build:all")
     session.chdir(REPO)
     _python(session, "web/build_boundary_review.py")
+    _python(session, "web/build_js.py")
     _python(session, "web/build_webapp_data.py")
     _python(session, "web/build_demo.py")
+    _python(session, "web/build_guide.py")
     _python(session, "web/build_offline.py")
 
 

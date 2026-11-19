@@ -1,0 +1,83 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Dr. Timbo's Residence Western
+Area Rural · Dr. Timbo Save project Open project ◐ Groundwater Toolkit Rural water supply boreholes
+Start Overview Guided start Training Borehole Site & maps Step 1 of 9, done Geophysics (VES) Step 2
+of 9 Borehole design Step 3 of 9, done Pumping test Step 4 of 9, done Water quality Step 5 of 9,
+done Costing & BoQ Step 6 of 9, done Procurement Step 7 of 9 Supervision Step 8 of 9 Handover Step 9
+of 9, done Field tools VES co-pilot Drilling co-pilot Pumping co-pilot Depth Spine Scanned sheets
+Templates Programme Water points Coverage gap Portfolio Asset registry Report on a borehole
+Reference Verify a document Settings About & method Water quality Laboratory results against WHO and
+national limits, a charge balance check on the analysis itself, corrosivity and a materials
+recommendation, and the hydrochemical facies diagrams. Laboratory results
+dr_timbo_water_quality.xlsx Loaded — click to replace Remove Verdict Treat before use The water does
+not meet the health based guideline value for: Manganese. Treatment or an alternative source is
+required before the water is used for drinking. Water quality index 224.1 Very poor Hazard index
+0.19 Acceptable (Hazard Index below 1) Ionic balance 2.1% within normal laboratory practice
+Corrosivity Strongly corrosive Ryznar 11.37 Check Water is chemically aggressive; specify uPVC or
+stainless rising main and pump components. Results against guideline values Parameter Result Unit
+WHO health National Status Remark pH 5.9 pH units – 6.5-8.5 Exceeds acceptability exceeds the
+national acceptability limit (6.5-8.5), which is provisional; the WHO acceptability value is 6.5-8.5
+Electrical conductivity 185 uS/cm – 2500 Within limits – TDS 120 mg/L – 1000 Within limits –
+Turbidity 3.2 NTU – 5 Within limits – Temperature 27.4 deg C – – No guideline No guideline value
+Total hardness 58 mg/L as CaCO3 – 500 Within limits – Alkalinity 46 mg/L as CaCO3 – – No guideline
+No guideline value Calcium 14.2 mg/L – – No guideline No guideline value Magnesium 5.5 mg/L – – No
+guideline No guideline value Sodium 12.6 mg/L – 200 Within limits – Potassium 2.1 mg/L – – No
+guideline No guideline value; occurs at low levels in natural water Bicarbonate 56 mg/L – – No
+guideline No guideline value Chloride 18.4 mg/L – 250 Within limits – Sulfate 6.8 mg/L – 250 Within
+limits – Nitrate (as NO3) 8.2 mg/L 50 50 Within limits – Nitrite (as NO2) < DL mg/L 3 3 Below
+detection below detection limit (0.01 mg/L), which is at or under the limit of 3 mg/L Ammonia (as N)
+0.12 mg/L – 1.5 Within limits – Fluoride 0.22 mg/L 1.5 1.5 Within limits – Iron 0.85 mg/L – 0.3
+Exceeds acceptability exceeds the national acceptability limit (0.3), which is provisional; the WHO
+acceptability value is 0.3 Manganese 0.12 mg/L 0.08 0.08 Exceeds health exceeds the WHO health based
+guideline (0.08) Arsenic < DL mg/L 0.01 0.01 Below detection below detection limit (0.001 mg/L),
+which is at or under the limit of 0.01 mg/L Lead < DL mg/L 0.01 0.01 Below detection below detection
+limit (0.005 mg/L), which is at or under the limit of 0.01 mg/L Copper 0.02 mg/L 2 2 Within limits –
+Zinc 0.11 mg/L – 3 Within limits – Chromium (total) < DL mg/L 0.05 0.05 Below detection below
+detection limit (0.01 mg/L), which is at or under the limit of 0.05 mg/L Cadmium < DL mg/L 0.003
+0.003 Below detection below detection limit (0.0005 mg/L), which is at or under the limit of 0.003
+mg/L E. coli 0 CFU/100 mL 0 0 Within limits – Total coliforms 4 CFU/100 mL – 0 Exceeds national
+detected above the national limit (0); an indicator of ingress or inadequate wellhead protection,
+not of faecal contamination in itself, and WHO sets no health based guideline for it National limits
+are provisional The national column in the standards table is provisional: its values are WHO
+guideline figures carried across, or limits adopted from regional practice, and have not been
+confirmed against the Sierra Leone Standards Bureau drinking water specification. Confirm the
+figures before treating a national exceedance as a compliance finding. Unconfirmed: Aluminium,
+Ammonia (as N), Antimony, Arsenic, Barium, Boron, Cadmium, Chloride, Chromium (total), Colour,
+Copper, E. coli, Electrical conductivity, Fluoride, Free chlorine, Iron, Lead, Manganese, Mercury,
+Nickel, Nitrate (as N), Nitrate (as NO3), Nitrite (as N), Nitrite (as NO2), Selenium, Sodium,
+Sulfate, TDS, Total coliforms, Total hardness, Turbidity, Uranium, Zinc, pH. Ionic balance Cations
+sum to 1.80 meq/L and anions to 1.72 meq/L, a charge balance error of 2.1%. Errors within 5% are
+normal laboratory practice; 5 to 10% warrants review; more than 10% means an unreliable analysis or
+a missing major ion. Corrosivity and materials The water is chemically aggressive (Ryznar index
+11.4, Langelier index -2.7). It will corrode metal fittings. The pH of 5.9 is below the 6.5 to 8.5
+acceptability range, which adds to the attack on metal; soft, low-alkalinity basement groundwater is
+aggressive even at a pH inside that range. Index Value Langelier Saturation Index (LSI) -2.74 Ryznar
+Stability Index (RSI) 11.37 Aggressive Index (AI) 9.11 Larson-Skold ratio 0.72 Specify uPVC or
+stainless steel (grade 304 or 316) for the rising main and pump components, and avoid galvanised
+iron and mild steel, which corrode rapidly in this water and are a leading cause of premature pump
+failure. Inspect the rising main and the wetted metal parts of the pump for corrosion at each
+service. Hydrochemical facies The water is a mixed-cation-HCO3 type (Ca 40%, Mg 26%, Na+K 34%; HCO3
+58%, Cl 33%, SO4 9%, in milliequivalent percent): a bicarbonate water with no single dominant
+cation, in which calcium and magnesium together still outweigh sodium and potassium; a fresh water
+of the kind weathering of silicate rock gives, with the sodium share pointing to feldspar weathering
+or some ion exchange along the flow path. Piper diagram Ca Na+K Mg HCO₃ Cl SO₄ SO₄ + Cl increases
+upward; Na + K increases to the right WQ-BH1-01 — mixed-HCO3 water type Piper trilinear diagram PNG
+SVG Na+K Cl Ca HCO3 Mg SO4 meq/L — cations left, anions right Stiff diagram — WQ-BH1-01 Stiff
+diagram PNG SVG Sampling photographs Photos stay on this machine and travel inside the project file.
+Sampling at the wellhead ＋ Drop a photo, click to choose, or paste Sample appearance ＋ Drop a photo,
+click to choose, or paste Against a white background, for colour and turbidity Field meter reading ＋
+Drop a photo, click to choose, or paste + Another photo No photos yet — the report prints without a
+photo plate Ask this device for its position when a photograph carries none Each photograph keeps
+its capture time, its position and the SHA-256 of the file as attached, with where each came from.
+Water quality report Sample details, the full comparison table, the ionic balance, corrosivity and
+materials, the facies diagrams and the recommendations. Not ready to certify - outstanding: Field
+data, Site position. Error Field data — Readings that were never measured are in this project:
+dr_timbo_water_quality.xlsx. The values in that file were invented to demonstrate the toolkit, so no
+result derived from them describes anything that was sampled. Error Site position — No GPS position
+is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot
+be certified, revisited or maintained. The report will still be produced, stamped PROVISIONAL and
+listing these items. To issue it as an interim document instead, record who is issuing it and why.
+Issued by Reason Record override Assumptions carried into this report: dr_timbo_drilling_log.xlsx:
+Intervals, times, penetration rates, water strikes, grouting depth and dates are transcribed from
+the WiNGiN completion report. The lithology descriptions are illustrative reconstructions guided by
+the borehole diagram annotations - the original log leaves the sample description column empty.
+Build Water quality report (.docx) Next, cost the works. Costing & BoQ →

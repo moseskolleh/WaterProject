@@ -607,7 +607,7 @@
   "T": 0.5358830353611499,
   "cj": 0.5358830353611499,
   "rec": 1.4021310045105801,
-  "theis": 0.46904121808660265,
+  "theis": 0.46904120584627923,
   "safe": 0.39096869216140506,
   "low": 0.21984354243082851,
   "high": 0.7062849368288179,
@@ -647,7 +647,7 @@
   "rec_intercept": 21.66478430729821,
   "rec_intercept_fraction": 0.66131820229848,
   "rec_pumping_time": 30.0,
-  "theis_S": 0.18243530353716317,
+  "theis_S": 0.18243530896075705,
   "confidence": "indicative",
   "confidence_reasons": [
    "the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time",
@@ -182190,8 +182190,8 @@
    "invalid": [
     "cooper_jacob"
    ],
-   "T": 31.82921790147472,
-   "safe": 12.551019639537436,
+   "T": 31.829217988555005,
+   "safe": 12.551019672291725,
    "range_text": "13 m3/h (range over the assumptions, 7.1 to 22)",
    "pump_depth": 40,
    "confidence": "established",
@@ -182215,7 +182215,7 @@
    "casing_in": 5.0,
    "riser_in": 1.25,
    "casing_min": 12.899414725312498,
-   "long_term": 18.826529459306155
+   "long_term": 18.826529508437588
   },
   "stabilised_last_step": {
    "grid": "[[\"PUMPING TEST FIELD SHEET\", null, null, null, null, null, null], [\"Community\", \"Test\", null, \"Static water level (m)\", 10.0, null, null], [\"Depth of Borehole (m)\", 60.0, null, \"Pump setting (m)\", 50.0, null, null], [\"Test type (step or constant)\", \"step\", null, \"Length of each step (min)\", 240, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 1.5, null, \"Step 2 Q\", 3.0, null], [null, null, null, null, null, null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", null], [1, 11.152, null, 241, 13.089, null, null], [2, 11.252, null, 242, 13.189, null, null], [3, 11.31, null, 243, 13.247, null, null], [5, 11.383, null, 245, 13.32, null, null], [8, 11.45, null, 248, 13.387, null, null], [10, 11.482, null, 250, 13.419, null, null], [15, 11.54, null, 255, 13.477, null, null], [20, 11.582, null, 260, 13.519, null, null], [30, 11.64, null, 270, 13.577, null, null], [45, 11.698, null, 285, 13.635, null, null], [60, 11.739, null, 300, 13.676, null, null], [90, 11.797, null, 330, 13.676, null, null], [120, 11.838000000000001, null, 360, 13.676, null, null], [180, 11.896, null, 420, 13.677, null, null], [240, 11.937, null, 480, 13.677, null, null]]",
@@ -199077,9 +199077,9 @@
     "source": "cooper_jacob",
     "T": 0.5358830353611499,
     "theis": [
-     0.46904121808660265,
-     0.417183536845365,
-     0.5273450288277074
+     0.46904120584627923,
+     0.4171835256927795,
+     0.5273450154015499
     ],
     "pc": [
      0.2139518178509749,
@@ -199157,9 +199157,9 @@
     "source": "papadopulos_cooper",
     "T": 0.2978251487677272,
     "theis": [
-     0.13798796282796688,
-     0.12718226913160272,
-     0.14971173273933255
+     0.13798796002504504,
+     0.12718226647815203,
+     0.1497117297806949
     ],
     "pc": [
      0.2978251487677272,
@@ -199244,11 +199244,11 @@
    "wide_band": {
     "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 60, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 5.0, null, \"Pump setting (m)\", 50, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.0, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 5.0, null, null, null, null, null, null, null, null, null, null, null, null, null], [1, 7.35, null, null, null, null, null, null, null, null, null, null, null, null, null], [2, 6.66, null, null, null, null, null, null, null, null, null, null, null, null, null], [3, 8.1, null, null, null, null, null, null, null, null, null, null, null, null, null], [4, 7.37, null, null, null, null, null, null, null, null, null, null, null, null, null], [5, 8.89, null, null, null, null, null, null, null, null, null, null, null, null, null], [6, 6.53, null, null, null, null, null, null, null, null, null, null, null, null, null], [8, 9.83, null, null, null, null, null, null, null, null, null, null, null, null, null], [10, 7.15, null, null, null, null, null, null, null, null, null, null, null, null, null], [12, 10.4, null, null, null, null, null, null, null, null, null, null, null, null, null], [15, 6.66, null, null, null, null, null, null, null, null, null, null, null, null, null], [20, 11.01, null, null, null, null, null, null, null, null, null, null, null, null, null], [25, 6.58, null, null, null, null, null, null, null, null, null, null, null, null, null], [30, 11.57, null, null, null, null, null, null, null, null, null, null, null, null, null], [40, 6.47, null, null, null, null, null, null, null, null, null, null, null, null, null], [50, 12.19, null, null, null, null, null, null, null, null, null, null, null, null, null], [60, 8.43, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
     "source": "theis",
-    "T": 5.995857862430217,
+    "T": 5.995857761761067,
     "theis": [
-     5.995857862430217,
-     2.585320040823791,
-     13.905555574856791
+     5.995857761761067,
+     2.585319848257911,
+     13.905556143660576
     ],
     "pc": [
      8.114286908929003,
@@ -199266,15 +199266,15 @@
      "block_length": 3,
      "seed": 32,
      "n_points": 16,
-     "p10": 3.6002803105666814,
-     "p50": 6.0992871956626935,
-     "p90": 12.08950660586908,
+     "p10": 3.600279547242449,
+     "p50": 6.099292467206531,
+     "p90": 12.08950633676141,
      "reason": ""
     },
     "spread": [
-     1.8037765821351675,
-     5.702797026472531,
-     2.705664873202751,
+     1.8037762193092248,
+     5.70279690565821,
+     2.705664328963837,
      false,
      38.0,
      39.0
@@ -199325,7 +199325,7 @@
      "regimes": [],
      "plateau": null
     },
-    "safe": 2.927431516692877,
+    "safe": 2.9274314699976647,
     "range_text": "2.9 m3/h (range over the assumptions, 1.7 to 5.2)",
     "confidence": "indicative",
     "text": [
@@ -199345,9 +199345,9 @@
     "source": "cooper_jacob",
     "T": 0.5358830353611499,
     "theis": [
-     0.46904121808660265,
-     0.417183536845365,
-     0.5273450288277074
+     0.46904120584627923,
+     0.4171835256927795,
+     0.5273450154015499
     ],
     "pc": [
      0.2139518178509749,
@@ -199451,9 +199451,9 @@
     "source": "cooper_jacob",
     "T": 0.5358830353611499,
     "theis": [
-     0.46904121808660265,
-     0.417183536845365,
-     0.5273450288277074
+     0.46904120584627923,
+     0.4171835256927795,
+     0.5273450154015499
     ],
     "pc": [
      0.2139518178509749,
@@ -199531,9 +199531,9 @@
     "source": "cooper_jacob",
     "T": 0.5358830353611499,
     "theis": [
-     0.46904121808660265,
-     0.417183536845365,
-     0.5273450288277074
+     0.46904120584627923,
+     0.4171835256927795,
+     0.5273450154015499
     ],
     "pc": [
      0.2139518178509749,
@@ -199611,9 +199611,9 @@
     "source": "cooper_jacob",
     "T": 0.5358830353611499,
     "theis": [
-     0.46904121808660265,
-     0.417183536845365,
-     0.5273450288277074
+     0.46904120584627923,
+     0.4171835256927795,
+     0.5273450154015499
     ],
     "pc": [
      0.2139518178509749,
@@ -199691,9 +199691,9 @@
     "source": "cooper_jacob",
     "T": 4.293568164453824,
     "theis": [
-     4.288697790206394,
-     4.286960199547345,
-     4.290436085145668
+     4.288697790155013,
+     4.2869601994852005,
+     4.290436085105062
     ],
     "pc": [
      6.182016025833309,
@@ -199874,9 +199874,9 @@
     "source": "cooper_jacob",
     "T": 2.499346578994624,
     "theis": [
-     2.498110288045273,
-     2.4977630619608644,
-     2.498457562399254
+     2.498110288063748,
+     2.4977630619860194,
+     2.4984575624110468
     ],
     "pc": null,
     "pc_invalid": "",

@@ -46,9 +46,12 @@ OUT = DOCS / "sw.js"
 
 # Files the app does not load itself but that a reader offline still wants:
 # the guide is published beside the app on Pages, and a device that installed
-# the toolkit in town should be able to read it at the borehole.
+# the toolkit in town should be able to read it at the borehole. The guide is
+# the page web/build_guide.py builds from user_guide.md, and what that page
+# loads (its stylesheet and its pictures) is found from it below, as the
+# app's own files are found from index.html.
 EXTRA = [
-    "user_guide.md",
+    "user_guide.html",
     "depth-spine.md",
 ]
 
@@ -155,7 +158,16 @@ def shell_assets() -> list[str]:
                 if _is_local(url):
                     paths.append(_normalise(source, url))
 
-    paths.extend(EXTRA)
+    for extra in EXTRA:
+        paths.append(extra)
+        if not extra.endswith(".html") or not (DOCS / extra).exists():
+            continue  # a missing file is reported below, with the rest
+        page = (DOCS / extra).read_text(encoding="utf-8")
+        loaded = re.findall(r'<link\b[^>]*\bhref="([^"]+)"', page)
+        loaded += re.findall(r'<img\b[^>]*\bsrc="([^"]+)"', page)
+        for url in loaded:
+            if _is_local(url):
+                paths.append(_normalise(DOCS / extra, url))
 
     seen: set[str] = set()
     ordered: list[str] = []

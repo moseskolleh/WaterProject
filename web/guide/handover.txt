@@ -1,0 +1,52 @@
+Skip to content Groundwater Toolkit Rural water supply boreholes ☰ Dr. Timbo's Residence Western
+Area Rural · Dr. Timbo Save project Open project ◐ Groundwater Toolkit Rural water supply boreholes
+Start Overview Guided start Training Borehole Site & maps Step 1 of 9, done Geophysics (VES) Step 2
+of 9 Borehole design Step 3 of 9, done Pumping test Step 4 of 9, done Water quality Step 5 of 9,
+done Costing & BoQ Step 6 of 9, done Procurement Step 7 of 9 Supervision Step 8 of 9 Handover Step 9
+of 9, done Field tools VES co-pilot Drilling co-pilot Pumping co-pilot Depth Spine Scanned sheets
+Templates Programme Water points Coverage gap Portfolio Asset registry Report on a borehole
+Reference Verify a document Settings About & method Handover The document the community and the
+district water office keep: what was built, what it yields, whether the water is safe and how to
+look after it. Handover details Handover date Pump installed e.g. India Mark II, submersible, solar
+Tariff arrangement how the committee collects and holds the user fees Water and sanitation committee
+Name Role Contact Remove + Add member What the handover report will carry Input State Go to its page
+Borehole design ready – Pumping test ready – Water quality ready – A missing input does not block
+the report; the section simply says what still has to be done. Handover photographs Photos stay on
+this machine and travel inside the project file. Handover to the community ＋ Drop a photo, click to
+choose, or paste Water committee ＋ Drop a photo, click to choose, or paste Borehole plaque or marker
+＋ Drop a photo, click to choose, or paste Source in use ＋ Drop a photo, click to choose, or paste +
+Another photo No photos yet — the report prints without a photo plate Ask this device for its
+position when a photograph carries none Each photograph keeps its capture time, its position and the
+SHA-256 of the file as attached, with where each came from. Construction photographs Photos stay on
+this machine and travel inside the project file. Site before drilling ＋ Drop a photo, click to
+choose, or paste The chosen spot with the community, for the record of where the mark was set
+Drilling in progress ＋ Drop a photo, click to choose, or paste Drill cuttings ＋ Drop a photo, click
+to choose, or paste Laid out in depth order beside the metre marks Development and test pumping ＋
+Drop a photo, click to choose, or paste Completed headworks ＋ Drop a photo, click to choose, or
+paste Apron, drainage channel and soakaway in one frame Installed pump ＋ Drop a photo, click to
+choose, or paste + Another photo No photos yet — the report prints without a photo plate Ask this
+device for its position when a photograph carries none Each photograph keeps its capture time, its
+position and the SHA-256 of the file as attached, with where each came from. Project handover report
+Project summary, works completed, the borehole data sheet, water quality, operation and maintenance
+guidance, the committee and the signature block. Not ready to certify - outstanding: Field data,
+Site position, Yield established. Error Field data — Readings that were never measured are in this
+project: dr_timbo_water_quality.xlsx. The values in that file were invented to demonstrate the
+toolkit, so no result derived from them describes anything that was sampled. Error Site position —
+No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on
+the ground cannot be certified, revisited or maintained. Error Yield established — The safe yield of
+0.39 m3/h (range over the assumptions, 0.22 to 0.71) is indicative, not established: the test pumped
+for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2
+log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown
+is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to
+standard and the Cooper-Jacob value is adopted as the best available. The report will still be
+produced, stamped PROVISIONAL and listing these items. To issue it as an interim document instead,
+record who is issuing it and why. Issued by Reason Record override Assumptions carried into this
+report: dr_timbo_drilling_log.xlsx: Intervals, times, penetration rates, water strikes, grouting
+depth and dates are transcribed from the WiNGiN completion report. The lithology descriptions are
+illustrative reconstructions guided by the borehole diagram annotations - the original log leaves
+the sample description column empty. Build Project handover report (.docx) Evidence bundle One file
+holding what an auditor asks for about this borehole: the field sheets as they were uploaded, the
+documents issued with their manifests, the figures they embed, the issue records and a manifest.json
+of every file's SHA-256, with a README saying how to check it. It is made on this device. This
+project has issued no document in this session: build the reports first, or add the documents issued
+earlier. Add documents issued earlier (.docx) Download evidence bundle

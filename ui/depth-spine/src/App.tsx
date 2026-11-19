@@ -20,7 +20,7 @@ import {
  * cannot be edited: there is no Python on the other end to re-derive them.
  */
 export default function App() {
-  const baked = useMemo(readBakedPayload, []);
+  const baked = useMemo(() => readBakedPayload(), []);
   const [view, setView] = useState<SpineView | null>(baked.view);
   const [busy, setBusy] = useState(false);
   const ledger = useRef<Ledger>({});

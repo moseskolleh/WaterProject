@@ -574,11 +574,13 @@ python tests/webapp/make_reference.py --check   # the reference values are curre
 The VES forward model is validated against analytic two-layer image
 series solutions (agreement better than 0.5 percent); the pumping test
 methods recover synthetic aquifer parameters exactly. See
-`docs/user_guide.md` for the field team guide and
+`docs/user_guide.md` for the field team guide (published beside the app
+as a page, `docs/user_guide.html`, with pictures taken from the app) and
 `QUESTIONS.md` for open items that need project data or decisions.
 `ROADMAP.md` lists the defects an audit of the worked examples found in
 the maps, the designs, the interpretations and the reports, in the order
-they are being fixed.
+they were fixed; every item on it is closed, and `PLAN.md` is what comes
+next.
 
 ## Licence and attribution
 
