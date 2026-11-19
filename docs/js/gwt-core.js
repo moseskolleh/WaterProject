@@ -9169,6 +9169,251 @@
     renderText: renderText, phrase: phrase, phraseTable: phraseTable,
   });
 
+  /* ============================================================ other languages
+   * groundwater/text.py, "Other languages" (PLAN.md step 9.2). English is
+   * the working language and GWT.data.text is the English. A translation is
+   * a folder beside the English files named for the language
+   * (src/groundwater/data/text/kri), which the build emits here as
+   * GWT.data.translations[code] = {language, text}: the facts of its
+   * language.yaml, and as many entries of each file as are translated.
+   *
+   * The rules are text.py's, rule for rule, and the parity suite holds the
+   * two to each other on translations made up for the purpose: an entry not
+   * translated (left out, or named and left empty) is said in English and
+   * counted; a translation is offered only if it says what it is, who
+   * translated it and who checked it, and has no entry English lacks, no
+   * sentence that takes other values than the English one, no table row
+   * English lacks and nothing blank. Only what a community
+   * reads is said through a speaker; reports and notes to whoever builds a
+   * document stay in English. */
+
+  /** @typedef {{code: string, language: Rec, fellBack: string[],
+   *   phrase: function(string, Record<string, *>=): string,
+   *   phraseTable: function(string): Record<string, *>}} Speaker */
+
+  var LANGUAGE_FACTS = ['name', 'translated_by', 'checked_by'];
+  var LANGUAGE_CODE = /^[a-z]{2,8}$/;
+
+  /** Every translation the build carries, by language code.
+   * @returns {Record<string, Rec>} */
+  function translations() {
+    return (GWT.data || {}).translations || {};
+  }
+
+  /** Each value a template takes, with the formats it writes it in; null
+   * where the template does not parse (a lone brace).
+   * @param {string} template
+   * @returns {Record<string, Record<string, boolean>>|null} */
+  function textPlaceholders(template) {
+    /** @type {Record<string, Record<string, boolean>>} */
+    var taken = {};
+    var broken = false;
+    TEXT_TOKEN.lastIndex = 0;
+    template.replace(TEXT_TOKEN, function (token, name, spec) {
+      if (token === '{{' || token === '}}') return token;
+      if (name === undefined) { broken = true; return token; }
+      /* the two words of a plural are the translation's own to choose */
+      var format = spec === undefined ? '' : (spec.indexOf('plural:') === 0 ? 'plural' : spec);
+      if (!own(taken, name)) taken[name] = {};
+      taken[name][format] = true;
+      return token;
+    });
+    return broken ? null : taken;
+  }
+
+  /** Whether a translated sentence takes the values the English one takes,
+   * each in a format the English writes it in.
+   * @param {Record<string, Record<string, boolean>>} mine
+   * @param {Record<string, Record<string, boolean>>} theirs
+   * @returns {boolean} */
+  function sameValues(mine, theirs) {
+    return Object.keys(mine).sort().join('\n') === Object.keys(theirs).sort().join('\n') &&
+      Object.keys(mine).every(function (name) {
+        return Object.keys(mine[name]).every(function (format) {
+          return own(theirs[name], format);
+        });
+      });
+  }
+
+  /** @param {*} value */
+  function isPlainObject(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  /** Every reason the translation cannot be offered, in words; an empty
+   * list where it can (text.py translation_problems).
+   * @param {string} code
+   * @param {Record<string, Rec>} [held] the translations to read
+   * @param {Record<string, Rec>} [english] the catalogue they translate
+   * @returns {string[]} */
+  function translationProblems(code, held, english) {
+    var all = held || translations();
+    var source = english || (GWT.data || {}).text || {};
+    if (!own(all, code)) return ['there is no translation ' + pyRepr(code)];
+    var entry = all[code];
+    var facts = entry.language || {};
+    /** @type {string[]} */
+    var problems = LANGUAGE_CODE.test(code) ? []
+      : [pyRepr(code) + " is not a language's code (two to eight small letters)"];
+    LANGUAGE_FACTS.forEach(function (fact) {
+      if (!(isPlainObject(facts) && typeof facts[fact] === 'string' && facts[fact].trim())) {
+        problems.push('language.yaml does not say ' + fact);
+      }
+    });
+    Object.keys(entry.text || {}).sort().forEach(function (namespace) {
+      var entries = entry.text[namespace];
+      if (!own(source, namespace)) {
+        problems.push(namespace + '.yaml translates a file English does not have');
+        return;
+      }
+      /* a file with nothing in it yet */
+      if (entries === null) return;
+      if (!isPlainObject(entries)) {
+        problems.push(namespace + '.yaml is not a list of entries');
+        return;
+      }
+      Object.keys(entries).sort().forEach(function (key) {
+        var ident = namespace + '.' + key, value = entries[key];
+        var from = own(source[namespace], key) ? source[namespace][key] : null;
+        if (from === null) {
+          problems.push(ident + ' is not an entry of the English');
+        } else if (value === null) {
+          /* named and left empty: not translated yet */
+        } else if (isPlainObject(from)) {
+          if (!isPlainObject(value)) {
+            problems.push(ident + ' is a table in English and a sentence here');
+            return;
+          }
+          Object.keys(value).sort().forEach(function (row) {
+            if (!own(from, row)) {
+              problems.push(ident + '[' + row + '] is not a row of the English table');
+            } else if (value[row] === null) {
+              /* not translated yet */
+            } else if (typeof value[row] !== 'string' || value[row].indexOf('{') >= 0 ||
+                value[row].indexOf('}') >= 0) {
+              problems.push(ident + '[' + row + '] is not plain text');
+            } else if (!value[row].trim()) {
+              problems.push(ident + '[' + row + '] is blank');
+            }
+          });
+        } else if (typeof value !== 'string') {
+          problems.push(ident + ' is a sentence in English and not one here');
+        } else if (!value.trim()) {
+          problems.push(ident + ' is blank');
+        } else {
+          var mine = textPlaceholders(value), theirs = textPlaceholders(from);
+          if (mine === null) {
+            problems.push(ident + ' has a lone brace');
+          } else if (theirs !== null && !sameValues(mine, theirs)) {
+            problems.push(ident + ' does not take the values the English takes (' +
+              (Object.keys(theirs).sort().join(', ') || 'none') + '), each in a format it uses');
+          }
+        }
+      });
+    });
+    return problems;
+  }
+
+  /** The translations that can be offered, as {code, name, translated_by,
+   * checked_by}, by name: those with no problem (text.py languages).
+   * @param {Record<string, Rec>} [held]
+   * @param {Record<string, Rec>} [english]
+   * @returns {Rec[]} */
+  function textLanguages(held, english) {
+    var all = held || translations();
+    /** @type {Rec[]} */
+    var offered = [];
+    Object.keys(all).sort().forEach(function (code) {
+      if (translationProblems(code, all, english).length) return;
+      /** @type {Rec} */
+      var language = { code: code };
+      LANGUAGE_FACTS.forEach(function (fact) { language[fact] = all[code].language[fact].trim(); });
+      offered.push(language);
+    });
+    return offered.sort(function (a, b) {
+      return a.name < b.name ? -1 : (a.name > b.name ? 1
+        : (a.code < b.code ? -1 : (a.code > b.code ? 1 : 0)));
+    });
+  }
+
+  /** The catalogue in one language, with English where it has no words
+   * (text.py Speaker). speaker('') is English. A language that cannot be
+   * offered is refused with its reasons. fellBack holds the entries it had
+   * to say in English, each once, in the order they were first asked for.
+   * @param {string} [code]
+   * @param {Record<string, Rec>} [held]
+   * @param {Record<string, Rec>} [english]
+   * @returns {Speaker} */
+  function speaker(code, held, english) {
+    var lang = code || '';
+    var source = english || (GWT.data || {}).text || {};
+    /** @type {Record<string, Rec>} */
+    var text = {};
+    /** @type {Rec} */
+    var language = {};
+    /** @type {string[]} */
+    var fellBack = [];
+    if (lang) {
+      var all = held || translations();
+      var problems = translationProblems(lang, all, source);
+      if (problems.length) {
+        throw new Error('text: the translation ' + pyRepr(lang) + ' cannot be used: ' +
+          problems.join('; '));
+      }
+      text = all[lang].text || {};
+      language = { code: lang };
+      LANGUAGE_FACTS.forEach(function (fact) { language[fact] = all[lang].language[fact].trim(); });
+    }
+    /** @param {string} id */
+    function sourceOf(id) {
+      var dot = id.indexOf('.');
+      var namespace = id.slice(0, dot), key = id.slice(dot + 1);
+      if (dot < 0 || !own(source, namespace) || !own(source[namespace], key)) {
+        throw new Error('text: no entry ' + pyRepr(id) + ' in data/text');
+      }
+      return { namespace: namespace, key: key, from: source[namespace][key] };
+    }
+    /** @param {string} id */
+    function missed(id) {
+      if (lang && fellBack.indexOf(id) < 0) fellBack.push(id);
+    }
+    return {
+      code: lang, language: language, fellBack: fellBack,
+      phrase: function (id, values) {
+        var at = sourceOf(id);
+        if (typeof at.from !== 'string') {
+          throw new TypeError('text: ' + pyRepr(id) + ' is a table; read it with phraseTable');
+        }
+        var file = (own(text, at.namespace) && text[at.namespace]) || {};
+        var mine = own(file, at.key) ? file[at.key] : null;
+        if (mine === null) missed(id);
+        return renderText(mine === null ? at.from : mine, values);
+      },
+      phraseTable: function (id) {
+        var at = sourceOf(id);
+        if (!isPlainObject(at.from)) {
+          throw new TypeError('text: ' + pyRepr(id) + ' is a sentence; read it with phrase');
+        }
+        var file = (own(text, at.namespace) && text[at.namespace]) || {};
+        var mine = own(file, at.key) && file[at.key] ? file[at.key] : {};
+        /** @type {Record<string, *>} */
+        var table = {};
+        var short = false;
+        Object.keys(at.from).forEach(function (row) {
+          if (own(mine, row) && mine[row] !== null) table[row] = mine[row];
+          else { table[row] = at.from[row]; short = true; }
+        });
+        if (short) missed(id);
+        return table;
+      },
+    };
+  }
+
+  Object.assign(C, {
+    translations: translations, translationProblems: translationProblems,
+    textLanguages: textLanguages, speaker: speaker,
+  });
+
   /* ============================================================= hydraulics
    * groundwater/hydraulics/analysis.py.
    *
@@ -38788,14 +39033,14 @@
    * @param {string[]} notes
    * @returns {Rec}
    */
-  function sheetWater(analysis, hours, notes) {
+  function sheetWater(analysis, hours, notes, say) {
     var table = phraseTable('community_sheet.builder_notes');
     /** @type {Rec} */
     var water = {
-      heading: phrase('community_sheet.water_heading'), state: 'none',
+      heading: say.phrase('community_sheet.water_heading'), state: 'none',
       litres_per_hour: null, jerrycans_per_hour: null, hours_per_day: null,
       litres_per_day: null, jerrycans_per_day: null,
-      headline: phrase('community_sheet.water_none'), lines: [],
+      headline: say.phrase('community_sheet.water_none'), lines: [],
     };
     var rec = analysis ? analysis.yield_recommendation : null;
     if (!rec || rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
@@ -38812,45 +39057,45 @@
     water.litres_per_hour = perHour;
     water.jerrycans_per_hour = Math.floor(perHour / JERRYCAN_L);
     if (perHour <= 0) {
-      water.headline = phrase('community_sheet.water_very_little');
+      water.headline = say.phrase('community_sheet.water_very_little');
     } else if (hours === null) {
       notes.push(table.no_hours);
       if (water.jerrycans_per_hour >= 1) {
-        water.headline = phrase('community_sheet.water_hour', { cans: water.jerrycans_per_hour });
+        water.headline = say.phrase('community_sheet.water_hour', { cans: water.jerrycans_per_hour });
         /* the litres those jerrycans make, so that the two figures agree by
          * the reader's own arithmetic; a rounding down once more */
-        water.lines.push(phrase('community_sheet.water_hour_detail',
+        water.lines.push(say.phrase('community_sheet.water_hour_detail',
           { litres: water.jerrycans_per_hour * JERRYCAN_L, can: JERRYCAN_L }));
       } else {
-        water.headline = phrase('community_sheet.water_litres_hour', { litres: perHour });
+        water.headline = say.phrase('community_sheet.water_litres_hour', { litres: perHour });
       }
     } else {
       var perDay = roundDown(perHour * hours);
-      var unit = phraseTable('community_sheet.hour_words')[hours === 1 ? 'one' : 'other'];
+      var unit = say.phraseTable('community_sheet.hour_words')[hours === 1 ? 'one' : 'other'];
       water.hours_per_day = hours;
       water.litres_per_day = perDay;
       water.jerrycans_per_day = Math.floor(perDay / JERRYCAN_L);
       if (perDay <= 0) {
-        water.headline = phrase('community_sheet.water_very_little');
+        water.headline = say.phrase('community_sheet.water_very_little');
       } else if (water.jerrycans_per_day >= 1) {
-        water.headline = phrase('community_sheet.water_day', { cans: water.jerrycans_per_day });
-        water.lines.push(phrase('community_sheet.water_day_detail',
+        water.headline = say.phrase('community_sheet.water_day', { cans: water.jerrycans_per_day });
+        water.lines.push(say.phrase('community_sheet.water_day_detail',
           { litres: water.jerrycans_per_day * JERRYCAN_L, hours: hours, unit: unit,
             can: JERRYCAN_L }));
       } else {
-        water.headline = phrase('community_sheet.water_litres_day',
+        water.headline = say.phrase('community_sheet.water_litres_day',
           { litres: perDay, hours: hours, unit: unit });
       }
     }
     if (indicative) {
       notes.push(table.first_estimate);
-      water.lines.push(phrase('community_sheet.water_first_estimate'));
+      water.lines.push(say.phrase('community_sheet.water_first_estimate'));
     } else {
-      water.lines.push(phrase('community_sheet.water_tested'));
+      water.lines.push(say.phrase('community_sheet.water_tested'));
     }
     /* nothing to fall short of where the sheet says there is very little */
     if (perHour > 0 && (hours === null || water.litres_per_day > 0)) {
-      water.lines.push(phrase('community_sheet.water_shortage'));
+      water.lines.push(say.phrase('community_sheet.water_shortage'));
     }
     return water;
   }
@@ -38858,10 +39103,11 @@
   /**
    * @param {Rec|null|undefined} quality
    * @param {string[]} notes
+   * @param {Speaker} say
    * @returns {Rec}
    */
-  function sheetQuality(quality, notes) {
-    var answers = phraseTable('community_sheet.quality');
+  function sheetQuality(quality, notes, say) {
+    var answers = say.phraseTable('community_sheet.quality');
     var state = quality ? quality.verdict_state : null;
     if (!Object.prototype.hasOwnProperty.call(answers, state) || state === 'none') {
       if (!quality) {
@@ -38881,21 +39127,22 @@
         : quality.national_exceedances) || [];
       var names = found.map(function (/** @type {Rec} */ row) { return row.parameter; });
       if (names.length) {
-        lines.push(phrase('community_sheet.quality_found', { names: names.join(', ') }));
+        lines.push(say.phrase('community_sheet.quality_found', { names: names.join(', ') }));
       }
-      lines.push(phrase('community_sheet.quality_ask'));
+      lines.push(say.phrase('community_sheet.quality_ask'));
     }
-    return { heading: phrase('community_sheet.quality_heading'), state: state,
+    return { heading: say.phrase('community_sheet.quality_heading'), state: state,
       headline: answers[state], lines: lines };
   }
 
   /**
    * @param {Rec[]|null|undefined} committee
    * @param {string[]} notes
+   * @param {Speaker} say
    * @returns {Rec}
    */
-  function sheetContacts(committee, notes) {
-    var columns = phraseTable('community_sheet.contacts_columns');
+  function sheetContacts(committee, notes, say) {
+    var columns = say.phraseTable('community_sheet.contacts_columns');
     /** @type {string[][]} */
     var rows = [];
     (committee || []).forEach(function (member) {
@@ -38913,9 +39160,9 @@
       notes.push(phraseTable('community_sheet.builder_notes').no_committee);
       for (var i = 0; i < BLANK_CONTACTS; i += 1) rows.push(['', '', '']);
     }
-    var writeIn = phraseTable('community_sheet.contacts_write_in');
+    var writeIn = say.phraseTable('community_sheet.contacts_write_in');
     Object.keys(writeIn).forEach(function (key) { rows.push([writeIn[key], '', '']); });
-    return { heading: phrase('community_sheet.contacts_heading'),
+    return { heading: say.phrase('community_sheet.contacts_heading'),
       header: [columns.role, columns.name, columns.phone], rows: rows };
   }
 
@@ -38923,11 +39170,12 @@
    * @param {string} typed
    * @param {*} reportUrl
    * @param {string[]} notes
+   * @param {Speaker} say
    * @returns {Rec}
    */
-  function sheetReport(typed, reportUrl, notes) {
+  function sheetReport(typed, reportUrl, notes, say) {
     var table = phraseTable('community_sheet.builder_notes');
-    var lines = [phrase('community_sheet.report_tell')];
+    var lines = [say.phrase('community_sheet.report_tell')];
     var payload = '', caption = '';
     /* the registry's own reading of what was typed: case, spacing and the
      * usual misreadings forgiven, a failing check character not. A number
@@ -38938,7 +39186,7 @@
     } else if (!assetId) {
       notes.push(table.bad_identifier);
     } else {
-      lines.push(phrase('community_sheet.report_number', { id: assetId }));
+      lines.push(say.phrase('community_sheet.report_number', { id: assetId }));
       /* an address the registry refuses stops the sheet, as it stops the
        * plate, rather than being printed */
       payload = reportLink(assetId, reportUrl);
@@ -38946,19 +39194,20 @@
         /* a link too long for the symbol stops the sheet here, where both
          * apps show the reason before the button, and not in the writer */
         qrEncode(payload, { ecc: SCAN_ECC });
-        lines.push(phrase('community_sheet.report_scan'));
-        caption = phrase('community_sheet.report_caption', { id: assetId });
+        lines.push(say.phrase('community_sheet.report_scan'));
+        caption = say.phrase('community_sheet.report_caption', { id: assetId });
       } else {
         notes.push(table.no_address);
       }
     }
-    return { heading: phrase('community_sheet.report_heading'), identifier: assetId,
+    return { heading: say.phrase('community_sheet.report_heading'), identifier: assetId,
       lines: lines, payload: payload, caption: caption };
   }
 
-  /** @returns {Rec} */
-  function sheetKeepAway() {
-    var words = phraseTable('community_sheet.keep_structures');
+  /** @param {Speaker} say
+   * @returns {Rec} */
+  function sheetKeepAway(say) {
+    var words = say.phraseTable('community_sheet.keep_structures');
     /** @type {Array<[number, string]>} */
     var kept = [];
     loadSeparationDistances().forEach(function (row) {
@@ -38977,32 +39226,42 @@
         last.what.push(item[1]);
       } else {
         rings.push({ distance_m: item[0], what: [item[1]],
-          label: phrase('community_sheet.keep_metres', { distance: item[0] }) });
+          label: say.phrase('community_sheet.keep_metres', { distance: item[0] }) });
       }
     });
     return {
-      heading: phrase('community_sheet.keep_heading'),
+      heading: say.phrase('community_sheet.keep_heading'),
       lines: kept.map(function (item) {
-        return phrase('community_sheet.keep_line', { what: item[1], distance: item[0] });
+        return say.phrase('community_sheet.keep_line', { what: item[1], distance: item[0] });
       }),
       rings: rings,
-      centre: phrase('community_sheet.keep_centre'),
-      caption: phrase('community_sheet.keep_caption'),
+      centre: say.phrase('community_sheet.keep_centre'),
+      caption: say.phrase('community_sheet.keep_caption'),
     };
   }
 
   /** Everything the community handover sheet says, as plain data
-   * (community_sheet.py community_sheet_content). Throws for a report
-   * address the registry would not print on a plate, with its reason, and
-   * for a link too long for the square a phone scans, with the encoder's.
+   * (community_sheet.py community_sheet_content). options.language is the
+   * code of the translation the sheet is printed in (C.textLanguages lists
+   * those on offer), and nothing for English; options.translations the
+   * translations to read it from, the build's own unless given. What the
+   * translation has no words for is printed in English and counted for the
+   * builder, whose notes are always English.
+   *
+   * Throws for a report address the registry would not print on a plate,
+   * with its reason; for a link too long for the square a phone scans, with
+   * the encoder's; and for a language that is not on offer, with every
+   * reason it is not.
    * @param {Rec} site the project's header block
    * @param {{analysis?: Rec|null, quality?: Rec|null, committee?: Rec[]|null,
    *   assetId?: string, hoursPerDay?: number|null, example?: boolean,
-   *   config?: Config}} [options]
+   *   config?: Config, language?: string,
+   *   translations?: Record<string, Rec>}} [options]
    * @returns {Rec} */
   function communitySheetContent(site, options) {
     var opts = options || {};
     var cfg = opts.config || defaultConfig();
+    var say = speaker(opts.language, opts.translations);
     /** @type {string[]} */
     var notes = [];
     var place = sheetText(site ? site.community : '');
@@ -39010,17 +39269,31 @@
     if (opts.example) notes.push(phraseTable('community_sheet.builder_notes').example);
     /** @type {Rec} */
     var content = {
-      title: place ? phrase('community_sheet.title', { place: place })
-        : phrase('community_sheet.title_unnamed'),
+      title: place ? say.phrase('community_sheet.title', { place: place })
+        : say.phrase('community_sheet.title_unnamed'),
       /* across the top of a sheet built with a bundled example loaded */
-      example: opts.example ? phrase('community_sheet.example') : '',
-      water: sheetWater(opts.analysis, sheetHours(opts.hoursPerDay), notes),
-      quality: sheetQuality(opts.quality, notes),
-      contacts: sheetContacts(opts.committee, notes),
-      report: sheetReport(identifier, cfg.service.report_url, notes),
-      keep_away: sheetKeepAway(),
+      example: opts.example ? say.phrase('community_sheet.example') : '',
+      water: sheetWater(opts.analysis, sheetHours(opts.hoursPerDay), notes, say),
+      quality: sheetQuality(opts.quality, notes, say),
+      contacts: sheetContacts(opts.committee, notes, say),
+      report: sheetReport(identifier, cfg.service.report_url, notes, say),
+      keep_away: sheetKeepAway(say),
+      language: Object.assign({}, say.language),
+      fell_back: say.fellBack.slice(),
     };
-    notes.push(phraseTable('community_sheet.builder_notes').english_only);
+    if (say.code) {
+      notes.push(phrase('community_sheet.in_language', {
+        name: say.language.name, translated_by: say.language.translated_by,
+        checked_by: say.language.checked_by }));
+      if (say.fellBack.length) {
+        notes.push(phrase('community_sheet.not_translated',
+          { count: say.fellBack.length, name: say.language.name }));
+      }
+    } else if (!textLanguages(opts.translations).length) {
+      /* with a translation on offer the builder chose English, and is not
+       * told that none exists */
+      notes.push(phraseTable('community_sheet.builder_notes').english_only);
+    }
     content.notes = notes;
     return content;
   }

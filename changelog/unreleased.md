@@ -2,6 +2,33 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### Strings that can be translated: the community sheet in a language beside English (PLAN.md step 9.2)
+
+English stays the working language. What a community reads can now be said in another language as soon as a translation of it is put beside the English, and until one is, nothing changes: no translation is bundled, both Handover pages look as they did, and the sheet is English.
+
+**No Krio is written.** The plan asks for Krio translated and checked by native speakers and forbids a machine translation. This step is the place for that translation and the rules that hold it, not the translation.
+
+**What a translation is.** A folder beside the English catalogue named for the language (`src/groundwater/data/text/kri`), with a `language.yaml` that gives the language's name, who translated it and who checked it, and a `community_sheet.yaml` holding as many of the English file's entries as are translated, under the same keys. Both engines read the same folders; the browser's copy is `GWT.data.translations`.
+
+**What is refused.** A translation is offered only if it has no fault, and a sheet asked for in one that has is not built:
+
+- it does not name its translator and its checker;
+- a sentence does not take the values its English takes, each written the same way. A translation that dropped the number of jerrycans, or printed 1,200 as 1200, would hand a community a different sheet;
+- it translates an entry, a file or a table row the English does not have, gives a sentence where English has a table, or leaves a sentence blank;
+- its folder is not named as a language is.
+
+An entry that is simply not translated yet (left out, or left empty) is no fault: it is printed in English, and whoever builds the sheet is told how many parts were.
+
+**In the apps.** Where a translation is offered, the community sheet's card on both Handover pages gains a "Language of the sheet" choice. The card says what the sheet will say in that language before it is built, whose translation it is, and how much of it is still English. The sheet in another language is a file of its own (`community_sheet_<place>_kri.docx`). The browser app keeps the choice with the project, as it keeps the hours and the identifier, and the Streamlit app keeps it for the session; a project opened where the translation is not installed is English again, not an error.
+
+**What stays English.** Every note to whoever builds the sheet; the handover report and every other document; and, on a translated sheet, a committee member's role as it was typed, the names of what a water test found, the word "Figure" before the picture's caption and the line at the foot that carries the document's code.
+
+**For a translator and a maintainer.** `groundwater translation [CODE] [--folder DIR]` says either every reason a translation cannot be offered or which parts of the sheet it has no words for yet, and changes nothing. CONTRIBUTING.md has a new section, "Adding a language".
+
+**How it is held.** `groundwater.text` gains `translations`, `translation_problems`, `languages`, `untranslated` and `Speaker`, and `GWT.core` gains `translations`, `translationProblems`, `textLanguages` and `speaker`, rule for rule. The parity suite holds the two engines to each other on a catalogue and thirty-odd translations made up for the purpose (each reason for refusal, the order languages are offered in, what a speaker says and what it had to say in English) and on the sheet itself in a made-up language, 4,864 checks in all. `tests/test_text_languages.py` holds the rules themselves, that a fully translated sheet has no English sentence left in it and the same figures as the English one, that the list a translator is given is exactly what the sheet prints, and that any translation put in the package can be offered. The browser suite and the Streamlit suite each build the sheet in a made-up language and read it back.
+
+**For the programme to decide** (QUESTIONS.md item 31d): the Krio wording itself, with the names of its translator and its checker; whether the names of what a water test found and the word "Figure" should be translated too; and which other languages are wanted.
+
 ### The community handover sheet: one page for the people who keep the borehole (PLAN.md step 9.1)
 
 The handover report is written for the client and the district water office. Nothing the toolkit wrote was for the community. Both apps' Handover pages now build a one-page sheet for it, in plain English, with a picture.

@@ -100,11 +100,16 @@ const contentNow = (page) => page.evaluate(() => {
   const app = window.GWT.app, handover = app.store.get('handover');
   return window.GWT.core.communitySheetContent(app.store.get('site'), {
     analysis: app.derived.analysis || null, quality: app.derived.assessment || null,
-    committee: handover.committee, assetId: handover.assetId,
+    committee: handover.committee,
+    /* typed on the card, else the one the Asset registry holds */
+    assetId: handover.assetId || (app.store.get('asset') || {}).asset_id || '',
     hoursPerDay: handover.hoursPerDay,
     example: (app.reportReadiness('handover').requirements || []).some((r) =>
       r.key === 'field_data' && r.state !== 'met' && r.state !== 'not_applicable'),
     config: app.config(),
+    /* the language chosen on the card, while it is still on offer */
+    language: window.GWT.core.textLanguages().some((l) => l.code === handover.language)
+      ? handover.language : '',
   });
 });
 
@@ -127,6 +132,17 @@ await withPage(async (page, base, consoleErrors) => {
     .map((input) => !!(input.labels && input.labels.length) || !!input.getAttribute('aria-label')));
   check('community sheet: its two boxes are labelled', labelled.length === 2 && labelled.every(Boolean),
     JSON.stringify(labelled));
+  /* PLAN.md step 9.2: no translation is bundled until native speakers have
+   * made and checked one, so nothing offers a choice of language */
+  const choice = await page.evaluate(() => ({
+    bundled: Object.keys(window.GWT.data.translations),
+    offered: window.GWT.core.textLanguages().length,
+    selects: Array.from(document.querySelectorAll('#page-host .card')).find((c) =>
+      c.textContent.includes('Community handover sheet')).querySelectorAll('select').length,
+  }));
+  check('community sheet: with no translation bundled, no language is offered',
+    choice.offered === choice.bundled.length && (choice.offered > 0 || choice.selects === 0),
+    JSON.stringify(choice));
 
   const blank = await build(page);
   const blankContent = await contentNow(page);
@@ -318,6 +334,92 @@ await withPage(async (page, base, consoleErrors) => {
   check('community sheet: with nothing typed the box starts from the identifier the Asset registry holds',
     offered === 'SL-WAR-8FEEVKQ-T' && !fromRegistry.includes(notes.no_identifier),
     JSON.stringify({ offered }));
+
+  /* --- another language (PLAN.md step 9.2) ------------------------------- */
+  /* None is bundled, so one is made up here: every entry the sheet prints,
+   * as its own English with two letters in front that Krio is written with
+   * and English is not, so that a sentence left in English is seen at once.
+   * Beside it, one with a single sentence, and one nobody checked. */
+  const MARK = '\u025b\u0254 ';
+  await page.evaluate((mark) => {
+    const app = window.GWT.app, english = window.GWT.data.text.community_sheet;
+    const builders = ['about', 'too_many_contacts', 'in_language', 'not_translated', 'builder_notes'];
+    const whole = {};
+    Object.keys(english).forEach((key) => {
+      if (builders.includes(key)) return;
+      if (typeof english[key] === 'string') { whole[key] = mark + english[key]; return; }
+      whole[key] = {};
+      Object.keys(english[key]).forEach((row) => { whole[key][row] = mark + english[key][row]; });
+    });
+    window.__bundled = window.GWT.data.translations;
+    window.GWT.data.translations = {
+      zz: { language: { name: 'Zedish', translated_by: 'A. Translator', checked_by: 'B. Checker' },
+        text: { community_sheet: whole } },
+      zy: { language: { name: 'Ypsilonian', translated_by: 'C. Translator', checked_by: 'D. Checker' },
+        text: { community_sheet: { title: mark + '{place}' } } },
+      yy: { language: { name: 'Unchecked', translated_by: 'E. Translator' },
+        text: { community_sheet: whole } },
+    };
+    app.store.set('config.service.report_url', 'https://water.example.org/app/');
+    app.render();
+  }, MARK);
+  const select = card(page).locator('select');
+  const options = await select.evaluate((node) => ({
+    labelled: !!(node.labels && node.labels.length),
+    label: node.labels && node.labels[0] ? node.labels[0].textContent : '',
+    choices: Array.from(node.options).map((o) => [o.value, o.textContent]),
+    chosen: node.value,
+  }));
+  check('community sheet: a translation that names who checked it is offered, by name; one that does not is not',
+    options.labelled && options.label.includes('Language of the sheet') && options.chosen === '' &&
+    JSON.stringify(options.choices) === JSON.stringify([['', 'English'], ['zy', 'Ypsilonian'], ['zz', 'Zedish']]),
+    JSON.stringify(options));
+  const stillEnglish = await cardWords(page);
+  check('community sheet: with a translation on offer the sheet is English until one is chosen, and nobody is told none exists',
+    stillEnglish.includes('About 70 jerrycans of water a day.') && !stillEnglish.includes(MARK) &&
+    !stillEnglish.includes(notes.english_only), stillEnglish.slice(0, 600));
+
+  await select.selectOption('zz');
+  const inZedish = await cardWords(page);
+  const zedish = await build(page);
+  const zedishContent = await contentNow(page);
+  const typed = ['Chairperson', 'Aminata Kamara', '076 000 000', 'Caretaker', 'Sorie Conteh'];
+  check('community sheet: the card says what the sheet will say in the language chosen, and whose translation it is',
+    inZedish.includes(MARK + 'About 70 jerrycans of water a day.') &&
+    inZedish.includes('The sheet is in Zedish: translated by A. Translator, checked by B. Checker.') &&
+    !inZedish.includes('not fully in Zedish') && inZedish.includes(notes.first_estimate) &&
+    (await page.evaluate(() => window.GWT.app.store.get('handover').language)) === 'zz',
+    inZedish.slice(0, 900));
+  check('community sheet: the document is written in the language, every sentence of it, as a file of its own',
+    /^community_sheet_.*_zz\.docx$/.test(zedish.name) && zedishContent.language.code === 'zz' &&
+    zedishContent.fell_back.length === 0 &&
+    JSON.stringify(zedish.words) === JSON.stringify(expected(zedishContent)) &&
+    zedish.words.every((w) => typed.includes(w) || w.replace(/^Figure 1\. /, '').startsWith(MARK)) &&
+    zedish.pictures === 1 && zedish.width === 1280 && zedish.pixels.right > 0.2,
+    JSON.stringify({ name: zedish.name, fell: zedishContent.fell_back, got: zedish.words,
+      want: expected(zedishContent) }));
+
+  await select.selectOption('zy');
+  const inPart = await cardWords(page);
+  const part = await build(page);
+  check('community sheet: what a translation has no words for is printed in English, and the builder is told how much',
+    /parts of this sheet are not fully in Ypsilonian yet/.test(inPart) &&
+    inPart.includes('About 70 jerrycans of water a day.') && /_zy\.docx$/.test(part.name) &&
+    part.words[0].startsWith('This sheet was made from example data.') &&
+    part.words[1].startsWith(MARK), JSON.stringify({ card: inPart.slice(0, 500), words: part.words.slice(0, 3) }));
+
+  /* a project saved where a translation was installed, opened where it is not */
+  await page.evaluate(() => {
+    window.GWT.data.translations = window.__bundled;
+    window.GWT.app.render();
+  });
+  const without = await cardWords(page);
+  const plain = await build(page);
+  check('community sheet: a language this build does not have is English again, not an error',
+    (await card(page).locator('select').count()) === 0 && !without.includes(MARK) &&
+    without.includes('About 70 jerrycans of water a day.') && without.includes(notes.english_only) &&
+    !/_z[yz]\.docx$/.test(plain.name) && !plain.words.some((w) => w.includes(MARK)),
+    JSON.stringify({ card: without.slice(0, 400), name: plain.name }));
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n'));
 });

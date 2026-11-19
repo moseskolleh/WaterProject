@@ -710,6 +710,58 @@ def test_the_community_sheet_is_offered_and_built_on_the_handover_page(sample_da
     assert not app.exception
     assert app.number_input(key="ho_sheet_hours").value == 8.0
     assert app.text_input(key="ho_sheet_asset").value == "SL-WAR-8FEEVKQ-T"
+    # no translation is bundled, so no choice of language is offered
+    assert not [box for box in app.selectbox if box.key == "ho_sheet_language"]
+
+
+def test_the_community_sheet_is_built_in_a_language_that_is_on_offer(sample_data, monkeypatch):
+    """PLAN.md step 9.2: where a translation is installed that names who made
+    it and who checked it, the card offers it, says what the sheet will say
+    in it, and builds the sheet in it. None is bundled, so one is made up:
+    the sheet's own English with a mark in front of every sentence."""
+    from test_text_languages import MARK, marked
+
+    held = marked()
+    held["yy"] = {"language": {"name": "Unchecked", "translated_by": "E. Translator"},
+                  "text": held["zz"]["text"]}
+    monkeypatch.setattr("groundwater.text.translations", lambda: held)
+    app = AppTest.from_file(APP, default_timeout=600)
+    app.run()
+    goto(app, "Handover")
+    assert not app.exception
+    box = app.selectbox(key="ho_sheet_language")
+    # English first, then what is on offer; the one nobody checked is not
+    assert list(box.options) == ["English", "Zedish"] and box.value == ""
+    assert MARK not in " ".join(str(m.value) for m in app.markdown)
+
+    box.set_value("zz")
+    app.run()
+    assert not app.exception
+    said = " ".join(str(m.value) for m in app.markdown)
+    assert MARK + "How much water this borehole gives has not been measured yet." in said
+    told = " ".join(str(c.value) for c in app.caption)
+    assert "The sheet is in Zedish: translated by A. Translator, checked by B. Checker." in told
+    # what is said to the builder stays in English
+    from groundwater.text import phrase_table
+
+    assert phrase_table("community_sheet.builder_notes")["no_test"] in told
+    assert MARK not in told
+    app.button(key="build_community_sheet").click()
+    app.run()
+    assert not app.exception
+    issued = app.session_state["issued_documents"]
+    assert len(issued) == 1 and issued[0]["kind"] == "community_sheet"
+    # the document issued is the translated one
+    assert issued[0]["title"] == MARK + "Your borehole"
+
+    # the same session where the translation is no longer installed: English
+    # again, and no error
+    monkeypatch.setattr("groundwater.text.translations", lambda: {})
+    app.run()
+    assert not app.exception
+    assert not [b for b in app.selectbox if b.key == "ho_sheet_language"]
+    assert app.session_state["ho_sheet_language"] == ""
+    assert MARK not in " ".join(str(m.value) for m in app.markdown)
 
 
 def test_maps_flow(app):

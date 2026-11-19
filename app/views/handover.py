@@ -13,7 +13,7 @@ from groundwater.reporting.handover import (
     HandoverReportInputs,
 )
 
-from groundwater.text import phrase
+from groundwater.text import languages, phrase
 
 from shared import (
     _file_stem,
@@ -161,13 +161,28 @@ def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
     if "ho_sheet_asset" not in st.session_state and held.get("asset_id"):
         # the borehole the Asset registry page is on, where there is one
         st.session_state["ho_sheet_asset"] = held["asset_id"]
-    c1, c2 = st.columns(2)
+    # The choice of language is offered only where a translation is: one that
+    # names who translated it and who checked it, and has no fault
+    # (groundwater.text.languages). With none, the sheet is English and says
+    # so (PLAN.md step 9.2).
+    offered = {language["code"]: language["name"] for language in languages()}
+    if st.session_state.get("ho_sheet_language") not in offered:
+        # English, or a project saved where a translation was installed and
+        # opened where it is not
+        st.session_state["ho_sheet_language"] = ""
+    c1, c2, c3 = st.columns(3) if offered else (*st.columns(2), None)
     hours = c1.number_input(
         "Hours the pump is used each day", min_value=0.0, max_value=24.0, value=None,
         step=0.5, key="ho_sheet_hours", help="for the amount of water in a day")
     asset_id = c2.text_input(
         "Borehole identifier", key="ho_sheet_asset",
         help="as on its plate, from the Asset registry")
+    language = ""
+    if c3 is not None:
+        language = c3.selectbox(
+            "Language of the sheet", ["", *offered], key="ho_sheet_language",
+            format_func=lambda code: offered.get(code, "English"),
+            help="what the translation has no words for is printed in English")
     # a project resting on a bundled example says so across the sheet's top,
     # even where the handover report's requirement was overridden
     example = any(req.key == "field_data" and req.state in ("unmet", "overridden")
@@ -178,7 +193,8 @@ def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
                for row in committee_records(committee_rows)]
     given = dict(
         analysis=pumping, quality=quality, committee=members,
-        asset_id=asset_id or "", hours_per_day=hours, example=example, config=app_config())
+        asset_id=asset_id or "", hours_per_day=hours, example=example, config=app_config(),
+        language=language or "")
     try:
         content = community_sheet_content(site_from_state(), **given)
     except ValueError as exc:
@@ -194,8 +210,10 @@ def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
     st.caption("\n".join(f"- {note}" for note in content["notes"]))
     if st.button("Community sheet (.docx)", key="build_community_sheet"):
         folder = workdir() / "community_sheet"
+        # a sheet in another language is a file of its own beside the English
+        name = f"community_sheet_{language}.docx" if language else "community_sheet.docx"
         try:
-            path = build_community_sheet(site_from_state(), folder / "community_sheet.docx",
+            path = build_community_sheet(site_from_state(), folder / name,
                                          folder, issue=issue_for("community_sheet"), **given)
         except ValueError as exc:
             st.error(f"Could not build the community sheet: {exc}")

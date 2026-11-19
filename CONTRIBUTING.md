@@ -208,10 +208,77 @@ call it from both engines by its quoted id, run
 `python web/build_webapp_data.py`, then `python tests/webapp/make_reference.py`
 and the parity suite. `tests/test_text.py` fails if an entry is read by only
 one engine, if the bundle carries another catalogue, or if either engine
-still spells out a catalogued sentence for itself. Only the top-level files
-are read, so the Krio catalogue step 9.2 needs can sit beside them in a
-folder of its own, under the same ids. A sentence not yet in the catalogue is
-still worded once in each engine, and the same in both.
+still spells out a catalogued sentence for itself. A sentence not yet in the
+catalogue is still worded once in each engine, and the same in both.
+
+### Adding a language
+
+English is the working language, and the files above are the English. What a
+community reads can be said in another language (PLAN.md step 9.2). Today
+that is the community handover sheet; the reports, and every note to whoever
+builds a document, stay in English. PLAN.md asks that such text be translated
+and checked by native speakers and forbids a machine translation, so **no
+translation is bundled, and one written by a machine, this toolkit's own
+assistants included, must not be added.**
+
+A translation is a folder beside the English files, named for the language
+with two to eight small letters (`src/groundwater/data/text/kri` for Krio):
+
+- `language.yaml` says what it is and whose it is:
+
+  ```yaml
+  name: Krio
+  translated_by: the person or body who translated it
+  checked_by: the native speaker or body who checked it
+  ```
+
+  A folder that does not give all three is not offered by either app,
+  whatever else it holds.
+- `community_sheet.yaml` holds the sentences, under the same keys as the
+  English file. Copy the English file, leave out its comments if you wish,
+  and put the translation in place of each sentence. An entry left out, or
+  left empty, is printed in English, and whoever builds a sheet is told how
+  many were; so a translation can go in a part at a time. The entries that
+  are said to the builder and never printed (`about`, `too_many_contacts`,
+  `in_language`, `not_translated`, `builder_notes`) need no translation.
+
+A sentence keeps every `{value}` its English has, written the same way:
+`{cans:num}` stays `{cans:num}`, wherever in the sentence it now falls. The
+two words of a plural are the translation's own
+(`{cans:plural:jɛriken|jɛriken dɛm}`), and a language that has one word for
+both writes it twice. A row of a table (`quality`, `hour_words`,
+`keep_structures` and the like) is plain text with no braces.
+
+Check it before it goes in, from a checkout or an installed package:
+
+```
+groundwater translation kri --folder src/groundwater/data/text
+```
+
+says either every reason it cannot be offered (a value dropped or
+reformatted, an entry or a row English does not have, a blank sentence, a
+missing `checked_by`) or which parts of the sheet it has no words for yet.
+`groundwater translation` with no code checks every translation the package
+holds, and `tests/test_text_languages.py` fails on one that cannot be
+offered. Then run `python web/build_webapp_data.py` so that the browser app
+carries it (as `GWT.data.translations`), `python web/build_demo.py` and
+`python web/build_offline.py`, and the parity suite: both engines read the
+same folders by the same rules (`groundwater/text.py`, `translationProblems`
+and `speaker` in `web/src/gwt-core/185-text-languages.js`).
+
+Once a translation is offered, both Handover pages show a "Language of the
+sheet" choice on the community sheet's card. With none, they show no choice
+and the sheet is English.
+
+What stays English on a translated sheet, and is not in the catalogue: a
+committee member's role as it was typed, the names of what a water test
+found (they are the standards table's), the word "Figure" before the
+picture's caption and the line at the foot that carries the document's code.
+
+To have other community-facing text translated, say it through a speaker
+(`Speaker(language)` in Python, `C.speaker(language)` in the browser) where
+it now uses `phrase`, and list in the module, as `community_sheet.py` does
+with `BUILDER_ENTRIES`, which entries are the builder's.
 
 The configuration defaults are kept the same way, in
 `src/groundwater/data/defaults.json`: `config.py` builds every field's

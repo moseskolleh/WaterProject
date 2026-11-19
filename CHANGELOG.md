@@ -20,6 +20,7 @@ tests/test_changelog.py holds each list to its file, and
 
 Full text: [changelog/unreleased.md](changelog/unreleased.md)
 
+- Strings that can be translated: the community sheet in a language beside English (PLAN.md step 9.2)
 - The community handover sheet: one page for the people who keep the borehole (PLAN.md step 9.1)
 - Steps 9.5 and 9.3 reviewed by others, and 39 things put right
 - Training mode: three exercises in finding the fault (PLAN.md step 9.3)

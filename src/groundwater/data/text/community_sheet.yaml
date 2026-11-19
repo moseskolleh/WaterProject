@@ -6,8 +6,11 @@
 # so every entry is a short plain sentence: no "yield", no "indicative", no
 # unit but litres, metres and hours. This file is the English. PLAN.md asks
 # for a Krio version translated and checked by native speakers, and forbids
-# a machine translation, so none is here; the words below are what such a
-# translation would be made of.
+# a machine translation, so none is here. A translation is a file of this
+# name in a folder beside this one named for the language (kri/), with as
+# many of these entries as are translated, under the same keys, and a
+# language.yaml that names who translated it and who checked it
+# (CONTRIBUTING.md, "Adding a language"; PLAN.md step 9.2).
 
 # What the sheet is, on the card of the Handover page that builds it, in
 # both apps.
@@ -131,6 +134,16 @@ too_many_contacts: >-
   The sheet prints the first {shown:g} committee members so that it stays one
   page; {left:g} more {left:plural:was|were} entered and {left:plural:is|are}
   left off.
+
+# said to the builder of a sheet printed in another language (PLAN.md step
+# 9.2): whose translation it is, and how much of the sheet it does not cover
+in_language: >-
+  The sheet is in {name}: translated by {translated_by}, checked by
+  {checked_by}.
+not_translated: >-
+  {count:g} {count:plural:part|parts} of this sheet {count:plural:is|are} not
+  fully in {name} yet. What the translation has no words for is printed in
+  English.
 
 # --- for whoever builds the sheet, shown beside the button and never
 # printed on it: what the sheet could not say, and why ------------------

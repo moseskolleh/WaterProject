@@ -136,8 +136,9 @@
       supervision: { responses: {}, notes: [], checks: {}, evidence: {} },
       handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '',
         /* for the community handover sheet (PLAN.md step 9.1): the hours the
-         * pump is used each day, and the identifier on the borehole's plate */
-        hoursPerDay: null, assetId: '' },
+         * pump is used each day, the identifier on the borehole's plate, and
+         * the language it is printed in ('' is English; step 9.2) */
+        hoursPerDay: null, assetId: '', language: '' },
       photos: {},
       /* ask this device for its position when a photograph carries none */
       photoPosition: false,

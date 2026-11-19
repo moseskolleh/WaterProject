@@ -49,9 +49,10 @@ from .config import Config
 from .models import SiteMetadata
 from .registry import parse_asset_id, report_link, trim_field
 from .supervision.checklists import load_separation_distances
-from .text import phrase, phrase_table
+from .text import Speaker, languages, phrase, phrase_table, text_catalogue
 
-__all__ = ["JERRYCAN_L", "community_sheet_content", "round_down"]
+__all__ = ["BUILDER_ENTRIES", "JERRYCAN_L", "community_sheet_content", "round_down",
+           "sheet_entries"]
 
 #: The jerrycan water is carried in, in litres.
 JERRYCAN_L = 20
@@ -68,6 +69,13 @@ MAX_CONTACTS = 6
 #: The symbol the square to scan is printed as, as on the plate.
 SCAN_ECC = "H"
 
+#: The entries of ``data/text/community_sheet.yaml`` that are said to whoever
+#: builds the sheet, beside the button, and so are always English. Every
+#: other entry is printed on the sheet, and is what a translation of it is
+#: made of (:func:`sheet_entries`).
+BUILDER_ENTRIES = ("about", "too_many_contacts", "in_language", "not_translated",
+                   "builder_notes")
+
 # written out rather than \s, which the two engines read differently
 _SPACE = re.compile(r"[ \t\n\r\f\v]+")
 
@@ -81,6 +89,13 @@ def sheet_text(value: Any) -> str:
     if not isinstance(value, str):
         return ""
     return trim_field(_SPACE.sub(" ", value.replace("\u2014", " - ").replace("\u2013", "-")))
+
+
+def sheet_entries() -> list[str]:
+    """The catalogue entries the sheet prints, as ``community_sheet.<key>``,
+    in the file's order: what a translator of the sheet has to translate."""
+    return [f"community_sheet.{key}" for key in text_catalogue()["community_sheet"]
+            if key not in BUILDER_ENTRIES]
 
 
 def round_down(value: float) -> int:
@@ -105,13 +120,13 @@ def _hours(hours_per_day: Any) -> float | None:
     return hours if math.isfinite(hours) and 0 < hours <= 24 else None
 
 
-def _water(analysis: Any, hours: float | None, notes: list[str]) -> dict:
+def _water(analysis: Any, hours: float | None, notes: list[str], say: Speaker) -> dict:
     table = phrase_table("community_sheet.builder_notes")
     water: dict[str, Any] = {
-        "heading": phrase("community_sheet.water_heading"), "state": "none",
+        "heading": say.phrase("community_sheet.water_heading"), "state": "none",
         "litres_per_hour": None, "jerrycans_per_hour": None, "hours_per_day": None,
         "litres_per_day": None, "jerrycans_per_day": None,
-        "headline": phrase("community_sheet.water_none"), "lines": [],
+        "headline": say.phrase("community_sheet.water_none"), "lines": [],
     }
     rec = getattr(analysis, "yield_recommendation", None)
     if rec is None or rec.safe_yield_m3_per_h is None:
@@ -127,50 +142,50 @@ def _water(analysis: Any, hours: float | None, notes: list[str]) -> dict:
     water["litres_per_hour"] = per_hour
     water["jerrycans_per_hour"] = per_hour // JERRYCAN_L
     if per_hour <= 0:
-        water["headline"] = phrase("community_sheet.water_very_little")
+        water["headline"] = say.phrase("community_sheet.water_very_little")
     elif hours is None:
         notes.append(table["no_hours"])
         if water["jerrycans_per_hour"] >= 1:
-            water["headline"] = phrase("community_sheet.water_hour",
+            water["headline"] = say.phrase("community_sheet.water_hour",
                                        cans=water["jerrycans_per_hour"])
             # the litres those jerrycans make, so that the two figures agree
             # by the reader's own arithmetic; a rounding down once more
-            water["lines"].append(phrase(
+            water["lines"].append(say.phrase(
                 "community_sheet.water_hour_detail",
                 litres=water["jerrycans_per_hour"] * JERRYCAN_L, can=JERRYCAN_L))
         else:
-            water["headline"] = phrase("community_sheet.water_litres_hour", litres=per_hour)
+            water["headline"] = say.phrase("community_sheet.water_litres_hour", litres=per_hour)
     else:
         per_day = round_down(per_hour * hours)
-        unit = phrase_table("community_sheet.hour_words")["one" if hours == 1 else "other"]
+        unit = say.phrase_table("community_sheet.hour_words")["one" if hours == 1 else "other"]
         water["hours_per_day"] = hours
         water["litres_per_day"] = per_day
         water["jerrycans_per_day"] = per_day // JERRYCAN_L
         if per_day <= 0:
-            water["headline"] = phrase("community_sheet.water_very_little")
+            water["headline"] = say.phrase("community_sheet.water_very_little")
         elif water["jerrycans_per_day"] >= 1:
-            water["headline"] = phrase("community_sheet.water_day",
+            water["headline"] = say.phrase("community_sheet.water_day",
                                        cans=water["jerrycans_per_day"])
-            water["lines"].append(phrase(
+            water["lines"].append(say.phrase(
                 "community_sheet.water_day_detail",
                 litres=water["jerrycans_per_day"] * JERRYCAN_L,
                 hours=hours, unit=unit, can=JERRYCAN_L))
         else:
-            water["headline"] = phrase("community_sheet.water_litres_day", litres=per_day,
+            water["headline"] = say.phrase("community_sheet.water_litres_day", litres=per_day,
                                        hours=hours, unit=unit)
     if indicative:
         notes.append(table["first_estimate"])
-        water["lines"].append(phrase("community_sheet.water_first_estimate"))
+        water["lines"].append(say.phrase("community_sheet.water_first_estimate"))
     else:
-        water["lines"].append(phrase("community_sheet.water_tested"))
+        water["lines"].append(say.phrase("community_sheet.water_tested"))
     # nothing to fall short of where the sheet says there is very little
     if per_hour > 0 and (hours is None or water["litres_per_day"] > 0):
-        water["lines"].append(phrase("community_sheet.water_shortage"))
+        water["lines"].append(say.phrase("community_sheet.water_shortage"))
     return water
 
 
-def _quality(quality: Any, notes: list[str]) -> dict:
-    answers = phrase_table("community_sheet.quality")
+def _quality(quality: Any, notes: list[str], say: Speaker) -> dict:
+    answers = say.phrase_table("community_sheet.quality")
     state = getattr(quality, "verdict_state", None) if quality is not None else None
     if state not in answers or state == "none":
         if quality is None:
@@ -187,14 +202,14 @@ def _quality(quality: Any, notes: list[str]) -> dict:
                         else "national_exceedances", None) or []
         names = [row.parameter for row in found]
         if names:
-            lines.append(phrase("community_sheet.quality_found", names=", ".join(names)))
-        lines.append(phrase("community_sheet.quality_ask"))
-    return {"heading": phrase("community_sheet.quality_heading"), "state": state,
+            lines.append(say.phrase("community_sheet.quality_found", names=", ".join(names)))
+        lines.append(say.phrase("community_sheet.quality_ask"))
+    return {"heading": say.phrase("community_sheet.quality_heading"), "state": state,
             "headline": answers[state], "lines": lines}
 
 
-def _contacts(committee: Any, notes: list[str]) -> dict:
-    columns = phrase_table("community_sheet.contacts_columns")
+def _contacts(committee: Any, notes: list[str], say: Speaker) -> dict:
+    columns = say.phrase_table("community_sheet.contacts_columns")
     rows: list[list[str]] = []
     for member in committee or []:
         get = member.get if isinstance(member, dict) else lambda key, m=member: getattr(m, key, "")
@@ -209,14 +224,14 @@ def _contacts(committee: Any, notes: list[str]) -> dict:
     if not rows:
         notes.append(phrase_table("community_sheet.builder_notes")["no_committee"])
         rows = [["", "", ""] for _ in range(BLANK_CONTACTS)]
-    rows += [[role, "", ""] for role in phrase_table("community_sheet.contacts_write_in").values()]
-    return {"heading": phrase("community_sheet.contacts_heading"),
+    rows += [[role, "", ""] for role in say.phrase_table("community_sheet.contacts_write_in").values()]
+    return {"heading": say.phrase("community_sheet.contacts_heading"),
             "header": [columns["role"], columns["name"], columns["phone"]], "rows": rows}
 
 
-def _report(typed: str, report_url: str, notes: list[str]) -> dict:
+def _report(typed: str, report_url: str, notes: list[str], say: Speaker) -> dict:
     table = phrase_table("community_sheet.builder_notes")
-    lines = [phrase("community_sheet.report_tell")]
+    lines = [say.phrase("community_sheet.report_tell")]
     payload = caption = ""
     # the registry's own reading of what was typed: case, spacing and the
     # usual misreadings forgiven, a failing check character not. A number
@@ -227,7 +242,7 @@ def _report(typed: str, report_url: str, notes: list[str]) -> dict:
     elif not asset_id:
         notes.append(table["bad_identifier"])
     else:
-        lines.append(phrase("community_sheet.report_number", id=asset_id))
+        lines.append(say.phrase("community_sheet.report_number", id=asset_id))
         # an address the registry refuses stops the sheet, as it stops the
         # plate, rather than being printed
         payload = report_link(asset_id, report_url)
@@ -235,16 +250,16 @@ def _report(typed: str, report_url: str, notes: list[str]) -> dict:
             # a link too long for the symbol stops the sheet here, where both
             # apps show the reason before the button, and not in the writer
             qr.encode(payload, ecc=SCAN_ECC)
-            lines.append(phrase("community_sheet.report_scan"))
-            caption = phrase("community_sheet.report_caption", id=asset_id)
+            lines.append(say.phrase("community_sheet.report_scan"))
+            caption = say.phrase("community_sheet.report_caption", id=asset_id)
         else:
             notes.append(table["no_address"])
-    return {"heading": phrase("community_sheet.report_heading"), "identifier": asset_id,
+    return {"heading": say.phrase("community_sheet.report_heading"), "identifier": asset_id,
             "lines": lines, "payload": payload, "caption": caption}
 
 
-def _keep_away() -> dict:
-    words = phrase_table("community_sheet.keep_structures")
+def _keep_away(say: Speaker) -> dict:
+    words = say.phrase_table("community_sheet.keep_structures")
     kept = [(row.min_distance_m, words[row.structure]) for row in load_separation_distances()
             if row.structure in words]
     # nearest first; the table's own order among things at one distance
@@ -255,21 +270,22 @@ def _keep_away() -> dict:
             rings[-1]["what"].append(what)
         else:
             rings.append({"distance_m": distance, "what": [what],
-                          "label": phrase("community_sheet.keep_metres", distance=distance)})
+                          "label": say.phrase("community_sheet.keep_metres", distance=distance)})
     return {
-        "heading": phrase("community_sheet.keep_heading"),
-        "lines": [phrase("community_sheet.keep_line", what=what, distance=distance)
+        "heading": say.phrase("community_sheet.keep_heading"),
+        "lines": [say.phrase("community_sheet.keep_line", what=what, distance=distance)
                   for distance, what in kept],
         "rings": rings,
-        "centre": phrase("community_sheet.keep_centre"),
-        "caption": phrase("community_sheet.keep_caption"),
+        "centre": say.phrase("community_sheet.keep_centre"),
+        "caption": say.phrase("community_sheet.keep_caption"),
     }
 
 
 def community_sheet_content(site: SiteMetadata, *, analysis: Any = None, quality: Any = None,
                             committee: Any = None, asset_id: str = "",
                             hours_per_day: float | None = None, example: bool = False,
-                            config: Config | None = None) -> dict:
+                            config: Config | None = None, language: str = "",
+                            translations: dict | None = None) -> dict:
     """Everything the community handover sheet says, as plain data.
 
     ``analysis`` is the pumping test analysis and ``quality`` the water
@@ -281,26 +297,47 @@ def community_sheet_content(site: SiteMetadata, *, analysis: Any = None, quality
     sheet then says across its top. The report address is the programme's
     (``config.service.report_url``).
 
+    ``language`` is the code of the translation the sheet is printed in
+    (:func:`groundwater.text.languages` lists those on offer), and nothing
+    for English; ``translations`` the translations to read it from, the
+    bundled ones unless given. What the translation has no words for is
+    printed in English and counted for the builder. The notes are the
+    builder's and are always English, as are a committee member's role as
+    it was typed and the names of what a water test found.
+
     Raises ValueError for a report address the registry would not print on a
-    plate, with the registry's reason, and for a link too long for the
-    square a phone scans, with the encoder's.
+    plate, with the registry's reason; for a link too long for the square a
+    phone scans, with the encoder's; and for a language that is not on
+    offer, with every reason it is not.
     """
     config = config or Config()
+    say = Speaker(language, held=translations)
     notes: list[str] = []
     place = sheet_text(site.community)
     identifier = sheet_text(asset_id)
     if example:
         notes.append(phrase_table("community_sheet.builder_notes")["example"])
     content = {
-        "title": (phrase("community_sheet.title", place=place) if place
-                  else phrase("community_sheet.title_unnamed")),
-        "example": phrase("community_sheet.example") if example else "",
-        "water": _water(analysis, _hours(hours_per_day), notes),
-        "quality": _quality(quality, notes),
-        "contacts": _contacts(committee, notes),
-        "report": _report(identifier, config.service.report_url, notes),
-        "keep_away": _keep_away(),
+        "title": (say.phrase("community_sheet.title", place=place) if place
+                  else say.phrase("community_sheet.title_unnamed")),
+        "example": say.phrase("community_sheet.example") if example else "",
+        "water": _water(analysis, _hours(hours_per_day), notes, say),
+        "quality": _quality(quality, notes, say),
+        "contacts": _contacts(committee, notes, say),
+        "report": _report(identifier, config.service.report_url, notes, say),
+        "keep_away": _keep_away(say),
+        "language": dict(say.language),
+        "fell_back": list(say.fell_back),
     }
-    notes.append(phrase_table("community_sheet.builder_notes")["english_only"])
+    if say.code:
+        notes.append(phrase("community_sheet.in_language", **{
+            fact: say.language[fact] for fact in ("name", "translated_by", "checked_by")}))
+        if say.fell_back:
+            notes.append(phrase("community_sheet.not_translated", count=len(say.fell_back),
+                                name=say.language["name"]))
+    elif not languages(translations):
+        # with a translation on offer the builder chose English, and is not
+        # told that none exists
+        notes.append(phrase_table("community_sheet.builder_notes")["english_only"])
     content["notes"] = notes
     return content
