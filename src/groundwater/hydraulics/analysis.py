@@ -414,6 +414,15 @@ READING_RESOLUTION_M = 0.01
 #: floor reached (regressions/pumping-theis-long-valley.json).
 THEIS_STORATIVITY_FLOOR = 1e-280
 
+#: Below this value of u = r^2 S / (4 T t) at the first reading, the Theis
+#: curve is a straight line in log time to every digit a float holds:
+#: W(u) = -gamma - ln u + u - ..., and the first term dropped is u itself.
+LINE_REGIME_U = 1e-12
+
+#: Euler's constant, the gamma of that expansion, written out as the
+#: browser writes it (EULER in web/src/gwt-core/020-maths.js).
+EULER_GAMMA = 0.5772156649015329
+
 #: Model evaluations a Theis fit may take before it is refused, the budget
 #: scipy's curve_fit was given while it did this fit (maxfev). The browser's
 #: THEIS_MAXFEV.
@@ -569,6 +578,54 @@ def cooper_jacob(
     )
 
 
+def _storativity_floor_reason() -> str:
+    # S is not printed: below the floor it is not a number anyone fitted.
+    return (
+        f"The Theis fit drives the storativity below {THEIS_STORATIVITY_FLOOR:g}: "
+        "the drawdown is nearly all an offset the Theis curve does not "
+        "model, such as well loss, so T and S cannot be fitted to it"
+    )
+
+
+def _line_storativity_log10(t_day: np.ndarray, s: np.ndarray, q_day: float,
+                            radius_m: float) -> float | None:
+    """``log10 S`` of the Theis fit where that fit is a straight line, or None.
+
+    A drawdown that is nearly all offset - well loss, twenty metres in the
+    first minute and ten centimetres over the hour after it - has its Theis
+    minimum where u is far below any float's last digit, and there the
+    curve is the line ``s = a (-gamma - ln u_1 + ln t)``. The least squares
+    line through the readings is then the fit itself, in closed form: its
+    slope gives T and its intercept gives S, as a logarithm, so a storativity
+    of 1e-340, which no float holds, is still a number here.
+
+    The search cannot be asked the same question. It walks down a valley
+    towards that minimum for thousands of steps, and whether it arrives
+    under the floor, or stops at the last number a float can hold, or runs
+    out of its evaluations on the way, turned on the last bit of the
+    arithmetic: the browser refused one sheet in ``curve_fit``'s words
+    ("maxfev = 20000") where Python refused it for its storativity
+    (tests/fuzz/regressions/pumping-offset-beyond-the-floor.json). Asked
+    of the line, the answer is the same in both engines and costs nothing.
+
+    None where the line does not rise, or where u at the first reading is
+    not below LINE_REGIME_U: the curve is then curved, and only the search
+    can fit it.
+    """
+    from .spread import _line
+
+    x = np.log(t_day)
+    slope, intercept = _line(x, s)
+    if not slope > 0:
+        return None
+    ln_u_at_one_day = -EULER_GAMMA - intercept / slope
+    if ln_u_at_one_day - float(x.min()) > math.log(LINE_REGIME_U):
+        return None
+    transmissivity = q_day / (4.0 * math.pi * slope)
+    return (ln_u_at_one_day
+            + math.log(4.0 * transmissivity / (radius_m * radius_m))) / math.log(10.0)
+
+
 def _solve_2x2(a00: float, a01: float, a10: float, a11: float,
                b0: float, b1: float) -> tuple[float, float] | None:
     """``A x = b`` for a 2 x 2 system, as the browser's ``solveLinear`` solves
@@ -713,6 +770,12 @@ def theis_fit(
     q_day = discharge_m3_per_h * 24.0
     model = theis_model(q_day, radius_m)
 
+    # a minimum the line already puts under the floor is refused here, in
+    # closed form, and not by where a search of thousands of steps gave out
+    line_log_s = _line_storativity_log10(t, s, q_day, radius_m)
+    if line_log_s is not None and line_log_s < math.log10(THEIS_STORATIVITY_FLOOR):
+        raise ValueError(_storativity_floor_reason())
+
     # start from a Cooper-Jacob style estimate, in the browser's own
     # expressions: the search below is the browser's, and a start one bit
     # apart is a different walk
@@ -728,13 +791,7 @@ def theis_fit(
     T = pow10(popt[0])
     S = pow10(popt[1])
     if not S >= THEIS_STORATIVITY_FLOOR:
-        # S is not printed either: it is wherever the search stopped on its
-        # way to underflow.
-        raise ValueError(
-            f"The Theis fit drives the storativity below {THEIS_STORATIVITY_FLOOR:g}: "
-            "the drawdown is nearly all an offset the Theis curve does not "
-            "model, such as well loss, so T and S cannot be fitted to it"
-        )
+        raise ValueError(_storativity_floor_reason())
     rmse = math.sqrt(cost / len(t))
     # None where the Jacobian is singular; no band then
     covariance = covariance_log2(model, t, s, popt)

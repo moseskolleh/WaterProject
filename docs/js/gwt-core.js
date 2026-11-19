@@ -462,6 +462,9 @@
   /* analysis.py THEIS_STORATIVITY_FLOOR: a Theis storativity below this has
    * not been fitted; the optimiser has run down a valley towards underflow. */
   var THEIS_STORATIVITY_FLOOR = 1e-280;
+  /* analysis.py LINE_REGIME_U: below this u at the first reading the Theis
+   * curve is a straight line in log time to every digit a float holds */
+  var LINE_REGIME_U = 1e-12;
 
   /** Least squares straight line with r^2, matching numpy lstsq + the r^2 the
    * Python computes alongside it.
@@ -9319,6 +9322,15 @@
     };
   }
 
+  /* analysis.py _storativity_floor_reason. S is not printed: below the floor
+   * it is not a number anyone fitted. */
+  function storativityFloorReason() {
+    return 'The Theis fit drives the storativity below ' +
+      formatG(THEIS_STORATIVITY_FLOOR) + ': the drawdown is nearly all an ' +
+      'offset the Theis curve does not model, such as well loss, so T and S ' +
+      'cannot be fitted to it';
+  }
+
   /* analysis.py THEIS_MAXFEV: the model evaluations a Theis fit may take */
   var THEIS_MAXFEV = 20000;
 
@@ -9371,6 +9383,25 @@
         'a higher rate would measure, or recharge holds the level');
     }
     var qDay = dischargeM3PerH * 24.0;
+    /* analysis.py _line_storativity_log10: where the drawdown is nearly all
+     * offset the fit is the least squares line through the readings, and its
+     * storativity is known in closed form, as a logarithm. A minimum the line
+     * puts under the floor is refused here, and not by where a search of
+     * thousands of steps gave out: under it, at the last number a float
+     * holds, or out of evaluations, which differed between the engines. */
+    var lnTime = t.map(function (v) { return Math.log(v); });
+    var straight = closedLine(lnTime, s);
+    if (straight[0] > 0) {
+      var lnUAtOneDay = -EULER - straight[1] / straight[0];
+      if (lnUAtOneDay - arrMin(lnTime) <= Math.log(LINE_REGIME_U)) {
+        var lineT = qDay / (4.0 * Math.PI * straight[0]);
+        var lineLogS = (lnUAtOneDay +
+          Math.log(4.0 * lineT / (radiusM * radiusM))) / Math.LN10;
+        if (lineLogS < Math.log10(THEIS_STORATIVITY_FLOOR)) {
+          throw new Error(storativityFloorReason());
+        }
+      }
+    }
     var calls = 0;
 
     function model(tt, logT, logS) {
@@ -9452,14 +9483,7 @@
     p = polishLog2(theisDerivatives(qDay, radiusM), t, s, p, cost)[0];
 
     var Tfit = Math.pow(10, p[0]), Sfit = Math.pow(10, p[1]);
-    if (!(Sfit >= THEIS_STORATIVITY_FLOOR)) {
-      /* S is not printed either: it is wherever each optimiser stopped on its
-       * way to underflow */
-      throw new Error('The Theis fit drives the storativity below ' +
-        formatG(THEIS_STORATIVITY_FLOOR) + ': the drawdown is nearly all an ' +
-        'offset the Theis curve does not model, such as well loss, so T and S ' +
-        'cannot be fitted to it');
-    }
+    if (!(Sfit >= THEIS_STORATIVITY_FLOOR)) throw new Error(storativityFloorReason());
     var fitted = model(t, p[0], p[1]), ss = 0;
     for (var k2 = 0; k2 < t.length; k2++) {
       var e2 = fitted[k2] - s[k2];

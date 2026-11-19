@@ -4234,6 +4234,13 @@ await withPage(async (page, base, consoleErrors) => {
   // 127.0.0.1 is a secure context, so the real worker registers here.
   const worker = await page.evaluate(async () => {
     const reg = await navigator.serviceWorker.ready;
+    /* ready resolves on an active worker; claiming the page that registered
+     * it is a separate step, as offline.mjs says where it waits the same
+     * way. Asked in between, the page is not yet controlled: the nightly
+     * run of 16 November failed on that and on nothing else. */
+    for (let i = 0; i < 60 && !navigator.serviceWorker.controller; i += 1) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
     return { scope: reg.scope, controlled: !!navigator.serviceWorker.controller };
   }).catch((e) => ({ error: String(e) }));
   check('offline: the service worker registers and takes control',

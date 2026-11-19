@@ -260,6 +260,42 @@ def test_theis_fit_on_a_long_valley_is_the_line_through_the_readings():
     assert 1e-280 < result.storativity < 1e-200
 
 
+def test_an_offset_beyond_the_floor_is_refused_by_the_line_not_the_search(monkeypatch):
+    """Twenty-one metres in the first minute and six centimetres a log cycle
+    after it put the Theis minimum at a storativity near 1e-345. The search
+    used to be sent after it, and where it gave out - under the floor, at the
+    last float, or at its 20,000th evaluation - differed between the engines
+    (tests/fuzz/regressions/pumping-offset-beyond-the-floor.json). The least
+    squares line through the readings is the fit there, and says so before
+    any search is made."""
+    from groundwater.hydraulics import analysis
+
+    def searched(*args, **kwargs):
+        raise AssertionError("the search was run on a fit the line already refuses")
+
+    s = 21.0 + 0.06 * np.log10(TIMES)
+    line = analysis._line_storativity_log10(TIMES / 1440, s, Q * 24, 0.1)
+    assert line is not None and line < -300
+    monkeypatch.setattr(analysis, "_theis_search", searched)
+    with pytest.raises(ValueError, match="drives the storativity below 1e-280"):
+        theis_fit(TIMES, s, Q)
+
+
+def test_the_line_gives_the_storativity_the_search_finds_and_stands_aside_for_a_curve():
+    from groundwater.hydraulics import analysis
+
+    # the long valley again: an offset the curve can still hold, S near 1e-240
+    s = 12.0 + 0.05 * np.log10(TIMES) + np.random.default_rng(8).normal(0, 0.005, len(TIMES))
+    result = theis_fit(TIMES, s, Q)
+    line = analysis._line_storativity_log10(TIMES / 1440, s, Q * 24, 0.1)
+    assert line == pytest.approx(math.log10(result.storativity), abs=1e-8)
+    # an ordinary test is curved at its early readings: only the search fits it
+    curved = _read_with_errors(5.0, 1e-3, seed=3)
+    assert analysis._line_storativity_log10(TIMES / 1440, curved, Q * 24, 0.1) is None
+    # and a level that falls has no line to speak of
+    assert analysis._line_storativity_log10(TIMES / 1440, 30.0 - 0.1 * np.log10(TIMES), Q * 24, 0.1) is None
+
+
 def test_theis_band_where_log_t_is_zero():
     """A transmissivity of 1 m2/day is a fitted parameter of zero, log10 T.
     scipy's curve_fit takes its Jacobian by a step of 1.5e-8 of the

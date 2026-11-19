@@ -336,6 +336,9 @@
   /* analysis.py THEIS_STORATIVITY_FLOOR: a Theis storativity below this has
    * not been fitted; the optimiser has run down a valley towards underflow. */
   var THEIS_STORATIVITY_FLOOR = 1e-280;
+  /* analysis.py LINE_REGIME_U: below this u at the first reading the Theis
+   * curve is a straight line in log time to every digit a float holds */
+  var LINE_REGIME_U = 1e-12;
 
   /** Least squares straight line with r^2, matching numpy lstsq + the r^2 the
    * Python computes alongside it.
