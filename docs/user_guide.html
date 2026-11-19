@@ -45,6 +45,7 @@
 <li><a href="#9d-reports-from-the-plate-and-by-sms">9d. Reports from the plate and by SMS</a></li>
 <li><a href="#9e-documents-anyone-can-check">9e. Documents anyone can check</a></li>
 <li><a href="#9f-one-evidence-bundle-for-the-borehole">9f. One evidence bundle for the borehole</a></li>
+<li><a href="#9g-the-community-handover-sheet">9g. The community handover sheet</a></li>
 <li><a href="#10-site-maps">10. Site maps</a></li>
 <li><a href="#10a-area-analysis-where-to-drill-and-whether-to-drill-at-all">10a. Area analysis: where to drill, and whether to drill at all</a></li>
 <li><a href="#11-saving-your-work">11. Saving your work</a></li>
@@ -1557,6 +1558,63 @@ confirms it, and exits 0 for a verified bundle, 2 for one unchanged but
 not confirmed, and 1 otherwise. The worked examples' packs,
 <code>examples/packs/*.zip</code>, are evidence bundles; a worked example is not
 issued, so they check as unconfirmed.</p>
+<h2 id="9g-the-community-handover-sheet">9g. The community handover sheet</h2>
+<p>In the browser app: <a href="index.html#/handover"><code>#/handover</code></a>, the
+<em>Community handover sheet</em> card. The Streamlit app's Handover page has
+the same section, and the two apps' sheets say the same.</p>
+<p>The handover report is for the client and the district water office.
+This is one page for the community to keep, in plain English, with a
+picture:</p>
+<ul>
+<li><strong>How much water.</strong> As jerrycans of 20 litres and as litres.</li>
+<li><strong>Is the water safe to drink?</strong> One plain answer.</li>
+<li><strong>Who to call.</strong> The first six committee members with a name or a
+number, then lines for the pump mechanic and the district water
+office to be written in by hand. Six is what one page holds; the card
+says how many more were left off.</li>
+<li><strong>If the pump breaks or the water changes.</strong> Who to tell, and the
+borehole's number as on its plate.</li>
+<li><strong>Keep these away from the borehole.</strong> A picture of rings, each with
+its distance, and beside it what must be kept beyond each.</li>
+</ul>
+<figure class="shot wide"><img src="guide/community-sheet.png" alt="The Community handover sheet card of the Handover page: boxes for the hours the pump is used each day and the borehole identifier, then what the sheet will say and what it could not say, and the button that builds it." width="1120" height="760" loading="lazy" decoding="async"><figcaption>The card says what the sheet will say before it is built. Here a worked example is loaded, which the sheet will say across its top.</figcaption></figure>
+<p>The card asks for two things the page does not already hold:</p>
+<ul>
+<li><strong>Hours the pump is used each day.</strong> With it the sheet gives the
+amount for a day; without it, for an hour.</li>
+<li><strong>Borehole identifier.</strong> As on the borehole's plate, from the Asset
+registry; the box starts from the registry's where the project has
+one. It is read as the registry reads it, so capitals and spaces do
+not matter, but an identifier with a wrong last character is not
+printed at all: a wrong number would send a report to nobody's
+borehole. Without one the sheet names no plate.</li>
+</ul>
+<p>Before you build the sheet the card shows <strong>what the sheet will say</strong>
+(its two headlines) and <strong>what it could not say, and why</strong>. Read both.
+The second list is for you and is never printed.</p>
+<p>How the sheet is careful, so that it can be handed over as it is:</p>
+<ul>
+<li>The amount of water is taken from the <strong>low end</strong> of the pumping
+test's safe yield and <strong>rounded down</strong>. It is never more than the
+test allows.</li>
+<li>Where the pumping test's yield is indicative (a short test, or
+readings that cannot be relied on), the sheet calls the amount <strong>a
+first estimate</strong> and says the borehole may give less, most of all in
+the dry season. With no test it says the amount has not been measured.</li>
+<li>Only water that passed its tests is called safe. Water that failed is
+to be treated before drinking, or drinking water taken from another
+source, and the sheet names what was found. It names no treatment:
+what failed may be something boiling does not remove, so ask the
+district water office. Water not tested, or not fully tested, is
+&quot;not known yet&quot;, to be treated until it is.</li>
+<li>With a worked example loaded, the sheet says across its top that it
+is not about a real borehole and must not be handed out.</li>
+</ul>
+<p>Where the programme has set a report address (section 9d), the picture
+also carries a square that a phone scans to open the report page for
+the borehole. The sheet prints no telephone number.</p>
+<p>The sheet is in English. A Krio version needs a translation checked by
+native speakers and is not written yet.</p>
 <h2 id="10-site-maps">10. Site maps</h2>
 <p>In the browser app: <a href="index.html#/site"><code>#/site</code></a>, and the terrain
 at <a href="index.html#/site/terrain"><code>#/site/terrain</code></a>.</p>
@@ -2870,6 +2928,10 @@ carries everything needed to see the problem again.</p>
 <tr>
 <td>Co-pilot</td>
 <td>A page of the browser app used while the work is being done: it checks each reading as it is taken and writes the standard workbook (sections 2a, 3a and 4a).</td>
+</tr>
+<tr>
+<td>Community handover sheet</td>
+<td>One page for the community to keep: how much water, whether it is safe to drink, who to call, how to report a fault and what to keep away (section 9g).</td>
 </tr>
 <tr>
 <td>Constant discharge test</td>

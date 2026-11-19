@@ -97,6 +97,8 @@ const SHOTS = [
   { name: 'costing', device: 'laptop', sample: 'dr_timbo', route: 'costing' },
   { name: 'supervision', device: 'laptop', sample: 'dr_timbo', route: 'supervision' },
   { name: 'handover', device: 'laptop', sample: 'dr_timbo', route: 'handover' },
+  { name: 'community-sheet', device: 'laptop', sample: 'dr_timbo', route: 'handover',
+    at: 'Community handover sheet' },
   { name: 'site', device: 'laptop', sample: 'rokel', route: 'site' },
   { name: 'site-map', device: 'laptop', sample: 'rokel', route: 'site', at: 'Where the site sits' },
 ];

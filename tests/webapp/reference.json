@@ -197973,6 +197973,4371 @@
    ]
   ]
  },
+ "community_sheet": {
+  "cases": [
+   {
+    "site": {
+     "community": "Rokel"
+    }
+   },
+   {
+    "site": {
+     "community": " Dr. Timbo's  Residence "
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.39,
+      "safe_yield_low_m3_per_h": 0.22,
+      "confidence": "established"
+     }
+    },
+    "quality": {
+     "verdict_state": "pass",
+     "health_exceedances": [],
+     "national_exceedances": []
+    },
+    "committee": [
+     {
+      "role": "Chairperson",
+      "name": "  Aminata   Kamara ",
+      "contact": "076 000 000"
+     },
+     {
+      "role": "Caretaker",
+      "name": "Sorie Conteh",
+      "phone": ""
+     },
+     {
+      "role": "Treasurer",
+      "name": " ",
+      "contact": ""
+     },
+     {
+      "role": "",
+      "name": "",
+      "contact": "+232 77 111 222"
+     }
+    ],
+    "asset_id": " SL-WAR-8FEEVKQ-T ",
+    "hours_per_day": 8,
+    "report_url": "https://water.example.org/app/"
+   },
+   {
+    "site": {
+     "community": "Kuntoloh"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 1.25,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "indicative"
+     }
+    },
+    "quality": {
+     "verdict_state": "health_fail",
+     "health_exceedances": [
+      {
+       "parameter": "Manganese"
+      },
+      {
+       "parameter": "E. coli"
+      }
+     ],
+     "national_exceedances": []
+    },
+    "asset_id": " sl-war-8feevkq -t "
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "asset_id": "SL-WAR-8FEEVKQ-X"
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "asset_id": "the borehole by the school",
+    "report_url": "https://water.example.org/app/"
+   },
+   {
+    "site": {
+     "community": " Bo \u2013 Kenema  Road \u2014 East "
+    },
+    "committee": [
+     {
+      "role": "Chair \u2013 acting",
+      "name": "Aminata\t Kamara",
+      "contact": "076  000\u2014000"
+     }
+    ],
+    "asset_id": "SL\u2013WAR\u20138FEEVKQ\u2013T",
+    "report_url": "https://water.example.org/app/"
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "committee": [
+     {
+      "role": "Member",
+      "name": "Person 1",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 2",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 3",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 4",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 5",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 6",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 7",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 8",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 9",
+      "contact": ""
+     },
+     {
+      "role": "Member",
+      "name": "Person 10",
+      "contact": ""
+     }
+    ]
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "committee": [
+     null,
+     "Aminata",
+     7,
+     {
+      "role": "Chair",
+      "name": 12,
+      "contact": 76000000
+     },
+     {
+      "role": "Caretaker",
+      "name": "Sorie Conteh",
+      "phone": "",
+      "contact": "077 1"
+     },
+     {
+      "name": "Fatmata Sesay"
+     }
+    ]
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "asset_id": "SL-WAR-8FEEVKQ-T",
+    "report_url": "https://water.example.org/a-long-path-of-the-programme/a-long-path-of-the-programme/a-long-path-of-the-programme/"
+   },
+   {
+    "site": {
+     "community": ""
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": null,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": null
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.57,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 6.5
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 1.999,
+      "safe_yield_low_m3_per_h": 1.794,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 10
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 12.48,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 24
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.019,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 1
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.019,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.391,
+      "safe_yield_low_m3_per_h": 0.2198,
+      "confidence": "established"
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.391,
+      "safe_yield_low_m3_per_h": 0.2198,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 3
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.0015,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 0.5
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.012,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 1.5
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.0004,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 8
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.02,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "indicative"
+     }
+    },
+    "hours_per_day": 1
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.8,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 0
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.8,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 25
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.8,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": -3
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.8,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": "8"
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.8,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": true
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "quality": {
+     "verdict_state": "aesthetic",
+     "health_exceedances": [],
+     "national_exceedances": []
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "quality": {
+     "verdict_state": "health_fail",
+     "health_exceedances": [],
+     "national_exceedances": []
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "quality": {
+     "verdict_state": "national_fail",
+     "health_exceedances": [],
+     "national_exceedances": []
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "quality": {
+     "verdict_state": "national_fail",
+     "health_exceedances": [],
+     "national_exceedances": [
+      {
+       "parameter": "Total coliforms"
+      }
+     ]
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "quality": {
+     "verdict_state": "indeterminate",
+     "health_exceedances": [],
+     "national_exceedances": []
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "quality": {
+     "verdict_state": "not a verdict",
+     "health_exceedances": [],
+     "national_exceedances": []
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "quality": {
+     "verdict_state": "none",
+     "health_exceedances": [],
+     "national_exceedances": []
+    }
+   },
+   {
+    "site": {
+     "community": "Rokel"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.39,
+      "safe_yield_low_m3_per_h": 0.22,
+      "confidence": "established"
+     }
+    },
+    "example": true
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "asset_id": "SL-WAR-8FEEVKQ-T",
+    "report_url": "http://water.example.org/app/"
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "report_url": "https://water.example.org/app/"
+   }
+  ],
+  "results": [
+   {
+    "title": "Your borehole at Rokel",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at Dr. Timbo's Residence",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 220,
+     "jerrycans_per_hour": 11,
+     "hours_per_day": 8.0,
+     "litres_per_day": 1700,
+     "jerrycans_per_day": 85,
+     "headline": "About 85 jerrycans of water a day.",
+     "lines": [
+      "That is 1,700 litres, with the pump used for 8 hours a day. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "pass",
+     "headline": "Yes. The water was tested and is safe to drink.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "Chairperson",
+       "Aminata Kamara",
+       "076 000 000"
+      ],
+      [
+       "Caretaker",
+       "Sorie Conteh",
+       ""
+      ],
+      [
+       "",
+       "",
+       "+232 77 111 222"
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "SL-WAR-8FEEVKQ-T",
+     "lines": [
+      "Tell the caretaker or a committee member the same day.",
+      "Give them the number of this borehole: SL-WAR-8FEEVKQ-T. It is also on the plate fixed to the borehole.",
+      "Or scan the square below with a phone to send a report."
+     ],
+     "payload": "https://water.example.org/app/#/report/SL-WAR-8FEEVKQ-T",
+     "caption": "Scan to report a fault at borehole SL-WAR-8FEEVKQ-T"
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at Kuntoloh",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "first_estimate",
+     "litres_per_hour": 1200,
+     "jerrycans_per_hour": 60,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 60 jerrycans of water in an hour.",
+     "lines": [
+      "That is 1,200 litres in an hour. A jerrycan holds 20 litres.",
+      "This is a first estimate. The borehole may give less than this, most of all in the dry season.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "health_fail",
+     "headline": "No, not as it is. This water must be treated before you drink it, or drinking water taken from another source.",
+     "lines": [
+      "The test found too much of this in the water: Manganese, E. coli.",
+      "Ask the committee how the water is to be treated."
+     ]
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "SL-WAR-8FEEVKQ-T",
+     "lines": [
+      "Tell the caretaker or a committee member the same day.",
+      "Give them the number of this borehole: SL-WAR-8FEEVKQ-T. It is also on the plate fixed to the borehole."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "The yield is indicative, so the sheet calls the amount a first estimate.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No report address is set, so the sheet carries no square to scan.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "The identifier entered is not one the Asset registry gives (check its last character), so the sheet prints no number and no square to scan.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "The identifier entered is not one the Asset registry gives (check its last character), so the sheet prints no number and no square to scan.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at Bo - Kenema Road - East",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "Chair - acting",
+       "Aminata Kamara",
+       "076 000 - 000"
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "SL-WAR-8FEEVKQ-T",
+     "lines": [
+      "Tell the caretaker or a committee member the same day.",
+      "Give them the number of this borehole: SL-WAR-8FEEVKQ-T. It is also on the plate fixed to the borehole.",
+      "Or scan the square below with a phone to send a report."
+     ],
+     "payload": "https://water.example.org/app/#/report/SL-WAR-8FEEVKQ-T",
+     "caption": "Scan to report a fault at borehole SL-WAR-8FEEVKQ-T"
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "Member",
+       "Person 1",
+       ""
+      ],
+      [
+       "Member",
+       "Person 2",
+       ""
+      ],
+      [
+       "Member",
+       "Person 3",
+       ""
+      ],
+      [
+       "Member",
+       "Person 4",
+       ""
+      ],
+      [
+       "Member",
+       "Person 5",
+       ""
+      ],
+      [
+       "Member",
+       "Person 6",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "The sheet prints the first 6 committee members so that it stays one page; 4 more were entered and are left off.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "Caretaker",
+       "Sorie Conteh",
+       "077 1"
+      ],
+      [
+       "",
+       "Fatmata Sesay",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "error": "138 bytes will not fit in a version-10 symbol at error-correction level H; shorten the payload"
+   },
+   {
+    "title": "Your borehole",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "The pumping test gives no yield yet, so the sheet says the amount of water has not been measured. The Pumping test page says why.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "The pumping test gives no yield yet, so the sheet says the amount of water has not been measured. The Pumping test page says why.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 570,
+     "jerrycans_per_hour": 28,
+     "hours_per_day": 6.5,
+     "litres_per_day": 3700,
+     "jerrycans_per_day": 185,
+     "headline": "About 185 jerrycans of water a day.",
+     "lines": [
+      "That is 3,700 litres, with the pump used for 6.5 hours a day. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 1700,
+     "jerrycans_per_hour": 85,
+     "hours_per_day": 10.0,
+     "litres_per_day": 17000,
+     "jerrycans_per_day": 850,
+     "headline": "About 850 jerrycans of water a day.",
+     "lines": [
+      "That is 17,000 litres, with the pump used for 10 hours a day. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 12000,
+     "jerrycans_per_hour": 600,
+     "hours_per_day": 24.0,
+     "litres_per_day": 280000,
+     "jerrycans_per_day": 14000,
+     "headline": "About 14,000 jerrycans of water a day.",
+     "lines": [
+      "That is 280,000 litres, with the pump used for 24 hours a day. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 19,
+     "jerrycans_per_hour": 0,
+     "hours_per_day": 1.0,
+     "litres_per_day": 19,
+     "jerrycans_per_day": 0,
+     "headline": "About 19 litres of water a day, with the pump used for 1 hour a day.",
+     "lines": [
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 19,
+     "jerrycans_per_hour": 0,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 19 litres of water in an hour.",
+     "lines": [
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 210,
+     "jerrycans_per_hour": 10,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 10 jerrycans of water in an hour.",
+     "lines": [
+      "That is 200 litres in an hour. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 210,
+     "jerrycans_per_hour": 10,
+     "hours_per_day": 3.0,
+     "litres_per_day": 630,
+     "jerrycans_per_day": 31,
+     "headline": "About 31 jerrycans of water a day.",
+     "lines": [
+      "That is 620 litres, with the pump used for 3 hours a day. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 1,
+     "jerrycans_per_hour": 0,
+     "hours_per_day": 0.5,
+     "litres_per_day": 0,
+     "jerrycans_per_day": 0,
+     "headline": "The pumping test found very little water in this borehole.",
+     "lines": [
+      "This comes from the pumping test done on the borehole."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 12,
+     "jerrycans_per_hour": 0,
+     "hours_per_day": 1.5,
+     "litres_per_day": 18,
+     "jerrycans_per_day": 0,
+     "headline": "About 18 litres of water a day, with the pump used for 1.5 hours a day.",
+     "lines": [
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 0,
+     "jerrycans_per_hour": 0,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "The pumping test found very little water in this borehole.",
+     "lines": [
+      "This comes from the pumping test done on the borehole."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "first_estimate",
+     "litres_per_hour": 20,
+     "jerrycans_per_hour": 1,
+     "hours_per_day": 1.0,
+     "litres_per_day": 20,
+     "jerrycans_per_day": 1,
+     "headline": "About 1 jerrycan of water a day.",
+     "lines": [
+      "That is 20 litres, with the pump used for 1 hour a day. A jerrycan holds 20 litres.",
+      "This is a first estimate. The borehole may give less than this, most of all in the dry season.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "The yield is indicative, so the sheet calls the amount a first estimate.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 800,
+     "jerrycans_per_hour": 40,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 40 jerrycans of water in an hour.",
+     "lines": [
+      "That is 800 litres in an hour. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 800,
+     "jerrycans_per_hour": 40,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 40 jerrycans of water in an hour.",
+     "lines": [
+      "That is 800 litres in an hour. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 800,
+     "jerrycans_per_hour": 40,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 40 jerrycans of water in an hour.",
+     "lines": [
+      "That is 800 litres in an hour. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 800,
+     "jerrycans_per_hour": 40,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 40 jerrycans of water in an hour.",
+     "lines": [
+      "That is 800 litres in an hour. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 800,
+     "jerrycans_per_hour": 40,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 40 jerrycans of water in an hour.",
+     "lines": [
+      "That is 800 litres in an hour. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "aesthetic",
+     "headline": "Yes. The water was tested and is safe to drink. It may have a taste, a smell or a colour.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "health_fail",
+     "headline": "No, not as it is. This water must be treated before you drink it, or drinking water taken from another source.",
+     "lines": [
+      "Ask the committee how the water is to be treated."
+     ]
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "national_fail",
+     "headline": "Not yet. The water does not meet the national standard. Treat it before you drink it.",
+     "lines": [
+      "Ask the committee how the water is to be treated."
+     ]
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "national_fail",
+     "headline": "Not yet. The water does not meet the national standard. Treat it before you drink it.",
+     "lines": [
+      "The test found too much of this in the water: Total coliforms.",
+      "Ask the committee how the water is to be treated."
+     ]
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "indeterminate",
+     "headline": "Not known yet. The tests are not complete. Treat this water before you drink it until the committee says it is safe.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "indeterminate",
+     "headline": "Not known yet. The tests are not complete. Treat this water before you drink it until the committee says it is safe.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "indeterminate",
+     "headline": "Not known yet. The tests are not complete. Treat this water before you drink it until the committee says it is safe.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at Rokel",
+    "example": "This sheet was made from example data. It is not about a real borehole and must not be handed out.",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 220,
+     "jerrycans_per_hour": 11,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 11 jerrycans of water in an hour.",
+     "lines": [
+      "That is 220 litres in an hour. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "A bundled example is loaded, so the sheet says across its top that it is not about a real borehole.",
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "error": "The report address http://water.example.org/app/ cannot go on a plate: it should be the browser app's address as the programme serves it, beginning https://, written in plain ASCII letters, digits and punctuation (an international domain in its xn-- form), with no blank and no # part. A browser keeps the app for use with no network only from an https address."
+   },
+   {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   }
+  ],
+  "amounts": [
+   0,
+   0.4,
+   19.99,
+   99,
+   100,
+   101,
+   219.99999,
+   569.9999999999999,
+   999.5,
+   1000,
+   1790,
+   12480,
+   123456.7,
+   999999
+  ],
+  "rounded": [
+   0,
+   0,
+   19,
+   99,
+   100,
+   100,
+   210,
+   570,
+   990,
+   1000,
+   1700,
+   12000,
+   120000,
+   990000
+  ]
+ },
  "airlift": {
   "cases": [
    [

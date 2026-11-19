@@ -112,8 +112,10 @@ READINESS_STATES = ("ready", "ready_with_overrides", "not_ready", "not_assessed"
 
 #: The kinds of document that are about the borehole itself, whose issue
 #: records the apps keep in its asset record as well as in the project
-#: file: the ones with a certification gate.
-BOREHOLE_KINDS = tuple(REPORTS)
+#: file: the ones with a certification gate, and the community handover
+#: sheet (PLAN.md step 9.1), which has none but says of this borehole how
+#: much water it gives and whether it is safe, from the same field sheets.
+BOREHOLE_KINDS = (*REPORTS, "community_sheet")
 
 #: Every verdict :func:`verify_document` gives, best first.
 VERDICTS = ("verified", "unconfirmed", "changed", "not_issued", "altered_manifest",

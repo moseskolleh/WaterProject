@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import streamlit as st
 
+from groundwater.community_sheet import community_sheet_content
 from groundwater.project_io import committee_records
+from groundwater.reporting.community_sheet import build_community_sheet
 from groundwater.reporting.handover import (
     build_handover_report,
     CommitteeMember,
@@ -144,7 +146,61 @@ def render() -> None:
         st.session_state["handover_built"] = True
         offer_document(report_path, "Download handover report (.docx)")
 
+    _community_sheet_section(pumping, quality, committee_rows, _handover_gate)
     _evidence_bundle_section()
+
+
+def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
+    """The community handover sheet (PLAN.md step 9.1): what it needs that the
+    page does not already hold, what it will say, and the button. The browser
+    app's Handover page has the same card; what the sheet says is worked out
+    by one function in each engine, held together by the parity suite."""
+    st.subheader("Community handover sheet")
+    st.caption(phrase("community_sheet.about"))
+    held = st.session_state.get("asset_record") or {}
+    if "ho_sheet_asset" not in st.session_state and held.get("asset_id"):
+        # the borehole the Asset registry page is on, where there is one
+        st.session_state["ho_sheet_asset"] = held["asset_id"]
+    c1, c2 = st.columns(2)
+    hours = c1.number_input(
+        "Hours the pump is used each day", min_value=0.0, max_value=24.0, value=None,
+        step=0.5, key="ho_sheet_hours", help="for the amount of water in a day")
+    asset_id = c2.text_input(
+        "Borehole identifier", key="ho_sheet_asset",
+        help="as on its plate, from the Asset registry")
+    # a project resting on a bundled example says so across the sheet's top,
+    # even where the handover report's requirement was overridden
+    example = any(req.key == "field_data" and req.state in ("unmet", "overridden")
+                  for req in gate.requirements)
+    # the table as the session keeps it: plain text, whatever the editor held
+    # (an emptied cell of a data frame comes back as the text "nan")
+    members = [{key.lower(): "" if value == "nan" else value for key, value in row.items()}
+               for row in committee_records(committee_rows)]
+    given = dict(
+        analysis=pumping, quality=quality, committee=members,
+        asset_id=asset_id or "", hours_per_day=hours, example=example, config=app_config())
+    try:
+        content = community_sheet_content(site_from_state(), **given)
+    except ValueError as exc:
+        # a report address the registry will not print on a plate, or a link
+        # too long for the square
+        st.error(str(exc))
+        return
+    st.markdown("**What the sheet will say**")
+    if content["example"]:
+        st.warning(content["example"])
+    st.markdown(f"- {content['water']['headline']}\n- {content['quality']['headline']}")
+    st.markdown("**What it could not say, and why**")
+    st.caption("\n".join(f"- {note}" for note in content["notes"]))
+    if st.button("Community sheet (.docx)", key="build_community_sheet"):
+        folder = workdir() / "community_sheet"
+        try:
+            path = build_community_sheet(site_from_state(), folder / "community_sheet.docx",
+                                         folder, issue=issue_for("community_sheet"), **given)
+        except ValueError as exc:
+            st.error(f"Could not build the community sheet: {exc}")
+        else:
+            offer_document(path, "Download the community sheet (.docx)")
 
 
 def _evidence_bundle_section() -> None:

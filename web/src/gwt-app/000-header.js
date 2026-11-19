@@ -134,7 +134,10 @@
       /* evidence: the photograph each checklist item that needs one has,
        * keyed by item id, as a photo slot keeps it */
       supervision: { responses: {}, notes: [], checks: {}, evidence: {} },
-      handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '' },
+      handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '',
+        /* for the community handover sheet (PLAN.md step 9.1): the hours the
+         * pump is used each day, and the identifier on the borehole's plate */
+        hoursPerDay: null, assetId: '' },
       photos: {},
       /* ask this device for its position when a photograph carries none */
       photoPosition: false,
