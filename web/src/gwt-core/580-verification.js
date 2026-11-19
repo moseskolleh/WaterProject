@@ -27,8 +27,11 @@
   var DOCUMENT_ENGINE = 'gwt-core';
   var READINESS_STATES = ['ready', 'ready_with_overrides', 'not_ready', 'not_assessed'];
   /* the kinds of document about the borehole itself, whose issue records go
-   * into its asset record too: those with a certification gate */
-  var BOREHOLE_KINDS = Object.keys(READINESS_REPORTS);
+   * into its asset record too: those with a certification gate, and the
+   * community handover sheet (PLAN.md step 9.1), which has none but says of
+   * this borehole how much water it gives and whether it is safe, from the
+   * same field sheets */
+  var BOREHOLE_KINDS = Object.keys(READINESS_REPORTS).concat(['community_sheet']);
   var VERDICTS = ['verified', 'unconfirmed', 'changed', 'not_issued', 'altered_manifest',
     'damaged_manifest', 'no_manifest', 'unreadable'];
   /* a part larger than this, or a package larger in all, is not read */

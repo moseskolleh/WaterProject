@@ -22,9 +22,10 @@ def _yield(safe, low=None, confidence="established") -> dict:
                                      "confidence": confidence}}
 
 
-def _verdict(state, *parameters) -> dict:
+def _verdict(state, *parameters, national=()) -> dict:
     return {"verdict_state": state,
-            "health_exceedances": [{"parameter": name} for name in parameters]}
+            "health_exceedances": [{"parameter": name} for name in parameters],
+            "national_exceedances": [{"parameter": name} for name in national]}
 
 
 COMMITTEE = [
@@ -46,10 +47,33 @@ COMMUNITY_SHEET_CASES = [
      "quality": _verdict("pass"), "committee": COMMITTEE,
      "asset_id": " SL-WAR-8FEEVKQ-T ", "hours_per_day": 8,
      "report_url": "https://water.example.org/app/"},
-    # a first estimate with no range and no hours, a plate and no address
+    # a first estimate with no range and no hours, a plate typed in lower
+    # case with spaces in it, which the registry reads, and no address
     {"site": {"community": "Kuntoloh"}, "analysis": _yield(1.25, None, "indicative"),
      "quality": _verdict("health_fail", "Manganese", "E. coli"),
-     "asset_id": "SL-PLK-7QX2M4A-K"},
+     "asset_id": " sl-war-8feevkq -t "},
+    # identifiers the registry does not give: a wrong check character, free
+    # text, and both with a report address set, which is then never read
+    {"site": {"community": "A"}, "asset_id": "SL-WAR-8FEEVKQ-X"},
+    {"site": {"community": "A"}, "asset_id": "the borehole by the school",
+     "report_url": "https://water.example.org/app/"},
+    # long and short dashes and doubled spaces in what was typed: one way of
+    # writing them, for both writers
+    {"site": {"community": " Bo \u2013 Kenema  Road \u2014 East "},
+     "committee": [{"role": "Chair \u2013 acting", "name": "Aminata\t Kamara",
+                    "contact": "076  000\u2014000"}],
+     "asset_id": "SL\u2013WAR\u20138FEEVKQ\u2013T",
+     "report_url": "https://water.example.org/app/"},
+    # more members than one page holds, and members that are not members
+    {"site": {"community": "A"}, "committee": [
+        {"role": "Member", "name": f"Person {n}", "contact": ""} for n in range(1, 11)]},
+    {"site": {"community": "A"}, "committee": [
+        None, "Aminata", 7, {"role": "Chair", "name": 12, "contact": 76000000},
+        {"role": "Caretaker", "name": "Sorie Conteh", "phone": "", "contact": "077 1"},
+        {"name": "Fatmata Sesay"}]},
+    # a link too long for the square stops the sheet in both engines
+    {"site": {"community": "A"}, "asset_id": "SL-WAR-8FEEVKQ-T",
+     "report_url": "https://water.example.org/" + "a-long-path-of-the-programme/" * 3},
     # no place, and a test with no yield yet
     {"site": {"community": ""}, "analysis": {"yield_recommendation": {
         "safe_yield_m3_per_h": None, "safe_yield_low_m3_per_h": None,
@@ -62,6 +86,12 @@ COMMUNITY_SHEET_CASES = [
     {"site": {"community": "A"}, "analysis": _yield(12.48), "hours_per_day": 24},
     {"site": {"community": "A"}, "analysis": _yield(0.019), "hours_per_day": 1},
     {"site": {"community": "A"}, "analysis": _yield(0.019)},
+    # litres that are not a whole number of jerrycans: the two figures the
+    # sheet gives agree all the same
+    {"site": {"community": "A"}, "analysis": _yield(0.391, 0.2198)},
+    {"site": {"community": "A"}, "analysis": _yield(0.391, 0.2198), "hours_per_day": 3},
+    # an amount in an hour that is nothing in the part of an hour it is used
+    {"site": {"community": "A"}, "analysis": _yield(0.0015), "hours_per_day": 0.5},
     {"site": {"community": "A"}, "analysis": _yield(0.012), "hours_per_day": 1.5},
     {"site": {"community": "A"}, "analysis": _yield(0.0004), "hours_per_day": 8},
     {"site": {"community": "A"}, "analysis": _yield(0.02, None, "indicative"),
@@ -76,6 +106,8 @@ COMMUNITY_SHEET_CASES = [
     {"site": {"community": "A"}, "quality": _verdict("aesthetic")},
     {"site": {"community": "A"}, "quality": _verdict("health_fail")},
     {"site": {"community": "A"}, "quality": _verdict("national_fail")},
+    {"site": {"community": "A"},
+     "quality": _verdict("national_fail", national=("Total coliforms",))},
     {"site": {"community": "A"}, "quality": _verdict("indeterminate")},
     {"site": {"community": "A"}, "quality": _verdict("not a verdict")},
     {"site": {"community": "A"}, "quality": _verdict("none")},

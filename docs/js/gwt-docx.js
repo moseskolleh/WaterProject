@@ -3310,15 +3310,15 @@
     var b = new ReportBuilder({ style: context.style, title: content.title,
       kind: 'community_sheet', issue: context.issue, marginCm: 1.5 });
     if (content.example) b.paragraph(content.example, { bold: true, align: 'center' });
-    b.paragraph(content.title, { bold: true, size: 20, align: 'center' });
+    b.paragraph(content.title, { bold: true, size: 18, align: 'center' });
     [content.water, content.quality].forEach(function (part) {
       b.paragraph(part.heading, { bold: true, size: 12 });
-      b.paragraph(part.headline, { bold: true, size: 15 });
+      b.paragraph(part.headline, { bold: true, size: 14 });
       if (part.lines.length) b.paragraph(part.lines.join(' '));
     });
     b.paragraph(content.contacts.heading, { bold: true, size: 12 });
     b.table(content.contacts.rows, { header: content.contacts.header,
-      colWidthsCm: [5.0, 6.0, 5.0], fontSize: 11 });
+      colWidthsCm: [5.0, 6.0, 5.0], fontSize: 10 });
     b.paragraph(content.report.heading, { bold: true, size: 12 });
     b.paragraph(content.report.lines.join(' '));
     /* what to keep away is the picture: its key says, ring by ring, what the

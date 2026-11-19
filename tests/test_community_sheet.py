@@ -26,9 +26,11 @@ def analysis(safe, low=None, confidence="established"):
         safe_yield_m3_per_h=safe, safe_yield_low_m3_per_h=low, confidence=confidence))
 
 
-def verdict(state, *parameters):
-    return SimpleNamespace(verdict_state=state, health_exceedances=[
-        SimpleNamespace(parameter=name) for name in parameters])
+def verdict(state, *parameters, national=()):
+    return SimpleNamespace(
+        verdict_state=state,
+        health_exceedances=[SimpleNamespace(parameter=name) for name in parameters],
+        national_exceedances=[SimpleNamespace(parameter=name) for name in national])
 
 
 def sheet(**given):
@@ -109,11 +111,41 @@ def test_less_than_a_jerrycan_is_told_in_litres_and_almost_nothing_as_very_littl
     small = sheet(analysis=analysis(0.019))["water"]
     assert small["jerrycans_per_hour"] == 0
     assert small["headline"] == "About 19 litres of water in an hour."
+    # an amount in an hour that comes to nothing in half an hour of use is
+    # very little too, not "about 0 litres a day"
+    part = sheet(analysis=analysis(0.0015), hours_per_day=0.5)["water"]
+    assert part["litres_per_hour"] == 1 and part["litres_per_day"] == 0
+    assert part["headline"] == "The pumping test found very little water in this borehole."
+    assert not any("much less" in line for line in part["lines"])
     none = sheet(analysis=analysis(0.0004), hours_per_day=8)["water"]
     assert none["litres_per_hour"] == 0
     assert none["headline"] == "The pumping test found very little water in this borehole."
     # nothing to fall short of, so no line about telling the committee
     assert not any("much less" in line for line in none["lines"])
+
+
+def test_the_litres_and_the_jerrycans_agree_by_the_readers_own_arithmetic():
+    # 0.2198 m3/h is 210 litres an hour to two figures, which is ten
+    # jerrycans and ten litres: the sheet gives the ten jerrycans and the
+    # 200 litres they make
+    hour = sheet(analysis=analysis(0.391, 0.2198))["water"]
+    assert hour["litres_per_hour"] == 210 and hour["jerrycans_per_hour"] == 10
+    assert hour["headline"] == "About 10 jerrycans of water in an hour."
+    assert hour["lines"][0] == "That is 200 litres in an hour. A jerrycan holds 20 litres."
+    day = sheet(analysis=analysis(0.391, 0.2198), hours_per_day=3)["water"]
+    assert day["jerrycans_per_day"] == 31 and "That is 620 litres" in day["lines"][0]
+    for water in (hour, day):
+        printed = water["lines"][0].split(" litres")[0].split()[-1].replace(",", "")
+        cans = water["jerrycans_per_day"] or water["jerrycans_per_hour"]
+        assert int(printed) == cans * JERRYCAN_L
+
+
+def test_a_first_estimate_gives_no_cause_it_cannot_know():
+    # a yield is indicative for a short test, for one inside its
+    # casing-storage time, for readings that contradict the header: the
+    # sheet does not say "the test was short" of all of them
+    said = " ".join(sheet(analysis=analysis(1.0, None, "indicative"))["water"]["lines"])
+    assert "first estimate" in said and "short" not in said
 
 
 def test_no_test_and_a_test_with_no_yield_are_said_not_left_out():
@@ -141,9 +173,9 @@ def test_each_verdict_has_its_answer(state, begins):
 
 def test_only_a_pass_is_told_as_safe():
     for state in ("health_fail", "national_fail", "indeterminate", "not a verdict", "none"):
-        said = sheet(quality=verdict(state))["quality"]["headline"]
-        assert "safe to drink" not in said or "until" in said, state
-        assert not said.startswith("Yes"), state
+        part = sheet(quality=verdict(state, "Arsenic", national=("Total coliforms",)))["quality"]
+        assert "safe to drink" not in " ".join([part["headline"], *part["lines"]]), state
+        assert not part["headline"].startswith("Yes"), state
     # no assessment at all is not safe either, and the builder is told
     content = sheet()
     assert content["quality"]["state"] == "none"
@@ -162,6 +194,23 @@ def test_what_was_found_is_named_and_the_committee_is_who_to_ask():
         "The test found too much of this in the water: Manganese, E. coli.",
         "Ask the committee how the water is to be treated.",
     ]
+    # a failure of the national standard names what failed it as well, and
+    # is told to treat the water, as untested water is
+    national = sheet(quality=verdict("national_fail", national=("Total coliforms",)))["quality"]
+    assert "Treat it before you drink it" in national["headline"]
+    assert national["lines"][0] == (
+        "The test found too much of this in the water: Total coliforms.")
+
+
+def test_failed_water_is_not_told_that_treating_it_makes_it_safe():
+    # what failed may be arsenic or fluoride, which boiling and chlorine do
+    # not take out: the sheet says treatment or another source, as the
+    # engine's own verdict does, and names no treatment
+    quality = sheet(quality=verdict("health_fail", "Arsenic"))["quality"]
+    said = " ".join([quality["headline"], *quality["lines"]])
+    assert "or drinking water taken from another source" in quality["headline"]
+    for method in ("boil", "chlorin", "filter"):
+        assert method not in said.lower()
 
 
 # ------------------------------------------------------------ who to call, reporting
@@ -174,9 +223,38 @@ def test_the_committee_is_listed_and_lines_are_left_to_write_on():
         {"role": "Treasurer", "name": " ", "contact": ""},
     ])["contacts"]
     assert contacts["header"] == ["Who", "Name", "Phone"]
-    assert contacts["rows"][:2] == [["Chairperson", "Aminata   Kamara", "076 000 000"],
+    assert contacts["rows"][:2] == [["Chairperson", "Aminata Kamara", "076 000 000"],
                                     ["Caretaker", "Sorie Conteh", "077 1"]]
     assert contacts["rows"][2:] == [["Pump mechanic", "", ""], ["The district water office", "", ""]]
+
+
+def test_six_members_are_printed_and_the_builder_is_told_of_the_rest():
+    from groundwater.community_sheet import MAX_CONTACTS
+
+    members = [{"role": "Member", "name": f"Person {n}", "contact": ""} for n in range(1, 11)]
+    content = sheet(committee=members)
+    rows = content["contacts"]["rows"]
+    assert [row[1] for row in rows[:MAX_CONTACTS]] == [f"Person {n}" for n in range(1, 7)]
+    assert len(rows) == MAX_CONTACTS + 2 and rows[MAX_CONTACTS][0] == "Pump mechanic"
+    assert ("The sheet prints the first 6 committee members so that it stays one page; "
+            "4 more were entered and are left off.") in content["notes"]
+    seven = sheet(committee=members[:7])
+    assert any("1 more was entered and is left off." in note for note in seven["notes"])
+    assert not any("left off" in note for note in sheet(committee=members[:6])["notes"])
+
+
+def test_typed_text_is_written_one_way_for_both_writers():
+    from groundwater.community_sheet import sheet_text
+
+    assert sheet_text(" Bo \u2013 Kenema  Road \u2014 East ") == "Bo - Kenema Road - East"
+    assert sheet_text("Aminata\t Kamara\n") == "Aminata Kamara"
+    assert sheet_text(None) == "" and sheet_text(76000000) == "" and sheet_text(float("nan")) == ""
+    content = community_sheet_content(SiteMetadata(community=" Bo \u2013 Kenema  Road "),
+                                      committee=[None, "Aminata", {"name": 12, "contact": 7},
+                                                 {"role": "Chair \u2013 acting", "name": "A  B"}])
+    assert content["title"] == "Your borehole at Bo - Kenema Road"
+    assert content["contacts"]["rows"][0] == ["Chair - acting", "A B", ""]
+    assert content["contacts"]["rows"][1][0] == "Pump mechanic"
 
 
 def test_no_committee_leaves_blank_lines_and_tells_the_builder():
@@ -199,13 +277,49 @@ def test_the_plate_is_named_and_linked_only_where_there_is_an_address():
     assert linked["caption"] == "Scan to report a fault at borehole SL-WAR-8FEEVKQ-T"
 
 
+def test_the_identifier_is_read_as_the_registry_reads_it_or_not_printed():
+    config = Config()
+    config.service.report_url = "https://water.example.org/app/"
+    # case, spaces and a short dash are forgiven, and the plate's own
+    # spelling is what is printed and what the square carries
+    for typed in (" sl-war-8feevkq -t ", "SL\u2013WAR\u20138FEEVKQ\u2013T", "WAR-8FEEVKQ-T"):
+        report = sheet(asset_id=typed, config=config)["report"]
+        assert report["identifier"] == "SL-WAR-8FEEVKQ-T", typed
+        assert report["payload"].endswith("#/report/SL-WAR-8FEEVKQ-T"), typed
+    # a wrong check character, or words, is nobody's borehole: no number,
+    # no square, and the builder is told
+    for typed in ("SL-WAR-8FEEVKQ-X", "the borehole by the school"):
+        content = sheet(asset_id=typed, config=config)
+        assert content["report"]["identifier"] == "" and content["report"]["payload"] == ""
+        assert content["report"]["lines"] == [
+            "Tell the caretaker or a committee member the same day."]
+        assert NOTES["bad_identifier"] in content["notes"]
+        assert NOTES["no_identifier"] not in content["notes"]
+        assert typed not in repr({k: v for k, v in content.items() if k != "notes"})
+
+
+def test_a_link_too_long_for_the_square_stops_the_sheet_before_it_is_built():
+    config = Config()
+    config.service.report_url = "https://water.example.org/" + "a-long-path-of-the-programme/" * 3
+    with pytest.raises(ValueError, match="will not fit"):
+        sheet(asset_id="SL-WAR-8FEEVKQ-T", config=config)
+
+
 def test_no_identifier_names_no_plate_and_no_telephone_number_is_printed():
+    import re
+
     content = sheet()
     assert content["report"]["lines"] == ["Tell the caretaker or a committee member the same day."]
     assert NOTES["no_identifier"] in content["notes"]
-    # no number is known for reports by SMS (QUESTIONS.md), so none is invented
-    everything = repr(content)
-    assert "SMS" not in everything and "text " not in everything.lower().replace("plain text", "")
+    # no number is known for reports by SMS (QUESTIONS.md), so none is
+    # invented: nothing the sheet prints of its own has a run of digits long
+    # enough to dial, with nothing loaded or with everything
+    full = community_sheet_content(
+        SiteMetadata(community="Rokel"), analysis=analysis(0.39, 0.22, "indicative"),
+        quality=verdict("health_fail", "Manganese"), hours_per_day=8)
+    for built in (content, full):
+        own = repr({k: v for k, v in built.items() if k not in ("contacts", "notes")})
+        assert "SMS" not in own and not re.search(r"\d(?:[ -]?\d){6,}", own), own
 
 
 def test_an_address_the_registry_refuses_stops_the_sheet():
@@ -312,6 +426,16 @@ def test_the_worked_example_that_needs_most_care(sample_data):
     assert "Manganese" in content["quality"]["lines"][0]
 
 
+def test_another_projects_hours_and_identifier_do_not_carry_into_this_one():
+    # the Streamlit app's two boxes are cleared when a project is opened, as
+    # the asset record is: left behind, they would print the last borehole's
+    # number on this one's sheet
+    from groundwater.project_io import stale_on_load
+
+    state = {"ho_sheet_hours": 8.0, "ho_sheet_asset": "SL-WAR-8FEEVKQ-T", "ho_tariff": "5 SLE"}
+    assert set(stale_on_load(state)) == {"ho_sheet_hours", "ho_sheet_asset"}
+
+
 # -------------------------------------------------------------------- the document
 
 
@@ -346,7 +470,8 @@ def _read(path) -> dict:
     # a paragraph's runs joined, as a reader has them
     paragraphs = ["".join(unescape(t) for t in re.findall(r"<w:t[^>]*>([^<]*)</w:t>", p))
                   for p in re.findall(r"<w:p[ >].*?</w:p>", xml, re.S)]
-    margins = re.search(r'<w:pgMar [^>]*w:top="(\d+)"[^>]*w:left="(\d+)"', xml)
+    margins = re.search(
+        r'<w:pgMar w:top="(\d+)" w:right="(\d+)" w:bottom="(\d+)" w:left="(\d+)"', xml)
     return {"paragraphs": [p for p in paragraphs if p.strip()], "pictures": len(media),
             "size": struct.unpack(">II", picture[16:24]) if picture else (0, 0),
             "margins": [int(m) for m in margins.groups()] if margins else [],
@@ -371,12 +496,18 @@ def test_the_document_says_the_content_whole_and_in_order(tmp_path):
     path, content = _full(tmp_path)
     read = _read(path)
     want = _expected(content)
-    assert read["paragraphs"][:len(want)] == want
+    from groundwater.verification import document_record
+
+    # the content and nothing after it
+    assert read["paragraphs"] == want
     assert read["paragraphs"][0].startswith("This sheet was made from example data.")
     # nothing meant for the builder is printed
     assert not any(note in " ".join(read["paragraphs"]) for note in NOTES.values())
-    # and it is issued as its own kind of document
-    assert b"community_sheet" in read["everything"]
+    # and it is issued as its own kind of document, kept with the borehole's
+    assert document_record(path.read_bytes())["kind"] == "community_sheet"
+    from groundwater.verification import BOREHOLE_KINDS
+
+    assert "community_sheet" in BOREHOLE_KINDS
 
 
 def test_the_document_has_one_picture_and_narrow_margins(tmp_path):
@@ -385,7 +516,7 @@ def test_the_document_has_one_picture_and_narrow_margins(tmp_path):
     read = _read(_full(tmp_path)[0])
     assert read["pictures"] == 1
     # 1.5 cm in twentieths of a point, where the reports keep 2.5 cm
-    assert all(840 <= margin <= 860 for margin in read["margins"]) and read["margins"]
+    assert len(read["margins"]) == 4 and all(840 <= margin <= 860 for margin in read["margins"])
     width, height = read["size"]
     assert abs(width / height - writer.PICTURE_WIDTH_CM / writer.PICTURE_HEIGHT_CM) < 0.02
 
@@ -436,10 +567,9 @@ def test_the_fullest_sheet_is_one_page(tmp_path):
         pytest.skip("no LibreOffice to count pages with")
     config = Config()
     config.service.report_url = "https://water.example.org/app/"
-    committee = [{"role": role, "name": name, "contact": phone} for role, name, phone in [
-        ("Chairperson", "Aminata Kamara", "076 000 000"), ("Caretaker", "Sorie Conteh", "077 111 222"),
-        ("Treasurer", "Fatmata Sesay", "078 222 333"), ("Secretary", "Mohamed Bangura", "079 333 444"),
-        ("Mechanic", "Ibrahim Koroma", "030 444 555")]]
+    # ten members entered: the sheet prints six, which is what keeps it a page
+    committee = [{"role": "Committee member", "name": f"Aminata Kamara the {n}th",
+                  "contact": "076 000 000"} for n in range(1, 11)]
     path, _ = _full(tmp_path, committee=committee, config=config,
                     quality=verdict("health_fail", "Manganese", "Iron", "E. coli"))
     subprocess.run([office, "--headless", "--convert-to", "pdf", "--outdir", str(tmp_path),

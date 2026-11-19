@@ -609,7 +609,7 @@ need real project inputs or decisions to finish calibrating it.
    count once.
 
 31. **The community handover sheet (added with PLAN.md step 9.1).** The
-   sheet is one page a community keeps and plans by, so four things on
+   sheet is one page a community keeps and plans by, so six things on
    it want the programme's word. (a) **The amount of water in a day.**
    The toolkit holds no daily amount, only the safe yield in m3/h with
    its range. The sheet takes the lower end of that range (the safe
@@ -625,7 +625,15 @@ need real project inputs or decisions to finish calibrating it.
    quality result, or the tests are incomplete, the sheet says the
    water is not known to be safe and to treat it before drinking. It
    names no treatment. Confirm the wording, and say whether the sheet
-   should name one. (c) **How a fault is reported.** The sheet says to
+   should name one. Water that failed a health limit is answered "This
+   water must be treated before you drink it, or drinking water taken
+   from another source", in the same words whether what failed is
+   bacteria, which boiling or chlorine deals with, or arsenic, fluoride
+   or nitrate, which they do not; the sheet names what was found and
+   sends the reader to the committee. Say what the sheet should tell a
+   village in each case. A failure of the national standard alone
+   (with the bundled table, coliform bacteria found) is answered "Treat
+   it before you drink it". (c) **How a fault is reported.** The sheet says to
    tell the caretaker or a committee member and gives the borehole's
    identifier; with a report address set (item 23a) it also carries
    the plate's link as a square to scan. It prints no telephone number
@@ -638,3 +646,12 @@ need real project inputs or decisions to finish calibrating it.
    3 m, hand dug wells 20 m, latrines and soakaways 20 m, dumps and
    burial grounds 1000 m) and leaves out the rows a village cannot act
    on (other boreholes, streams, the coast). Confirm the choice.
+   (f) **No gate.** The sheet's issue record is kept with the borehole's
+   and lists the field sheets it was built from, but no certification
+   gate is run for it as one is for the handover report: it is built
+   whatever the report is missing, says "not measured" or "not known"
+   where a result is absent, and says across its top when a bundled
+   example is loaded. Say whether it should wait for the handover
+   report's gate. It also prints at most six committee members, so that
+   it stays one page, and tells whoever builds it how many were left
+   off.

@@ -36,12 +36,12 @@ __all__ = ["build_community_sheet", "sheet_picture", "wrap_words"]
 #: on one page what they would run on to a second.
 MARGIN_CM = 1.5
 #: The picture's size as printed, with and without the square to scan.
-PICTURE_HEIGHT_CM = 5.6
+PICTURE_HEIGHT_CM = 5.0
 PICTURE_WIDTH_CM = 12.6
 PICTURE_WIDTH_SCAN_CM = 16.0
 #: Where the picture's three parts sit, in centimetres from its left edge:
 #: the rings' centre and outer radius, the key, and the square.
-RINGS_AT_CM, RINGS_RADIUS_CM = 2.8, 2.5
+RINGS_AT_CM, RINGS_RADIUS_CM = 2.5, 2.2
 KEY_AT_CM, KEY_TEXT_AT_CM = 6.0, 7.3
 SCAN_AT_CM, SCAN_SIZE_CM = 12.8, 2.9
 #: How many characters of the square's label go on a line.
@@ -157,18 +157,18 @@ def build_community_sheet(site: SiteMetadata, out_path: str | Path, figures_dir:
 
     if content["example"]:
         rb.paragraph(content["example"], bold=True, align="center")
-    rb.paragraph(content["title"], bold=True, size_pt=20, align="center")
+    rb.paragraph(content["title"], bold=True, size_pt=18, align="center")
 
     for part in (content["water"], content["quality"]):
         rb.paragraph(part["heading"], bold=True, size_pt=12)
-        rb.paragraph(part["headline"], bold=True, size_pt=15)
+        rb.paragraph(part["headline"], bold=True, size_pt=14)
         if part["lines"]:
             rb.paragraph(" ".join(part["lines"]))
 
     contacts = content["contacts"]
     rb.paragraph(contacts["heading"], bold=True, size_pt=12)
     rb.table(contacts["rows"], header=contacts["header"], col_widths_cm=[5.0, 6.0, 5.0],
-             font_size_pt=11.0)
+             font_size_pt=10.0)
 
     report = content["report"]
     rb.paragraph(report["heading"], bold=True, size_pt=12)

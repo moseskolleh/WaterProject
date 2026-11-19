@@ -703,6 +703,14 @@ def test_the_community_sheet_is_offered_and_built_on_the_handover_page(sample_da
     issued = app.session_state["issued_documents"]
     assert len(issued) == 1 and issued[0]["kind"] == "community_sheet"
 
+    # the two things the card asks for are the project's: they are still
+    # there after another page has been opened, as the tariff is
+    goto(app, "Pumping test")
+    goto(app, "Handover")
+    assert not app.exception
+    assert app.number_input(key="ho_sheet_hours").value == 8.0
+    assert app.text_input(key="ho_sheet_asset").value == "SL-WAR-8FEEVKQ-T"
+
 
 def test_maps_flow(app):
     """With no position and no area recorded, the national maps still draw."""

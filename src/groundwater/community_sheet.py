@@ -41,11 +41,13 @@ building it. Those are shown beside the button and never printed.
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
+from . import qr
 from .config import Config
 from .models import SiteMetadata
-from .registry import report_link, trim_field
+from .registry import parse_asset_id, report_link, trim_field
 from .supervision.checklists import load_separation_distances
 from .text import phrase, phrase_table
 
@@ -57,6 +59,28 @@ JERRYCAN_L = 20
 #: How many lines the sheet leaves to write a name and a number on when no
 #: committee member was entered.
 BLANK_CONTACTS = 3
+
+#: How many committee members the sheet prints. With more, the fullest sheet
+#: runs on to a second page, and the sheet is one page; the builder is told
+#: how many were left off.
+MAX_CONTACTS = 6
+
+#: The symbol the square to scan is printed as, as on the plate.
+SCAN_ECC = "H"
+
+# written out rather than \s, which the two engines read differently
+_SPACE = re.compile(r"[ \t\n\r\f\v]+")
+
+
+def sheet_text(value: Any) -> str:
+    """Typed text as the sheet prints it: a long dash as a hyphen with spaces
+    and a short one as a hyphen, each run of spaces one space, the ends
+    trimmed; anything that is not text is no text. Done here, once, so that
+    the two document writers, which tidy text differently, are handed text
+    neither has cause to change."""
+    if not isinstance(value, str):
+        return ""
+    return trim_field(_SPACE.sub(" ", value.replace("\u2014", " - ").replace("\u2013", "-")))
 
 
 def round_down(value: float) -> int:
@@ -109,8 +133,11 @@ def _water(analysis: Any, hours: float | None, notes: list[str]) -> dict:
         if water["jerrycans_per_hour"] >= 1:
             water["headline"] = phrase("community_sheet.water_hour",
                                        cans=water["jerrycans_per_hour"])
-            water["lines"].append(phrase("community_sheet.water_hour_detail",
-                                         litres=per_hour, can=JERRYCAN_L))
+            # the litres those jerrycans make, so that the two figures agree
+            # by the reader's own arithmetic; a rounding down once more
+            water["lines"].append(phrase(
+                "community_sheet.water_hour_detail",
+                litres=water["jerrycans_per_hour"] * JERRYCAN_L, can=JERRYCAN_L))
         else:
             water["headline"] = phrase("community_sheet.water_litres_hour", litres=per_hour)
     else:
@@ -119,11 +146,15 @@ def _water(analysis: Any, hours: float | None, notes: list[str]) -> dict:
         water["hours_per_day"] = hours
         water["litres_per_day"] = per_day
         water["jerrycans_per_day"] = per_day // JERRYCAN_L
-        if water["jerrycans_per_day"] >= 1:
+        if per_day <= 0:
+            water["headline"] = phrase("community_sheet.water_very_little")
+        elif water["jerrycans_per_day"] >= 1:
             water["headline"] = phrase("community_sheet.water_day",
                                        cans=water["jerrycans_per_day"])
-            water["lines"].append(phrase("community_sheet.water_day_detail", litres=per_day,
-                                         hours=hours, unit=unit, can=JERRYCAN_L))
+            water["lines"].append(phrase(
+                "community_sheet.water_day_detail",
+                litres=water["jerrycans_per_day"] * JERRYCAN_L,
+                hours=hours, unit=unit, can=JERRYCAN_L))
         else:
             water["headline"] = phrase("community_sheet.water_litres_day", litres=per_day,
                                        hours=hours, unit=unit)
@@ -132,7 +163,8 @@ def _water(analysis: Any, hours: float | None, notes: list[str]) -> dict:
         water["lines"].append(phrase("community_sheet.water_first_estimate"))
     else:
         water["lines"].append(phrase("community_sheet.water_tested"))
-    if per_hour > 0:
+    # nothing to fall short of where the sheet says there is very little
+    if per_hour > 0 and (hours is None or water["litres_per_day"] > 0):
         water["lines"].append(phrase("community_sheet.water_shortage"))
     return water
 
@@ -148,8 +180,12 @@ def _quality(quality: Any, notes: list[str]) -> dict:
             # a verdict this sheet has no words for is not told as safe
             state = "indeterminate"
     lines: list[str] = []
-    if state == "health_fail" and quality is not None:
-        names = [row.parameter for row in quality.health_exceedances]
+    if state in ("health_fail", "national_fail") and quality is not None:
+        # what failed is named for either failure: a national one is, with
+        # the bundled standards, coliform bacteria found
+        found = getattr(quality, "health_exceedances" if state == "health_fail"
+                        else "national_exceedances", None) or []
+        names = [row.parameter for row in found]
         if names:
             lines.append(phrase("community_sheet.quality_found", names=", ".join(names)))
         lines.append(phrase("community_sheet.quality_ask"))
@@ -162,10 +198,14 @@ def _contacts(committee: Any, notes: list[str]) -> dict:
     rows: list[list[str]] = []
     for member in committee or []:
         get = member.get if isinstance(member, dict) else lambda key, m=member: getattr(m, key, "")
-        role, name = trim_field(get("role") or ""), trim_field(get("name") or "")
-        phone = trim_field(get("phone") or get("contact") or "")
+        role, name = sheet_text(get("role")), sheet_text(get("name"))
+        phone = sheet_text(get("phone")) or sheet_text(get("contact"))
         if name or phone:
             rows.append([role, name, phone])
+    if len(rows) > MAX_CONTACTS:
+        notes.append(phrase("community_sheet.too_many_contacts", shown=MAX_CONTACTS,
+                            left=len(rows) - MAX_CONTACTS))
+        rows = rows[:MAX_CONTACTS]
     if not rows:
         notes.append(phrase_table("community_sheet.builder_notes")["no_committee"])
         rows = [["", "", ""] for _ in range(BLANK_CONTACTS)]
@@ -174,18 +214,27 @@ def _contacts(committee: Any, notes: list[str]) -> dict:
             "header": [columns["role"], columns["name"], columns["phone"]], "rows": rows}
 
 
-def _report(asset_id: str, report_url: str, notes: list[str]) -> dict:
+def _report(typed: str, report_url: str, notes: list[str]) -> dict:
     table = phrase_table("community_sheet.builder_notes")
     lines = [phrase("community_sheet.report_tell")]
     payload = caption = ""
-    if not asset_id:
+    # the registry's own reading of what was typed: case, spacing and the
+    # usual misreadings forgiven, a failing check character not. A number
+    # that is not the plate's would send a report to nobody's borehole.
+    asset_id = (parse_asset_id(typed) or "") if typed else ""
+    if not typed:
         notes.append(table["no_identifier"])
+    elif not asset_id:
+        notes.append(table["bad_identifier"])
     else:
         lines.append(phrase("community_sheet.report_number", id=asset_id))
         # an address the registry refuses stops the sheet, as it stops the
         # plate, rather than being printed
         payload = report_link(asset_id, report_url)
         if payload:
+            # a link too long for the symbol stops the sheet here, where both
+            # apps show the reason before the button, and not in the writer
+            qr.encode(payload, ecc=SCAN_ECC)
             lines.append(phrase("community_sheet.report_scan"))
             caption = phrase("community_sheet.report_caption", id=asset_id)
         else:
@@ -233,12 +282,13 @@ def community_sheet_content(site: SiteMetadata, *, analysis: Any = None, quality
     (``config.service.report_url``).
 
     Raises ValueError for a report address the registry would not print on a
-    plate, with the registry's reason.
+    plate, with the registry's reason, and for a link too long for the
+    square a phone scans, with the encoder's.
     """
     config = config or Config()
     notes: list[str] = []
-    place = trim_field(site.community or "")
-    identifier = trim_field(asset_id or "")
+    place = sheet_text(site.community)
+    identifier = sheet_text(asset_id)
     if example:
         notes.append(phrase_table("community_sheet.builder_notes")["example"])
     content = {

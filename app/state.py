@@ -154,6 +154,8 @@ CARRIED_KEYS = frozenset({
     "sup_stage", "meta_community_rep",
     "ho_pump_type", "ho_tariff", "ho_committee_notes", "ho_works", "ho_recs",
     "ho_contractor_rep", "ho_client_rep", "ho_community_rep",
+    # the community handover sheet's two (PLAN.md step 9.1)
+    "ho_sheet_hours", "ho_sheet_asset",
     "map_radius", "study_area_geology", "wp_radius",
     # the elevation model's declared source, a picker with fixed options,
     # and the terrain analysis's radius and drainage threshold; a project

@@ -172,15 +172,18 @@ def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
     # even where the handover report's requirement was overridden
     example = any(req.key == "field_data" and req.state in ("unmet", "overridden")
                   for req in gate.requirements)
+    # the table as the session keeps it: plain text, whatever the editor held
+    # (an emptied cell of a data frame comes back as the text "nan")
+    members = [{key.lower(): "" if value == "nan" else value for key, value in row.items()}
+               for row in committee_records(committee_rows)]
     given = dict(
-        analysis=pumping, quality=quality,
-        committee=[{"role": row.get("Role"), "name": row.get("Name"), "phone": row.get("Phone")}
-                   for row in committee_rows],
+        analysis=pumping, quality=quality, committee=members,
         asset_id=asset_id or "", hours_per_day=hours, example=example, config=app_config())
     try:
         content = community_sheet_content(site_from_state(), **given)
     except ValueError as exc:
-        # a report address the registry will not print on a plate
+        # a report address the registry will not print on a plate, or a link
+        # too long for the square
         st.error(str(exc))
         return
     st.markdown("**What the sheet will say**")
@@ -191,9 +194,13 @@ def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
     st.caption("\n".join(f"- {note}" for note in content["notes"]))
     if st.button("Community sheet (.docx)", key="build_community_sheet"):
         folder = workdir() / "community_sheet"
-        path = build_community_sheet(site_from_state(), folder / "community_sheet.docx", folder,
-                                     issue=issue_for("community_sheet"), **given)
-        offer_document(path, "Download the community sheet (.docx)")
+        try:
+            path = build_community_sheet(site_from_state(), folder / "community_sheet.docx",
+                                         folder, issue=issue_for("community_sheet"), **given)
+        except ValueError as exc:
+            st.error(f"Could not build the community sheet: {exc}")
+        else:
+            offer_document(path, "Download the community sheet (.docx)")
 
 
 def _evidence_bundle_section() -> None:

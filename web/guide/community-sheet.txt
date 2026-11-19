@@ -50,16 +50,17 @@ is safe to drink, who to call, how to report a fault and what to keep away from 
 less than the pumping test allows, never more, and says so where something is not known. Hours the
 pump is used each day for the amount of water in a day Borehole identifier as on its plate, from the
 Asset registry What the sheet will say This sheet was made from example data. It is not about a real
-borehole and must not be handed out. About 10 jerrycans of water in an hour. No, not as it is. Treat
-this water before you drink it. What it could not say, and why A bundled example is loaded, so the
-sheet says across its top that it is not about a real borehole. Enter the hours the pump is used
-each day to print a daily amount. Without it the sheet gives the amount in an hour. The yield is
-indicative, so the sheet calls the amount a first estimate. No committee member is entered, so the
-sheet leaves lines to write on. No borehole identifier is given, so the sheet names no plate. Type
-the identifier the Asset registry gave the borehole. The sheet is in English. A Krio version waits
-for a translation checked by native speakers; none is machine made. Community sheet (.docx) Evidence
-bundle One file holding what an auditor asks for about this borehole: the field sheets as they were
-uploaded, the documents issued with their manifests, the figures they embed, the issue records and a
-manifest.json of every file's SHA-256, with a README saying how to check it. It is made on this
-device. This project has issued no document in this session: build the reports first, or add the
-documents issued earlier. Add documents issued earlier (.docx) Download evidence bundle
+borehole and must not be handed out. About 10 jerrycans of water in an hour. No, not as it is. This
+water must be treated before you drink it, or drinking water taken from another source. What it
+could not say, and why A bundled example is loaded, so the sheet says across its top that it is not
+about a real borehole. Enter the hours the pump is used each day to print a daily amount. Without it
+the sheet gives the amount in an hour. The yield is indicative, so the sheet calls the amount a
+first estimate. No committee member is entered, so the sheet leaves lines to write on. No borehole
+identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the
+borehole. The sheet is in English. A Krio version waits for a translation checked by native
+speakers; none is machine made. Community sheet (.docx) Evidence bundle One file holding what an
+auditor asks for about this borehole: the field sheets as they were uploaded, the documents issued
+with their manifests, the figures they embed, the issue records and a manifest.json of every file's
+SHA-256, with a README saying how to check it. It is made on this device. This project has issued no
+document in this session: build the reports first, or add the documents issued earlier. Add
+documents issued earlier (.docx) Download evidence bundle

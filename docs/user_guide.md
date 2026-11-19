@@ -1589,9 +1589,10 @@ picture:
 
 - **How much water.** As jerrycans of 20 litres and as litres.
 - **Is the water safe to drink?** One plain answer.
-- **Who to call.** The committee members with a name or a number, then
-  lines for the pump mechanic and the district water office to be
-  written in by hand.
+- **Who to call.** The first six committee members with a name or a
+  number, then lines for the pump mechanic and the district water
+  office to be written in by hand. Six is what one page holds; the card
+  says how many more were left off.
 - **If the pump breaks or the water changes.** Who to tell, and the
   borehole's number as on its plate.
 - **Keep these away from the borehole.** A picture of rings, each with
@@ -1604,7 +1605,11 @@ The card asks for two things the page does not already hold:
 - **Hours the pump is used each day.** With it the sheet gives the
   amount for a day; without it, for an hour.
 - **Borehole identifier.** As on the borehole's plate, from the Asset
-  registry. Without it the sheet names no plate.
+  registry; the box starts from the registry's where the project has
+  one. It is read as the registry reads it, so capitals and spaces do
+  not matter, but an identifier with a wrong last character is not
+  printed at all: a wrong number would send a report to nobody's
+  borehole. Without one the sheet names no plate.
 
 Before you build the sheet the card shows **what the sheet will say**
 (its two headlines) and **what it could not say, and why**. Read both.
@@ -1615,13 +1620,16 @@ How the sheet is careful, so that it can be handed over as it is:
 - The amount of water is taken from the **low end** of the pumping
   test's safe yield and **rounded down**. It is never more than the
   test allows.
-- Where the test was too short for the yield to be relied on, the sheet
-  calls the amount **a first estimate** and says the borehole may give
-  less, most of all in the dry season. With no test it says the amount
-  has not been measured.
+- Where the pumping test's yield is indicative (a short test, or
+  readings that cannot be relied on), the sheet calls the amount **a
+  first estimate** and says the borehole may give less, most of all in
+  the dry season. With no test it says the amount has not been measured.
 - Only water that passed its tests is called safe. Water that failed is
-  to be treated, and the sheet names what was found. Water not tested,
-  or not fully tested, is "not known yet", to be treated until it is.
+  to be treated before drinking, or drinking water taken from another
+  source, and the sheet names what was found. It names no treatment:
+  what failed may be something boiling does not remove, so ask the
+  district water office. Water not tested, or not fully tested, is
+  "not known yet", to be treated until it is.
 - With a worked example loaded, the sheet says across its top that it
   is not about a real borehole and must not be handed out.
 

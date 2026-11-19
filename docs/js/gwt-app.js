@@ -5811,11 +5811,21 @@
     });
   }
 
+  /* The identifier the sheet names: the one typed on the card, else the one
+   * the Asset registry holds for this project's borehole, as the Streamlit
+   * app's box starts from it. */
+  function sheetAssetId() {
+    var typed = (store.get('handover') || {}).assetId;
+    if (typed) return typed;
+    var held = store.get('asset');
+    return held && held.asset_id ? String(held.asset_id) : '';
+  }
+
   function communitySheetNow(cfg) {
     var handover = store.get('handover') || {};
     return C.communitySheetContent(store.get('site'), {
       analysis: derived.analysis || null, quality: derived.assessment || null,
-      committee: handover.committee || [], assetId: handover.assetId || '',
+      committee: handover.committee || [], assetId: sheetAssetId(),
       hoursPerDay: typeof handover.hoursPerDay === 'number' ? handover.hoursPerDay : null,
       example: onExampleData(), config: cfg,
     });
@@ -5842,7 +5852,7 @@
   function communitySheetPicture(content) {
     var keep = content.keep_away, report = content.report, rings = keep.rings;
     var PX = 80;   /* pixels to a centimetre: about 200 to the inch */
-    var widthCm = report.payload ? 16.0 : 12.6, heightCm = 5.6;
+    var widthCm = report.payload ? 16.0 : 12.6, heightCm = 5.0;
     var ink = '#161a17', ground = '#f1f3f0', accent = '#1b7a2e';
     var canvas = document.createElement('canvas');
     canvas.width = Math.round(widthCm * PX);
@@ -5858,7 +5868,7 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    var cx = 2.8, cy = heightCm / 2, step = 2.5 / Math.max(rings.length, 1);
+    var cx = 2.5, cy = heightCm / 2, step = 2.2 / Math.max(rings.length, 1);
     ctx.lineWidth = 2.5;
     ctx.strokeStyle = ink;
     /* outermost first, so that each ring is drawn over the one beyond it */
@@ -5917,9 +5927,13 @@
       for (var r = 0; r < size; r += 1) {
         for (var c = 0; c < size; c += 1) {
           if (code.modules[r][c]) {
-            /* whole pixels, a hair over, so no white line shows between */
-            ctx.fillRect(Math.floor(X(left + (c + 1) * cell)), Math.floor(Y(top - (r + 1) * cell)),
-              Math.ceil(cell * PX) + 1, Math.ceil(cell * PX) + 1);
+            /* from this module's edge to the next one's, in whole pixels:
+             * neighbours abut exactly, with no white line between two dark
+             * ones and no dark run into a light one. A module a pixel or two
+             * too wide was a square that phones could not read. */
+            var x0 = Math.floor(X(left + (c + 1) * cell)), x1 = Math.floor(X(left + (c + 2) * cell));
+            var y0 = Math.floor(Y(top - (r + 1) * cell)), y1 = Math.floor(Y(top - (r + 2) * cell));
+            ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
           }
         }
       }
@@ -5959,39 +5973,50 @@
 
   function communitySheetCard() {
     var handover = store.get('handover') || {};
-    var said;
-    try {
-      var content = communitySheetNow(config());
-      said = [
-        el('h4', 'What the sheet will say'),
-        content.example ? el('div.callout.callout-warn', el('p', content.example)) : null,
-        el('ul', [el('li', content.water.headline), el('li', content.quality.headline)]),
-        el('h4', 'What it could not say, and why'),
-        el('ul.muted', content.notes.map(function (note) { return el('li', note); })),
-      ];
-    } catch (err) {
-      /* a report address the registry will not print on a plate */
-      said = [el('div.callout.callout-bad', el('p', err.message))];
+    /* what the sheet will say, as things stand */
+    function said() {
+      try {
+        var content = communitySheetNow(config());
+        return [
+          el('h4', 'What the sheet will say'),
+          content.example ? el('div.callout.callout-warn', el('p', content.example)) : null,
+          el('ul', [el('li', content.water.headline), el('li', content.quality.headline)]),
+          el('h4', 'What it could not say, and why'),
+          el('ul.muted', content.notes.map(function (note) { return el('li', note); })),
+        ];
+      } catch (err) {
+        /* a report address the registry will not print on a plate, or a
+         * link too long for the square */
+        return [el('div.callout.callout-bad', el('p', err.message))];
+      }
+    }
+    /* Only this part is drawn again when a box changes. Drawing the whole
+     * page again took the other box out from under the pointer that had
+     * just left this one, and with it whatever was typed there next. */
+    var saying = el('div', { 'aria-live': 'polite' }, said());
+    function say() {
+      S.clear(saying);
+      S.append(saying, said());
     }
     return card('Community handover sheet', [
       el('p.muted', C.phrase('community_sheet.about')),
       el('div.field-row', [
         field('Hours the pump is used each day', S.numberInput(handover.hoursPerDay, function (v) {
           store.set('handover.hoursPerDay', v);
-          render();
+          say();
         }, { min: 0, max: 24, step: 0.5 }), 'for the amount of water in a day'),
-        field('Borehole identifier', S.textInput(handover.assetId, function (v) {
+        field('Borehole identifier', S.textInput(sheetAssetId(), function (v) {
           store.set('handover.assetId', String(v).trim());
-          render();
+          say();
         }), 'as on its plate, from the Asset registry'),
       ]),
-    ].concat(said, [
+      saying,
       el('div.btn-row', [
         button('Community sheet (.docx)', function (event) {
           buildCommunitySheet(event && event.currentTarget);
         }),
       ]),
-    ]));
+    ]);
   }
 
   PAGES.handover = function () {
