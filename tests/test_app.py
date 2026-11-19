@@ -664,13 +664,19 @@ def test_handover_flow(app):
     assert not app.exception
 
 
-def test_the_community_sheet_is_offered_and_built_on_the_handover_page(app):
+def test_the_community_sheet_is_offered_and_built_on_the_handover_page(sample_data):
     """PLAN.md step 9.1: the Handover page says what the sheet will say before
     it is built, and builds it, with nothing loaded and with the hours and
-    the identifier entered. The browser app's page has the same card."""
+    the identifier entered. The browser app's page has the same card.
+
+    On an app of its own: the one the other tests share has a pumping test
+    and a water sample loaded by the time this runs, and what the sheet says
+    of nothing is half of what is held here."""
     from groundwater.text import phrase, phrase_table
 
     notes = phrase_table("community_sheet.builder_notes")
+    app = AppTest.from_file(APP, default_timeout=600)
+    app.run()
     goto(app, "Handover")
     assert not app.exception
     assert phrase("community_sheet.about") in [c.value for c in app.caption]
@@ -680,19 +686,22 @@ def test_the_community_sheet_is_offered_and_built_on_the_handover_page(app):
     told = " ".join(str(c.value) for c in app.caption)
     for key in ("no_test", "no_quality", "no_identifier", "english_only"):
         assert notes[key] in told, key
+    assert notes["example"] not in told
 
     app.number_input(key="ho_sheet_hours").set_value(8.0)
     app.text_input(key="ho_sheet_asset").set_value("SL-WAR-8FEEVKQ-T")
     app.run()
     assert not app.exception
     assert notes["no_identifier"] not in " ".join(str(c.value) for c in app.caption)
+    # nothing has been issued from an app this new, and its state says so by
+    # not having the key
+    assert "issued_documents" not in app.session_state
     app.button(key="build_community_sheet").click()
     app.run()
     assert not app.exception
-    # issued like every other document, with its code beside the download
-    assert any("community_sheet.docx" in str(d.get("path", "")) or
-               d.get("kind") == "community_sheet"
-               for d in app.session_state["issued_documents"])
+    # issued like every other document, as its own kind
+    issued = app.session_state["issued_documents"]
+    assert len(issued) == 1 and issued[0]["kind"] == "community_sheet"
 
 
 def test_maps_flow(app):
