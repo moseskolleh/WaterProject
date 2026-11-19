@@ -1266,6 +1266,7 @@ await withPage(async (page, base, consoleErrors) => {
             analysis: c.analysis || null, quality: c.quality || null,
             committee: c.committee || null, assetId: c.asset_id || '',
             hoursPerDay: c.hours_per_day === undefined ? null : c.hours_per_day,
+            example: !!c.example,
             config: C.withConfig({ service: { report_url: c.report_url || '' } }),
           });
         } catch (e) {

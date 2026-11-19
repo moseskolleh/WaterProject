@@ -1577,6 +1577,61 @@ not confirmed, and 1 otherwise. The worked examples' packs,
 `examples/packs/*.zip`, are evidence bundles; a worked example is not
 issued, so they check as unconfirmed.
 
+## 9g. The community handover sheet
+
+In the browser app: [`#/handover`](index.html#/handover), the
+*Community handover sheet* card. The Streamlit app's Handover page has
+the same section, and the two apps' sheets say the same.
+
+The handover report is for the client and the district water office.
+This is one page for the community to keep, in plain English, with a
+picture:
+
+- **How much water.** As jerrycans of 20 litres and as litres.
+- **Is the water safe to drink?** One plain answer.
+- **Who to call.** The committee members with a name or a number, then
+  lines for the pump mechanic and the district water office to be
+  written in by hand.
+- **If the pump breaks or the water changes.** Who to tell, and the
+  borehole's number as on its plate.
+- **Keep these away from the borehole.** A picture of rings, each with
+  its distance, and beside it what must be kept beyond each.
+
+![The Community handover sheet card of the Handover page: boxes for the hours the pump is used each day and the borehole identifier, then what the sheet will say and what it could not say, and the button that builds it.](guide/community-sheet.png "The card says what the sheet will say before it is built. Here a worked example is loaded, which the sheet will say across its top.")
+
+The card asks for two things the page does not already hold:
+
+- **Hours the pump is used each day.** With it the sheet gives the
+  amount for a day; without it, for an hour.
+- **Borehole identifier.** As on the borehole's plate, from the Asset
+  registry. Without it the sheet names no plate.
+
+Before you build the sheet the card shows **what the sheet will say**
+(its two headlines) and **what it could not say, and why**. Read both.
+The second list is for you and is never printed.
+
+How the sheet is careful, so that it can be handed over as it is:
+
+- The amount of water is taken from the **low end** of the pumping
+  test's safe yield and **rounded down**. It is never more than the
+  test allows.
+- Where the test was too short for the yield to be relied on, the sheet
+  calls the amount **a first estimate** and says the borehole may give
+  less, most of all in the dry season. With no test it says the amount
+  has not been measured.
+- Only water that passed its tests is called safe. Water that failed is
+  to be treated, and the sheet names what was found. Water not tested,
+  or not fully tested, is "not known yet", to be treated until it is.
+- With a worked example loaded, the sheet says across its top that it
+  is not about a real borehole and must not be handed out.
+
+Where the programme has set a report address (section 9d), the picture
+also carries a square that a phone scans to open the report page for
+the borehole. The sheet prints no telephone number.
+
+The sheet is in English. A Krio version needs a translation checked by
+native speakers and is not written yet.
+
 ## 10. Site maps
 
 In the browser app: [`#/site`](index.html#/site), and the terrain
@@ -2690,6 +2745,7 @@ The app's words, in plain terms. Words in *italics* have their own line.
 | BoQ | Bill of quantities: the works as priced line items. |
 | Casing storage | The water standing in the borehole itself. A pump empties it first, so early in a test in a tight borehole the readings measure the casing, not the *aquifer*. |
 | Co-pilot | A page of the browser app used while the work is being done: it checks each reading as it is taken and writes the standard workbook (sections 2a, 3a and 4a). |
+| Community handover sheet | One page for the community to keep: how much water, whether it is safe to drink, who to call, how to report a fault and what to keep away (section 9g). |
 | Constant discharge test | Also called a constant rate test. Pumping at one steady rate for hours, to find the *transmissivity* and the yield. |
 | Cooper-Jacob | A way of reading *transmissivity* from the straight part of a *drawdown* against log-time plot. |
 | Depth Spine | The whole borehole on one depth axis: the cuttings log, the casing string and the water levels against the same ruler (section 8a). |

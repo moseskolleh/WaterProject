@@ -83,6 +83,7 @@ BROWSER_SUITES = [
     "tests/webapp/smoke.mjs",
     "tests/webapp/copilot.mjs",
     "tests/webapp/fieldkit.mjs",
+    "tests/webapp/community_sheet.mjs",
     "tests/webapp/training.mjs",
     "tests/webapp/a11y.mjs",
     "tests/webapp/guide.mjs",

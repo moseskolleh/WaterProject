@@ -225,7 +225,8 @@
    * address the registry would not print on a plate, with its reason.
    * @param {Rec} site the project's header block
    * @param {{analysis?: Rec|null, quality?: Rec|null, committee?: Rec[]|null,
-   *   assetId?: string, hoursPerDay?: number|null, config?: Config}} [options]
+   *   assetId?: string, hoursPerDay?: number|null, example?: boolean,
+   *   config?: Config}} [options]
    * @returns {Rec} */
   function communitySheetContent(site, options) {
     var opts = options || {};
@@ -234,10 +235,13 @@
     var notes = [];
     var place = trimField((site && site.community) || '');
     var identifier = trimField(opts.assetId || '');
+    if (opts.example) notes.push(phraseTable('community_sheet.builder_notes').example);
     /** @type {Rec} */
     var content = {
       title: place ? phrase('community_sheet.title', { place: place })
         : phrase('community_sheet.title_unnamed'),
+      /* across the top of a sheet built with a bundled example loaded */
+      example: opts.example ? phrase('community_sheet.example') : '',
       water: sheetWater(opts.analysis, sheetHours(opts.hoursPerDay), notes),
       quality: sheetQuality(opts.quality, notes),
       contacts: sheetContacts(opts.committee, notes),

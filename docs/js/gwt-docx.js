@@ -54,6 +54,9 @@
     /* the readiness the document was gated on, for its manifest */
     this.gate = null;
     this.hasCover = false;
+    /* the page's margins, in twentieths of a point: 2.5 cm unless a document
+     * that has to hold on one page asks for less (the community sheet) */
+    this.margin = Math.round((opts.marginCm || 2.5) * 567);
     /* the issue record, once the document is built */
     this.record = null;
     this.body = [];
@@ -508,7 +511,8 @@
       '<w:footerReference w:type="default" r:id="rIdFooter"/>' +
       (this.hasCover ? '<w:footerReference w:type="first" r:id="rIdFooterFirst"/>' : '') +
       '<w:pgSz w:w="11906" w:h="16838"/>' +
-      '<w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" ' +
+      '<w:pgMar w:top="' + this.margin + '" w:right="' + this.margin + '" w:bottom="' +
+      this.margin + '" w:left="' + this.margin + '" ' +
       'w:header="708" w:footer="708" w:gutter="0"/>' +
       (this.hasCover ? '<w:titlePg/>' : '') +
       '</w:sectPr>';
@@ -3288,6 +3292,44 @@
     return b;
   }
 
+  /* --- the community handover sheet ----------------------------------------
+   * reporting/community_sheet.py (PLAN.md step 9.1): C.communitySheetContent
+   * laid out on one page: the title, how much water, whether it is safe to
+   * drink, who to call, how to report a fault, and what to keep away, as a
+   * picture. The words and the numbers are all in the content, which parity
+   * holds to the Python engine's; this only places them. It has to stay one
+   * page, so each part's sentences are one paragraph, the margins are
+   * narrower than the reports', and there is one picture: context.picture,
+   * {image, widthCm}, which the Handover page draws from the same content
+   * (the rings, their key and, where the sheet carries one, the square a
+   * phone scans).
+   * ---------------------------------------------------------------------- */
+
+  function communitySheet(context) {
+    var content = context.content;
+    var b = new ReportBuilder({ style: context.style, title: content.title,
+      kind: 'community_sheet', issue: context.issue, marginCm: 1.5 });
+    if (content.example) b.paragraph(content.example, { bold: true, align: 'center' });
+    b.paragraph(content.title, { bold: true, size: 20, align: 'center' });
+    [content.water, content.quality].forEach(function (part) {
+      b.paragraph(part.heading, { bold: true, size: 12 });
+      b.paragraph(part.headline, { bold: true, size: 15 });
+      if (part.lines.length) b.paragraph(part.lines.join(' '));
+    });
+    b.paragraph(content.contacts.heading, { bold: true, size: 12 });
+    b.table(content.contacts.rows, { header: content.contacts.header,
+      colWidthsCm: [5.0, 6.0, 5.0], fontSize: 11 });
+    b.paragraph(content.report.heading, { bold: true, size: 12 });
+    b.paragraph(content.report.lines.join(' '));
+    /* what to keep away is the picture: its key says, ring by ring, what the
+     * content's lines say, and the square to scan sits beside it */
+    b.paragraph(content.keep_away.heading, { bold: true, size: 12 });
+    if (context.picture) {
+      b.figure(context.picture.image, content.keep_away.caption, context.picture.widthCm);
+    }
+    return b;
+  }
+
   /* --- the desk study -------------------------------------------------------
    * reporting/desk_study.py (PLAN.md step 4.4): C.deskStudyContent laid out,
    * the cover with the site's names and position, the pre-field stamp on the
@@ -3415,6 +3457,7 @@
   GWT.docx = {
     ReportBuilder: ReportBuilder,
     fieldKit: fieldKit,
+    communitySheet: communitySheet,
     deskStudyReport: deskStudyReport,
     calibrationReport: calibrationReport,
     scorecardReport: scorecardReport,

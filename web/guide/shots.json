@@ -1,5 +1,5 @@
 {
-  "app": "28fe837ccdd3fc7569dea04f20075d2366fc9b469d2f20b872816e8ec3b89128",
+  "app": "ce9b5c100439e358ba2006b4b80ec16b44b423e8b0eaa34a120c1f3728004aab",
   "shots": [
     "overview",
     "navigation-phone",
@@ -18,6 +18,7 @@
     "costing",
     "supervision",
     "handover",
+    "community-sheet",
     "site",
     "site-map"
   ]

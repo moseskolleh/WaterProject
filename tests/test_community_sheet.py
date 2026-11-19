@@ -276,6 +276,14 @@ def test_the_builder_is_always_told_the_sheet_is_in_english_only():
     assert not any(note in printed for note in NOTES.values())
 
 
+def test_a_sheet_from_a_bundled_example_says_so_across_its_top():
+    content = sheet(analysis=analysis(0.39, 0.22), example=True)
+    assert content["example"].startswith("This sheet was made from example data.")
+    assert "must not be handed out" in content["example"]
+    assert NOTES["example"] in content["notes"]
+    assert sheet(analysis=analysis(0.39, 0.22))["example"] == ""
+
+
 def test_no_krio_is_in_the_catalogue():
     # PLAN.md step 9.1: a Krio version is translated and checked by native
     # speakers, and nothing is machine translated. Until there is one, the
@@ -302,3 +310,140 @@ def test_the_worked_example_that_needs_most_care(sample_data):
     assert content["water"]["litres_per_day"] <= rec.safe_yield_low_m3_per_h * 1000 * 8
     assert content["quality"]["state"] == "health_fail"
     assert "Manganese" in content["quality"]["lines"][0]
+
+
+# -------------------------------------------------------------------- the document
+
+
+def _expected(content: dict) -> list[str]:
+    """What the document says for a content, in the order it is set (the
+    browser suite, tests/webapp/community_sheet.mjs, holds its writer to the
+    same list)."""
+    out = [content["example"]] if content["example"] else []
+    out.append(content["title"])
+    for part in (content["water"], content["quality"]):
+        out += [part["heading"], part["headline"]]
+        if part["lines"]:
+            out.append(" ".join(part["lines"]))
+    out += [content["contacts"]["heading"], *content["contacts"]["header"]]
+    out += [cell for row in content["contacts"]["rows"] for cell in row if cell]
+    out += [content["report"]["heading"], " ".join(content["report"]["lines"])]
+    out += [content["keep_away"]["heading"], "Figure 1. " + content["keep_away"]["caption"]]
+    return out
+
+
+def _read(path) -> dict:
+    import re
+    import struct
+    import zipfile
+    from html import unescape
+
+    with zipfile.ZipFile(path) as package:
+        xml = package.read("word/document.xml").decode("utf-8")
+        media = [name for name in package.namelist() if name.startswith("word/media/")]
+        picture = package.read(media[0]) if media else b""
+        everything = b"".join(package.read(name) for name in package.namelist())
+    # a paragraph's runs joined, as a reader has them
+    paragraphs = ["".join(unescape(t) for t in re.findall(r"<w:t[^>]*>([^<]*)</w:t>", p))
+                  for p in re.findall(r"<w:p[ >].*?</w:p>", xml, re.S)]
+    margins = re.search(r'<w:pgMar [^>]*w:top="(\d+)"[^>]*w:left="(\d+)"', xml)
+    return {"paragraphs": [p for p in paragraphs if p.strip()], "pictures": len(media),
+            "size": struct.unpack(">II", picture[16:24]) if picture else (0, 0),
+            "margins": [int(m) for m in margins.groups()] if margins else [],
+            "everything": everything}
+
+
+def _full(tmp_path, **more):
+    from groundwater.reporting.community_sheet import build_community_sheet
+
+    given = dict(
+        analysis=analysis(0.39, 0.22, "indicative"), quality=verdict("health_fail", "Manganese"),
+        committee=[{"role": "Chairperson", "name": "Aminata Kamara", "contact": "076 000 000"},
+                   {"role": "Caretaker", "name": "Sorie Conteh", "contact": "077 111 222"}],
+        asset_id="SL-WAR-8FEEVKQ-T", hours_per_day=8, example=True)
+    given.update(more)
+    site = SiteMetadata(community="Dr. Timbo's Residence")
+    path = build_community_sheet(site, tmp_path / "sheet.docx", tmp_path, **given)
+    return path, community_sheet_content(site, **given)
+
+
+def test_the_document_says_the_content_whole_and_in_order(tmp_path):
+    path, content = _full(tmp_path)
+    read = _read(path)
+    want = _expected(content)
+    assert read["paragraphs"][:len(want)] == want
+    assert read["paragraphs"][0].startswith("This sheet was made from example data.")
+    # nothing meant for the builder is printed
+    assert not any(note in " ".join(read["paragraphs"]) for note in NOTES.values())
+    # and it is issued as its own kind of document
+    assert b"community_sheet" in read["everything"]
+
+
+def test_the_document_has_one_picture_and_narrow_margins(tmp_path):
+    from groundwater.reporting import community_sheet as writer
+
+    read = _read(_full(tmp_path)[0])
+    assert read["pictures"] == 1
+    # 1.5 cm in twentieths of a point, where the reports keep 2.5 cm
+    assert all(840 <= margin <= 860 for margin in read["margins"]) and read["margins"]
+    width, height = read["size"]
+    assert abs(width / height - writer.PICTURE_WIDTH_CM / writer.PICTURE_HEIGHT_CM) < 0.02
+
+
+def test_the_picture_carries_the_square_only_where_there_is_a_link(tmp_path):
+    from groundwater.reporting import community_sheet as writer
+
+    config = Config()
+    config.service.report_url = "https://water.example.org/app/"
+    path, content = _full(tmp_path, config=config)
+    read = _read(path)
+    width, height = read["size"]
+    assert read["pictures"] == 1 and content["report"]["payload"]
+    assert abs(width / height - writer.PICTURE_WIDTH_SCAN_CM / writer.PICTURE_HEIGHT_CM) < 0.02
+    assert "Or scan the square below" in " ".join(read["paragraphs"])
+    # the square is where the sheet says it is: black modules on the right
+    from PIL import Image
+
+    with Image.open(tmp_path / "community_sheet_picture.png") as picture:
+        grey = picture.convert("L")
+        right = grey.crop((int(grey.width * 0.8), 0, grey.width, int(grey.height * 0.6)))
+        left = grey.crop((int(grey.width * 0.4), 0, int(grey.width * 0.75), grey.height))
+
+    def black(image) -> float:
+        return sum(image.histogram()[:40]) / (image.width * image.height)
+
+    assert black(right) > 0.15 > black(left)
+
+
+def test_words_are_wrapped_at_spaces_as_the_browser_wraps_them():
+    from groundwater.reporting.community_sheet import wrap_words
+
+    assert wrap_words("Scan to report a fault at borehole SL-WAR-8FEEVKQ-T", 24) == [
+        "Scan to report a fault", "at borehole", "SL-WAR-8FEEVKQ-T"]
+    assert wrap_words("averyveryverylongwordindeed x", 10) == ["averyveryverylongwordindeed", "x"]
+    assert wrap_words("", 10) == [""]
+
+
+def test_the_fullest_sheet_is_one_page(tmp_path):
+    """Counted by LibreOffice where it is installed, which lays a page out
+    much as Word does; CI has none, and there the layout is held by the
+    margins, the single picture and its size above."""
+    import shutil
+    import subprocess
+
+    office = shutil.which("soffice") or shutil.which("libreoffice")
+    if not office or not shutil.which("pdfinfo"):
+        pytest.skip("no LibreOffice to count pages with")
+    config = Config()
+    config.service.report_url = "https://water.example.org/app/"
+    committee = [{"role": role, "name": name, "contact": phone} for role, name, phone in [
+        ("Chairperson", "Aminata Kamara", "076 000 000"), ("Caretaker", "Sorie Conteh", "077 111 222"),
+        ("Treasurer", "Fatmata Sesay", "078 222 333"), ("Secretary", "Mohamed Bangura", "079 333 444"),
+        ("Mechanic", "Ibrahim Koroma", "030 444 555")]]
+    path, _ = _full(tmp_path, committee=committee, config=config,
+                    quality=verdict("health_fail", "Manganese", "Iron", "E. coli"))
+    subprocess.run([office, "--headless", "--convert-to", "pdf", "--outdir", str(tmp_path),
+                    str(path)], capture_output=True, timeout=300, check=True)
+    info = subprocess.run(["pdfinfo", str(tmp_path / "sheet.pdf")], capture_output=True,
+                          text=True, check=True).stdout
+    assert "Pages:           1" in info, info

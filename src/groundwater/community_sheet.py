@@ -148,7 +148,7 @@ def _quality(quality: Any, notes: list[str]) -> dict:
             # a verdict this sheet has no words for is not told as safe
             state = "indeterminate"
     lines: list[str] = []
-    if state == "health_fail":
+    if state == "health_fail" and quality is not None:
         names = [row.parameter for row in quality.health_exceedances]
         if names:
             lines.append(phrase("community_sheet.quality_found", names=", ".join(names)))
@@ -219,7 +219,7 @@ def _keep_away() -> dict:
 
 def community_sheet_content(site: SiteMetadata, *, analysis: Any = None, quality: Any = None,
                             committee: Any = None, asset_id: str = "",
-                            hours_per_day: float | None = None,
+                            hours_per_day: float | None = None, example: bool = False,
                             config: Config | None = None) -> dict:
     """Everything the community handover sheet says, as plain data.
 
@@ -227,8 +227,10 @@ def community_sheet_content(site: SiteMetadata, *, analysis: Any = None, quality
     quality assessment, either of which may be absent; ``committee`` the
     members entered at handover (objects or mappings with a role, a name and
     a phone or contact); ``asset_id`` the borehole's identifier as its plate
-    carries it; ``hours_per_day`` the hours the pump is used each day. The
-    report address is the programme's (``config.service.report_url``).
+    carries it; ``hours_per_day`` the hours the pump is used each day;
+    ``example`` whether any of it comes from a bundled example, which the
+    sheet then says across its top. The report address is the programme's
+    (``config.service.report_url``).
 
     Raises ValueError for a report address the registry would not print on a
     plate, with the registry's reason.
@@ -237,9 +239,12 @@ def community_sheet_content(site: SiteMetadata, *, analysis: Any = None, quality
     notes: list[str] = []
     place = trim_field(site.community or "")
     identifier = trim_field(asset_id or "")
+    if example:
+        notes.append(phrase_table("community_sheet.builder_notes")["example"])
     content = {
         "title": (phrase("community_sheet.title", place=place) if place
                   else phrase("community_sheet.title_unnamed")),
+        "example": phrase("community_sheet.example") if example else "",
         "water": _water(analysis, _hours(hours_per_day), notes),
         "quality": _quality(quality, notes),
         "contacts": _contacts(committee, notes),

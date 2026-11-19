@@ -2,6 +2,39 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### The community handover sheet: one page for the people who keep the borehole (PLAN.md step 9.1)
+
+The handover report is written for the client and the district water office. Nothing the toolkit wrote was for the community. Both apps' Handover pages now build a one-page sheet for it, in plain English, with a picture.
+
+**What it says.**
+
+- **How much water**, as jerrycans of 20 litres and as litres: for a day where whoever builds the sheet enters the hours the pump is used, for an hour where they do not.
+- **Is the water safe to drink?** One plain answer.
+- **Who to call**: the committee members with a name or a number, then lines for the pump mechanic and the district water office to be written in.
+- **If the pump breaks or the water changes**: who to tell, and the borehole's number as on its plate. Where the programme has set a report address the picture also carries the plate's own link as a square to scan.
+- **Keep these away from the borehole**: rings, each with its distance, and a key of what must be kept beyond each.
+
+**Nothing in it is new hydrogeology, and it never says more than the engine established.**
+
+- The toolkit holds no amount for a day, only the safe yield in m3/h with its range. The sheet takes the **lower end** of that range (the safe yield where there is no range), multiplies by the hours entered, and rounds **down** to two figures. Dr. Timbo's 0.39 m3/h with a low end of 0.22 and eight hours a day is printed as 1,600 litres, 80 jerrycans.
+- An "indicative" yield is called **a first estimate**, with a sentence that the borehole may give less, most of all in the dry season. No yield is said as "not measured yet", not left off.
+- The answer on safety is the water quality verdict, which fails closed. Only a pass, or a pass with aesthetic findings, is told as safe. A failure is "treat this water before you drink it" and names what was found. No result, incomplete results and a verdict the sheet has no words for are all "not known yet".
+- The distances are four rows of the separation table (buildings 3 m, hand dug wells and latrines 20 m, dumps and burial grounds 1,000 m). The rows a village cannot act on are left off.
+- It prints no telephone number and no SMS words, because none is known.
+- A sheet built with a bundled example loaded says across its top that it is not about a real borehole and must not be handed out, and the card says so before it is built.
+
+**One function in each engine.** `community_sheet_content` (Python) and `communitySheetContent` (browser) work out everything the page says as plain data, in the words of a new catalogue file, `data/text/community_sheet.yaml`. The parity suite holds them to each other on 27 cases, 237 checks: nothing loaded, the whole of it, each verdict, each rounding edge, hours that are not a time of day's worth, and a report address the registry refuses, which stops the sheet in both. Parity is 4,566 of 4,566.
+
+**One page.** Each engine's writer places the content: each part's sentences as one paragraph, margins of 1.5 cm where the reports keep 2.5, and one picture holding the rings, their key and the square. The Python writer draws it with matplotlib and the browser on a canvas, to the same measurements. The fullest sheet (five committee members, three things found in the water, a square to scan, the example line) is one page.
+
+**The card.** Before the sheet is built the card shows what it will say (its two headlines) and what it could not say and why: no hours, no test, an indicative yield, no committee, no identifier, no report address, English only. That list is for whoever builds the sheet and is never printed.
+
+**No Krio.** The plan asks for a Krio version translated and checked by native speakers and forbids a machine translation, so none is written. The catalogue file is what a translation would be made of.
+
+**For the programme to decide** (QUESTIONS.md item 31): the rule for the daily amount, which is mine and is conservative but does not cap at what a handpump delivers; the wording for untested water; how a fault is reported with no number to print; the Krio; and which rows of the separation table a community is shown.
+
+**Checks.** `tests/test_community_sheet.py` (51 tests: the rules, the document's words in order, its one picture and margins, and a page count where LibreOffice is installed); `tests/webapp/community_sheet.mjs` (14 checks: the card, the two boxes, the document read back, with and without a report address, and an address refused); a Streamlit test of the same section. The guide has a section on the sheet (9g) with a picture of the card, its 20th.
+
 ### Steps 9.5 and 9.3 reviewed by others, and 39 things put right
 
 The user guide page and the training page were each written by one hand. Four reviewers then went through them (the guide's new text, the exercises' facts, the screenshot tooling, the training page's code), and a second reader tried to refute every finding. 39 of 41 stood. What they changed:

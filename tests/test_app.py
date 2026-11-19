@@ -664,6 +664,37 @@ def test_handover_flow(app):
     assert not app.exception
 
 
+def test_the_community_sheet_is_offered_and_built_on_the_handover_page(app):
+    """PLAN.md step 9.1: the Handover page says what the sheet will say before
+    it is built, and builds it, with nothing loaded and with the hours and
+    the identifier entered. The browser app's page has the same card."""
+    from groundwater.text import phrase, phrase_table
+
+    notes = phrase_table("community_sheet.builder_notes")
+    goto(app, "Handover")
+    assert not app.exception
+    assert phrase("community_sheet.about") in [c.value for c in app.caption]
+    said = " ".join(str(m.value) for m in app.markdown)
+    # nothing is loaded, and the page says what the sheet will say of that
+    assert "has not been measured yet" in said and "has not been tested" in said
+    told = " ".join(str(c.value) for c in app.caption)
+    for key in ("no_test", "no_quality", "no_identifier", "english_only"):
+        assert notes[key] in told, key
+
+    app.number_input(key="ho_sheet_hours").set_value(8.0)
+    app.text_input(key="ho_sheet_asset").set_value("SL-WAR-8FEEVKQ-T")
+    app.run()
+    assert not app.exception
+    assert notes["no_identifier"] not in " ".join(str(c.value) for c in app.caption)
+    app.button(key="build_community_sheet").click()
+    app.run()
+    assert not app.exception
+    # issued like every other document, with its code beside the download
+    assert any("community_sheet.docx" in str(d.get("path", "")) or
+               d.get("kind") == "community_sheet"
+               for d in app.session_state["issued_documents"])
+
+
 def test_maps_flow(app):
     """With no position and no area recorded, the national maps still draw."""
     goto(app, "Site maps")

@@ -134,7 +134,10 @@
       /* evidence: the photograph each checklist item that needs one has,
        * keyed by item id, as a photo slot keeps it */
       supervision: { responses: {}, notes: [], checks: {}, evidence: {} },
-      handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '' },
+      handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '',
+        /* for the community handover sheet (PLAN.md step 9.1): the hours the
+         * pump is used each day, and the identifier on the borehole's plate */
+        hoursPerDay: null, assetId: '' },
       photos: {},
       /* ask this device for its position when a photograph carries none */
       photoPosition: false,
@@ -5793,6 +5796,204 @@
 
   /* --- handover ------------------------------------------------------------- */
 
+  /* The community handover sheet (PLAN.md step 9.1). What it says is worked
+   * out by C.communitySheetContent, which parity holds to the Python
+   * engine's; this page gathers what that needs, shows what the sheet will
+   * say before it is built, draws its picture and saves the document. */
+
+  /* Whether the project rests on a bundled example: the handover report's
+   * own readiness says so (the "field data" requirement), and a sheet built
+   * from one says across its top that it is not about a real borehole, even
+   * where that requirement was overridden to publish the example. */
+  function onExampleData() {
+    return (reportReadiness('handover').requirements || []).some(function (r) {
+      return r.key === 'field_data' && (r.state === 'unmet' || r.state === 'overridden');
+    });
+  }
+
+  function communitySheetNow(cfg) {
+    var handover = store.get('handover') || {};
+    return C.communitySheetContent(store.get('site'), {
+      analysis: derived.analysis || null, quality: derived.assessment || null,
+      committee: handover.committee || [], assetId: handover.assetId || '',
+      hoursPerDay: typeof handover.hoursPerDay === 'number' ? handover.hoursPerDay : null,
+      example: onExampleData(), config: cfg,
+    });
+  }
+
+  /* text broken at spaces into lines of at most width characters, as
+   * reporting/community_sheet.py wrap_words breaks it */
+  function wrapWords(text, width) {
+    var lines = [];
+    String(text).split(' ').forEach(function (word) {
+      var last = lines.length - 1;
+      if (lines.length && lines[last].length + 1 + word.length <= width) lines[last] += ' ' + word;
+      else lines.push(word);
+    });
+    return lines;
+  }
+
+  /* The sheet's picture, drawn as reporting/community_sheet.py sheet_picture
+   * draws it, to the same measurements in centimetres: on the left the
+   * rings, each with its distance; beside them the key, what is to be kept
+   * beyond each ring; and on the right, where the sheet carries a link to
+   * the report page, the square to scan with its label. Returns {image,
+   * widthCm} for GWT.docx.communitySheet. */
+  function communitySheetPicture(content) {
+    var keep = content.keep_away, report = content.report, rings = keep.rings;
+    var PX = 80;   /* pixels to a centimetre: about 200 to the inch */
+    var widthCm = report.payload ? 16.0 : 12.6, heightCm = 5.6;
+    var ink = '#161a17', ground = '#f1f3f0', accent = '#1b7a2e';
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.round(widthCm * PX);
+    canvas.height = Math.round(heightCm * PX);
+    var ctx = canvas.getContext('2d');
+    /* centimetres from the left and from the foot, as the Python draws */
+    function X(cm) { return cm * PX; }
+    function Y(cm) { return (heightCm - cm) * PX; }
+    function face(points, bold) {
+      ctx.font = (bold ? 'bold ' : '') + (points / 72 * 2.54 * PX).toFixed(1) +
+        'px system-ui, -apple-system, "Segoe UI", Arial, sans-serif';
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    var cx = 2.8, cy = heightCm / 2, step = 2.5 / Math.max(rings.length, 1);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = ink;
+    /* outermost first, so that each ring is drawn over the one beyond it */
+    for (var k = rings.length; k >= 1; k -= 1) {
+      ctx.beginPath();
+      ctx.arc(X(cx), Y(cy), k * step * PX, 0, 2 * Math.PI);
+      ctx.fillStyle = k % 2 ? ground : '#ffffff';
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    rings.forEach(function (ring, i) {
+      /* the distance sits on its ring, at the foot, on a patch of white */
+      face(7, true);
+      var wide = ctx.measureText(ring.label).width + 0.12 * PX;
+      var at = Y(cy - (i + 1) * step);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(X(cx) - wide / 2, at - 0.15 * PX, wide, 0.3 * PX);
+      ctx.fillStyle = ink;
+      ctx.fillText(ring.label, X(cx), at);
+    });
+    ctx.beginPath();
+    ctx.arc(X(cx), Y(cy), 0.13 * PX, 0, 2 * Math.PI);
+    ctx.fillStyle = accent;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    face(6.5, true);
+    ctx.fillStyle = ink;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(keep.centre, X(cx), Y(cy + 0.22));
+
+    /* the key: one entry a ring, nearest first, each thing on its own line */
+    var lines = rings.reduce(function (n, ring) { return n + ring.what.length; }, 0) +
+      Math.max(rings.length - 1, 0) * 0.5;
+    var y = heightCm / 2 + lines * 0.42 / 2 - 0.2;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    rings.forEach(function (ring) {
+      face(8, true);
+      ctx.fillText(ring.label, X(6.0), Y(y));
+      face(7.5, false);
+      ring.what.forEach(function (what) {
+        ctx.fillText(what, X(7.3), Y(y));
+        y -= 0.42;
+      });
+      y -= 0.21;
+    });
+
+    if (report.payload) {
+      var code = C.qrEncode(report.payload, { ecc: 'H' });
+      var size = code.size, side = 2.9, left = 12.8, top = heightCm - 0.35;
+      var cell = side / (size + 2);   /* a module of white all round */
+      ctx.fillStyle = '#000000';
+      for (var r = 0; r < size; r += 1) {
+        for (var c = 0; c < size; c += 1) {
+          if (code.modules[r][c]) {
+            /* whole pixels, a hair over, so no white line shows between */
+            ctx.fillRect(Math.floor(X(left + (c + 1) * cell)), Math.floor(Y(top - (r + 1) * cell)),
+              Math.ceil(cell * PX) + 1, Math.ceil(cell * PX) + 1);
+          }
+        }
+      }
+      face(6.5, false);
+      ctx.fillStyle = ink;
+      ctx.textAlign = 'center';
+      wrapWords(report.caption, 24).forEach(function (line, n) {
+        ctx.fillText(line, X(left + side / 2), Y(top - side - 0.25 - n * 0.33));
+      });
+    }
+    return { image: { dataUrl: canvas.toDataURL('image/png'), mime: 'image/png',
+      width: canvas.width, height: canvas.height }, widthCm: widthCm };
+  }
+
+  async function buildCommunitySheet(node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    var issued = null;
+    try {
+      await S.withBusy(host, 'Building the community sheet…', async function () {
+        await need(REPORT_BUNDLES);
+        var cfg = config();
+        var content = communitySheetNow(cfg);
+        var builder = GWT.docx.communitySheet({
+          style: cfg.style, content: content, picture: communitySheetPicture(content),
+          issue: issueFor('community_sheet'),
+        });
+        var bytes = await builder.build();
+        var name = 'community_sheet_' + S.slug(siteLabel()) + '.docx';
+        S.download(name, bytes);
+        issued = recordIssue(builder.record, name, bytes);
+      });
+      S.toast('Community sheet ready.' + codeWords(issued), 'ok');
+    } catch (err) {
+      S.toast('Could not build the community sheet: ' + err.message, 'error');
+    }
+  }
+
+  function communitySheetCard() {
+    var handover = store.get('handover') || {};
+    var said;
+    try {
+      var content = communitySheetNow(config());
+      said = [
+        el('h4', 'What the sheet will say'),
+        content.example ? el('div.callout.callout-warn', el('p', content.example)) : null,
+        el('ul', [el('li', content.water.headline), el('li', content.quality.headline)]),
+        el('h4', 'What it could not say, and why'),
+        el('ul.muted', content.notes.map(function (note) { return el('li', note); })),
+      ];
+    } catch (err) {
+      /* a report address the registry will not print on a plate */
+      said = [el('div.callout.callout-bad', el('p', err.message))];
+    }
+    return card('Community handover sheet', [
+      el('p.muted', C.phrase('community_sheet.about')),
+      el('div.field-row', [
+        field('Hours the pump is used each day', S.numberInput(handover.hoursPerDay, function (v) {
+          store.set('handover.hoursPerDay', v);
+          render();
+        }, { min: 0, max: 24, step: 0.5 }), 'for the amount of water in a day'),
+        field('Borehole identifier', S.textInput(handover.assetId, function (v) {
+          store.set('handover.assetId', String(v).trim());
+          render();
+        }), 'as on its plate, from the Asset registry'),
+      ]),
+    ].concat(said, [
+      el('div.btn-row', [
+        button('Community sheet (.docx)', function (event) {
+          buildCommunitySheet(event && event.currentTarget);
+        }),
+      ]),
+    ]));
+  }
+
   PAGES.handover = function () {
     var handover = store.get('handover');
     var nodes = [
@@ -5858,6 +6059,7 @@
     nodes.push(reportCard('Project handover report', 'handover',
       'Project summary, works completed, the borehole data sheet, water quality, ' +
       'operation and maintenance guidance, the committee and the signature block.'));
+    nodes.push(communitySheetCard());
     nodes.push(bundleCard());
     return nodes;
   };

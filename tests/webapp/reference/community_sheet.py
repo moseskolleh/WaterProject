@@ -79,6 +79,8 @@ COMMUNITY_SHEET_CASES = [
     {"site": {"community": "A"}, "quality": _verdict("indeterminate")},
     {"site": {"community": "A"}, "quality": _verdict("not a verdict")},
     {"site": {"community": "A"}, "quality": _verdict("none")},
+    # a bundled example loaded: said across the top, and to the builder
+    {"site": {"community": "Rokel"}, "analysis": _yield(0.39, 0.22), "example": True},
     # an address the registry will not print stops the sheet in both engines
     {"site": {"community": "A"}, "asset_id": "SL-WAR-8FEEVKQ-T",
      "report_url": "http://water.example.org/app/"},
@@ -100,7 +102,8 @@ def community_sheet_reference() -> dict:
                 analysis=_ns(case["analysis"]) if case.get("analysis") else None,
                 quality=_ns(case["quality"]) if case.get("quality") else None,
                 committee=case.get("committee"), asset_id=case.get("asset_id", ""),
-                hours_per_day=case.get("hours_per_day"), config=config))
+                hours_per_day=case.get("hours_per_day"),
+                example=case.get("example", False), config=config))
         except ValueError as error:
             results.append({"error": str(error)})
     amounts = [0, 0.4, 19.99, 99, 100, 101, 219.99999, 569.9999999999999, 999.5, 1000,

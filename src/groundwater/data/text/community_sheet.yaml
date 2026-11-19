@@ -9,8 +9,21 @@
 # a machine translation, so none is here; the words below are what such a
 # translation would be made of.
 
+# What the sheet is, on the card of the Handover page that builds it, in
+# both apps.
+about: >-
+  One page for the community to keep, in plain English: how much water the
+  borehole gives, whether it is safe to drink, who to call, how to report a
+  fault and what to keep away from it. It says a little less than the
+  pumping test allows, never more, and says so where something is not known.
+
 title: Your borehole at {place}
 title_unnamed: Your borehole
+# across the top of a sheet built with one of the bundled examples loaded,
+# so that a copy made while trying the toolkit is never taken for a real one
+example: >-
+  This sheet was made from example data. It is not about a real borehole and
+  must not be handed out.
 
 # --- how much water -----------------------------------------------------
 # The amount is the lower end of the safe yield, rounded down, as jerrycans
@@ -128,6 +141,9 @@ builder_notes:
     No report address is set, so the sheet carries no square to scan.
   no_committee: >-
     No committee member is entered, so the sheet leaves lines to write on.
+  example: >-
+    A bundled example is loaded, so the sheet says across its top that it is
+    not about a real borehole.
   english_only: >-
     The sheet is in English. A Krio version waits for a translation checked
     by native speakers; none is machine made.

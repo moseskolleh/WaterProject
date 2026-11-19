@@ -607,3 +607,34 @@ need real project inputs or decisions to finish calibrating it.
    recorded and once after, while two projects in one village whose logs
    share a reference and carry no position share the identifier and
    count once.
+
+31. **The community handover sheet (added with PLAN.md step 9.1).** The
+   sheet is one page a community keeps and plans by, so four things on
+   it want the programme's word. (a) **The amount of water in a day.**
+   The toolkit holds no daily amount, only the safe yield in m3/h with
+   its range. The sheet takes the lower end of that range (the safe
+   yield where there is no range), multiplies it by the hours the pump
+   is used each day, which whoever builds the sheet enters, and rounds
+   down to two figures; with no hours it gives the amount in an hour.
+   It does not cap the amount at what a handpump can deliver, and it
+   gives no number of people the borehole serves, because the toolkit
+   has neither a pump's delivery rate nor a litres-per-person standard
+   to work from. Say whether there is a rule the programme uses (hours
+   of use, a pump's rate, litres per person a day) that should replace
+   this. (b) **Untested and unproven water.** Where there is no water
+   quality result, or the tests are incomplete, the sheet says the
+   water is not known to be safe and to treat it before drinking. It
+   names no treatment. Confirm the wording, and say whether the sheet
+   should name one. (c) **How a fault is reported.** The sheet says to
+   tell the caretaker or a committee member and gives the borehole's
+   identifier; with a report address set (item 23a) it also carries
+   the plate's link as a square to scan. It prints no telephone number
+   and no SMS words, since no number is known. (d) **Krio.** The sheet
+   is in English only. Give the Krio wording of
+   `groundwater/data/text/community_sheet.yaml`, translated and checked
+   by native speakers; none is machine translated, and step 9.2 is what
+   will let a second language sit beside the first. (e) **What to keep
+   away.** The sheet shows four rows of the separation table (buildings
+   3 m, hand dug wells 20 m, latrines and soakaways 20 m, dumps and
+   burial grounds 1000 m) and leaves out the rows a village cannot act
+   on (other boreholes, streams, the coast). Confirm the choice.

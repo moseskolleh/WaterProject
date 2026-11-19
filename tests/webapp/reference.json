@@ -198289,6 +198289,19 @@
    },
    {
     "site": {
+     "community": "Rokel"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.39,
+      "safe_yield_low_m3_per_h": 0.22,
+      "confidence": "established"
+     }
+    },
+    "example": true
+   },
+   {
+    "site": {
      "community": "A"
     },
     "asset_id": "SL-WAR-8FEEVKQ-T",
@@ -198304,6 +198317,7 @@
   "results": [
    {
     "title": "Your borehole at Rokel",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -198410,6 +198424,7 @@
    },
    {
     "title": "Your borehole at Dr. Timbo's  Residence",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -198518,6 +198533,7 @@
    },
    {
     "title": "Your borehole at Kuntoloh",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "first_estimate",
@@ -198632,6 +198648,7 @@
    },
    {
     "title": "Your borehole",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -198738,6 +198755,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -198844,6 +198862,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -198953,6 +198972,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -199062,6 +199082,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -199171,6 +199192,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -199279,6 +199301,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -199388,6 +199411,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -199496,6 +199520,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -199603,6 +199628,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "first_estimate",
@@ -199713,6 +199739,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -199823,6 +199850,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -199933,6 +199961,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -200043,6 +200072,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -200153,6 +200183,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "measured",
@@ -200263,6 +200294,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -200368,6 +200400,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -200475,6 +200508,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -200580,6 +200614,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -200685,6 +200720,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -200790,6 +200826,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
@@ -200888,6 +200925,118 @@
     },
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
+    ]
+   },
+   {
+    "title": "Your borehole at Rokel",
+    "example": "This sheet was made from example data. It is not about a real borehole and must not be handed out.",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 220,
+     "jerrycans_per_hour": 11,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "About 11 jerrycans of water in an hour.",
+     "lines": [
+      "That is 220 litres in an hour. A jerrycan holds 20 litres.",
+      "This comes from the pumping test done on the borehole.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "How far each must be kept from the borehole. The picture is not to scale."
+    },
+    "notes": [
+     "A bundled example is loaded, so the sheet says across its top that it is not about a real borehole.",
+     "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
      "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
      "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
@@ -200898,6 +201047,7 @@
    },
    {
     "title": "Your borehole at A",
+    "example": "",
     "water": {
      "heading": "How much water",
      "state": "none",
