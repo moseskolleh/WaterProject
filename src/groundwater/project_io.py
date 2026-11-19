@@ -83,8 +83,9 @@ RESET_ON_LOAD_KEYS = (
     "issued_documents",
     "ledger_drilled_pick",
     # the community handover sheet's hours and plate identifier: another
-    # project's would print the wrong borehole's number on this one's sheet
-    "ho_sheet_hours", "ho_sheet_asset",
+    # project's would print the wrong borehole's number on this one's sheet;
+    # and its language, which is that community's
+    "ho_sheet_hours", "ho_sheet_asset", "ho_sheet_language",
     "topo_path", "topo_source", "topo_report", "topo_inputs", "terrain_result", "profile_path",
     "map_paths", "subsurface_paths", "section_path", "pseudosection_path",
     "traverse", "geolibre_path", "geolibre_area", "geolibre_layers",

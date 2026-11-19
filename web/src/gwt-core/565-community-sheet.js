@@ -63,14 +63,14 @@
    * @param {string[]} notes
    * @returns {Rec}
    */
-  function sheetWater(analysis, hours, notes) {
+  function sheetWater(analysis, hours, notes, say) {
     var table = phraseTable('community_sheet.builder_notes');
     /** @type {Rec} */
     var water = {
-      heading: phrase('community_sheet.water_heading'), state: 'none',
+      heading: say.phrase('community_sheet.water_heading'), state: 'none',
       litres_per_hour: null, jerrycans_per_hour: null, hours_per_day: null,
       litres_per_day: null, jerrycans_per_day: null,
-      headline: phrase('community_sheet.water_none'), lines: [],
+      headline: say.phrase('community_sheet.water_none'), lines: [],
     };
     var rec = analysis ? analysis.yield_recommendation : null;
     if (!rec || rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
@@ -87,45 +87,45 @@
     water.litres_per_hour = perHour;
     water.jerrycans_per_hour = Math.floor(perHour / JERRYCAN_L);
     if (perHour <= 0) {
-      water.headline = phrase('community_sheet.water_very_little');
+      water.headline = say.phrase('community_sheet.water_very_little');
     } else if (hours === null) {
       notes.push(table.no_hours);
       if (water.jerrycans_per_hour >= 1) {
-        water.headline = phrase('community_sheet.water_hour', { cans: water.jerrycans_per_hour });
+        water.headline = say.phrase('community_sheet.water_hour', { cans: water.jerrycans_per_hour });
         /* the litres those jerrycans make, so that the two figures agree by
          * the reader's own arithmetic; a rounding down once more */
-        water.lines.push(phrase('community_sheet.water_hour_detail',
+        water.lines.push(say.phrase('community_sheet.water_hour_detail',
           { litres: water.jerrycans_per_hour * JERRYCAN_L, can: JERRYCAN_L }));
       } else {
-        water.headline = phrase('community_sheet.water_litres_hour', { litres: perHour });
+        water.headline = say.phrase('community_sheet.water_litres_hour', { litres: perHour });
       }
     } else {
       var perDay = roundDown(perHour * hours);
-      var unit = phraseTable('community_sheet.hour_words')[hours === 1 ? 'one' : 'other'];
+      var unit = say.phraseTable('community_sheet.hour_words')[hours === 1 ? 'one' : 'other'];
       water.hours_per_day = hours;
       water.litres_per_day = perDay;
       water.jerrycans_per_day = Math.floor(perDay / JERRYCAN_L);
       if (perDay <= 0) {
-        water.headline = phrase('community_sheet.water_very_little');
+        water.headline = say.phrase('community_sheet.water_very_little');
       } else if (water.jerrycans_per_day >= 1) {
-        water.headline = phrase('community_sheet.water_day', { cans: water.jerrycans_per_day });
-        water.lines.push(phrase('community_sheet.water_day_detail',
+        water.headline = say.phrase('community_sheet.water_day', { cans: water.jerrycans_per_day });
+        water.lines.push(say.phrase('community_sheet.water_day_detail',
           { litres: water.jerrycans_per_day * JERRYCAN_L, hours: hours, unit: unit,
             can: JERRYCAN_L }));
       } else {
-        water.headline = phrase('community_sheet.water_litres_day',
+        water.headline = say.phrase('community_sheet.water_litres_day',
           { litres: perDay, hours: hours, unit: unit });
       }
     }
     if (indicative) {
       notes.push(table.first_estimate);
-      water.lines.push(phrase('community_sheet.water_first_estimate'));
+      water.lines.push(say.phrase('community_sheet.water_first_estimate'));
     } else {
-      water.lines.push(phrase('community_sheet.water_tested'));
+      water.lines.push(say.phrase('community_sheet.water_tested'));
     }
     /* nothing to fall short of where the sheet says there is very little */
     if (perHour > 0 && (hours === null || water.litres_per_day > 0)) {
-      water.lines.push(phrase('community_sheet.water_shortage'));
+      water.lines.push(say.phrase('community_sheet.water_shortage'));
     }
     return water;
   }
@@ -133,10 +133,11 @@
   /**
    * @param {Rec|null|undefined} quality
    * @param {string[]} notes
+   * @param {Speaker} say
    * @returns {Rec}
    */
-  function sheetQuality(quality, notes) {
-    var answers = phraseTable('community_sheet.quality');
+  function sheetQuality(quality, notes, say) {
+    var answers = say.phraseTable('community_sheet.quality');
     var state = quality ? quality.verdict_state : null;
     if (!Object.prototype.hasOwnProperty.call(answers, state) || state === 'none') {
       if (!quality) {
@@ -156,21 +157,22 @@
         : quality.national_exceedances) || [];
       var names = found.map(function (/** @type {Rec} */ row) { return row.parameter; });
       if (names.length) {
-        lines.push(phrase('community_sheet.quality_found', { names: names.join(', ') }));
+        lines.push(say.phrase('community_sheet.quality_found', { names: names.join(', ') }));
       }
-      lines.push(phrase('community_sheet.quality_ask'));
+      lines.push(say.phrase('community_sheet.quality_ask'));
     }
-    return { heading: phrase('community_sheet.quality_heading'), state: state,
+    return { heading: say.phrase('community_sheet.quality_heading'), state: state,
       headline: answers[state], lines: lines };
   }
 
   /**
    * @param {Rec[]|null|undefined} committee
    * @param {string[]} notes
+   * @param {Speaker} say
    * @returns {Rec}
    */
-  function sheetContacts(committee, notes) {
-    var columns = phraseTable('community_sheet.contacts_columns');
+  function sheetContacts(committee, notes, say) {
+    var columns = say.phraseTable('community_sheet.contacts_columns');
     /** @type {string[][]} */
     var rows = [];
     (committee || []).forEach(function (member) {
@@ -188,9 +190,9 @@
       notes.push(phraseTable('community_sheet.builder_notes').no_committee);
       for (var i = 0; i < BLANK_CONTACTS; i += 1) rows.push(['', '', '']);
     }
-    var writeIn = phraseTable('community_sheet.contacts_write_in');
+    var writeIn = say.phraseTable('community_sheet.contacts_write_in');
     Object.keys(writeIn).forEach(function (key) { rows.push([writeIn[key], '', '']); });
-    return { heading: phrase('community_sheet.contacts_heading'),
+    return { heading: say.phrase('community_sheet.contacts_heading'),
       header: [columns.role, columns.name, columns.phone], rows: rows };
   }
 
@@ -198,11 +200,12 @@
    * @param {string} typed
    * @param {*} reportUrl
    * @param {string[]} notes
+   * @param {Speaker} say
    * @returns {Rec}
    */
-  function sheetReport(typed, reportUrl, notes) {
+  function sheetReport(typed, reportUrl, notes, say) {
     var table = phraseTable('community_sheet.builder_notes');
-    var lines = [phrase('community_sheet.report_tell')];
+    var lines = [say.phrase('community_sheet.report_tell')];
     var payload = '', caption = '';
     /* the registry's own reading of what was typed: case, spacing and the
      * usual misreadings forgiven, a failing check character not. A number
@@ -213,7 +216,7 @@
     } else if (!assetId) {
       notes.push(table.bad_identifier);
     } else {
-      lines.push(phrase('community_sheet.report_number', { id: assetId }));
+      lines.push(say.phrase('community_sheet.report_number', { id: assetId }));
       /* an address the registry refuses stops the sheet, as it stops the
        * plate, rather than being printed */
       payload = reportLink(assetId, reportUrl);
@@ -221,19 +224,20 @@
         /* a link too long for the symbol stops the sheet here, where both
          * apps show the reason before the button, and not in the writer */
         qrEncode(payload, { ecc: SCAN_ECC });
-        lines.push(phrase('community_sheet.report_scan'));
-        caption = phrase('community_sheet.report_caption', { id: assetId });
+        lines.push(say.phrase('community_sheet.report_scan'));
+        caption = say.phrase('community_sheet.report_caption', { id: assetId });
       } else {
         notes.push(table.no_address);
       }
     }
-    return { heading: phrase('community_sheet.report_heading'), identifier: assetId,
+    return { heading: say.phrase('community_sheet.report_heading'), identifier: assetId,
       lines: lines, payload: payload, caption: caption };
   }
 
-  /** @returns {Rec} */
-  function sheetKeepAway() {
-    var words = phraseTable('community_sheet.keep_structures');
+  /** @param {Speaker} say
+   * @returns {Rec} */
+  function sheetKeepAway(say) {
+    var words = say.phraseTable('community_sheet.keep_structures');
     /** @type {Array<[number, string]>} */
     var kept = [];
     loadSeparationDistances().forEach(function (row) {
@@ -252,32 +256,42 @@
         last.what.push(item[1]);
       } else {
         rings.push({ distance_m: item[0], what: [item[1]],
-          label: phrase('community_sheet.keep_metres', { distance: item[0] }) });
+          label: say.phrase('community_sheet.keep_metres', { distance: item[0] }) });
       }
     });
     return {
-      heading: phrase('community_sheet.keep_heading'),
+      heading: say.phrase('community_sheet.keep_heading'),
       lines: kept.map(function (item) {
-        return phrase('community_sheet.keep_line', { what: item[1], distance: item[0] });
+        return say.phrase('community_sheet.keep_line', { what: item[1], distance: item[0] });
       }),
       rings: rings,
-      centre: phrase('community_sheet.keep_centre'),
-      caption: phrase('community_sheet.keep_caption'),
+      centre: say.phrase('community_sheet.keep_centre'),
+      caption: say.phrase('community_sheet.keep_caption'),
     };
   }
 
   /** Everything the community handover sheet says, as plain data
-   * (community_sheet.py community_sheet_content). Throws for a report
-   * address the registry would not print on a plate, with its reason, and
-   * for a link too long for the square a phone scans, with the encoder's.
+   * (community_sheet.py community_sheet_content). options.language is the
+   * code of the translation the sheet is printed in (C.textLanguages lists
+   * those on offer), and nothing for English; options.translations the
+   * translations to read it from, the build's own unless given. What the
+   * translation has no words for is printed in English and counted for the
+   * builder, whose notes are always English.
+   *
+   * Throws for a report address the registry would not print on a plate,
+   * with its reason; for a link too long for the square a phone scans, with
+   * the encoder's; and for a language that is not on offer, with every
+   * reason it is not.
    * @param {Rec} site the project's header block
    * @param {{analysis?: Rec|null, quality?: Rec|null, committee?: Rec[]|null,
    *   assetId?: string, hoursPerDay?: number|null, example?: boolean,
-   *   config?: Config}} [options]
+   *   config?: Config, language?: string,
+   *   translations?: Record<string, Rec>}} [options]
    * @returns {Rec} */
   function communitySheetContent(site, options) {
     var opts = options || {};
     var cfg = opts.config || defaultConfig();
+    var say = speaker(opts.language, opts.translations);
     /** @type {string[]} */
     var notes = [];
     var place = sheetText(site ? site.community : '');
@@ -285,17 +299,31 @@
     if (opts.example) notes.push(phraseTable('community_sheet.builder_notes').example);
     /** @type {Rec} */
     var content = {
-      title: place ? phrase('community_sheet.title', { place: place })
-        : phrase('community_sheet.title_unnamed'),
+      title: place ? say.phrase('community_sheet.title', { place: place })
+        : say.phrase('community_sheet.title_unnamed'),
       /* across the top of a sheet built with a bundled example loaded */
-      example: opts.example ? phrase('community_sheet.example') : '',
-      water: sheetWater(opts.analysis, sheetHours(opts.hoursPerDay), notes),
-      quality: sheetQuality(opts.quality, notes),
-      contacts: sheetContacts(opts.committee, notes),
-      report: sheetReport(identifier, cfg.service.report_url, notes),
-      keep_away: sheetKeepAway(),
+      example: opts.example ? say.phrase('community_sheet.example') : '',
+      water: sheetWater(opts.analysis, sheetHours(opts.hoursPerDay), notes, say),
+      quality: sheetQuality(opts.quality, notes, say),
+      contacts: sheetContacts(opts.committee, notes, say),
+      report: sheetReport(identifier, cfg.service.report_url, notes, say),
+      keep_away: sheetKeepAway(say),
+      language: Object.assign({}, say.language),
+      fell_back: say.fellBack.slice(),
     };
-    notes.push(phraseTable('community_sheet.builder_notes').english_only);
+    if (say.code) {
+      notes.push(phrase('community_sheet.in_language', {
+        name: say.language.name, translated_by: say.language.translated_by,
+        checked_by: say.language.checked_by }));
+      if (say.fellBack.length) {
+        notes.push(phrase('community_sheet.not_translated',
+          { count: say.fellBack.length, name: say.language.name }));
+      }
+    } else if (!textLanguages(opts.translations).length) {
+      /* with a translation on offer the builder chose English, and is not
+       * told that none exists */
+      notes.push(phraseTable('community_sheet.builder_notes').english_only);
+    }
     content.notes = notes;
     return content;
   }

@@ -16,6 +16,7 @@ calls the apps make; nothing is computed differently.
     groundwater bundle OUT.zip [--folder DIR] [--raw ROLE FILE ...] [--report FILE ...]
                        [--table FILE ...] [--figure FILE ...] [--project FILE ...]
                        [--title TEXT] [--borehole ID] [--date YYYY-MM-DD]
+    groundwater translation [CODE] [--folder DIR]
 """
 
 from __future__ import annotations
@@ -362,6 +363,55 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return {"verified": 0, "unconfirmed": 2}.get(report["verdict"], 1)
 
 
+def cmd_translation(args: argparse.Namespace) -> int:
+    """Say whether a translation can be offered, and what it still lacks
+    (PLAN.md step 9.2). With no code, every translation is listed; with one,
+    every reason it is refused, or every part of the community handover sheet
+    it has no words for yet. The translations are the package's own
+    (``data/text/<code>``) unless a folder of them is given, which is how one
+    is checked before it is put there. Nothing is written."""
+    from .community_sheet import sheet_entries
+    from .text import read_translations, translation_problems, translations, untranslated
+
+    if args.folder:
+        root = Path(args.folder)
+        if not root.is_dir():
+            print(f"{root}: not a folder", file=sys.stderr)
+            return 1
+        held = read_translations(root)
+    else:
+        held = translations()
+    wanted = sheet_entries()
+
+    def told(code: str) -> bool:
+        problems = translation_problems(code, held)
+        if problems:
+            print(f"{code}: cannot be offered")
+            for line in problems:
+                print(f"  - {line}")
+            return False
+        facts = held[code]["language"]
+        left = untranslated(code, wanted, held)
+        print(f"{code}: {facts['name'].strip()}, translated by {facts['translated_by'].strip()}, "
+              f"checked by {facts['checked_by'].strip()}")
+        if left:
+            print(f"  The community handover sheet prints {len(left)} of its parts in English "
+                  "until they are translated:")
+            for ident in left:
+                print(f"  - {ident}")
+        else:
+            print("  The community handover sheet is translated in full.")
+        return True
+
+    if args.code:
+        return 0 if told(args.code) else 1
+    if not held:
+        print("No translation is here. The community handover sheet is in English only.")
+        return 0
+    # every one is told before the answer is given
+    return 0 if all([told(code) for code in sorted(held)]) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="groundwater",
@@ -419,6 +469,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "(.yaml or .gwt.json; may be given more than once)")
     p.add_argument("--code", help="look a code read off a cover up in the project files instead")
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser("translation", help="check a translation of the community-facing text")
+    p.add_argument("code", nargs="?", help="the language's code, as its folder is named "
+                   "(default: every translation)")
+    p.add_argument("--folder", help="a folder of translations to read, one to a subfolder "
+                   "(default: the ones the package bundles)")
+    p.set_defaults(func=cmd_translation)
     return parser
 
 

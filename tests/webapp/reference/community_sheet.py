@@ -36,6 +36,71 @@ COMMITTEE = [
     {"role": "", "name": "", "contact": "+232 77 111 222"},
 ]
 
+#: Translations of the sheet made up for the purpose (PLAN.md step 9.2; none
+#: is bundled): a whole one for the parts a full sheet prints, one that has a
+#: sentence and part of a table, and one that may not be offered.
+TRANSLATIONS = {
+    "zz": {
+        "language": {"name": "Zedish", "translated_by": "A. Translator",
+                     "checked_by": "B. Checker"},
+        "text": {"community_sheet": {
+            "title": "Una b\u0254r\u0254l na {place}",
+            "title_unnamed": "Una b\u0254r\u0254l",
+            "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+            "water_heading": "Us k\u0254l wata",
+            "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+            "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} "
+                                "{unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+            "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+            "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+            "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+            "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+            "hour_words": {"one": "awa", "other": "awa d\u025bm"},
+            "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+            "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+            "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+            "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+            "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+            "quality_heading": "Di wata fayn f\u0254 drink?",
+            "quality": {"pass": "Y\u025bs.", "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+                        "health_fail": "N\u0254.", "national_fail": "N\u0254 yet.",
+                        "indeterminate": "Wi n\u0254 no yet.", "none": "D\u025bn n\u0254 t\u025bst am yet."},
+            "quality_found": "Di t\u025bst si dis tumos: {names}.",
+            "quality_ask": "Aks di k\u0254miti.",
+            "contacts_heading": "Udat f\u0254 k\u0254l",
+            "contacts_columns": {"role": "Udat", "name": "Nem", "phone": "Fon"},
+            "contacts_write_in": {"mechanic": "P\u0254mp mekanik", "office": "Di wata \u0254fis"},
+            "report_heading": "If di p\u0254mp pwel",
+            "report_tell": "T\u025bl di kiateka di sem de.",
+            "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+            "report_scan": "\u0254 skan di skw\u025by.",
+            "report_caption": "Skan f\u0254 rip\u0254t {id}",
+            "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+            "keep_structures": {"Septic tank or soakaway": "Latrin d\u025bm",
+                                "Buildings": "Os d\u025bm", "Hand dug well": "W\u025bl d\u025bm",
+                                "Solid waste dump or burial ground": "D\u0254ti ples"},
+            "keep_line": "{what}: {distance:g} mita.",
+            "keep_centre": "B\u0254r\u0254l",
+            "keep_metres": "{distance:g} m",
+            "keep_caption": "Di pikch\u0254 n\u0254 to skel.",
+        }},
+    },
+    "zy": {
+        "language": {"name": "Ypsilonian", "translated_by": "C. Translator",
+                     "checked_by": "D. Checker"},
+        "text": {"community_sheet": {
+            "title": "{place}: una b\u0254r\u0254l",
+            "quality": {"none": "Wi n\u0254 no yet."},
+            "keep_structures": {"Buildings": "Os d\u025bm"},
+            "water_first_estimate": None,
+        }},
+    },
+    # no checker is named: it is not offered, and a sheet asked for in it is
+    # refused
+    "yy": {"language": {"name": "Unchecked", "translated_by": "E. Translator"},
+           "text": {"community_sheet": {"title": "X {place}"}}},
+}
+
 #: The sheet for: nothing at all; the whole of it; and then each thing that
 #: changes what it says, one at a time. ``hours_per_day`` is given as JSON
 #: gives it, so a text or a true where a number belongs is in the list.
@@ -118,6 +183,31 @@ COMMUNITY_SHEET_CASES = [
      "report_url": "http://water.example.org/app/"},
     # and one with no plate to name does not come to it
     {"site": {"community": "A"}, "report_url": "https://water.example.org/app/"},
+    # --- in another language (PLAN.md step 9.2) ---
+    # the whole of it: every sentence a full sheet prints, and what a failed
+    # water test, an example and a first estimate add
+    {"site": {"community": "Rokel"}, "analysis": _yield(0.39, 0.22),
+     "quality": _verdict("pass"), "committee": COMMITTEE, "asset_id": "SL-WAR-8FEEVKQ-T",
+     "hours_per_day": 8, "report_url": "https://water.example.org/app/",
+     "language": "zz", "translations": TRANSLATIONS},
+    {"site": {"community": ""}, "analysis": _yield(1.25, None, "indicative"),
+     "quality": _verdict("health_fail", "Manganese"), "example": True, "hours_per_day": 1,
+     "language": "zz", "translations": TRANSLATIONS},
+    {"site": {"community": "A"}, "analysis": _yield(0.019), "hours_per_day": 6.5,
+     "quality": _verdict("aesthetic"), "language": "zz", "translations": TRANSLATIONS},
+    {"site": {"community": "A"}, "language": "zz", "translations": TRANSLATIONS},
+    # a part of it: the rest is English, and the builder is told how much
+    {"site": {"community": "Rokel"}, "analysis": _yield(0.39, 0.22, "indicative"),
+     "committee": COMMITTEE, "asset_id": "SL-WAR-8FEEVKQ-T", "hours_per_day": 8,
+     "language": "zy", "translations": TRANSLATIONS},
+    # English where a translation is on offer: nobody is told that none exists
+    {"site": {"community": "Rokel"}, "translations": TRANSLATIONS},
+    # a language that is not offered, and one that is not there, stop the
+    # sheet in both engines
+    {"site": {"community": "Rokel"}, "language": "yy", "translations": TRANSLATIONS},
+    {"site": {"community": "Rokel"}, "language": "qq", "translations": TRANSLATIONS},
+    # and with none bundled, any language is one that is not there
+    {"site": {"community": "Rokel"}, "language": "kri"},
 ]
 
 
@@ -135,7 +225,8 @@ def community_sheet_reference() -> dict:
                 quality=_ns(case["quality"]) if case.get("quality") else None,
                 committee=case.get("committee"), asset_id=case.get("asset_id", ""),
                 hours_per_day=case.get("hours_per_day"),
-                example=case.get("example", False), config=config))
+                example=case.get("example", False), config=config,
+                language=case.get("language", ""), translations=case.get("translations")))
         except ValueError as error:
             results.append({"error": str(error)})
     amounts = [0, 0.4, 19.99, 99, 100, 101, 219.99999, 569.9999999999999, 999.5, 1000,

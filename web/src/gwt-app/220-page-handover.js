@@ -26,13 +26,22 @@
     return held && held.asset_id ? String(held.asset_id) : '';
   }
 
+  /* The language the sheet is printed in (PLAN.md step 9.2): the one chosen
+   * on the card while this build still offers it, else English. A project
+   * saved where a translation was installed opens in English where it is
+   * not, rather than not at all. */
+  function sheetLanguage() {
+    var chosen = (store.get('handover') || {}).language || '';
+    return C.textLanguages().some(function (l) { return l.code === chosen; }) ? chosen : '';
+  }
+
   function communitySheetNow(cfg) {
     var handover = store.get('handover') || {};
     return C.communitySheetContent(store.get('site'), {
       analysis: derived.analysis || null, quality: derived.assessment || null,
       committee: handover.committee || [], assetId: sheetAssetId(),
       hoursPerDay: typeof handover.hoursPerDay === 'number' ? handover.hoursPerDay : null,
-      example: onExampleData(), config: cfg,
+      example: onExampleData(), config: cfg, language: sheetLanguage(),
     });
   }
 
@@ -166,7 +175,10 @@
           issue: issueFor('community_sheet'),
         });
         var bytes = await builder.build();
-        var name = 'community_sheet_' + S.slug(siteLabel()) + '.docx';
+        /* a sheet in another language is a file of its own beside the
+         * English one */
+        var name = 'community_sheet_' + S.slug(siteLabel()) +
+          (content.language.code ? '_' + content.language.code : '') + '.docx';
         S.download(name, bytes);
         issued = recordIssue(builder.record, name, bytes);
       });
@@ -203,6 +215,10 @@
       S.clear(saying);
       S.append(saying, said());
     }
+    /* The choice of language is offered only where a translation is: one
+     * that names who translated it and who checked it, and has no fault
+     * (C.textLanguages). With none, the sheet is English and says so. */
+    var offered = C.textLanguages();
     return card('Community handover sheet', [
       el('p.muted', C.phrase('community_sheet.about')),
       el('div.field-row', [
@@ -214,6 +230,13 @@
           store.set('handover.assetId', String(v).trim());
           say();
         }), 'as on its plate, from the Asset registry'),
+        offered.length ? field('Language of the sheet', S.selectInput(sheetLanguage(),
+          [{ value: '', label: 'English' }].concat(offered.map(function (l) {
+            return { value: l.code, label: l.name };
+          })), function (v) {
+            store.set('handover.language', v);
+            say();
+          }), 'what the translation has no words for is printed in English') : null,
       ]),
       saying,
       el('div.btn-row', [

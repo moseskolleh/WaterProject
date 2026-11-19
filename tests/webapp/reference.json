@@ -198487,6 +198487,950 @@
      "community": "A"
     },
     "report_url": "https://water.example.org/app/"
+   },
+   {
+    "site": {
+     "community": "Rokel"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.39,
+      "safe_yield_low_m3_per_h": 0.22,
+      "confidence": "established"
+     }
+    },
+    "quality": {
+     "verdict_state": "pass",
+     "health_exceedances": [],
+     "national_exceedances": []
+    },
+    "committee": [
+     {
+      "role": "Chairperson",
+      "name": "  Aminata   Kamara ",
+      "contact": "076 000 000"
+     },
+     {
+      "role": "Caretaker",
+      "name": "Sorie Conteh",
+      "phone": ""
+     },
+     {
+      "role": "Treasurer",
+      "name": " ",
+      "contact": ""
+     },
+     {
+      "role": "",
+      "name": "",
+      "contact": "+232 77 111 222"
+     }
+    ],
+    "asset_id": "SL-WAR-8FEEVKQ-T",
+    "hours_per_day": 8,
+    "report_url": "https://water.example.org/app/",
+    "language": "zz",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Una b\u0254r\u0254l na {place}",
+        "title_unnamed": "Una b\u0254r\u0254l",
+        "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+        "water_heading": "Us k\u0254l wata",
+        "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+        "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} {unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+        "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+        "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+        "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+        "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+        "hour_words": {
+         "one": "awa",
+         "other": "awa d\u025bm"
+        },
+        "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+        "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+        "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+        "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+        "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+        "quality_heading": "Di wata fayn f\u0254 drink?",
+        "quality": {
+         "pass": "Y\u025bs.",
+         "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+         "health_fail": "N\u0254.",
+         "national_fail": "N\u0254 yet.",
+         "indeterminate": "Wi n\u0254 no yet.",
+         "none": "D\u025bn n\u0254 t\u025bst am yet."
+        },
+        "quality_found": "Di t\u025bst si dis tumos: {names}.",
+        "quality_ask": "Aks di k\u0254miti.",
+        "contacts_heading": "Udat f\u0254 k\u0254l",
+        "contacts_columns": {
+         "role": "Udat",
+         "name": "Nem",
+         "phone": "Fon"
+        },
+        "contacts_write_in": {
+         "mechanic": "P\u0254mp mekanik",
+         "office": "Di wata \u0254fis"
+        },
+        "report_heading": "If di p\u0254mp pwel",
+        "report_tell": "T\u025bl di kiateka di sem de.",
+        "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+        "report_scan": "\u0254 skan di skw\u025by.",
+        "report_caption": "Skan f\u0254 rip\u0254t {id}",
+        "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+        "keep_structures": {
+         "Septic tank or soakaway": "Latrin d\u025bm",
+         "Buildings": "Os d\u025bm",
+         "Hand dug well": "W\u025bl d\u025bm",
+         "Solid waste dump or burial ground": "D\u0254ti ples"
+        },
+        "keep_line": "{what}: {distance:g} mita.",
+        "keep_centre": "B\u0254r\u0254l",
+        "keep_metres": "{distance:g} m",
+        "keep_caption": "Di pikch\u0254 n\u0254 to skel."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: una b\u0254r\u0254l",
+        "quality": {
+         "none": "Wi n\u0254 no yet."
+        },
+        "keep_structures": {
+         "Buildings": "Os d\u025bm"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": ""
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 1.25,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "indicative"
+     }
+    },
+    "quality": {
+     "verdict_state": "health_fail",
+     "health_exceedances": [
+      {
+       "parameter": "Manganese"
+      }
+     ],
+     "national_exceedances": []
+    },
+    "example": true,
+    "hours_per_day": 1,
+    "language": "zz",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Una b\u0254r\u0254l na {place}",
+        "title_unnamed": "Una b\u0254r\u0254l",
+        "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+        "water_heading": "Us k\u0254l wata",
+        "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+        "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} {unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+        "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+        "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+        "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+        "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+        "hour_words": {
+         "one": "awa",
+         "other": "awa d\u025bm"
+        },
+        "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+        "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+        "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+        "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+        "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+        "quality_heading": "Di wata fayn f\u0254 drink?",
+        "quality": {
+         "pass": "Y\u025bs.",
+         "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+         "health_fail": "N\u0254.",
+         "national_fail": "N\u0254 yet.",
+         "indeterminate": "Wi n\u0254 no yet.",
+         "none": "D\u025bn n\u0254 t\u025bst am yet."
+        },
+        "quality_found": "Di t\u025bst si dis tumos: {names}.",
+        "quality_ask": "Aks di k\u0254miti.",
+        "contacts_heading": "Udat f\u0254 k\u0254l",
+        "contacts_columns": {
+         "role": "Udat",
+         "name": "Nem",
+         "phone": "Fon"
+        },
+        "contacts_write_in": {
+         "mechanic": "P\u0254mp mekanik",
+         "office": "Di wata \u0254fis"
+        },
+        "report_heading": "If di p\u0254mp pwel",
+        "report_tell": "T\u025bl di kiateka di sem de.",
+        "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+        "report_scan": "\u0254 skan di skw\u025by.",
+        "report_caption": "Skan f\u0254 rip\u0254t {id}",
+        "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+        "keep_structures": {
+         "Septic tank or soakaway": "Latrin d\u025bm",
+         "Buildings": "Os d\u025bm",
+         "Hand dug well": "W\u025bl d\u025bm",
+         "Solid waste dump or burial ground": "D\u0254ti ples"
+        },
+        "keep_line": "{what}: {distance:g} mita.",
+        "keep_centre": "B\u0254r\u0254l",
+        "keep_metres": "{distance:g} m",
+        "keep_caption": "Di pikch\u0254 n\u0254 to skel."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: una b\u0254r\u0254l",
+        "quality": {
+         "none": "Wi n\u0254 no yet."
+        },
+        "keep_structures": {
+         "Buildings": "Os d\u025bm"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.019,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 6.5,
+    "quality": {
+     "verdict_state": "aesthetic",
+     "health_exceedances": [],
+     "national_exceedances": []
+    },
+    "language": "zz",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Una b\u0254r\u0254l na {place}",
+        "title_unnamed": "Una b\u0254r\u0254l",
+        "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+        "water_heading": "Us k\u0254l wata",
+        "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+        "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} {unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+        "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+        "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+        "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+        "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+        "hour_words": {
+         "one": "awa",
+         "other": "awa d\u025bm"
+        },
+        "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+        "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+        "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+        "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+        "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+        "quality_heading": "Di wata fayn f\u0254 drink?",
+        "quality": {
+         "pass": "Y\u025bs.",
+         "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+         "health_fail": "N\u0254.",
+         "national_fail": "N\u0254 yet.",
+         "indeterminate": "Wi n\u0254 no yet.",
+         "none": "D\u025bn n\u0254 t\u025bst am yet."
+        },
+        "quality_found": "Di t\u025bst si dis tumos: {names}.",
+        "quality_ask": "Aks di k\u0254miti.",
+        "contacts_heading": "Udat f\u0254 k\u0254l",
+        "contacts_columns": {
+         "role": "Udat",
+         "name": "Nem",
+         "phone": "Fon"
+        },
+        "contacts_write_in": {
+         "mechanic": "P\u0254mp mekanik",
+         "office": "Di wata \u0254fis"
+        },
+        "report_heading": "If di p\u0254mp pwel",
+        "report_tell": "T\u025bl di kiateka di sem de.",
+        "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+        "report_scan": "\u0254 skan di skw\u025by.",
+        "report_caption": "Skan f\u0254 rip\u0254t {id}",
+        "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+        "keep_structures": {
+         "Septic tank or soakaway": "Latrin d\u025bm",
+         "Buildings": "Os d\u025bm",
+         "Hand dug well": "W\u025bl d\u025bm",
+         "Solid waste dump or burial ground": "D\u0254ti ples"
+        },
+        "keep_line": "{what}: {distance:g} mita.",
+        "keep_centre": "B\u0254r\u0254l",
+        "keep_metres": "{distance:g} m",
+        "keep_caption": "Di pikch\u0254 n\u0254 to skel."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: una b\u0254r\u0254l",
+        "quality": {
+         "none": "Wi n\u0254 no yet."
+        },
+        "keep_structures": {
+         "Buildings": "Os d\u025bm"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "language": "zz",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Una b\u0254r\u0254l na {place}",
+        "title_unnamed": "Una b\u0254r\u0254l",
+        "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+        "water_heading": "Us k\u0254l wata",
+        "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+        "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} {unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+        "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+        "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+        "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+        "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+        "hour_words": {
+         "one": "awa",
+         "other": "awa d\u025bm"
+        },
+        "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+        "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+        "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+        "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+        "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+        "quality_heading": "Di wata fayn f\u0254 drink?",
+        "quality": {
+         "pass": "Y\u025bs.",
+         "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+         "health_fail": "N\u0254.",
+         "national_fail": "N\u0254 yet.",
+         "indeterminate": "Wi n\u0254 no yet.",
+         "none": "D\u025bn n\u0254 t\u025bst am yet."
+        },
+        "quality_found": "Di t\u025bst si dis tumos: {names}.",
+        "quality_ask": "Aks di k\u0254miti.",
+        "contacts_heading": "Udat f\u0254 k\u0254l",
+        "contacts_columns": {
+         "role": "Udat",
+         "name": "Nem",
+         "phone": "Fon"
+        },
+        "contacts_write_in": {
+         "mechanic": "P\u0254mp mekanik",
+         "office": "Di wata \u0254fis"
+        },
+        "report_heading": "If di p\u0254mp pwel",
+        "report_tell": "T\u025bl di kiateka di sem de.",
+        "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+        "report_scan": "\u0254 skan di skw\u025by.",
+        "report_caption": "Skan f\u0254 rip\u0254t {id}",
+        "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+        "keep_structures": {
+         "Septic tank or soakaway": "Latrin d\u025bm",
+         "Buildings": "Os d\u025bm",
+         "Hand dug well": "W\u025bl d\u025bm",
+         "Solid waste dump or burial ground": "D\u0254ti ples"
+        },
+        "keep_line": "{what}: {distance:g} mita.",
+        "keep_centre": "B\u0254r\u0254l",
+        "keep_metres": "{distance:g} m",
+        "keep_caption": "Di pikch\u0254 n\u0254 to skel."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: una b\u0254r\u0254l",
+        "quality": {
+         "none": "Wi n\u0254 no yet."
+        },
+        "keep_structures": {
+         "Buildings": "Os d\u025bm"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "Rokel"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.39,
+      "safe_yield_low_m3_per_h": 0.22,
+      "confidence": "indicative"
+     }
+    },
+    "committee": [
+     {
+      "role": "Chairperson",
+      "name": "  Aminata   Kamara ",
+      "contact": "076 000 000"
+     },
+     {
+      "role": "Caretaker",
+      "name": "Sorie Conteh",
+      "phone": ""
+     },
+     {
+      "role": "Treasurer",
+      "name": " ",
+      "contact": ""
+     },
+     {
+      "role": "",
+      "name": "",
+      "contact": "+232 77 111 222"
+     }
+    ],
+    "asset_id": "SL-WAR-8FEEVKQ-T",
+    "hours_per_day": 8,
+    "language": "zy",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Una b\u0254r\u0254l na {place}",
+        "title_unnamed": "Una b\u0254r\u0254l",
+        "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+        "water_heading": "Us k\u0254l wata",
+        "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+        "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} {unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+        "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+        "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+        "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+        "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+        "hour_words": {
+         "one": "awa",
+         "other": "awa d\u025bm"
+        },
+        "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+        "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+        "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+        "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+        "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+        "quality_heading": "Di wata fayn f\u0254 drink?",
+        "quality": {
+         "pass": "Y\u025bs.",
+         "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+         "health_fail": "N\u0254.",
+         "national_fail": "N\u0254 yet.",
+         "indeterminate": "Wi n\u0254 no yet.",
+         "none": "D\u025bn n\u0254 t\u025bst am yet."
+        },
+        "quality_found": "Di t\u025bst si dis tumos: {names}.",
+        "quality_ask": "Aks di k\u0254miti.",
+        "contacts_heading": "Udat f\u0254 k\u0254l",
+        "contacts_columns": {
+         "role": "Udat",
+         "name": "Nem",
+         "phone": "Fon"
+        },
+        "contacts_write_in": {
+         "mechanic": "P\u0254mp mekanik",
+         "office": "Di wata \u0254fis"
+        },
+        "report_heading": "If di p\u0254mp pwel",
+        "report_tell": "T\u025bl di kiateka di sem de.",
+        "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+        "report_scan": "\u0254 skan di skw\u025by.",
+        "report_caption": "Skan f\u0254 rip\u0254t {id}",
+        "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+        "keep_structures": {
+         "Septic tank or soakaway": "Latrin d\u025bm",
+         "Buildings": "Os d\u025bm",
+         "Hand dug well": "W\u025bl d\u025bm",
+         "Solid waste dump or burial ground": "D\u0254ti ples"
+        },
+        "keep_line": "{what}: {distance:g} mita.",
+        "keep_centre": "B\u0254r\u0254l",
+        "keep_metres": "{distance:g} m",
+        "keep_caption": "Di pikch\u0254 n\u0254 to skel."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: una b\u0254r\u0254l",
+        "quality": {
+         "none": "Wi n\u0254 no yet."
+        },
+        "keep_structures": {
+         "Buildings": "Os d\u025bm"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "Rokel"
+    },
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Una b\u0254r\u0254l na {place}",
+        "title_unnamed": "Una b\u0254r\u0254l",
+        "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+        "water_heading": "Us k\u0254l wata",
+        "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+        "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} {unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+        "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+        "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+        "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+        "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+        "hour_words": {
+         "one": "awa",
+         "other": "awa d\u025bm"
+        },
+        "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+        "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+        "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+        "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+        "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+        "quality_heading": "Di wata fayn f\u0254 drink?",
+        "quality": {
+         "pass": "Y\u025bs.",
+         "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+         "health_fail": "N\u0254.",
+         "national_fail": "N\u0254 yet.",
+         "indeterminate": "Wi n\u0254 no yet.",
+         "none": "D\u025bn n\u0254 t\u025bst am yet."
+        },
+        "quality_found": "Di t\u025bst si dis tumos: {names}.",
+        "quality_ask": "Aks di k\u0254miti.",
+        "contacts_heading": "Udat f\u0254 k\u0254l",
+        "contacts_columns": {
+         "role": "Udat",
+         "name": "Nem",
+         "phone": "Fon"
+        },
+        "contacts_write_in": {
+         "mechanic": "P\u0254mp mekanik",
+         "office": "Di wata \u0254fis"
+        },
+        "report_heading": "If di p\u0254mp pwel",
+        "report_tell": "T\u025bl di kiateka di sem de.",
+        "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+        "report_scan": "\u0254 skan di skw\u025by.",
+        "report_caption": "Skan f\u0254 rip\u0254t {id}",
+        "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+        "keep_structures": {
+         "Septic tank or soakaway": "Latrin d\u025bm",
+         "Buildings": "Os d\u025bm",
+         "Hand dug well": "W\u025bl d\u025bm",
+         "Solid waste dump or burial ground": "D\u0254ti ples"
+        },
+        "keep_line": "{what}: {distance:g} mita.",
+        "keep_centre": "B\u0254r\u0254l",
+        "keep_metres": "{distance:g} m",
+        "keep_caption": "Di pikch\u0254 n\u0254 to skel."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: una b\u0254r\u0254l",
+        "quality": {
+         "none": "Wi n\u0254 no yet."
+        },
+        "keep_structures": {
+         "Buildings": "Os d\u025bm"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "Rokel"
+    },
+    "language": "yy",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Una b\u0254r\u0254l na {place}",
+        "title_unnamed": "Una b\u0254r\u0254l",
+        "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+        "water_heading": "Us k\u0254l wata",
+        "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+        "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} {unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+        "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+        "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+        "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+        "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+        "hour_words": {
+         "one": "awa",
+         "other": "awa d\u025bm"
+        },
+        "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+        "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+        "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+        "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+        "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+        "quality_heading": "Di wata fayn f\u0254 drink?",
+        "quality": {
+         "pass": "Y\u025bs.",
+         "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+         "health_fail": "N\u0254.",
+         "national_fail": "N\u0254 yet.",
+         "indeterminate": "Wi n\u0254 no yet.",
+         "none": "D\u025bn n\u0254 t\u025bst am yet."
+        },
+        "quality_found": "Di t\u025bst si dis tumos: {names}.",
+        "quality_ask": "Aks di k\u0254miti.",
+        "contacts_heading": "Udat f\u0254 k\u0254l",
+        "contacts_columns": {
+         "role": "Udat",
+         "name": "Nem",
+         "phone": "Fon"
+        },
+        "contacts_write_in": {
+         "mechanic": "P\u0254mp mekanik",
+         "office": "Di wata \u0254fis"
+        },
+        "report_heading": "If di p\u0254mp pwel",
+        "report_tell": "T\u025bl di kiateka di sem de.",
+        "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+        "report_scan": "\u0254 skan di skw\u025by.",
+        "report_caption": "Skan f\u0254 rip\u0254t {id}",
+        "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+        "keep_structures": {
+         "Septic tank or soakaway": "Latrin d\u025bm",
+         "Buildings": "Os d\u025bm",
+         "Hand dug well": "W\u025bl d\u025bm",
+         "Solid waste dump or burial ground": "D\u0254ti ples"
+        },
+        "keep_line": "{what}: {distance:g} mita.",
+        "keep_centre": "B\u0254r\u0254l",
+        "keep_metres": "{distance:g} m",
+        "keep_caption": "Di pikch\u0254 n\u0254 to skel."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: una b\u0254r\u0254l",
+        "quality": {
+         "none": "Wi n\u0254 no yet."
+        },
+        "keep_structures": {
+         "Buildings": "Os d\u025bm"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "Rokel"
+    },
+    "language": "qq",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Una b\u0254r\u0254l na {place}",
+        "title_unnamed": "Una b\u0254r\u0254l",
+        "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+        "water_heading": "Us k\u0254l wata",
+        "water_day": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} wata insay wan de.",
+        "water_day_detail": "Dat na {litres:num} lita, w\u025bn di p\u0254mp wok f\u0254 {hours:g} {unit} insay wan de. Wan j\u025briken na {can:g} lita.",
+        "water_hour": "L\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} insay wan awa.",
+        "water_hour_detail": "Dat na {litres:num} lita insay wan awa. Wan j\u025briken na {can:g} lita.",
+        "water_litres_hour": "L\u025bk {litres:num} lita insay wan awa.",
+        "water_litres_day": "L\u025bk {litres:num} lita insay wan de, f\u0254 {hours:g} {unit}.",
+        "hour_words": {
+         "one": "awa",
+         "other": "awa d\u025bm"
+        },
+        "water_very_little": "Di t\u025bst si smol wata n\u0254m\u0254.",
+        "water_tested": "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+        "water_first_estimate": "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+        "water_shortage": "If di wata smol pas dis, t\u025bl di k\u0254miti.",
+        "water_none": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+        "quality_heading": "Di wata fayn f\u0254 drink?",
+        "quality": {
+         "pass": "Y\u025bs.",
+         "aesthetic": "Y\u025bs, b\u0254t i kin get test.",
+         "health_fail": "N\u0254.",
+         "national_fail": "N\u0254 yet.",
+         "indeterminate": "Wi n\u0254 no yet.",
+         "none": "D\u025bn n\u0254 t\u025bst am yet."
+        },
+        "quality_found": "Di t\u025bst si dis tumos: {names}.",
+        "quality_ask": "Aks di k\u0254miti.",
+        "contacts_heading": "Udat f\u0254 k\u0254l",
+        "contacts_columns": {
+         "role": "Udat",
+         "name": "Nem",
+         "phone": "Fon"
+        },
+        "contacts_write_in": {
+         "mechanic": "P\u0254mp mekanik",
+         "office": "Di wata \u0254fis"
+        },
+        "report_heading": "If di p\u0254mp pwel",
+        "report_tell": "T\u025bl di kiateka di sem de.",
+        "report_number": "Gi d\u025bn dis n\u0254mba: {id}.",
+        "report_scan": "\u0254 skan di skw\u025by.",
+        "report_caption": "Skan f\u0254 rip\u0254t {id}",
+        "keep_heading": "L\u025bf d\u025bn tin ya fawe",
+        "keep_structures": {
+         "Septic tank or soakaway": "Latrin d\u025bm",
+         "Buildings": "Os d\u025bm",
+         "Hand dug well": "W\u025bl d\u025bm",
+         "Solid waste dump or burial ground": "D\u0254ti ples"
+        },
+        "keep_line": "{what}: {distance:g} mita.",
+        "keep_centre": "B\u0254r\u0254l",
+        "keep_metres": "{distance:g} m",
+        "keep_caption": "Di pikch\u0254 n\u0254 to skel."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: una b\u0254r\u0254l",
+        "quality": {
+         "none": "Wi n\u0254 no yet."
+        },
+        "keep_structures": {
+         "Buildings": "Os d\u025bm"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "Rokel"
+    },
+    "language": "kri"
    }
   ],
   "results": [
@@ -198589,6 +199533,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -198702,6 +199648,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
     ]
@@ -198813,6 +199761,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
      "The yield is indicative, so the sheet calls the amount a first estimate.",
@@ -198920,6 +199870,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -199027,6 +199979,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -199126,6 +200080,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -199246,6 +200202,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -199348,6 +200306,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -199457,6 +200417,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "The pumping test gives no yield yet, so the sheet says the amount of water has not been measured. The Pumping test page says why.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -199564,6 +200526,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "The pumping test gives no yield yet, so the sheet says the amount of water has not been measured. The Pumping test page says why.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -199675,6 +200639,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -199785,6 +200751,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -199895,6 +200863,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -200004,6 +200974,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -200113,6 +201085,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -200224,6 +201198,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -200335,6 +201311,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -200443,6 +201421,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -200552,6 +201532,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -200660,6 +201642,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No water quality result is loaded, so the sheet says the water has not been tested.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -200770,6 +201754,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "The yield is indicative, so the sheet calls the amount a first estimate.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -200881,6 +201867,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -200992,6 +201980,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -201103,6 +202093,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -201214,6 +202206,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -201325,6 +202319,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -201432,6 +202428,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -201540,6 +202538,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -201648,6 +202648,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -201757,6 +202759,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -201863,6 +202867,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -201969,6 +202975,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -202075,6 +203083,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No committee member is entered, so the sheet leaves lines to write on.",
@@ -202185,6 +203195,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "A bundled example is loaded, so the sheet says across its top that it is not about a real borehole.",
      "Enter the hours the pump is used each day to print a daily amount. Without it the sheet gives the amount in an hour.",
@@ -202296,6 +203308,8 @@
      "centre": "Borehole",
      "caption": "Each must be at least this far from the borehole. The picture is not to scale."
     },
+    "language": {},
+    "fell_back": [],
     "notes": [
      "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
      "No water quality result is loaded, so the sheet says the water has not been tested.",
@@ -202303,6 +203317,731 @@
      "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
      "The sheet is in English. A Krio version waits for a translation checked by native speakers; none is machine made."
     ]
+   },
+   {
+    "title": "Una b\u0254r\u0254l na Rokel",
+    "example": "",
+    "water": {
+     "heading": "Us k\u0254l wata",
+     "state": "measured",
+     "litres_per_hour": 220,
+     "jerrycans_per_hour": 11,
+     "hours_per_day": 8.0,
+     "litres_per_day": 1700,
+     "jerrycans_per_day": 85,
+     "headline": "L\u025bk 85 j\u025briken d\u025bm wata insay wan de.",
+     "lines": [
+      "Dat na 1,700 lita, w\u025bn di p\u0254mp wok f\u0254 8 awa d\u025bm insay wan de. Wan j\u025briken na 20 lita.",
+      "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+      "If di wata smol pas dis, t\u025bl di k\u0254miti."
+     ]
+    },
+    "quality": {
+     "heading": "Di wata fayn f\u0254 drink?",
+     "state": "pass",
+     "headline": "Y\u025bs.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Udat f\u0254 k\u0254l",
+     "header": [
+      "Udat",
+      "Nem",
+      "Fon"
+     ],
+     "rows": [
+      [
+       "Chairperson",
+       "Aminata Kamara",
+       "076 000 000"
+      ],
+      [
+       "Caretaker",
+       "Sorie Conteh",
+       ""
+      ],
+      [
+       "",
+       "",
+       "+232 77 111 222"
+      ],
+      [
+       "P\u0254mp mekanik",
+       "",
+       ""
+      ],
+      [
+       "Di wata \u0254fis",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If di p\u0254mp pwel",
+     "identifier": "SL-WAR-8FEEVKQ-T",
+     "lines": [
+      "T\u025bl di kiateka di sem de.",
+      "Gi d\u025bn dis n\u0254mba: SL-WAR-8FEEVKQ-T.",
+      "\u0254 skan di skw\u025by."
+     ],
+     "payload": "https://water.example.org/app/#/report/SL-WAR-8FEEVKQ-T",
+     "caption": "Skan f\u0254 rip\u0254t SL-WAR-8FEEVKQ-T"
+    },
+    "keep_away": {
+     "heading": "L\u025bf d\u025bn tin ya fawe",
+     "lines": [
+      "Os d\u025bm: 3 mita.",
+      "W\u025bl d\u025bm: 20 mita.",
+      "Latrin d\u025bm: 20 mita.",
+      "D\u0254ti ples: 1000 mita."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Os d\u025bm"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "W\u025bl d\u025bm",
+        "Latrin d\u025bm"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "D\u0254ti ples"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "B\u0254r\u0254l",
+     "caption": "Di pikch\u0254 n\u0254 to skel."
+    },
+    "language": {
+     "code": "zz",
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "fell_back": [],
+    "notes": [
+     "The sheet is in Zedish: translated by A. Translator, checked by B. Checker."
+    ]
+   },
+   {
+    "title": "Una b\u0254r\u0254l",
+    "example": "D\u025bn mek dis pepa wit \u025bgzampul. N\u0254 gi am to p\u0254sin.",
+    "water": {
+     "heading": "Us k\u0254l wata",
+     "state": "first_estimate",
+     "litres_per_hour": 1200,
+     "jerrycans_per_hour": 60,
+     "hours_per_day": 1.0,
+     "litres_per_day": 1200,
+     "jerrycans_per_day": 60,
+     "headline": "L\u025bk 60 j\u025briken d\u025bm wata insay wan de.",
+     "lines": [
+      "Dat na 1,200 lita, w\u025bn di p\u0254mp wok f\u0254 1 awa insay wan de. Wan j\u025briken na 20 lita.",
+      "Dis na f\u0254s g\u025bs. Di wata kin smol pas dis.",
+      "If di wata smol pas dis, t\u025bl di k\u0254miti."
+     ]
+    },
+    "quality": {
+     "heading": "Di wata fayn f\u0254 drink?",
+     "state": "health_fail",
+     "headline": "N\u0254.",
+     "lines": [
+      "Di t\u025bst si dis tumos: Manganese.",
+      "Aks di k\u0254miti."
+     ]
+    },
+    "contacts": {
+     "heading": "Udat f\u0254 k\u0254l",
+     "header": [
+      "Udat",
+      "Nem",
+      "Fon"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "P\u0254mp mekanik",
+       "",
+       ""
+      ],
+      [
+       "Di wata \u0254fis",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If di p\u0254mp pwel",
+     "identifier": "",
+     "lines": [
+      "T\u025bl di kiateka di sem de."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "L\u025bf d\u025bn tin ya fawe",
+     "lines": [
+      "Os d\u025bm: 3 mita.",
+      "W\u025bl d\u025bm: 20 mita.",
+      "Latrin d\u025bm: 20 mita.",
+      "D\u0254ti ples: 1000 mita."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Os d\u025bm"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "W\u025bl d\u025bm",
+        "Latrin d\u025bm"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "D\u0254ti ples"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "B\u0254r\u0254l",
+     "caption": "Di pikch\u0254 n\u0254 to skel."
+    },
+    "language": {
+     "code": "zz",
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "fell_back": [],
+    "notes": [
+     "A bundled example is loaded, so the sheet says across its top that it is not about a real borehole.",
+     "The yield is indicative, so the sheet calls the amount a first estimate.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in Zedish: translated by A. Translator, checked by B. Checker."
+    ]
+   },
+   {
+    "title": "Una b\u0254r\u0254l na A",
+    "example": "",
+    "water": {
+     "heading": "Us k\u0254l wata",
+     "state": "measured",
+     "litres_per_hour": 19,
+     "jerrycans_per_hour": 0,
+     "hours_per_day": 6.5,
+     "litres_per_day": 120,
+     "jerrycans_per_day": 6,
+     "headline": "L\u025bk 6 j\u025briken d\u025bm wata insay wan de.",
+     "lines": [
+      "Dat na 120 lita, w\u025bn di p\u0254mp wok f\u0254 6.5 awa d\u025bm insay wan de. Wan j\u025briken na 20 lita.",
+      "Dis k\u0254m\u0254t na di p\u0254mp t\u025bst.",
+      "If di wata smol pas dis, t\u025bl di k\u0254miti."
+     ]
+    },
+    "quality": {
+     "heading": "Di wata fayn f\u0254 drink?",
+     "state": "aesthetic",
+     "headline": "Y\u025bs, b\u0254t i kin get test.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Udat f\u0254 k\u0254l",
+     "header": [
+      "Udat",
+      "Nem",
+      "Fon"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "P\u0254mp mekanik",
+       "",
+       ""
+      ],
+      [
+       "Di wata \u0254fis",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If di p\u0254mp pwel",
+     "identifier": "",
+     "lines": [
+      "T\u025bl di kiateka di sem de."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "L\u025bf d\u025bn tin ya fawe",
+     "lines": [
+      "Os d\u025bm: 3 mita.",
+      "W\u025bl d\u025bm: 20 mita.",
+      "Latrin d\u025bm: 20 mita.",
+      "D\u0254ti ples: 1000 mita."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Os d\u025bm"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "W\u025bl d\u025bm",
+        "Latrin d\u025bm"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "D\u0254ti ples"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "B\u0254r\u0254l",
+     "caption": "Di pikch\u0254 n\u0254 to skel."
+    },
+    "language": {
+     "code": "zz",
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "fell_back": [],
+    "notes": [
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in Zedish: translated by A. Translator, checked by B. Checker."
+    ]
+   },
+   {
+    "title": "Una b\u0254r\u0254l na A",
+    "example": "",
+    "water": {
+     "heading": "Us k\u0254l wata",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "D\u025bn n\u0254 m\u025bzh\u0254 di wata yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Di wata fayn f\u0254 drink?",
+     "state": "none",
+     "headline": "D\u025bn n\u0254 t\u025bst am yet.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Udat f\u0254 k\u0254l",
+     "header": [
+      "Udat",
+      "Nem",
+      "Fon"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "P\u0254mp mekanik",
+       "",
+       ""
+      ],
+      [
+       "Di wata \u0254fis",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If di p\u0254mp pwel",
+     "identifier": "",
+     "lines": [
+      "T\u025bl di kiateka di sem de."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "L\u025bf d\u025bn tin ya fawe",
+     "lines": [
+      "Os d\u025bm: 3 mita.",
+      "W\u025bl d\u025bm: 20 mita.",
+      "Latrin d\u025bm: 20 mita.",
+      "D\u0254ti ples: 1000 mita."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Os d\u025bm"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "W\u025bl d\u025bm",
+        "Latrin d\u025bm"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "D\u0254ti ples"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "B\u0254r\u0254l",
+     "caption": "Di pikch\u0254 n\u0254 to skel."
+    },
+    "language": {
+     "code": "zz",
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "fell_back": [],
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in Zedish: translated by A. Translator, checked by B. Checker."
+    ]
+   },
+   {
+    "title": "Rokel: una b\u0254r\u0254l",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "first_estimate",
+     "litres_per_hour": 220,
+     "jerrycans_per_hour": 11,
+     "hours_per_day": 8.0,
+     "litres_per_day": 1700,
+     "jerrycans_per_day": 85,
+     "headline": "About 85 jerrycans of water a day.",
+     "lines": [
+      "That is 1,700 litres, with the pump used for 8 hours a day. A jerrycan holds 20 litres.",
+      "This is a first estimate. The borehole may give less than this, most of all in the dry season.",
+      "If the pump gives much less than this, or runs dry, tell the committee."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Wi n\u0254 no yet.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "Chairperson",
+       "Aminata Kamara",
+       "076 000 000"
+      ],
+      [
+       "Caretaker",
+       "Sorie Conteh",
+       ""
+      ],
+      [
+       "",
+       "",
+       "+232 77 111 222"
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "SL-WAR-8FEEVKQ-T",
+     "lines": [
+      "Tell the caretaker or a committee member the same day.",
+      "Give them the number of this borehole: SL-WAR-8FEEVKQ-T. It is also on the plate fixed to the borehole."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Os d\u025bm: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Os d\u025bm"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "language": {
+     "code": "zy",
+     "name": "Ypsilonian",
+     "translated_by": "C. Translator",
+     "checked_by": "D. Checker"
+    },
+    "fell_back": [
+     "community_sheet.water_heading",
+     "community_sheet.water_none",
+     "community_sheet.hour_words",
+     "community_sheet.water_day",
+     "community_sheet.water_day_detail",
+     "community_sheet.water_first_estimate",
+     "community_sheet.water_shortage",
+     "community_sheet.quality",
+     "community_sheet.quality_heading",
+     "community_sheet.contacts_columns",
+     "community_sheet.contacts_write_in",
+     "community_sheet.contacts_heading",
+     "community_sheet.report_tell",
+     "community_sheet.report_number",
+     "community_sheet.report_heading",
+     "community_sheet.keep_structures",
+     "community_sheet.keep_metres",
+     "community_sheet.keep_heading",
+     "community_sheet.keep_line",
+     "community_sheet.keep_centre",
+     "community_sheet.keep_caption"
+    ],
+    "notes": [
+     "The yield is indicative, so the sheet calls the amount a first estimate.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No report address is set, so the sheet carries no square to scan.",
+     "The sheet is in Ypsilonian: translated by C. Translator, checked by D. Checker.",
+     "21 parts of this sheet are not fully in Ypsilonian yet. What the translation has no words for is printed in English."
+    ]
+   },
+   {
+    "title": "Your borehole at Rokel",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "none",
+     "litres_per_hour": null,
+     "jerrycans_per_hour": null,
+     "hours_per_day": null,
+     "litres_per_day": null,
+     "jerrycans_per_day": null,
+     "headline": "How much water this borehole gives has not been measured yet.",
+     "lines": []
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "lines": [
+      "Houses and other buildings: at least 3 metres away.",
+      "Hand dug wells: at least 20 metres away.",
+      "Latrines, septic tanks and soakaways: at least 20 metres away.",
+      "Rubbish dumps and burial grounds: at least 1000 metres away."
+     ],
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "language": {},
+    "fell_back": [],
+    "notes": [
+     "No pumping test is loaded, so the sheet says the amount of water has not been measured.",
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole."
+    ]
+   },
+   {
+    "error": "text: the translation 'yy' cannot be used: language.yaml does not say checked_by"
+   },
+   {
+    "error": "text: the translation 'qq' cannot be used: there is no translation 'qq'"
+   },
+   {
+    "error": "text: the translation 'kri' cannot be used: there is no translation 'kri'"
    }
   ],
   "amounts": [
@@ -202337,6 +204076,1276 @@
    120000,
    990000
   ]
+ },
+ "text_languages": {
+  "english": {
+   "sheet": {
+    "title": "Your borehole at {place}",
+    "amount": "About {cans:num} {cans:plural:jerrycan|jerrycans}, {litres:.1f} litres in {hours:g} hours.",
+    "plain": "Tell the caretaker.",
+    "braces": "Write {{name}} for {name}.",
+    "answers": {
+     "yes": "Yes.",
+     "no": "No.",
+     "unknown": "Not known yet."
+    }
+   },
+   "notes": {
+    "kept": "Kept {n:g} {n:plural:row|rows}."
+   }
+  },
+  "held": {
+   "zz": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "title": "Una b\u0254r\u0254l na {place}",
+      "amount": "{litres:.1f} lita insay {hours:g} awa: l\u025bk {cans:num} {cans:plural:j\u025briken|j\u025briken d\u025bm} ({cans:num}).",
+      "plain": "T\u025bl di kiateka.",
+      "braces": "Rayt {{name}} f\u0254 {name}.",
+      "answers": {
+       "yes": "Y\u025bs.",
+       "no": "N\u0254.",
+       "unknown": "Wi n\u0254 no yet."
+      }
+     },
+     "notes": {
+      "kept": "{n:g} {n:plural:ro|ro d\u025bm}."
+     }
+    }
+   },
+   "zy": {
+    "language": {
+     "name": "  Ypsilonian ",
+     "translated_by": " C. Translator ",
+     "checked_by": "D. Checker\n"
+    },
+    "text": {
+     "sheet": {
+      "plain": "T\u025bl am.",
+      "answers": {
+       "no": "N\u0254.",
+       "yes": "Y\u025bs."
+      }
+     }
+    }
+   },
+   "zx": {
+    "language": {
+     "name": "Alphan",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {}
+   },
+   "zw": {
+    "language": {
+     "name": "Alphan",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {}
+    }
+   },
+   "zu": {
+    "language": {
+     "name": "Gamman",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "title": null,
+      "plain": "T\u025bl am.",
+      "answers": {
+       "yes": null,
+       "no": "N\u0254."
+      }
+     },
+     "notes": {
+      "kept": null
+     }
+    }
+   },
+   "zt": {
+    "language": {
+     "name": "Gamman",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "answers": null
+     },
+     "notes": null
+    }
+   },
+   "zv": {
+    "language": {
+     "name": "Betan",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "amount": "{cans:num} / {litres:.1f} / {hours:g}"
+     },
+     "notes": {
+      "kept": "{n:plural:wan|bok}"
+     }
+    }
+   },
+   "ya": {
+    "language": {
+     "name": "Nameless",
+     "translated_by": "A. Translator"
+    },
+    "text": {}
+   },
+   "yb": {
+    "language": {
+     "name": " ",
+     "translated_by": "",
+     "checked_by": "B. Checker"
+    },
+    "text": {}
+   },
+   "yc": {
+    "language": {
+     "name": "Numbered",
+     "translated_by": 7,
+     "checked_by": null
+    },
+    "text": {}
+   },
+   "yd": {
+    "language": [
+     "Listed",
+     "A",
+     "B"
+    ],
+    "text": {}
+   },
+   "ye": {
+    "text": {
+     "sheet": {
+      "plain": "No facts at all."
+     }
+    }
+   },
+   "yf": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "plain": "Ok.",
+      "extra": "Not in English."
+     },
+     "other": {
+      "plain": "A file English lacks."
+     }
+    }
+   },
+   "yg": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": [
+      "plain",
+      "title"
+     ]
+    }
+   },
+   "yh": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "answers": "Yes or no.",
+      "plain": {
+       "a": "b"
+      }
+     }
+    }
+   },
+   "yi": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "answers": {
+       "yes": "Y\u025bs.",
+       "maybe": "Maybe.",
+       "no": 0,
+       "unknown": "A {value}."
+      }
+     }
+    }
+   },
+   "yj": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "title": 12,
+      "plain": null,
+      "braces": [
+       "a"
+      ]
+     }
+    }
+   },
+   "yk": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "title": "No place named."
+     }
+    }
+   },
+   "yl": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "title": "{place} of {district}"
+     }
+    }
+   },
+   "ym": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "plain": "Tell {who}."
+     }
+    }
+   },
+   "yn": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "amount": "{cans:g} {litres:.1f} {hours:g}"
+     }
+    }
+   },
+   "yo": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "amount": "{cans:num} {litres:.2f} {hours:g}"
+     }
+    }
+   },
+   "yp": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "amount": "{cans:num} {litres:.1f} {hours:plural:awa|awa d\u025bm}"
+     }
+    }
+   },
+   "yq": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "title": "A lone { brace at {place}"
+     }
+    }
+   },
+   "yr": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "title": "{place"
+     }
+    }
+   },
+   "ys": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "braces": "{{name}} only"
+     }
+    }
+   },
+   "yt": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "title": "{place:g}"
+     }
+    }
+   },
+   "yv": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "plain": "",
+      "title": "  \n",
+      "answers": {
+       "yes": " ",
+       "no": ""
+      }
+     }
+    }
+   },
+   "yu": {
+    "language": {
+     "name": "Many"
+    },
+    "text": {
+     "sheet": {
+      "title": "none",
+      "zeta": "x",
+      "answers": {
+       "zeta": "x",
+       "alpha": "y"
+      },
+      "amount": "{cans:num}"
+     },
+     "alpha": {},
+     "notes": "kept"
+    }
+   },
+   "Zz": {
+    "language": {
+     "name": "Capital",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {}
+   },
+   "z": {
+    "language": {
+     "name": "Short",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {}
+   },
+   "toolongcode": {
+    "language": {
+     "name": "Long",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {}
+   },
+   "z1": {
+    "language": {
+     "name": "Digit",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {}
+   }
+  },
+  "script": [
+   [
+    "phrase",
+    "sheet.title",
+    {
+     "place": "Rokel"
+    }
+   ],
+   [
+    "phrase",
+    "sheet.amount",
+    {
+     "cans": 1,
+     "litres": 20,
+     "hours": 6.5
+    }
+   ],
+   [
+    "phrase",
+    "sheet.amount",
+    {
+     "cans": 1200,
+     "litres": 24000.04,
+     "hours": 8
+    }
+   ],
+   [
+    "phrase",
+    "sheet.plain",
+    {}
+   ],
+   [
+    "table",
+    "sheet.answers",
+    null
+   ],
+   [
+    "phrase",
+    "sheet.braces",
+    {
+     "name": "Aminata"
+    }
+   ],
+   [
+    "phrase",
+    "notes.kept",
+    {
+     "n": 1
+    }
+   ],
+   [
+    "phrase",
+    "sheet.title",
+    {
+     "place": "Kuntolo"
+    }
+   ],
+   [
+    "table",
+    "sheet.answers",
+    null
+   ],
+   [
+    "phrase",
+    "sheet.missing",
+    {}
+   ],
+   [
+    "phrase",
+    "missing.title",
+    {}
+   ],
+   [
+    "phrase",
+    "nodot",
+    {}
+   ],
+   [
+    "phrase",
+    "sheet.answers",
+    {}
+   ],
+   [
+    "table",
+    "sheet.title",
+    null
+   ],
+   [
+    "phrase",
+    "sheet.title",
+    {}
+   ],
+   [
+    "phrase",
+    "sheet.title",
+    {
+     "place": "Rokel",
+     "more": "x"
+    }
+   ],
+   [
+    "phrase",
+    "sheet.title",
+    {
+     "place": 7
+    }
+   ]
+  ],
+  "codes": [
+   "zz",
+   "zy",
+   "zx",
+   "zw",
+   "zu",
+   "zt",
+   "zv",
+   "ya",
+   "yb",
+   "yc",
+   "yd",
+   "ye",
+   "yf",
+   "yg",
+   "yh",
+   "yi",
+   "yj",
+   "yk",
+   "yl",
+   "ym",
+   "yn",
+   "yo",
+   "yp",
+   "yq",
+   "yr",
+   "ys",
+   "yt",
+   "yv",
+   "yu",
+   "Zz",
+   "z",
+   "toolongcode",
+   "z1",
+   "qq",
+   ""
+  ],
+  "problems": [
+   [],
+   [],
+   [],
+   [],
+   [],
+   [],
+   [],
+   [
+    "language.yaml does not say checked_by"
+   ],
+   [
+    "language.yaml does not say name",
+    "language.yaml does not say translated_by"
+   ],
+   [
+    "language.yaml does not say translated_by",
+    "language.yaml does not say checked_by"
+   ],
+   [
+    "language.yaml does not say name",
+    "language.yaml does not say translated_by",
+    "language.yaml does not say checked_by"
+   ],
+   [
+    "language.yaml does not say name",
+    "language.yaml does not say translated_by",
+    "language.yaml does not say checked_by"
+   ],
+   [
+    "other.yaml translates a file English does not have",
+    "sheet.extra is not an entry of the English"
+   ],
+   [
+    "sheet.yaml is not a list of entries"
+   ],
+   [
+    "sheet.answers is a table in English and a sentence here",
+    "sheet.plain is a sentence in English and not one here"
+   ],
+   [
+    "sheet.answers[maybe] is not a row of the English table",
+    "sheet.answers[no] is not plain text",
+    "sheet.answers[unknown] is not plain text"
+   ],
+   [
+    "sheet.braces is a sentence in English and not one here",
+    "sheet.title is a sentence in English and not one here"
+   ],
+   [
+    "sheet.title does not take the values the English takes (place), each in a format it uses"
+   ],
+   [
+    "sheet.title does not take the values the English takes (place), each in a format it uses"
+   ],
+   [
+    "sheet.plain does not take the values the English takes (none), each in a format it uses"
+   ],
+   [
+    "sheet.amount does not take the values the English takes (cans, hours, litres), each in a format it uses"
+   ],
+   [
+    "sheet.amount does not take the values the English takes (cans, hours, litres), each in a format it uses"
+   ],
+   [
+    "sheet.amount does not take the values the English takes (cans, hours, litres), each in a format it uses"
+   ],
+   [
+    "sheet.title has a lone brace"
+   ],
+   [
+    "sheet.title has a lone brace"
+   ],
+   [
+    "sheet.braces does not take the values the English takes (name), each in a format it uses"
+   ],
+   [
+    "sheet.title does not take the values the English takes (place), each in a format it uses"
+   ],
+   [
+    "sheet.answers[no] is blank",
+    "sheet.answers[yes] is blank",
+    "sheet.plain is blank",
+    "sheet.title is blank"
+   ],
+   [
+    "language.yaml does not say translated_by",
+    "language.yaml does not say checked_by",
+    "alpha.yaml translates a file English does not have",
+    "notes.yaml is not a list of entries",
+    "sheet.amount does not take the values the English takes (cans, hours, litres), each in a format it uses",
+    "sheet.answers[alpha] is not a row of the English table",
+    "sheet.answers[zeta] is not a row of the English table",
+    "sheet.title does not take the values the English takes (place), each in a format it uses",
+    "sheet.zeta is not an entry of the English"
+   ],
+   [
+    "'Zz' is not a language's code (two to eight small letters)"
+   ],
+   [
+    "'z' is not a language's code (two to eight small letters)"
+   ],
+   [
+    "'toolongcode' is not a language's code (two to eight small letters)"
+   ],
+   [
+    "'z1' is not a language's code (two to eight small letters)"
+   ],
+   [
+    "there is no translation 'qq'"
+   ],
+   [
+    "there is no translation ''"
+   ]
+  ],
+  "languages": [
+   {
+    "code": "zw",
+    "name": "Alphan",
+    "translated_by": "A. Translator",
+    "checked_by": "B. Checker"
+   },
+   {
+    "code": "zx",
+    "name": "Alphan",
+    "translated_by": "A. Translator",
+    "checked_by": "B. Checker"
+   },
+   {
+    "code": "zv",
+    "name": "Betan",
+    "translated_by": "A. Translator",
+    "checked_by": "B. Checker"
+   },
+   {
+    "code": "zt",
+    "name": "Gamman",
+    "translated_by": "A. Translator",
+    "checked_by": "B. Checker"
+   },
+   {
+    "code": "zu",
+    "name": "Gamman",
+    "translated_by": "A. Translator",
+    "checked_by": "B. Checker"
+   },
+   {
+    "code": "zy",
+    "name": "Ypsilonian",
+    "translated_by": "C. Translator",
+    "checked_by": "D. Checker"
+   },
+   {
+    "code": "zz",
+    "name": "Zedish",
+    "translated_by": "A. Translator",
+    "checked_by": "B. Checker"
+   }
+  ],
+  "spoken": [
+   {
+    "language": {
+     "code": "zz",
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "said": [
+     "Una b\u0254r\u0254l na Rokel",
+     "20.0 lita insay 6.5 awa: l\u025bk 1 j\u025briken (1).",
+     "24000.0 lita insay 8 awa: l\u025bk 1,200 j\u025briken d\u025bm (1,200).",
+     "T\u025bl di kiateka.",
+     {
+      "yes": "Y\u025bs.",
+      "no": "N\u0254.",
+      "unknown": "Wi n\u0254 no yet."
+     },
+     "Rayt {name} f\u0254 Aminata.",
+     "1 ro.",
+     "Una b\u0254r\u0254l na Kuntolo",
+     {
+      "yes": "Y\u025bs.",
+      "no": "N\u0254.",
+      "unknown": "Wi n\u0254 no yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     }
+    ],
+    "fell_back": []
+   },
+   {
+    "language": {
+     "code": "zy",
+     "name": "Ypsilonian",
+     "translated_by": "C. Translator",
+     "checked_by": "D. Checker"
+    },
+    "said": [
+     "Your borehole at Rokel",
+     "About 1 jerrycan, 20.0 litres in 6.5 hours.",
+     "About 1,200 jerrycans, 24000.0 litres in 8 hours.",
+     "T\u025bl am.",
+     {
+      "yes": "Y\u025bs.",
+      "no": "N\u0254.",
+      "unknown": "Not known yet."
+     },
+     "Write {name} for Aminata.",
+     "Kept 1 row.",
+     "Your borehole at Kuntolo",
+     {
+      "yes": "Y\u025bs.",
+      "no": "N\u0254.",
+      "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     }
+    ],
+    "fell_back": [
+     "sheet.title",
+     "sheet.amount",
+     "sheet.answers",
+     "sheet.braces",
+     "notes.kept"
+    ]
+   },
+   {
+    "language": {
+     "code": "zx",
+     "name": "Alphan",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "said": [
+     "Your borehole at Rokel",
+     "About 1 jerrycan, 20.0 litres in 6.5 hours.",
+     "About 1,200 jerrycans, 24000.0 litres in 8 hours.",
+     "Tell the caretaker.",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     "Write {name} for Aminata.",
+     "Kept 1 row.",
+     "Your borehole at Kuntolo",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     }
+    ],
+    "fell_back": [
+     "sheet.title",
+     "sheet.amount",
+     "sheet.plain",
+     "sheet.answers",
+     "sheet.braces",
+     "notes.kept"
+    ]
+   },
+   {
+    "language": {
+     "code": "zw",
+     "name": "Alphan",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "said": [
+     "Your borehole at Rokel",
+     "About 1 jerrycan, 20.0 litres in 6.5 hours.",
+     "About 1,200 jerrycans, 24000.0 litres in 8 hours.",
+     "Tell the caretaker.",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     "Write {name} for Aminata.",
+     "Kept 1 row.",
+     "Your borehole at Kuntolo",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     }
+    ],
+    "fell_back": [
+     "sheet.title",
+     "sheet.amount",
+     "sheet.plain",
+     "sheet.answers",
+     "sheet.braces",
+     "notes.kept"
+    ]
+   },
+   {
+    "language": {
+     "code": "zu",
+     "name": "Gamman",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "said": [
+     "Your borehole at Rokel",
+     "About 1 jerrycan, 20.0 litres in 6.5 hours.",
+     "About 1,200 jerrycans, 24000.0 litres in 8 hours.",
+     "T\u025bl am.",
+     {
+      "yes": "Yes.",
+      "no": "N\u0254.",
+      "unknown": "Not known yet."
+     },
+     "Write {name} for Aminata.",
+     "Kept 1 row.",
+     "Your borehole at Kuntolo",
+     {
+      "yes": "Yes.",
+      "no": "N\u0254.",
+      "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     }
+    ],
+    "fell_back": [
+     "sheet.title",
+     "sheet.amount",
+     "sheet.answers",
+     "sheet.braces",
+     "notes.kept"
+    ]
+   },
+   {
+    "language": {
+     "code": "zt",
+     "name": "Gamman",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "said": [
+     "Your borehole at Rokel",
+     "About 1 jerrycan, 20.0 litres in 6.5 hours.",
+     "About 1,200 jerrycans, 24000.0 litres in 8 hours.",
+     "Tell the caretaker.",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     "Write {name} for Aminata.",
+     "Kept 1 row.",
+     "Your borehole at Kuntolo",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     }
+    ],
+    "fell_back": [
+     "sheet.title",
+     "sheet.amount",
+     "sheet.plain",
+     "sheet.answers",
+     "sheet.braces",
+     "notes.kept"
+    ]
+   },
+   {
+    "language": {
+     "code": "zv",
+     "name": "Betan",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "said": [
+     "Your borehole at Rokel",
+     "1 / 20.0 / 6.5",
+     "1,200 / 24000.0 / 8",
+     "Tell the caretaker.",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     "Write {name} for Aminata.",
+     "wan",
+     "Your borehole at Kuntolo",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     }
+    ],
+    "fell_back": [
+     "sheet.title",
+     "sheet.plain",
+     "sheet.answers",
+     "sheet.braces"
+    ]
+   },
+   {
+    "refused": "text: the translation 'ya' cannot be used: language.yaml does not say checked_by"
+   },
+   {
+    "refused": "text: the translation 'yb' cannot be used: language.yaml does not say name; language.yaml does not say translated_by"
+   },
+   {
+    "refused": "text: the translation 'yc' cannot be used: language.yaml does not say translated_by; language.yaml does not say checked_by"
+   },
+   {
+    "refused": "text: the translation 'yd' cannot be used: language.yaml does not say name; language.yaml does not say translated_by; language.yaml does not say checked_by"
+   },
+   {
+    "refused": "text: the translation 'ye' cannot be used: language.yaml does not say name; language.yaml does not say translated_by; language.yaml does not say checked_by"
+   },
+   {
+    "refused": "text: the translation 'yf' cannot be used: other.yaml translates a file English does not have; sheet.extra is not an entry of the English"
+   },
+   {
+    "refused": "text: the translation 'yg' cannot be used: sheet.yaml is not a list of entries"
+   },
+   {
+    "refused": "text: the translation 'yh' cannot be used: sheet.answers is a table in English and a sentence here; sheet.plain is a sentence in English and not one here"
+   },
+   {
+    "refused": "text: the translation 'yi' cannot be used: sheet.answers[maybe] is not a row of the English table; sheet.answers[no] is not plain text; sheet.answers[unknown] is not plain text"
+   },
+   {
+    "refused": "text: the translation 'yj' cannot be used: sheet.braces is a sentence in English and not one here; sheet.title is a sentence in English and not one here"
+   },
+   {
+    "refused": "text: the translation 'yk' cannot be used: sheet.title does not take the values the English takes (place), each in a format it uses"
+   },
+   {
+    "refused": "text: the translation 'yl' cannot be used: sheet.title does not take the values the English takes (place), each in a format it uses"
+   },
+   {
+    "refused": "text: the translation 'ym' cannot be used: sheet.plain does not take the values the English takes (none), each in a format it uses"
+   },
+   {
+    "refused": "text: the translation 'yn' cannot be used: sheet.amount does not take the values the English takes (cans, hours, litres), each in a format it uses"
+   },
+   {
+    "refused": "text: the translation 'yo' cannot be used: sheet.amount does not take the values the English takes (cans, hours, litres), each in a format it uses"
+   },
+   {
+    "refused": "text: the translation 'yp' cannot be used: sheet.amount does not take the values the English takes (cans, hours, litres), each in a format it uses"
+   },
+   {
+    "refused": "text: the translation 'yq' cannot be used: sheet.title has a lone brace"
+   },
+   {
+    "refused": "text: the translation 'yr' cannot be used: sheet.title has a lone brace"
+   },
+   {
+    "refused": "text: the translation 'ys' cannot be used: sheet.braces does not take the values the English takes (name), each in a format it uses"
+   },
+   {
+    "refused": "text: the translation 'yt' cannot be used: sheet.title does not take the values the English takes (place), each in a format it uses"
+   },
+   {
+    "refused": "text: the translation 'yv' cannot be used: sheet.answers[no] is blank; sheet.answers[yes] is blank; sheet.plain is blank; sheet.title is blank"
+   },
+   {
+    "refused": "text: the translation 'yu' cannot be used: language.yaml does not say translated_by; language.yaml does not say checked_by; alpha.yaml translates a file English does not have; notes.yaml is not a list of entries; sheet.amount does not take the values the English takes (cans, hours, litres), each in a format it uses; sheet.answers[alpha] is not a row of the English table; sheet.answers[zeta] is not a row of the English table; sheet.title does not take the values the English takes (place), each in a format it uses; sheet.zeta is not an entry of the English"
+   },
+   {
+    "refused": "text: the translation 'Zz' cannot be used: 'Zz' is not a language's code (two to eight small letters)"
+   },
+   {
+    "refused": "text: the translation 'z' cannot be used: 'z' is not a language's code (two to eight small letters)"
+   },
+   {
+    "refused": "text: the translation 'toolongcode' cannot be used: 'toolongcode' is not a language's code (two to eight small letters)"
+   },
+   {
+    "refused": "text: the translation 'z1' cannot be used: 'z1' is not a language's code (two to eight small letters)"
+   },
+   {
+    "refused": "text: the translation 'qq' cannot be used: there is no translation 'qq'"
+   },
+   {
+    "language": {},
+    "said": [
+     "Your borehole at Rokel",
+     "About 1 jerrycan, 20.0 litres in 6.5 hours.",
+     "About 1,200 jerrycans, 24000.0 litres in 8 hours.",
+     "Tell the caretaker.",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     "Write {name} for Aminata.",
+     "Kept 1 row.",
+     "Your borehole at Kuntolo",
+     {
+      "yes": "Yes.",
+      "no": "No.",
+      "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
+     }
+    ],
+    "fell_back": []
+   }
+  ],
+  "none": {
+   "languages": [],
+   "problems": [
+    "there is no translation 'zz'"
+   ]
+  },
+  "bundled": []
  },
  "airlift": {
   "cases": [

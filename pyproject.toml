@@ -71,6 +71,8 @@ where = ["src"]
 groundwater = [
     "data/*.csv", "data/*.yaml", "data/*.geojson", "data/*.json",
     "data/text/*.yaml",
+    # a translation is a folder beside the English, named for its language
+    "data/text/*/*.yaml",
     "data/brand/*.png", "data/brand/*.svg",
     "data/brand/fonts/*.woff2", "data/brand/fonts/*.txt",
     "data/brand/fonts/*.json",

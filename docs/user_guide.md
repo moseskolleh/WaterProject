@@ -1637,8 +1637,18 @@ Where the programme has set a report address (section 9d), the picture
 also carries a square that a phone scans to open the report page for
 the borehole. The sheet prints no telephone number.
 
-The sheet is in English. A Krio version needs a translation checked by
-native speakers and is not written yet.
+The sheet is in English. It can be printed in another language once a
+translation of it is installed with the toolkit: one made and checked by
+native speakers, which names who translated it and who checked it. No
+translation is installed yet, Krio included, and none is machine made.
+When one is, the card shows a **Language of the sheet** choice beside
+the hours and the identifier. Choose the language and the card says what
+the sheet will say in it, and whose translation it is. A sentence the
+translation does not have yet is printed in English, and the card says
+how many were. A committee member's role is printed as you typed it,
+and the names of what a water test found stay as the standards table
+has them. Whoever maintains the toolkit adds a translation as
+CONTRIBUTING.md ("Adding a language") describes.
 
 ## 10. Site maps
 

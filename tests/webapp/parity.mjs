@@ -1268,6 +1268,7 @@ await withPage(async (page, base, consoleErrors) => {
             hoursPerDay: c.hours_per_day === undefined ? null : c.hours_per_day,
             example: !!c.example,
             config: C.withConfig({ service: { report_url: c.report_url || '' } }),
+            language: c.language || '', translations: c.translations,
           });
         } catch (e) {
           return { error: e.message };
@@ -1289,6 +1290,51 @@ await withPage(async (page, base, consoleErrors) => {
     const d = parted(sheet.rounded, R.community_sheet.rounded, 'rounded');
     check('community sheet: amounts rounded down to two figures', d === null, d);
   }
+  // --- other languages (PLAN.md step 9.2): on a catalogue and translations
+  // made up for the purpose, every reason a translation is refused, which are
+  // offered and in what order, and what a speaker says, sentence by sentence,
+  // with what it had to say in English ---
+  const tongues = await page.evaluate((ref) => {
+    const C = GWT.core;
+    return {
+      problems: ref.codes.map((code) => C.translationProblems(code, ref.held, ref.english)),
+      languages: C.textLanguages(ref.held, ref.english),
+      spoken: ref.codes.map((code) => {
+        let say;
+        try {
+          say = C.speaker(code, ref.held, ref.english);
+        } catch (e) {
+          return { refused: e.message };
+        }
+        const said = ref.script.map(([kind, id, values]) => {
+          try {
+            return kind === 'phrase' ? say.phrase(id, values) : say.phraseTable(id);
+          } catch (e) {
+            return { error: true };
+          }
+        });
+        return { language: say.language, said, fell_back: say.fellBack };
+      }),
+      none: { languages: C.textLanguages({}, ref.english),
+        problems: C.translationProblems('zz', {}, ref.english) },
+      // this build carries no translation, so it offers none
+      bundled: C.textLanguages().map((l) => l.code),
+    };
+  }, R.text_languages);
+  R.text_languages.codes.forEach((code, i) => {
+    let d = parted(tongues.problems[i], R.text_languages.problems[i], 'problems');
+    check(`translation ${JSON.stringify(code)}: why it is refused, or that it is not`, d === null, d);
+    d = parted(tongues.spoken[i], R.text_languages.spoken[i], 'spoken');
+    check(`translation ${JSON.stringify(code)}: what a speaker of it says`, d === null, d);
+  });
+  for (const key of ['languages', 'none']) {
+    const d = parted(tongues[key], R.text_languages[key], key);
+    check(`translations: ${key === 'none' ? 'nothing held, nothing offered' : 'which are offered, by name'}`,
+      d === null, d);
+  }
+  check('translations: the build offers exactly the ones the package bundles',
+    JSON.stringify(tongues.bundled) === JSON.stringify(R.text_languages.bundled),
+    JSON.stringify(tongues.bundled));
   // --- the drilling co-pilot's airlift yield (PLAN.md step 2.3): the figure,
   // the sentence the sheets print for its basis, and its warnings; a reading
   // that gives no yield is refused by both ---

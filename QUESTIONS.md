@@ -640,8 +640,16 @@ need real project inputs or decisions to finish calibrating it.
    and no SMS words, since no number is known. (d) **Krio.** The sheet
    is in English only. Give the Krio wording of
    `groundwater/data/text/community_sheet.yaml`, translated and checked
-   by native speakers; none is machine translated, and step 9.2 is what
-   will let a second language sit beside the first. (e) **What to keep
+   by native speakers, with the names of who translated it and who
+   checked it; none is machine translated. Step 9.2 has made the place
+   for it: put beside the English as CONTRIBUTING.md ("Adding a
+   language") describes, it is offered on both Handover pages, and a
+   translation that does not name its checker is not offered. Two
+   things on a translated sheet stay English and are yours to rule on:
+   the names of what a water test found (the standards table's, such as
+   "Manganese"), and the word "Figure" before the picture's caption. Say
+   too which other languages are wanted (Mende, Temne, Limba), and
+   whether the handover report's own community pages should follow. (e) **What to keep
    away.** The sheet shows four rows of the separation table (buildings
    3 m, hand dug wells 20 m, latrines and soakaways 20 m, dumps and
    burial grounds 1000 m) and leaves out the rows a village cannot act

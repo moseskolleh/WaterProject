@@ -332,6 +332,11 @@ def bundle_texts() -> dict[Path, str]:
     # the sentences both engines write, from data/text/*.yaml, read through
     # the package's own loader so the browser gets exactly what it parses
     payload["text"] = read_text_catalogue()
+    # the translations of them, data/text/<language>/*.yaml, as the package
+    # parses them; an empty table where none is bundled (PLAN.md step 9.2)
+    from groundwater.text import translations
+
+    payload["translations"] = translations()
     # the configuration defaults, which config.py reads from the same file
     payload["defaults"] = json.loads((DATA / "defaults.json").read_text(encoding="utf-8"))
     # the co-pilots' and the field kit's schedules, data/field.yaml, as the

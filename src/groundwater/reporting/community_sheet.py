@@ -139,16 +139,25 @@ def build_community_sheet(site: SiteMetadata, out_path: str | Path, figures_dir:
                           analysis: Any = None, quality: Any = None, committee: Any = None,
                           asset_id: str = "", hours_per_day: float | None = None,
                           example: bool = False, config: Config | None = None,
-                          issue: Issue | None = None) -> Path:
+                          issue: Issue | None = None, language: str = "",
+                          translations: dict | None = None) -> Path:
     """Write the community handover sheet to ``out_path``.
 
+    ``language`` is the code of the translation to print it in, and nothing
+    for English (PLAN.md step 9.2); what the translation has no words for is
+    printed in English. The page's furniture is the same in every language:
+    the word "Figure" before the picture's caption and the line at the foot
+    that carries the document's code are the reports' own, and English.
+
     Raises ValueError for a report address the registry would not print on
-    a plate, as :func:`community_sheet_content` does.
+    a plate, and for a language that is not on offer, as
+    :func:`community_sheet_content` does.
     """
     config = config or Config()
     content = community_sheet_content(
         site, analysis=analysis, quality=quality, committee=committee, asset_id=asset_id,
-        hours_per_day=hours_per_day, example=example, config=config)
+        hours_per_day=hours_per_day, example=example, config=config, language=language,
+        translations=translations)
     figures = Path(figures_dir)
     rb = ReportBuilder(config.style, title=content["title"], kind="community_sheet",
                        issue=issue, config=config)

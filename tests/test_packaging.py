@@ -125,6 +125,9 @@ def test_the_wheel_carries_the_bundled_data_tables(wheel):
     assert text
     for path in text:
         assert f"groundwater/data/text/{path.name}" in names
+    # and every translation of them, which sits a folder down
+    for path in sorted((REPO / "src" / "groundwater" / "data" / "text").glob("*/*.yaml")):
+        assert f"groundwater/data/text/{path.parent.name}/{path.name}" in names
 
 
 def _optional_dependencies() -> dict[str, list[str]]:
