@@ -69,7 +69,11 @@ async function build(page) {
         return n / all;
       };
       pixels = { rings: dark(0.2, 0.2, 4.8, 4.8), key: dark(6.0, 1.2, 12.0, 3.8),
-        right: canvas.width > 1100 ? dark(12.8, 0.35, 15.7, 3.25) : null };
+        /* the whole of the key's column, whatever height the key takes */
+        column: dark(6.0, 0, canvas.width > 1100 ? 12.55 : 12.45, 5.0),
+        right: canvas.width > 1100 ? dark(12.8, 0.35, 15.7, 3.25) : null,
+        /* the white kept between the key and the square, beside the square */
+        gap: canvas.width > 1100 ? dark(12.58, 0, 12.8, 3.3) : null };
     }
     return {
       words, pictures: media.length, pixels,
@@ -438,10 +442,14 @@ await withPage(async (page, base, consoleErrors) => {
   await select.selectOption('zw');
   const longer = await build(page);
   const longSquare = await readSquare();
+  /* How the key is broken into lines is the fonts' doing and differs from
+   * one machine to the next; what does not is that the key is drawn, that
+   * nothing of it reaches the white beside the square, and that the square
+   * is whole. */
   check('community sheet: a longer translation does not run into the square a phone scans',
     longer.width === 1280 && longSquare.wrong === 0 && longSquare.edge > 200 &&
-    longer.pixels.key > zedish.pixels.key, JSON.stringify({ longSquare, key: longer.pixels.key,
-      english: zedish.pixels.key }));
+    longer.pixels.gap === 0 && zedish.pixels.gap === 0 && longer.pixels.column > 0.005,
+    JSON.stringify({ longSquare, long: longer.pixels, english: zedish.pixels }));
   await page.evaluate(() => {
     window.GWT.app.store.set('config.service.report_url', '');
     window.GWT.app.render();
@@ -455,7 +463,8 @@ await withPage(async (page, base, consoleErrors) => {
     return { dark, width: canvas.width };
   });
   check('community sheet: nor off the edge of the picture where there is no square',
-    noSquare.width === 1008 && edge.dark === 0 && noSquare.pixels.key > 0.005, JSON.stringify(edge));
+    noSquare.width === 1008 && edge.dark === 0 && noSquare.pixels.column > 0.005,
+    JSON.stringify({ edge, pixels: noSquare.pixels }));
 
   /* a project saved where a translation was installed, opened where it is not */
   await page.evaluate(() => {
