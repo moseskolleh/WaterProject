@@ -24,6 +24,10 @@ ENGLISH = {
     },
     "notes": {
         "kept": "Kept {n:g} {n:plural:row|rows}.",
+        # a count English writes only as the word that agrees with it
+        "rows": "Kept {n:plural:a row|rows}.",
+        # and one it prints two ways
+        "both": "{n:g} of {n:num}, {m:.1f}.",
     },
 }
 
@@ -72,13 +76,20 @@ HELD = {
     # dashes and doubled spaces are written one way, as typed text is, and
     # the white space either engine would take off the ends of a name is
     # taken off by both
-    "zs": _language({"sheet": {"plain": "  Wug — zub  – frimo.\t",
-                               "title": "Glorp—{place}  wug",
-                               "answers": {"yes": " Zɛ – zub ", "no": "Nɔb—wug"}}},
-                    name="﻿ Deltan \x85", translated_by="\x1cE. Translator ",
-                    checked_by=" F. Checker﻿"),
+    "zs": _language({"sheet": {"plain": "  Wug \u2014 zub  \u2013 frimo.\t",
+                               # tidied once it is filled: a plural with no word
+                               # for one leaves two spaces, and a no-break space
+                               # is a space
+                               "amount": "{cans:num} glorp {cans:plural:|frimɔz} wug\u00a0"
+                                         "{litres:.1f}\u202f{hours:g}",
+                               "title": "Glorp\u2014{place}  wug",
+                               "answers": {"yes": " Zɛ \u2013 zub ", "no": "Nɔb\u2014wug"}}},
+                    name="\ufeff Deltan \x85", translated_by="\x1cE. Translator\u2028",
+                    checked_by="\u00a0F. Checker\ufeff"),
     # a code may be eight letters
-    "zzzzzzzz": _language({}, name="Eightish"),
+    "zzzzzzzz": _language({"notes": {"rows": "Zub {n:plural:frim|frimɔz}.",
+                                     # both ways English prints it, turned round
+                                     "both": "{m:.1f}: {n:num} wug {n:g}."}}, name="Eightish"),
     # --- refused: it does not say what it is, who made it or who checked it
     "ya": {"language": {"name": "Nameless", "translated_by": "A. Translator"}, "text": {}},
     "yb": {"language": {"name": " ", "translated_by": "", "checked_by": "B. Checker"}, "text": {}},
@@ -87,8 +98,8 @@ HELD = {
     "ye": {"text": {"sheet": {"plain": "No facts at all."}}},
     # ... nor with white space only one of the engines' own trims would take
     "xa": _language({}, checked_by="\x85"),
-    "xb": _language({}, checked_by="﻿"),
-    "xc": _language({}, name="\x1f", translated_by=" 　"),
+    "xb": _language({}, checked_by="\ufeff"),
+    "xc": _language({}, name="\x1f", translated_by="\u2028\u3000"),
     # --- refused: it translates what English does not have
     "yf": _language({"sheet": {"plain": "Ok.", "extra": "Not in English."},
                      "other": {"plain": "A file English lacks."}}),
@@ -115,17 +126,29 @@ HELD = {
     # the headline of the sheet with no figure in it
     "yw": _language({"sheet": {"amount": "Zub {cans:plural:glorp|glorpɔz} {litres:.1f} {hours:g}"}}),
     "yx": _language({"notes": {"kept": "{n:plural:frim|frimɔz}"}}),
+    # where English writes a count only as a word, a translation may not
+    # print the number: plainly, or beside the word
+    "xk": _language({"notes": {"rows": "Zub {n}."}}),
+    "xl": _language({"notes": {"rows": "Zub {n} {n:plural:frim|frimɔz}."}}),
+    "xm": _language({"notes": {"rows": "Zub {n:g} {n:plural:frim|frimɔz}."}}),
+    # a word that agrees with a count is added where English has none, the
+    # number kept: the word is not the translation's to add
+    "xn": _language({"sheet": {"amount": "{cans:num} {litres:.1f} {hours:g} "
+                                         "{hours:plural:wug|wugɔz}"}}),
+    # of the two ways English prints a number, one is dropped
+    "xo": _language({"notes": {"both": "{n:g} wug {m:.1f}."}}),
+    "xp": _language({"notes": {"both": "{n:num} wug {m:.1f}."}}),
     # a number written both ways English writes it and one more
     "xe": _language({"notes": {"kept": "{n:g} {n:num} {n:plural:frim|frimɔz}"}}),
     # a value named as an object's own furniture is named, and is one more
     # value than English has
     "xf": _language({"sheet": {"title": "Zub {place} {__proto__}", "plain": "Wug {constructor}."}}),
     # a figure of another script in a format is not a format
-    "xg": _language({"sheet": {"amount": "{cans:num} {litres:.١f} {hours:g}"}}),
+    "xg": _language({"sheet": {"amount": "{cans:num} {litres:.\u0661f} {hours:g}"}}),
     # --- refused: a blank sentence, a blank row, whichever white space
     "yv": _language({"sheet": {"plain": "", "title": "  \n", "answers": {"yes": " ", "no": ""}}}),
-    "xh": _language({"sheet": {"plain": "﻿", "title": "\x85\x1c",
-                               "answers": {"yes": " ", "no": "﻿ "}}}),
+    "xh": _language({"sheet": {"plain": "\ufeff", "title": "\x85\x1c",
+                               "answers": {"yes": "\u2029", "no": "\ufeff\u00a0"}}}),
     # --- refused: a file that could not be read, kept as the reason; a file
     # that is one line of text is not a list of entries
     "xi": _language({"sheet": "cannot be read: line 1, column 27: expected <block end>, "
@@ -158,6 +181,8 @@ SCRIPT = [
     ["row", "sheet.answers", "no"],
     ["phrase", "sheet.braces", {"name": "Aminata"}],
     ["phrase", "notes.kept", {"n": 1}],
+    ["phrase", "notes.rows", {"n": 3}],
+    ["phrase", "notes.both", {"n": 1200, "m": 2}],
     ["phrase", "sheet.title", {"place": "Kuntolo"}],
     ["table", "sheet.answers", None],
     ["table", "sheet.answers", None],
@@ -172,6 +197,9 @@ SCRIPT = [
     ["phrase", "sheet.title", {}],
     ["phrase", "sheet.title", {"place": "Rokel", "more": "x"}],
     ["phrase", "sheet.title", {"place": 7}],
+    # a value the sentence does not use is refused whatever it is named
+    ["phrase", "sheet.title", {"place": "Rokel", "constructor": "x"}],
+    ["phrase", "sheet.title", {"place": "Rokel", "toString": "x"}],
 ]
 
 

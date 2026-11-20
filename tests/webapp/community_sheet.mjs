@@ -73,7 +73,9 @@ async function build(page) {
         column: dark(6.0, 0, canvas.width > 1100 ? 12.55 : 12.45, 5.0),
         right: canvas.width > 1100 ? dark(12.8, 0.35, 15.7, 3.25) : null,
         /* the white kept between the key and the square, beside the square */
-        gap: canvas.width > 1100 ? dark(12.58, 0, 12.8, 3.3) : null };
+        gap: canvas.width > 1100 ? dark(12.58, 0, 12.8, 3.3) : null,
+        /* and the picture's own two edges, left and right */
+        edges: dark(0, 0, 0.06, 5.0) + dark(canvas.width / 80 - 0.06, 0, canvas.width / 80, 5.0) };
     }
     return {
       words, pictures: media.length, pixels,
@@ -363,9 +365,14 @@ await withPage(async (page, base, consoleErrors) => {
       whole[key] = {};
       Object.keys(english[key]).forEach((row) => { whole[key][row] = mark + english[key][row]; });
     });
-    /* the rows of the key half as long again, and a word for the unit: the
-     * picture has to make room for them */
-    const long = Object.assign({}, whole, { keep_structures: {}, keep_metres: mark + '{distance:g} mitazo' });
+    /* the rows of the key half as long again, a long word for the unit, a
+     * name for the centre wider than the innermost ring and a label for the
+     * square with a word no line holds: the picture has to make room for
+     * every one of them */
+    const long = Object.assign({}, whole, { keep_structures: {},
+      keep_metres: mark + '{distance:g} druvazoglorpfrimowugzubombazedo',
+      keep_centre: mark + 'Zedoglorp frimo wug',
+      report_caption: mark + 'Wumma mombo wamma mummo womma mammowummamombowammamummowommamammo {id}' });
     Object.keys(whole.keep_structures).forEach((row) => {
       long.keep_structures[row] = whole.keep_structures[row] + ' zedo glorp frimo wug zub';
     });
@@ -374,9 +381,13 @@ await withPage(async (page, base, consoleErrors) => {
         text: { community_sheet: long } },
       zz: { language: { name: 'Zedish', translated_by: 'A. Translator', checked_by: 'B. Checker' },
         text: { community_sheet: whole } },
+      /* a second translation of the same name, as two dialects might be */
+      zu: { language: { name: 'Zedish', translated_by: 'I. Translator', checked_by: 'J. Checker' },
+        text: { community_sheet: { title: mark + '{place}' } } },
       zy: { language: { name: 'Ypsilonian', translated_by: 'C. Translator', checked_by: 'D. Checker' },
         text: { community_sheet: { title: mark + '{place}',
-          report_tell: mark + 'Zub  wug \u2014 frimo \u2013 glorp.' } } },
+          /* a doubled space, two kinds of dash and a no-break space */
+          report_tell: mark + 'Zub  wug \u2014 frimo \u2013\u00a0glorp.' } } },
       yy: { language: { name: 'Unchecked', translated_by: 'E. Translator' },
         text: { community_sheet: whole } },
     };
@@ -392,8 +403,9 @@ await withPage(async (page, base, consoleErrors) => {
   }));
   check('community sheet: a translation that names who checked it is offered, by name; one that does not is not',
     options.labelled && options.label.includes('Language of the sheet') && options.chosen === '' &&
+    /* two of one name are told apart by their codes */
     JSON.stringify(options.choices) === JSON.stringify([['', 'English'], ['zw', 'Longish'],
-      ['zy', 'Ypsilonian'], ['zz', 'Zedish']]),
+      ['zy', 'Ypsilonian'], ['zu', 'Zedish (zu)'], ['zz', 'Zedish (zz)']]),
     JSON.stringify(options));
   const stillEnglish = await cardWords(page);
   check('community sheet: with a translation on offer the sheet is English until one is chosen, and nobody is told none exists',
@@ -411,7 +423,8 @@ await withPage(async (page, base, consoleErrors) => {
   check('community sheet: the card says what the sheet will say in the language chosen, and whose translation it is',
     inZedish.includes(MARK + 'About 70 jerrycans of water a day.') &&
     inZedish.includes('The sheet is in Zedish: translated by A. Translator, checked by B. Checker.') &&
-    !inZedish.includes('not fully in Zedish') && inZedish.includes(notes.first_estimate) &&
+    /* a whole translation: the card does not say that any part is English */
+    !/wording yet/.test(inZedish) && inZedish.includes(notes.first_estimate) &&
     (await page.evaluate(() => window.GWT.app.store.get('handover').language)) === 'zz',
     inZedish.slice(0, 900));
   check('community sheet: the document is written in the language, every sentence of it, as a file of its own',
@@ -448,8 +461,30 @@ await withPage(async (page, base, consoleErrors) => {
    * is whole. */
   check('community sheet: a longer translation does not run into the square a phone scans',
     longer.width === 1280 && longSquare.wrong === 0 && longSquare.edge > 200 &&
-    longer.pixels.gap === 0 && zedish.pixels.gap === 0 && longer.pixels.column > 0.005,
+    longer.pixels.gap === 0 && zedish.pixels.gap === 0 && longer.pixels.column > 0.005 &&
+    longer.pixels.edges === 0 && zedish.pixels.edges === 0,
     JSON.stringify({ longSquare, long: longer.pixels, english: zedish.pixels }));
+  /* and it is by breaking the rows and setting the distance smaller that
+   * it fits, not by chance: the layout itself, for the English sheet and
+   * for the longer one */
+  const laid = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core, handover = app.store.get('handover');
+    const key = (language) => app.communitySheetPicture(C.communitySheetContent(
+      app.store.get('site'), { assetId: (app.store.get('asset') || {}).asset_id,
+        committee: handover.committee, config: app.config(), language })).key;
+    return { english: key(''), long: key('zw') };
+  });
+  const lines = (key) => key.rows.flat().map((broken) => broken.length);
+  check('community sheet: the English key is where it always was, and the longer one is broken and moved to fit',
+    laid.english.textAt === 7.3 && laid.english.scale === 1 && laid.english.labelScale === 1 &&
+    lines(laid.english).every((n) => n === 1) &&
+    /* the long unit: the distance set smaller, the rows started after it */
+    laid.long.labelScale < 1 && Math.abs(laid.long.textAt - 8.3) < 1e-9 &&
+    lines(laid.long).some((n) => n > 1) &&
+    /* and no line of any row wider, as drawn, than the room it has */
+    laid.long.widths.flat(2).every((w) => w * laid.long.scale <= laid.long.limit + 1e-9),
+    JSON.stringify({ english: { ...laid.english, widths: undefined },
+      long: { ...laid.long, widths: undefined } }));
   await page.evaluate(() => {
     window.GWT.app.store.set('config.service.report_url', '');
     window.GWT.app.render();
@@ -463,7 +498,8 @@ await withPage(async (page, base, consoleErrors) => {
     return { dark, width: canvas.width };
   });
   check('community sheet: nor off the edge of the picture where there is no square',
-    noSquare.width === 1008 && edge.dark === 0 && noSquare.pixels.column > 0.005,
+    noSquare.width === 1008 && edge.dark === 0 && noSquare.pixels.column > 0.005 &&
+    noSquare.pixels.edges === 0,
     JSON.stringify({ edge, pixels: noSquare.pixels }));
 
   /* a project saved where a translation was installed, opened where it is not */

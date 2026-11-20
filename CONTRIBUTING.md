@@ -264,8 +264,8 @@ The English file is the place to start from, with three things to know.
   with no braces.
 
 A long dash, a short dash and doubled spaces in a translation are written as
-they are for typed text (a hyphen, one space), so that the two apps print the
-same words.
+they are for typed text (a hyphen, one space), and a no-break space is
+printed as a space, so that the two apps print the same words.
 
 Check it before it goes in, from a checkout or an installed package:
 
@@ -302,9 +302,12 @@ Then, for a translation that is going into the package:
    translation that cannot be offered; no other test depends on what is
    bundled.
 5. Build the sheet in the language, with the longest committee and a report
-   address, and print it. The picture's key makes room for longer rows, and
-   sets itself smaller where it must, but whether the page still reads well,
-   and still fits one page in Word, is for a person to see.
+   address, and print it. Every word in the picture is measured before it is
+   drawn (the key's rows, the distances, the name at the centre, the label
+   under the square), and one too long for its place is broken or set
+   smaller rather than left to run into the square or off the edge. Whether
+   the page still reads well at that size, and still fits one page in Word,
+   is for a person to see.
 
 Once a translation is offered, both Handover pages show a "Language of the
 sheet" choice on the community sheet's card. With none, they show no choice

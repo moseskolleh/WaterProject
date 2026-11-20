@@ -128,7 +128,7 @@ def test_a_translation_nobody_checked_is_not_offered():
     assert [language["code"] for language in languages(held(good), ENGLISH)] == ["zz"]
     for missing in ("name", "translated_by", "checked_by"):
         # nothing, blank, white space of any kind, not text
-        for value in (None, "", "   ", 7, "\x85", "﻿", " \x1f"):
+        for value in (None, "", "   ", 7, "\x85", "\ufeff", "\u2028\x1f"):
             facts = {missing: value}
             assert translation_problems("zz", held(good, **facts), ENGLISH) == [
                 f"language.yaml does not say {missing}"], (missing, value)
@@ -164,10 +164,30 @@ def test_a_sentence_keeps_every_number_the_english_has():
     assert problems("{cans:num} {hours:g} {__proto__}") == wrong
     assert problems("{cans:num} { hours") == ["sheet.amount has a lone brace"]
     # a figure of another script is not a format
-    assert problems("{cans:num} {hours:.١f}") == ["sheet.amount has a lone brace"]
+    assert problems("{cans:num} {hours:.\u0661f}") == ["sheet.amount has a lone brace"]
     # a sentence with no values takes none
     assert translation_problems("zz", held({"plain": "Wug {who}."}), ENGLISH) == [
         "sheet.plain " + WRONG.format("none")]
+    # and where English writes a count only as the word that agrees with it,
+    # a translation may not print the number, plainly or beside the word
+    words_only = {"sheet": {"rows": "Kept {n:plural:a row|rows}."}}
+
+    def rows(text):
+        return translation_problems("zz", held({"rows": text}), words_only)
+
+    assert rows("Zub {n:plural:frim|frims}.") == []
+    for added in ("Zub {n}.", "Zub {n} {n:plural:frim|frims}.", "Zub {n:g} {n:plural:a|b}."):
+        assert rows(added) == ["sheet.rows " + WRONG.format("n")], added
+    # where English prints a number two ways, a translation prints it both
+    # ways: neither may be dropped, and the order is its own
+    two_ways = {"sheet": {"both": "{n:g} of {n:num}, {m:.1f}."}}
+
+    def both(text):
+        return translation_problems("zz", held({"both": text}), two_ways)
+
+    assert both("{m:.1f}: {n:num} wug {n:g}.") == []
+    for dropped in ("{n:g} wug {m:.1f}.", "{n:num} wug {m:.1f}.", "{n:g} {n:num} {n:.1f} {m:.1f}"):
+        assert both(dropped) == ["sheet.both " + WRONG.format("m, n")], dropped
 
 
 def test_the_headline_of_the_real_sheet_cannot_lose_its_number():
@@ -200,7 +220,7 @@ def test_a_translation_translates_only_what_is_there():
     assert problems({"plain": " ", "answers": {"no": ""}}) == [
         "sheet.answers[no] is blank", "sheet.plain is blank"]
     # blank is blank whichever white space it is made of
-    assert problems({"plain": "﻿", "answers": {"no": "\x85\x1c"}}) == [
+    assert problems({"plain": "\ufeff", "answers": {"no": "\x85\x1c"}}) == [
         "sheet.answers[no] is blank", "sheet.plain is blank"]
     other = {"zz": {"language": dict(WHO), "text": {"elsewhere": {"plain": "x"}, "sheet": ["x"]}}}
     assert translation_problems("zz", other, ENGLISH) == [
@@ -230,7 +250,7 @@ def test_what_is_not_translated_yet_is_no_fault():
 
 def test_languages_are_offered_by_name():
     several = {**held({}, code="zc", name="Mende"), **held({}, code="za", name=" Temne "),
-               **held({}, code="zb", name="Krio"), **held({}, code="zd", name="﻿Krio\x85"),
+               **held({}, code="zb", name="Krio"), **held({}, code="zd", name="\ufeffKrio\x85"),
                **held({"extra": "x"}, code="ze", name="Faulty")}
     assert [(language["code"], language["name"]) for language in languages(several, ENGLISH)] == [
         ("zb", "Krio"), ("zd", "Krio"), ("zc", "Mende"), ("za", "Temne")]
@@ -288,13 +308,21 @@ def test_translated_text_is_written_one_way_for_both_writers():
     # the two document writers tidy text differently (one turns a long dash
     # into a hyphen, the other closes up spaces): translated text is handed
     # to both already tidied, as typed text is
-    text = {"plain": "  Wug — zub  – frimo.\t", "title": "Glorp—{place}  wug",
-            "answers": {"yes": " Zɛ – zub ", "no": "Nɔb—wug"}}
+    text = {"plain": "  Wug \u2014 zub  \u2013 frimo.\t", "title": "Glorp\u2014{place}  wug",
+            "answers": {"yes": " Zɛ \u2013 zub ", "no": "Nɔb\u2014wug"}}
     say = Speaker("zz", held(text), ENGLISH)
     assert say.phrase("sheet.plain") == "Wug - zub - frimo."
     assert say.phrase("sheet.title", place="Bo") == "Glorp - Bo wug"
     assert say.phrase_table("sheet.answers") == {"yes": "Zɛ - zub", "no": "Nɔb - wug"}
     assert say.row("sheet.answers", "no") == "Nɔb - wug"
+    # tidied once the values are in it: a plural with no word for one leaves
+    # two spaces where the word would have been; and a no-break space, which
+    # the browser's writer prints as a space and the Python one does not, is
+    # a space for both
+    text = {"amount": "{cans:num} glorp {cans:plural:|frims} wug\u00a0{hours:g}\u202fzub"}
+    say = Speaker("zz", held(text), ENGLISH)
+    assert say.phrase("sheet.amount", cans=1, hours=8) == "1 glorp wug 8 zub"
+    assert say.phrase("sheet.amount", cans=2, hours=8) == "2 glorp frims wug 8 zub"
 
 
 def test_english_is_spoken_with_no_language_and_keeps_no_count():
@@ -405,6 +433,28 @@ def test_a_file_that_cannot_be_read_refuses_its_language_and_no_other(tmp_path):
 
     # the English sheet is built, and says that something installed is not
     # on offer; the sound translation is built too
+    # a character YAML will not have in a file (a soft line break pasted
+    # from a word processor) is told by its line and column too
+    write_translation(tmp_path / "more", "ze", WHO,
+                      community_sheet="title: Zub {place}\nwater_heading: Wug\x0bfrim\n")
+    soft_break = ("community_sheet.yaml cannot be read: line 2, column 19: a character that "
+                  "cannot be in the file (U+000B)")
+    assert translation_problems("ze", read_translations(tmp_path / "more")) == [soft_break]
+
+    # and what YAML reads but a translation cannot hold: a date that does
+    # not exist (which raises from inside the reader, as no YAML fault does),
+    # a number that is not one
+    write_translation(tmp_path / "more", "zf", None, community_sheet={"title": "Zub {place}"})
+    (tmp_path / "more" / "zf" / "language.yaml").write_text(
+        "name: Zedish\ntranslated_by: A\nchecked_by: B\nchecked_on: 2026-02-30\n",
+        encoding="utf-8")
+    write_translation(tmp_path / "more", "zg", WHO, community_sheet="title: .nan\n")
+    odd = read_translations(tmp_path / "more")
+    cannot = "cannot be read: it holds something that is not text, a number or a list"
+    assert translation_problems("zf", odd) == ["language.yaml " + cannot]
+    assert translation_problems("zg", odd) == ["community_sheet.yaml " + cannot]
+    assert community_sheet_content(SITE, translations=odd)["title"] == "Your borehole at Rokel"
+
     plain = community_sheet_content(SITE, translations=read)
     assert plain["title"] == "Your borehole at Rokel"
     assert plain["notes"][-1] == phrase("community_sheet.translation_refused",
@@ -600,6 +650,18 @@ def test_only_what_this_sheet_prints_is_counted_as_english():
                                    "community_sheet.quality[national_fail]"]
     assert failed["quality"]["headline"].startswith("Not yet.")
     assert failed["notes"][-1].startswith("2 parts of this sheet have no Zedish wording yet")
+    # hours entered and a day's amount that rounds to nothing: the sheet says
+    # "very little", prints no word for hours, and counts none
+    none = marked()
+    del none["zz"]["text"]["community_sheet"]["hour_words"]
+    little = community_sheet_content(SITE, language="zz", translations=none,
+                                     analysis=analysis(0.001), hours_per_day=0.5)
+    assert little["water"]["headline"].startswith(MARK + "The pumping test found very little")
+    assert little["fell_back"] == []
+    # where the hours are printed, their word is counted, once
+    day = community_sheet_content(SITE, language="zz", translations=none,
+                                  analysis=analysis(0.39), hours_per_day=8)
+    assert day["fell_back"] == ["community_sheet.hour_words[other]"]
 
 
 def test_the_builder_is_told_whose_translation_it_is_in_english():
@@ -708,7 +770,7 @@ def test_both_writers_are_handed_the_same_translated_words(tmp_path):
 
     untidy = marked()
     text = untidy["zz"]["text"]["community_sheet"]
-    text["report_tell"] = "Zub  wug — frimo – glorp."
+    text["report_tell"] = "Zub  wug \u2014 frimo \u2013 glorp."
     text["water_none"] = " Frim nɔb zub. "
     content = community_sheet_content(SITE, language="zz", translations=untidy)
     assert content["report"]["lines"][0] == "Zub wug - frimo - glorp."
@@ -731,7 +793,7 @@ def long_rows(times: float) -> dict:
     rows = {key: words + (filler * 4)[: int(len(words) * (times - 1))].rstrip()
             for key, words in english.items()}
     return {"zz": {"language": dict(WHO), "text": {"community_sheet": {
-        "keep_structures": rows, "keep_metres": "{distance:g} mitazɔ"}}}}
+        "keep_structures": rows, "keep_metres": "{distance:g} druvazɔ"}}}}
 
 
 def test_the_key_is_laid_out_by_measure_and_english_is_where_it_was():
@@ -752,12 +814,128 @@ def test_the_key_is_laid_out_by_measure_and_english_is_where_it_was():
     tight = key_layout(rings, 9.5, 5.0, measure)
     assert tight["rows"] == [[["aaaa bbbb"]], [["cc"], ["dddd eeee", "ffff"]]]
     # a distance wider than the room the English one has moves the rows right
-    wide = key_layout([{"label": "1000 mitazozo", "what": ["aa"]}], 12.55, 5.0, measure)
-    assert wide["text_at"] == pytest.approx(6.0 + 2.6 + 0.25)
+    wide = key_layout([{"label": "1000 druv", "what": ["aa"]}], 12.55, 5.0, measure)
+    assert wide["text_at"] == pytest.approx(6.0 + 1.8 + 0.1) and wide["label_scale"] == 1.0
+    # and one wider than its column is set smaller, so that the rows keep
+    # their room: however long the word for the unit, a row has four
+    # centimetres and stops short of whatever is to its right
+    for letters in (13, 30, 80):
+        long = key_layout([{"label": "1" * letters, "what": ["aaaa bbbb cccc dddd eeee ffff"]}],
+                          12.35, 5.0, measure)
+        assert long["text_at"] == pytest.approx(8.3)
+        assert long["label_scale"] == pytest.approx(2.2 / (0.2 * letters))
+        assert all(measure(line, 7.5, False) * long["scale"] <= 12.35 - 8.3 + 1e-9
+                   for line in long["rows"][0][0])
     # a word no line can hold, and a key too tall, are set smaller
     assert key_layout([{"label": "3 m", "what": ["a" * 40]}], 12.55, 5.0, measure)["scale"] < 1
     tall = key_layout([{"label": "3 m", "what": ["aa"] * 20}], 12.55, 5.0, measure)
     assert tall["scale"] < 1 and tall["lines"] * tall["pitch"] <= 5.0 - 0.4 + 1e-9
+
+
+def test_the_label_under_the_square_is_broken_as_english_was_and_then_by_measure():
+    from groundwater.reporting.community_sheet import label_layout
+
+    def measure(text, points, bold):          # every letter a tenth of a centimetre
+        return 0.1 * len(text)
+
+    english = label_layout("Scan to report a fault at borehole SL-WAR-8FEEVKQ-T", measure)
+    assert english == {"lines": ["Scan to report a fault", "at borehole", "SL-WAR-8FEEVKQ-T"],
+                       "scale": 1.0}
+
+    def wide(text, points, bold):             # wide letters: 24 of them do not fit
+        return 0.2 * len(text)
+
+    broken = label_layout("Wumma mombo wamma mummo womma SL-WAR-8FEEVKQ-T", wide)
+    assert all(wide(line, 6.5, False) <= 3.3 for line in broken["lines"])
+    assert " ".join(broken["lines"]) == "Wumma mombo wamma mummo womma SL-WAR-8FEEVKQ-T"
+    assert broken["scale"] == 1.0
+    # a word no line can hold sets the label smaller
+    assert label_layout("mammowummamombowammamummowommamammo", wide)["scale"] == pytest.approx(
+        3.3 / (0.2 * 35))
+
+
+@pytest.mark.parametrize("font", [None, "DejaVu Sans"])
+def test_the_english_key_is_where_it_was_in_the_fonts_it_is_drawn_in(tmp_path, monkeypatch, font):
+    # the picture is drawn in whatever font matplotlib is set up with: its
+    # own (DejaVu Sans) on a stock install and on CI, another where a machine
+    # says so. In each the English key starts where it did before the key
+    # was measured, no row of it is broken, and nothing is set smaller
+    import matplotlib
+
+    from groundwater.reporting import community_sheet as writer
+
+    seen = []
+    real = writer.key_layout
+
+    def recorded(*args, **kwargs):
+        seen.append(real(*args, **kwargs))
+        return seen[-1]
+
+    monkeypatch.setattr(writer, "key_layout", recorded)
+    with matplotlib.rc_context({"font.family": font} if font else {}):
+        for given in ({}, dict(asset_id="SL-WAR-8FEEVKQ-T", config=linked())):
+            content = community_sheet_content(SITE, translations={}, **given)
+            writer.sheet_picture(content, tmp_path / "picture.png")
+    assert len(seen) == 2
+    for key in seen:
+        assert key["text_at"] == writer.KEY_TEXT_AT_CM
+        assert key["scale"] == 1.0 and key["label_scale"] == 1.0
+        assert all(len(broken) == 1 for things in key["rows"] for broken in things), key["rows"]
+
+
+def test_words_wider_than_the_english_stay_inside_the_picture(tmp_path, monkeypatch):
+    # a long word for the unit, a name for the centre wider than the
+    # innermost ring, a label with a word no line holds, and long rows, all
+    # at once, in both fonts: nothing reaches an edge of the picture, and
+    # nothing but the label's own lines is beside the square
+    import matplotlib
+    from PIL import Image
+
+    from groundwater.reporting import community_sheet as writer
+
+    words = long_rows(2.0)
+    words["zz"]["text"]["community_sheet"].update({
+        "keep_metres": "{distance:g} druvazɔglorpfrimowugzubɔmbazɛdo",
+        "keep_centre": "Zɛdoglorp frimo wug",
+        "report_caption": "Wumma mombo wamma mummo womma mammowummamombowammamummowommamammo {id}",
+    })
+
+    def black(image, width, x0, x1, y1=None) -> int:
+        box = (int(image.width * x0 / width), 0, int(image.width * x1 / width),
+               image.height if y1 is None else int(image.height * y1 / writer.PICTURE_HEIGHT_CM))
+        return sum(image.crop(box).histogram()[:128])
+
+    seen = []
+    real = writer.key_layout
+
+    def recorded(*args, **kwargs):
+        seen.append(real(*args, **kwargs))
+        return seen[-1]
+
+    monkeypatch.setattr(writer, "key_layout", recorded)
+    for font in (None, "DejaVu Sans"):
+        with matplotlib.rc_context({"font.family": font} if font else {}):
+            for given in ({}, dict(asset_id="SL-WAR-8FEEVKQ-T", config=linked())):
+                content = community_sheet_content(SITE, language="zz", translations=words, **given)
+                path, width = writer.sheet_picture(content, tmp_path / "picture.png")
+                with Image.open(path) as picture:
+                    image = picture.convert("L")
+                assert black(image, width, 0, 0.05) == 0, (font, given)
+                assert black(image, width, width - 0.05, width) == 0, (font, given)
+                assert black(image, width, writer.KEY_AT_CM, width - 3.5) > 0
+                if given:
+                    # the white kept between the key and the square, down to
+                    # where the square's label begins
+                    assert black(image, width, writer.SCAN_AT_CM - 0.22, writer.SCAN_AT_CM,
+                                 y1=3.3) == 0, font
+                # and as it was laid out, so it is drawn: the distance set
+                # smaller to keep to its column, the rows started after it,
+                # and white between the two
+                key = seen[-1]
+                assert key["label_scale"] < 1 and key["text_at"] == pytest.approx(8.3)
+                assert any(len(broken) > 1 for things in key["rows"] for broken in things)
+                assert black(image, width, 8.3 - 0.08, 8.3 - 0.01) == 0, (font, given)
+                assert black(image, width, writer.KEY_AT_CM, 8.2) > 0
 
 
 @pytest.mark.parametrize("times", [1.3, 2.0, 3.5])
