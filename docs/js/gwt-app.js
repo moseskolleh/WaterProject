@@ -5912,21 +5912,59 @@
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(keep.centre, X(cx), Y(cy + 0.22));
 
-    /* the key: one entry a ring, nearest first, each thing on its own line */
-    var lines = rings.reduce(function (n, ring) { return n + ring.what.length; }, 0) +
-      Math.max(rings.length - 1, 0) * 0.5;
-    var y = heightCm / 2 + lines * 0.42 / 2 - 0.2;
+    /* The key: one entry a ring, nearest first, each thing on its own line.
+     * Measured, not assumed to be the English, by the steps of
+     * reporting/community_sheet.py key_layout: the rows start after the
+     * widest distance, a row too long for the room beside the rings is
+     * broken at its spaces, and a key too tall for the picture, or with a
+     * word no line can hold, is set closer and smaller. A translated row
+     * must not run under the square a phone scans or off the edge. */
+    function wide(text, points, bold) {
+      face(points, bold);
+      return ctx.measureText(text).width / PX;
+    }
+    var clear = 0.25, pitchCm = 0.42;
+    var widest = rings.reduce(function (w, ring) { return Math.max(w, wide(ring.label, 8, true)); }, 0);
+    var textAt = Math.max(7.3, 6.0 + widest + clear);
+    var limit = Math.max((report.payload ? 12.8 : widthCm) - clear - textAt, 1.0);
+    var rows = rings.map(function (ring) {
+      return ring.what.map(function (what) {
+        var broken = [];
+        String(what).split(' ').forEach(function (word) {
+          var last = broken.length - 1;
+          if (broken.length && wide(broken[last] + ' ' + word, 7.5, false) <= limit) {
+            broken[last] += ' ' + word;
+          } else {
+            broken.push(word);
+          }
+        });
+        return broken;
+      });
+    });
+    var lines = Math.max(rings.length - 1, 0) * 0.5, longest = 0;
+    rows.forEach(function (things) {
+      things.forEach(function (broken) {
+        lines += broken.length;
+        broken.forEach(function (line) { longest = Math.max(longest, wide(line, 7.5, false)); });
+      });
+    });
+    var scale = Math.min(1, lines ? (heightCm - 0.4) / (lines * pitchCm) : 1,
+      longest ? limit / longest : 1);
+    var pitch = pitchCm * scale;
+    var y = heightCm / 2 + lines * pitch / 2 - 0.2 * scale;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    rings.forEach(function (ring) {
-      face(8, true);
+    rings.forEach(function (ring, i) {
+      face(8 * scale, true);
       ctx.fillText(ring.label, X(6.0), Y(y));
-      face(7.5, false);
-      ring.what.forEach(function (what) {
-        ctx.fillText(what, X(7.3), Y(y));
-        y -= 0.42;
+      face(7.5 * scale, false);
+      rows[i].forEach(function (broken) {
+        broken.forEach(function (line) {
+          ctx.fillText(line, X(textAt), Y(y));
+          y -= pitch;
+        });
       });
-      y -= 0.21;
+      y -= pitch / 2;
     });
 
     if (report.payload) {
@@ -5947,11 +5985,15 @@
           }
         }
       }
-      face(6.5, false);
+      /* the label's lines keep to the room under the square: more of them
+       * than the English has are set closer */
+      var label = wrapWords(report.caption, 24), foot = top - side - 0.25;
+      var step = Math.min(0.33, (foot - 0.15) / Math.max(label.length - 1, 1));
+      face(6.5 * Math.min(1, step / 0.33 + 0.15), false);
       ctx.fillStyle = ink;
       ctx.textAlign = 'center';
-      wrapWords(report.caption, 24).forEach(function (line, n) {
-        ctx.fillText(line, X(left + side / 2), Y(top - side - 0.25 - n * 0.33));
+      label.forEach(function (line, n) {
+        ctx.fillText(line, X(left + side / 2), Y(foot - n * step));
       });
     }
     return { image: { dataUrl: canvas.toDataURL('image/png'), mime: 'image/png',

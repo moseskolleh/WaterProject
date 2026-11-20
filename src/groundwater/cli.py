@@ -367,11 +367,17 @@ def cmd_translation(args: argparse.Namespace) -> int:
     """Say whether a translation can be offered, and what it still lacks
     (PLAN.md step 9.2). With no code, every translation is listed; with one,
     every reason it is refused, or every part of the community handover sheet
-    it has no words for yet. The translations are the package's own
+    it has no words for yet and every part it words exactly as the English. The translations are the package's own
     (``data/text/<code>``) unless a folder of them is given, which is how one
     is checked before it is put there. Nothing is written."""
     from .community_sheet import sheet_entries
-    from .text import read_translations, translation_problems, translations, untranslated
+    from .text import (
+        read_translations,
+        same_as_english,
+        translation_problems,
+        translations,
+        untranslated,
+    )
 
     if args.folder:
         root = Path(args.folder)
@@ -400,7 +406,15 @@ def cmd_translation(args: argparse.Namespace) -> int:
             for ident in left:
                 print(f"  - {ident}")
         else:
-            print("  The community handover sheet is translated in full.")
+            print("  The community handover sheet has words for every part.")
+        same = same_as_english(code, wanted, held)
+        if same:
+            # a copy of the English file not yet translated cannot be told
+            # from a translation by a rule; a person can
+            print(f"  {len(same)} of its parts read exactly as the English does. Where that is "
+                  "not meant, take the entry out until it is translated:")
+            for ident in same:
+                print(f"  - {ident}")
         return True
 
     if args.code:

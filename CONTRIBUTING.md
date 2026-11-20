@@ -235,19 +235,37 @@ with two to eight small letters (`src/groundwater/data/text/kri` for Krio):
   A folder that does not give all three is not offered by either app,
   whatever else it holds.
 - `community_sheet.yaml` holds the sentences, under the same keys as the
-  English file. Copy the English file, leave out its comments if you wish,
-  and put the translation in place of each sentence. An entry left out, or
-  left empty, is printed in English, and whoever builds a sheet is told how
-  many were; so a translation can go in a part at a time. The entries that
-  are said to the builder and never printed (`about`, `too_many_contacts`,
-  `in_language`, `not_translated`, `builder_notes`) need no translation.
+  English file. A translation can go in a part at a time: an entry that is
+  not in the file is printed in English, and whoever builds a sheet is told
+  how many parts were. The entries that are said to the builder and never
+  printed (`about`, `too_many_contacts`, `in_language`, `not_translated`,
+  `translation_refused`, `builder_notes`) need no translation.
 
-A sentence keeps every `{value}` its English has, written the same way:
-`{cans:num}` stays `{cans:num}`, wherever in the sentence it now falls. The
-two words of a plural are the translation's own
-(`{cans:plural:jɛriken|jɛriken dɛm}`), and a language that has one word for
-both writes it twice. A row of a table (`quality`, `hour_words`,
-`keep_structures` and the like) is plain text with no braces.
+The English file is the place to start from, with three things to know.
+
+- **Take out what is not translated yet.** A sentence left as the English
+  has it reads, to both apps, as a translation that happens to say the same,
+  and is not counted as English. Delete the entry, or leave its key with
+  nothing after the colon (`water_heading:`). A key left with `>-` and no
+  words under it, or with `''`, is a blank sentence, and a translation with
+  a blank sentence is refused.
+- **Keep the quotes.** A sentence that begins with `{`, or has `: ` or ` #`
+  in it, has to be in quotes, as `quality_found` and `keep_metres` are in
+  the English file. Without them YAML reads something else: a sentence cut
+  off at ` #`, or a file that cannot be read at all, which refuses the
+  language with the line and column of the slip.
+- **Keep every number.** A sentence keeps every `{value}` its English has,
+  written the same way: `{cans:num}` stays `{cans:num}`, wherever in the
+  sentence it now falls. The two words of a plural are the translation's own
+  (`{cans:plural:glorp|glorps}`, with the language's own two words), and a
+  language with no use for them may leave the plural out; the number itself
+  may not be left out, added to, or written another way. A row of a table
+  (`quality`, `hour_words`, `keep_structures` and the like) is plain text
+  with no braces.
+
+A long dash, a short dash and doubled spaces in a translation are written as
+they are for typed text (a hyphen, one space), so that the two apps print the
+same words.
 
 Check it before it goes in, from a checkout or an installed package:
 
@@ -255,16 +273,38 @@ Check it before it goes in, from a checkout or an installed package:
 groundwater translation kri --folder src/groundwater/data/text
 ```
 
-says either every reason it cannot be offered (a value dropped or
-reformatted, an entry or a row English does not have, a blank sentence, a
-missing `checked_by`) or which parts of the sheet it has no words for yet.
+says either every reason it cannot be offered (a file that cannot be read, a
+number dropped or reformatted, an entry or a row English does not have, a
+blank sentence, a missing `checked_by`), or which parts of the sheet it has
+no words for yet and which it words exactly as the English does. The last
+list is for a person to judge: a unit or a name may rightly be the same, and
+a sentence that was copied and not yet translated should be taken out.
 `groundwater translation` with no code checks every translation the package
-holds, and `tests/test_text_languages.py` fails on one that cannot be
-offered. Then run `python web/build_webapp_data.py` so that the browser app
-carries it (as `GWT.data.translations`), `python web/build_demo.py` and
-`python web/build_offline.py`, and the parity suite: both engines read the
-same folders by the same rules (`groundwater/text.py`, `translationProblems`
-and `speaker` in `web/src/gwt-core/185-text-languages.js`).
+holds. A fault in one translation refuses that one alone: the others, and
+the English sheet, are untouched, and both Handover pages say that a
+translation is installed and not offered.
+
+Then, for a translation that is going into the package:
+
+1. `python web/build_webapp_data.py`, so that the browser app carries it (as
+   `GWT.data.translations`); `python tests/webapp/make_reference.py`, since
+   the English sheet no longer tells its builder that no translation exists;
+   and the parity suite. Both engines read the same folders by the same
+   rules (`groundwater/text.py`; `translationProblems` and `speaker` in
+   `web/src/gwt-core/185-text-languages.js`).
+2. `nox -s guide`: the Handover page now shows a choice of language, so the
+   guide's pictures of it are retaken. Then `python web/build_demo.py` and
+   `python web/build_offline.py`.
+3. The words that say there is no translation: the last paragraph of section
+   9g of `docs/user_guide.md`, the `english_only` note and the header of
+   `community_sheet.yaml`, and QUESTIONS.md item 31(d).
+4. The whole suite. `tests/test_text_languages.py` fails on a bundled
+   translation that cannot be offered; no other test depends on what is
+   bundled.
+5. Build the sheet in the language, with the longest committee and a report
+   address, and print it. The picture's key makes room for longer rows, and
+   sets itself smaller where it must, but whether the page still reads well,
+   and still fits one page in Word, is for a person to see.
 
 Once a translation is offered, both Handover pages show a "Language of the
 sheet" choice on the community sheet's card. With none, they show no choice
@@ -278,7 +318,10 @@ picture's caption and the line at the foot that carries the document's code.
 To have other community-facing text translated, say it through a speaker
 (`Speaker(language)` in Python, `C.speaker(language)` in the browser) where
 it now uses `phrase`, and list in the module, as `community_sheet.py` does
-with `BUILDER_ENTRIES`, which entries are the builder's.
+with `BUILDER_ENTRIES`, which entries are the builder's. A table one row of
+which is printed is asked for with `row`, so that only what is printed is
+counted as English. A table spoken through a speaker should not be keyed by
+whole numbers: the browser hands such rows back in number order.
 
 The configuration defaults are kept the same way, in
 `src/groundwater/data/defaults.json`: `config.py` builds every field's

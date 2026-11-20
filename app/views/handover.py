@@ -218,7 +218,12 @@ def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
         except ValueError as exc:
             st.error(f"Could not build the community sheet: {exc}")
         else:
-            offer_document(path, "Download the community sheet (.docx)")
+            # each language's sheet is kept under its own name: the English
+            # one and a translated one are both on the Deliverables list and
+            # both go into the evidence bundle
+            spoken = content["language"].get("name")
+            offer_document(path, f"Download the community sheet in {spoken} (.docx)" if spoken
+                           else "Download the community sheet (.docx)")
 
 
 def _evidence_bundle_section() -> None:

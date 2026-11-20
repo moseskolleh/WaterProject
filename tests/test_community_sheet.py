@@ -34,6 +34,10 @@ def verdict(state, *parameters, national=()):
 
 
 def sheet(**given):
+    # with no translation installed, whatever the package comes to bundle:
+    # these are the rules of the English sheet (tests/test_text_languages.py
+    # holds the translated one)
+    given.setdefault("translations", {})
     return community_sheet_content(SITE, **given)
 
 
@@ -342,12 +346,13 @@ def test_the_distances_are_the_separation_tables_own():
     # every structure the sheet words is a row of the table, by its name
     assert set(words) <= set(table)
     keep = sheet()["keep_away"]
-    assert keep["lines"] == [
-        "Houses and other buildings: at least 3 metres away.",
-        "Hand dug wells: at least 20 metres away.",
-        "Latrines, septic tanks and soakaways: at least 20 metres away.",
-        "Rubbish dumps and burial grounds: at least 1000 metres away.",
+    # what is to be kept away is said by the picture's key, ring by ring
+    assert [(ring["label"], ring["what"]) for ring in keep["rings"]] == [
+        ("3 m", ["Houses and other buildings"]),
+        ("20 m", ["Hand dug wells", "Latrines, septic tanks and soakaways"]),
+        ("1000 m", ["Rubbish dumps and burial grounds"]),
     ]
+    assert "lines" not in keep
     for structure, what in words.items():
         ring = next(r for r in keep["rings"] if what in r["what"])
         assert ring["distance_m"] == table[structure]
@@ -432,8 +437,17 @@ def test_another_projects_hours_and_identifier_do_not_carry_into_this_one():
     # number on this one's sheet
     from groundwater.project_io import stale_on_load
 
-    state = {"ho_sheet_hours": 8.0, "ho_sheet_asset": "SL-WAR-8FEEVKQ-T", "ho_tariff": "5 SLE"}
-    assert set(stale_on_load(state)) == {"ho_sheet_hours", "ho_sheet_asset"}
+    state = {"ho_sheet_hours": 8.0, "ho_sheet_asset": "SL-WAR-8FEEVKQ-T", "ho_tariff": "5 SLE",
+             "ho_sheet_language": "zz"}
+    # and its language, which is that community's (PLAN.md step 9.2)
+    assert set(stale_on_load(state)) == {"ho_sheet_hours", "ho_sheet_asset",
+                                         "ho_sheet_language"}
+    # the file's own values come back after the clearing: all three are kept
+    # with the project
+    from groundwater.project_io import deserialize_project, serialize_project
+
+    saved = deserialize_project(serialize_project({**state, "meta_community": "Rokel"}, "0.3.0"))
+    assert {key: saved.get(key) for key in state} == state
 
 
 # -------------------------------------------------------------------- the document
@@ -485,7 +499,7 @@ def _full(tmp_path, **more):
         analysis=analysis(0.39, 0.22, "indicative"), quality=verdict("health_fail", "Manganese"),
         committee=[{"role": "Chairperson", "name": "Aminata Kamara", "contact": "076 000 000"},
                    {"role": "Caretaker", "name": "Sorie Conteh", "contact": "077 111 222"}],
-        asset_id="SL-WAR-8FEEVKQ-T", hours_per_day=8, example=True)
+        asset_id="SL-WAR-8FEEVKQ-T", hours_per_day=8, example=True, translations={})
     given.update(more)
     site = SiteMetadata(community="Dr. Timbo's Residence")
     path = build_community_sheet(site, tmp_path / "sheet.docx", tmp_path, **given)

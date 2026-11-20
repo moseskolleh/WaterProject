@@ -1584,7 +1584,7 @@ In the browser app: [`#/handover`](index.html#/handover), the
 the same section, and the two apps' sheets say the same.
 
 The handover report is for the client and the district water office.
-This is one page for the community to keep, in plain English, with a
+This is one page for the community to keep, in plain words, with a
 picture:
 
 - **How much water.** As jerrycans of 20 litres and as litres.
@@ -1645,7 +1645,8 @@ When one is, the card shows a **Language of the sheet** choice beside
 the hours and the identifier. Choose the language and the card says what
 the sheet will say in it, and whose translation it is. A sentence the
 translation does not have yet is printed in English, and the card says
-how many were. A committee member's role is printed as you typed it,
+how many were. If a translation is installed and has a fault, it is not
+in the list, and the card says so. A committee member's role is printed as you typed it,
 and the names of what a water test found stay as the standards table
 has them. Whoever maintains the toolkit adds a translation as
 CONTRIBUTING.md ("Adding a language") describes.

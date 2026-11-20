@@ -117,6 +117,18 @@ await withPage(async (page, base, consoleErrors) => {
   await page.goto(base + '/index.html#/handover', { waitUntil: 'load' });
   await page.waitForFunction(() => window.GWT && window.GWT.app &&
     document.querySelector('#page-host .page-head'));
+  /* With no translation installed, whatever this build comes to bundle: what
+   * follows is the English sheet, and "none installed" is what it tests.
+   * What the build does bundle is kept for the check below. */
+  const bundled = await page.evaluate(() => {
+    const held = window.GWT.data.translations;
+    window.GWT.data.translations = {};
+    window.GWT.app.render();
+    return { codes: Object.keys(held),
+      faulty: Object.keys(held).filter((code) => window.GWT.core.translationProblems(code, held).length) };
+  });
+  check('community sheet: every translation this build bundles is one it can offer',
+    bundled.faulty.length === 0, JSON.stringify(bundled));
   const notes = await page.evaluate(() => window.GWT.core.phraseTable('community_sheet.builder_notes'));
 
   /* --- nothing loaded ---------------------------------------------------- */
@@ -132,17 +144,11 @@ await withPage(async (page, base, consoleErrors) => {
     .map((input) => !!(input.labels && input.labels.length) || !!input.getAttribute('aria-label')));
   check('community sheet: its two boxes are labelled', labelled.length === 2 && labelled.every(Boolean),
     JSON.stringify(labelled));
-  /* PLAN.md step 9.2: no translation is bundled until native speakers have
-   * made and checked one, so nothing offers a choice of language */
-  const choice = await page.evaluate(() => ({
-    bundled: Object.keys(window.GWT.data.translations),
-    offered: window.GWT.core.textLanguages().length,
-    selects: Array.from(document.querySelectorAll('#page-host .card')).find((c) =>
-      c.textContent.includes('Community handover sheet')).querySelectorAll('select').length,
-  }));
-  check('community sheet: with no translation bundled, no language is offered',
-    choice.offered === choice.bundled.length && (choice.offered > 0 || choice.selects === 0),
-    JSON.stringify(choice));
+  /* PLAN.md step 9.2: with no translation installed nothing offers a choice
+   * of language */
+  const choice = await card(page).locator('select').count();
+  check('community sheet: with no translation installed, no language is offered', choice === 0,
+    String(choice));
 
   const blank = await build(page);
   const blankContent = await contentNow(page);
@@ -224,8 +230,9 @@ await withPage(async (page, base, consoleErrors) => {
    * the light ones between two dark ones are lost and no phone reads it. */
   const readSquare = () => page.evaluate(() => {
     const C = window.GWT.core, app = window.GWT.app;
-    const payload = C.reportLink(C.parseAssetId(app.store.get('handover').assetId),
-      app.config().service.report_url);
+    /* the identifier typed on the card, else the one the registry holds */
+    const id = app.store.get('handover').assetId || (app.store.get('asset') || {}).asset_id;
+    const payload = C.reportLink(C.parseAssetId(id), app.config().service.report_url);
     const code = C.qrEncode(payload, { ecc: 'H' });
     const canvas = window.__sheetPicture, ctx = canvas.getContext('2d');
     const PX = 80, side = 2.9, left = 12.8, top = 0.35, cell = side / (code.size + 2);
@@ -343,7 +350,8 @@ await withPage(async (page, base, consoleErrors) => {
   const MARK = '\u025b\u0254 ';
   await page.evaluate((mark) => {
     const app = window.GWT.app, english = window.GWT.data.text.community_sheet;
-    const builders = ['about', 'too_many_contacts', 'in_language', 'not_translated', 'builder_notes'];
+    const builders = ['about', 'too_many_contacts', 'in_language', 'not_translated',
+      'translation_refused', 'builder_notes'];
     const whole = {};
     Object.keys(english).forEach((key) => {
       if (builders.includes(key)) return;
@@ -351,12 +359,20 @@ await withPage(async (page, base, consoleErrors) => {
       whole[key] = {};
       Object.keys(english[key]).forEach((row) => { whole[key][row] = mark + english[key][row]; });
     });
-    window.__bundled = window.GWT.data.translations;
+    /* the rows of the key half as long again, and a word for the unit: the
+     * picture has to make room for them */
+    const long = Object.assign({}, whole, { keep_structures: {}, keep_metres: mark + '{distance:g} mitazo' });
+    Object.keys(whole.keep_structures).forEach((row) => {
+      long.keep_structures[row] = whole.keep_structures[row] + ' zedo glorp frimo wug zub';
+    });
     window.GWT.data.translations = {
+      zw: { language: { name: 'Longish', translated_by: 'G. Translator', checked_by: 'H. Checker' },
+        text: { community_sheet: long } },
       zz: { language: { name: 'Zedish', translated_by: 'A. Translator', checked_by: 'B. Checker' },
         text: { community_sheet: whole } },
       zy: { language: { name: 'Ypsilonian', translated_by: 'C. Translator', checked_by: 'D. Checker' },
-        text: { community_sheet: { title: mark + '{place}' } } },
+        text: { community_sheet: { title: mark + '{place}',
+          report_tell: mark + 'Zub  wug \u2014 frimo \u2013 glorp.' } } },
       yy: { language: { name: 'Unchecked', translated_by: 'E. Translator' },
         text: { community_sheet: whole } },
     };
@@ -372,12 +388,16 @@ await withPage(async (page, base, consoleErrors) => {
   }));
   check('community sheet: a translation that names who checked it is offered, by name; one that does not is not',
     options.labelled && options.label.includes('Language of the sheet') && options.chosen === '' &&
-    JSON.stringify(options.choices) === JSON.stringify([['', 'English'], ['zy', 'Ypsilonian'], ['zz', 'Zedish']]),
+    JSON.stringify(options.choices) === JSON.stringify([['', 'English'], ['zw', 'Longish'],
+      ['zy', 'Ypsilonian'], ['zz', 'Zedish']]),
     JSON.stringify(options));
   const stillEnglish = await cardWords(page);
   check('community sheet: with a translation on offer the sheet is English until one is chosen, and nobody is told none exists',
     stillEnglish.includes('About 70 jerrycans of water a day.') && !stillEnglish.includes(MARK) &&
     !stillEnglish.includes(notes.english_only), stillEnglish.slice(0, 600));
+  check('community sheet: a translation that is installed and cannot be offered is said, not passed over',
+    stillEnglish.includes('A translation is installed that cannot be offered (yy)'),
+    stillEnglish.slice(-400));
 
   await select.selectOption('zz');
   const inZedish = await cardWords(page);
@@ -403,14 +423,43 @@ await withPage(async (page, base, consoleErrors) => {
   const inPart = await cardWords(page);
   const part = await build(page);
   check('community sheet: what a translation has no words for is printed in English, and the builder is told how much',
-    /parts of this sheet are not fully in Ypsilonian yet/.test(inPart) &&
+    /parts of this sheet have no Ypsilonian wording yet and are printed in English/.test(inPart) &&
     inPart.includes('About 70 jerrycans of water a day.') && /_zy\.docx$/.test(part.name) &&
     part.words[0].startsWith('This sheet was made from example data.') &&
     part.words[1].startsWith(MARK), JSON.stringify({ card: inPart.slice(0, 500), words: part.words.slice(0, 3) }));
+  /* the two document writers tidy text differently; a translated sentence
+   * reaches this one as it reaches the other, dashes and spaces settled */
+  check('community sheet: translated words are written one way, as typed words are',
+    part.words.some((w) => w.startsWith(MARK + 'Zub wug - frimo - glorp.')),
+    JSON.stringify(part.words.filter((w) => w.includes('Zub'))));
+
+  /* a translation longer than the English: the key makes room, and the
+   * square is still the plate's link, module for module */
+  await select.selectOption('zw');
+  const longer = await build(page);
+  const longSquare = await readSquare();
+  check('community sheet: a longer translation does not run into the square a phone scans',
+    longer.width === 1280 && longSquare.wrong === 0 && longSquare.edge > 200 &&
+    longer.pixels.key > zedish.pixels.key, JSON.stringify({ longSquare, key: longer.pixels.key,
+      english: zedish.pixels.key }));
+  await page.evaluate(() => {
+    window.GWT.app.store.set('config.service.report_url', '');
+    window.GWT.app.render();
+  });
+  const noSquare = await build(page);
+  const edge = await page.evaluate(() => {
+    const canvas = window.__sheetPicture, ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(canvas.width - 10, 0, 10, canvas.height).data;
+    let dark = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i] < 128) dark += 1;
+    return { dark, width: canvas.width };
+  });
+  check('community sheet: nor off the edge of the picture where there is no square',
+    noSquare.width === 1008 && edge.dark === 0 && noSquare.pixels.key > 0.005, JSON.stringify(edge));
 
   /* a project saved where a translation was installed, opened where it is not */
   await page.evaluate(() => {
-    window.GWT.data.translations = window.__bundled;
+    window.GWT.data.translations = {};
     window.GWT.app.render();
   });
   const without = await cardWords(page);

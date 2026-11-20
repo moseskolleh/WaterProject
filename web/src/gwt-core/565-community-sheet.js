@@ -70,11 +70,14 @@
       heading: say.phrase('community_sheet.water_heading'), state: 'none',
       litres_per_hour: null, jerrycans_per_hour: null, hours_per_day: null,
       litres_per_day: null, jerrycans_per_day: null,
-      headline: say.phrase('community_sheet.water_none'), lines: [],
+      headline: '', lines: [],
     };
     var rec = analysis ? analysis.yield_recommendation : null;
     if (!rec || rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
       notes.push(table[analysis ? 'pending' : 'no_test']);
+      /* asked for only where it is printed: the speaker counts what it is
+       * asked for */
+      water.headline = say.phrase('community_sheet.water_none');
       return water;
     }
     var low = rec.safe_yield_low_m3_per_h;
@@ -101,7 +104,7 @@
       }
     } else {
       var perDay = roundDown(perHour * hours);
-      var unit = say.phraseTable('community_sheet.hour_words')[hours === 1 ? 'one' : 'other'];
+      var unit = say.row('community_sheet.hour_words', hours === 1 ? 'one' : 'other');
       water.hours_per_day = hours;
       water.litres_per_day = perDay;
       water.jerrycans_per_day = Math.floor(perDay / JERRYCAN_L);
@@ -137,7 +140,9 @@
    * @returns {Rec}
    */
   function sheetQuality(quality, notes, say) {
-    var answers = say.phraseTable('community_sheet.quality');
+    /* the English table says which verdicts the sheet has words for; the
+     * one answer printed is asked of the speaker */
+    var answers = phraseTable('community_sheet.quality');
     var state = quality ? quality.verdict_state : null;
     if (!Object.prototype.hasOwnProperty.call(answers, state) || state === 'none') {
       if (!quality) {
@@ -162,7 +167,7 @@
       lines.push(say.phrase('community_sheet.quality_ask'));
     }
     return { heading: say.phrase('community_sheet.quality_heading'), state: state,
-      headline: answers[state], lines: lines };
+      headline: say.row('community_sheet.quality', state), lines: lines };
   }
 
   /**
@@ -261,9 +266,6 @@
     });
     return {
       heading: say.phrase('community_sheet.keep_heading'),
-      lines: kept.map(function (item) {
-        return say.phrase('community_sheet.keep_line', { what: item[1], distance: item[0] });
-      }),
       rings: rings,
       centre: say.phrase('community_sheet.keep_centre'),
       caption: say.phrase('community_sheet.keep_caption'),
@@ -323,6 +325,15 @@
       /* with a translation on offer the builder chose English, and is not
        * told that none exists */
       notes.push(phraseTable('community_sheet.builder_notes').english_only);
+    }
+    /* a translation that is installed and cannot be offered is said, not
+     * passed over: whoever put it there is waiting to see it in the list */
+    var held = opts.translations || translations();
+    var refused = Object.keys(held).sort().filter(function (code) {
+      return translationProblems(code, held).length > 0;
+    });
+    if (refused.length) {
+      notes.push(phrase('community_sheet.translation_refused', { codes: refused.join(', ') }));
     }
     content.notes = notes;
     return content;

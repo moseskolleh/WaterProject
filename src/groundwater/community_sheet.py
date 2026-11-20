@@ -49,7 +49,8 @@ from .config import Config
 from .models import SiteMetadata
 from .registry import parse_asset_id, report_link, trim_field
 from .supervision.checklists import load_separation_distances
-from .text import Speaker, languages, phrase, phrase_table, text_catalogue
+from . import text as _text
+from .text import Speaker, languages, phrase, phrase_table, text_catalogue, translation_problems
 
 __all__ = ["BUILDER_ENTRIES", "JERRYCAN_L", "community_sheet_content", "round_down",
            "sheet_entries"]
@@ -74,7 +75,7 @@ SCAN_ECC = "H"
 #: other entry is printed on the sheet, and is what a translation of it is
 #: made of (:func:`sheet_entries`).
 BUILDER_ENTRIES = ("about", "too_many_contacts", "in_language", "not_translated",
-                   "builder_notes")
+                   "translation_refused", "builder_notes")
 
 # written out rather than \s, which the two engines read differently
 _SPACE = re.compile(r"[ \t\n\r\f\v]+")
@@ -126,11 +127,14 @@ def _water(analysis: Any, hours: float | None, notes: list[str], say: Speaker) -
         "heading": say.phrase("community_sheet.water_heading"), "state": "none",
         "litres_per_hour": None, "jerrycans_per_hour": None, "hours_per_day": None,
         "litres_per_day": None, "jerrycans_per_day": None,
-        "headline": say.phrase("community_sheet.water_none"), "lines": [],
+        "headline": "", "lines": [],
     }
     rec = getattr(analysis, "yield_recommendation", None)
     if rec is None or rec.safe_yield_m3_per_h is None:
         notes.append(table["no_test" if analysis is None else "pending"])
+        # asked for only where it is printed: the speaker counts what it is
+        # asked for
+        water["headline"] = say.phrase("community_sheet.water_none")
         return water
     low = getattr(rec, "safe_yield_low_m3_per_h", None)
     rate = low if low is not None else rec.safe_yield_m3_per_h
@@ -157,7 +161,7 @@ def _water(analysis: Any, hours: float | None, notes: list[str], say: Speaker) -
             water["headline"] = say.phrase("community_sheet.water_litres_hour", litres=per_hour)
     else:
         per_day = round_down(per_hour * hours)
-        unit = say.phrase_table("community_sheet.hour_words")["one" if hours == 1 else "other"]
+        unit = say.row("community_sheet.hour_words", "one" if hours == 1 else "other")
         water["hours_per_day"] = hours
         water["litres_per_day"] = per_day
         water["jerrycans_per_day"] = per_day // JERRYCAN_L
@@ -185,7 +189,9 @@ def _water(analysis: Any, hours: float | None, notes: list[str], say: Speaker) -
 
 
 def _quality(quality: Any, notes: list[str], say: Speaker) -> dict:
-    answers = say.phrase_table("community_sheet.quality")
+    # the English table says which verdicts the sheet has words for; the
+    # one answer printed is asked of the speaker
+    answers = phrase_table("community_sheet.quality")
     state = getattr(quality, "verdict_state", None) if quality is not None else None
     if state not in answers or state == "none":
         if quality is None:
@@ -205,7 +211,7 @@ def _quality(quality: Any, notes: list[str], say: Speaker) -> dict:
             lines.append(say.phrase("community_sheet.quality_found", names=", ".join(names)))
         lines.append(say.phrase("community_sheet.quality_ask"))
     return {"heading": say.phrase("community_sheet.quality_heading"), "state": state,
-            "headline": answers[state], "lines": lines}
+            "headline": say.row("community_sheet.quality", state), "lines": lines}
 
 
 def _contacts(committee: Any, notes: list[str], say: Speaker) -> dict:
@@ -273,8 +279,6 @@ def _keep_away(say: Speaker) -> dict:
                           "label": say.phrase("community_sheet.keep_metres", distance=distance)})
     return {
         "heading": say.phrase("community_sheet.keep_heading"),
-        "lines": [say.phrase("community_sheet.keep_line", what=what, distance=distance)
-                  for distance, what in kept],
         "rings": rings,
         "centre": say.phrase("community_sheet.keep_centre"),
         "caption": say.phrase("community_sheet.keep_caption"),
@@ -339,5 +343,11 @@ def community_sheet_content(site: SiteMetadata, *, analysis: Any = None, quality
         # with a translation on offer the builder chose English, and is not
         # told that none exists
         notes.append(phrase_table("community_sheet.builder_notes")["english_only"])
+    # a translation that is installed and cannot be offered is said, not
+    # passed over: whoever put it there is waiting to see it in the list
+    held = _text.translations() if translations is None else translations
+    refused = [code for code in sorted(held) if translation_problems(code, held)]
+    if refused:
+        notes.append(phrase("community_sheet.translation_refused", codes=", ".join(refused)))
     content["notes"] = notes
     return content
