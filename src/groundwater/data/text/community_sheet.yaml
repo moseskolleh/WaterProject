@@ -10,12 +10,15 @@
 # name in a folder beside this one named for the language (kri/), with as
 # many of these entries as are translated, under the same keys, and a
 # language.yaml that names who translated it and who checked it
-# (CONTRIBUTING.md, "Adding a language"; PLAN.md step 9.2).
+# (CONTRIBUTING.md, "Adding a language"; PLAN.md step 9.2). In a copy of
+# this file made for that: take out every entry not translated yet, keep the
+# quotes round a sentence that has them, and keep every {value} as it is
+# written here.
 
 # What the sheet is, on the card of the Handover page that builds it, in
 # both apps.
 about: >-
-  One page for the community to keep, in plain English: how much water the
+  One page for the community to keep, in plain words: how much water the
   borehole gives, whether it is safe to drink, who to call, how to report a
   fault and what to keep away from it. It says a little less than the
   pumping test allows, never more, and says so where something is not known.
@@ -121,7 +124,6 @@ keep_structures:
   Buildings: Houses and other buildings
   Hand dug well: Hand dug wells
   Solid waste dump or burial ground: Rubbish dumps and burial grounds
-keep_line: "{what}: at least {distance:g} metres away."
 keep_centre: Borehole
 keep_metres: "{distance:g} m"
 keep_caption: >-
@@ -141,9 +143,13 @@ in_language: >-
   The sheet is in {name}: translated by {translated_by}, checked by
   {checked_by}.
 not_translated: >-
-  {count:g} {count:plural:part|parts} of this sheet {count:plural:is|are} not
-  fully in {name} yet. What the translation has no words for is printed in
-  English.
+  {count:g} {count:plural:part|parts} of this sheet {count:plural:has|have}
+  no {name} wording yet and {count:plural:is|are} printed in English.
+# a translation is installed and neither app offers it: said so that whoever
+# put it there is not left looking for it in the list
+translation_refused: >-
+  A translation is installed that cannot be offered ({codes}), so it is not
+  in the list of languages. The command "groundwater translation" says why.
 
 # --- for whoever builds the sheet, shown beside the button and never
 # printed on it: what the sheet could not say, and why ------------------

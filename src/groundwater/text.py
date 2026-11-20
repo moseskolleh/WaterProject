@@ -49,10 +49,12 @@ for Krio, holding:
   and a table may translate some of its rows.
 
 A translated sentence has to take the same values as the English one, each
-in a format the English allows it: :func:`translation_problems` lists every
-place a translation does not (an entry English does not have, a sentence
-where English has a table, a placeholder missing, added or reformatted),
-and a translation with a problem is not offered either. The same rules are
+written as the English writes it; only the word of a plural may be left out,
+never the number. :func:`translation_problems` lists every place a
+translation does not hold to this (an entry English does not have, a
+sentence where English has a table, a placeholder missing, added or
+reformatted, a file that cannot be read), and a translation with a problem
+is not offered either. The same rules are
 ``translationProblems`` in ``docs/js/gwt-core.js``, which reads the same
 folders as ``GWT.data.translations``.
 
@@ -64,6 +66,7 @@ document, stay in English.
 from __future__ import annotations
 
 import functools
+import json
 import math
 import numbers
 import re
@@ -74,15 +77,15 @@ import yaml
 from .utils import fmt_num
 
 __all__ = ["render_text", "phrase", "phrase_table", "text_catalogue",
-           "Speaker", "languages", "read_translations", "translation_problems",
-           "translations", "untranslated"]
+           "Speaker", "languages", "read_translations", "same_as_english",
+           "translation_problems", "translations", "untranslated"]
 
 # The one grammar, held to the same pattern in gwt-core.js. The alternation
 # matches an escape, a placeholder or a lone brace, in that order, so a lone
 # brace can be reported instead of passed through.
 _TOKEN = re.compile(
     r"\{\{|\}\}"
-    r"|\{([a-z_][a-z0-9_]*)(?::(num|g|\.\d+f|plural:[^{}|]*\|[^{}|]*))?\}"
+    r"|\{([a-z_][a-z0-9_]*)(?::(num|g|\.[0-9]+f|plural:[^{}|]*\|[^{}|]*))?\}"
     r"|[{}]"
 )
 
@@ -181,12 +184,62 @@ LANGUAGE_FACTS = ("name", "translated_by", "checked_by")
 
 _LANGUAGE_CODE = re.compile(r"^[a-z]{2,8}\Z")
 
+#: How what :func:`read_translations` keeps for a file it could not read
+#: begins. Both engines tell such a file by it.
+UNREADABLE = "cannot be read"
+
+# The white space taken off the ends of a sentence, a row and a fact, and
+# what makes one blank. Written out, and the same list in gwt-core.js:
+# Python's str.strip() and JavaScript's trim() do not take the same
+# characters (a byte-order mark is space to one and the file separators to
+# the other), and a translation one app offered and the other refused would
+# follow. This is every character either takes.
+_EDGE = ("\t\n\v\f\r \x1c\x1d\x1e\x1f\x85\xa0        "
+         "        　﻿")
+
+# written out rather than \s, which the two engines read differently
+_SPACES = re.compile(r"[ \t\n\r\f\v]+")
+
+
+def _trimmed(value: str) -> str:
+    return value.strip(_EDGE)
+
+
+def _tidy(text: str) -> str:
+    """Translated text as it is printed: a long dash as a hyphen with spaces
+    and a short one as a hyphen, each run of spaces one space, the ends
+    trimmed. The two document writers tidy text differently; done here, both
+    are handed text neither has cause to change, as typed text is
+    (``community_sheet.sheet_text``)."""
+    return _trimmed(_SPACES.sub(" ", text.replace("—", " - ").replace("–", "-")))
+
+
+def _read_file(item):
+    """One file of a translation as both engines hold it: what YAML makes of
+    it, carried through JSON as the browser's copy is (a row keyed 2 is keyed
+    "2", a date is its text). A file that cannot be read is kept as the
+    reason, in words, so that only its language is refused."""
+    try:
+        loaded = yaml.safe_load(item.read_text(encoding="utf-8"))
+        return json.loads(json.dumps(loaded, default=str, allow_nan=False))
+    except UnicodeDecodeError:
+        return f"{UNREADABLE}: it is not saved as UTF-8 text"
+    except yaml.YAMLError as error:
+        mark = getattr(error, "problem_mark", None)
+        where = f"line {mark.line + 1}, column {mark.column + 1}: " if mark is not None else ""
+        return f"{UNREADABLE}: {where}{getattr(error, 'problem', None) or 'it is not YAML'}"
+    except (TypeError, ValueError):
+        return f"{UNREADABLE}: it holds something that is not text, a number or a list"
+
 
 def read_translations(folder) -> dict[str, dict]:
     """The translations in ``folder``, one to a subfolder, by the subfolder's
     name: ``{"language": the facts of language.yaml, "text": {namespace:
     entries}}``. Whether each can be offered is :func:`translation_problems`'
-    to say; nothing is refused here, so that it can be told why."""
+    to say; nothing is refused here, so that it can be told why, and a file
+    that cannot be read (a sentence that needed quotes, a file saved in
+    another encoding) is kept as the reason rather than raised: one
+    language's slip does not stop the others, or the English."""
     found: dict[str, dict] = {}
     for entry in sorted(folder.iterdir(), key=lambda e: e.name):
         # not a translation: Python's own folders, and anything hidden
@@ -196,11 +249,10 @@ def read_translations(folder) -> dict[str, dict]:
         for item in sorted(entry.iterdir(), key=lambda e: e.name):
             if not (item.name.endswith(".yaml") and item.is_file()):
                 continue
-            loaded = yaml.safe_load(item.read_text(encoding="utf-8"))
             if item.name == "language.yaml":
-                facts = loaded
+                facts = _read_file(item)
             else:
-                text[item.name[: -len(".yaml")]] = loaded
+                text[item.name[: -len(".yaml")]] = _read_file(item)
         found[entry.name] = {"language": facts, "text": text}
     return found
 
@@ -229,20 +281,38 @@ def _placeholders(template: str) -> dict[str, set[str]] | None:
     return taken
 
 
+def _same_values(mine: dict[str, set[str]], theirs: dict[str, set[str]]) -> bool:
+    """Whether a translated sentence takes the values the English one takes,
+    each written as the English writes it. The value itself is printed every
+    way the English prints it and no other: a sentence that kept the word
+    "jerrycans" and lost their number would pass a looser rule. Only the
+    word that agrees with a count may be left out, by a language that has no
+    need of it, and it may not be added where English has none."""
+    if set(mine) != set(theirs):
+        return False
+    return all(mine[name] - {"plural"} == theirs[name] - {"plural"}
+               and ("plural" not in mine[name] or "plural" in theirs[name])
+               for name in theirs)
+
+
+def _unreadable(value) -> bool:
+    return isinstance(value, str) and value.startswith(UNREADABLE)
+
+
 def translation_problems(code: str, held: dict | None = None,
                          english: dict | None = None) -> list[str]:
     """Every reason the translation ``code`` cannot be offered, in words; an
     empty list where it can. ``held`` is the translations to read (the
     bundled ones by default) and ``english`` the catalogue they translate.
 
-    An entry that is not translated, whether left out or named and left
-    empty, is not a problem: it is said in English. These are: a code that
-    is not two to eight small letters; a language that does not say what it
-    is, who translated it and who checked it; a file or an entry English
-    does not have; a sentence where English has a table, or the other way
-    round; a table row English does not have; a sentence or a row that is
-    blank; and a sentence that does not take the values the English one
-    takes, each in a format the English uses.
+    An entry that is not translated, whether left out or named with nothing
+    after it, is not a problem: it is said in English. These are: a code
+    that is not two to eight small letters; a file that could not be read; a
+    language that does not say what it is, who translated it and who checked
+    it; a file or an entry English does not have; a sentence where English
+    has a table, or the other way round; a table row English does not have;
+    a sentence or a row that is blank; and a sentence that does not take the
+    values the English one takes, each written as the English writes it.
     """
     held = translations() if held is None else held
     english = text_catalogue() if english is None else english
@@ -252,9 +322,12 @@ def translation_problems(code: str, held: dict | None = None,
     facts = entry.get("language") or {}
     problems = [] if _LANGUAGE_CODE.match(code) else [
         f"{code!r} is not a language's code (two to eight small letters)"]
-    problems += [f"language.yaml does not say {fact}" for fact in LANGUAGE_FACTS
-                 if not (isinstance(facts, dict) and isinstance(facts.get(fact), str)
-                         and facts[fact].strip())]
+    if _unreadable(facts):
+        problems.append(f"language.yaml {facts}")
+    else:
+        problems += [f"language.yaml does not say {fact}" for fact in LANGUAGE_FACTS
+                     if not (isinstance(facts, dict) and isinstance(facts.get(fact), str)
+                             and _trimmed(facts[fact]))]
     for namespace in sorted(entry.get("text") or {}):
         entries = entry["text"][namespace]
         if namespace not in english:
@@ -262,6 +335,9 @@ def translation_problems(code: str, held: dict | None = None,
             continue
         if entries is None:
             # a file with nothing in it yet
+            continue
+        if _unreadable(entries):
+            problems.append(f"{namespace}.yaml {entries}")
             continue
         if not isinstance(entries, dict):
             problems.append(f"{namespace}.yaml is not a list of entries")
@@ -284,34 +360,57 @@ def translation_problems(code: str, held: dict | None = None,
                         continue
                     elif not isinstance(value[row], str) or "{" in value[row] or "}" in value[row]:
                         problems.append(f"{ident}[{row}] is not plain text")
-                    elif not value[row].strip():
+                    elif not _trimmed(value[row]):
                         problems.append(f"{ident}[{row}] is blank")
             elif not isinstance(value, str):
                 problems.append(f"{ident} is a sentence in English and not one here")
-            elif not value.strip():
+            elif not _trimmed(value):
                 problems.append(f"{ident} is blank")
             else:
                 mine, theirs = _placeholders(value), _placeholders(source)
                 if mine is None:
                     problems.append(f"{ident} has a lone brace")
-                elif theirs is not None and (set(mine) != set(theirs) or any(
-                        not mine[name] <= theirs[name] for name in mine)):
+                elif theirs is not None and not _same_values(mine, theirs):
                     problems.append(
                         f"{ident} does not take the values the English takes "
-                        f"({', '.join(sorted(theirs)) or 'none'}), each in a format it uses")
+                        f"({', '.join(sorted(theirs)) or 'none'}), each written as the English "
+                        "writes it")
     return problems
+
+
+def _facts(held: dict, code: str) -> dict:
+    return {"code": code, **{fact: _trimmed(held[code]["language"][fact])
+                             for fact in LANGUAGE_FACTS}}
 
 
 def languages(held: dict | None = None, english: dict | None = None) -> list[dict]:
     """The translations that can be offered, as ``{"code", "name",
     "translated_by", "checked_by"}``, by name: those with no problem."""
     held = translations() if held is None else held
-    offered = []
-    for code in sorted(held):
-        if not translation_problems(code, held, english):
-            facts = held[code]["language"]
-            offered.append({"code": code, **{fact: facts[fact].strip() for fact in LANGUAGE_FACTS}})
+    offered = [_facts(held, code) for code in sorted(held)
+               if not translation_problems(code, held, english)]
     return sorted(offered, key=lambda language: (language["name"], language["code"]))
+
+
+def _each(code: str, idents, held: dict | None, english: dict | None):
+    """Each entry ``idents`` names, a table row by row, as ``(what it is
+    called, the English, the translation's words or None)``."""
+    held = translations() if held is None else held
+    english = text_catalogue() if english is None else english
+    text = (held.get(code) or {}).get("text") or {}
+    for ident in idents:
+        namespace, _, key = ident.partition(".")
+        source = english[namespace][key]
+        file = text.get(namespace)
+        mine = file.get(key) if isinstance(file, dict) else None
+        if isinstance(source, dict):
+            if not isinstance(mine, dict):
+                yield ident, None, None
+                continue
+            for row in source:
+                yield f"{ident}[{row}]", source[row], mine.get(row)
+        else:
+            yield ident, source, mine
 
 
 def untranslated(code: str, idents, held: dict | None = None,
@@ -320,19 +419,18 @@ def untranslated(code: str, idents, held: dict | None = None,
     words for yet, in the order given; a table that has some of its rows is
     told row by row, as ``ident[row]``. What a :class:`Speaker` of it would
     say in English."""
-    held = translations() if held is None else held
-    english = text_catalogue() if english is None else english
-    text = (held.get(code) or {}).get("text") or {}
-    missing: list[str] = []
-    for ident in idents:
-        namespace, _, key = ident.partition(".")
-        source = english[namespace][key]
-        mine = (text.get(namespace) or {}).get(key)
-        if mine is None:
-            missing.append(ident)
-        elif isinstance(source, dict) and isinstance(mine, dict):
-            missing += [f"{ident}[{row}]" for row in source if mine.get(row) is None]
-    return missing
+    return [name for name, _, mine in _each(code, idents, held, english) if mine is None]
+
+
+def same_as_english(code: str, idents, held: dict | None = None,
+                    english: dict | None = None) -> list[str]:
+    """Of the entries ``idents`` names, those the translation ``code`` words
+    exactly as the English does. Some should be (a unit, a name); the rest
+    are a copy of the English file that was not yet translated, which the
+    rules cannot tell from a translation and a person can."""
+    return [name for name, source, mine in _each(code, idents, held, english)
+            if isinstance(mine, str) and isinstance(source, str)
+            and _tidy(mine) == _tidy(source)]
 
 
 class Speaker:
@@ -340,9 +438,11 @@ class Speaker:
 
     ``Speaker("")`` is English. ``Speaker("kri")`` says each sentence in
     Krio where the translation has it and in English where it does not, and
-    keeps in ``fell_back`` the entries it had to say in English, each once,
-    in the order they were first asked for. A language that cannot be
-    offered (:func:`translation_problems`) is refused with its reasons.
+    keeps in ``fell_back`` what it had to say in English, each once, in the
+    order it was first asked for: a sentence or a whole table by its name, a
+    single row asked for with :meth:`row` as ``name[row]``. A language that
+    cannot be offered (:func:`translation_problems`) is refused with its
+    reasons. Translated text is tidied as typed text is (:func:`_tidy`).
     """
 
     def __init__(self, code: str = "", held: dict | None = None, english: dict | None = None):
@@ -358,8 +458,7 @@ class Speaker:
                 raise ValueError(f"text: the translation {self.code!r} cannot be used: "
                                  + "; ".join(problems))
             self._text = held[self.code].get("text") or {}
-            self.language = {"code": self.code, **{
-                fact: held[self.code]["language"][fact].strip() for fact in LANGUAGE_FACTS}}
+            self.language = _facts(held, self.code)
 
     def _source(self, ident: str):
         namespace, _, key = ident.partition(".")
@@ -372,24 +471,43 @@ class Speaker:
         if self.code and ident not in self.fell_back:
             self.fell_back.append(ident)
 
+    def _mine(self, namespace: str, key: str):
+        return (self._text.get(namespace) or {}).get(key)
+
     def phrase(self, ident: str, **values) -> str:
         """The sentence ``ident`` names, in this language or in English."""
         namespace, key, source = self._source(ident)
         if not isinstance(source, str):
             raise TypeError(f"text: {ident!r} is a table; read it with phrase_table")
-        mine = (self._text.get(namespace) or {}).get(key)
+        mine = self._mine(namespace, key)
         if mine is None:
             self._missed(ident)
-        return render_text(source if mine is None else mine, values)
+            return render_text(source, values)
+        return render_text(_tidy(mine), values)
 
     def phrase_table(self, ident: str) -> dict[str, str]:
-        """The table ``ident`` names, each row in this language or English."""
+        """The whole table ``ident`` names, each row in this language or in
+        English. For a table every row of which is printed; where one row is
+        chosen, :meth:`row` keeps a truer count of what fell back."""
         namespace, key, source = self._source(ident)
         if not isinstance(source, dict):
             raise TypeError(f"text: {ident!r} is a sentence; read it with phrase")
-        mine = (self._text.get(namespace) or {}).get(key) or {}
+        mine = self._mine(namespace, key) or {}
         if any(mine.get(row) is None for row in source):
             self._missed(ident)
-        return {row: text if mine.get(row) is None else mine[row]
+        return {row: text if mine.get(row) is None else _tidy(mine[row])
                 for row, text in source.items()}
 
+    def row(self, ident: str, row: str) -> str:
+        """One row of the table ``ident`` names, in this language or in
+        English."""
+        namespace, key, source = self._source(ident)
+        if not isinstance(source, dict):
+            raise TypeError(f"text: {ident!r} is a sentence; read it with phrase")
+        if row not in source:
+            raise KeyError(f"text: no row {row!r} in {ident!r}")
+        mine = (self._mine(namespace, key) or {}).get(row)
+        if mine is None:
+            self._missed(f"{ident}[{row}]")
+            return source[row]
+        return _tidy(mine)

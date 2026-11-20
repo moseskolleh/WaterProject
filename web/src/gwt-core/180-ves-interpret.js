@@ -618,7 +618,7 @@
    * rule, and the grammar is documented with it. A number always names its
    * format, because String(5.0) is "5" here and str(5.0) is "5.0" there. */
   var TEXT_TOKEN = new RegExp('\\{\\{|\\}\\}' +
-    '|\\{([a-z_][a-z0-9_]*)(?::(num|g|\\.\\d+f|plural:[^{}|]*\\|[^{}|]*))?\\}' +
+    '|\\{([a-z_][a-z0-9_]*)(?::(num|g|\\.[0-9]+f|plural:[^{}|]*\\|[^{}|]*))?\\}' +
     '|[{}]', 'g');
 
   function formatTextValue(name, spec, value) {

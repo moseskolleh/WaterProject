@@ -2,6 +2,39 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### Translations: what an independent review found, put right (PLAN.md step 9.2)
+
+Step 9.2 was reviewed by four independent reviewers, each finding then checked by a second who tried to refute it. Thirty-one findings stood, about sixteen distinct. All are put right here. None reached a community: no translation is bundled.
+
+**A translation could drop the number and keep the word.** Where English writes a count twice, as a number and as the word that agrees with it (`{cans:num} {cans:plural:jerrycan|jerrycans}`), a translation that kept only the word passed, and the sheet's headline read "About jerrycans of water a day" with no figure, in both apps, with nothing said to anyone. The rule is now exact: a translated sentence prints each number every way the English prints it and no other. Only the word of a plural may be left out, by a language with no use for it. The test that had pinned the fault as correct now holds the rule.
+
+**A faulty file took the English sheet down.** A translation file that YAML could not read (a sentence beginning with its value and missing its quotes, a colon inside a sentence, a file saved in another encoding) raised out of everything that asks which languages are on offer: the Streamlit Handover page crashed, the English sheet could not be built, and the checking command ended in a traceback. Such a file is now a reason against its own language, with the line and column, and nothing else is touched.
+
+**A translation installed and not offered is now said.** Both Handover cards tell whoever builds a sheet that a translation is installed and cannot be offered, and how to see why, rather than passing over it.
+
+**The picture only fitted the English.** The key beside the rings was drawn at fixed places, so a translated row a fifth longer than the English ran under the square a phone scans, and with no square was cut off at the picture's edge. Both writers now measure: a long row is broken at its spaces, the rows start after the widest distance, and a key too tall or a word too wide is set smaller. The English picture is unchanged, pixel for pixel.
+
+**The two apps judged different data, and printed different words.**
+
+- White space was whatever each language's own trim takes, which is not the same set: one app offered a translation whose checker's name was an invisible character and the other refused it. Both now use one written-out list.
+- The browser's copy of a translation goes through JSON, where a row keyed `2` is keyed `"2"` and a date is text; Python now judges that same data.
+- A placeholder named `__proto__` was invisible to the browser's check. A format written with another script's digit was read differently by each engine.
+- A long dash or a doubled space in a translated sentence was printed one way by one document writer and another way by the other. Translated text is now tidied once, as typed text is.
+
+**The count of what is still English was wrong.** The builder was told a part of the sheet was "printed in English" when nothing on it was: a table counted for rows that sheet did not print, one sentence was asked for on every sheet and printed on few, and one (`keep_line`) was never printed at all. A single answer or unit is now asked for by itself, the unprinted sentence is gone from the catalogue, and the note says exactly how many parts are printed in English.
+
+**A copy of the English file was reported as a finished translation.** The rules cannot tell a sentence copied from the English from one that reads the same in both languages, so `groundwater translation` now lists what is worded exactly as the English is, for a person to judge, and the guide for translators says to take out what is not translated yet.
+
+**The Streamlit app kept only one sheet.** The English sheet and a translated one shared a place on the Deliverables list, so the second replaced the first there and in the evidence bundle. Each language's sheet now has its own.
+
+**Made-up text that read as Krio.** Several fixtures in the tests, in the parity reference and in CONTRIBUTING were Krio-like renderings of the sheet's sentences, written by the toolkit's author, in a change whose own text says none is written. They are replaced with invented words.
+
+**The first real translation would have turned the suites red.** Several tests asserted that no translation is bundled when they meant "with none installed". They now say that, and "Adding a language" lists every step a first translation needs, including the reference file, the guide's pictures and the words that say none exists.
+
+**Also:** the card no longer says "in plain English" above a sheet in another language; the changelog entry for step 9.2 said the Streamlit app kept the language only for the session and gave the browser's file name for both apps, and is corrected below; the guide for translators now covers the YAML traps (quotes, ` #`, what "left empty" means).
+
+**How it is held.** The parity suite has cases for each of these on both engines, 5,002 checks. `tests/test_text_languages.py` has 33 tests; the picture tests fail against the old layout. The browser suite builds a sheet from a translation longer than the English and reads the square back, module by module.
+
 ### Strings that can be translated: the community sheet in a language beside English (PLAN.md step 9.2)
 
 English stays the working language. What a community reads can now be said in another language as soon as a translation of it is put beside the English, and until one is, nothing changes: no translation is bundled, both Handover pages look as they did, and the sheet is English.
@@ -19,7 +52,7 @@ English stays the working language. What a community reads can now be said in an
 
 An entry that is simply not translated yet (left out, or left empty) is no fault: it is printed in English, and whoever builds the sheet is told how many parts were.
 
-**In the apps.** Where a translation is offered, the community sheet's card on both Handover pages gains a "Language of the sheet" choice. The card says what the sheet will say in that language before it is built, whose translation it is, and how much of it is still English. The sheet in another language is a file of its own (`community_sheet_<place>_kri.docx`). The browser app keeps the choice with the project, as it keeps the hours and the identifier, and the Streamlit app keeps it for the session; a project opened where the translation is not installed is English again, not an error.
+**In the apps.** Where a translation is offered, the community sheet's card on both Handover pages gains a "Language of the sheet" choice. The card says what the sheet will say in that language before it is built, whose translation it is, and how much of it is still English. The sheet in another language is a file of its own (`community_sheet_<place>_kri.docx` from the browser app, `community_sheet_kri.docx` from the Streamlit app). Both apps keep the choice with the project, as they keep the hours and the identifier; a project opened where the translation is not installed is English again, not an error.
 
 **What stays English.** Every note to whoever builds the sheet; the handover report and every other document; and, on a translated sheet, a committee member's role as it was typed, the names of what a water test found, the word "Figure" before the picture's caption and the line at the foot that carries the document's code.
 

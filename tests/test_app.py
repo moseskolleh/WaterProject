@@ -664,7 +664,7 @@ def test_handover_flow(app):
     assert not app.exception
 
 
-def test_the_community_sheet_is_offered_and_built_on_the_handover_page(sample_data):
+def test_the_community_sheet_is_offered_and_built_on_the_handover_page(sample_data, monkeypatch):
     """PLAN.md step 9.1: the Handover page says what the sheet will say before
     it is built, and builds it, with nothing loaded and with the hours and
     the identifier entered. The browser app's page has the same card.
@@ -675,6 +675,9 @@ def test_the_community_sheet_is_offered_and_built_on_the_handover_page(sample_da
     from groundwater.text import phrase, phrase_table
 
     notes = phrase_table("community_sheet.builder_notes")
+    # with no translation installed, whatever the package comes to bundle:
+    # "the sheet is in English only" is what is held here
+    monkeypatch.setattr("groundwater.text.translations", lambda: {})
     app = AppTest.from_file(APP, default_timeout=600)
     app.run()
     goto(app, "Handover")
@@ -710,7 +713,7 @@ def test_the_community_sheet_is_offered_and_built_on_the_handover_page(sample_da
     assert not app.exception
     assert app.number_input(key="ho_sheet_hours").value == 8.0
     assert app.text_input(key="ho_sheet_asset").value == "SL-WAR-8FEEVKQ-T"
-    # no translation is bundled, so no choice of language is offered
+    # no translation is installed, so no choice of language is offered
     assert not [box for box in app.selectbox if box.key == "ho_sheet_language"]
 
 
@@ -746,13 +749,40 @@ def test_the_community_sheet_is_built_in_a_language_that_is_on_offer(sample_data
 
     assert phrase_table("community_sheet.builder_notes")["no_test"] in told
     assert MARK not in told
+    # the one installed that cannot be offered is said, not passed over
+    assert "A translation is installed that cannot be offered (yy)" in told
+
+    # the language is the project's, as the hours are: still chosen after
+    # another page has been opened
+    goto(app, "Pumping test")
+    goto(app, "Handover")
+    assert not app.exception
+    assert app.selectbox(key="ho_sheet_language").value == "zz"
+
+    # the English sheet first, then the translated one: each is a file of
+    # its own, and both stay on the list of what was built
+    app.selectbox(key="ho_sheet_language").set_value("")
+    app.run()
+    app.button(key="build_community_sheet").click()
+    app.run()
+    assert not app.exception
+    app.selectbox(key="ho_sheet_language").set_value("zz")
+    app.run()
     app.button(key="build_community_sheet").click()
     app.run()
     assert not app.exception
     issued = app.session_state["issued_documents"]
-    assert len(issued) == 1 and issued[0]["kind"] == "community_sheet"
-    # the document issued is the translated one
-    assert issued[0]["title"] == MARK + "Your borehole"
+    assert [record["kind"] for record in issued] == ["community_sheet", "community_sheet"]
+    # (the records are kept by day and then by code, not in the order built)
+    assert sorted(record["title"] for record in issued) == ["Your borehole",
+                                                           MARK + "Your borehole"]
+    built = {label: str(path) for label, path in app.session_state["artifacts"].items()
+             if "community sheet" in label}
+    assert sorted(built) == ["Download the community sheet (.docx)",
+                             "Download the community sheet in Zedish (.docx)"]
+    assert built["Download the community sheet (.docx)"].endswith("community_sheet.docx")
+    assert built["Download the community sheet in Zedish (.docx)"].endswith(
+        "community_sheet_zz.docx")
 
     # the same session where the translation is no longer installed: English
     # again, and no error

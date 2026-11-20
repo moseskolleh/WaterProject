@@ -45,8 +45,8 @@ report: dr_timbo_drilling_log.xlsx: Intervals, times, penetration rates, water s
 depth and dates are transcribed from the WiNGiN completion report. The lithology descriptions are
 illustrative reconstructions guided by the borehole diagram annotations - the original log leaves
 the sample description column empty. Build Project handover report (.docx) Community handover sheet
-One page for the community to keep, in plain English: how much water the borehole gives, whether it
-is safe to drink, who to call, how to report a fault and what to keep away from it. It says a little
+One page for the community to keep, in plain words: how much water the borehole gives, whether it is
+safe to drink, who to call, how to report a fault and what to keep away from it. It says a little
 less than the pumping test allows, never more, and says so where something is not known. Hours the
 pump is used each day for the amount of water in a day Borehole identifier as on its plate, from the
 Asset registry What the sheet will say This sheet was made from example data. It is not about a real

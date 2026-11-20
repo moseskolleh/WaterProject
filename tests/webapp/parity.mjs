@@ -1308,7 +1308,8 @@ await withPage(async (page, base, consoleErrors) => {
         }
         const said = ref.script.map(([kind, id, values]) => {
           try {
-            return kind === 'phrase' ? say.phrase(id, values) : say.phraseTable(id);
+            return kind === 'phrase' ? say.phrase(id, values)
+              : kind === 'row' ? say.row(id, values) : say.phraseTable(id);
           } catch (e) {
             return { error: true };
           }
