@@ -136,6 +136,7 @@
     issueFor: issueFor, recordIssue: recordIssue, verifySession: verifySession,
     /* the evidence bundle (PLAN.md step 8.3) */
     bundleSession: bundleSession, bundleDocuments: bundleDocuments, evidenceBundle: evidenceBundle,
+    communitySheetPicture: communitySheetPicture,
     /* the Topography and terrain card's files, read and analysis */
     terrainSession: function () { return terrainSession; },
   };

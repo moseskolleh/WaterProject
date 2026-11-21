@@ -5889,15 +5889,58 @@
       ctx.fill();
       ctx.stroke();
     }
+    /* Nothing in the picture is assumed to be as long as the English: every
+     * word drawn is measured first, by the steps of
+     * reporting/community_sheet.py (sheet_picture, key_layout,
+     * label_layout). The English is drawn where it always was. */
+    function wide(text, points, bold) {
+      face(points, bold);
+      return ctx.measureText(text).width / PX;
+    }
+    /** text broken at spaces into lines no wider than limit (fit_words) */
+    function fitWords(text, limit, points) {
+      var broken = [];
+      String(text).split(' ').forEach(function (word) {
+        var last = broken.length - 1;
+        if (broken.length && wide(broken[last] + ' ' + word, points, false) <= limit) {
+          broken[last] += ' ' + word;
+        } else {
+          broken.push(word);
+        }
+      });
+      return broken;
+    }
+    /** How much smaller than its size the widest of some texts has to be
+     * set to be no wider than limit (fit_scale): measured at the size it
+     * will be drawn at, and again until it fits, because type is fitted to
+     * the pixel grid and does not shrink in exact proportion. */
+    function fitScale(texts, points, bold, limit, start) {
+      var scale = start === undefined ? 1 : start;
+      for (var turn = 0; turn < 8; turn += 1) {
+        var widestNow = 0;
+        for (var t = 0; t < texts.length; t += 1) {
+          widestNow = Math.max(widestNow, wide(texts[t], points * scale, bold));
+        }
+        if (widestNow <= limit * (1 + 1e-9)) break;
+        /* in proportion first, which is exact for type that shrinks evenly;
+         * then a little under it each time, for type that does not */
+        scale *= limit / widestNow * (turn === 0 ? 1 : 0.99);
+      }
+      return scale;
+    }
+    var distances = rings.map(function (ring) { return ring.label; });
+    /* a distance wider than the picture has room for left of the rings'
+     * centre is set smaller, all of them alike */
+    var ringScale = fitScale(distances, 7, true, 2 * (cx - 0.1));
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     rings.forEach(function (ring, i) {
       /* the distance sits on its ring, at the foot, on a patch of white */
-      face(7, true);
-      var wide = ctx.measureText(ring.label).width + 0.12 * PX;
+      face(7 * ringScale, true);
+      var patch = ctx.measureText(ring.label).width + 0.12 * PX;
       var at = Y(cy - (i + 1) * step);
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(X(cx) - wide / 2, at - 0.15 * PX, wide, 0.3 * PX);
+      ctx.fillRect(X(cx) - patch / 2, at - 0.15 * PX, patch, 0.3 * PX);
       ctx.fillStyle = ink;
       ctx.fillText(ring.label, X(cx), at);
     });
@@ -5907,55 +5950,53 @@
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    face(6.5, true);
+    /* the word at the centre: one wider than the innermost ring would be
+     * struck through by it, so it is given a patch of white, and one wider
+     * than the rings is set smaller */
+    var centreScale = fitScale([keep.centre], 6.5, true, 2 * 2.2 - 0.2);
+    var named = wide(keep.centre, 6.5 * centreScale, true);
+    face(6.5 * centreScale, true);
+    if (named > 2 * step) {
+      var over = ctx.measureText(keep.centre).width + 0.12 * PX;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(X(cx) - over / 2, Y(cy + 0.22 + 0.24), over, 0.3 * PX);
+    }
     ctx.fillStyle = ink;
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(keep.centre, X(cx), Y(cy + 0.22));
 
     /* The key: one entry a ring, nearest first, each thing on its own line.
-     * Measured, not assumed to be the English, by the steps of
-     * reporting/community_sheet.py key_layout: the rows start after the
-     * widest distance, a row too long for the room beside the rings is
-     * broken at its spaces, and a key too tall for the picture, or with a
-     * word no line can hold, is set closer and smaller. A translated row
-     * must not run under the square a phone scans or off the edge. */
-    function wide(text, points, bold) {
-      face(points, bold);
-      return ctx.measureText(text).width / PX;
-    }
-    var clear = 0.25, pitchCm = 0.42;
-    var widest = rings.reduce(function (w, ring) { return Math.max(w, wide(ring.label, 8, true)); }, 0);
-    var textAt = Math.max(7.3, 6.0 + widest + clear);
-    var limit = Math.max((report.payload ? 12.8 : widthCm) - clear - textAt, 1.0);
+     * The rows start after the widest distance, a distance with a long word
+     * for its unit is set smaller rather than left to push the rows off the
+     * picture, a row too long for the room beside the rings is broken at its
+     * spaces, and a key too tall, or with a word no line can hold, is set
+     * closer and smaller. A translated row must not run under the square a
+     * phone scans or off the edge. */
+    var clear = 0.25, gapAfter = 0.1, labelMax = 2.2, pitchCm = 0.42;
+    var labelScale = fitScale(distances, 8, true, labelMax);
+    var widest = distances.reduce(function (w, label) {
+      return Math.max(w, wide(label, 8 * labelScale, true));
+    }, 0);
+    var textAt = Math.max(7.3, 6.0 + widest + gapAfter);
+    var limit = (report.payload ? 12.8 : widthCm) - clear - textAt;
     var rows = rings.map(function (ring) {
-      return ring.what.map(function (what) {
-        var broken = [];
-        String(what).split(' ').forEach(function (word) {
-          var last = broken.length - 1;
-          if (broken.length && wide(broken[last] + ' ' + word, 7.5, false) <= limit) {
-            broken[last] += ' ' + word;
-          } else {
-            broken.push(word);
-          }
-        });
-        return broken;
-      });
+      return ring.what.map(function (what) { return fitWords(what, limit, 7.5); });
     });
-    var lines = Math.max(rings.length - 1, 0) * 0.5, longest = 0;
+    var lines = Math.max(rings.length - 1, 0) * 0.5, every = [];
     rows.forEach(function (things) {
       things.forEach(function (broken) {
         lines += broken.length;
-        broken.forEach(function (line) { longest = Math.max(longest, wide(line, 7.5, false)); });
+        broken.forEach(function (line) { every.push(line); });
       });
     });
-    var scale = Math.min(1, lines ? (heightCm - 0.4) / (lines * pitchCm) : 1,
-      longest ? limit / longest : 1);
+    var scale = fitScale(every, 7.5, false, limit,
+      Math.min(1, lines ? (heightCm - 0.4) / (lines * pitchCm) : 1));
     var pitch = pitchCm * scale;
     var y = heightCm / 2 + lines * pitch / 2 - 0.2 * scale;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     rings.forEach(function (ring, i) {
-      face(8 * scale, true);
+      face(8 * labelScale * scale, true);
       ctx.fillText(ring.label, X(6.0), Y(y));
       face(7.5 * scale, false);
       rows[i].forEach(function (broken) {
@@ -5987,17 +6028,36 @@
       }
       /* the label's lines keep to the room under the square: more of them
        * than the English has are set closer */
-      var label = wrapWords(report.caption, 24), foot = top - side - 0.25;
-      var step = Math.min(0.33, (foot - 0.15) / Math.max(label.length - 1, 1));
-      face(6.5 * Math.min(1, step / 0.33 + 0.15), false);
+      /* broken as the English always was, at 24 characters; then a line
+       * still wider than the room under the square is broken again by its
+       * measure, and a word no line can hold sets the label smaller */
+      var room = 3.3, label = [];
+      wrapWords(report.caption, 24).forEach(function (line) {
+        (wide(line, 6.5, false) > room ? fitWords(line, room, 6.5) : [line])
+          .forEach(function (part) { label.push(part); });
+      });
+      var foot = top - side - 0.25;
+      var between = Math.min(0.33, (foot - 0.15) / Math.max(label.length - 1, 1));
+      face(6.5 * Math.min(1, between / 0.33 + 0.15) * fitScale(label, 6.5, false, room), false);
       ctx.fillStyle = ink;
       ctx.textAlign = 'center';
       label.forEach(function (line, n) {
-        ctx.fillText(line, X(left + side / 2), Y(foot - n * step));
+        ctx.fillText(line, X(left + side / 2), Y(foot - n * between));
       });
     }
     return { image: { dataUrl: canvas.toDataURL('image/png'), mime: 'image/png',
-      width: canvas.width, height: canvas.height }, widthCm: widthCm };
+      width: canvas.width, height: canvas.height }, widthCm: widthCm,
+      /* how the key was laid out, as key_layout returns it, with the room a
+       * row had: for whoever checks the picture, as the browser suite does */
+      key: { textAt: textAt, labelScale: labelScale, scale: scale, limit: limit, rows: rows,
+        /* the distance column: how wide the widest is as drawn */
+        labelWidth: widest,
+        /* each line of each row, as wide as it is drawn */
+        widths: rows.map(function (things) {
+          return things.map(function (broken) {
+            return broken.map(function (line) { return wide(line, 7.5 * scale, false); });
+          });
+        }) } };
   }
 
   async function buildCommunitySheet(node) {
@@ -6070,7 +6130,9 @@
         }), 'as on its plate, from the Asset registry'),
         offered.length ? field('Language of the sheet', S.selectInput(sheetLanguage(),
           [{ value: '', label: 'English' }].concat(offered.map(function (l) {
-            return { value: l.code, label: l.name };
+            /* two translations of one name are told apart by their codes */
+            var twice = offered.filter(function (o) { return o.name === l.name; }).length > 1;
+            return { value: l.code, label: twice ? l.name + ' (' + l.code + ')' : l.name };
           })), function (v) {
             store.set('handover.language', v);
             say();
@@ -10978,6 +11040,7 @@
     issueFor: issueFor, recordIssue: recordIssue, verifySession: verifySession,
     /* the evidence bundle (PLAN.md step 8.3) */
     bundleSession: bundleSession, bundleDocuments: bundleDocuments, evidenceBundle: evidenceBundle,
+    communitySheetPicture: communitySheetPicture,
     /* the Topography and terrain card's files, read and analysis */
     terrainSession: function () { return terrainSession; },
   };

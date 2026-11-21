@@ -15,11 +15,13 @@ The rings are drawn at equal steps, not to scale: the table's distances run
 from 3 m to a kilometre, and to scale the inner rings would be a dot. Each
 ring carries its distance and the key says what is to be kept beyond it.
 
-The key is measured, not assumed to be the English: a row too long for the
-room beside the rings is broken at its spaces, the rows start after the
-widest distance, and a key too tall or a word too wide for the picture is
-set smaller. A translated row must not run under the square a phone scans,
-or off the picture's edge.
+Nothing in the picture is assumed to be as long as the English; every word
+drawn is measured first. A row of the key too long for the room beside the
+rings is broken at its spaces, the rows start after the widest distance, and
+a key too tall, a distance or a word too wide, a label too long for the room
+under the square and a word at the centre wider than the rings are each set
+smaller or broken. Translated words must not run under the square a phone
+scans, or off the picture's edge. The English is drawn where it always was.
 """
 
 from __future__ import annotations
@@ -35,7 +37,8 @@ from docx.shared import Cm
 
 from .docx_utils import ReportBuilder
 
-__all__ = ["build_community_sheet", "fit_words", "key_layout", "sheet_picture", "wrap_words"]
+__all__ = ["build_community_sheet", "fit_scale", "fit_words", "key_layout", "label_layout",
+           "sheet_picture", "wrap_words"]
 
 #: The page's margins. The other documents keep 2.5 cm; this one has to hold
 #: on one page what they would run on to a second.
@@ -54,6 +57,12 @@ SCAN_LABEL_WIDTH = 24
 #: The key's type in points, the room a line of it takes, and the white kept
 #: between the key and whatever is to its right.
 KEY_LABEL_PT, KEY_TEXT_PT, KEY_PITCH_CM, KEY_CLEAR_CM = 8.0, 7.5, 0.42, 0.25
+#: The white kept between a distance and its rows, and the widest a distance
+#: is set before it is set smaller: the rows keep four centimetres at least.
+KEY_GAP_CM, KEY_LABEL_MAX_CM = 0.1, 2.2
+#: The type of the distances on the rings, of the word at the centre and of
+#: the square's label, and the room the label's lines have under the square.
+RING_LABEL_PT, CENTRE_PT, SCAN_LABEL_PT, SCAN_LABEL_ROOM_CM = 7.0, 6.5, 6.5, 3.3
 
 
 def wrap_words(text: str, width: int) -> list[str]:
@@ -81,27 +90,73 @@ def fit_words(text: str, limit: float, measure) -> list[str]:
     return lines
 
 
+def fit_scale(texts, points: float, bold: bool, limit: float, measure,
+              scale: float = 1.0) -> float:
+    """How much smaller than ``points`` the widest of ``texts`` has to be set
+    to be no wider than ``limit``, starting from ``scale`` where it is to be
+    set smaller already. Measured at the size it will be drawn at, and again
+    until it fits: type is fitted to the pixel grid, so it does not shrink in
+    exact proportion. A width worked out from the full size alone left a
+    distance a twentieth too wide for its column, and on the rows beside it,
+    wherever type is hinted (matplotlib's own setting, and CI's)."""
+    texts = list(texts)
+    for turn in range(8):
+        widest = max((measure(text, points * scale, bold) for text in texts), default=0.0)
+        if widest <= limit * (1 + 1e-9):
+            break
+        # in proportion first, which is exact for type that shrinks evenly;
+        # then a little under it each time, for type that does not
+        scale *= limit / widest * (1.0 if turn == 0 else 0.99)
+    return scale
+
+
 def key_layout(rings: list[dict], right: float, height: float, measure) -> dict:
     """Where the key's words go: ``text_at``, where the rows start, after the
-    widest distance; ``rows``, for each ring the lines of each thing it
+    widest distance; ``label_scale``, how much smaller a distance too wide
+    for its column is set; ``rows``, for each ring the lines of each thing it
     names; ``pitch``, the room a line takes; and ``scale``, how much smaller
-    than its usual size the type is set. ``right`` is how far right a row may
-    reach and ``measure(text, points, bold)`` a width in centimetres. The
-    browser lays the key out by the same steps (communitySheetPicture)."""
-    widest = max((measure(ring["label"], KEY_LABEL_PT, True) for ring in rings), default=0.0)
-    text_at = max(KEY_TEXT_AT_CM, KEY_AT_CM + widest + KEY_CLEAR_CM)
-    limit = max(right - text_at, 1.0)
+    than its usual size the whole key is set. ``right`` is how far right a
+    row may reach and ``measure(text, points, bold)`` a width in
+    centimetres. The browser lays the key out by the same steps
+    (communitySheetPicture).
+
+    The English is where it was before the key was measured, in the font
+    the picture is drawn in here and in matplotlib's own: the rows start at
+    ``KEY_TEXT_AT_CM`` and none is broken."""
+    labels = [ring["label"] for ring in rings]
+    # a distance with a long word for its unit is set smaller rather than
+    # left to push the rows off the picture
+    label_scale = fit_scale(labels, KEY_LABEL_PT, True, KEY_LABEL_MAX_CM, measure)
+    widest = max((measure(label, KEY_LABEL_PT * label_scale, True) for label in labels),
+                 default=0.0)
+    text_at = max(KEY_TEXT_AT_CM, KEY_AT_CM + widest + KEY_GAP_CM)
+    limit = right - text_at
     rows = [[fit_words(what, limit, lambda line: measure(line, KEY_TEXT_PT, False))
              for what in ring["what"]] for ring in rings]
     lines = sum(len(broken) for ring in rows for broken in ring) + max(len(rings) - 1, 0) * 0.5
     # a key too tall for the picture is set closer and smaller, and so is
     # one with a word no line can hold
-    longest = max((measure(line, KEY_TEXT_PT, False) for ring in rows for broken in ring
-                   for line in broken), default=0.0)
-    scale = min(1.0, (height - 0.4) / (lines * KEY_PITCH_CM) if lines else 1.0,
-                limit / longest if longest else 1.0)
-    return {"text_at": text_at, "rows": rows, "lines": lines, "pitch": KEY_PITCH_CM * scale,
-            "scale": scale}
+    scale = min(1.0, (height - 0.4) / (lines * KEY_PITCH_CM) if lines else 1.0)
+    scale = fit_scale((line for ring in rows for broken in ring for line in broken),
+                      KEY_TEXT_PT, False, limit, measure, scale)
+    return {"text_at": text_at, "label_scale": label_scale, "rows": rows, "lines": lines,
+            "pitch": KEY_PITCH_CM * scale, "scale": scale}
+
+
+def label_layout(caption: str, measure) -> dict:
+    """The lines of the label under the square a phone scans, and how much
+    smaller than its usual size it is set. Broken as the English always was,
+    at ``SCAN_LABEL_WIDTH`` characters; then a line still wider than the room
+    under the square is broken again by its measure, and a word no line can
+    hold sets the whole label smaller."""
+    def wide(line: str) -> float:
+        return measure(line, SCAN_LABEL_PT, False)
+
+    lines = [part for line in wrap_words(caption, SCAN_LABEL_WIDTH)
+             for part in (fit_words(line, SCAN_LABEL_ROOM_CM, wide)
+                          if wide(line) > SCAN_LABEL_ROOM_CM else [line])]
+    return {"lines": lines,
+            "scale": fit_scale(lines, SCAN_LABEL_PT, False, SCAN_LABEL_ROOM_CM, measure)}
 
 
 def sheet_picture(content: dict, out_path: str | Path) -> tuple[Path, float]:
@@ -138,30 +193,44 @@ def sheet_picture(content: dict, out_path: str | Path) -> tuple[Path, float]:
     for k in range(len(rings), 0, -1):
         ax.add_patch(Circle(centre, k * step, facecolor=ground if k % 2 else "#ffffff",
                                 edgecolor=ink, linewidth=0.9))
-    for k, ring in enumerate(rings, start=1):
-        # the distance sits on its ring, at the foot, on a patch of white
-        ax.text(centre[0], centre[1] - k * step, ring["label"], ha="center", va="center",
-                fontsize=7, fontweight="bold", color=ink,
-                bbox={"facecolor": "#ffffff", "edgecolor": "none", "pad": 1.0})
-    ax.add_patch(Circle(centre, 0.13, facecolor=accent, edgecolor=ink, linewidth=0.6))
-    ax.text(centre[0], centre[1] + 0.22, keep["centre"], ha="center", va="bottom",
-            fontsize=6.5, fontweight="bold", color=ink)
-
-    # the key: one entry a ring, nearest first, each thing on a line of its
-    # own, and on more than one where it is too long for the room there is
+    # Nothing in the picture is assumed to be as long as the English: every
+    # word drawn is measured first.
     def measure(text: str, points: float, bold: bool) -> float:
         probe = ax.text(0, 0, text, fontsize=points, fontweight="bold" if bold else "normal")
         wide = probe.get_window_extent().width / fig.dpi * 2.54
         probe.remove()
         return wide
 
+    # a distance wider than the picture has room for left of the rings'
+    # centre is set smaller, all of them alike
+    ring_scale = fit_scale((ring["label"] for ring in rings), RING_LABEL_PT, True,
+                           2 * (RINGS_AT_CM - 0.1), measure)
+    for k, ring in enumerate(rings, start=1):
+        # the distance sits on its ring, at the foot, on a patch of white
+        ax.text(centre[0], centre[1] - k * step, ring["label"], ha="center", va="center",
+                fontsize=RING_LABEL_PT * ring_scale, fontweight="bold", color=ink,
+                bbox={"facecolor": "#ffffff", "edgecolor": "none", "pad": 1.0})
+    ax.add_patch(Circle(centre, 0.13, facecolor=accent, edgecolor=ink, linewidth=0.6))
+    # the word at the centre: one wider than the innermost ring would be
+    # struck through by it, so it is given a patch of white, and one wider
+    # than the rings is set smaller
+    centre_scale = fit_scale([keep["centre"]], CENTRE_PT, True, 2 * RINGS_RADIUS_CM - 0.2,
+                             measure)
+    named = measure(keep["centre"], CENTRE_PT * centre_scale, True)
+    ax.text(centre[0], centre[1] + 0.22, keep["centre"], ha="center", va="bottom",
+            fontsize=CENTRE_PT * centre_scale, fontweight="bold", color=ink,
+            bbox=({"facecolor": "#ffffff", "edgecolor": "none", "pad": 1.0}
+                  if named > 2 * step else None))
+
+    # the key: one entry a ring, nearest first, each thing on a line of its
+    # own, and on more than one where it is too long for the room there is
     right = (SCAN_AT_CM if report["payload"] else width) - KEY_CLEAR_CM
     key = key_layout(rings, right, height, measure)
     pitch, scale = key["pitch"], key["scale"]
     y = height / 2 + key["lines"] * pitch / 2 - 0.2 * scale
     for ring, things in zip(rings, key["rows"], strict=True):
         ax.text(KEY_AT_CM, y, ring["label"], ha="left", va="center",
-                fontsize=KEY_LABEL_PT * scale, fontweight="bold", color=ink)
+                fontsize=KEY_LABEL_PT * key["label_scale"] * scale, fontweight="bold", color=ink)
         for broken in things:
             for line in broken:
                 ax.text(key["text_at"], y, line, ha="left", va="center",
@@ -182,15 +251,15 @@ def sheet_picture(content: dict, out_path: str | Path) -> tuple[Path, float]:
                     ax.add_patch(Rectangle(
                         (SCAN_AT_CM + (c + 1) * cell, top - (r + 2) * cell), cell, cell,
                         facecolor="#000000", edgecolor="none", linewidth=0))
-        label = wrap_words(report["caption"], SCAN_LABEL_WIDTH)
+        label = label_layout(report["caption"], measure)
         # the label's lines keep to the room under the square: more of them
         # than the English has are set closer
         foot = top - SCAN_SIZE_CM - 0.25
-        step = min(0.33, (foot - 0.15) / max(len(label) - 1, 1))
-        for n, line in enumerate(label):
-            ax.text(SCAN_AT_CM + SCAN_SIZE_CM / 2, foot - n * step, line,
-                    ha="center", va="center", fontsize=6.5 * min(1.0, step / 0.33 + 0.15),
-                    color=ink)
+        gap = min(0.33, (foot - 0.15) / max(len(label["lines"]) - 1, 1))
+        for n, line in enumerate(label["lines"]):
+            ax.text(SCAN_AT_CM + SCAN_SIZE_CM / 2, foot - n * gap, line,
+                    ha="center", va="center", color=ink,
+                    fontsize=SCAN_LABEL_PT * min(1.0, gap / 0.33 + 0.15) * label["scale"])
     fig.savefig(path, facecolor="#ffffff")
     plt.close(fig)
     return path, width

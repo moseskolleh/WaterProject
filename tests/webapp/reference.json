@@ -198067,7 +198067,7 @@
     "committee": [
      {
       "role": "Chair \u2013 acting",
-      "name": "Aminata\t Kamara",
+      "name": "Aminata\t\u00a0Kamara\u202f",
       "contact": "076  000\u2014000"
      }
     ],
@@ -198541,59 +198541,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -198605,12 +198605,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -198671,59 +198671,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -198735,12 +198735,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -198796,59 +198796,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -198860,12 +198860,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -198908,59 +198908,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -198972,12 +198972,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -199032,59 +199032,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -199096,12 +199096,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -199156,59 +199156,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -199220,12 +199220,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -199276,59 +199276,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -199340,12 +199340,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -199395,59 +199395,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -199459,12 +199459,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -199538,59 +199538,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -199602,12 +199602,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -199687,59 +199687,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -199751,12 +199751,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -199816,59 +199816,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -199880,12 +199880,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -199935,59 +199935,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -199999,12 +199999,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -200055,59 +200055,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -200119,12 +200119,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -200174,59 +200174,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -200238,12 +200238,252 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "zx": {
+      "language": {
+       "name": "Alphan",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {}
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.001,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 0.5,
+    "language": "zx",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Z\u025bdo glorp {place}",
+        "title_unnamed": "Z\u025bdo glorp",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
+        "water_heading": "Wug zub frim",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
+        "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
+        "hour_words": {
+         "one": "\u0254mba",
+         "other": "\u0254mba\u0254z"
+        },
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
+        "quality_heading": "Frim zub glorp wug?",
+        "quality": {
+         "pass": "Z\u025b.",
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
+        },
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
+        "contacts_columns": {
+         "role": "Zub",
+         "name": "Plimo",
+         "phone": "Druvo"
+        },
+        "contacts_write_in": {
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
+        },
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
+        "keep_structures": {
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
+        },
+        "keep_centre": "Glorp",
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: z\u025bdo \\u2014 glorp",
+        "quality": {
+         "none": "Wug  tiv zub."
+        },
+        "keep_structures": {
+         "Buildings": "Blop\u0254z"
+        },
+        "water_first_estimate": null
+       }
+      }
+     },
+     "zx": {
+      "language": {
+       "name": "Alphan",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {}
+     },
+     "yy": {
+      "language": {
+       "name": "Unchecked",
+       "translated_by": "E. Translator"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "X {place}"
+       }
+      }
+     }
+    }
+   },
+   {
+    "site": {
+     "community": "A"
+    },
+    "analysis": {
+     "yield_recommendation": {
+      "safe_yield_m3_per_h": 0.001,
+      "safe_yield_low_m3_per_h": null,
+      "confidence": "established"
+     }
+    },
+    "hours_per_day": 0.5,
+    "language": "zz",
+    "translations": {
+     "zz": {
+      "language": {
+       "name": "Zedish",
+       "translated_by": "A. Translator",
+       "checked_by": "B. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "Z\u025bdo glorp {place}",
+        "title_unnamed": "Z\u025bdo glorp",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
+        "water_heading": "Wug zub frim",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
+        "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
+        "hour_words": {
+         "one": "\u0254mba",
+         "other": "\u0254mba\u0254z"
+        },
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
+        "quality_heading": "Frim zub glorp wug?",
+        "quality": {
+         "pass": "Z\u025b.",
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
+        },
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
+        "contacts_columns": {
+         "role": "Zub",
+         "name": "Plimo",
+         "phone": "Druvo"
+        },
+        "contacts_write_in": {
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
+        },
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
+        "keep_structures": {
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
+        },
+        "keep_centre": "Glorp",
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
+       }
+      }
+     },
+     "zy": {
+      "language": {
+       "name": "Ypsilonian",
+       "translated_by": "C. Translator",
+       "checked_by": "D. Checker"
+      },
+      "text": {
+       "community_sheet": {
+        "title": "{place}: z\u025bdo \\u2014 glorp",
+        "quality": {
+         "none": "Wug  tiv zub."
+        },
+        "keep_structures": {
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -200285,59 +200525,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -200349,12 +200589,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -200403,59 +200643,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -200467,12 +200707,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -200515,59 +200755,59 @@
        "community_sheet": {
         "title": "Z\u025bdo glorp {place}",
         "title_unnamed": "Z\u025bdo glorp",
-        "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+        "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
         "water_heading": "Wug zub frim",
-        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug d\u025b.",
-        "water_day_detail": "Frimo {litres:num} lit\u0254, zub p\u0254m wug {hours:g} {unit} wug d\u025b. Glorp zub {can:g} lit\u0254.",
+        "water_day": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug sarn.",
+        "water_day_detail": "Frimo {litres:num} dru, zub plim wug {hours:g} {unit} wug sarn. Glorp zub {can:g} dru.",
         "water_hour": "Zub {cans:num} {cans:plural:glorp|glorp\u0254z} frim wug \u0254mba.",
-        "water_hour_detail": "Frimo {litres:num} lit\u0254 wug \u0254mba. Glorp zub {can:g} lit\u0254.",
-        "water_litres_hour": "Zub {litres:num} lit\u0254 frim wug \u0254mba.",
-        "water_litres_day": "Zub {litres:num} lit\u0254 frim wug d\u025b, zub {hours:g} {unit}.",
+        "water_hour_detail": "Frimo {litres:num} dru wug \u0254mba. Glorp zub {can:g} dru.",
+        "water_litres_hour": "Zub {litres:num} dru frim wug \u0254mba.",
+        "water_litres_day": "Zub {litres:num} dru frim wug sarn, zub {hours:g} {unit}.",
         "hour_words": {
          "one": "\u0254mba",
          "other": "\u0254mba\u0254z"
         },
-        "water_very_little": "Frimo t\u025bst wug zub frim n\u0254b.",
-        "water_tested": "Frimo zub p\u0254m t\u025bst.",
-        "water_first_estimate": "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-        "water_shortage": "Frim n\u0254b zub, wug k\u0254miti.",
-        "water_none": "Frim n\u0254b m\u025bzh\u0254 wug.",
+        "water_very_little": "Frimo vosh wug zub frim tiv.",
+        "water_tested": "Frimo zub plim vosh.",
+        "water_first_estimate": "Frimo zub kwem. Frim wug tiv zub.",
+        "water_shortage": "Frim tiv zub, wug blop\u0254z.",
+        "water_none": "Frim tiv vosh wug.",
         "quality_heading": "Frim zub glorp wug?",
         "quality": {
          "pass": "Z\u025b.",
-         "aesthetic": "Z\u025b, wug frimo t\u025bst.",
-         "health_fail": "N\u0254b.",
-         "national_fail": "N\u0254b wug.",
-         "indeterminate": "Wug n\u0254b zub.",
-         "none": "Frim n\u0254b t\u025bst wug."
+         "aesthetic": "Z\u025b, wug frimo vosh.",
+         "health_fail": "Tiv.",
+         "national_fail": "Tiv wug.",
+         "indeterminate": "Wug tiv zub.",
+         "none": "Frim tiv vosh sarn."
         },
-        "quality_found": "Frimo t\u025bst zub: {names}.",
-        "quality_ask": "Wug k\u0254miti.",
-        "contacts_heading": "Zub wug k\u0254l",
+        "quality_found": "Frimo vosh zub: {names}.",
+        "quality_ask": "Wug blop\u0254z.",
+        "contacts_heading": "Zub wug kwem",
         "contacts_columns": {
          "role": "Zub",
-         "name": "N\u025bmo",
-         "phone": "F\u0254no"
+         "name": "Plimo",
+         "phone": "Druvo"
         },
         "contacts_write_in": {
-         "mechanic": "P\u0254m m\u025bkano",
-         "office": "Frim \u0254fiso"
+         "mechanic": "Plim sarno",
+         "office": "Frim vosho"
         },
-        "report_heading": "P\u0254m wug n\u0254b",
-        "report_tell": "Wug kiat\u025bko zub d\u025b.",
-        "report_number": "Glorp zub n\u0254mbo: {id}.",
-        "report_scan": "\u0254 skano zub skw\u025bro.",
-        "report_caption": "Skano zub rip\u0254to {id}",
-        "keep_heading": "Zub frimo wug fawe",
+        "report_heading": "Plim wug tiv",
+        "report_tell": "Wug blopo zub sarn.",
+        "report_number": "Glorp zub kwemo: {id}.",
+        "report_scan": "\u0254 druvo zub plimo.",
+        "report_caption": "Druvo zub kwemo {id}",
+        "keep_heading": "Zub frimo wug vosho",
         "keep_structures": {
-         "Septic tank or soakaway": "Latrin\u0254z",
-         "Buildings": "Hauz\u0254z",
-         "Hand dug well": "W\u025bl\u0254z",
-         "Solid waste dump or burial ground": "D\u0254ti pl\u025bso"
+         "Septic tank or soakaway": "Sarn\u0254z",
+         "Buildings": "Blop\u0254z",
+         "Hand dug well": "Kwem\u0254z",
+         "Solid waste dump or burial ground": "Tiv plimo"
         },
         "keep_centre": "Glorp",
-        "keep_metres": "{distance:g} mit\u0254",
-        "keep_caption": "Pikch\u0254 n\u0254b sk\u025bl."
+        "keep_metres": "{distance:g} dru\u0254",
+        "keep_caption": "Vosho tiv sarno."
        }
       }
      },
@@ -200579,12 +200819,12 @@
       },
       "text": {
        "community_sheet": {
-        "title": "{place}: z\u025bdo \u2014 glorp",
+        "title": "{place}: z\u025bdo \\u2014 glorp",
         "quality": {
-         "none": "Wug  n\u0254b zub."
+         "none": "Wug  tiv zub."
         },
         "keep_structures": {
-         "Buildings": "Hauz\u0254z"
+         "Buildings": "Blop\u0254z"
         },
         "water_first_estimate": null
        }
@@ -204305,11 +204545,11 @@
      "hours_per_day": 8.0,
      "litres_per_day": 1700,
      "jerrycans_per_day": 85,
-     "headline": "Zub 85 glorp\u0254z frim wug d\u025b.",
+     "headline": "Zub 85 glorp\u0254z frim wug sarn.",
      "lines": [
-      "Frimo 1,700 lit\u0254, zub p\u0254m wug 8 \u0254mba\u0254z wug d\u025b. Glorp zub 20 lit\u0254.",
-      "Frimo zub p\u0254m t\u025bst.",
-      "Frim n\u0254b zub, wug k\u0254miti."
+      "Frimo 1,700 dru, zub plim wug 8 \u0254mba\u0254z wug sarn. Glorp zub 20 dru.",
+      "Frimo zub plim vosh.",
+      "Frim tiv zub, wug blop\u0254z."
      ]
     },
     "quality": {
@@ -204319,11 +204559,11 @@
      "lines": []
     },
     "contacts": {
-     "heading": "Zub wug k\u0254l",
+     "heading": "Zub wug kwem",
      "header": [
       "Zub",
-      "N\u025bmo",
-      "F\u0254no"
+      "Plimo",
+      "Druvo"
      ],
      "rows": [
       [
@@ -204342,56 +204582,56 @@
        "+232 77 111 222"
       ],
       [
-       "P\u0254m m\u025bkano",
+       "Plim sarno",
        "",
        ""
       ],
       [
-       "Frim \u0254fiso",
+       "Frim vosho",
        "",
        ""
       ]
      ]
     },
     "report": {
-     "heading": "P\u0254m wug n\u0254b",
+     "heading": "Plim wug tiv",
      "identifier": "SL-WAR-8FEEVKQ-T",
      "lines": [
-      "Wug kiat\u025bko zub d\u025b.",
-      "Glorp zub n\u0254mbo: SL-WAR-8FEEVKQ-T.",
-      "\u0254 skano zub skw\u025bro."
+      "Wug blopo zub sarn.",
+      "Glorp zub kwemo: SL-WAR-8FEEVKQ-T.",
+      "\u0254 druvo zub plimo."
      ],
      "payload": "https://water.example.org/app/#/report/SL-WAR-8FEEVKQ-T",
-     "caption": "Skano zub rip\u0254to SL-WAR-8FEEVKQ-T"
+     "caption": "Druvo zub kwemo SL-WAR-8FEEVKQ-T"
     },
     "keep_away": {
-     "heading": "Zub frimo wug fawe",
+     "heading": "Zub frimo wug vosho",
      "rings": [
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
-       "label": "3 mit\u0254"
+       "label": "3 dru\u0254"
       },
       {
        "distance_m": 20.0,
        "what": [
-        "W\u025bl\u0254z",
-        "Latrin\u0254z"
+        "Kwem\u0254z",
+        "Sarn\u0254z"
        ],
-       "label": "20 mit\u0254"
+       "label": "20 dru\u0254"
       },
       {
        "distance_m": 1000.0,
        "what": [
-        "D\u0254ti pl\u025bso"
+        "Tiv plimo"
        ],
-       "label": "1000 mit\u0254"
+       "label": "1000 dru\u0254"
       }
      ],
      "centre": "Glorp",
-     "caption": "Pikch\u0254 n\u0254b sk\u025bl."
+     "caption": "Vosho tiv sarno."
     },
     "language": {
      "code": "zz",
@@ -204407,7 +204647,7 @@
    },
    {
     "title": "Z\u025bdo glorp",
-    "example": "Frimo wug zub \u025bgzamp. N\u0254b glorp zub.",
+    "example": "Frimo wug zub blop. Tiv glorp kwem zub.",
     "water": {
      "heading": "Wug zub frim",
      "state": "first_estimate",
@@ -204416,28 +204656,28 @@
      "hours_per_day": 1.0,
      "litres_per_day": 1200,
      "jerrycans_per_day": 60,
-     "headline": "Zub 60 glorp\u0254z frim wug d\u025b.",
+     "headline": "Zub 60 glorp\u0254z frim wug sarn.",
      "lines": [
-      "Frimo 1,200 lit\u0254, zub p\u0254m wug 1 \u0254mba wug d\u025b. Glorp zub 20 lit\u0254.",
-      "Frimo zub g\u025bs. Frim wug n\u0254b zub.",
-      "Frim n\u0254b zub, wug k\u0254miti."
+      "Frimo 1,200 dru, zub plim wug 1 \u0254mba wug sarn. Glorp zub 20 dru.",
+      "Frimo zub kwem. Frim wug tiv zub.",
+      "Frim tiv zub, wug blop\u0254z."
      ]
     },
     "quality": {
      "heading": "Frim zub glorp wug?",
      "state": "health_fail",
-     "headline": "N\u0254b.",
+     "headline": "Tiv.",
      "lines": [
-      "Frimo t\u025bst zub: Manganese.",
-      "Wug k\u0254miti."
+      "Frimo vosh zub: Manganese.",
+      "Wug blop\u0254z."
      ]
     },
     "contacts": {
-     "heading": "Zub wug k\u0254l",
+     "heading": "Zub wug kwem",
      "header": [
       "Zub",
-      "N\u025bmo",
-      "F\u0254no"
+      "Plimo",
+      "Druvo"
      ],
      "rows": [
       [
@@ -204456,54 +204696,54 @@
        ""
       ],
       [
-       "P\u0254m m\u025bkano",
+       "Plim sarno",
        "",
        ""
       ],
       [
-       "Frim \u0254fiso",
+       "Frim vosho",
        "",
        ""
       ]
      ]
     },
     "report": {
-     "heading": "P\u0254m wug n\u0254b",
+     "heading": "Plim wug tiv",
      "identifier": "",
      "lines": [
-      "Wug kiat\u025bko zub d\u025b."
+      "Wug blopo zub sarn."
      ],
      "payload": "",
      "caption": ""
     },
     "keep_away": {
-     "heading": "Zub frimo wug fawe",
+     "heading": "Zub frimo wug vosho",
      "rings": [
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
-       "label": "3 mit\u0254"
+       "label": "3 dru\u0254"
       },
       {
        "distance_m": 20.0,
        "what": [
-        "W\u025bl\u0254z",
-        "Latrin\u0254z"
+        "Kwem\u0254z",
+        "Sarn\u0254z"
        ],
-       "label": "20 mit\u0254"
+       "label": "20 dru\u0254"
       },
       {
        "distance_m": 1000.0,
        "what": [
-        "D\u0254ti pl\u025bso"
+        "Tiv plimo"
        ],
-       "label": "1000 mit\u0254"
+       "label": "1000 dru\u0254"
       }
      ],
      "centre": "Glorp",
-     "caption": "Pikch\u0254 n\u0254b sk\u025bl."
+     "caption": "Vosho tiv sarno."
     },
     "language": {
      "code": "zz",
@@ -204532,25 +204772,25 @@
      "hours_per_day": 6.5,
      "litres_per_day": 120,
      "jerrycans_per_day": 6,
-     "headline": "Zub 6 glorp\u0254z frim wug d\u025b.",
+     "headline": "Zub 6 glorp\u0254z frim wug sarn.",
      "lines": [
-      "Frimo 120 lit\u0254, zub p\u0254m wug 6.5 \u0254mba\u0254z wug d\u025b. Glorp zub 20 lit\u0254.",
-      "Frimo zub p\u0254m t\u025bst.",
-      "Frim n\u0254b zub, wug k\u0254miti."
+      "Frimo 120 dru, zub plim wug 6.5 \u0254mba\u0254z wug sarn. Glorp zub 20 dru.",
+      "Frimo zub plim vosh.",
+      "Frim tiv zub, wug blop\u0254z."
      ]
     },
     "quality": {
      "heading": "Frim zub glorp wug?",
      "state": "aesthetic",
-     "headline": "Z\u025b, wug frimo t\u025bst.",
+     "headline": "Z\u025b, wug frimo vosh.",
      "lines": []
     },
     "contacts": {
-     "heading": "Zub wug k\u0254l",
+     "heading": "Zub wug kwem",
      "header": [
       "Zub",
-      "N\u025bmo",
-      "F\u0254no"
+      "Plimo",
+      "Druvo"
      ],
      "rows": [
       [
@@ -204569,54 +204809,54 @@
        ""
       ],
       [
-       "P\u0254m m\u025bkano",
+       "Plim sarno",
        "",
        ""
       ],
       [
-       "Frim \u0254fiso",
+       "Frim vosho",
        "",
        ""
       ]
      ]
     },
     "report": {
-     "heading": "P\u0254m wug n\u0254b",
+     "heading": "Plim wug tiv",
      "identifier": "",
      "lines": [
-      "Wug kiat\u025bko zub d\u025b."
+      "Wug blopo zub sarn."
      ],
      "payload": "",
      "caption": ""
     },
     "keep_away": {
-     "heading": "Zub frimo wug fawe",
+     "heading": "Zub frimo wug vosho",
      "rings": [
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
-       "label": "3 mit\u0254"
+       "label": "3 dru\u0254"
       },
       {
        "distance_m": 20.0,
        "what": [
-        "W\u025bl\u0254z",
-        "Latrin\u0254z"
+        "Kwem\u0254z",
+        "Sarn\u0254z"
        ],
-       "label": "20 mit\u0254"
+       "label": "20 dru\u0254"
       },
       {
        "distance_m": 1000.0,
        "what": [
-        "D\u0254ti pl\u025bso"
+        "Tiv plimo"
        ],
-       "label": "1000 mit\u0254"
+       "label": "1000 dru\u0254"
       }
      ],
      "centre": "Glorp",
-     "caption": "Pikch\u0254 n\u0254b sk\u025bl."
+     "caption": "Vosho tiv sarno."
     },
     "language": {
      "code": "zz",
@@ -204643,21 +204883,21 @@
      "hours_per_day": null,
      "litres_per_day": null,
      "jerrycans_per_day": null,
-     "headline": "Frim n\u0254b m\u025bzh\u0254 wug.",
+     "headline": "Frim tiv vosh wug.",
      "lines": []
     },
     "quality": {
      "heading": "Frim zub glorp wug?",
      "state": "none",
-     "headline": "Frim n\u0254b t\u025bst wug.",
+     "headline": "Frim tiv vosh sarn.",
      "lines": []
     },
     "contacts": {
-     "heading": "Zub wug k\u0254l",
+     "heading": "Zub wug kwem",
      "header": [
       "Zub",
-      "N\u025bmo",
-      "F\u0254no"
+      "Plimo",
+      "Druvo"
      ],
      "rows": [
       [
@@ -204676,54 +204916,54 @@
        ""
       ],
       [
-       "P\u0254m m\u025bkano",
+       "Plim sarno",
        "",
        ""
       ],
       [
-       "Frim \u0254fiso",
+       "Frim vosho",
        "",
        ""
       ]
      ]
     },
     "report": {
-     "heading": "P\u0254m wug n\u0254b",
+     "heading": "Plim wug tiv",
      "identifier": "",
      "lines": [
-      "Wug kiat\u025bko zub d\u025b."
+      "Wug blopo zub sarn."
      ],
      "payload": "",
      "caption": ""
     },
     "keep_away": {
-     "heading": "Zub frimo wug fawe",
+     "heading": "Zub frimo wug vosho",
      "rings": [
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
-       "label": "3 mit\u0254"
+       "label": "3 dru\u0254"
       },
       {
        "distance_m": 20.0,
        "what": [
-        "W\u025bl\u0254z",
-        "Latrin\u0254z"
+        "Kwem\u0254z",
+        "Sarn\u0254z"
        ],
-       "label": "20 mit\u0254"
+       "label": "20 dru\u0254"
       },
       {
        "distance_m": 1000.0,
        "what": [
-        "D\u0254ti pl\u025bso"
+        "Tiv plimo"
        ],
-       "label": "1000 mit\u0254"
+       "label": "1000 dru\u0254"
       }
      ],
      "centre": "Glorp",
-     "caption": "Pikch\u0254 n\u0254b sk\u025bl."
+     "caption": "Vosho tiv sarno."
     },
     "language": {
      "code": "zz",
@@ -204754,25 +204994,25 @@
      "jerrycans_per_day": null,
      "headline": "Zub 11 glorp\u0254z frim wug \u0254mba.",
      "lines": [
-      "Frimo 220 lit\u0254 wug \u0254mba. Glorp zub 20 lit\u0254.",
-      "Frimo zub p\u0254m t\u025bst.",
-      "Frim n\u0254b zub, wug k\u0254miti."
+      "Frimo 220 dru wug \u0254mba. Glorp zub 20 dru.",
+      "Frimo zub plim vosh.",
+      "Frim tiv zub, wug blop\u0254z."
      ]
     },
     "quality": {
      "heading": "Frim zub glorp wug?",
      "state": "national_fail",
-     "headline": "N\u0254b wug.",
+     "headline": "Tiv wug.",
      "lines": [
-      "Wug k\u0254miti."
+      "Wug blop\u0254z."
      ]
     },
     "contacts": {
-     "heading": "Zub wug k\u0254l",
+     "heading": "Zub wug kwem",
      "header": [
       "Zub",
-      "N\u025bmo",
-      "F\u0254no"
+      "Plimo",
+      "Druvo"
      ],
      "rows": [
       [
@@ -204791,54 +205031,54 @@
        ""
       ],
       [
-       "P\u0254m m\u025bkano",
+       "Plim sarno",
        "",
        ""
       ],
       [
-       "Frim \u0254fiso",
+       "Frim vosho",
        "",
        ""
       ]
      ]
     },
     "report": {
-     "heading": "P\u0254m wug n\u0254b",
+     "heading": "Plim wug tiv",
      "identifier": "",
      "lines": [
-      "Wug kiat\u025bko zub d\u025b."
+      "Wug blopo zub sarn."
      ],
      "payload": "",
      "caption": ""
     },
     "keep_away": {
-     "heading": "Zub frimo wug fawe",
+     "heading": "Zub frimo wug vosho",
      "rings": [
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
-       "label": "3 mit\u0254"
+       "label": "3 dru\u0254"
       },
       {
        "distance_m": 20.0,
        "what": [
-        "W\u025bl\u0254z",
-        "Latrin\u0254z"
+        "Kwem\u0254z",
+        "Sarn\u0254z"
        ],
-       "label": "20 mit\u0254"
+       "label": "20 dru\u0254"
       },
       {
        "distance_m": 1000.0,
        "what": [
-        "D\u0254ti pl\u025bso"
+        "Tiv plimo"
        ],
-       "label": "1000 mit\u0254"
+       "label": "1000 dru\u0254"
       }
      ],
      "centre": "Glorp",
-     "caption": "Pikch\u0254 n\u0254b sk\u025bl."
+     "caption": "Vosho tiv sarno."
     },
     "language": {
      "code": "zz",
@@ -204866,24 +205106,24 @@
      "hours_per_day": null,
      "litres_per_day": null,
      "jerrycans_per_day": null,
-     "headline": "Zub 19 lit\u0254 frim wug \u0254mba.",
+     "headline": "Zub 19 dru frim wug \u0254mba.",
      "lines": [
-      "Frimo zub p\u0254m t\u025bst.",
-      "Frim n\u0254b zub, wug k\u0254miti."
+      "Frimo zub plim vosh.",
+      "Frim tiv zub, wug blop\u0254z."
      ]
     },
     "quality": {
      "heading": "Frim zub glorp wug?",
      "state": "indeterminate",
-     "headline": "Wug n\u0254b zub.",
+     "headline": "Wug tiv zub.",
      "lines": []
     },
     "contacts": {
-     "heading": "Zub wug k\u0254l",
+     "heading": "Zub wug kwem",
      "header": [
       "Zub",
-      "N\u025bmo",
-      "F\u0254no"
+      "Plimo",
+      "Druvo"
      ],
      "rows": [
       [
@@ -204902,54 +205142,54 @@
        ""
       ],
       [
-       "P\u0254m m\u025bkano",
+       "Plim sarno",
        "",
        ""
       ],
       [
-       "Frim \u0254fiso",
+       "Frim vosho",
        "",
        ""
       ]
      ]
     },
     "report": {
-     "heading": "P\u0254m wug n\u0254b",
+     "heading": "Plim wug tiv",
      "identifier": "",
      "lines": [
-      "Wug kiat\u025bko zub d\u025b."
+      "Wug blopo zub sarn."
      ],
      "payload": "",
      "caption": ""
     },
     "keep_away": {
-     "heading": "Zub frimo wug fawe",
+     "heading": "Zub frimo wug vosho",
      "rings": [
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
-       "label": "3 mit\u0254"
+       "label": "3 dru\u0254"
       },
       {
        "distance_m": 20.0,
        "what": [
-        "W\u025bl\u0254z",
-        "Latrin\u0254z"
+        "Kwem\u0254z",
+        "Sarn\u0254z"
        ],
-       "label": "20 mit\u0254"
+       "label": "20 dru\u0254"
       },
       {
        "distance_m": 1000.0,
        "what": [
-        "D\u0254ti pl\u025bso"
+        "Tiv plimo"
        ],
-       "label": "1000 mit\u0254"
+       "label": "1000 dru\u0254"
       }
      ],
      "centre": "Glorp",
-     "caption": "Pikch\u0254 n\u0254b sk\u025bl."
+     "caption": "Vosho tiv sarno."
     },
     "language": {
      "code": "zz",
@@ -204977,24 +205217,24 @@
      "hours_per_day": 1.5,
      "litres_per_day": 18,
      "jerrycans_per_day": 0,
-     "headline": "Zub 18 lit\u0254 frim wug d\u025b, zub 1.5 \u0254mba\u0254z.",
+     "headline": "Zub 18 dru frim wug sarn, zub 1.5 \u0254mba\u0254z.",
      "lines": [
-      "Frimo zub p\u0254m t\u025bst.",
-      "Frim n\u0254b zub, wug k\u0254miti."
+      "Frimo zub plim vosh.",
+      "Frim tiv zub, wug blop\u0254z."
      ]
     },
     "quality": {
      "heading": "Frim zub glorp wug?",
      "state": "none",
-     "headline": "Frim n\u0254b t\u025bst wug.",
+     "headline": "Frim tiv vosh sarn.",
      "lines": []
     },
     "contacts": {
-     "heading": "Zub wug k\u0254l",
+     "heading": "Zub wug kwem",
      "header": [
       "Zub",
-      "N\u025bmo",
-      "F\u0254no"
+      "Plimo",
+      "Druvo"
      ],
      "rows": [
       [
@@ -205013,54 +205253,54 @@
        ""
       ],
       [
-       "P\u0254m m\u025bkano",
+       "Plim sarno",
        "",
        ""
       ],
       [
-       "Frim \u0254fiso",
+       "Frim vosho",
        "",
        ""
       ]
      ]
     },
     "report": {
-     "heading": "P\u0254m wug n\u0254b",
+     "heading": "Plim wug tiv",
      "identifier": "",
      "lines": [
-      "Wug kiat\u025bko zub d\u025b."
+      "Wug blopo zub sarn."
      ],
      "payload": "",
      "caption": ""
     },
     "keep_away": {
-     "heading": "Zub frimo wug fawe",
+     "heading": "Zub frimo wug vosho",
      "rings": [
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
-       "label": "3 mit\u0254"
+       "label": "3 dru\u0254"
       },
       {
        "distance_m": 20.0,
        "what": [
-        "W\u025bl\u0254z",
-        "Latrin\u0254z"
+        "Kwem\u0254z",
+        "Sarn\u0254z"
        ],
-       "label": "20 mit\u0254"
+       "label": "20 dru\u0254"
       },
       {
        "distance_m": 1000.0,
        "what": [
-        "D\u0254ti pl\u025bso"
+        "Tiv plimo"
        ],
-       "label": "1000 mit\u0254"
+       "label": "1000 dru\u0254"
       }
      ],
      "centre": "Glorp",
-     "caption": "Pikch\u0254 n\u0254b sk\u025bl."
+     "caption": "Vosho tiv sarno."
     },
     "language": {
      "code": "zz",
@@ -205088,23 +205328,23 @@
      "hours_per_day": null,
      "litres_per_day": null,
      "jerrycans_per_day": null,
-     "headline": "Frimo t\u025bst wug zub frim n\u0254b.",
+     "headline": "Frimo vosh wug zub frim tiv.",
      "lines": [
-      "Frimo zub p\u0254m t\u025bst."
+      "Frimo zub plim vosh."
      ]
     },
     "quality": {
      "heading": "Frim zub glorp wug?",
      "state": "none",
-     "headline": "Frim n\u0254b t\u025bst wug.",
+     "headline": "Frim tiv vosh sarn.",
      "lines": []
     },
     "contacts": {
-     "heading": "Zub wug k\u0254l",
+     "heading": "Zub wug kwem",
      "header": [
       "Zub",
-      "N\u025bmo",
-      "F\u0254no"
+      "Plimo",
+      "Druvo"
      ],
      "rows": [
       [
@@ -205123,54 +205363,54 @@
        ""
       ],
       [
-       "P\u0254m m\u025bkano",
+       "Plim sarno",
        "",
        ""
       ],
       [
-       "Frim \u0254fiso",
+       "Frim vosho",
        "",
        ""
       ]
      ]
     },
     "report": {
-     "heading": "P\u0254m wug n\u0254b",
+     "heading": "Plim wug tiv",
      "identifier": "",
      "lines": [
-      "Wug kiat\u025bko zub d\u025b."
+      "Wug blopo zub sarn."
      ],
      "payload": "",
      "caption": ""
     },
     "keep_away": {
-     "heading": "Zub frimo wug fawe",
+     "heading": "Zub frimo wug vosho",
      "rings": [
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
-       "label": "3 mit\u0254"
+       "label": "3 dru\u0254"
       },
       {
        "distance_m": 20.0,
        "what": [
-        "W\u025bl\u0254z",
-        "Latrin\u0254z"
+        "Kwem\u0254z",
+        "Sarn\u0254z"
        ],
-       "label": "20 mit\u0254"
+       "label": "20 dru\u0254"
       },
       {
        "distance_m": 1000.0,
        "what": [
-        "D\u0254ti pl\u025bso"
+        "Tiv plimo"
        ],
-       "label": "1000 mit\u0254"
+       "label": "1000 dru\u0254"
       }
      ],
      "centre": "Glorp",
-     "caption": "Pikch\u0254 n\u0254b sk\u025bl."
+     "caption": "Vosho tiv sarno."
     },
     "language": {
      "code": "zz",
@@ -205188,7 +205428,7 @@
     ]
    },
    {
-    "title": "Rokel: z\u025bdo - glorp",
+    "title": "Rokel: z\u025bdo \\u2014 glorp",
     "example": "",
     "water": {
      "heading": "How much water",
@@ -205208,7 +205448,7 @@
     "quality": {
      "heading": "Is the water safe to drink?",
      "state": "none",
-     "headline": "Wug n\u0254b zub.",
+     "headline": "Wug tiv zub.",
      "lines": []
     },
     "contacts": {
@@ -205262,7 +205502,7 @@
       {
        "distance_m": 3.0,
        "what": [
-        "Hauz\u0254z"
+        "Blop\u0254z"
        ],
        "label": "3 m"
       },
@@ -205293,8 +205533,8 @@
     },
     "fell_back": [
      "community_sheet.water_heading",
-     "community_sheet.hour_words[other]",
      "community_sheet.water_day",
+     "community_sheet.hour_words[other]",
      "community_sheet.water_day_detail",
      "community_sheet.water_first_estimate",
      "community_sheet.water_shortage",
@@ -205428,8 +205668,8 @@
     "fell_back": [
      "community_sheet.title",
      "community_sheet.water_heading",
-     "community_sheet.hour_words[other]",
      "community_sheet.water_day",
+     "community_sheet.hour_words[other]",
      "community_sheet.water_day_detail",
      "community_sheet.water_tested",
      "community_sheet.water_shortage",
@@ -205986,6 +206226,244 @@
     ]
    },
    {
+    "title": "Your borehole at A",
+    "example": "",
+    "water": {
+     "heading": "How much water",
+     "state": "measured",
+     "litres_per_hour": 1,
+     "jerrycans_per_hour": 0,
+     "hours_per_day": 0.5,
+     "litres_per_day": 0,
+     "jerrycans_per_day": 0,
+     "headline": "The pumping test found very little water in this borehole.",
+     "lines": [
+      "This comes from the pumping test done on the borehole."
+     ]
+    },
+    "quality": {
+     "heading": "Is the water safe to drink?",
+     "state": "none",
+     "headline": "Not known yet. The water has not been tested. Treat it before you drink it until it has been.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Who to call",
+     "header": [
+      "Who",
+      "Name",
+      "Phone"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Pump mechanic",
+       "",
+       ""
+      ],
+      [
+       "The district water office",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "If the pump breaks or the water changes",
+     "identifier": "",
+     "lines": [
+      "Tell the caretaker or a committee member the same day."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Keep these away from the borehole",
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Houses and other buildings"
+       ],
+       "label": "3 m"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Hand dug wells",
+        "Latrines, septic tanks and soakaways"
+       ],
+       "label": "20 m"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Rubbish dumps and burial grounds"
+       ],
+       "label": "1000 m"
+      }
+     ],
+     "centre": "Borehole",
+     "caption": "Each must be at least this far from the borehole. The picture is not to scale."
+    },
+    "language": {
+     "code": "zx",
+     "name": "Alphan",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "fell_back": [
+     "community_sheet.title",
+     "community_sheet.water_heading",
+     "community_sheet.water_very_little",
+     "community_sheet.water_tested",
+     "community_sheet.quality_heading",
+     "community_sheet.quality[none]",
+     "community_sheet.contacts_columns",
+     "community_sheet.contacts_write_in",
+     "community_sheet.contacts_heading",
+     "community_sheet.report_tell",
+     "community_sheet.report_heading",
+     "community_sheet.keep_structures",
+     "community_sheet.keep_metres",
+     "community_sheet.keep_heading",
+     "community_sheet.keep_centre",
+     "community_sheet.keep_caption"
+    ],
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in Alphan: translated by A. Translator, checked by B. Checker.",
+     "16 parts of this sheet have no Alphan wording yet and are printed in English.",
+     "A translation is installed that cannot be offered (yy), so it is not in the list of languages. The command \"groundwater translation\" says why."
+    ]
+   },
+   {
+    "title": "Z\u025bdo glorp A",
+    "example": "",
+    "water": {
+     "heading": "Wug zub frim",
+     "state": "measured",
+     "litres_per_hour": 1,
+     "jerrycans_per_hour": 0,
+     "hours_per_day": 0.5,
+     "litres_per_day": 0,
+     "jerrycans_per_day": 0,
+     "headline": "Frimo vosh wug zub frim tiv.",
+     "lines": [
+      "Frimo zub plim vosh."
+     ]
+    },
+    "quality": {
+     "heading": "Frim zub glorp wug?",
+     "state": "none",
+     "headline": "Frim tiv vosh sarn.",
+     "lines": []
+    },
+    "contacts": {
+     "heading": "Zub wug kwem",
+     "header": [
+      "Zub",
+      "Plimo",
+      "Druvo"
+     ],
+     "rows": [
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "",
+       "",
+       ""
+      ],
+      [
+       "Plim sarno",
+       "",
+       ""
+      ],
+      [
+       "Frim vosho",
+       "",
+       ""
+      ]
+     ]
+    },
+    "report": {
+     "heading": "Plim wug tiv",
+     "identifier": "",
+     "lines": [
+      "Wug blopo zub sarn."
+     ],
+     "payload": "",
+     "caption": ""
+    },
+    "keep_away": {
+     "heading": "Zub frimo wug vosho",
+     "rings": [
+      {
+       "distance_m": 3.0,
+       "what": [
+        "Blop\u0254z"
+       ],
+       "label": "3 dru\u0254"
+      },
+      {
+       "distance_m": 20.0,
+       "what": [
+        "Kwem\u0254z",
+        "Sarn\u0254z"
+       ],
+       "label": "20 dru\u0254"
+      },
+      {
+       "distance_m": 1000.0,
+       "what": [
+        "Tiv plimo"
+       ],
+       "label": "1000 dru\u0254"
+      }
+     ],
+     "centre": "Glorp",
+     "caption": "Vosho tiv sarno."
+    },
+    "language": {
+     "code": "zz",
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "fell_back": [],
+    "notes": [
+     "No water quality result is loaded, so the sheet says the water has not been tested.",
+     "No committee member is entered, so the sheet leaves lines to write on.",
+     "No borehole identifier is given, so the sheet names no plate. Type the identifier the Asset registry gave the borehole.",
+     "The sheet is in Zedish: translated by A. Translator, checked by B. Checker.",
+     "A translation is installed that cannot be offered (yy), so it is not in the list of languages. The command \"groundwater translation\" says why."
+    ]
+   },
+   {
     "title": "Your borehole at Rokel",
     "example": "",
     "water": {
@@ -206248,7 +206726,9 @@
     }
    },
    "notes": {
-    "kept": "Kept {n:g} {n:plural:row|rows}."
+    "kept": "Kept {n:g} {n:plural:row|rows}.",
+    "rows": "Kept {n:plural:a row|rows}.",
+    "both": "{n:g} of {n:num}, {m:.1f}."
    }
   },
   "held": {
@@ -206366,6 +206846,7 @@
     "text": {
      "sheet": {
       "plain": "  Wug \u2014 zub  \u2013 frimo.\t",
+      "amount": "{cans:num} glorp {cans:plural:|frim\u0254z} wug\u00a0{litres:.1f}\u202f{hours:g}",
       "title": "Glorp\u2014{place}  wug",
       "answers": {
        "yes": " Z\u025b \u2013 zub ",
@@ -206380,7 +206861,12 @@
      "translated_by": "A. Translator",
      "checked_by": "B. Checker"
     },
-    "text": {}
+    "text": {
+     "notes": {
+      "rows": "Zub {n:plural:frim|frim\u0254z}.",
+      "both": "{m:.1f}: {n:num} wug {n:g}."
+     }
+    }
    },
    "ya": {
     "language": {
@@ -206679,6 +207165,78 @@
      }
     }
    },
+   "xk": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "notes": {
+      "rows": "Zub {n}."
+     }
+    }
+   },
+   "xl": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "notes": {
+      "rows": "Zub {n} {n:plural:frim|frim\u0254z}."
+     }
+    }
+   },
+   "xm": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "notes": {
+      "rows": "Zub {n:g} {n:plural:frim|frim\u0254z}."
+     }
+    }
+   },
+   "xn": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "sheet": {
+      "amount": "{cans:num} {litres:.1f} {hours:g} {hours:plural:wug|wug\u0254z}"
+     }
+    }
+   },
+   "xo": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "notes": {
+      "both": "{n:g} wug {m:.1f}."
+     }
+    }
+   },
+   "xp": {
+    "language": {
+     "name": "Zedish",
+     "translated_by": "A. Translator",
+     "checked_by": "B. Checker"
+    },
+    "text": {
+     "notes": {
+      "both": "{n:num} wug {m:.1f}."
+     }
+    }
+   },
    "xe": {
     "language": {
      "name": "Zedish",
@@ -206882,6 +207440,21 @@
    ],
    [
     "phrase",
+    "notes.rows",
+    {
+     "n": 3
+    }
+   ],
+   [
+    "phrase",
+    "notes.both",
+    {
+     "n": 1200,
+     "m": 2
+    }
+   ],
+   [
+    "phrase",
     "sheet.title",
     {
      "place": "Kuntolo"
@@ -206956,6 +207529,22 @@
     {
      "place": 7
     }
+   ],
+   [
+    "phrase",
+    "sheet.title",
+    {
+     "place": "Rokel",
+     "constructor": "x"
+    }
+   ],
+   [
+    "phrase",
+    "sheet.title",
+    {
+     "place": "Rokel",
+     "toString": "x"
+    }
    ]
   ],
   "codes": [
@@ -206994,6 +207583,12 @@
    "yt",
    "yw",
    "yx",
+   "xk",
+   "xl",
+   "xm",
+   "xn",
+   "xo",
+   "xp",
    "xe",
    "xf",
    "xg",
@@ -207109,6 +207704,24 @@
    ],
    [
     "notes.kept does not take the values the English takes (n), each written as the English writes it"
+   ],
+   [
+    "notes.rows does not take the values the English takes (n), each written as the English writes it"
+   ],
+   [
+    "notes.rows does not take the values the English takes (n), each written as the English writes it"
+   ],
+   [
+    "notes.rows does not take the values the English takes (n), each written as the English writes it"
+   ],
+   [
+    "sheet.amount does not take the values the English takes (cans, hours, litres), each written as the English writes it"
+   ],
+   [
+    "notes.both does not take the values the English takes (m, n), each written as the English writes it"
+   ],
+   [
+    "notes.both does not take the values the English takes (m, n), each written as the English writes it"
    ],
    [
     "notes.kept does not take the values the English takes (n), each written as the English writes it"
@@ -207243,6 +207856,8 @@
      "N\u0254b.",
      "Zub {name} frim Aminata.",
      "1 frim.",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Z\u025bdo glorp Kuntolo",
      {
       "yes": "Z\u025b.",
@@ -207286,9 +207901,18 @@
      },
      {
       "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      }
     ],
-    "fell_back": []
+    "fell_back": [
+     "notes.rows",
+     "notes.both"
+    ]
    },
    {
     "language": {
@@ -207307,6 +207931,8 @@
      "N\u0254b.",
      "Write {name} for Aminata.",
      "Kept 1 row.",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Your borehole at Kuntolo",
      {
       "yes": "Z\u025b.",
@@ -207350,6 +207976,12 @@
      },
      {
       "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      }
     ],
     "fell_back": [
@@ -207358,6 +207990,8 @@
      "sheet.answers[unknown]",
      "sheet.braces",
      "notes.kept",
+     "notes.rows",
+     "notes.both",
      "sheet.answers"
     ]
    },
@@ -207378,6 +208012,8 @@
      "No.",
      "Write {name} for Aminata.",
      "Kept 1 row.",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Your borehole at Kuntolo",
      {
       "yes": "Yes.",
@@ -207421,6 +208057,12 @@
      },
      {
       "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      }
     ],
     "fell_back": [
@@ -207431,6 +208073,8 @@
      "sheet.answers[unknown]",
      "sheet.braces",
      "notes.kept",
+     "notes.rows",
+     "notes.both",
      "sheet.answers"
     ]
    },
@@ -207451,6 +208095,8 @@
      "No.",
      "Write {name} for Aminata.",
      "Kept 1 row.",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Your borehole at Kuntolo",
      {
       "yes": "Yes.",
@@ -207494,6 +208140,12 @@
      },
      {
       "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      }
     ],
     "fell_back": [
@@ -207504,6 +208156,8 @@
      "sheet.answers[unknown]",
      "sheet.braces",
      "notes.kept",
+     "notes.rows",
+     "notes.both",
      "sheet.answers"
     ]
    },
@@ -207524,6 +208178,8 @@
      "N\u0254b.",
      "Write {name} for Aminata.",
      "Kept 1 row.",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Your borehole at Kuntolo",
      {
       "yes": "Yes.",
@@ -207567,6 +208223,12 @@
      },
      {
       "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      }
     ],
     "fell_back": [
@@ -207575,6 +208237,8 @@
      "sheet.answers[unknown]",
      "sheet.braces",
      "notes.kept",
+     "notes.rows",
+     "notes.both",
      "sheet.answers"
     ]
    },
@@ -207595,6 +208259,8 @@
      "No.",
      "Write {name} for Aminata.",
      "Kept 1 row.",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Your borehole at Kuntolo",
      {
       "yes": "Yes.",
@@ -207605,6 +208271,12 @@
       "yes": "Yes.",
       "no": "No.",
       "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      },
      {
       "error": true
@@ -207648,6 +208320,8 @@
      "sheet.answers[unknown]",
      "sheet.braces",
      "notes.kept",
+     "notes.rows",
+     "notes.both",
      "sheet.answers"
     ]
    },
@@ -207668,6 +208342,8 @@
      "No.",
      "Write {name} for Aminata.",
      "1 frim",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Your borehole at Kuntolo",
      {
       "yes": "Yes.",
@@ -207711,6 +208387,12 @@
      },
      {
       "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      }
     ],
     "fell_back": [
@@ -207719,6 +208401,8 @@
      "sheet.answers[no]",
      "sheet.answers[unknown]",
      "sheet.braces",
+     "notes.rows",
+     "notes.both",
      "sheet.answers"
     ]
    },
@@ -207731,14 +208415,16 @@
     },
     "said": [
      "Glorp - Rokel wug",
-     "About 1 jerrycan, 20.0 litres in 6.5 hours.",
-     "About 1,200 jerrycans, 24000.0 litres in 8 hours.",
+     "1 glorp wug 20.0 6.5",
+     "1,200 glorp frim\u0254z wug 24000.0 8",
      "Wug - zub - frimo.",
      "N\u0254b - wug",
      "Not known yet.",
      "N\u0254b - wug",
      "Write {name} for Aminata.",
      "Kept 1 row.",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Glorp - Kuntolo wug",
      {
       "yes": "Z\u025b - zub",
@@ -207782,13 +208468,20 @@
      },
      {
       "error": true
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      }
     ],
     "fell_back": [
-     "sheet.amount",
      "sheet.answers[unknown]",
      "sheet.braces",
      "notes.kept",
+     "notes.rows",
+     "notes.both",
      "sheet.answers"
     ]
    },
@@ -207809,6 +208502,8 @@
      "No.",
      "Write {name} for Aminata.",
      "Kept 1 row.",
+     "Zub frim\u0254z.",
+     "2.0: 1,200 wug 1200.",
      "Your borehole at Kuntolo",
      {
       "yes": "Yes.",
@@ -207819,6 +208514,12 @@
       "yes": "Yes.",
       "no": "No.",
       "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      },
      {
       "error": true
@@ -207944,6 +208645,24 @@
     "refused": "text: the translation 'yx' cannot be used: notes.kept does not take the values the English takes (n), each written as the English writes it"
    },
    {
+    "refused": "text: the translation 'xk' cannot be used: notes.rows does not take the values the English takes (n), each written as the English writes it"
+   },
+   {
+    "refused": "text: the translation 'xl' cannot be used: notes.rows does not take the values the English takes (n), each written as the English writes it"
+   },
+   {
+    "refused": "text: the translation 'xm' cannot be used: notes.rows does not take the values the English takes (n), each written as the English writes it"
+   },
+   {
+    "refused": "text: the translation 'xn' cannot be used: sheet.amount does not take the values the English takes (cans, hours, litres), each written as the English writes it"
+   },
+   {
+    "refused": "text: the translation 'xo' cannot be used: notes.both does not take the values the English takes (m, n), each written as the English writes it"
+   },
+   {
+    "refused": "text: the translation 'xp' cannot be used: notes.both does not take the values the English takes (m, n), each written as the English writes it"
+   },
+   {
     "refused": "text: the translation 'xe' cannot be used: notes.kept does not take the values the English takes (n), each written as the English writes it"
    },
    {
@@ -207994,6 +208713,8 @@
      "No.",
      "Write {name} for Aminata.",
      "Kept 1 row.",
+     "Kept rows.",
+     "1200 of 1,200, 2.0.",
      "Your borehole at Kuntolo",
      {
       "yes": "Yes.",
@@ -208004,6 +208725,12 @@
       "yes": "Yes.",
       "no": "No.",
       "unknown": "Not known yet."
+     },
+     {
+      "error": true
+     },
+     {
+      "error": true
      },
      {
       "error": true

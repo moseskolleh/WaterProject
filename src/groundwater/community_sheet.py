@@ -41,7 +41,6 @@ building it. Those are shown beside the button and never printed.
 from __future__ import annotations
 
 import math
-import re
 from typing import Any
 
 from . import qr
@@ -77,14 +76,16 @@ SCAN_ECC = "H"
 BUILDER_ENTRIES = ("about", "too_many_contacts", "in_language", "not_translated",
                    "translation_refused", "builder_notes")
 
-# written out rather than \s, which the two engines read differently
-_SPACE = re.compile(r"[ \t\n\r\f\v]+")
+# every kind of white space, as translated text has it (text.py): the two
+# document writers close up different ones, so a no-break space typed into
+# a name would be printed two ways
+_SPACE = _text._SPACES
 
 
 def sheet_text(value: Any) -> str:
     """Typed text as the sheet prints it: a long dash as a hyphen with spaces
-    and a short one as a hyphen, each run of spaces one space, the ends
-    trimmed; anything that is not text is no text. Done here, once, so that
+    and a short one as a hyphen, each run of white space of any kind one
+    space, the ends trimmed; anything that is not text is no text. Done here, once, so that
     the two document writers, which tidy text differently, are handed text
     neither has cause to change."""
     if not isinstance(value, str):
@@ -161,7 +162,12 @@ def _water(analysis: Any, hours: float | None, notes: list[str], say: Speaker) -
             water["headline"] = say.phrase("community_sheet.water_litres_hour", litres=per_hour)
     else:
         per_day = round_down(per_hour * hours)
-        unit = say.row("community_sheet.hour_words", "one" if hours == 1 else "other")
+
+        def unit() -> str:
+            # asked for by the two sentences that print it, and by no other:
+            # the speaker counts what it is asked for
+            return say.row("community_sheet.hour_words", "one" if hours == 1 else "other")
+
         water["hours_per_day"] = hours
         water["litres_per_day"] = per_day
         water["jerrycans_per_day"] = per_day // JERRYCAN_L
@@ -173,10 +179,10 @@ def _water(analysis: Any, hours: float | None, notes: list[str], say: Speaker) -
             water["lines"].append(say.phrase(
                 "community_sheet.water_day_detail",
                 litres=water["jerrycans_per_day"] * JERRYCAN_L,
-                hours=hours, unit=unit, can=JERRYCAN_L))
+                hours=hours, unit=unit(), can=JERRYCAN_L))
         else:
             water["headline"] = say.phrase("community_sheet.water_litres_day", litres=per_day,
-                                       hours=hours, unit=unit)
+                                       hours=hours, unit=unit())
     if indicative:
         notes.append(table["first_estimate"])
         water["lines"].append(say.phrase("community_sheet.water_first_estimate"))

@@ -794,6 +794,36 @@ def test_the_community_sheet_is_built_in_a_language_that_is_on_offer(sample_data
     assert MARK not in " ".join(str(m.value) for m in app.markdown)
 
 
+def test_two_translations_of_one_name_are_told_apart_by_their_codes(sample_data, monkeypatch):
+    """Two dialects may be installed under one name. The choice shows the code
+    of each, and the sheet built in each keeps its own place on the list of
+    what was built, where the second used to replace the first."""
+    from test_text_languages import marked
+
+    held = marked()
+    held["zw"] = {"language": dict(held["zz"]["language"], translated_by="I. Translator"),
+                  "text": held["zz"]["text"]}
+    monkeypatch.setattr("groundwater.text.translations", lambda: held)
+    app = AppTest.from_file(APP, default_timeout=600)
+    app.run()
+    goto(app, "Handover")
+    assert not app.exception
+    assert list(app.selectbox(key="ho_sheet_language").options) == [
+        "English", "Zedish (zw)", "Zedish (zz)"]
+    for code in ("zw", "zz"):
+        app.selectbox(key="ho_sheet_language").set_value(code)
+        app.run()
+        app.button(key="build_community_sheet").click()
+        app.run()
+        assert not app.exception
+    built = {label: str(path) for label, path in app.session_state["artifacts"].items()
+             if "community sheet" in label}
+    assert sorted(built) == ["Download the community sheet in Zedish (zw) (.docx)",
+                             "Download the community sheet in Zedish (zz) (.docx)"]
+    assert built["Download the community sheet in Zedish (zw) (.docx)"].endswith(
+        "community_sheet_zw.docx")
+
+
 def test_maps_flow(app):
     """With no position and no area recorded, the national maps still draw."""
     goto(app, "Site maps")

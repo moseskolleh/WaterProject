@@ -197,8 +197,12 @@ UNREADABLE = "cannot be read"
 _EDGE = ("\t\n\v\f\r \x1c\x1d\x1e\x1f\x85\xa0        "
          "        　﻿")
 
-# written out rather than \s, which the two engines read differently
-_SPACES = re.compile(r"[ \t\n\r\f\v]+")
+# Every run of white space, of whatever kind, is printed as one space. The
+# browser's document writer closes up all of it and the Python one none of
+# it, so a no-break space a translator typed would otherwise be printed two
+# ways. Written out (the list above) rather than \s, which the two engines
+# read differently.
+_SPACES = re.compile("[" + re.escape(_EDGE) + "]+")
 
 
 def _trimmed(value: str) -> str:
@@ -207,10 +211,10 @@ def _trimmed(value: str) -> str:
 
 def _tidy(text: str) -> str:
     """Translated text as it is printed: a long dash as a hyphen with spaces
-    and a short one as a hyphen, each run of spaces one space, the ends
-    trimmed. The two document writers tidy text differently; done here, both
-    are handed text neither has cause to change, as typed text is
-    (``community_sheet.sheet_text``)."""
+    and a short one as a hyphen, each run of white space one space, the ends
+    trimmed. The two document writers tidy text differently; done here, to
+    the sentence once its values are in it, both are handed text neither has
+    cause to change, as typed text is (``community_sheet.sheet_text``)."""
     return _trimmed(_SPACES.sub(" ", text.replace("—", " - ").replace("–", "-")))
 
 
@@ -220,10 +224,20 @@ def _read_file(item):
     "2", a date is its text). A file that cannot be read is kept as the
     reason, in words, so that only its language is refused."""
     try:
-        loaded = yaml.safe_load(item.read_text(encoding="utf-8"))
-        return json.loads(json.dumps(loaded, default=str, allow_nan=False))
+        text = item.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return f"{UNREADABLE}: it is not saved as UTF-8 text"
+    try:
+        loaded = yaml.safe_load(text)
+        return json.loads(json.dumps(loaded, default=str, allow_nan=False))
+    except yaml.reader.ReaderError as error:
+        # a character YAML does not allow (a soft line break pasted from a
+        # word processor, a letter left by a wrong re-encoding): told by its
+        # place in the text, since it has no mark
+        before = text[: error.position]
+        return (f"{UNREADABLE}: line {before.count(chr(10)) + 1}, column "
+                f"{len(before) - (before.rfind(chr(10)) + 1) + 1}: a character that cannot be "
+                f"in the file (U+{error.character:04X})")
     except yaml.YAMLError as error:
         mark = getattr(error, "problem_mark", None)
         where = f"line {mark.line + 1}, column {mark.column + 1}: " if mark is not None else ""
@@ -483,7 +497,9 @@ class Speaker:
         if mine is None:
             self._missed(ident)
             return render_text(source, values)
-        return render_text(_tidy(mine), values)
+        # tidied once it is filled: a plural with no word for one leaves
+        # two spaces where the word would have been
+        return _tidy(render_text(mine, values))
 
     def phrase_table(self, ident: str) -> dict[str, str]:
         """The whole table ``ident`` names, each row in this language or in
