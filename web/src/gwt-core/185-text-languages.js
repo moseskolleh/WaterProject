@@ -36,8 +36,11 @@
   var EDGE = '[\\t\\n\\v\\f\\r \\x1c-\\x1f\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029' +
     '\\u202f\\u205f\\u3000\\ufeff]';
   var EDGES = new RegExp('^' + EDGE + '+|' + EDGE + '+$', 'g');
-  /* written out rather than \s, which the two engines read differently */
-  var TEXT_SPACES = /[ \t\n\r\f\v]+/g;
+  /* Every run of white space, of whatever kind, is printed as one space
+   * (text.py _SPACES): the document writer here closes up all of it and the
+   * Python one none of it, so a no-break space a translator typed would
+   * otherwise be printed two ways. */
+  var TEXT_SPACES = new RegExp(EDGE + '+', 'g');
 
   /** @param {string} value
    * @returns {string} */
@@ -46,9 +49,10 @@
   }
 
   /** Translated text as it is printed (text.py _tidy): a long dash as a
-   * hyphen with spaces and a short one as a hyphen, each run of spaces one
-   * space, the ends trimmed, so that the two document writers are handed
-   * text neither has cause to change.
+   * hyphen with spaces and a short one as a hyphen, each run of white space
+   * one space, the ends trimmed. Done to the sentence once its values are
+   * in it, so that the two document writers are handed text neither has
+   * cause to change.
    * @param {string} text
    * @returns {string} */
   function textTidy(text) {
@@ -95,9 +99,13 @@
    * @param {Record<string, Record<string, boolean>>} theirs
    * @returns {boolean} */
   function sameValues(mine, theirs) {
+    /* as a list, not joined: joined, a value written plainly ({n}, whose
+     * format is the empty string) and one written only as a plural's word
+     * (no format at all) were the same */
     /** @param {Record<string, boolean>} formats */
     function printed(formats) {
-      return Object.keys(formats).filter(function (f) { return f !== 'plural'; }).sort().join('\n');
+      return JSON.stringify(Object.keys(formats).filter(function (f) { return f !== 'plural'; })
+        .sort());
     }
     if (Object.keys(mine).sort().join('\n') !== Object.keys(theirs).sort().join('\n')) return false;
     return Object.keys(theirs).every(function (name) {
@@ -292,7 +300,9 @@
           missed(id);
           return renderText(at.from, values);
         }
-        return renderText(textTidy(at.mine), values);
+        /* tidied once it is filled: a plural with no word for one leaves
+         * two spaces where the word would have been */
+        return textTidy(renderText(at.mine, values));
       },
       /* the whole table, for one every row of which is printed; where one
        * row is chosen, row() keeps a truer count of what fell back */

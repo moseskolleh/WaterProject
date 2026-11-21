@@ -21,8 +21,10 @@
   var MAX_CONTACTS = 6;
   /* the symbol the square to scan is printed as, as on the plate */
   var SCAN_ECC = 'H';
-  /* written out rather than \s, which the two engines read differently */
-  var SHEET_SPACE = /[ \t\n\r\f\v]+/g;
+  /* every kind of white space, as translated text has it (TEXT_SPACES): the
+   * two document writers close up different ones, so a no-break space typed
+   * into a name would be printed two ways */
+  var SHEET_SPACE = TEXT_SPACES;
 
   /** Typed text as the sheet prints it (community_sheet.py sheet_text): a
    * long dash as a hyphen with spaces and a short one as a hyphen, each run
@@ -104,7 +106,11 @@
       }
     } else {
       var perDay = roundDown(perHour * hours);
-      var unit = say.row('community_sheet.hour_words', hours === 1 ? 'one' : 'other');
+      /* asked for by the two sentences that print it, and by no other: the
+       * speaker counts what it is asked for */
+      var unit = function () {
+        return say.row('community_sheet.hour_words', hours === 1 ? 'one' : 'other');
+      };
       water.hours_per_day = hours;
       water.litres_per_day = perDay;
       water.jerrycans_per_day = Math.floor(perDay / JERRYCAN_L);
@@ -113,11 +119,11 @@
       } else if (water.jerrycans_per_day >= 1) {
         water.headline = say.phrase('community_sheet.water_day', { cans: water.jerrycans_per_day });
         water.lines.push(say.phrase('community_sheet.water_day_detail',
-          { litres: water.jerrycans_per_day * JERRYCAN_L, hours: hours, unit: unit,
+          { litres: water.jerrycans_per_day * JERRYCAN_L, hours: hours, unit: unit(),
             can: JERRYCAN_L }));
       } else {
         water.headline = say.phrase('community_sheet.water_litres_day',
-          { litres: perDay, hours: hours, unit: unit });
+          { litres: perDay, hours: hours, unit: unit() });
       }
     }
     if (indicative) {

@@ -165,7 +165,13 @@ def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
     # names who translated it and who checked it, and has no fault
     # (groundwater.text.languages). With none, the sheet is English and says
     # so (PLAN.md step 9.2).
-    offered = {language["code"]: language["name"] for language in languages()}
+    on_offer = languages()
+    names = [language["name"] for language in on_offer]
+    # two translations of one name are told apart by their codes, in the
+    # choice and on the list of what was built
+    offered = {language["code"]: (language["name"] if names.count(language["name"]) == 1
+                                  else f"{language['name']} ({language['code']})")
+               for language in on_offer}
     if st.session_state.get("ho_sheet_language") not in offered:
         # English, or a project saved where a translation was installed and
         # opened where it is not
@@ -221,7 +227,7 @@ def _community_sheet_section(pumping, quality, committee_rows, gate) -> None:
             # each language's sheet is kept under its own name: the English
             # one and a translated one are both on the Deliverables list and
             # both go into the evidence bundle
-            spoken = content["language"].get("name")
+            spoken = offered.get(language)
             offer_document(path, f"Download the community sheet in {spoken} (.docx)" if spoken
                            else "Download the community sheet (.docx)")
 

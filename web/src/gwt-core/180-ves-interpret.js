@@ -652,7 +652,9 @@
    */
   function renderText(template, values) {
     values = values || {};
-    var used = {};
+    /* with no prototype: a value may be named constructor, and on a plain
+     * object that name is always there */
+    var used = Object.create(null);
     var text = template.replace(TEXT_TOKEN, function (token, name, spec) {
       if (token === '{{' || token === '}}') return token.charAt(0);
       if (name === undefined) {

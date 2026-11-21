@@ -2,6 +2,34 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### Translations: a second independent check of the fixes (PLAN.md step 9.2)
+
+The fixes to step 9.2 (the entry below) were themselves checked by independent reviewers, each finding again put to a second who tried to refute it. Eleven stood. None reached a community: no translation is bundled.
+
+**The two apps still disagreed on one rule.** Where English writes a count only as the word that agrees with it (`{n:plural:row|rows}`), a translation that printed the number as well was refused by the Python app and offered by the browser, where building the sentence then failed. The browser compared the ways a number is written as one joined string, in which "written plainly" and "not written" were the same. It now compares them as a list.
+
+**The English picture had moved, in matplotlib's own font.** The key's rows were started a fixed gap after the widest distance. In the font this machine draws in, that left them where they were; in matplotlib's default, which a stock install and CI use, they started 0.12 cm further right and one row was broken that had fitted. The gap is now what the old layout left, and the English key is held where it was, with no row broken, by a test in both fonts.
+
+**Only the key was measured.** Every word in the picture now is, in both apps:
+
+- a distance with a long word for its unit is set smaller, where it used to push the key's rows off the picture or up to the square;
+- type set smaller is measured at the size it is drawn at, because it does not shrink in exact proportion: with matplotlib's stock settings a distance scaled to fit its column was drawn a twentieth too wide and touched the rows beside it, which CI caught and this machine's settings hid;
+- the label under the square is broken as the English always was and then, where a line is still too wide, by its measure;
+- a name for the centre wider than the innermost ring is given a patch of white, where the ring's line used to strike it through.
+
+**Tidying was done too early, and to too little.** Translated text was tidied before its values were put in, so a plural with no word for one count left two spaces, which one document writer closed up and the other printed. A no-break space was printed as a space by one and kept by the other. Text is now tidied once it is filled, and every kind of white space is one space, in typed text (a committee member's name) as in translated.
+
+**Smaller things.**
+
+- The count of parts printed in English was still one too many on a sheet with hours entered and a day's amount that rounds to nothing: the word for hours was asked for before it was known whether a sentence would print it.
+- A file with a character YAML does not allow (a soft line break pasted from a word processor) was refused as "it is not YAML", with no place. It is now told by line and column, with the character.
+- The Streamlit app kept each language's sheet by the language's name, so two translations of one name shared a place. Both apps now show the code beside a name that two translations share.
+- A check in the browser suite still looked for the old wording of a note, and so could not fail.
+- The browser's renderer did not refuse an unused value named `constructor`; it does now, as the Python one does.
+- The test sources held invisible characters (a byte-order mark, a no-break space, a line separator) written as themselves; they are written as escapes, which an editor cannot lose.
+
+**How it is held.** Parity has a case for each, 5,030 checks. `tests/test_text_languages.py` draws the English picture, and a picture in which every word is too long, under three settings (this machine's, matplotlib's font, and a stock install's as CI has it), and looks at its edges, at the white beside the square and at the white between a distance and its rows. The browser suite does the same with its own picture.
+
 ### Translations: what an independent review found, put right (PLAN.md step 9.2)
 
 Step 9.2 was reviewed by four independent reviewers, each finding then checked by a second who tried to refute it. Thirty-one findings stood, about sixteen distinct. All are put right here. None reached a community: no translation is bundled.
