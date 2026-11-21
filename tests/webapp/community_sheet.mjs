@@ -479,10 +479,11 @@ await withPage(async (page, base, consoleErrors) => {
     laid.english.textAt === 7.3 && laid.english.scale === 1 && laid.english.labelScale === 1 &&
     lines(laid.english).every((n) => n === 1) &&
     /* the long unit: the distance set smaller, the rows started after it */
-    laid.long.labelScale < 1 && Math.abs(laid.long.textAt - 8.3) < 1e-9 &&
-    lines(laid.long).some((n) => n > 1) &&
-    /* and no line of any row wider, as drawn, than the room it has */
-    laid.long.widths.flat(2).every((w) => w * laid.long.scale <= laid.long.limit + 1e-9),
+    laid.long.labelScale < 1 && laid.long.labelWidth <= 2.2 + 1e-9 &&
+    Math.abs(laid.long.textAt - (6.0 + laid.long.labelWidth + 0.1)) < 1e-9 &&
+    laid.long.textAt > 7.3 && lines(laid.long).some((n) => n > 1) &&
+    /* and no line of any row wider, as it is drawn, than the room it has */
+    laid.long.widths.flat(2).every((w) => w <= laid.long.limit + 1e-9),
     JSON.stringify({ english: { ...laid.english, widths: undefined },
       long: { ...laid.long, widths: undefined } }));
   await page.evaluate(() => {

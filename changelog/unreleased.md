@@ -13,6 +13,7 @@ The fixes to step 9.2 (the entry below) were themselves checked by independent r
 **Only the key was measured.** Every word in the picture now is, in both apps:
 
 - a distance with a long word for its unit is set smaller, where it used to push the key's rows off the picture or up to the square;
+- type set smaller is measured at the size it is drawn at, because it does not shrink in exact proportion: with matplotlib's stock settings a distance scaled to fit its column was drawn a twentieth too wide and touched the rows beside it, which CI caught and this machine's settings hid;
 - the label under the square is broken as the English always was and then, where a line is still too wide, by its measure;
 - a name for the centre wider than the innermost ring is given a patch of white, where the ring's line used to strike it through.
 
@@ -27,7 +28,7 @@ The fixes to step 9.2 (the entry below) were themselves checked by independent r
 - The browser's renderer did not refuse an unused value named `constructor`; it does now, as the Python one does.
 - The test sources held invisible characters (a byte-order mark, a no-break space, a line separator) written as themselves; they are written as escapes, which an editor cannot lose.
 
-**How it is held.** Parity has a case for each, 5,030 checks. `tests/test_text_languages.py` draws the English picture in both fonts, and draws a picture in which every word is too long, in both fonts, and looks at its edges and at the white beside the square. The browser suite does the same with its own picture.
+**How it is held.** Parity has a case for each, 5,030 checks. `tests/test_text_languages.py` draws the English picture, and a picture in which every word is too long, under three settings (this machine's, matplotlib's font, and a stock install's as CI has it), and looks at its edges, at the white beside the square and at the white between a distance and its rows. The browser suite does the same with its own picture.
 
 ### Translations: what an independent review found, put right (PLAN.md step 9.2)
 

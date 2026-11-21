@@ -799,8 +799,8 @@ def long_rows(times: float) -> dict:
 def test_the_key_is_laid_out_by_measure_and_english_is_where_it_was():
     from groundwater.reporting.community_sheet import fit_words, key_layout
 
-    def measure(text, points, bold):          # every letter a fifth of a centimetre
-        return 0.2 * len(text)
+    def measure(text, points, bold):          # a letter a fifth of a centimetre at full size
+        return 0.2 * len(text) * points / (8.0 if bold else 7.5)
 
     assert fit_words("aa bb cc dd", 1.0, lambda line: 0.2 * len(line)) == ["aa bb", "cc dd"]
     assert fit_words("abcdefgh ij", 1.0, lambda line: 0.2 * len(line)) == ["abcdefgh", "ij"]
@@ -824,7 +824,7 @@ def test_the_key_is_laid_out_by_measure_and_english_is_where_it_was():
                           12.35, 5.0, measure)
         assert long["text_at"] == pytest.approx(8.3)
         assert long["label_scale"] == pytest.approx(2.2 / (0.2 * letters))
-        assert all(measure(line, 7.5, False) * long["scale"] <= 12.35 - 8.3 + 1e-9
+        assert all(measure(line, 7.5 * long["scale"], False) <= 12.35 - 8.3 + 1e-9
                    for line in long["rows"][0][0])
     # a word no line can hold, and a key too tall, are set smaller
     assert key_layout([{"label": "3 m", "what": ["a" * 40]}], 12.55, 5.0, measure)["scale"] < 1
@@ -832,18 +832,41 @@ def test_the_key_is_laid_out_by_measure_and_english_is_where_it_was():
     assert tall["scale"] < 1 and tall["lines"] * tall["pitch"] <= 5.0 - 0.4 + 1e-9
 
 
+def test_type_set_smaller_is_measured_at_the_size_it_is_drawn():
+    # Type is fitted to the pixel grid, so it does not shrink in exact
+    # proportion: here every letter is a tenth wider at small sizes than its
+    # full size would suggest, as hinted type can be. A width worked out
+    # from the full size alone would leave the text over its limit.
+    from groundwater.reporting.community_sheet import fit_scale, key_layout
+
+    def hinted(text, points, bold):
+        return 0.2 * len(text) * points / 8.0 * (1.1 if points < 6 else 1.0)
+
+    scale = fit_scale(["1" * 30], 8.0, True, 2.2, hinted)
+    assert scale < 2.2 / (0.2 * 30) and hinted("1" * 30, 8.0 * scale, True) <= 2.2
+    assert fit_scale(["abc"], 8.0, True, 2.2, hinted) == 1.0
+    assert fit_scale([], 8.0, True, 2.2, hinted) == 1.0
+    # a scale it is handed is where it starts from, and it only goes down
+    assert fit_scale(["abc"], 8.0, True, 2.2, hinted, 0.5) == 0.5
+    key = key_layout([{"label": "1" * 30, "what": ["aa bb"]}], 12.35, 5.0, hinted)
+    drawn = hinted("1" * 30, 8.0 * key["label_scale"], True)
+    # the column holds the distance as it is drawn, and the rows start
+    # after it with the gap between
+    assert drawn <= 2.2 and key["text_at"] == pytest.approx(6.0 + drawn + 0.1)
+
+
 def test_the_label_under_the_square_is_broken_as_english_was_and_then_by_measure():
     from groundwater.reporting.community_sheet import label_layout
 
-    def measure(text, points, bold):          # every letter a tenth of a centimetre
-        return 0.1 * len(text)
+    def measure(text, points, bold):          # a letter a tenth of a centimetre at full size
+        return 0.1 * len(text) * points / 6.5
 
     english = label_layout("Scan to report a fault at borehole SL-WAR-8FEEVKQ-T", measure)
     assert english == {"lines": ["Scan to report a fault", "at borehole", "SL-WAR-8FEEVKQ-T"],
                        "scale": 1.0}
 
     def wide(text, points, bold):             # wide letters: 24 of them do not fit
-        return 0.2 * len(text)
+        return 0.2 * len(text) * points / 6.5
 
     broken = label_layout("Wumma mombo wamma mummo womma SL-WAR-8FEEVKQ-T", wide)
     assert all(wide(line, 6.5, False) <= 3.3 for line in broken["lines"])
@@ -854,12 +877,23 @@ def test_the_label_under_the_square_is_broken_as_english_was_and_then_by_measure
         3.3 / (0.2 * 35))
 
 
-@pytest.mark.parametrize("font", [None, "DejaVu Sans"])
-def test_the_english_key_is_where_it_was_in_the_fonts_it_is_drawn_in(tmp_path, monkeypatch, font):
-    # the picture is drawn in whatever font matplotlib is set up with: its
-    # own (DejaVu Sans) on a stock install and on CI, another where a machine
-    # says so. In each the English key starts where it did before the key
-    # was measured, no row of it is broken, and nothing is set smaller
+#: The picture is drawn in whatever matplotlib is set up with, and that is
+#: not one thing: this machine's own settings; matplotlib's font where a
+#: machine sets another; and the settings of a stock install, which CI has,
+#: where type is also fitted to the pixel grid ("hinted") and so is not the
+#: width at a small size that its full size would suggest. The last is the
+#: one that showed a distance drawn over the rows beside it.
+DRAWN_IN = {
+    "as this machine is set": {},
+    "DejaVu Sans": {"font.family": "DejaVu Sans"},
+    "a stock install": {"font.family": "DejaVu Sans", "text.hinting": "force_autohint"},
+}
+
+
+@pytest.mark.parametrize("settings", DRAWN_IN)
+def test_the_english_key_is_where_it_was_however_it_is_drawn(tmp_path, monkeypatch, settings):
+    # in each the English key starts where it did before the key was
+    # measured, no row of it is broken, and nothing is set smaller
     import matplotlib
 
     from groundwater.reporting import community_sheet as writer
@@ -872,7 +906,7 @@ def test_the_english_key_is_where_it_was_in_the_fonts_it_is_drawn_in(tmp_path, m
         return seen[-1]
 
     monkeypatch.setattr(writer, "key_layout", recorded)
-    with matplotlib.rc_context({"font.family": font} if font else {}):
+    with matplotlib.rc_context(DRAWN_IN[settings]):
         for given in ({}, dict(asset_id="SL-WAR-8FEEVKQ-T", config=linked())):
             content = community_sheet_content(SITE, translations={}, **given)
             writer.sheet_picture(content, tmp_path / "picture.png")
@@ -883,11 +917,12 @@ def test_the_english_key_is_where_it_was_in_the_fonts_it_is_drawn_in(tmp_path, m
         assert all(len(broken) == 1 for things in key["rows"] for broken in things), key["rows"]
 
 
-def test_words_wider_than_the_english_stay_inside_the_picture(tmp_path, monkeypatch):
+@pytest.mark.parametrize("settings", DRAWN_IN)
+def test_words_wider_than_the_english_stay_inside_the_picture(tmp_path, monkeypatch, settings):
     # a long word for the unit, a name for the centre wider than the
     # innermost ring, a label with a word no line holds, and long rows, all
-    # at once, in both fonts: nothing reaches an edge of the picture, and
-    # nothing but the label's own lines is beside the square
+    # at once: nothing reaches an edge of the picture, and nothing but the
+    # label's own lines is beside the square
     import matplotlib
     from PIL import Image
 
@@ -913,29 +948,30 @@ def test_words_wider_than_the_english_stay_inside_the_picture(tmp_path, monkeypa
         return seen[-1]
 
     monkeypatch.setattr(writer, "key_layout", recorded)
-    for font in (None, "DejaVu Sans"):
-        with matplotlib.rc_context({"font.family": font} if font else {}):
-            for given in ({}, dict(asset_id="SL-WAR-8FEEVKQ-T", config=linked())):
-                content = community_sheet_content(SITE, language="zz", translations=words, **given)
-                path, width = writer.sheet_picture(content, tmp_path / "picture.png")
-                with Image.open(path) as picture:
-                    image = picture.convert("L")
-                assert black(image, width, 0, 0.05) == 0, (font, given)
-                assert black(image, width, width - 0.05, width) == 0, (font, given)
-                assert black(image, width, writer.KEY_AT_CM, width - 3.5) > 0
-                if given:
-                    # the white kept between the key and the square, down to
-                    # where the square's label begins
-                    assert black(image, width, writer.SCAN_AT_CM - 0.22, writer.SCAN_AT_CM,
-                                 y1=3.3) == 0, font
-                # and as it was laid out, so it is drawn: the distance set
-                # smaller to keep to its column, the rows started after it,
-                # and white between the two
-                key = seen[-1]
-                assert key["label_scale"] < 1 and key["text_at"] == pytest.approx(8.3)
-                assert any(len(broken) > 1 for things in key["rows"] for broken in things)
-                assert black(image, width, 8.3 - 0.08, 8.3 - 0.01) == 0, (font, given)
-                assert black(image, width, writer.KEY_AT_CM, 8.2) > 0
+    with matplotlib.rc_context(DRAWN_IN[settings]):
+        for given in ({}, dict(asset_id="SL-WAR-8FEEVKQ-T", config=linked())):
+            content = community_sheet_content(SITE, language="zz", translations=words, **given)
+            path, width = writer.sheet_picture(content, tmp_path / "picture.png")
+            with Image.open(path) as picture:
+                image = picture.convert("L")
+            assert black(image, width, 0, 0.05) == 0, given
+            assert black(image, width, width - 0.05, width) == 0, given
+            assert black(image, width, writer.KEY_AT_CM, width - 3.5) > 0
+            if given:
+                # the white kept between the key and the square, down to
+                # where the square's label begins
+                assert black(image, width, writer.SCAN_AT_CM - 0.22, writer.SCAN_AT_CM,
+                             y1=3.3) == 0
+            # and as it was laid out, so it is drawn: the distance set
+            # smaller to keep to its column, the rows started after it, and
+            # white between the two, which is the gap less a hair each side
+            # for the soft edge of a letter
+            key = seen[-1]
+            assert key["label_scale"] < 1
+            assert writer.KEY_TEXT_AT_CM < key["text_at"] <= 8.3 + 1e-9
+            assert any(len(broken) > 1 for things in key["rows"] for broken in things)
+            assert black(image, width, key["text_at"] - 0.075, key["text_at"] - 0.025) == 0, given
+            assert black(image, width, writer.KEY_AT_CM, key["text_at"] - 0.1) > 0
 
 
 @pytest.mark.parametrize("times", [1.3, 2.0, 3.5])

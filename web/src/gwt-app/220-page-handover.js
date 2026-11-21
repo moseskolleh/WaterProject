@@ -114,10 +114,28 @@
       });
       return broken;
     }
+    /** How much smaller than its size the widest of some texts has to be
+     * set to be no wider than limit (fit_scale): measured at the size it
+     * will be drawn at, and again until it fits, because type is fitted to
+     * the pixel grid and does not shrink in exact proportion. */
+    function fitScale(texts, points, bold, limit, start) {
+      var scale = start === undefined ? 1 : start;
+      for (var turn = 0; turn < 8; turn += 1) {
+        var widestNow = 0;
+        for (var t = 0; t < texts.length; t += 1) {
+          widestNow = Math.max(widestNow, wide(texts[t], points * scale, bold));
+        }
+        if (widestNow <= limit * (1 + 1e-9)) break;
+        /* in proportion first, which is exact for type that shrinks evenly;
+         * then a little under it each time, for type that does not */
+        scale *= limit / widestNow * (turn === 0 ? 1 : 0.99);
+      }
+      return scale;
+    }
+    var distances = rings.map(function (ring) { return ring.label; });
     /* a distance wider than the picture has room for left of the rings'
      * centre is set smaller, all of them alike */
-    var onRing = rings.reduce(function (w, ring) { return Math.max(w, wide(ring.label, 7, true)); }, 0);
-    var ringScale = onRing ? Math.min(1, 2 * (cx - 0.1) / onRing) : 1;
+    var ringScale = fitScale(distances, 7, true, 2 * (cx - 0.1));
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     rings.forEach(function (ring, i) {
@@ -139,8 +157,8 @@
     /* the word at the centre: one wider than the innermost ring would be
      * struck through by it, so it is given a patch of white, and one wider
      * than the rings is set smaller */
-    var named = wide(keep.centre, 6.5, true);
-    var centreScale = named ? Math.min(1, (2 * 2.2 - 0.2) / named) : 1;
+    var centreScale = fitScale([keep.centre], 6.5, true, 2 * 2.2 - 0.2);
+    var named = wide(keep.centre, 6.5 * centreScale, true);
     face(6.5 * centreScale, true);
     if (named > 2 * step) {
       var over = ctx.measureText(keep.centre).width + 0.12 * PX;
@@ -159,22 +177,24 @@
      * closer and smaller. A translated row must not run under the square a
      * phone scans or off the edge. */
     var clear = 0.25, gapAfter = 0.1, labelMax = 2.2, pitchCm = 0.42;
-    var widest = rings.reduce(function (w, ring) { return Math.max(w, wide(ring.label, 8, true)); }, 0);
-    var labelScale = widest ? Math.min(1, labelMax / widest) : 1;
-    var textAt = Math.max(7.3, 6.0 + widest * labelScale + gapAfter);
+    var labelScale = fitScale(distances, 8, true, labelMax);
+    var widest = distances.reduce(function (w, label) {
+      return Math.max(w, wide(label, 8 * labelScale, true));
+    }, 0);
+    var textAt = Math.max(7.3, 6.0 + widest + gapAfter);
     var limit = (report.payload ? 12.8 : widthCm) - clear - textAt;
     var rows = rings.map(function (ring) {
       return ring.what.map(function (what) { return fitWords(what, limit, 7.5); });
     });
-    var lines = Math.max(rings.length - 1, 0) * 0.5, longest = 0;
+    var lines = Math.max(rings.length - 1, 0) * 0.5, every = [];
     rows.forEach(function (things) {
       things.forEach(function (broken) {
         lines += broken.length;
-        broken.forEach(function (line) { longest = Math.max(longest, wide(line, 7.5, false)); });
+        broken.forEach(function (line) { every.push(line); });
       });
     });
-    var scale = Math.min(1, lines ? (heightCm - 0.4) / (lines * pitchCm) : 1,
-      longest ? limit / longest : 1);
+    var scale = fitScale(every, 7.5, false, limit,
+      Math.min(1, lines ? (heightCm - 0.4) / (lines * pitchCm) : 1));
     var pitch = pitchCm * scale;
     var y = heightCm / 2 + lines * pitch / 2 - 0.2 * scale;
     ctx.textAlign = 'left';
@@ -215,16 +235,14 @@
       /* broken as the English always was, at 24 characters; then a line
        * still wider than the room under the square is broken again by its
        * measure, and a word no line can hold sets the label smaller */
-      var room = 3.3, label = [], longestLine = 0;
+      var room = 3.3, label = [];
       wrapWords(report.caption, 24).forEach(function (line) {
         (wide(line, 6.5, false) > room ? fitWords(line, room, 6.5) : [line])
           .forEach(function (part) { label.push(part); });
       });
-      label.forEach(function (line) { longestLine = Math.max(longestLine, wide(line, 6.5, false)); });
       var foot = top - side - 0.25;
       var between = Math.min(0.33, (foot - 0.15) / Math.max(label.length - 1, 1));
-      face(6.5 * Math.min(1, between / 0.33 + 0.15) * (longestLine ? Math.min(1, room / longestLine) : 1),
-        false);
+      face(6.5 * Math.min(1, between / 0.33 + 0.15) * fitScale(label, 6.5, false, room), false);
       ctx.fillStyle = ink;
       ctx.textAlign = 'center';
       label.forEach(function (line, n) {
@@ -236,9 +254,12 @@
       /* how the key was laid out, as key_layout returns it, with the room a
        * row had: for whoever checks the picture, as the browser suite does */
       key: { textAt: textAt, labelScale: labelScale, scale: scale, limit: limit, rows: rows,
+        /* the distance column: how wide the widest is as drawn */
+        labelWidth: widest,
+        /* each line of each row, as wide as it is drawn */
         widths: rows.map(function (things) {
           return things.map(function (broken) {
-            return broken.map(function (line) { return wide(line, 7.5, false); });
+            return broken.map(function (line) { return wide(line, 7.5 * scale, false); });
           });
         }) } };
   }
