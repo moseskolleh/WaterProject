@@ -191,6 +191,25 @@ def test_the_raster_oracle_is_declared_so_ci_installs_it():
     assert "rasterio" in packages, "the GeoTIFF reader is not in the dev extra"
 
 
+def test_the_signature_oracle_is_declared_so_ci_installs_it():
+    """The signature check is arithmetic written out by hand. What holds it
+    to the standard is a library that makes real keys and signatures, and
+    the tests that use it skip without it."""
+    dev = _optional_dependencies().get("dev") or []
+    packages = {spec.split(">=")[0].split("<")[0].strip().lower() for spec in dev}
+    assert "cryptography" in packages, "the signature oracle is not in the dev extra"
+
+
+def test_checking_a_signature_needs_nothing_at_run_time():
+    """The oracle must never become a dependency of the shipped code: a
+    signature is checked wherever Python runs, the Streamlit app in a
+    browser included, where the library is not to be had."""
+    source = (REPO / "src" / "groundwater" / "signing.py").read_text(encoding="utf-8")
+    for forbidden in ("cryptography", "ecdsa", "nacl", "Crypto", "OpenSSL"):
+        assert f"import {forbidden}" not in source, forbidden
+        assert f"from {forbidden}" not in source, forbidden
+
+
 def test_the_geotiff_writer_needs_nothing_at_run_time():
     """The oracle must never become a dependency of the shipped code: not
     of the GeoTIFF writer and reader, nor of the elevation layer that reads

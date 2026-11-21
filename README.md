@@ -401,6 +401,7 @@ groundwater verify report.docx --project project.yaml    # was it issued, and is
 groundwater verify --code 0A1B-2C3D-5 --project project.yaml
 groundwater bundle bh1.zip --folder ./bh1 --raw pumping test.xlsx --project project.yaml --date 2026-10-31
 groundwater verify bh1.zip --project project.yaml        # every file, and what confirms it
+groundwater signature signoff.json --members members.json  # does a signed statement hold, and whose key signed it?
 ```
 
 `recompute` prints one line per saved source and exits non-zero when one

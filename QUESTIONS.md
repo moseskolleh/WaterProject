@@ -663,3 +663,25 @@ need real project inputs or decisions to finish calibrating it.
    report's gate. It also prints at most six committee members, so that
    it stays one page, and tells whoever builds it how many were left
    off.
+
+32. **Signed sign-offs (added with PLAN.md step 8.2).** A sign-off and a
+   readiness override are to carry a signature made by a key their author
+   holds, so that they are more than a typed name. The design and what a
+   signature does and does not show are in
+   `docs/decisions/0002-signed-sign-offs.md`. Six choices were taken as
+   defaults so that work could go on, and are yours. (a) **The
+   passphrase.** A key is unlocked once for a session of the app. Asking
+   at every signing is safer where a laptop or tablet is shared, and is
+   more to type. (b) **A stale override.** A signed override stops
+   applying when the data it was made on changes, so the document goes
+   back to provisional. (c) **No key.** A sign-off may still be recorded
+   with a typed name, and is printed as that. (d) **The members' file.**
+   The organisation's list of its members' keys is a plain file known by
+   a short code, to be compared by voice or on paper with the one the
+   organisation gives out. Say who keeps that file, and how a checker is
+   to come by it. A list signed by an organisation key is stronger and
+   needs somebody to hold that key. (e) **The documents themselves.** A
+   signature is over a decision, not over a document: whether a document
+   is the toolkit's own still rests on its issue record. Say whether the
+   issue of each document should be signed too. (f) **Older projects.**
+   Sign-offs in project files made before this are shown as typed names.

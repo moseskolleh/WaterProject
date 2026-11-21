@@ -1,0 +1,44 @@
+# Signed statements (PLAN.md step 8.2): what the toolkit tells a person who
+# checks one. A signed statement is a small text saying what somebody
+# decided, with a signature over it made by a key only they hold.
+#
+# The words are careful about what a check shows. A signature that holds
+# shows that the holder of a key approved exactly this text. Whose key it is
+# comes from the members' file the checker was given, and is only as good as
+# the way they came by that file. The time in a statement is the signer's
+# own clock.
+
+not_a_statement: >-
+  This is not a signed statement the toolkit wrote. Nothing in it is taken
+  as said.
+does_not_hold: >-
+  The signature does not hold. The statement was changed after it was
+  signed, or was not signed with the key it names.
+holds: The signature holds. This statement was signed with the key {code}.
+time_is_a_claim: >-
+  The time in it, {at}, is the clock of the signer's own device. It is a
+  claim, not a proof.
+
+# whose key it is, by the organisation's file of its members' keys
+standing_not_checked: >-
+  Whose key that is was not checked: no members' file was given.
+members_unreadable: >-
+  The members' file given is not one the toolkit wrote, so whose key that is
+  was not checked.
+standing_listed: >-
+  The key is listed in the members' file you gave ({organisation}, file code
+  {file}) as {name}, {role}.
+standing_not_listed: >-
+  The key is not in the members' file you gave ({organisation}, file code
+  {file}).
+# the date is the signer's own clock, so a withdrawn key is not relied on
+# for any date
+standing_withdrawn: >-
+  The key was {name}'s ({role}) and {organisation} has withdrawn it (file
+  code {file}). A statement signed with a withdrawn key is not relied on,
+  whatever date it gives.
+standing_out_of_dates: >-
+  The key is {name}'s ({role}) in the members' file you gave ({organisation},
+  file code {file}), but the statement is dated outside the days the key is
+  valid for.
+no_role: no role given

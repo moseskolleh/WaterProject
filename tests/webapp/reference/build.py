@@ -96,6 +96,7 @@ from .survey_plan import survey_plan_reference
 from .terrain import terrain_reference
 from .too_large import too_large_reference
 from .verification import verification_reference
+from .signing import signing_reference
 from .text_languages import text_languages_reference
 from .ves import (
     ves_bessel_reference,
@@ -622,6 +623,7 @@ def build() -> dict:
     out["field_kit"] = field_kit_reference()
     out["community_sheet"] = community_sheet_reference()
     out["text_languages"] = text_languages_reference()
+    out["signing"] = signing_reference()
     out["airlift"] = airlift_reference()
     out["pumping_spread"] = pumping_spread_reference()
     out["ves_forward"] = ves_forward_reference()

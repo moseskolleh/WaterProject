@@ -2,6 +2,28 @@
 
 The full text of every entry listed under "Unreleased" in [CHANGELOG.md](../CHANGELOG.md), in the same order. A new entry goes at the top, and its heading goes first in that list.
 
+### Signed statements: the part both apps share (PLAN.md step 8.2, first of three)
+
+A sign-off and a readiness override are to be signed, so that they are more than a name somebody typed. This is the foundation in both engines. Nothing in either app changes yet: no key is made, and no sign-off is signed. The design, and the choices taken as defaults, are in `docs/decisions/0002-signed-sign-offs.md` and QUESTIONS.md item 32.
+
+**A signed statement** is a small text saying what one person decided and on which figures, with a signature over that exact text made by a key only they hold. Both engines write a statement to the same bytes and read one back only if it is exactly what the toolkit writes: a text edited by hand, or written by anything else, is not read at all.
+
+**The check needs no browser, no network and no new dependency.** It is written out with whole-number arithmetic in both engines (`groundwater/signing.py`, `web/src/gwt-core/585-signing.js`), as the QR encoder's is. Signing itself will be done in the browser app, with Web Crypto.
+
+**Whose key it is** comes from a file an organisation publishes of its members' keys, with the days each is valid for and any withdrawal. A signer is reported as "listed in the members' file you gave", with the file's code, never simply as trusted. A file with a fault (a date that is not one, one key listed twice, no organisation named) is refused whole. A withdrawn key is not relied on for any date, because the date in a statement is the signer's own clock.
+
+**`groundwater signature FILE [--members FILE]`** says whether a signed statement holds and whose key signed it, and shows what was signed as it stands in the text. It ends with 0 where the signature holds and the signer is listed, 2 where it holds and the signer is not placed, and 1 where it does not hold or the key was withdrawn.
+
+**What a signature does not show**, and the words say so: who holds a key (the members' file does, and is only as good as the way the checker came by it); that the time is right (it is the signer's device's); and that a document quoting a statement is the toolkit's own (its issue record does that).
+
+**How it is held.**
+
+- The standard's own test signatures (RFC 6979), and every way a key or a signature can be malformed: a point that is not on the curve, values out of range, the wrong length.
+- A test-only library that makes real keys and signatures (`cryptography`, in the dev extra as segno is for the QR encoder). Nothing the toolkit ships imports it, and a test holds that.
+- Statements signed by Web Crypto in a browser and committed (`tests/webapp/fixtures/signing_webcrypto.json`), read the same by both engines. The new browser suite also signs fresh ones on every run and compares the engine's verdict with Web Crypto's own, on 96 cases.
+- Parity: 251 new checks, 5,287 in all.
+- An old browser with no numbers long enough for the arithmetic still loads the engine and says it cannot check a signature. The engine writes no number in the one form such a browser cannot read, and a test holds that.
+
 ### Translations: a second independent check of the fixes (PLAN.md step 9.2)
 
 The fixes to step 9.2 (the entry below) were themselves checked by independent reviewers, each finding again put to a second who tried to refute it. Eleven stood. None reached a community: no translation is bundled.

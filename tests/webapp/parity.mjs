@@ -1336,6 +1336,62 @@ await withPage(async (page, base, consoleErrors) => {
   check('translations: the build offers exactly the ones the package bundles',
     JSON.stringify(tongues.bundled) === JSON.stringify(R.text_languages.bundled),
     JSON.stringify(tongues.bundled));
+  // --- signed statements (PLAN.md step 8.2): the signature check, written out
+  // by hand in each engine, on the standard's own signatures and on every way
+  // a key or a signature can be malformed; what a strict reader of a
+  // statement and of a members' file must and must not read; where a signer
+  // stands; and statements signed by Web Crypto and committed ---
+  const signing = await page.evaluate((ref) => {
+    const C = GWT.core;
+    const orNull = (make) => { try { return make(); } catch (e) { return null; } };
+    return {
+      can: C.canCheckSignatures(),
+      verify: ref.verify.cases.map(([key, message, signature]) => C.verifyP256(key, message, signature)),
+      ids: ref.keys.cases.map((key) => C.keyId(key)),
+      codes: ref.keys.code_cases.map((value) => C.keyCode(value)),
+      written: ref.statements.values.map((value) => orNull(() => C.statementText(value))),
+      read: ref.statements.texts.map((text) => C.readStatement(text)),
+      padded: ref.statements.padded.map((n) =>
+        C.readStatement(C.statementText({ says: 'x', pad: 'a'.repeat(n) })) !== null),
+      members: ref.members.values.map((value) => orNull(() => C.membersText(value))),
+      memberCodes: ref.members.values.map((value) =>
+        C.membersCode(orNull(() => C.membersText(value)))),
+      standing: ref.members.standing_cases.map(([members, key, day]) =>
+        C.signerStanding(members, C.keyId(key), day)),
+      checks: ref.checks.cases.map(([text, members]) => {
+        const said = C.checkSigned(text, members);
+        return { verdict: said.verdict, statement: said.statement, key: said.key, code: said.code,
+          standing: said.standing, member: said.member, file_code: said.file_code, lines: said.lines };
+      }),
+      signedRead: ref.checks.cases.map(([text]) => C.readSigned(text)),
+    };
+  }, R.signing);
+  check('signing: this browser can check a signature', signing.can === true);
+  R.signing.verify.results.forEach((ref, i) => {
+    check(`signing: signature case ${i + 1} is ${ref ? 'accepted' : 'refused'} by both`,
+      signing.verify[i] === ref, JSON.stringify(R.signing.verify.cases[i]).slice(0, 120));
+  });
+  for (const [mine, theirs, what] of [
+    [signing.ids, R.signing.keys.ids, 'a key\'s identifier'],
+    [signing.codes, R.signing.keys.codes, 'a key\'s code'],
+    [signing.written, R.signing.statements.written, 'a statement, written or refused'],
+    [signing.read, R.signing.statements.read, 'a statement\'s text, read or refused'],
+    [signing.padded, R.signing.statements.padded_read, 'the longest text read'],
+    [signing.members, R.signing.members.written, 'a members\' file, written or refused'],
+    [signing.memberCodes, R.signing.members.codes, 'a members\' file\'s code'],
+    [signing.standing, R.signing.members.standing, 'where a signer stands'],
+    [signing.signedRead, R.signing.checks.read, 'a signed statement\'s file, read or refused'],
+  ]) {
+    theirs.forEach((ref, i) => {
+      const d = parted(mine[i], ref, what);
+      check(`signing: ${what}, case ${i + 1}`, d === null, d);
+    });
+  }
+  R.signing.checks.results.forEach((ref, i) => {
+    const d = parted(signing.checks[i], ref, 'check');
+    check(`signing: a signed statement checked, ${R.signing.checks.names[i]} (${i + 1})`,
+      d === null, d);
+  });
   // --- the drilling co-pilot's airlift yield (PLAN.md step 2.3): the figure,
   // the sentence the sheets print for its basis, and its warnings; a reading
   // that gives no yield is refused by both ---

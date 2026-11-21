@@ -36,8 +36,11 @@ ai = ["anthropic>=0.78"]
 # segno and opencv are the two independent oracles the QR encoder is held
 # to - one encodes the same standard, the other reads the result back;
 # rasterio is the same thing for the GeoTIFF writer, since a raster with the
-# wrong georeferencing opens perfectly happily in the wrong place. All three
-# are test-only: nothing the toolkit ships imports any of them.
+# wrong georeferencing opens perfectly happily in the wrong place.
+# cryptography is the same for the signature check in signing.py, which is
+# written out with whole-number arithmetic: it makes the keys and the
+# signatures the check is held to. All four are test-only: nothing the
+# toolkit ships imports any of them.
 # ruff is pinned to the exact version CI runs, so "it lints here" and "it
 # lints in CI" mean the same thing. nox runs the check sequence in
 # noxfile.py, and build makes the wheel and sdist its release session ships.
@@ -51,6 +54,7 @@ ai = ["anthropic>=0.78"]
 # new things. pytest-cov only reports; nothing fails on the number.
 dev = [
     "pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "rasterio>=1.3",
+    "cryptography>=42",
     "ruff==0.17.3", "nox>=2024.4.15", "build>=1.0", "hypothesis==6.168.5",
     "pyright==1.1.414", "pytest-cov>=5",
     # web/build_guide.py turns docs/user_guide.md into docs/user_guide.html,

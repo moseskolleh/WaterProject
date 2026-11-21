@@ -20,6 +20,7 @@ tests/test_changelog.py holds each list to its file, and
 
 Full text: [changelog/unreleased.md](changelog/unreleased.md)
 
+- Signed statements: the part both apps share (PLAN.md step 8.2, first of three)
 - Translations: a second independent check of the fixes (PLAN.md step 9.2)
 - Translations: what an independent review found, put right (PLAN.md step 9.2)
 - Strings that can be translated: the community sheet in a language beside English (PLAN.md step 9.2)

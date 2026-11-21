@@ -17,6 +17,7 @@ calls the apps make; nothing is computed differently.
                        [--table FILE ...] [--figure FILE ...] [--project FILE ...]
                        [--title TEXT] [--borehole ID] [--date YYYY-MM-DD]
     groundwater translation [CODE] [--folder DIR]
+    groundwater signature FILE [--members FILE]
 """
 
 from __future__ import annotations
@@ -426,6 +427,54 @@ def cmd_translation(args: argparse.Namespace) -> int:
     return 0 if all([told(code) for code in sorted(held)]) else 1
 
 
+def cmd_signature(args: argparse.Namespace) -> int:
+    """Check a signed statement (PLAN.md step 8.2): whether its signature
+    holds, and, with the organisation's file of its members' keys, whose key
+    signed it. Works with no network and no browser.
+
+    Ends with 0 where the signature holds and the key is listed in the
+    members' file given; with 2 where it holds and the signer is not placed
+    (no file, not listed, or dated outside the key's days); and with 1 where
+    it does not hold, is not a signed statement, or the key was withdrawn."""
+    from .signing import check_signed
+
+    def text_of(path: str) -> str | None:
+        try:
+            return Path(path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            print(f"{path}: cannot be read ({error.__class__.__name__})", file=sys.stderr)
+            return None
+
+    signed = text_of(args.file)
+    if signed is None:
+        return 1
+    members = None
+    if args.members:
+        members = text_of(args.members)
+        if members is None:
+            return 1
+    checked = check_signed(signed, members)
+    for line in checked["lines"]:
+        print(line)
+    statement = checked["statement"]
+    if checked["verdict"] == "holds" and statement:
+        # what was signed, as it stands in the text: the check is of this,
+        # and of nothing a document may say of it elsewhere
+        print()
+        for name, value in statement.items():
+            if isinstance(value, dict):
+                print(f"{name}:")
+                for key, item in value.items():
+                    print(f"  {key}: {item}")
+            elif isinstance(value, list):
+                print(f"{name}: {', '.join(value) if value else '(none)'}")
+            else:
+                print(f"{name}: {value}")
+    if checked["verdict"] != "holds" or checked["standing"] == "withdrawn":
+        return 1
+    return 0 if checked["standing"] == "listed" else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="groundwater",
@@ -490,6 +539,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--folder", help="a folder of translations to read, one to a subfolder "
                    "(default: the ones the package bundles)")
     p.set_defaults(func=cmd_translation)
+
+    p = sub.add_parser("signature", help="check a signed statement (a sign-off or an override)")
+    p.add_argument("file", help="the signed statement's file")
+    p.add_argument("--members", help="the organisation's file of its members' keys, to say "
+                   "whose key signed it")
+    p.set_defaults(func=cmd_signature)
     return parser
 
 
